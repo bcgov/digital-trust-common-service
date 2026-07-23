@@ -59,3 +59,7 @@ networkPolicy:
   enabled: true
   keycloak:
     enabled: true
+
+connectorEncryption:
+  existingSecret: vc-common-service-test-connector-encryption
+  create: false

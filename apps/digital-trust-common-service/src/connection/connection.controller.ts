@@ -11,6 +11,7 @@ import {
   ParseEnumPipe,
 } from '@nestjs/common';
 import {
+  ApiBody,
   ApiCreatedResponse,
   ApiOkResponse,
   ApiNotFoundResponse,
@@ -30,6 +31,25 @@ export class ConnectionController {
   @ApiCreatedResponse({
     description: 'Connection created successfully',
     type: Connection,
+  })
+  @ApiBody({
+    description: 'Connection creation request',
+    type: CreateConnectionDto,
+    examples: {
+      example1: {
+        summary: 'Create a new connection',
+        value: {
+          tenantId: '123e4567-e89b-12d3-a456-426614174000',
+          externalConnectionId: 'ext-conn-001',
+          state: 'invited',
+          connectorType: 'traction',
+          protocol: 'didcomm-v2',
+          theirLabel: 'Alice',
+          theirDid: 'did:example:alice',
+          metadata: { key: 'value' },
+        },
+      },
+    },
   })
   public async create(@Body() dto: CreateConnectionDto): Promise<Connection> {
     return await this.connectionService.create(dto);
@@ -92,6 +112,25 @@ export class ConnectionController {
     type: Connection,
   })
   @ApiNotFoundResponse({ description: 'Connection not found' })
+  @ApiBody({
+    description: 'Connection update request',
+    type: UpdateConnectionDto,
+    examples: {
+      example1: {
+        summary: 'Update connection state',
+        value: {
+          state: 'active',
+        },
+      },
+      example2: {
+        summary: 'Update connection label and metadata',
+        value: {
+          theirLabel: 'Bob',
+          metadata: { status: 'connected', lastSeen: '2026-07-24' },
+        },
+      },
+    },
+  })
   public async update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateConnectionDto,

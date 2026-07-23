@@ -5,7 +5,9 @@ import { Response } from 'express';
 
 import { AuditLogModule } from '../audit-log/audit-log.module';
 import { ConnectionModule } from '../connection/connection.module';
+import { ConnectorCredentialModule } from '../connector-credential/connector-credential.module';
 import { CredentialDefinitionModule } from '../credential-definition/credential-definition.module';
+import { OAuthClientModule } from '../oauth-client/oauth-client.module';
 import { OperationModule } from '../operation/operation.module';
 import { TenantModule } from '../tenant/tenant.module';
 import { TenantUserModule } from '../tenant-user/tenant-user.module';
@@ -28,7 +30,12 @@ const swaggerApps = [
     title: 'Digital Credential Operations API',
     description: 'API endpoints for Digital Credential operations',
     version: '1.0',
-    modules: [ConnectionModule, OperationModule],
+    modules: [
+      ConnectionModule,
+      ConnectorCredentialModule,
+      OAuthClientModule,
+      OperationModule,
+    ],
   },
 ];
 

@@ -8,6 +8,7 @@ import {
   Put,
 } from '@nestjs/common';
 import {
+  ApiBody,
   ApiCreatedResponse,
   ApiOkResponse,
   ApiNotFoundResponse,
@@ -27,6 +28,21 @@ export class TenantController {
     description: 'Tenant created successfully',
     type: Tenant,
   })
+  @ApiBody({
+    description: 'Tenant creation request',
+    type: CreateTenantDto,
+    examples: {
+      example1: {
+        summary: 'Create a new tenant',
+        value: {
+          name: 'Acme Corporation',
+          slug: 'acme-corp',
+          description: 'A sample tenant organization',
+          config: { theme: 'dark', timezone: 'UTC' },
+        },
+      },
+    },
+  })
   public async create(@Body() dto: CreateTenantDto): Promise<Tenant> {
     return this.tenantService.create(dto);
   }
@@ -37,6 +53,19 @@ export class TenantController {
     type: Tenant,
   })
   @ApiNotFoundResponse({ description: 'Tenant not found' })
+  @ApiBody({
+    description: 'Tenant update request',
+    type: UpdateTenantDto,
+    examples: {
+      example1: {
+        summary: 'Update tenant description and config',
+        value: {
+          description: 'Updated description',
+          config: { theme: 'light', timezone: 'EST' },
+        },
+      },
+    },
+  })
   public async update(
     @Body() dto: UpdateTenantDto,
     @Param('id') id: string,

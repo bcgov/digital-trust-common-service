@@ -9,6 +9,7 @@ import {
   Post,
 } from '@nestjs/common';
 import {
+  ApiBody,
   ApiCreatedResponse,
   ApiOkResponse,
   ApiNotFoundResponse,
@@ -27,6 +28,23 @@ export class TenantUserController {
   @ApiCreatedResponse({
     description: 'Tenant user created successfully',
     type: TenantUser,
+  })
+  @ApiBody({
+    description: 'Tenant user creation request',
+    type: CreateTenantUserDto,
+    examples: {
+      example1: {
+        summary: 'Create a tenant user',
+        value: {
+          tenantId: '123e4567-e89b-12d3-a456-426614174000',
+          externalUserId: 'ext-user-001',
+          email: 'john.doe@example.com',
+          displayName: 'John Doe',
+          role: 'admin',
+          status: 'active',
+        },
+      },
+    },
   })
   public async create(@Body() dto: CreateTenantUserDto): Promise<TenantUser> {
     return await this.tenantUserService.create(dto);
@@ -73,6 +91,25 @@ export class TenantUserController {
     type: TenantUser,
   })
   @ApiNotFoundResponse({ description: 'Tenant user not found' })
+  @ApiBody({
+    description: 'Tenant user update request',
+    type: UpdateTenantUserDto,
+    examples: {
+      example1: {
+        summary: 'Update user role and status',
+        value: {
+          role: 'member',
+          status: 'active',
+        },
+      },
+      example2: {
+        summary: 'Update user display name',
+        value: {
+          displayName: 'Jane Doe',
+        },
+      },
+    },
+  })
   public async update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateTenantUserDto,

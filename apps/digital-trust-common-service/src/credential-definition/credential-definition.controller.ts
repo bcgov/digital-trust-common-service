@@ -10,6 +10,7 @@ import {
   Post,
 } from '@nestjs/common';
 import {
+  ApiBody,
   ApiCreatedResponse,
   ApiOkResponse,
   ApiNotFoundResponse,
@@ -34,6 +35,24 @@ export class CredentialDefinitionController {
   @ApiCreatedResponse({
     description: 'Credential definition created successfully',
     type: CredentialDefinition,
+  })
+  @ApiBody({
+    description: 'Credential definition creation request',
+    type: CreateCredentialDefinitionDto,
+    examples: {
+      example1: {
+        summary: 'Create a credential definition',
+        value: {
+          tenantId: '123e4567-e89b-12d3-a456-426614174000',
+          name: 'Driver License Definition',
+          format: 'anoncreds',
+          externalId: 'ext-cred-def-001',
+          connectorType: 'traction',
+          schemaDefinition: { version: '1.0', attributes: ['name', 'age'] },
+          metadata: { issuer: 'DMV' },
+        },
+      },
+    },
   })
   public async create(
     @Body() dto: CreateCredentialDefinitionDto,
@@ -101,6 +120,18 @@ export class CredentialDefinitionController {
     type: CredentialDefinition,
   })
   @ApiNotFoundResponse({ description: 'Credential definition not found' })
+  @ApiBody({
+    description: 'Credential definition update request',
+    type: UpdateCredentialDefinitionDto,
+    examples: {
+      example1: {
+        summary: 'Update credential definition metadata',
+        value: {
+          metadata: { issuer: 'DMV', version: '2.0' },
+        },
+      },
+    },
+  })
   public async update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateCredentialDefinitionDto,

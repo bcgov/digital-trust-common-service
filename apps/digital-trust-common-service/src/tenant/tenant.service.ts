@@ -21,7 +21,7 @@ export class TenantService {
 
     const tenant = this.tenants.create(dto);
 
-    return this.tenants.save(tenant);
+    return this.tenants.update(tenant);
   }
 
   public async findAll() {
@@ -67,7 +67,7 @@ export class TenantService {
       tenant.config = dto.config;
     }
 
-    return this.tenants.save(tenant);
+    return this.tenants.update(tenant);
   }
 
   public async delete(id: string) {

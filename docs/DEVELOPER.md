@@ -44,7 +44,41 @@ DB_LOGGING=false                   # Enable/disable SQL query logging
 DB_SSL=false                       # Enable SSL connection
 # DB_SSL_REJECT_UNAUTHORIZED=true
 # DB_SSL_CA=/etc/postgres/certs/ca.crt
+
+# Encryption Configuration
+CONNECTOR_ENCRYPTION_KEYS_PATH='./config/encryption-keys.json'  # Path to encryption keys
 ```
+
+### 3. Encryption Keys Configuration
+
+The application uses AES-256-GCM encryption to protect sensitive data. Encryption keys are managed via the `CONNECTOR_ENCRYPTION_KEYS_PATH` environment variable, which points to a JSON configuration file.
+
+**Encryption keys file format** (`config/encryption-keys.json`):
+
+```json
+{
+  "currentVersion": 1,
+  "keys": {
+    "1": "1111111111111111111111111111111111111111111111111111111111111111"
+  }
+}
+```
+
+- **currentVersion**: The active key version used for new encryptions
+- **keys**: A map of version numbers to hex-encoded 256-bit (64-character) keys
+
+**Key rotation workflow:**
+
+1. Generate a new encryption key (64 hex characters = 32 bytes)
+2. Add it to the `keys` map with a new version number
+3. Update `currentVersion` to the new version number
+4. The application will automatically use the new key for new encryptions
+5. Existing data encrypted with old keys can still be decrypted for key rotation purposes
+
+**Development vs. Production:**
+
+- **Development**: Use the provided `config/encryption-keys.json` with default test keys
+- **Production**: Generate strong random keys and store securely (e.g., in a secrets manager)
 
 ## Running the Application
 
