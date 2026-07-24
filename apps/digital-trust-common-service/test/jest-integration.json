@@ -4,7 +4,7 @@
   "roots": ["<rootDir>/apps/", "<rootDir>/libs/"],
   "testEnvironment": "node",
   "setupFilesAfterEnv": [
-    "<rootDir>/apps/vc-common-service/test/jest-integration-setup.ts"
+    "<rootDir>/apps/digital-trust-common-service/test/jest-integration-setup.ts"
   ],
   "testRegex": "\\.integration-spec\\.ts$",
   "transform": {

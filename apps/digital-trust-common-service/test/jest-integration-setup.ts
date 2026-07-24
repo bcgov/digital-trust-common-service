@@ -9,7 +9,7 @@ const envDefaults: Record<string, string> = {
   DB_PORT: '5433',
   DB_USERNAME: 'postgres',
   DB_PASSWORD: 'postgres',
-  DB_NAME: 'vc_common_service_test',
+  DB_NAME: 'dc_common_service_test',
 };
 
 for (const [key, value] of Object.entries(envDefaults)) {

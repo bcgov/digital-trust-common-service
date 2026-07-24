@@ -16,4 +16,4 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 COPY --from=build /app/dist ./dist
 EXPOSE 3000
-CMD ["node", "dist/apps/vc-common-service/src/main.js"]
+CMD ["node", "dist/apps/digital-trust-common-service/src/main.js"]
