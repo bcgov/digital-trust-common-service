@@ -1,9 +1,5 @@
 import { PgBossService } from '@app/pg-boss';
-import {
-  JOB_QUEUES,
-  QUEUE_DEFINITIONS,
-  fromTypeOrm,
-} from '@app/pg-boss';
+import { JOB_QUEUES, QUEUE_DEFINITIONS, fromTypeOrm } from '@app/pg-boss';
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';

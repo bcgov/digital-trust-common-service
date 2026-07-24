@@ -1,6 +1,3 @@
-import { DataSource } from 'typeorm';
-
-import { buildSslConfig } from '@app/database/ssl.util';
 import { InitialExtensions1783630501649 } from '@app/database/migrations/000001_initial-extensions';
 import { CreateTenantEntity1784231917556 } from '@app/database/migrations/000002_create-tenant-entity';
 import { CreateTenantUserEntity1784241747468 } from '@app/database/migrations/000003_create-tenant-user-entity';
@@ -8,6 +5,8 @@ import { CreateCredentialDefinitionRegistry1784316680145 } from '@app/database/m
 import { CreateConnectionState1784732194397 } from '@app/database/migrations/000005_create-connection-state';
 import { CreateOperationEntity1784242000000 } from '@app/database/migrations/000006_create-operation-entity';
 import { CreateAuditLogSchema1784901000002 } from '@app/database/migrations/000007_create-audit-log-schema';
+import { buildSslConfig } from '@app/database/ssl.util';
+import { DataSource } from 'typeorm';
 
 describe('audit log schema integration', () => {
   let dataSource: DataSource;

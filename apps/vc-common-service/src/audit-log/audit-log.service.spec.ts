@@ -1,11 +1,7 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 
-import {
-  AuditAction,
-  AuditActorType,
-  AuditLog,
-} from './audit-log.entity';
+import { AuditAction, AuditActorType, AuditLog } from './audit-log.entity';
 import { AuditLogRepository } from './audit-log.repository';
 import { AuditLogService } from './audit-log.service';
 
@@ -87,7 +83,10 @@ describe('AuditLogService', () => {
   it('lists with encoded cursor pagination', async () => {
     mockFindPageForTenant.mockResolvedValue({
       items: [mockEntry],
-      nextCursor: { createdAt: mockEntry.createdAt.toISOString(), id: mockEntry.id },
+      nextCursor: {
+        createdAt: mockEntry.createdAt.toISOString(),
+        id: mockEntry.id,
+      },
       hasMore: true,
     });
 

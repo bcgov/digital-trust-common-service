@@ -56,10 +56,9 @@ export class AuditLogRepository {
     },
   ): Promise<AuditLogPage> {
     const limit = options.limit;
-    const qb = this.baseFilterQuery(tenantId, filters).orderBy(
-      'audit.created_at',
-      'DESC',
-    ).addOrderBy('audit.id', 'DESC');
+    const qb = this.baseFilterQuery(tenantId, filters)
+      .orderBy('audit.created_at', 'DESC')
+      .addOrderBy('audit.id', 'DESC');
 
     if (options.cursor) {
       qb.andWhere(

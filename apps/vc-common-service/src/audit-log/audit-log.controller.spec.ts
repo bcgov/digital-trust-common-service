@@ -1,12 +1,8 @@
-import { Test, TestingModule } from '@nestjs/testing';
 import { StreamableFile } from '@nestjs/common';
+import { Test, TestingModule } from '@nestjs/testing';
 
 import { AuditLogController } from './audit-log.controller';
-import {
-  AuditAction,
-  AuditActorType,
-  AuditLog,
-} from './audit-log.entity';
+import { AuditAction, AuditActorType, AuditLog } from './audit-log.entity';
 import { AuditLogService } from './audit-log.service';
 
 describe('AuditLogController', () => {
@@ -59,9 +55,7 @@ describe('AuditLogController', () => {
       pagination: { next_cursor: null, has_more: false },
     });
 
-    await expect(
-      controller.list(tenantId, { limit: 10 }),
-    ).resolves.toEqual({
+    await expect(controller.list(tenantId, { limit: 10 })).resolves.toEqual({
       data: [mockEntry],
       pagination: { next_cursor: null, has_more: false },
     });
@@ -70,9 +64,9 @@ describe('AuditLogController', () => {
   it('gets an audit log by id', async () => {
     mockFindById.mockResolvedValue(mockEntry);
 
-    await expect(
-      controller.findById(tenantId, mockEntry.id),
-    ).resolves.toEqual(mockEntry);
+    await expect(controller.findById(tenantId, mockEntry.id)).resolves.toEqual(
+      mockEntry,
+    );
   });
 
   it('exports audit logs as a CSV stream', async () => {

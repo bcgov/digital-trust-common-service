@@ -1,5 +1,5 @@
-import { IsEnum, IsISO8601, IsOptional } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
+import { IsEnum, IsISO8601, IsOptional } from 'class-validator';
 
 import { AuditAction } from '../audit-log.entity';
 

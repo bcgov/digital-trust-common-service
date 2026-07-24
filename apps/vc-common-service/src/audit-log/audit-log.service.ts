@@ -1,10 +1,10 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-
 import {
-  AuditAction,
-  AuditActorType,
-  AuditLog,
-} from './audit-log.entity';
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+
+import { AuditAction, AuditActorType, AuditLog } from './audit-log.entity';
 import {
   AuditLogCursor,
   AuditLogFilters,
@@ -33,9 +33,7 @@ export type PaginatedAuditLogs = {
 
 @Injectable()
 export class AuditLogService {
-  public constructor(
-    private readonly auditLogRepository: AuditLogRepository,
-  ) {}
+  public constructor(private readonly auditLogRepository: AuditLogRepository) {}
 
   public async write(input: WriteAuditLogInput): Promise<AuditLog> {
     return await this.auditLogRepository.insert({
@@ -52,10 +50,7 @@ export class AuditLogService {
   }
 
   public async findById(tenantId: string, id: string): Promise<AuditLog> {
-    const entry = await this.auditLogRepository.findByIdForTenant(
-      tenantId,
-      id,
-    );
+    const entry = await this.auditLogRepository.findByIdForTenant(tenantId, id);
 
     if (!entry) {
       throw new NotFoundException(`Audit log '${id}' was not found.`);
@@ -70,9 +65,7 @@ export class AuditLogService {
     options: { limit?: number; cursor?: string | null },
   ): Promise<PaginatedAuditLogs> {
     const limit = options.limit ?? 20;
-    const cursor = options.cursor
-      ? this.decodeCursor(options.cursor)
-      : null;
+    const cursor = options.cursor ? this.decodeCursor(options.cursor) : null;
 
     const page = await this.auditLogRepository.findPageForTenant(
       tenantId,
@@ -95,10 +88,7 @@ export class AuditLogService {
     tenantId: string,
     filters: Pick<AuditLogFilters, 'action' | 'since' | 'until'>,
   ): Promise<string> {
-    const rows = await this.auditLogRepository.findForExport(
-      tenantId,
-      filters,
-    );
+    const rows = await this.auditLogRepository.findForExport(tenantId, filters);
 
     const header = [
       'id',

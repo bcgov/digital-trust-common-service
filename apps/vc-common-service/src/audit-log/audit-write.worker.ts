@@ -5,10 +5,7 @@ import type { Job } from 'pg-boss';
 
 import { JobsService } from '../jobs/jobs.service';
 
-import {
-  AuditAction,
-  AuditActorType,
-} from './audit-log.entity';
+import { AuditAction, AuditActorType } from './audit-log.entity';
 import { AuditLogService } from './audit-log.service';
 
 export type AuditWriteJobData = {

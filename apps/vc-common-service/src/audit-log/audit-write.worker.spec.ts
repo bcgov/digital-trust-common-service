@@ -6,10 +6,7 @@ import { JobsService } from '../jobs/jobs.service';
 
 import { AuditAction, AuditActorType } from './audit-log.entity';
 import { AuditLogService } from './audit-log.service';
-import {
-  AuditWriteJobData,
-  AuditWriteWorker,
-} from './audit-write.worker';
+import { AuditWriteJobData, AuditWriteWorker } from './audit-write.worker';
 
 describe('AuditWriteWorker', () => {
   let worker: AuditWriteWorker;

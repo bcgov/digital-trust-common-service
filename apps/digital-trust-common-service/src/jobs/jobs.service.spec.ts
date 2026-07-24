@@ -96,7 +96,9 @@ describe('JobsService', () => {
 
   it('should send within a transaction using a TypeORM adapter', async () => {
     send.mockResolvedValue('job-tx');
-    const manager = { query: jest.fn() } as any;
+    const manager = {
+      query: jest.fn(),
+    } as unknown as import('typeorm').EntityManager;
 
     await service.sendInTransaction(manager, 'audit.write', { a: 1 });
 
@@ -112,7 +114,7 @@ describe('JobsService', () => {
   });
 
   it('should register a worker for a queue', async () => {
-    await service.registerWorker('audit.write', async () => undefined);
+    await service.registerWorker('audit.write', () => Promise.resolve());
 
     expect(work).toHaveBeenCalledWith(
       'audit.write',
@@ -126,7 +128,7 @@ describe('JobsService', () => {
 
   it('should skip worker registration when disabled', async () => {
     await expect(
-      service.registerWorker('audit.write', async () => undefined, {
+      service.registerWorker('audit.write', () => Promise.resolve(), {
         enabled: false,
       }),
     ).resolves.toBeNull();
