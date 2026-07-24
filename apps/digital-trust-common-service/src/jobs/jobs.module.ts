@@ -1,5 +1,6 @@
 import { PgBossModule } from '@app/pg-boss';
 import { Global, Module } from '@nestjs/common';
+import { EventEmitterModule } from '@nestjs/event-emitter';
 
 import { ShutdownModule } from '../shutdown/shutdown.module';
 
@@ -7,7 +8,14 @@ import { JobsService } from './jobs.service';
 
 @Global()
 @Module({
-  imports: [PgBossModule, ShutdownModule],
+  imports: [
+    PgBossModule,
+    ShutdownModule,
+    EventEmitterModule.forRoot({
+      wildcard: false,
+      ignoreErrors: false,
+    }),
+  ],
   providers: [JobsService],
   exports: [JobsService],
 })

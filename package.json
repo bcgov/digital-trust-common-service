@@ -31,6 +31,7 @@
     "@nestjs/common": "^11.1.28",
     "@nestjs/config": "^4.0.4",
     "@nestjs/core": "^11.1.28",
+    "@nestjs/event-emitter": "^3.1.0",
     "@nestjs/mapped-types": "^2.1.1",
     "@nestjs/platform-express": "^11.1.28",
     "@nestjs/swagger": "^11.4.6",
@@ -81,7 +82,10 @@
       "<rootDir>/libs/"
     ],
     "testRegex": ".*\\.spec\\.ts$",
-    "testPathIgnorePatterns": ["\\.e2e-spec\\.ts$", "\\.integration-spec\\.ts$"],
+    "testPathIgnorePatterns": [
+      "\\.e2e-spec\\.ts$",
+      "\\.integration-spec\\.ts$"
+    ],
     "transform": {
       "^.+\\.(t|j)s$": "ts-jest"
     },
