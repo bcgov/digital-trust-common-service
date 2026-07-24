@@ -79,6 +79,36 @@ describe('AuditWriteWorker', () => {
     ).rejects.toThrow('Invalid audit.write payload');
   });
 
+  it('rejects payloads missing resource fields', async () => {
+    await expect(
+      worker.handle({
+        id: 'x',
+        data: {
+          tenantId: '123e4567-e89b-12d3-a456-426614174001',
+          actorId: 'user-1',
+          actorType: AuditActorType.USER,
+          action: AuditAction.LOGIN,
+        },
+      } as Job<AuditWriteJobData>),
+    ).rejects.toThrow('Invalid audit.write payload');
+  });
+
+  it('rejects non-uuid resource ids', async () => {
+    await expect(
+      worker.handle({
+        id: 'x',
+        data: {
+          tenantId: '123e4567-e89b-12d3-a456-426614174001',
+          actorId: 'user-1',
+          actorType: AuditActorType.USER,
+          action: AuditAction.LOGIN,
+          resourceType: 'session',
+          resourceId: 'not-a-uuid',
+        },
+      } as Job<AuditWriteJobData>),
+    ).rejects.toThrow('Invalid audit.write payload');
+  });
+
   it('enqueues audit.write jobs', async () => {
     const payload: AuditWriteJobData = {
       tenantId: '123e4567-e89b-12d3-a456-426614174001',

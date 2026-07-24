@@ -20,6 +20,9 @@ export type AuditWriteJobData = {
   ipAddress?: string | null;
 };
 
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 @Injectable()
 export class AuditWriteWorker implements OnModuleInit {
   private readonly logger = new Logger(AuditWriteWorker.name);
@@ -42,11 +45,7 @@ export class AuditWriteWorker implements OnModuleInit {
   }
 
   public async handle(job: Job<AuditWriteJobData>): Promise<void> {
-    const data = job.data;
-    if (!data?.tenantId || !data.actorId || !data.action) {
-      throw new Error('Invalid audit.write payload');
-    }
-
+    const data = this.assertValidPayload(job.data);
     await this.auditLogService.write(data);
     this.logger.debug(`Wrote audit log from job ${job.id}`);
   }
@@ -54,5 +53,40 @@ export class AuditWriteWorker implements OnModuleInit {
   /** Helper for producers / tests to enqueue an audit.write job. */
   public enqueue(data: AuditWriteJobData): Promise<string | null> {
     return this.jobsService.publish(JOB_QUEUES.AUDIT_WRITE, data);
+  }
+
+  private assertValidPayload(
+    data: AuditWriteJobData | undefined,
+  ): AuditWriteJobData {
+    if (
+      !data?.tenantId ||
+      !data.actorId ||
+      !data.actorType ||
+      !data.action ||
+      !data.resourceType ||
+      !data.resourceId
+    ) {
+      throw new Error('Invalid audit.write payload');
+    }
+
+    if (
+      !UUID_RE.test(data.tenantId) ||
+      !UUID_RE.test(data.resourceId) ||
+      (data.operationId != null &&
+        data.operationId !== '' &&
+        !UUID_RE.test(data.operationId))
+    ) {
+      throw new Error('Invalid audit.write payload');
+    }
+
+    if (!Object.values(AuditActorType).includes(data.actorType)) {
+      throw new Error('Invalid audit.write payload');
+    }
+
+    if (!Object.values(AuditAction).includes(data.action)) {
+      throw new Error('Invalid audit.write payload');
+    }
+
+    return data;
   }
 }

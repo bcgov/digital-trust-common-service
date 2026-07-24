@@ -1,5 +1,5 @@
 import { PgBossService } from '@app/pg-boss';
-import { JOB_QUEUES, QUEUE_DEFINITIONS, fromTypeOrm } from '@app/pg-boss';
+import { QUEUE_DEFINITIONS, fromTypeOrm } from '@app/pg-boss';
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';
@@ -23,6 +23,7 @@ export class JobsService implements ShutdownParticipant, OnModuleInit {
   public readonly order = 1;
 
   private queuesReady = false;
+  private ensureQueuesPromise: Promise<void> | null = null;
 
   public constructor(
     private readonly bossService: PgBossService,
@@ -42,6 +43,14 @@ export class JobsService implements ShutdownParticipant, OnModuleInit {
       return;
     }
 
+    if (!this.ensureQueuesPromise) {
+      this.ensureQueuesPromise = this.createQueuesOnce();
+    }
+
+    await this.ensureQueuesPromise;
+  }
+
+  private async createQueuesOnce(): Promise<void> {
     for (const definition of QUEUE_DEFINITIONS) {
       await this.bossService.boss.createQueue(definition.deadLetter);
       await this.bossService.boss.createQueue(definition.name, {
@@ -128,10 +137,6 @@ export class JobsService implements ShutdownParticipant, OnModuleInit {
     );
     this.logger.log(`Registered worker for ${queueName} (${workerId})`);
     return workerId;
-  }
-
-  public get auditWriteQueue(): string {
-    return JOB_QUEUES.AUDIT_WRITE;
   }
 
   public async shutdown(): Promise<void> {

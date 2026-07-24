@@ -15,7 +15,7 @@ import {
 } from '@nestjs/swagger';
 
 import { AuditLog } from './audit-log.entity';
-import { AuditLogService } from './audit-log.service';
+import { AuditLogService, PaginatedAuditLogs } from './audit-log.service';
 import { ExportAuditLogsQueryDto } from './dto/export-audit-logs-query.dto';
 import { ListAuditLogsQueryDto } from './dto/list-audit-logs-query.dto';
 
@@ -51,7 +51,7 @@ export class AuditLogController {
   public async list(
     @Param('tenantId', ParseUUIDPipe) tenantId: string,
     @Query() query: ListAuditLogsQueryDto,
-  ): Promise<unknown> {
+  ): Promise<PaginatedAuditLogs> {
     // Scope logs:read is documented in OpenAPI; enforcement deferred to AU-04.
     return await this.auditLogService.list(
       tenantId,

@@ -135,6 +135,16 @@ describe('JobsService', () => {
     expect(work).not.toHaveBeenCalled();
   });
 
+  it('should only create queues once under concurrent ensureQueues calls', async () => {
+    await Promise.all([service.ensureQueues(), service.ensureQueues()]);
+
+    // 5 queues + 5 DLQs
+    expect(createQueue).toHaveBeenCalledTimes(10);
+
+    await service.ensureQueues();
+    expect(createQueue).toHaveBeenCalledTimes(10);
+  });
+
   it('should propagate errors from pg-boss', async () => {
     const error = new Error('send failed');
 

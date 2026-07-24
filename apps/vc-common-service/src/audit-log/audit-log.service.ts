@@ -6,11 +6,16 @@ import {
 
 import { AuditAction, AuditActorType, AuditLog } from './audit-log.entity';
 import {
+  AUDIT_LOG_EXPORT_MAX_ROWS,
   AuditLogCursor,
   AuditLogFilters,
   AuditLogRepository,
 } from './audit-log.repository';
 
+/**
+ * Prefer correlation IDs and safe context in metadata — avoid credential
+ * attribute dumps (PII belongs in transient Operation.request, not audit).
+ */
 export type WriteAuditLogInput = {
   tenantId: string;
   actorId: string;
@@ -88,7 +93,11 @@ export class AuditLogService {
     tenantId: string,
     filters: Pick<AuditLogFilters, 'action' | 'since' | 'until'>,
   ): Promise<string> {
-    const rows = await this.auditLogRepository.findForExport(tenantId, filters);
+    const rows = await this.auditLogRepository.findForExport(
+      tenantId,
+      filters,
+      AUDIT_LOG_EXPORT_MAX_ROWS,
+    );
 
     const header = [
       'id',

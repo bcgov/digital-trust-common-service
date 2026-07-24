@@ -90,7 +90,14 @@
       "^.+\\.(t|j)s$": "ts-jest"
     },
     "collectCoverageFrom": [
-      "**/*.(t|j)s"
+      "**/*.(t|j)s",
+      "!**/*.spec.ts",
+      "!**/*.e2e-spec.ts",
+      "!**/*.integration-spec.ts",
+      "!**/migrations/**",
+      "!**/*.module.ts",
+      "!**/main.ts",
+      "!**/data-source.ts"
     ],
     "moduleNameMapper": {
       "^@app/common(|/.*)$": "<rootDir>/libs/common/src/$1",

@@ -126,4 +126,44 @@ describe('audit log schema integration', () => {
 
     expect(inserted[0].operation_id).toBe(operationId);
   });
+
+  it('supports keyset cursor pagination with CAST bindings', async () => {
+    const resourceId = '123e4567-e89b-12d3-a456-426614174077';
+
+    const rows = await dataSource.query<
+      Array<{ id: string; created_at: Date }>
+    >(
+      `WITH inserted AS (
+         INSERT INTO audit_log (
+           tenant_id, actor_id, actor_type, action,
+           resource_type, resource_id, metadata, created_at
+         ) VALUES
+           ($1, 'user-a', 'user', 'verify', 'credential', $2, '{}'::jsonb, '2026-07-10T10:00:00.000Z'),
+           ($1, 'user-b', 'user', 'verify', 'credential', $2, '{}'::jsonb, '2026-07-10T11:00:00.000Z'),
+           ($1, 'user-c', 'user', 'verify', 'credential', $2, '{}'::jsonb, '2026-07-10T12:00:00.000Z')
+         RETURNING id, created_at
+       )
+       SELECT id, created_at FROM inserted
+       ORDER BY created_at DESC, id DESC`,
+      [tenantId, resourceId],
+    );
+
+    expect(rows).toHaveLength(3);
+
+    const cursorCreatedAt = rows[0].created_at.toISOString();
+    const cursorId = rows[0].id;
+
+    const page = await dataSource.query<Array<{ id: string }>>(
+      `SELECT id FROM audit_log
+       WHERE tenant_id = $1
+         AND resource_id = $2
+         AND (created_at, id) < (CAST($3 AS timestamptz), CAST($4 AS uuid))
+       ORDER BY created_at DESC, id DESC
+       LIMIT 2`,
+      [tenantId, resourceId, cursorCreatedAt, cursorId],
+    );
+
+    expect(page).toHaveLength(2);
+    expect(page.map((row) => row.id)).not.toContain(cursorId);
+  });
 });

@@ -25,6 +25,9 @@ export type AuditLogPage = {
   hasMore: boolean;
 };
 
+/** Soft cap for CSV export to avoid unbounded memory use. */
+export const AUDIT_LOG_EXPORT_MAX_ROWS = 10_000;
+
 @Injectable()
 export class AuditLogRepository {
   public constructor(
@@ -61,8 +64,9 @@ export class AuditLogRepository {
       .addOrderBy('audit.id', 'DESC');
 
     if (options.cursor) {
+      // Use CAST(...) — TypeORM mishandles `:param::type` binding.
       qb.andWhere(
-        '(audit.created_at, audit.id) < (:cursorCreatedAt::timestamptz, :cursorId::uuid)',
+        '(audit.created_at, audit.id) < (CAST(:cursorCreatedAt AS timestamptz), CAST(:cursorId AS uuid))',
         {
           cursorCreatedAt: options.cursor.createdAt,
           cursorId: options.cursor.id,
@@ -90,10 +94,12 @@ export class AuditLogRepository {
   public async findForExport(
     tenantId: string,
     filters: Pick<AuditLogFilters, 'action' | 'since' | 'until'>,
+    maxRows: number = AUDIT_LOG_EXPORT_MAX_ROWS,
   ): Promise<AuditLog[]> {
     return await this.baseFilterQuery(tenantId, filters)
       .orderBy('audit.created_at', 'DESC')
       .addOrderBy('audit.id', 'DESC')
+      .take(maxRows)
       .getMany();
   }
 
