@@ -119,7 +119,7 @@ jobs:
 
       - name: Drop PR database
         # always(): the database must be dropped even if the uninstall failed,
-        # otherwise vc_pr_<N> leaks on the shared instance.
+        # otherwise dc_pr_<N> leaks on the shared instance.
         if: always()
         uses: ./.github/actions/pr-database
         with:

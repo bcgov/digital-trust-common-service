@@ -6,7 +6,7 @@ inputs:
     description: "Operation mode: 'create' or 'drop'"
     required: true
   pr_number:
-    description: "Pull request number (used to derive the database name vc_pr_<N>)"
+    description: "Pull request number (used to derive the database name dc_pr_<N>)"
     required: true
   db_workload:
     description: "Kubernetes workload reference for the PostgreSQL pod (e.g. statefulset/postgres)"
@@ -19,7 +19,7 @@ inputs:
 
 outputs:
   db_name:
-    description: "Name of the PR database (vc_pr_<N>)"
+    description: "Name of the PR database (dc_pr_<N>)"
     value: ${{ steps.names.outputs.db_name }}
 
 runs:
