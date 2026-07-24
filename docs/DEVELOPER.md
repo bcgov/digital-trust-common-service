@@ -1,4 +1,4 @@
-# Developer Guide - VC Common Service
+# Developer Guide - Digital Credential Common Service
 
 This guide covers local development setup, running the application, and managing database migrations.
 
@@ -37,7 +37,7 @@ DB_HOST=localhost                  # Database host (localhost or db for Docker)
 DB_PORT=5432                       # PostgreSQL default port
 DB_USERNAME=postgres               # Database user
 DB_PASSWORD=postgres               # Database password
-DB_NAME=vc_common_service          # Database name
+DB_NAME=dc_common_service          # Database name
 DB_LOGGING=false                   # Enable/disable SQL query logging
 
 # Database SSL (optional)
@@ -155,11 +155,11 @@ Integration tests are named `*.integration-spec.ts` and co-located under
 `apps/` or `libs/` (e.g.
 `libs/credential-ports/src/testing/integration-smoke.integration-spec.ts`).
 They're excluded from the unit `jest` run and given their own config
-(`apps/vc-common-service/test/jest-integration.json`).
+(`apps/digital-trust-common-service/test/jest-integration.json`).
 
 By default `npm run test:integration` targets the local Docker Compose `test`
 profile's isolated PostgreSQL database (`localhost:5433` /
-`vc_common_service_test`), overridable via `DB_*` env vars. Start it first:
+`dc_common_service_test`), overridable via `DB_*` env vars. Start it first:
 
 ```bash
 docker compose --profile test up -d db-test migrate-test seed-test
@@ -173,7 +173,7 @@ currently just a marker table until tenant/user entities exist).
 
 Note CI runs integration tests against a different PostgreSQL instance
 (GitHub Actions `services: postgres` on `localhost:5432` /
-`vc_common_service`) — check your `DB_*` variables if a test behaves
+`dc_common_service`) — check your `DB_*` variables if a test behaves
 differently locally vs. in CI.
 
 ### Run E2E Tests
@@ -257,7 +257,7 @@ npm run start:prod
 
 ```
 ├── apps/
-│   └── vc-common-service/          # Main application
+│   └── digital-trust-common-service/          # Main application
 │       ├── src/
 │       │   ├── main.ts             # Application entry point
 │       │   ├── app.module.ts       # Root module
@@ -289,7 +289,7 @@ npm run start:prod
 
 1. Ensure PostgreSQL is running and accessible at configured host/port
 2. Verify credentials in `.env` file match database setup
-3. Check database exists: `DB_NAME=vc_common_service`
+3. Check database exists: `DB_NAME=dc_common_service`
 
 ### Port Already in Use
 

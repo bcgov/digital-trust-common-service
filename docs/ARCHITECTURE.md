@@ -1,8 +1,8 @@
-# vc-common-service — Architecture
+# digital-trust-common-service — Architecture
 
 ## Overview
 
-vc-common-service is a multi-tenant API and management UI that provides a **format-agnostic abstraction layer** for Verifiable Credential (VC) operations. It normalizes issue/verify/hold patterns across credential formats (AnonCreds, SD-JWT, mDL, W3C VC) and back-end agents (ACA-Py/Traction, Credo-TS), exposing a single homogeneous REST API to consumers.
+digital-trust-common-service is a multi-tenant API and management UI that provides a **format-agnostic abstraction layer** for Digital Credential operations. It normalizes issue/verify/hold patterns across credential formats (AnonCreds, SD-JWT, mDL, W3C VC) and back-end agents (ACA-Py/Traction, Credo-TS), exposing a single homogeneous REST API to consumers.
 
 ---
 
@@ -10,13 +10,13 @@ vc-common-service is a multi-tenant API and management UI that provides a **form
 
 ```mermaid
 C4Context
-    title System Context — vc-common-service
+    title System Context — digital-trust-common-service
 
     Person(tenantAdmin, "Tenant Admin", "Manages tenant config, users, credential definitions")
     Person(platformAdmin, "Platform Admin", "Manages tenants, monitors system health")
     System_Ext(apiConsumer, "API Consumer", "External service issuing/verifying credentials via API")
 
-    System(vcService, "vc-common-service", "Multi-tenant VC abstraction layer")
+    System(vcService, "digital-trust-common-service", "Multi-tenant Digital Credential abstraction layer")
 
     System_Ext(keycloak, "Keycloak", "Upstream IdP for user identity federation")
     System_Ext(traction, "Traction (ACA-Py)", "BC Gov managed agent service")
@@ -266,7 +266,7 @@ filters — one document per surface, all from the same codebase.
 |---|---|---|---|
 | **Platform Administration** | `/api/docs/admin` | `/api/docs/admin/json` | Platform operators |
 | **Tenant Management** | `/api/docs/tenant` | `/api/docs/tenant/json` | Tenant administrators |
-| **VC Operations** | `/api/docs/vc` | `/api/docs/vc/json` | App developers / API consumers |
+| **Digital Credential Operations** | `/api/docs/dc` | `/api/docs/dc/json` | App developers / API consumers |
 
 Each document includes only the NestJS modules relevant to that audience:
 
@@ -286,13 +286,13 @@ const tenantDoc = SwaggerModule.createDocument(app, tenantConfig, {
 });
 SwaggerModule.setup('api/docs/tenant', app, tenantDoc);
 
-const vcDoc = SwaggerModule.createDocument(app, vcConfig, {
+const dcDoc = SwaggerModule.createDocument(app, dcConfig, {
   include: [
     CredentialsModule, PresentationsModule, ConnectionsModule,
     OperationsModule, DiscoveryModule, WebhookIngestionModule,
   ],
 });
-SwaggerModule.setup('api/docs/vc', app, vcDoc);
+SwaggerModule.setup('api/docs/dc', app, dcDoc);
 ```
 
 Shared component schemas (`$ref` targets) are included automatically by `@nestjs/swagger`
@@ -475,19 +475,19 @@ This means:
 
 ### Why Credo Runs as a Separate Service
 
-The vc-common-service is a **VC service layer** — it orchestrates credential operations, manages tenants, and exposes a uniform API. Agent runtimes (Traction, Credo) are **infrastructure concerns** that should live outside this layer.
+The digital-trust-common-service is a **Digital Credential service layer** — it orchestrates credential operations, manages tenants, and exposes a uniform API. Agent runtimes (Traction, Credo) are **infrastructure concerns** that should live outside this layer.
 
 | Factor | Embedded Agent (rejected) | Separate Credo Agent Service |
 |--------|--------------------------|------------------------------|
-| **Separation of concerns** | vc-common-service becomes tightly coupled to Credo SDK, wallet storage, DIDComm transport | vc-common-service remains a pure orchestration layer; agent complexity is encapsulated |
+| **Separation of concerns** | digital-trust-common-service becomes tightly coupled to Credo SDK, wallet storage, DIDComm transport | digital-trust-common-service remains a pure orchestration layer; agent complexity is encapsulated |
 | **Deployment independence** | Credo version upgrades require redeploying the entire API | Agent service can be upgraded, scaled, and rolled back independently |
 | **Resource isolation** | Credo's wallet operations, DIDComm message processing, and ledger interactions compete for CPU/memory with API request handling | Agent workload runs in its own pod with dedicated resources |
 | **Multi-tenancy** | Must manage per-tenant Credo agent instances or shared agent with tenant isolation inside the process | Agent service owns its own multi-tenancy model (same as Traction) |
 | **Consistency** | Two fundamentally different adapter patterns: HTTP client (Traction) vs embedded SDK (Credo) | Both adapters are HTTP clients — same error handling, retry logic, circuit breaker, and observability patterns |
-| **Team boundaries** | Agent expertise required in the vc-common-service codebase | Agent service can be maintained by a team with Credo/DIDComm expertise |
+| **Team boundaries** | Agent expertise required in the digital-trust-common-service codebase | Agent service can be maintained by a team with Credo/DIDComm expertise |
 | **Testing** | Integration tests require full Credo agent setup (wallet, ledger, mediator) | Adapter tests are simple HTTP mocks (same as Traction tests) |
 
-The Credo Agent Service exposes a REST API that mirrors the operations vc-common-service needs: issue, verify, hold, connect, revoke. It receives webhook callbacks from the DIDComm layer and forwards state changes to vc-common-service via the same webhook ingestion endpoint Traction uses.
+The Credo Agent Service exposes a REST API that mirrors the operations digital-trust-common-service needs: issue, verify, hold, connect, revoke. It receives webhook callbacks from the DIDComm layer and forwards state changes to digital-trust-common-service via the same webhook ingestion endpoint Traction uses.
 
 ---
 
@@ -1054,7 +1054,7 @@ graph TD
   "tenant_id": "b7e4a1f0-...",
   "roles": ["admin"],
   "scope": "credentials:offer credentials:verify connections:manage profiles:manage",
-  "aud": "vc-common-service",
+  "aud": "digital-trust-common-service",
   "iss": "https://vc-common.example.com/oidc",
   "exp": 1718500300,
   "iat": 1718500000
@@ -1069,7 +1069,7 @@ For API clients (`client_credentials` grant):
   "tenant_id": "b7e4a1f0-...",
   "roles": [],
   "scope": "credentials:offer credentials:verify",
-  "aud": "vc-common-service",
+  "aud": "digital-trust-common-service",
   "iss": "https://vc-common.example.com/oidc",
   "exp": 1718500300,
   "iat": 1718500000
@@ -1275,14 +1275,14 @@ erDiagram
 ```mermaid
 graph TB
     subgraph "OpenShift Cluster"
-        subgraph "Namespace: vc-common-service-dev"
+        subgraph "Namespace: digital-trust-common-service-dev"
             POD_API[Pod: API<br/>NestJS + Migration sidecar]
             POD_WORKER[Pod: Worker<br/>Queue consumers]
             POD_UI[Pod: React SPA<br/>Caddy static server]
             SVC_API[Service: api]
             SVC_UI[Service: ui]
-            ROUTE_API[Route: api.vc-common.example.com]
-            ROUTE_UI[Route: vc-common.example.com]
+            ROUTE_API[Route: api.dc-common.example.com]
+            ROUTE_UI[Route: dc-common.example.com]
         end
 
         subgraph "Shared Services"
@@ -1360,7 +1360,7 @@ The delivery mechanism is **Grafana backed by native Loki multi-tenancy**, front
 
 - **Enforcement in the storage layer**: Loki runs with `auth_enabled: true`; each tenant's data is isolated by Loki tenant ID. No app-level query proxy is trusted with isolation. A global Loki `limits_config` is a prerequisite before exposing LogQL to external tenants.
 - **Zero per-tenant Grafana resources**: a **dedicated tenant-facing Grafana instance** (single org, one datasource, one generic dashboard set) — scoping comes from the caller's identity, not per-tenant config. A dedicated instance is required because the platform Grafana already has a single `generic_oauth` provider and can't host a second (tenant) one.
-- **App-issued tokens + `logs:read` authorization**: Grafana authenticates as an OIDC client of vc-common-service's `oidc-provider` (which federates upstream to Keycloak). The gateway validates the app-issued JWT the same way the API's guard does (AU-03), **requires the `logs:read` scope (fail closed)**, and never trusts a client-supplied identifier.
+- **App-issued tokens + `logs:read` authorization**: Grafana authenticates as an OIDC client of digital-trust-common-service's `oidc-provider` (which federates upstream to Keycloak). The gateway validates the app-issued JWT the same way the API's guard does (AU-03), **requires the `logs:read` scope (fail closed)**, and never trusts a client-supplied identifier.
 - **Two ingestion paths**: in-cluster logs flow services → Alloy → Loki; the BC Wallet team also pushes directly (curl + basic auth) via an nginx gateway that injects `X-Scope-OrgID`. Traction must emit **JSON** logs (`ACAPY_LOG_CONFIG`) before its per-tenant field can be routed. Full detail in [tenant-observability-design.md](./tenant-observability-design.md).
 
 #### Architecture
@@ -1401,11 +1401,11 @@ flowchart LR
 
 #### Label Taxonomy
 
-Every log line emitted by vc-common-service includes labels for Loki indexing:
+Every log line emitted by digital-trust-common-service includes labels for Loki indexing:
 
 | Label | Cardinality | Source |
 |-------|-------------|--------|
-| `app` | Low (1-2) | `vc-common-service` (or `traction` for raw agent logs) |
+| `app` | Low (1-2) | `digital-trust-common-service` (or `traction` for raw agent logs) |
 | `tenant_id` | Medium | Extracted from AsyncLocalStorage request context |
 | `source` | Low (4 values) | `api`, `adapter:traction`, `adapter:credo`, `webhook` |
 | `traction_tenant_id` | Medium | Traction sub-tenant id (only on `app=traction` streams; surfaced once Traction logs JSON) |
@@ -1415,13 +1415,13 @@ Structured metadata (Loki 3.x) or JSON fields (queryable with `| json`):
 
 #### Log routing (Loki multi-tenancy)
 
-Alloy routes each line to a Loki tenant via `stage.tenant`: vc-common-service lines by `tenant_id`, Traction/ACA-Py lines by `traction_tenant_id` (this depends on Traction emitting JSON logs via `ACAPY_LOG_CONFIG` — plain text today). Because a tenant's data therefore lives under **two** Loki tenants, the gateway sets a pipe-joined scope so the tenant sees both — and only their own:
+Alloy routes each line to a Loki tenant via `stage.tenant`: digital-trust-common-service lines by `tenant_id`, Traction/ACA-Py lines by `traction_tenant_id` (this depends on Traction emitting JSON logs via `ACAPY_LOG_CONFIG` — plain text today). Because a tenant's data therefore lives under **two** Loki tenants, the gateway sets a pipe-joined scope so the tenant sees both — and only their own:
 
 ```
 X-Scope-OrgID: <tenant_id>|<traction_tenant_id>   # requires Loki multi_tenant_queries_enabled
 ```
 
-The BC Wallet team pushes logs directly to Loki (bypassing Alloy); the nginx write gateway injects their `X-Scope-OrgID` from the basic-auth identity. Within a scope, dashboards select streams the normal way (`{app="vc-common-service"}`, `{app="traction"}`, filtered by the `source` label). The tenant never supplies `tenant_id` or `traction_tenant_id` — the scope is fixed by the gateway from the validated token.
+The BC Wallet team pushes logs directly to Loki (bypassing Alloy); the nginx write gateway injects their `X-Scope-OrgID` from the basic-auth identity. Within a scope, dashboards select streams the normal way (`{app="digital-trust-common-service"}`, `{app="traction"}`, filtered by the `source` label). The tenant never supplies `tenant_id` or `traction_tenant_id` — the scope is fixed by the gateway from the validated token.
 
 #### Security: tenant isolation
 
@@ -1433,14 +1433,14 @@ sequenceDiagram
     participant DB as ConnectorCredential (PE-06)
     participant Loki
 
-    User->>Grafana: Open dashboard (logged in via vc-common-service oidc-provider)
+    User->>Grafana: Open dashboard (logged in via digital-trust-common-service oidc-provider)
     Grafana->>Gate: Query + forwarded app JWT (oauthPassThru)
-    Gate->>Gate: Validate JWT vs vc-common-service JWKS; require logs:read (fail closed); extract tenant_id
+    Gate->>Gate: Validate JWT vs digital-trust-common-service JWKS; require logs:read (fail closed); extract tenant_id
     Gate->>DB: Resolve traction_tenant_id for tenant_id (cached)
     DB-->>Gate: traction_tenant_id
     Gate->>Gate: Set X-Scope-OrgID (tenant_id and traction_tenant_id); strip Authorization
     Gate->>Loki: Forward query (LogQL untouched)
-    Loki-->>User: Only this tenant's vc-common-service + Traction streams
+    Loki-->>User: Only this tenant's digital-trust-common-service + Traction streams
 ```
 
 **Key invariant**: the tenant scope is derived **only** from the validated app JWT (with a `logs:read` check) plus a server-side `ConnectorCredential` lookup — never from a client-supplied parameter. A tenant may craft any LogQL (Explore, `/api/ds/query`, curl) and still only ever receives their own streams, because Loki enforces the `X-Scope-OrgID` the gateway set.
@@ -1524,7 +1524,7 @@ Client → API Pod → Traction/Credo Agent Service
   "timestamp": "2025-01-15T10:30:00.000Z",
   "level": "info",
   "message": "Credential offer created",
-  "service": "vc-common-service",
+  "service": "digital-trust-common-service",
   "trace_id": "abc123def456",
   "span_id": "789ghi",
   "tenant_id": "tenant-uuid",

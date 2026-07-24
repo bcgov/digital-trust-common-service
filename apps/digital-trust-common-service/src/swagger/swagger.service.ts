@@ -18,9 +18,9 @@ const swaggerApps = [
     modules: [TenantModule, TenantUserModule, CredentialDefinitionModule],
   },
   {
-    name: 'vc',
-    title: 'VC Operations API',
-    description: 'API endpoints for VC operations',
+    name: 'dc',
+    title: 'Digital Credential Operations API',
+    description: 'API endpoints for Digital Credential operations',
     version: '1.0',
     modules: [ConnectionModule, OperationModule],
   },
@@ -86,12 +86,12 @@ export class SwaggerService {
    */
   private static setupFullDocumentation(app: INestApplication): void {
     const config = new DocumentBuilder()
-      .setTitle('VC Common Service API')
+      .setTitle('Digital Credential Common Service API')
       .setDescription(
-        'A comprehensive API for managing VC Common Service models. Provides functionality for credential lifecycle management, schema validation, and multi-tenant support.',
+        'A comprehensive API for managing Digital Credential Common Service models. Provides functionality for credential lifecycle management, schema validation, and multi-tenant support.',
       )
       .setVersion('1.0')
-      .addTag('vc-common-service')
+      .addTag('digital-trust-common-service')
       .build();
 
     const document = SwaggerModule.createDocument(app, config);
@@ -108,12 +108,12 @@ export class SwaggerService {
     document?: ReturnType<typeof SwaggerModule.createDocument>,
   ): void {
     const config = new DocumentBuilder()
-      .setTitle('VC Common Service API')
+      .setTitle('Digital Credential Common Service API')
       .setDescription(
-        'A comprehensive API for managing VC Common Service models. Provides functionality for credential lifecycle management, schema validation, and multi-tenant support.',
+        'A comprehensive API for managing Digital Credential Common Service models. Provides functionality for credential lifecycle management, schema validation, and multi-tenant support.',
       )
       .setVersion('1.0')
-      .addTag('vc-common-service')
+      .addTag('digital-trust-common-service')
       .build();
 
     const docToUse = document || SwaggerModule.createDocument(app, config);
