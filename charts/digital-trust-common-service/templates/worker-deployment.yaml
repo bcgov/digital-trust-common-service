@@ -2,16 +2,16 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "vc-common-service.worker.fullname" . }}
+  name: {{ include "digital-trust-common-service.worker.fullname" . }}
   labels:
-    {{- include "vc-common-service.worker.labels" . | nindent 4 }}
+    {{- include "digital-trust-common-service.worker.labels" . | nindent 4 }}
 spec:
   {{- if not .Values.worker.autoscaling.enabled }}
   replicas: {{ .Values.worker.replicaCount }}
   {{- end }}
   selector:
     matchLabels:
-      {{- include "vc-common-service.worker.selectorLabels" . | nindent 6 }}
+      {{- include "digital-trust-common-service.worker.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       annotations:
@@ -23,7 +23,7 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
       labels:
-        {{- include "vc-common-service.worker.selectorLabels" . | nindent 8 }}
+        {{- include "digital-trust-common-service.worker.selectorLabels" . | nindent 8 }}
         {{- with .Values.worker.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -32,7 +32,7 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      serviceAccountName: {{ include "vc-common-service.serviceAccountName" . }}
+      serviceAccountName: {{ include "digital-trust-common-service.serviceAccountName" . }}
       {{- with .Values.podSecurityContext }}
       securityContext:
         {{- toYaml . | nindent 8 }}
@@ -43,7 +43,7 @@ spec:
           securityContext:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          image: {{ include "vc-common-service.image" . }}
+          image: {{ include "digital-trust-common-service.image" . }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           command:
             {{- toYaml .Values.worker.command | nindent 12 }}
@@ -52,7 +52,7 @@ spec:
             {{- toYaml . | nindent 12 }}
           {{- end }}
           envFrom:
-            {{- include "vc-common-service.envFrom" . | nindent 12 }}
+            {{- include "digital-trust-common-service.envFrom" . | nindent 12 }}
           {{- with .Values.extraEnv }}
           env:
             {{- toYaml . | nindent 12 }}

@@ -14,16 +14,16 @@
 ## Installing the Chart
 
 ```console
-helm install vc-common-service ./charts/vc-common-service \
+helm install digital-trust-common-service ./charts/digital-trust-common-service \
   -n <namespace> \
-  -f charts/vc-common-service/values-dev.yaml
+  -f charts/digital-trust-common-service/values-dev.yaml
 ```
 
 The [Values](#values) section lists all configurable parameters.
 
 ## Architecture
 
-This chart deploys the VC Common Service (a NestJS modular monolith) to BC Gov
+This chart deploys the Digital Credential Common Service (a NestJS modular monolith) to BC Gov
 OpenShift. Key characteristics:
 
 - **API Deployment** — HTTP service on container port `3000`; liveness and

@@ -1,5 +1,5 @@
-# Default values for vc-common-service.
-# Deploys the VC Common Service (NestJS) to BC Gov OpenShift.
+# Default values for digital-trust-common-service.
+# Deploys the Digital Credential Common Service (NestJS) to BC Gov OpenShift.
 # Per-environment overrides live in values-{dev,test,prod}.yaml.
 
 # -- Number of API pod replicas (ignored when `autoscaling.enabled=true`)
@@ -14,7 +14,7 @@ image:
   # -- Container image registry (optional; omitted from the ref when empty)
   registry: ghcr.io
   # -- Container image repository. API, Worker and migrations share this image.
-  repository: bcgov/vc-common-service
+  repository: bcgov/digital-trust-common-service
   # -- Image pull policy
   pullPolicy: IfNotPresent
   # -- Image tag (defaults to the chart appVersion when empty)
@@ -149,7 +149,7 @@ migrations:
     - node
   # -- Migration entrypoint args
   args:
-    - dist/apps/vc-common-service/src/migrate.js
+    - dist/apps/digital-trust-common-service/src/migrate.js
   # -- Helm hook configuration for the migration Job. `pre-install,pre-upgrade`
   # is fail-closed: a failed migration aborts the release and the old version
   # keeps serving. NOTE: the migration runner (migrate.js) should still wrap its
@@ -241,7 +241,7 @@ config:
   LOG_LEVEL: info
   DB_HOST: ""
   DB_PORT: "5432"
-  DB_NAME: vc_common_service
+  DB_NAME: dc_common_service
   DB_SYNCHRONIZE: "false"
   DB_LOGGING: "false"
   SWAGGER_ENABLED: "true"

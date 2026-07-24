@@ -3,12 +3,12 @@
 # and `helm lint` in CI pipelines.
 image:
   registry: ghcr.io
-  repository: bcgov/vc-common-service
+  repository: bcgov/digital-trust-common-service
   tag: ci
 
 route:
   enabled: true
-  host: vc-common-service.example.com
+  host: digital-trust-common-service.example.com
 
 worker:
   enabled: true

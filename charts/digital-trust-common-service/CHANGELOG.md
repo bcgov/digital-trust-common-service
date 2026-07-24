@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to the `vc-common-service` Helm chart are documented in this file.
+All notable changes to the `digital-trust-common-service` Helm chart are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this chart adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -9,7 +9,7 @@ and this chart adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.h
 
 ### Added
 
-- Initial Helm chart for deploying vc-common-service to BC Gov OpenShift.
+- Initial Helm chart for deploying digital-trust-common-service to BC Gov OpenShift.
 - API Deployment with templated resources and liveness/readiness probes on
   `/health/live`.
 - Database migrations as a `pre-install`/`pre-upgrade` Helm hook Job (gated by

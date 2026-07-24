@@ -11,7 +11,7 @@ replicaCount: 3
 route:
   enabled: true
   # TODO: confirm production hostname.
-  host: vc-common-service.apps.silver.devops.gov.bc.ca
+  host: digital-trust-common-service.apps.silver.devops.gov.bc.ca
   tls:
     enabled: true
     termination: edge
@@ -56,13 +56,13 @@ config:
   LOG_LEVEL: info
   # TODO: point at the production PostgreSQL service.
   DB_HOST: <PROD_DB_HOST>
-  DB_NAME: vc_common_service
+  DB_NAME: dc_common_service
   DB_SYNCHRONIZE: "false"
   DB_LOGGING: "false"
 
 secret:
   # TODO: name of the pre-provisioned Secret in the production namespace.
-  existingSecret: vc-common-service-secret
+  existingSecret: digital-trust-common-service-secret
   create: false
 
 networkPolicy:

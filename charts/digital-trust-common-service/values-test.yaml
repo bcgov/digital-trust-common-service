@@ -11,7 +11,7 @@ replicaCount: 2
 route:
   enabled: true
   # TODO: confirm hostname (typically *.apps.silver.devops.gov.bc.ca)
-  host: vc-common-service-test.apps.silver.devops.gov.bc.ca
+  host: digital-trust-common-service-test.apps.silver.devops.gov.bc.ca
   tls:
     enabled: true
     termination: edge
@@ -48,11 +48,11 @@ config:
   LOG_LEVEL: info
   # TODO: point at the test PostgreSQL service.
   DB_HOST: <TEST_DB_HOST>
-  DB_NAME: vc_common_service
+  DB_NAME: dc_common_service
 
 secret:
   # TODO: name of the pre-provisioned Secret in the test namespace.
-  existingSecret: vc-common-service-secret
+  existingSecret: digital-trust-common-service-secret
   create: false
 
 networkPolicy:

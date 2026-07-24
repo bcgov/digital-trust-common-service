@@ -2,9 +2,9 @@
 apiVersion: route.openshift.io/v1
 kind: Route
 metadata:
-  name: {{ include "vc-common-service.fullname" . }}
+  name: {{ include "digital-trust-common-service.fullname" . }}
   labels:
-    {{- include "vc-common-service.labels" . | nindent 4 }}
+    {{- include "digital-trust-common-service.labels" . | nindent 4 }}
   {{- with .Values.route.annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
@@ -18,7 +18,7 @@ spec:
   {{- end }}
   to:
     kind: Service
-    name: {{ include "vc-common-service.fullname" . }}
+    name: {{ include "digital-trust-common-service.fullname" . }}
     weight: 100
   port:
     targetPort: http

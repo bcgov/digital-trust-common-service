@@ -1,8 +1,8 @@
-# vc-common-service
+# digital-trust-common-service
 
 ![Version: 0.1.0](https://img.shields.io/badge/Version-0.1.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 0.0.1](https://img.shields.io/badge/AppVersion-0.0.1-informational?style=flat-square)
 
-A Helm chart to deploy the VC Common Service (NestJS) on BC Gov OpenShift
+A Helm chart to deploy the Digital Credential Common Service (NestJS) on BC Gov OpenShift
 
 ## Prerequisites
 
@@ -14,16 +14,16 @@ A Helm chart to deploy the VC Common Service (NestJS) on BC Gov OpenShift
 ## Installing the Chart
 
 ```console
-helm install vc-common-service ./charts/vc-common-service \
+helm install digital-trust-common-service ./charts/digital-trust-common-service \
   -n <namespace> \
-  -f charts/vc-common-service/values-dev.yaml
+  -f charts/digital-trust-common-service/values-dev.yaml
 ```
 
 The [Values](#values) section lists all configurable parameters.
 
 ## Architecture
 
-This chart deploys the VC Common Service (a NestJS modular monolith) to BC Gov
+This chart deploys the Digital Credential Common Service (a NestJS modular monolith) to BC Gov
 OpenShift. Key characteristics:
 
 - **API Deployment** — HTTP service on container port `3000`; liveness and
@@ -58,13 +58,13 @@ OpenShift. Key characteristics:
 | autoscaling.maxReplicas | int | `3` | Maximum API replicas |
 | autoscaling.minReplicas | int | `1` | Minimum API replicas |
 | autoscaling.targetCPUUtilizationPercentage | int | `80` | Target average CPU utilization (percentage) |
-| config | object | `{"DB_HOST":"","DB_LOGGING":"false","DB_NAME":"vc_common_service","DB_PORT":"5432","DB_SYNCHRONIZE":"false","LOG_LEVEL":"info","NODE_ENV":"production","PORT":"3000","SWAGGER_ENABLED":"true","SWAGGER_JSON_ENABLED":"true"}` | Non-secret application configuration, rendered into a ConfigMap and injected as environment variables into all containers. |
+| config | object | `{"DB_HOST":"","DB_LOGGING":"false","DB_NAME":"dc_common_service","DB_PORT":"5432","DB_SYNCHRONIZE":"false","LOG_LEVEL":"info","NODE_ENV":"production","PORT":"3000","SWAGGER_ENABLED":"true","SWAGGER_JSON_ENABLED":"true"}` | Non-secret application configuration, rendered into a ConfigMap and injected as environment variables into all containers. |
 | extraEnv | list | `[]` | Extra plain environment variables appended to every container (name/value list) |
 | extraEnvFrom | list | `[]` | Extra envFrom sources (configMapRef/secretRef) for every container |
 | fullnameOverride | string | `""` | Override the fully qualified release name |
 | image.pullPolicy | string | `"IfNotPresent"` | Image pull policy |
 | image.registry | string | `"ghcr.io"` | Container image registry (optional; omitted from the ref when empty) |
-| image.repository | string | `"bcgov/vc-common-service"` | Container image repository. API, Worker and migrations share this image. |
+| image.repository | string | `"bcgov/digital-trust-common-service"` | Container image repository. API, Worker and migrations share this image. |
 | image.tag | string | `""` | Image tag (defaults to the chart appVersion when empty) |
 | imagePullSecrets | list | `[]` | Names of pre-created image pull secrets, e.g. `[{ name: my-registry }]` |
 | ingress.annotations | object | `{}` | Ingress annotations |
@@ -75,7 +75,7 @@ OpenShift. Key characteristics:
 | livenessProbe | object | `{"failureThreshold":3,"httpGet":{"path":"/health/live","port":"http"},"initialDelaySeconds":15,"periodSeconds":15,"timeoutSeconds":3}` | Liveness probe. IN-01 provides a minimal 200 at `/health/live`. |
 | migrations.activeDeadlineSeconds | int | `300` | Maximum seconds the migration Job may run before Kubernetes marks it failed. Prevents hung migrations (e.g. waiting on a lock) from blocking a release indefinitely. |
 | migrations.argocd | object | `{"enabled":false}` | Emit an ArgoCD PreSync hook annotation so migrations also run under GitOps (ArgoCD does not execute Helm hooks natively) |
-| migrations.args | list | `["dist/apps/vc-common-service/src/migrate.js"]` | Migration entrypoint args |
+| migrations.args | list | `["dist/apps/digital-trust-common-service/src/migrate.js"]` | Migration entrypoint args |
 | migrations.backoffLimit | int | `2` | Number of retries before the migration Job is marked failed (2 retries = 3 total attempts) |
 | migrations.command | list | `["node"]` | Migration entrypoint command |
 | migrations.enabled | bool | `false` | Run database migrations as a pre-install/pre-upgrade Helm hook Job. Runs exactly once per release before the app pods roll, avoiding the concurrent/every-boot execution that an init container would cause across replicas and HPA scale-ups. |
