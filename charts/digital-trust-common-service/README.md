@@ -58,7 +58,7 @@ OpenShift. Key characteristics:
 | autoscaling.maxReplicas | int | `3` | Maximum API replicas |
 | autoscaling.minReplicas | int | `1` | Minimum API replicas |
 | autoscaling.targetCPUUtilizationPercentage | int | `80` | Target average CPU utilization (percentage) |
-| config | object | `{"DB_HOST":"","DB_LOGGING":"false","DB_NAME":"dc_common_service","DB_PORT":"5432","DB_SYNCHRONIZE":"false","LOG_LEVEL":"info","NODE_ENV":"production","PORT":"3000","SWAGGER_ENABLED":"true","SWAGGER_JSON_ENABLED":"true"}` | Non-secret application configuration, rendered into a ConfigMap and injected as environment variables into all containers. |
+| config | object | `{"CONNECTOR_ENCRYPTION_KEYS_PATH":"/etc/connector/encryption-keys.json","DB_HOST":"","DB_LOGGING":"false","DB_NAME":"dc_common_service","DB_PORT":"5432","DB_SYNCHRONIZE":"false","LOG_LEVEL":"info","NODE_ENV":"production","PORT":"3000","SWAGGER_ENABLED":"true","SWAGGER_JSON_ENABLED":"true"}` | Non-secret application configuration, rendered into a ConfigMap and injected as environment variables into all containers. |
 | connectorEncryption.create | bool | `false` | Create a chart-managed Secret from the values below |
 | connectorEncryption.currentVersion | int | `1` |  |
 | connectorEncryption.existingSecret | string | `""` | Name of an existing Secret to consume for env vars |
