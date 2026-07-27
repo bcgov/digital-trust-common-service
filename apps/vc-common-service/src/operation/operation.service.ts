@@ -1,5 +1,8 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 
+import { TenantService } from '../tenant/tenant.service';
+
+import { resolveOperationTtlMs } from './operation-ttl.util';
 import {
   Operation,
   OperationRequest,
@@ -7,19 +10,6 @@ import {
   OperationState,
 } from './operation.entity';
 import { OperationRepository } from './operation.repository';
-
-// System-default TTL durations (milliseconds). PE-08 (#31) makes these configurable
-// per tenant via tenant.config.operation_ttl.*, falling back to these defaults.
-const HOUR_MS = 60 * 60 * 1000;
-const DAY_MS = 24 * HOUR_MS;
-
-const TTL = {
-  PENDING_STALE_MS: 24 * HOUR_MS, // stale pending sweep horizon (used by PE-08)
-  CREATED_DEFAULT_MS: 72 * HOUR_MS, // default horizon from creation
-  COMPLETED_VIEWED_MS: 1 * HOUR_MS, // completed, after first view
-  FAILED_VIEWED_MS: 24 * HOUR_MS, // failed, after first view
-  FAILED_UNVIEWED_MS: 7 * DAY_MS, // failed, not yet viewed
-} as const;
 
 export interface CreateOperationInput {
   tenantId: string;
@@ -33,34 +23,43 @@ export interface CreateOperationInput {
 export class OperationService {
   private readonly logger = new Logger(OperationService.name);
 
-  public constructor(private readonly operations: OperationRepository) {}
+  public constructor(
+    private readonly operations: OperationRepository,
+    private readonly tenants: TenantService,
+  ) {}
 
   /**
    * Compute the expiry timestamp for an operation based on its state and view status.
    * Shared by CT-06 (#70) and ME-02 (#91). Non-terminal states (pending/processing) are
    * never shortened by viewing — only completed/failed have view-based TTL reduction.
-   * PE-08 (#31) will layer per-tenant config overrides on top of these system defaults.
+   *
+   * `tenantConfig` is the tenant's `config` JSONB blob (see Tenant entity). Per-tenant
+   * overrides are read from `tenantConfig.operation_ttl.*`, falling back to system
+   * defaults for any key that is absent or invalid (PE-08 / #31).
    */
   public computeExpiresAt(
     state: OperationState,
     createdAt: Date,
     viewedAt?: Date | null,
+    tenantConfig?: Record<string, unknown> | null,
   ): Date {
+    const ttl = resolveOperationTtlMs(tenantConfig);
+
     switch (state) {
       case OperationState.PENDING:
-        return new Date(createdAt.getTime() + TTL.PENDING_STALE_MS);
+        return new Date(createdAt.getTime() + ttl.pendingStale);
       case OperationState.PROCESSING:
-        return new Date(createdAt.getTime() + TTL.CREATED_DEFAULT_MS);
+        return new Date(createdAt.getTime() + ttl.completedUnviewed);
       case OperationState.COMPLETED:
         return viewedAt
-          ? new Date(viewedAt.getTime() + TTL.COMPLETED_VIEWED_MS)
-          : new Date(createdAt.getTime() + TTL.CREATED_DEFAULT_MS);
+          ? new Date(viewedAt.getTime() + ttl.completedViewed)
+          : new Date(createdAt.getTime() + ttl.completedUnviewed);
       case OperationState.FAILED:
         return viewedAt
-          ? new Date(viewedAt.getTime() + TTL.FAILED_VIEWED_MS)
-          : new Date(createdAt.getTime() + TTL.FAILED_UNVIEWED_MS);
+          ? new Date(viewedAt.getTime() + ttl.failedViewed)
+          : new Date(createdAt.getTime() + ttl.failedUnviewed);
       default:
-        return new Date(createdAt.getTime() + TTL.CREATED_DEFAULT_MS);
+        return new Date(createdAt.getTime() + ttl.completedUnviewed);
     }
   }
 
@@ -68,8 +67,12 @@ export class OperationService {
     input: CreateOperationInput,
   ): Promise<Operation> {
     const now = new Date();
-    // On create the operation is pending: expires_at = created_at + 72h (issue spec).
-    // The 24h pending-stale value is applied only by the PE-08 sweep, not at creation.
+    const tenant = await this.tenants.findById(input.tenantId);
+    const ttl = resolveOperationTtlMs(tenant.config);
+
+    // On create the operation is pending: expires_at = created_at + completed_unviewed TTL
+    // (issue spec: 72h default). The pending_stale TTL is applied only by the PE-08
+    // purge sweep for stale pending operations, not at creation.
     const operation = this.operations.create({
       tenantId: input.tenantId,
       type: input.type,
@@ -77,7 +80,7 @@ export class OperationService {
       batchId: input.batchId ?? null,
       externalId: input.externalId ?? null,
       state: OperationState.PENDING,
-      expiresAt: new Date(now.getTime() + TTL.CREATED_DEFAULT_MS),
+      expiresAt: new Date(now.getTime() + ttl.completedUnviewed),
     });
 
     return this.operations.save(operation);
@@ -94,11 +97,14 @@ export class OperationService {
       return operation;
     }
 
+    const tenant = await this.tenants.findById(operation.tenantId);
+
     operation.viewedAt = new Date();
     operation.expiresAt = this.computeExpiresAt(
       operation.state,
       operation.createdAt,
       operation.viewedAt,
+      tenant.config,
     );
 
     return this.operations.save(operation);
@@ -115,6 +121,8 @@ export class OperationService {
       throw new NotFoundException('Operation not found');
     }
 
+    const tenant = await this.tenants.findById(operation.tenantId);
+
     operation.state = state;
 
     if (result !== undefined) {
@@ -125,6 +133,7 @@ export class OperationService {
       state,
       operation.createdAt,
       operation.viewedAt,
+      tenant.config,
     );
 
     return this.operations.save(operation);

@@ -15,6 +15,17 @@ export interface FindByTenantFilters {
 
 export type BatchStateCounts = Record<OperationState, number>;
 
+export interface PurgeTenantCount {
+  tenantId: string;
+  count: number;
+}
+
+export interface OperationStats {
+  countsByState: BatchStateCounts;
+  totalCount: number;
+  oldestPendingCreatedAt: Date | null;
+}
+
 const DEFAULT_LIMIT = 20;
 
 @Injectable()
@@ -118,5 +129,76 @@ export class OperationRepository {
     }
 
     return counts;
+  }
+
+  /**
+   * Deletes up to `limit` expired operations (expires_at < now()) in a single
+   * statement, returning the number of rows purged per tenant. Bounding the
+   * delete with LIMIT avoids long-held locks on large tables; callers should
+   * loop until an empty array is returned to fully drain the backlog.
+   */
+  public async purgeExpiredBatch(limit: number): Promise<PurgeTenantCount[]> {
+    const rows = await this.repo.manager.query<
+      { tenant_id: string; count: string }[]
+    >(
+      `WITH deleted AS (
+        DELETE FROM operation
+        WHERE id IN (
+          SELECT id FROM operation
+          WHERE expires_at < now()
+          ORDER BY expires_at
+          LIMIT $1
+        )
+        RETURNING tenant_id
+      )
+      SELECT tenant_id, COUNT(*) AS count FROM deleted GROUP BY tenant_id`,
+      [limit],
+    );
+
+    return rows.map((row) => ({
+      tenantId: row.tenant_id,
+      count: Number(row.count),
+    }));
+  }
+
+  /**
+   * Returns global (all-tenant) operation counts by state, the total operation
+   * count, and the createdAt of the oldest still-pending operation — backing the
+   * admin stats endpoint.
+   */
+  public async getStats(): Promise<OperationStats> {
+    const stateRows = await this.repo
+      .createQueryBuilder('op')
+      .select('op.state', 'state')
+      .addSelect('COUNT(*)', 'count')
+      .groupBy('op.state')
+      .getRawMany<{ state: OperationState; count: string }>();
+
+    const countsByState: BatchStateCounts = {
+      [OperationState.PENDING]: 0,
+      [OperationState.PROCESSING]: 0,
+      [OperationState.COMPLETED]: 0,
+      [OperationState.FAILED]: 0,
+    };
+
+    let totalCount = 0;
+
+    for (const row of stateRows) {
+      const count = Number(row.count);
+      countsByState[row.state] = count;
+      totalCount += count;
+    }
+
+    const oldestPending = await this.repo
+      .createQueryBuilder('op')
+      .where('op.state = :state', { state: OperationState.PENDING })
+      .orderBy('op.created_at', 'ASC')
+      .getOne();
+
+    return {
+      countsByState,
+      totalCount,
+      oldestPendingCreatedAt: oldestPending?.createdAt ?? null,
+    };
   }
 }

@@ -8,6 +8,7 @@ import { OperationRepository } from './operation.repository';
 describe('OperationRepository', () => {
   let repository: OperationRepository;
   let mockRepo: jest.Mocked<Partial<Repository<Operation>>>;
+  let mockManagerQuery: jest.Mock;
   let queryBuilder: {
     select: jest.Mock;
     addSelect: jest.Mock;
@@ -18,6 +19,7 @@ describe('OperationRepository', () => {
     take: jest.Mock;
     getMany: jest.Mock;
     getRawMany: jest.Mock;
+    getOne: jest.Mock;
   };
 
   beforeEach(async () => {
@@ -31,6 +33,7 @@ describe('OperationRepository', () => {
       take: jest.fn().mockReturnThis(),
       getMany: jest.fn(),
       getRawMany: jest.fn(),
+      getOne: jest.fn(),
     };
 
     mockRepo = {
@@ -39,6 +42,9 @@ describe('OperationRepository', () => {
       findOne: jest.fn(),
       update: jest.fn(),
       createQueryBuilder: jest.fn().mockReturnValue(queryBuilder),
+      manager: {
+        query: (mockManagerQuery = jest.fn()),
+      } as unknown as Repository<Operation>['manager'],
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -204,6 +210,79 @@ describe('OperationRepository', () => {
         },
       );
       expect(queryBuilder.groupBy).toHaveBeenCalledWith('op.state');
+    });
+  });
+
+  describe('purgeExpiredBatch', () => {
+    it('deletes a bounded batch and returns counts grouped by tenant', async () => {
+      const mockQuery = mockManagerQuery;
+      mockQuery.mockResolvedValue([
+        { tenant_id: 't1', count: '3' },
+        { tenant_id: 't2', count: '1' },
+      ]);
+
+      const result = await repository.purgeExpiredBatch(500);
+
+      expect(result).toEqual([
+        { tenantId: 't1', count: 3 },
+        { tenantId: 't2', count: 1 },
+      ]);
+      expect(mockQuery).toHaveBeenCalledWith(
+        expect.stringContaining('DELETE FROM operation'),
+        [500],
+      );
+      expect(mockQuery).toHaveBeenCalledWith(
+        expect.stringContaining('LIMIT $1'),
+        [500],
+      );
+    });
+
+    it('returns an empty array when nothing is expired', async () => {
+      mockManagerQuery.mockResolvedValue([]);
+
+      const result = await repository.purgeExpiredBatch(500);
+
+      expect(result).toEqual([]);
+    });
+  });
+
+  describe('getStats', () => {
+    it('returns counts by state, total, and oldest pending createdAt', async () => {
+      queryBuilder.getRawMany.mockResolvedValue([
+        { state: OperationState.PENDING, count: '3' },
+        { state: OperationState.COMPLETED, count: '5' },
+      ]);
+      const oldestPendingCreatedAt = new Date('2024-01-01T00:00:00.000Z');
+      queryBuilder.getOne.mockResolvedValue({
+        createdAt: oldestPendingCreatedAt,
+      });
+
+      const stats = await repository.getStats();
+
+      expect(stats).toEqual({
+        countsByState: {
+          [OperationState.PENDING]: 3,
+          [OperationState.PROCESSING]: 0,
+          [OperationState.COMPLETED]: 5,
+          [OperationState.FAILED]: 0,
+        },
+        totalCount: 8,
+        oldestPendingCreatedAt,
+      });
+      expect(queryBuilder.where).toHaveBeenCalledWith('op.state = :state', {
+        state: OperationState.PENDING,
+      });
+      expect(queryBuilder.orderBy).toHaveBeenCalledWith('op.created_at', 'ASC');
+    });
+
+    it('returns oldestPendingCreatedAt null when there are no pending operations', async () => {
+      queryBuilder.getRawMany.mockResolvedValue([]);
+      queryBuilder.getOne.mockResolvedValue(null);
+
+      const stats = await repository.getStats();
+
+      expect(stats.totalCount).toBe(0);
+      expect(stats.oldestPendingCreatedAt).toBeNull();
     });
   });
 });

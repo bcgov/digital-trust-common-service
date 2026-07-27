@@ -2,6 +2,7 @@ import { DatabaseModule } from '@app/database';
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 
+import { AdminModule } from './admin/admin.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { ConnectionModule } from './connection/connection.module';
@@ -25,6 +26,7 @@ import { TenantUserModule } from './tenant-user/tenant-user.module';
     ConnectionModule,
     OperationModule,
     JobsModule,
+    AdminModule,
   ],
   controllers: [AppController],
   providers: [AppService],
