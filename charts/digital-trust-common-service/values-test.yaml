@@ -61,5 +61,5 @@ networkPolicy:
     enabled: true
 
 connectorEncryption:
-  existingSecret: vc-common-service-test-connector-encryption
+  existingSecret: digital-trust-common-service-test-connector-encryption
   create: false

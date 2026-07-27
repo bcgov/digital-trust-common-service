@@ -78,7 +78,7 @@ spec:
         {{- if .Values.connectorEncryption.create }}
         - name: connector-encryption
           secret:
-            secretName: {{ include "vc-common-service.fullname" $ }}-connector-encryption
+            secretName: {{ include "digital-trust-common-service.fullname" $ }}-connector-encryption
         {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:

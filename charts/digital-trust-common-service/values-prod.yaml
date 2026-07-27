@@ -71,5 +71,5 @@ networkPolicy:
     enabled: true
 
 connectorEncryption:
-  existingSecret: vc-common-service-prod-connector-encryption
+  existingSecret: digital-trust-common-service-prod-connector-encryption
   create: false

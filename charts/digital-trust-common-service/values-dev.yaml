@@ -57,5 +57,5 @@ networkPolicy:
     enabled: false
 
 connectorEncryption:
-  existingSecret: vc-common-service-dev-connector-encryption
+  existingSecret: digital-trust-common-service-dev-connector-encryption
   create: false
