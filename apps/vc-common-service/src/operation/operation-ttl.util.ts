@@ -53,8 +53,13 @@ export function parseDurationMs(value: unknown): number | null {
     if (match) {
       const amount = parseFloat(match[1]);
       const unit = match[2].toLowerCase();
+      const multiplier = UNIT_TO_MS[unit];
 
-      return amount * UNIT_TO_MS[unit];
+      if (!Number.isFinite(amount) || amount <= 0 || multiplier === undefined) {
+        return null;
+      }
+
+      return amount * multiplier;
     }
   }
 
