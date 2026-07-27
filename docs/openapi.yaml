@@ -1,9 +1,9 @@
 openapi: 3.1.0
 info:
-  title: VC Common Service API
+  title: Digital Credential Common Service API
   version: 1.0.0
   description: |
-    Multi-tenant API providing a format-agnostic abstraction layer for Verifiable Credential (VC) operations.
+    Multi-tenant API providing a format-agnostic abstraction layer for Digital Credential operations.
     Normalizes issue/verify/hold patterns across credential formats (AnonCreds, SD-JWT, mDL, W3C VC) and
     back-end agents (Traction/ACA-Py, Credo Agent Service), exposing a single homogeneous REST API.
 
@@ -13,7 +13,7 @@ info:
     |---|---|---|
     | **Platform Administration** | Service operators | `platform-admin` role |
     | **Tenant Management** | Tenant administrators | `tenants:admin` scope |
-    | **VC Operations** | Application developers / API consumers | Domain scopes (`credentials:offer`, `credentials:verify`, etc.) |
+    | **Digital Credential Operations** | Application developers / API consumers | Domain scopes (`credentials:offer`, `credentials:verify`, etc.) |
 
     ## Authentication
     All endpoints (except health checks and public discovery) require a Bearer JWT issued by the app's
@@ -48,7 +48,7 @@ info:
     url: https://www.apache.org/licenses/LICENSE-2.0
 
 servers:
-  - url: https://api.vc-common.example.com
+  - url: https://api.dc-common.example.com
     description: Production
   - url: http://localhost:3000
     description: Local development
@@ -75,7 +75,7 @@ x-tagGroups:
 
   - name: "🏢 Tenant Management"
     description: |
-      Endpoints for **tenant administrators** who configure their tenant's VC infrastructure.
+      Endpoints for **tenant administrators** who configure their tenant's Digital Credential infrastructure.
       Requires `tenants:admin` scope (or explicit domain scopes where noted).
       These are setup/configuration operations — not runtime credential flows.
     tags:
@@ -90,9 +90,9 @@ x-tagGroups:
       - Audit Logs
       - Events
 
-  - name: "🔐 VC Operations"
+  - name: "🔐 Digital Credential Operations"
     description: |
-      Endpoints for **application developers and API consumers** performing runtime VC operations.
+      Endpoints for **application developers and API consumers** performing runtime Digital Credential operations.
       Requires domain scopes: `credentials:offer`, `credentials:verify`, `credentials:hold`,
       `credentials:revoke`, `connections:manage`. Discovery endpoints are unauthenticated.
     tags:
@@ -146,7 +146,7 @@ tags:
   - name: Connectors
     description: |
       Register and manage backend agent connector credentials (Traction, Credo).
-      Connectors are a prerequisite for all VC operations.
+      Connectors are a prerequisite for all Digital Credential operations.
       **Audience**: Tenant administrators.
       **Auth**: `tenants:admin` scope.
   - name: Credential Definitions
@@ -159,13 +159,13 @@ tags:
     description: |
       Create, publish, and deprecate named/versioned issuance configurations.
       Profiles abstract credential format, schema, and protocol behind a stable identifier
-      consumed by VC Operations (`credentials:offer`).
+      consumed by Digital Credential Operations (`credentials:offer`).
       **Audience**: Tenant administrators.
       **Auth**: `profiles:manage` scope (implied by `tenants:admin`).
   - name: Verification Profiles
     description: |
       Create, publish, and deprecate named/versioned verification templates.
-      Templates define the presentation definition consumed by VC Operations (`credentials:verify`).
+      Templates define the presentation definition consumed by Digital Credential Operations (`credentials:verify`).
       **Audience**: Tenant administrators.
       **Auth**: `profiles:manage` scope (implied by `tenants:admin`).
   - name: Clients
@@ -176,7 +176,7 @@ tags:
       **Auth**: `clients:manage` scope (implied by `tenants:admin`).
   - name: Webhooks
     description: |
-      Register, list, and delete webhook endpoints that receive async VC event notifications.
+      Register, list, and delete webhook endpoints that receive async Digital Credential event notifications.
       Events: `credential.issued`, `credential.verified`, `credential.accepted`,
       `credential.rejected`, `credential.revoked`, `connection.established`.
       **Audience**: Tenant administrators.
@@ -200,7 +200,7 @@ tags:
       **Audience**: Tenant administrators.
       **Auth**: `tenants:admin` scope.
 
-  # ── VC Operations ──────────────────────────────────────────────────────
+  # ── Digital Credential Operations ──────────────────────────────────────
   - name: Credentials
     description: |
       Issue, batch-issue, accept, reject, revoke, and query credentials.
@@ -227,7 +227,7 @@ tags:
   - name: Operations
     description: |
       Track and poll async operations created by Credentials, Presentations, and Connections.
-      All mutating VC operations return a reference to an Operation resource here.
+      All mutating Digital Credential operations return a reference to an Operation resource here.
       **Audience**: Application developers / API consumers.
       **Auth**: Any valid tenant-scoped Bearer JWT.
   - name: Discovery

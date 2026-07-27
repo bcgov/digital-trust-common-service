@@ -3,7 +3,7 @@ description: Build a multi-arch Docker image and push to a container registry
 
 inputs:
   image_name:
-    description: "Image repository path without the registry (e.g. bcgov/vc-common-service); the action prepends <registry>/ itself"
+    description: "Image repository path without the registry (e.g. bcgov/digital-trust-common-service); the action prepends <registry>/ itself"
     required: true
   registry:
     description: "Container registry to push to"
@@ -34,7 +34,7 @@ inputs:
 
 outputs:
   image_ref:
-    description: "Digest-pinned image reference (e.g. ghcr.io/bcgov/vc-common-service@sha256:...)"
+    description: "Digest-pinned image reference (e.g. ghcr.io/bcgov/digital-trust-common-service@sha256:...)"
     value: ${{ steps.build.outputs.digest && format('{0}/{1}@{2}', inputs.registry, inputs.image_name, steps.build.outputs.digest) || '' }}
   image_version:
     description: "Image version from metadata"

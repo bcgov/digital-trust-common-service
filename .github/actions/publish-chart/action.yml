@@ -5,7 +5,7 @@ inputs:
   chart_path:
     description: 'Path to the Helm chart directory'
     required: false
-    default: 'charts/vc-common-service'
+    default: 'charts/digital-trust-common-service'
   registry:
     description: 'OCI registry URL for the chart'
     required: false

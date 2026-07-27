@@ -8,13 +8,13 @@ inputs:
 
 outputs:
   release_name:
-    description: "Helm release name for the PR environment (pr-<N>-vc-common-service)"
+    description: "Helm release name for the PR environment (pr-<N>-digital-trust-common-service)"
     value: ${{ steps.names.outputs.release_name }}
   route_host:
     description: "Route hostname for the PR environment"
     value: ${{ steps.names.outputs.route_host }}
   db_name:
-    description: "PostgreSQL database name for the PR environment (vc_pr_<N>)"
+    description: "PostgreSQL database name for the PR environment (dc_pr_<N>)"
     value: ${{ steps.names.outputs.db_name }}
 
 runs:
@@ -32,9 +32,9 @@ runs:
           echo "::error::pr_number must be a positive integer, got: '${PR_NUMBER}'"
           exit 1
         fi
-        APP_NAME="vc-common-service"
+        APP_NAME="digital-trust-common-service"
         {
           echo "release_name=pr-${PR_NUMBER}-${APP_NAME}"
           echo "route_host=pr-${PR_NUMBER}-${APP_NAME}-dev.apps.silver.devops.gov.bc.ca"
-          echo "db_name=vc_pr_${PR_NUMBER}"
+          echo "db_name=dc_pr_${PR_NUMBER}"
         } >> "${GITHUB_OUTPUT}"

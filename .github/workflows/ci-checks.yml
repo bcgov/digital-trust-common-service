@@ -55,7 +55,7 @@ jobs:
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: vc_common_service
+          POSTGRES_DB: dc_common_service
         ports:
           - 5432:5432
         options: >-
@@ -68,7 +68,7 @@ jobs:
       DB_PORT: 5432
       DB_USERNAME: postgres
       DB_PASSWORD: postgres
-      DB_NAME: vc_common_service
+      DB_NAME: dc_common_service
       DB_LOGGING: 'false'
       NODE_ENV: test
     steps:
@@ -109,30 +109,30 @@ jobs:
       - name: Helm lint
         working-directory: charts
         run: |
-          helm lint vc-common-service
-          helm lint vc-common-service -f vc-common-service/ci/ci-values.yaml
+          helm lint digital-trust-common-service
+          helm lint digital-trust-common-service -f digital-trust-common-service/ci/ci-values.yaml
           # Glob so new overlays (e.g. values-pr.yaml) are covered automatically
-          for f in vc-common-service/values-*.yaml; do
-            helm lint vc-common-service -f "$f"
+          for f in digital-trust-common-service/values-*.yaml; do
+            helm lint digital-trust-common-service -f "$f"
           done
       - name: Helm template (render all values files)
         working-directory: charts
         run: |
-          helm template ci vc-common-service -f vc-common-service/ci/ci-values.yaml > /dev/null
-          for f in vc-common-service/values-*.yaml; do
-            helm template rel vc-common-service -f "$f" > /dev/null
+          helm template ci digital-trust-common-service -f digital-trust-common-service/ci/ci-values.yaml > /dev/null
+          for f in digital-trust-common-service/values-*.yaml; do
+            helm template rel digital-trust-common-service -f "$f" > /dev/null
           done
       - name: yamllint (values and Chart.yaml)
         run: |
           pipx install yamllint || pip install yamllint
           yamllint --strict -c .yamllint \
-            charts/vc-common-service/values.yaml \
-            charts/vc-common-service/values-*.yaml \
-            charts/vc-common-service/ci/ci-values.yaml \
-            charts/vc-common-service/Chart.yaml
+            charts/digital-trust-common-service/values.yaml \
+            charts/digital-trust-common-service/values-*.yaml \
+            charts/digital-trust-common-service/ci/ci-values.yaml \
+            charts/digital-trust-common-service/Chart.yaml
       - name: helm-docs (verify README is up to date)
         run: |
           GO111MODULE=on go install github.com/norwoodj/helm-docs/cmd/helm-docs@v1.14.2
           "$(go env GOPATH)/bin/helm-docs" --chart-search-root=charts --template-files=README.md.gotmpl
-          git diff --exit-code charts/vc-common-service/README.md \
+          git diff --exit-code charts/digital-trust-common-service/README.md \
             || { echo "README.md is out of date. Run helm-docs and commit the result."; exit 1; }

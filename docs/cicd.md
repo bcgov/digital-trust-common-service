@@ -1,6 +1,6 @@
 # CI/CD Pipeline
 
-This document describes the continuous integration and delivery pipeline for vc-common-service. It covers trigger behavior, image and chart publishing strategies, required secrets, notifications, and deferred scope.
+This document describes the continuous integration and delivery pipeline for digital-trust-common-service. It covers trigger behavior, image and chart publishing strategies, required secrets, notifications, and deferred scope.
 
 ## Trigger Matrix
 
@@ -20,7 +20,7 @@ CI checks always gate downstream jobs — if lint, build, or test fails, no arti
 
 ## Image Tagging Strategy
 
-Images are published to `ghcr.io/bcgov/vc-common-service`.
+Images are published to `ghcr.io/bcgov/digital-trust-common-service`.
 
 | Trigger | Tags Produced | Behavior |
 |---------|--------------|----------|
@@ -48,7 +48,7 @@ The image is built for both `linux/amd64` (OpenShift, CI runners) and `linux/arm
 
 ## Chart Publishing
 
-The Helm chart is published as an OCI artifact to `oci://ghcr.io/bcgov/charts/vc-common-service`.
+The Helm chart is published as an OCI artifact to `oci://ghcr.io/bcgov/charts/digital-trust-common-service`.
 
 **Key behaviors:**
 
@@ -56,11 +56,11 @@ The Helm chart is published as an OCI artifact to `oci://ghcr.io/bcgov/charts/vc
 - Version is derived from the git tag by stripping the `v` prefix (e.g., `v1.2.3` → chart version `1.2.3`). Both `version` and `appVersion` in `Chart.yaml` are set to this value.
 - Before publishing, the chart is validated with `helm lint` and `helm template` against default values. If either check fails, the job fails before any push occurs.
 - Dependencies are resolved via `helm dependency build` before packaging.
-- If the chart directory (`charts/vc-common-service/`) does not exist, the pipeline gracefully skips chart publishing and remains green. This allows `cd.yml` to merge before the chart PR without breaking builds.
+- If the chart directory (`charts/digital-trust-common-service/`) does not exist, the pipeline gracefully skips chart publishing and remains green. This allows `cd.yml` to merge before the chart PR without breaking builds.
 
 **Why a separate `/charts/` GHCR path?**
 
-Both the container image and the Helm chart use semver as OCI tags (e.g., `1.2.3`). If they shared the same GHCR repository, tag `1.2.3` would collide — one artifact would overwrite the other. The separate `ghcr.io/bcgov/charts/vc-common-service` path avoids this namespace collision entirely.
+Both the container image and the Helm chart use semver as OCI tags (e.g., `1.2.3`). If they shared the same GHCR repository, tag `1.2.3` would collide — one artifact would overwrite the other. The separate `ghcr.io/bcgov/charts/digital-trust-common-service` path avoids this namespace collision entirely.
 
 ## Teams Notifications
 
@@ -118,15 +118,15 @@ Documentation-only changes (`docs/**`, `**/*.md`) skip the deploy workflow. The 
 
 | Resource | Pattern | Example (PR #42) |
 |----------|---------|------------------|
-| Helm release | `pr-<N>-vc-common-service` | `pr-42-vc-common-service` |
-| Route URL | `pr-<N>-vc-common-service-dev.apps.silver.devops.gov.bc.ca` | `pr-42-vc-common-service-dev.apps.silver.devops.gov.bc.ca` |
+| Helm release | `pr-<N>-digital-trust-common-service` | `pr-42-digital-trust-common-service` |
+| Route URL | `pr-<N>-digital-trust-common-service-dev.apps.silver.devops.gov.bc.ca` | `pr-42-digital-trust-common-service-dev.apps.silver.devops.gov.bc.ca` |
 | Image tags | `pr-<N>` (moving) + `pr-<N>-<short-sha>` (immutable) | `pr-42` + `pr-42-a1b2c3d` |
-| Database | `vc_pr_<N>` | `vc_pr_42` |
-| Instance label | `app.kubernetes.io/instance=pr-<N>-vc-common-service` | — |
+| Database | `dc_pr_<N>` | `dc_pr_42` |
+| Instance label | `app.kubernetes.io/instance=pr-<N>-digital-trust-common-service` | — |
 
 ### Lifecycle
 
-1. **PR opened / updated** — the deploy workflow builds an amd64-only image tagged `pr-<N>-<short-sha>`, creates the database `vc_pr_<N>` idempotently on the shared dev PostgreSQL, and runs `helm upgrade --install` with the in-repo chart and `values-pr.yaml` overlay. A sticky PR comment is posted (or updated) with the environment URL, health endpoint, image tag, and commit SHA.
+1. **PR opened / updated** — the deploy workflow builds an amd64-only image tagged `pr-<N>-<short-sha>`, creates the database `dc_pr_<N>` idempotently on the shared dev PostgreSQL, and runs `helm upgrade --install` with the in-repo chart and `values-pr.yaml` overlay. A sticky PR comment is posted (or updated) with the environment URL, health endpoint, image tag, and commit SHA.
 2. **Subsequent pushes** — the same workflow re-runs. The immutable image tag changes (new commit SHA), so Kubernetes rolls the pods naturally. The sticky comment is updated in place.
 3. **PR converted to draft** — triggers the cleanup workflow, tearing everything down.
 4. **PR marked ready** — triggers `ready_for_review`, re-deploying the environment.
@@ -149,18 +149,18 @@ When deploy secrets are missing, cluster jobs are skipped with a notice — the 
 | `OPENSHIFT_TOKEN` | Secret | Token of the dev-namespace pipeline ServiceAccount | Regenerate SA token; update repository secret |
 | `OPENSHIFT_NAMESPACE` | Secret | `<license-plate>-dev` namespace name | Static |
 | `GITHUB_TOKEN` | Built-in | GHCR push/delete, PR comments, deployments | Auto-rotated per run |
-| `PR_DB_WORKLOAD` | Variable | Kubernetes workload ref of the PR PostgreSQL instance (e.g. `statefulset/vc-common-service-pr-db`), used for `oc exec` provisioning | Update if the PR DB workload changes |
+| `PR_DB_WORKLOAD` | Variable | Kubernetes workload ref of the PR PostgreSQL instance (e.g. `statefulset/digital-trust-common-service-pr-db`), used for `oc exec` provisioning | Update if the PR DB workload changes |
 | `PR_DB_HOST` | Variable | Optional override for the app's `config.DB_HOST` in PR releases; when unset, the `DB_HOST` default baked into `values-pr.yaml` applies | Update if the PR DB Service name changes |
-| `PR_DB_OWNER` | Variable | PostgreSQL role owning `vc_pr_<N>` databases (matches `vc-common-service-pr-secret`'s `DB_USERNAME`; defaults to `app` when unset) | Update if the application DB user changes |
+| `PR_DB_OWNER` | Variable | PostgreSQL role owning `dc_pr_<N>` databases (matches `digital-trust-common-service-pr-secret`'s `DB_USERNAME`; defaults to `app` when unset) | Update if the application DB user changes |
 
 ### External Prerequisites
 
 These are **not** provisioned by the pipeline and must exist before PR environments can fully deploy:
 
-1. **PR PostgreSQL instance** — a dedicated PostgreSQL instance in the dev namespace (`vc-common-service-pr-db`) shared by all PR environments. The `PR_DB_WORKLOAD` variable points at its workload (for `oc exec` provisioning); the app connects to its Service via the `DB_HOST` default in `values-pr.yaml` (or the `PR_DB_HOST` override). Superuser access happens only inside the pod via `oc exec`, connecting as the fixed `postgres` superuser (the official postgres image's default; no `POSTGRES_USER` env var is set on the pod) — no database password is stored in GitHub. Until provisioned, the pr-database action skips gracefully. The instance also needs an ingress NetworkPolicy admitting pods labeled `app.kubernetes.io/name: vc-common-service` on 5432 (the namespace is deny-by-default).
-2. **Application Secret** — a pre-provisioned Secret named `vc-common-service-pr-secret` in the dev namespace containing `DB_USERNAME` and `DB_PASSWORD` for the shared application role. PR releases reference it via `secret.existingSecret` in `values-pr.yaml`; the role itself must exist on the PR PostgreSQL instance (the pipeline creates databases, never roles).
+1. **PR PostgreSQL instance** — a dedicated PostgreSQL instance in the dev namespace (`digital-trust-common-service-pr-db`) shared by all PR environments. The `PR_DB_WORKLOAD` variable points at its workload (for `oc exec` provisioning); the app connects to its Service via the `DB_HOST` default in `values-pr.yaml` (or the `PR_DB_HOST` override). Superuser access happens only inside the pod via `oc exec`, connecting as the fixed `postgres` superuser (the official postgres image's default; no `POSTGRES_USER` env var is set on the pod) — no database password is stored in GitHub. Until provisioned, the pr-database action skips gracefully. The instance also needs an ingress NetworkPolicy admitting pods labeled `app.kubernetes.io/name: digital-trust-common-service` on 5432 (the namespace is deny-by-default).
+2. **Application Secret** — a pre-provisioned Secret named `digital-trust-common-service-pr-secret` in the dev namespace containing `DB_USERNAME` and `DB_PASSWORD` for the shared application role. PR releases reference it via `secret.existingSecret` in `values-pr.yaml`; the role itself must exist on the PR PostgreSQL instance (the pipeline creates databases, never roles).
 3. **Pipeline ServiceAccount** — an OpenShift ServiceAccount in the dev namespace with permissions to manage Helm release objects and `oc exec` into the database pod. Its token is stored in `OPENSHIFT_TOKEN`.
-4. **GHCR package Admin role** — deleting versions of the org-owned `vc-common-service` package with `GITHUB_TOKEN` requires this repository to have the Admin role in the package's *Manage Actions access* settings; without it the `clean-ghcr` job fails with a 403 and PR tags accumulate.
+4. **GHCR package Admin role** — deleting versions of the org-owned `digital-trust-common-service` package with `GITHUB_TOKEN` requires this repository to have the Admin role in the package's *Manage Actions access* settings; without it the `clean-ghcr` job fails with a 403 and PR tags accumulate.
 
 ### Design Decisions
 

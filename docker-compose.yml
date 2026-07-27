@@ -3,7 +3,7 @@
 #   docker compose --profile test down -v
 # Compose keeps unprofiled services enabled, so target the test services above to
 # start only the isolated PostgreSQL test database on localhost:5433, then run
-# migrations and the test seed script against vc_common_service_test.
+# migrations and the test seed script against dc_common_service_test.
 services:
   app:
     build:
@@ -41,7 +41,7 @@ services:
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: vc_common_service
+      POSTGRES_DB: dc_common_service
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
@@ -58,11 +58,11 @@ services:
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: vc_common_service_test
+      POSTGRES_DB: dc_common_service_test
     volumes:
       - postgres-test-data:/var/lib/postgresql
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U postgres -d vc_common_service_test']
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d dc_common_service_test']
       interval: 5s
       timeout: 5s
       retries: 5
@@ -82,7 +82,7 @@ services:
       DB_PORT: 5432
       DB_USERNAME: postgres
       DB_PASSWORD: postgres
-      DB_NAME: vc_common_service_test
+      DB_NAME: dc_common_service_test
       DB_LOGGING: 'false'
     depends_on:
       db-test:
@@ -92,7 +92,7 @@ services:
     image: postgres:18.4
     profiles: ['test']
     command: >-
-      sh -c "psql -v ON_ERROR_STOP=1 -h db-test -p 5432 -U postgres -d vc_common_service_test
+      sh -c "psql -v ON_ERROR_STOP=1 -h db-test -p 5432 -U postgres -d dc_common_service_test
       -f /seeds/test-seed.sql"
     environment:
       PGPASSWORD: postgres
