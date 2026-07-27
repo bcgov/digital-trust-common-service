@@ -87,7 +87,6 @@ x-tagGroups:
       - Verification Profiles
       - Clients
       - Webhooks
-      - Logs
       - Audit Logs
       - Events
 
@@ -182,18 +181,14 @@ tags:
       `credential.rejected`, `credential.revoked`, `connection.established`.
       **Audience**: Tenant administrators.
       **Auth**: `tenants:admin` scope.
-  - name: Logs
-    description: |
-      Tenant-scoped structured log streaming (SSE) and querying backed by Loki.
-      Provides a secure proxy over raw agent logs without exposing infrastructure details.
-      **Audience**: Tenant administrators.
-      **Auth**: `logs:read` scope.
   - name: Audit Logs
     description: |
       Append-only audit trail for all credential operations and admin actions within a tenant.
       Supports filtered queries and CSV export for compliance reporting.
       **Audience**: Tenant administrators.
-      **Auth**: `logs:read` scope.
+      **Auth**: `audit:read` scope. (Distinct from `logs:read`, which gates tenant-scoped
+      observability/log access via the Grafana gateway — audit-log API access should not imply
+      Grafana log access, or vice-versa.)
 
   - name: Events
     description: |
@@ -1957,116 +1952,6 @@ paths:
               schema:
                 $ref: "#/components/schemas/ClientWithSecret"
 
-  # ─── Logs ────────────────────────────────────────────────────────────
-  /api/v1/tenants/{tenantId}/logs:
-    parameters:
-      - $ref: "#/components/parameters/TenantId"
-    get:
-      operationId: queryLogs
-      summary: Query tenant logs (history)
-      description: Cursor-paginated log retrieval from Loki, scoped to the authenticated tenant.
-      tags: [Logs]
-      parameters:
-        - name: source
-          in: query
-          schema:
-            type: string
-            enum: [all, api, "adapter:traction", "adapter:credo", "agent:traction"]
-            default: all
-        - name: level
-          in: query
-          schema:
-            type: string
-            enum: [debug, info, warn, error]
-        - name: search
-          in: query
-          schema:
-            type: string
-            maxLength: 200
-            description: Free-text search filter
-        - name: operation_id
-          in: query
-          schema:
-            type: string
-            format: uuid
-          description: Filter logs related to a specific operation
-        - name: since
-          in: query
-          schema:
-            type: string
-            format: date-time
-            description: Start of time range (ISO 8601)
-        - name: until
-          in: query
-          schema:
-            type: string
-            format: date-time
-            description: End of time range (ISO 8601)
-        - $ref: "#/components/parameters/Cursor"
-        - name: limit
-          in: query
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 500
-            default: 100
-      responses:
-        "200":
-          description: Paginated log entries
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: "#/components/schemas/PaginatedResponse"
-                  - type: object
-                    properties:
-                      data:
-                        type: array
-                        items:
-                          $ref: "#/components/schemas/LogEntry"
-
-  /api/v1/tenants/{tenantId}/logs/stream:
-    parameters:
-      - $ref: "#/components/parameters/TenantId"
-    get:
-      operationId: streamLogs
-      summary: Live log stream (SSE)
-      description: |
-        Server-Sent Events endpoint for real-time log tailing.
-        Max 3 concurrent connections per tenant.
-      tags: [Logs]
-      parameters:
-        - name: source
-          in: query
-          schema:
-            type: string
-            enum: [all, api, "adapter:traction", "adapter:credo", "agent:traction"]
-            default: all
-        - name: level
-          in: query
-          schema:
-            type: string
-            enum: [debug, info, warn, error]
-        - name: search
-          in: query
-          schema:
-            type: string
-            maxLength: 200
-        - name: operation_id
-          in: query
-          schema:
-            type: string
-            format: uuid
-          description: Filter logs related to a specific operation
-      responses:
-        "200":
-          description: SSE event stream
-          content:
-            text/event-stream:
-              schema:
-                type: string
-                description: "SSE events with `data` field containing JSON LogEntry"
-
   # ─── Discovery (Public, Unauthenticated) ─────────────────────────────
   /api/v1/issuers/{tenantSlug}/.well-known/openid-credential-issuer:
     parameters:
@@ -3669,6 +3554,7 @@ components:
               - users:manage
               - clients:manage
               - logs:read
+              - audit:read
               - tenants:admin
 
     # ─── Credential ─────────────────────────────────────────────────
@@ -3806,33 +3692,6 @@ components:
               format: uuid
               nullable: true
               description: Webhook registration ID (for webhook.dispatch jobs)
-
-    # ─── Log Entry ───────────────────────────────────────────────────
-    LogEntry:
-      type: object
-      properties:
-        timestamp:
-          type: string
-          format: date-time
-        level:
-          type: string
-          enum: [debug, info, warn, error]
-        message:
-          type: string
-        source:
-          type: string
-          enum: [api, "adapter:traction", "adapter:credo", webhook]
-        operation_id:
-          type: string
-          format: uuid
-          nullable: true
-        request_id:
-          type: string
-          format: uuid
-          nullable: true
-        metadata:
-          type: object
-          description: Additional structured fields (duration_ms, error_code, etc.)
 
     # ─── Discovery ───────────────────────────────────────────────────
     IssuerMetadata:
