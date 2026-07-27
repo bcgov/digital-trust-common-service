@@ -28,6 +28,7 @@ describe('parseDurationMs', () => {
     [null],
     [-1],
     [0],
+    ['0h'],
     ['not-a-duration'],
     ['5'],
     ['5x'],
