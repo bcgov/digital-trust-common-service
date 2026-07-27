@@ -33,7 +33,7 @@ jobs:
       - name: Check chart existence
         id: check-chart
         run: |
-          if test -f charts/vc-common-service/Chart.yaml; then
+          if test -f charts/digital-trust-common-service/Chart.yaml; then
             echo "chart-exists=true" >> "${GITHUB_OUTPUT}"
           else
             echo "chart-exists=false" >> "${GITHUB_OUTPUT}"
@@ -90,7 +90,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: dev
-      url: https://vc-common-service-dev.apps.silver.devops.gov.bc.ca
+      url: https://digital-trust-common-service-dev.apps.silver.devops.gov.bc.ca
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
 
@@ -106,8 +106,8 @@ jobs:
         env:
           IMAGE_TAG: ${{ needs.publish-image.outputs.image_tag }}
         run: |
-          helm upgrade --install vc-common-service ./charts/vc-common-service \
-            -f charts/vc-common-service/values-dev.yaml \
+          helm upgrade --install digital-trust-common-service ./charts/digital-trust-common-service \
+            -f charts/digital-trust-common-service/values-dev.yaml \
             --set image.tag="${IMAGE_TAG}" \
             --wait --timeout 10m
 

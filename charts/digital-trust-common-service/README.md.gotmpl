@@ -1,0 +1,58 @@
+{{ template "chart.header" . }}
+{{ template "chart.deprecationWarning" . }}
+{{ template "chart.badgesSection" . }}
+
+{{ template "chart.description" . }}
+
+## Prerequisites
+
+- Kubernetes 1.25+ / OpenShift 4.12+
+- Helm 3.8.0+
+- An external PostgreSQL database and (optionally) a Keycloak instance
+- A pre-provisioned `Secret` with database credentials (or set `secret.create=true`)
+
+## Installing the Chart
+
+```console
+helm install digital-trust-common-service ./charts/digital-trust-common-service \
+  -n <namespace> \
+  -f charts/digital-trust-common-service/values-dev.yaml
+```
+
+The [Values](#values) section lists all configurable parameters.
+
+## Architecture
+
+This chart deploys the Digital Credential Common Service (a NestJS modular monolith) to BC Gov
+OpenShift. Key characteristics:
+
+- **API Deployment** — HTTP service on container port `3000`; liveness and
+  readiness probes on `/health/live`.
+- **Migrations** — run as a `pre-install`/`pre-upgrade` Helm hook Job (same image,
+  overridden command), gated by `migrations.enabled`. Running once per release
+  (rather than as a per-pod init container) avoids concurrent migration runs
+  across replicas and HPA scale-ups. Set `migrations.argocd.enabled=true` to also
+  emit a `PreSync` hook for ArgoCD/GitOps.
+- **Worker Deployment** — the same image with entrypoint `node dist/worker.js`
+  and its own HPA, gated by `worker.enabled`.
+- **Exposure** — an OpenShift `Route` by default; a Kubernetes `Ingress` is an
+  optional alternative.
+- **External dependencies** — PostgreSQL and Keycloak are treated as external,
+  shared services (consumed via env vars and a `Secret`).
+- **NetworkPolicies** — restrict ingress to the OpenShift router and declare
+  explicit egress to PostgreSQL/Keycloak, with a DNS-allow policy so hostname
+  resolution keeps working once egress rules are in effect.
+
+
+{{ template "chart.maintainersSection" . }}
+
+{{ template "chart.requirementsSection" . }}
+
+## Values
+
+{{ template "chart.valuesTable" . }}
+{{/*
+No helm-docs.versionFooter: its output depends on how the binary was built
+(go install produces an empty version, release builds embed one), so the
+footer makes CI's README check disagree with locally generated docs.
+*/}}

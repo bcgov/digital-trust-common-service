@@ -2,21 +2,21 @@
   "$schema": "https://json.schemastore.org/nest-cli",
   "collection": "@nestjs/schematics",
   "monorepo": true,
-  "root": "apps/vc-common-service",
-  "sourceRoot": "apps/vc-common-service/src",
+  "root": "apps/digital-trust-common-service",
+  "sourceRoot": "apps/digital-trust-common-service/src",
   "compilerOptions": {
     "deleteOutDir": true,
     "webpack": false,
-    "tsConfigPath": "apps/vc-common-service/tsconfig.app.json"
+    "tsConfigPath": "apps/digital-trust-common-service/tsconfig.app.json"
   },
   "projects": {
-    "vc-common-service": {
+    "digital-trust-common-service": {
       "type": "application",
-      "root": "apps/vc-common-service",
+      "root": "apps/digital-trust-common-service",
       "entryFile": "main",
-      "sourceRoot": "apps/vc-common-service/src",
+      "sourceRoot": "apps/digital-trust-common-service/src",
       "compilerOptions": {
-        "tsConfigPath": "apps/vc-common-service/tsconfig.app.json"
+        "tsConfigPath": "apps/digital-trust-common-service/tsconfig.app.json"
       }
     },
     "common": {

@@ -1,0 +1,321 @@
+# Default values for digital-trust-common-service.
+# Deploys the Digital Credential Common Service (NestJS) to BC Gov OpenShift.
+# Per-environment overrides live in values-{dev,test,prod}.yaml.
+
+# -- Number of API pod replicas (ignored when `autoscaling.enabled=true`)
+replicaCount: 1
+
+# -- Override the chart name
+nameOverride: ""
+# -- Override the fully qualified release name
+fullnameOverride: ""
+
+image:
+  # -- Container image registry (optional; omitted from the ref when empty)
+  registry: ghcr.io
+  # -- Container image repository. API, Worker and migrations share this image.
+  repository: bcgov/digital-trust-common-service
+  # -- Image pull policy
+  pullPolicy: IfNotPresent
+  # -- Image tag (defaults to the chart appVersion when empty)
+  tag: ""
+
+# -- Names of pre-created image pull secrets, e.g. `[{ name: my-registry }]`
+imagePullSecrets: []
+
+serviceAccount:
+  # -- Create a service account
+  create: true
+  # -- Automatically mount the service account's API credentials
+  automount: true
+  # -- Annotations for the service account
+  annotations: {}
+  # -- Service account name (generated from the fullname when empty and `create` is true)
+  name: ""
+
+# -- Annotations added to the API/Worker pods
+podAnnotations: {}
+# -- Labels added to the API/Worker pods
+podLabels: {}
+
+# -- Pod security context. On BC Gov OpenShift the restricted-v2 SCC assigns
+# UID/fsGroup/SELinux automatically; leave empty unless you must pin values.
+podSecurityContext: {}
+  # fsGroup: 2000
+
+# -- Container security context applied to all containers
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: false
+  runAsNonRoot: true
+  capabilities:
+    drop:
+      - ALL
+
+service:
+  # -- Service type
+  type: ClusterIP
+  # -- Service port exposed to the cluster
+  port: 8080
+  # -- Container port the NestJS app binds to (the `PORT` env)
+  targetPort: 3000
+
+# OpenShift Route (default exposure mechanism on BC Gov clusters).
+route:
+  # -- Expose the service via an OpenShift Route
+  enabled: true
+  # -- Route hostname (OpenShift generates one when empty)
+  host: ""
+  # -- Optional explicit route path
+  path: ""
+  # -- Additional annotations for the Route
+  annotations: {}
+  tls:
+    # -- Enable TLS on the Route
+    enabled: true
+    # -- TLS termination type
+    termination: edge
+    # -- Policy for insecure (HTTP) traffic
+    insecureEdgeTerminationPolicy: Redirect
+
+# Kubernetes Ingress (optional alternative to the Route).
+ingress:
+  # -- Expose the service via a Kubernetes Ingress
+  enabled: false
+  # -- Ingress class name
+  className: ""
+  # -- Ingress annotations
+  annotations: {}
+  # -- Ingress hosts and paths
+  hosts:
+    - host: chart-example.local
+      paths:
+        - path: /
+          pathType: Prefix
+  # -- Ingress TLS configuration
+  tls: []
+
+# -- Resource requests and limits for the API container
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    cpu: 250m
+    memory: 256Mi
+
+# -- Liveness probe. IN-01 provides a minimal 200 at `/health/live`.
+livenessProbe:
+  httpGet:
+    path: /health/live
+    port: http
+  initialDelaySeconds: 15
+  periodSeconds: 15
+  timeoutSeconds: 3
+  failureThreshold: 3
+# -- Readiness probe. Uses `/health/live` until a dedicated readiness endpoint is added.
+readinessProbe:
+  httpGet:
+    path: /health/live
+    port: http
+  initialDelaySeconds: 10
+  periodSeconds: 10
+  timeoutSeconds: 3
+  failureThreshold: 3
+
+# Horizontal Pod Autoscaler for the API Deployment.
+autoscaling:
+  # -- Enable autoscaling for the API Deployment
+  enabled: false
+  # -- Minimum API replicas
+  minReplicas: 1
+  # -- Maximum API replicas
+  maxReplicas: 3
+  # -- Target average CPU utilization (percentage)
+  targetCPUUtilizationPercentage: 80
+  # -- Target average memory utilization (percentage)
+  # targetMemoryUtilizationPercentage: 80
+
+# Database migrations run as a Helm hook Job (pre-install/pre-upgrade).
+# Disabled until the migration runner command exists.
+migrations:
+  # -- Run database migrations as a pre-install/pre-upgrade Helm hook Job.
+  # Runs exactly once per release before the app pods roll, avoiding the
+  # concurrent/every-boot execution that an init container would cause across
+  # replicas and HPA scale-ups.
+  enabled: false
+  # -- Migration entrypoint command
+  command:
+    - node
+  # -- Migration entrypoint args
+  args:
+    - dist/apps/digital-trust-common-service/src/migrate.js
+  # -- Helm hook configuration for the migration Job. `pre-install,pre-upgrade`
+  # is fail-closed: a failed migration aborts the release and the old version
+  # keeps serving. NOTE: the migration runner (migrate.js) should still wrap its
+  # run in a Postgres advisory lock (pg_advisory_lock/unlock) as defence in
+  # depth, since TypeORM does not lock migrations by default.
+  hook:
+    # -- Helm hook types that trigger the migration Job
+    types: "pre-install,pre-upgrade"
+    # -- Hook execution order (lower weights run earlier)
+    weight: "-5"
+    # -- Hook resource delete policy
+    deletePolicy: "before-hook-creation,hook-succeeded"
+  # -- Number of retries before the migration Job is marked failed (2 retries = 3 total attempts)
+  backoffLimit: 2
+  # -- Maximum seconds the migration Job may run before Kubernetes marks it failed.
+  # Prevents hung migrations (e.g. waiting on a lock) from blocking a release indefinitely.
+  activeDeadlineSeconds: 300
+  # -- Emit an ArgoCD PreSync hook annotation so migrations also run under GitOps
+  # (ArgoCD does not execute Helm hooks natively)
+  argocd:
+    enabled: false
+  # -- Optional init container that blocks the migration until the database
+  # (DB_HOST:DB_PORT from the app config) is reachable
+  waitForDB:
+    enabled: false
+    image: busybox
+    tag: "1.36"
+    # -- Maximum seconds to wait for the database before failing with a clear error
+    timeoutSeconds: 60
+  # -- Resource requests/limits for the migration Job
+  resources:
+    requests:
+      cpu: 25m
+      memory: 128Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+
+# Worker deployment (pg-boss queue consumers). Same image as the API, different
+# entrypoint, with its own HPA. Disabled until `dist/worker.js` exists.
+worker:
+  # -- Deploy the Worker
+  enabled: false
+  # -- Worker replicas (ignored when `worker.autoscaling.enabled=true`)
+  replicaCount: 1
+  # -- Worker entrypoint command
+  command:
+    - node
+  # -- Worker entrypoint args
+  args:
+    - dist/worker.js
+  # -- Annotations added to Worker pods
+  podAnnotations: {}
+  # -- Labels added to Worker pods
+  podLabels: {}
+  # -- Resource requests/limits for the Worker container
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+  # -- Liveness probe for the Worker (no HTTP server by default)
+  livenessProbe: {}
+  autoscaling:
+    # -- Enable autoscaling for the Worker Deployment
+    enabled: false
+    # -- Minimum Worker replicas
+    minReplicas: 1
+    # -- Maximum Worker replicas
+    maxReplicas: 5
+    # -- Target average CPU utilization (percentage)
+    targetCPUUtilizationPercentage: 80
+    # -- Target average memory utilization (percentage)
+    # targetMemoryUtilizationPercentage: 80
+  # -- Node selector for Worker pods
+  nodeSelector: {}
+  # -- Tolerations for Worker pods
+  tolerations: []
+  # -- Affinity for Worker pods
+  affinity: {}
+
+# -- Non-secret application configuration, rendered into a ConfigMap and injected
+# as environment variables into all containers.
+config:
+  NODE_ENV: production
+  PORT: "3000"
+  LOG_LEVEL: info
+  DB_HOST: ""
+  DB_PORT: "5432"
+  DB_NAME: dc_common_service
+  DB_SYNCHRONIZE: "false"
+  DB_LOGGING: "false"
+  SWAGGER_ENABLED: "true"
+  SWAGGER_JSON_ENABLED: "true"
+
+# -- Extra plain environment variables appended to every container (name/value list)
+extraEnv: []
+# -- Extra envFrom sources (configMapRef/secretRef) for every container
+extraEnvFrom: []
+
+# Secrets. By default the chart references a pre-provisioned Secret; set
+# `create=true` to have the chart generate/persist secret values instead.
+secret:
+  # -- Name of an existing Secret to consume for env vars
+  existingSecret: ""
+  # -- Create a chart-managed Secret from the values below
+  create: false
+  # -- Keep the chart-managed Secret when the release is uninstalled
+  retainOnUninstall: true
+  # -- Non-generated key/values placed into the chart-managed Secret
+  data:
+    DB_USERNAME: ""
+    DB_PASSWORD: ""
+
+# NetworkPolicy. Restricts ingress to the OpenShift router and declares explicit
+# inter-service communication (API/Worker -> Postgres, API -> Keycloak).
+networkPolicy:
+  # -- Enable NetworkPolicies
+  enabled: true
+  dnsEgress:
+    # -- Allow DNS egress (required whenever any egress rule is enabled)
+    enabled: true
+    # -- DNS ports to allow. Both are required on OpenShift: pods query the
+    # dns-default Service on 53, but CoreDNS actually listens on 5353, and
+    # OVN-Kubernetes evaluates egress policy AFTER the service DNAT rewrites
+    # the port — allowing only 53 silently drops every DNS packet.
+    ports:
+      - 53
+      - 5353
+  ingress:
+    # -- Allow ingress to the API from the OpenShift router
+    enabled: true
+    # -- Namespace selector matching the OpenShift router namespace
+    routerNamespaceSelector:
+      policy-group.network.openshift.io/ingress: ""
+  database:
+    # -- Allow API/Worker egress to PostgreSQL
+    enabled: true
+    # -- Database port
+    port: 5432
+    # -- Pod selector matching the database pods.
+    # When both podSelector and namespaceSelector are empty, egress is allowed
+    # to any destination on the database port. Set these in per-env values.
+    podSelector: {}
+    # -- Namespace selector matching the database namespace
+    namespaceSelector: {}
+  keycloak:
+    # -- Allow API egress to Keycloak (upstream IdP)
+    enabled: false
+    # -- Keycloak port
+    port: 443
+    # -- Namespace selector matching the Keycloak namespace
+    namespaceSelector: {}
+    # -- Pod selector matching the Keycloak pods
+    podSelector: {}
+
+# -- Extra volumes for the API/Worker pods
+volumes: []
+# -- Extra volume mounts for the API/Worker containers
+volumeMounts: []
+
+# -- Node selector for API pods
+nodeSelector: {}
+# -- Tolerations for API pods
+tolerations: []
+# -- Affinity for API pods
+affinity: {}

@@ -1,15 +1,15 @@
-# VC Common Service
+# Digital Credential Common Service
 
-A multi-tenant API providing a format-agnostic abstraction layer for Verifiable Credential (VC) operations. The service normalizes issue/verify/hold patterns across credential formats and backend agents, enabling seamless integration of diverse credential ecosystems.
+A multi-tenant API providing a format-agnostic abstraction layer for Digital Credential operations. The service normalizes issue/verify/hold patterns across credential formats and backend agents, enabling seamless integration of diverse credential ecosystems.
 
 ## Overview
 
-The VC Common Service acts as a unified gateway for verifiable credential operations. It abstracts away the complexity of working with multiple credential formats and allows applications to interact with credentials through a standardized API.
+The Digital Credential Common Service acts as a unified gateway for Digital Credential operations. It abstracts away the complexity of working with multiple credential formats and allows applications to interact with credentials through a standardized API.
 
 ### Key Features
 
 - **Multi-tenant Architecture**: Isolated tenant environments with secure data segregation
-- **Format-Agnostic Operations**: Support for multiple verifiable credential formats
+- **Format-Agnostic Operations**: Support for multiple Digital Credential formats
 - **Standardized API**: Consistent interfaces for issue, verify, and hold operations
 - **Job Processing**: Asynchronous job queue for long-running operations
 - **Graceful Shutdown**: Clean application shutdown with resource cleanup
@@ -90,7 +90,7 @@ factory usage.
 
 ```
 apps/
-  └── vc-common-service/        # Main application
+  └── digital-trust-common-service/        # Main application
       ├── src/
       │   ├── main.ts           # Entry point
       │   ├── app.module.ts     # Root module
