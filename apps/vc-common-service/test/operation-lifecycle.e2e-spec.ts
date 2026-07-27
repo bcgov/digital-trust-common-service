@@ -91,6 +91,37 @@ describe('Operation TTL & purge (e2e)', () => {
     );
   });
 
+  it('does not apply a tenant completed_unviewed override to PENDING/PROCESSING operations (regression: override must only affect completed-but-unviewed operations)', async () => {
+    const tenant = await createTenant('ttl-processing-isolation', {
+      operation_ttl: { completed_unviewed: '2h' },
+    });
+
+    const created = await operationService.createOperation({
+      tenantId: tenant.id,
+      type: 'credential.offer',
+      request: { method: 'POST', path: '/x', body: {} },
+    });
+
+    const createdActualMs =
+      created.expiresAt.getTime() - created.createdAt.getTime();
+    const systemDefaultMs = 72 * 60 * 60 * 1000;
+
+    expect(createdActualMs).toBeGreaterThanOrEqual(systemDefaultMs - 1000);
+    expect(createdActualMs).toBeLessThanOrEqual(systemDefaultMs + 1000);
+
+    const processing = await operationService.transitionState(
+      created.id,
+      OperationState.PROCESSING,
+    );
+
+    const processingActualMs =
+      processing.expiresAt.getTime() - processing.createdAt.getTime();
+
+    expect(processing.state).toBe(OperationState.PROCESSING);
+    expect(processingActualMs).toBeGreaterThanOrEqual(systemDefaultMs - 1000);
+    expect(processingActualMs).toBeLessThanOrEqual(systemDefaultMs + 1000);
+  });
+
   it('honors a per-tenant operation_ttl.completed_unviewed override', async () => {
     const tenant = await createTenant('ttl-override', {
       operation_ttl: { completed_unviewed: '2h' },

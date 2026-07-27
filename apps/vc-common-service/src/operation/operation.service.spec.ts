@@ -242,7 +242,6 @@ describe('OperationService', () => {
         request: baseRequest,
       });
 
-      expect(mockTenantFindById).toHaveBeenCalledWith('t1');
       expect(mockCreate).toHaveBeenCalledWith(
         expect.objectContaining({
           tenantId: 't1',
@@ -257,7 +256,7 @@ describe('OperationService', () => {
       expect(result).toBe(created);
     });
 
-    it('applies the tenant completed_unviewed TTL override to the initial expiry', async () => {
+    it('ignores the tenant completed_unviewed TTL override at creation (it only applies once completed and unviewed)', async () => {
       jest.useFakeTimers().setSystemTime(createdAt);
       mockTenantFindById.mockResolvedValue({
         id: 't1',
@@ -273,9 +272,10 @@ describe('OperationService', () => {
         request: baseRequest,
       });
 
+      expect(mockTenantFindById).not.toHaveBeenCalled();
       expect(mockCreate).toHaveBeenCalledWith(
         expect.objectContaining({
-          expiresAt: new Date(createdAt.getTime() + 2 * HOUR_MS),
+          expiresAt: new Date(createdAt.getTime() + 72 * HOUR_MS),
         }),
       );
     });

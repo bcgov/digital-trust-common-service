@@ -15,6 +15,15 @@ export const DEFAULT_OPERATION_TTL_MS = {
   pendingStale: 24 * HOUR_MS,
 } as const;
 
+// Default horizon (from createdAt) for non-terminal operations (PENDING at
+// creation, PROCESSING) that haven't yet reached a state with its own TTL
+// semantics. The issue spec (#31) does not define a tenant-configurable key
+// for this value — it is intentionally NOT part of operation_ttl.* so that a
+// tenant override of completed_unviewed (which only applies to completed,
+// not-yet-viewed operations) cannot inadvertently shorten/lengthen the
+// lifetime of still-in-flight operations.
+export const DEFAULT_CREATED_TTL_MS = 72 * HOUR_MS;
+
 export type OperationTtlKey = keyof typeof DEFAULT_OPERATION_TTL_MS;
 
 export type OperationTtlConfigMs = Record<OperationTtlKey, number>;

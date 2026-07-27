@@ -2,7 +2,10 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 
 import { TenantService } from '../tenant/tenant.service';
 
-import { resolveOperationTtlMs } from './operation-ttl.util';
+import {
+  resolveOperationTtlMs,
+  DEFAULT_CREATED_TTL_MS,
+} from './operation-ttl.util';
 import {
   Operation,
   OperationRequest,
@@ -35,7 +38,10 @@ export class OperationService {
    *
    * `tenantConfig` is the tenant's `config` JSONB blob (see Tenant entity). Per-tenant
    * overrides are read from `tenantConfig.operation_ttl.*`, falling back to system
-   * defaults for any key that is absent or invalid (PE-08 / #31).
+   * defaults for any key that is absent or invalid (PE-08 / #31). PROCESSING uses the
+   * fixed, non-overridable DEFAULT_CREATED_TTL_MS rather than the tenant's
+   * completed_unviewed override, since that override is scoped to completed-but-not-
+   * viewed operations only and must not affect operations still in flight.
    */
   public computeExpiresAt(
     state: OperationState,
@@ -49,7 +55,7 @@ export class OperationService {
       case OperationState.PENDING:
         return new Date(createdAt.getTime() + ttl.pendingStale);
       case OperationState.PROCESSING:
-        return new Date(createdAt.getTime() + ttl.completedUnviewed);
+        return new Date(createdAt.getTime() + DEFAULT_CREATED_TTL_MS);
       case OperationState.COMPLETED:
         return viewedAt
           ? new Date(viewedAt.getTime() + ttl.completedViewed)
@@ -59,7 +65,7 @@ export class OperationService {
           ? new Date(viewedAt.getTime() + ttl.failedViewed)
           : new Date(createdAt.getTime() + ttl.failedUnviewed);
       default:
-        return new Date(createdAt.getTime() + ttl.completedUnviewed);
+        return new Date(createdAt.getTime() + DEFAULT_CREATED_TTL_MS);
     }
   }
 
@@ -67,12 +73,13 @@ export class OperationService {
     input: CreateOperationInput,
   ): Promise<Operation> {
     const now = new Date();
-    const tenant = await this.tenants.findById(input.tenantId);
-    const ttl = resolveOperationTtlMs(tenant.config);
 
-    // On create the operation is pending: expires_at = created_at + completed_unviewed TTL
-    // (issue spec: 72h default). The pending_stale TTL is applied only by the PE-08
-    // purge sweep for stale pending operations, not at creation.
+    // On create the operation is pending: expires_at = created_at + the fixed
+    // system default (issue spec: 72h), not the tenant's completed_unviewed
+    // override — that override only applies once the operation has actually
+    // completed without being viewed (see computeExpiresAt()). The
+    // pending_stale TTL is applied only by the PE-08 purge sweep for stale
+    // pending operations, not at creation.
     const operation = this.operations.create({
       tenantId: input.tenantId,
       type: input.type,
@@ -80,7 +87,7 @@ export class OperationService {
       batchId: input.batchId ?? null,
       externalId: input.externalId ?? null,
       state: OperationState.PENDING,
-      expiresAt: new Date(now.getTime() + ttl.completedUnviewed),
+      expiresAt: new Date(now.getTime() + DEFAULT_CREATED_TTL_MS),
     });
 
     return this.operations.save(operation);
