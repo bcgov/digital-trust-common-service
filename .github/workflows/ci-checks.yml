@@ -69,7 +69,6 @@ jobs:
       DB_USERNAME: postgres
       DB_PASSWORD: postgres
       DB_NAME: vc_common_service
-      DB_SYNCHRONIZE: 'true'
       DB_LOGGING: 'false'
       NODE_ENV: test
     steps:
@@ -82,6 +81,13 @@ jobs:
       - run: npm run test:cov
       - name: Run integration tests
         run: npm run test:integration
+      - name: Build and apply migrations for e2e
+        # DatabaseModule always runs with synchronize: false, so e2e specs that
+        # touch real tables (tenant/operation) require the schema to be created
+        # via migrations first; nothing else in this job does that.
+        run: |
+          npm run build
+          npm run migrate:up
       - name: Run e2e tests
         run: npm run test:e2e
       - name: Report coverage to Coveralls
