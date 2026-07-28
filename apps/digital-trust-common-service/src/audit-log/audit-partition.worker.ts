@@ -48,10 +48,14 @@ export class AuditPartitionWorker implements OnModuleInit {
   }
 
   public async handle(job: Job<AuditPartitionMaintainJobData>): Promise<void> {
-    const monthsAhead = Number(
+    const configured = Number(
       job.data?.monthsAhead ??
         this.config.get<string>('AUDIT_PARTITION_MONTHS_AHEAD', '3'),
     );
+    const monthsAhead =
+      Number.isFinite(configured) && configured >= 0
+        ? Math.floor(configured)
+        : 3;
 
     const specs = buildMonthlyPartitionSpecs(new Date(), monthsAhead);
 

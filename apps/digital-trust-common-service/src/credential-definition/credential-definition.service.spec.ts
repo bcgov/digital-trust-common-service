@@ -1,6 +1,7 @@
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 
+import { AuditAction } from '../audit-log/audit-log.entity';
 import { DomainAuditService } from '../audit-log/domain-audit.service';
 import { TenantStatus } from '../tenant/tenant.entity';
 
@@ -125,6 +126,12 @@ describe('CredentialDefinitionService', () => {
         connectorType: dto.connectorType,
         metadata: dto.metadata,
       });
+      expect(mockEmit).toHaveBeenCalledWith({
+        tenantId: mockCredentialDefinition.tenantId,
+        action: AuditAction.CREATE,
+        resourceType: 'credential_definition',
+        resourceId: mockCredentialDefinition.id,
+      });
       expect(result).toEqual(mockCredentialDefinition);
     });
 
@@ -150,6 +157,7 @@ describe('CredentialDefinitionService', () => {
         dto.format,
       );
       expect(mockCreate).not.toHaveBeenCalled();
+      expect(mockEmit).not.toHaveBeenCalled();
     });
   });
 
@@ -252,6 +260,12 @@ describe('CredentialDefinitionService', () => {
 
       expect(mockFindById).toHaveBeenCalledWith(id);
       expect(mockUpdate).toHaveBeenCalled();
+      expect(mockEmit).toHaveBeenCalledWith({
+        tenantId: updatedDefinition.tenantId,
+        action: AuditAction.UPDATE,
+        resourceType: 'credential_definition',
+        resourceId: updatedDefinition.id,
+      });
       expect(result).toEqual(updatedDefinition);
     });
 
@@ -276,6 +290,12 @@ describe('CredentialDefinitionService', () => {
 
       expect(mockFindById).toHaveBeenCalledWith(id);
       expect(mockDelete).toHaveBeenCalledWith(id);
+      expect(mockEmit).toHaveBeenCalledWith({
+        tenantId: mockCredentialDefinition.tenantId,
+        action: AuditAction.DELETE,
+        resourceType: 'credential_definition',
+        resourceId: id,
+      });
     });
 
     it('should throw NotFoundException if credential definition not found', async () => {
@@ -284,6 +304,7 @@ describe('CredentialDefinitionService', () => {
 
       await expect(service.delete(id)).rejects.toThrow(NotFoundException);
       expect(mockDelete).not.toHaveBeenCalled();
+      expect(mockEmit).not.toHaveBeenCalled();
     });
   });
 });

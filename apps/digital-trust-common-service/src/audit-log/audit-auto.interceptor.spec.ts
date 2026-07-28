@@ -112,6 +112,31 @@ describe('AuditAutoInterceptor', () => {
       });
   });
 
+  it('skips POST creates without a path resource id', (done) => {
+    mockGet.mockImplementation((key: string, fallback?: string) =>
+      key === 'AUDIT_AUTO_INTERCEPTOR_ENABLED' ? 'true' : fallback,
+    );
+
+    interceptor
+      .intercept(
+        httpContext({
+          method: 'POST',
+          path: '/widgets',
+          params: {},
+          body: { tenantId: '123e4567-e89b-12d3-a456-426614174001' },
+        }),
+        { handle: () => of({ ok: true }) } as CallHandler,
+      )
+      .subscribe({
+        complete: () => {
+          setTimeout(() => {
+            expect(mockEnqueue).not.toHaveBeenCalled();
+            done();
+          }, 0);
+        },
+      });
+  });
+
   it('skips health paths', (done) => {
     mockGet.mockImplementation((key: string, fallback?: string) =>
       key === 'AUDIT_AUTO_INTERCEPTOR_ENABLED' ? 'true' : fallback,

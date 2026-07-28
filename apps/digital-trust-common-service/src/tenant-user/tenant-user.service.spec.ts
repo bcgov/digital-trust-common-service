@@ -1,6 +1,7 @@
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 
+import { AuditAction } from '../audit-log/audit-log.entity';
 import { DomainAuditService } from '../audit-log/domain-audit.service';
 
 import { CreateTenantUserDto } from './dto/create-tenant-user.dto';
@@ -105,6 +106,12 @@ describe('TenantUserService', () => {
         role: dto.role,
         status: dto.status,
       });
+      expect(mockEmit).toHaveBeenCalledWith({
+        tenantId: mockTenantUser.tenantId,
+        action: AuditAction.CREATE,
+        resourceType: 'tenant_user',
+        resourceId: mockTenantUser.id,
+      });
       expect(result).toEqual(mockTenantUser);
     });
 
@@ -126,6 +133,7 @@ describe('TenantUserService', () => {
         dto.externalUserId,
       );
       expect(mockCreate).not.toHaveBeenCalled();
+      expect(mockEmit).not.toHaveBeenCalled();
     });
   });
 
@@ -206,6 +214,12 @@ describe('TenantUserService', () => {
 
       expect(mockFindById).toHaveBeenCalledWith(id);
       expect(mockUpdate).toHaveBeenCalled();
+      expect(mockEmit).toHaveBeenCalledWith({
+        tenantId: updatedTenantUser.tenantId,
+        action: AuditAction.UPDATE,
+        resourceType: 'tenant_user',
+        resourceId: updatedTenantUser.id,
+      });
       expect(result).toEqual(updatedTenantUser);
     });
 
@@ -230,6 +244,12 @@ describe('TenantUserService', () => {
 
       expect(mockFindById).toHaveBeenCalledWith(id);
       expect(mockDelete).toHaveBeenCalledWith(id);
+      expect(mockEmit).toHaveBeenCalledWith({
+        tenantId: mockTenantUser.tenantId,
+        action: AuditAction.DELETE,
+        resourceType: 'tenant_user',
+        resourceId: id,
+      });
     });
 
     it('should throw NotFoundException if tenant user not found', async () => {
@@ -238,6 +258,7 @@ describe('TenantUserService', () => {
 
       await expect(service.delete(id)).rejects.toThrow(NotFoundException);
       expect(mockDelete).not.toHaveBeenCalled();
+      expect(mockEmit).not.toHaveBeenCalled();
     });
   });
 });

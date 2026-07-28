@@ -83,4 +83,16 @@ describe('AuditPartitionWorker', () => {
       expect.stringContaining('PARTITION OF audit_log'),
     );
   });
+
+  it('falls back to default monthsAhead when value is invalid', async () => {
+    const job = {
+      id: 'job-2',
+      data: { monthsAhead: Number.NaN },
+    } as Job<AuditPartitionMaintainJobData>;
+
+    await worker.handle(job);
+
+    // default monthsAhead=3 → current + 3 = 4 partitions
+    expect(mockQuery).toHaveBeenCalledTimes(4);
+  });
 });

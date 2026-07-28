@@ -101,7 +101,7 @@ export class AuditAutoInterceptor implements NestInterceptor {
         return;
       }
 
-      const resourceId = this.resolveResourceId(request, tenantId);
+      const resourceId = this.resolveResourceId(request);
       if (!resourceId) {
         this.logger.debug(
           `Skipping auto-audit for ${method} ${path}: missing resourceId`,
@@ -142,16 +142,13 @@ export class AuditAutoInterceptor implements NestInterceptor {
     return null;
   }
 
-  private resolveResourceId(request: Request, tenantId: string): string | null {
+  private resolveResourceId(request: Request): string | null {
     const params = request.params ?? {};
     if (typeof params.id === 'string' && params.id) {
       return params.id;
     }
-    // Creates often lack an id in the request; use tenantId as a stable uuid stand-in
-    // only when the resource itself is tenant-scoped create without path id.
-    if (request.method?.toUpperCase() === 'POST') {
-      return tenantId;
-    }
+    // Creates without a path id are covered by domain producers; skip rather than
+    // inventing a stand-in resourceId that would mis-attribute rows.
     return null;
   }
 
