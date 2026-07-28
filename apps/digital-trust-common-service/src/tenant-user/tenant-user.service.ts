@@ -4,6 +4,9 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 
+import { AuditAction } from '../audit-log/audit-log.entity';
+import { DomainAuditService } from '../audit-log/domain-audit.service';
+
 import { CreateTenantUserDto } from './dto/create-tenant-user.dto';
 import { UpdateTenantUserDto } from './dto/update-tenant-user.dto';
 import { TenantUser } from './tenant-user.entity';
@@ -13,6 +16,7 @@ import { TenantUserRepository } from './tenant-user.repository';
 export class TenantUserService {
   public constructor(
     private readonly tenantUserRepository: TenantUserRepository,
+    private readonly domainAudit: DomainAuditService,
   ) {}
 
   public async create(dto: CreateTenantUserDto): Promise<TenantUser> {
@@ -26,7 +30,7 @@ export class TenantUserService {
       throw new ConflictException('User already belongs to this tenant.');
     }
 
-    return await this.tenantUserRepository.create({
+    const created = await this.tenantUserRepository.create({
       tenantId: dto.tenantId,
       externalUserId: dto.externalUserId,
       email: dto.email,
@@ -34,6 +38,15 @@ export class TenantUserService {
       role: dto.role,
       status: dto.status,
     });
+
+    await this.domainAudit.emit({
+      tenantId: created.tenantId,
+      action: AuditAction.CREATE,
+      resourceType: 'tenant_user',
+      resourceId: created.id,
+    });
+
+    return created;
   }
 
   public async findById(id: string): Promise<TenantUser> {
@@ -78,12 +91,28 @@ export class TenantUserService {
       tenantUser.status = dto.status;
     }
 
-    return await this.tenantUserRepository.update(tenantUser);
+    const updated = await this.tenantUserRepository.update(tenantUser);
+
+    await this.domainAudit.emit({
+      tenantId: updated.tenantId,
+      action: AuditAction.UPDATE,
+      resourceType: 'tenant_user',
+      resourceId: updated.id,
+    });
+
+    return updated;
   }
 
   public async delete(id: string): Promise<void> {
-    await this.findById(id);
+    const tenantUser = await this.findById(id);
 
     await this.tenantUserRepository.delete(id);
+
+    await this.domainAudit.emit({
+      tenantId: tenantUser.tenantId,
+      action: AuditAction.DELETE,
+      resourceType: 'tenant_user',
+      resourceId: id,
+    });
   }
 }

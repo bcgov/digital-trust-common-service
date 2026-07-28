@@ -15,6 +15,7 @@ import {
   ApiNotFoundResponse,
 } from '@nestjs/swagger';
 
+import { SkipAutoAudit } from '../audit-log/skip-auto-audit.decorator';
 import { API_VERSION } from '../common/constants/api-version.constants';
 
 import { CreateTenantUserDto } from './dto/create-tenant-user.dto';
@@ -22,6 +23,7 @@ import { UpdateTenantUserDto } from './dto/update-tenant-user.dto';
 import { TenantUser } from './tenant-user.entity';
 import { TenantUserService } from './tenant-user.service';
 
+@SkipAutoAudit()
 @Controller({ path: 'tenant-users', version: API_VERSION })
 export class TenantUserController {
   public constructor(private readonly tenantUserService: TenantUserService) {}

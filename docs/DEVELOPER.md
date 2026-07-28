@@ -214,9 +214,24 @@ differently locally vs. in CI.
 
 The `audit_log` table is range-partitioned by month. Migration
 `000007_create-audit-log-schema` creates the current UTC month plus the next
-three months. Rolling creation of future partitions is not automated yet —
-add the next month's partition before inserts would fall outside the seeded
-window (or extend the migration helper / ops job).
+three months.
+
+Rolling maintenance is handled by the `audit.partition-maintain` pg-boss
+worker: it runs once on startup and on a daily cron (`AUDIT_PARTITION_CRON`,
+default `0 3 * * *`), ensuring the current month plus
+`AUDIT_PARTITION_MONTHS_AHEAD` (default `3`) exist via
+`CREATE TABLE IF NOT EXISTS … PARTITION OF audit_log`.
+
+Manual fallback (ops):
+
+```sql
+CREATE TABLE IF NOT EXISTS audit_log_YYYY_MM
+  PARTITION OF audit_log
+  FOR VALUES FROM ('YYYY-MM-01T00:00:00.000Z') TO ('YYYY-MM+1-01T00:00:00.000Z');
+```
+
+Dropping/archiving old partitions is out of scope until a retention policy is
+defined.
 
 ### Run E2E Tests
 

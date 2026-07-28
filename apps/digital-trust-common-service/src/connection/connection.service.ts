@@ -4,6 +4,9 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 
+import { AuditAction } from '../audit-log/audit-log.entity';
+import { DomainAuditService } from '../audit-log/domain-audit.service';
+
 import { Connection, ConnectionState } from './connection.entity';
 import { ConnectionRepository } from './connection.repository';
 import { CreateConnectionDto } from './dto/create-connection.dto';
@@ -13,6 +16,7 @@ import { UpdateConnectionDto } from './dto/update-connection.dto';
 export class ConnectionService {
   public constructor(
     private readonly connectionRepository: ConnectionRepository,
+    private readonly domainAudit: DomainAuditService,
   ) {}
 
   public async create(dto: CreateConnectionDto): Promise<Connection> {
@@ -26,7 +30,7 @@ export class ConnectionService {
       );
     }
 
-    return await this.connectionRepository.create({
+    const created = await this.connectionRepository.create({
       tenantId: dto.tenantId,
       externalConnectionId: dto.externalConnectionId,
       theirLabel: dto.theirLabel,
@@ -36,6 +40,15 @@ export class ConnectionService {
       protocol: dto.protocol,
       metadata: dto.metadata || {},
     });
+
+    await this.domainAudit.emit({
+      tenantId: created.tenantId,
+      action: AuditAction.CREATE,
+      resourceType: 'connection',
+      resourceId: created.id,
+    });
+
+    return created;
   }
 
   public async findById(id: string): Promise<Connection> {
@@ -105,12 +118,28 @@ export class ConnectionService {
       connection.metadata = dto.metadata;
     }
 
-    return await this.connectionRepository.update(connection);
+    const updated = await this.connectionRepository.update(connection);
+
+    await this.domainAudit.emit({
+      tenantId: updated.tenantId,
+      action: AuditAction.UPDATE,
+      resourceType: 'connection',
+      resourceId: updated.id,
+    });
+
+    return updated;
   }
 
   public async delete(id: string): Promise<void> {
-    await this.findById(id);
+    const connection = await this.findById(id);
 
     await this.connectionRepository.delete(id);
+
+    await this.domainAudit.emit({
+      tenantId: connection.tenantId,
+      action: AuditAction.DELETE,
+      resourceType: 'connection',
+      resourceId: id,
+    });
   }
 }

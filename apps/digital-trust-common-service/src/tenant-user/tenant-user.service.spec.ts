@@ -1,6 +1,8 @@
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 
+import { DomainAuditService } from '../audit-log/domain-audit.service';
+
 import { CreateTenantUserDto } from './dto/create-tenant-user.dto';
 import {
   TenantUser,
@@ -19,6 +21,7 @@ describe('TenantUserService', () => {
   let mockFindByTenantAndExternalUserId: jest.Mock;
   let mockUpdate: jest.Mock;
   let mockDelete: jest.Mock;
+  let mockEmit: jest.Mock;
 
   const mockTenantUser: TenantUser = {
     id: '123e4567-e89b-12d3-a456-426614174000',
@@ -41,6 +44,7 @@ describe('TenantUserService', () => {
     mockFindByTenantAndExternalUserId = jest.fn();
     mockUpdate = jest.fn();
     mockDelete = jest.fn();
+    mockEmit = jest.fn().mockResolvedValue(undefined);
 
     const mockRepository = {
       create: mockCreate,
@@ -58,6 +62,10 @@ describe('TenantUserService', () => {
         {
           provide: TenantUserRepository,
           useValue: mockRepository,
+        },
+        {
+          provide: DomainAuditService,
+          useValue: { emit: mockEmit },
         },
       ],
     }).compile();

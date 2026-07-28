@@ -1,6 +1,7 @@
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 
+import { DomainAuditService } from '../audit-log/domain-audit.service';
 import { TenantStatus } from '../tenant/tenant.entity';
 
 import {
@@ -22,6 +23,7 @@ describe('CredentialDefinitionService', () => {
   let mockFindByConnector: jest.Mock;
   let mockUpdate: jest.Mock;
   let mockDelete: jest.Mock;
+  let mockEmit: jest.Mock;
 
   const mockCredentialDefinition: CredentialDefinition = {
     id: '123e4567-e89b-12d3-a456-426614174000',
@@ -56,6 +58,7 @@ describe('CredentialDefinitionService', () => {
     mockFindByConnector = jest.fn();
     mockUpdate = jest.fn();
     mockDelete = jest.fn();
+    mockEmit = jest.fn().mockResolvedValue(undefined);
 
     const mockRepository = {
       create: mockCreate,
@@ -74,6 +77,10 @@ describe('CredentialDefinitionService', () => {
         {
           provide: CredentialDefinitionRepository,
           useValue: mockRepository,
+        },
+        {
+          provide: DomainAuditService,
+          useValue: { emit: mockEmit },
         },
       ],
     }).compile();
