@@ -2,7 +2,7 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
 
 export const migrationName = 'CreateConnectorCredential';
 
-export class CreateConnectorCredential1784761690087 implements MigrationInterface {
+export class CreateConnectorCredential1785262250704 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
       CREATE TABLE connector_credential (

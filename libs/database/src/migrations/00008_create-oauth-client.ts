@@ -2,7 +2,7 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
 
 export const migrationName = 'CreateOauthClient';
 
-export class CreateOauthClient1784761471729 implements MigrationInterface {
+export class CreateOauthClient1785262142662 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
       CREATE TABLE oauth_client (
