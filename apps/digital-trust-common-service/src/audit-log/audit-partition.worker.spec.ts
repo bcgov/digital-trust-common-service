@@ -64,6 +64,54 @@ describe('AuditPartitionWorker', () => {
       {},
     );
     expect(mockPublish).toHaveBeenCalledWith('audit.partition-maintain', {});
+
+    const registeredHandler = mockRegisterWorker.mock.calls[0][1] as (
+      job: Job<AuditPartitionMaintainJobData>,
+    ) => Promise<void>;
+    await registeredHandler({
+      id: 'via-register',
+      data: { monthsAhead: 0 },
+    } as Job<AuditPartitionMaintainJobData>);
+    expect(mockQuery).toHaveBeenCalled();
+  });
+
+  it('registers worker but skips cron and startup when workers are disabled', async () => {
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        AuditPartitionWorker,
+        {
+          provide: JobsService,
+          useValue: {
+            registerWorker: mockRegisterWorker,
+            schedule: mockSchedule,
+            publish: mockPublish,
+          },
+        },
+        {
+          provide: ConfigService,
+          useValue: {
+            get: jest.fn((key: string, fallback?: string) =>
+              key === 'PG_BOSS_WORKERS_ENABLED' ? 'false' : fallback,
+            ),
+          },
+        },
+        {
+          provide: getDataSourceToken(),
+          useValue: { query: mockQuery },
+        },
+      ],
+    }).compile();
+
+    const disabledWorker = module.get(AuditPartitionWorker);
+    await disabledWorker.onModuleInit();
+
+    expect(mockRegisterWorker).toHaveBeenCalledWith(
+      'audit.partition-maintain',
+      expect.any(Function),
+      { enabled: false },
+    );
+    expect(mockSchedule).not.toHaveBeenCalled();
+    expect(mockPublish).not.toHaveBeenCalled();
   });
 
   it('creates monthly partitions for current + monthsAhead', async () => {

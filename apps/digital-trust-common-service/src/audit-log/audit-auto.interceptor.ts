@@ -153,17 +153,14 @@ export class AuditAutoInterceptor implements NestInterceptor {
   }
 
   private mapAction(method: string): AuditAction {
-    switch (method) {
-      case 'POST':
-        return AuditAction.CREATE;
-      case 'PUT':
-      case 'PATCH':
-        return AuditAction.UPDATE;
-      case 'DELETE':
-        return AuditAction.DELETE;
-      default:
-        return AuditAction.UPDATE;
+    if (method === 'POST') {
+      return AuditAction.CREATE;
     }
+    if (method === 'DELETE') {
+      return AuditAction.DELETE;
+    }
+    // PUT, PATCH, or any other mutating method already filtered above
+    return AuditAction.UPDATE;
   }
 
   private mapResourceType(path: string): string {

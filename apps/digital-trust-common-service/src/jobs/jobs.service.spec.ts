@@ -15,6 +15,7 @@ describe('JobsService', () => {
   const createQueue = jest.fn().mockResolvedValue(undefined);
   const work = jest.fn().mockResolvedValue('worker-1');
   const stop = jest.fn().mockResolvedValue(undefined);
+  const schedule = jest.fn().mockResolvedValue(undefined);
   const emit = jest.fn();
 
   const mockPgBossService = {
@@ -23,6 +24,7 @@ describe('JobsService', () => {
       createQueue,
       work,
       stop,
+      schedule,
     },
   } as unknown as PgBossService;
 
@@ -94,6 +96,17 @@ describe('JobsService', () => {
     expect(send).toHaveBeenCalledWith('test-job', null);
   });
 
+  it('should schedule a recurring cron for a queue', async () => {
+    await service.schedule('audit.partition-maintain', '0 3 * * *', {});
+
+    expect(createQueue).toHaveBeenCalled();
+    expect(schedule).toHaveBeenCalledWith(
+      'audit.partition-maintain',
+      '0 3 * * *',
+      {},
+    );
+  });
+
   it('should send within a transaction using a TypeORM adapter', async () => {
     send.mockResolvedValue('job-tx');
     const manager = {
@@ -114,7 +127,8 @@ describe('JobsService', () => {
   });
 
   it('should register a worker for a queue', async () => {
-    await service.registerWorker('audit.write', () => Promise.resolve());
+    const handler = jest.fn().mockResolvedValue(undefined);
+    await service.registerWorker('audit.write', handler);
 
     expect(work).toHaveBeenCalledWith(
       'audit.write',
@@ -124,6 +138,12 @@ describe('JobsService', () => {
       }),
       expect.any(Function),
     );
+
+    const workHandler = work.mock.calls[0][2] as (
+      jobs: Array<{ id: string }>,
+    ) => Promise<void>;
+    await workHandler([{ id: 'j1' }, { id: 'j2' }]);
+    expect(handler).toHaveBeenCalledTimes(2);
   });
 
   it('should skip worker registration when disabled', async () => {

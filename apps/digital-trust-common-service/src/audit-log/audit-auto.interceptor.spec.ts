@@ -183,4 +183,216 @@ describe('AuditAutoInterceptor', () => {
         },
       });
   });
+
+  it('skips non-http contexts', (done) => {
+    mockGet.mockImplementation((key: string, fallback?: string) =>
+      key === 'AUDIT_AUTO_INTERCEPTOR_ENABLED' ? 'true' : fallback,
+    );
+
+    const rpcContext = {
+      getType: () => 'rpc',
+      getHandler: () => ({}),
+      getClass: () => ({}),
+    } as unknown as ExecutionContext;
+
+    interceptor
+      .intercept(rpcContext, { handle: () => of({ ok: true }) } as CallHandler)
+      .subscribe({
+        complete: () => {
+          expect(mockEnqueue).not.toHaveBeenCalled();
+          done();
+        },
+      });
+  });
+
+  it('skips non-mutating methods', (done) => {
+    mockGet.mockImplementation((key: string, fallback?: string) =>
+      key === 'AUDIT_AUTO_INTERCEPTOR_ENABLED' ? 'true' : fallback,
+    );
+
+    interceptor
+      .intercept(
+        httpContext({
+          method: 'GET',
+          path: '/widgets/123e4567-e89b-12d3-a456-426614174099',
+          params: {
+            tenantId: '123e4567-e89b-12d3-a456-426614174001',
+            id: '123e4567-e89b-12d3-a456-426614174099',
+          },
+        }),
+        { handle: () => of({ ok: true }) } as CallHandler,
+      )
+      .subscribe({
+        complete: () => {
+          expect(mockEnqueue).not.toHaveBeenCalled();
+          done();
+        },
+      });
+  });
+
+  it('skips audit-logs paths', (done) => {
+    mockGet.mockImplementation((key: string, fallback?: string) =>
+      key === 'AUDIT_AUTO_INTERCEPTOR_ENABLED' ? 'true' : fallback,
+    );
+
+    interceptor
+      .intercept(
+        httpContext({
+          method: 'DELETE',
+          path: '/tenants/t1/audit-logs/abc',
+          params: {
+            tenantId: '123e4567-e89b-12d3-a456-426614174001',
+            id: 'abc',
+          },
+        }),
+        { handle: () => of({ ok: true }) } as CallHandler,
+      )
+      .subscribe({
+        complete: () => {
+          expect(mockEnqueue).not.toHaveBeenCalled();
+          done();
+        },
+      });
+  });
+
+  it('skips when tenantId cannot be resolved', (done) => {
+    mockGet.mockImplementation((key: string, fallback?: string) =>
+      key === 'AUDIT_AUTO_INTERCEPTOR_ENABLED' ? 'true' : fallback,
+    );
+
+    interceptor
+      .intercept(
+        httpContext({
+          method: 'PATCH',
+          path: '/widgets/123e4567-e89b-12d3-a456-426614174099',
+          params: { id: '123e4567-e89b-12d3-a456-426614174099' },
+        }),
+        { handle: () => of({ ok: true }) } as CallHandler,
+      )
+      .subscribe({
+        complete: () => {
+          setTimeout(() => {
+            expect(mockEnqueue).not.toHaveBeenCalled();
+            done();
+          }, 0);
+        },
+      });
+  });
+
+  it('maps PUT to UPDATE and enqueues with body tenantId', (done) => {
+    mockGet.mockImplementation((key: string, fallback?: string) =>
+      key === 'AUDIT_AUTO_INTERCEPTOR_ENABLED' ? 'true' : fallback,
+    );
+
+    interceptor
+      .intercept(
+        httpContext({
+          method: 'PUT',
+          path: '/credential-definitions/123e4567-e89b-12d3-a456-426614174099',
+          params: { id: '123e4567-e89b-12d3-a456-426614174099' },
+          body: { tenantId: '123e4567-e89b-12d3-a456-426614174001' },
+        }),
+        { handle: () => of({ ok: true }) } as CallHandler,
+      )
+      .subscribe({
+        complete: () => {
+          setTimeout(() => {
+            expect(mockEnqueue).toHaveBeenCalledWith(
+              expect.objectContaining({
+                action: AuditAction.UPDATE,
+                resourceType: 'credential_definitions',
+                tenantId: '123e4567-e89b-12d3-a456-426614174001',
+              }),
+            );
+            done();
+          }, 0);
+        },
+      });
+  });
+
+  it('maps PATCH to UPDATE', (done) => {
+    mockGet.mockImplementation((key: string, fallback?: string) =>
+      key === 'AUDIT_AUTO_INTERCEPTOR_ENABLED' ? 'true' : fallback,
+    );
+
+    interceptor
+      .intercept(
+        httpContext({
+          method: 'PATCH',
+          path: '/widgets/123e4567-e89b-12d3-a456-426614174099',
+          params: {
+            tenantId: '123e4567-e89b-12d3-a456-426614174001',
+            id: '123e4567-e89b-12d3-a456-426614174099',
+          },
+        }),
+        { handle: () => of({ ok: true }) } as CallHandler,
+      )
+      .subscribe({
+        complete: () => {
+          setTimeout(() => {
+            expect(mockEnqueue).toHaveBeenCalledWith(
+              expect.objectContaining({ action: AuditAction.UPDATE }),
+            );
+            done();
+          }, 0);
+        },
+      });
+  });
+
+  it('maps POST with path id to CREATE', (done) => {
+    mockGet.mockImplementation((key: string, fallback?: string) =>
+      key === 'AUDIT_AUTO_INTERCEPTOR_ENABLED' ? 'true' : fallback,
+    );
+
+    interceptor
+      .intercept(
+        httpContext({
+          method: 'POST',
+          path: '/widgets/123e4567-e89b-12d3-a456-426614174099/actions',
+          params: {
+            tenantId: '123e4567-e89b-12d3-a456-426614174001',
+            id: '123e4567-e89b-12d3-a456-426614174099',
+          },
+        }),
+        { handle: () => of({ ok: true }) } as CallHandler,
+      )
+      .subscribe({
+        complete: () => {
+          setTimeout(() => {
+            expect(mockEnqueue).toHaveBeenCalledWith(
+              expect.objectContaining({ action: AuditAction.CREATE }),
+            );
+            done();
+          }, 0);
+        },
+      });
+  });
+
+  it('fail-opens when enqueue rejects', (done) => {
+    mockGet.mockImplementation((key: string, fallback?: string) =>
+      key === 'AUDIT_AUTO_INTERCEPTOR_ENABLED' ? 'true' : fallback,
+    );
+    mockEnqueue.mockRejectedValue(new Error('queue down'));
+
+    interceptor
+      .intercept(
+        httpContext({
+          method: 'DELETE',
+          path: '/widgets/123e4567-e89b-12d3-a456-426614174099',
+          params: {
+            tenantId: '123e4567-e89b-12d3-a456-426614174001',
+            id: '123e4567-e89b-12d3-a456-426614174099',
+          },
+        }),
+        { handle: () => of({ ok: true }) } as CallHandler,
+      )
+      .subscribe({
+        complete: () => {
+          setTimeout(() => {
+            expect(mockEnqueue).toHaveBeenCalled();
+            done();
+          }, 0);
+        },
+      });
+  });
 });
