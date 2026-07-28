@@ -9,6 +9,7 @@ import { AuditLogModule } from './audit-log/audit-log.module';
 import { EncryptionModule } from './common/crypto/encryption.module';
 import { ConnectionModule } from './connection/connection.module';
 import { ConnectorCredentialModule } from './connector-credential/connector-credential.module';
+import { CredentialModule } from './credential/credential.module';
 import { CredentialDefinitionModule } from './credential-definition/credential-definition.module';
 import { HealthModule } from './health/health.module';
 import { IssuanceProfileModule } from './issuance-profile/issuance-profile.module';
@@ -36,6 +37,7 @@ import { VerificationProfileModule } from './verification-profile/verification-p
     ConnectorCredentialModule,
     OAuthClientModule,
     OperationModule,
+    CredentialModule,
     JobsModule,
     AdminModule,
     AuditLogModule,
