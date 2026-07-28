@@ -139,9 +139,11 @@ describe('JobsService', () => {
       expect.any(Function),
     );
 
-    const workHandler = work.mock.calls[0][2] as (
-      jobs: Array<{ id: string }>,
-    ) => Promise<void>;
+    const [, , workHandler] = work.mock.calls[0] as [
+      string,
+      object,
+      (jobs: Array<{ id: string }>) => Promise<void>,
+    ];
     await workHandler([{ id: 'j1' }, { id: 'j2' }]);
     expect(handler).toHaveBeenCalledTimes(2);
   });

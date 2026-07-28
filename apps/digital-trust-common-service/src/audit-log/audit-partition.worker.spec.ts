@@ -65,9 +65,11 @@ describe('AuditPartitionWorker', () => {
     );
     expect(mockPublish).toHaveBeenCalledWith('audit.partition-maintain', {});
 
-    const registeredHandler = mockRegisterWorker.mock.calls[0][1] as (
-      job: Job<AuditPartitionMaintainJobData>,
-    ) => Promise<void>;
+    const [, registeredHandler] = mockRegisterWorker.mock.calls[0] as [
+      string,
+      (job: Job<AuditPartitionMaintainJobData>) => Promise<void>,
+      { enabled: boolean },
+    ];
     await registeredHandler({
       id: 'via-register',
       data: { monthsAhead: 0 },
