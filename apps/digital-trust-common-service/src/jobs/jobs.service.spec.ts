@@ -1,4 +1,6 @@
 import { PgBossService } from '@app/pg-boss';
+import { ConfigService } from '@nestjs/config';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Test, TestingModule } from '@nestjs/testing';
 
 import { ShutdownRegistry } from '../shutdown/shutdown-registry';
@@ -10,15 +12,23 @@ describe('JobsService', () => {
   let shutdownRegistry: ShutdownRegistry;
 
   const send = jest.fn();
+  const createQueue = jest.fn().mockResolvedValue(undefined);
+  const work = jest.fn().mockResolvedValue('worker-1');
+  const stop = jest.fn().mockResolvedValue(undefined);
+  const emit = jest.fn();
 
   const mockPgBossService = {
     boss: {
       send,
+      createQueue,
+      work,
+      stop,
     },
   } as unknown as PgBossService;
 
   beforeEach(async () => {
     jest.clearAllMocks();
+    createQueue.mockResolvedValue(undefined);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -28,6 +38,21 @@ describe('JobsService', () => {
           useValue: mockPgBossService,
         },
         ShutdownRegistry,
+        {
+          provide: ConfigService,
+          useValue: {
+            get: jest.fn((key: string, fallback?: string) => {
+              if (key === 'NODE_ENV') {
+                return 'development';
+              }
+              return fallback;
+            }),
+          },
+        },
+        {
+          provide: EventEmitter2,
+          useValue: { emit },
+        },
       ],
     }).compile();
 
@@ -39,12 +64,14 @@ describe('JobsService', () => {
     expect(service).toBeDefined();
   });
 
-  it('should register itself with shutdown registry on module init', () => {
+  it('should register itself and ensure queues on module init', async () => {
     const registerSpy = jest.spyOn(shutdownRegistry, 'register');
 
-    service.onModuleInit();
+    await service.onModuleInit();
 
     expect(registerSpy).toHaveBeenCalledWith(service);
+    expect(createQueue).toHaveBeenCalled();
+    expect(emit).toHaveBeenCalledWith('jobs.queues.ready');
   });
 
   it('should publish a job', async () => {
@@ -67,6 +94,69 @@ describe('JobsService', () => {
     expect(send).toHaveBeenCalledWith('test-job', null);
   });
 
+  it('should send within a transaction using a TypeORM adapter', async () => {
+    send.mockResolvedValue('job-tx');
+    const manager = {
+      query: jest.fn(),
+    } as unknown as import('typeorm').EntityManager;
+
+    await service.sendInTransaction(manager, 'audit.write', { a: 1 });
+
+    expect(send).toHaveBeenCalledWith(
+      'audit.write',
+      { a: 1 },
+      expect.objectContaining({
+        db: expect.objectContaining({
+          executeSql: expect.any(Function),
+        }),
+      }),
+    );
+  });
+
+  it('should register a worker for a queue', async () => {
+    await service.registerWorker('audit.write', () => Promise.resolve());
+
+    expect(work).toHaveBeenCalledWith(
+      'audit.write',
+      expect.objectContaining({
+        pollingIntervalSeconds: 2,
+        localConcurrency: 2,
+      }),
+      expect.any(Function),
+    );
+  });
+
+  it('should skip worker registration when disabled', async () => {
+    await expect(
+      service.registerWorker('audit.write', () => Promise.resolve(), {
+        enabled: false,
+      }),
+    ).resolves.toBeNull();
+    expect(work).not.toHaveBeenCalled();
+  });
+
+  it('should only create queues once under concurrent ensureQueues calls', async () => {
+    await Promise.all([service.ensureQueues(), service.ensureQueues()]);
+
+    // 5 queues + 5 DLQs
+    expect(createQueue).toHaveBeenCalledTimes(10);
+
+    await service.ensureQueues();
+    expect(createQueue).toHaveBeenCalledTimes(10);
+  });
+
+  it('should retry ensureQueues after a previous failure', async () => {
+    createQueue
+      .mockRejectedValueOnce(new Error('transient'))
+      .mockResolvedValue(undefined);
+
+    await expect(service.ensureQueues()).rejects.toThrow('transient');
+    await expect(service.ensureQueues()).resolves.toBeUndefined();
+
+    // First attempt fails mid-way after 1 call; second attempt creates 10.
+    expect(createQueue).toHaveBeenCalledTimes(11);
+  });
+
   it('should propagate errors from pg-boss', async () => {
     const error = new Error('send failed');
 
@@ -78,9 +168,6 @@ describe('JobsService', () => {
   });
 
   it('should shutdown the boss service', async () => {
-    const stop = jest.fn().mockResolvedValue(undefined);
-    mockPgBossService.boss.stop = stop;
-
     await service.shutdown();
 
     expect(stop).toHaveBeenCalledTimes(1);

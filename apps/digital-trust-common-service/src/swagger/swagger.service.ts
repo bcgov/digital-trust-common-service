@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { Response } from 'express';
 
+import { AuditLogModule } from '../audit-log/audit-log.module';
 import { ConnectionModule } from '../connection/connection.module';
 import { CredentialDefinitionModule } from '../credential-definition/credential-definition.module';
 import { OperationModule } from '../operation/operation.module';
@@ -15,7 +16,12 @@ const swaggerApps = [
     title: 'Tenant API',
     description: 'API endpoints for tenant and tenant user management',
     version: '1.0',
-    modules: [TenantModule, TenantUserModule, CredentialDefinitionModule],
+    modules: [
+      TenantModule,
+      TenantUserModule,
+      CredentialDefinitionModule,
+      AuditLogModule,
+    ],
   },
   {
     name: 'dc',

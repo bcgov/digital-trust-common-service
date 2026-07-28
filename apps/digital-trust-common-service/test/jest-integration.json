@@ -3,6 +3,7 @@
   "rootDir": "../../..",
   "roots": ["<rootDir>/apps/", "<rootDir>/libs/"],
   "testEnvironment": "node",
+  "maxWorkers": 1,
   "setupFilesAfterEnv": [
     "<rootDir>/apps/digital-trust-common-service/test/jest-integration-setup.ts"
   ],

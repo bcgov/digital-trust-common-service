@@ -176,6 +176,14 @@ Note CI runs integration tests against a different PostgreSQL instance
 `dc_common_service`) — check your `DB_*` variables if a test behaves
 differently locally vs. in CI.
 
+### Audit log partitions
+
+The `audit_log` table is range-partitioned by month. Migration
+`000007_create-audit-log-schema` creates the current UTC month plus the next
+three months. Rolling creation of future partitions is not automated yet —
+add the next month's partition before inserts would fall outside the seeded
+window (or extend the migration helper / ops job).
+
 ### Run E2E Tests
 
 ```bash

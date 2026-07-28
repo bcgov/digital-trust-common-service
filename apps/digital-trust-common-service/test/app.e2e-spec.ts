@@ -13,6 +13,8 @@ describe('AppController (e2e)', () => {
     start: jest.fn().mockResolvedValue(undefined),
     stop: jest.fn().mockResolvedValue(undefined),
     send: jest.fn().mockResolvedValue(undefined),
+    createQueue: jest.fn().mockResolvedValue(undefined),
+    work: jest.fn().mockResolvedValue('worker-1'),
   };
 
   beforeEach(async () => {
