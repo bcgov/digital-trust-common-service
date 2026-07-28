@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, SelectQueryBuilder } from 'typeorm';
+import type { QueryDeepPartialEntity } from 'typeorm/query-builder/QueryPartialEntity';
 
 import { AuditAction, AuditLog } from './audit-log.entity';
 
@@ -43,11 +44,13 @@ export class AuditLogRepository {
 
   /** Insert-only write path — no update/delete methods by design (PE-04). */
   public async insert(entry: AuditLogInsert): Promise<AuditLog> {
+    // QueryDeepPartialEntity rejects Record<string, unknown> jsonb fields;
+    // cast is safe — callers only supply scalar/json insert columns.
     const result = await this.repository
       .createQueryBuilder()
       .insert()
       .into(AuditLog)
-      .values(entry)
+      .values(entry as QueryDeepPartialEntity<AuditLog>)
       .returning('*')
       .execute();
 
