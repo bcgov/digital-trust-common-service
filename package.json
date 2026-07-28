@@ -90,7 +90,7 @@
       "^.+\\.(t|j)s$": "ts-jest"
     },
     "collectCoverageFrom": [
-      "**/*.(t|j)s",
+      "**/*.{ts,js}",
       "!**/*.spec.ts",
       "!**/*.e2e-spec.ts",
       "!**/*.integration-spec.ts",

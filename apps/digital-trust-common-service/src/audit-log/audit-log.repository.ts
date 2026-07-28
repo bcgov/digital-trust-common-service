@@ -28,6 +28,12 @@ export type AuditLogPage = {
 /** Soft cap for CSV export to avoid unbounded memory use. */
 export const AUDIT_LOG_EXPORT_MAX_ROWS = 10_000;
 
+/** Insert payload — callers must not supply DB-generated fields. */
+export type AuditLogInsert = Omit<
+  Partial<AuditLog>,
+  'id' | 'createdAt' | 'tenant' | 'operation'
+>;
+
 @Injectable()
 export class AuditLogRepository {
   public constructor(
@@ -36,9 +42,16 @@ export class AuditLogRepository {
   ) {}
 
   /** Insert-only write path — no update/delete methods by design (PE-04). */
-  public async insert(entry: Partial<AuditLog>): Promise<AuditLog> {
-    const entity = this.repository.create(entry);
-    return await this.repository.save(entity);
+  public async insert(entry: AuditLogInsert): Promise<AuditLog> {
+    const result = await this.repository
+      .createQueryBuilder()
+      .insert()
+      .into(AuditLog)
+      .values(entry)
+      .returning('*')
+      .execute();
+
+    return this.repository.create(result.generatedMaps[0] as AuditLog);
   }
 
   public async findByIdForTenant(

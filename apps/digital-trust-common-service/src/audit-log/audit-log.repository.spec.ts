@@ -11,7 +11,6 @@ describe('AuditLogRepository', () => {
   let repository: AuditLogRepository;
   let mockTypeOrmRepo: {
     create: jest.Mock;
-    save: jest.Mock;
     findOne: jest.Mock;
     createQueryBuilder: jest.Mock;
   };
@@ -22,6 +21,11 @@ describe('AuditLogRepository', () => {
     addOrderBy: jest.Mock;
     take: jest.Mock;
     getMany: jest.Mock;
+    insert: jest.Mock;
+    into: jest.Mock;
+    values: jest.Mock;
+    returning: jest.Mock;
+    execute: jest.Mock;
   };
 
   const entry: AuditLog = {
@@ -47,11 +51,15 @@ describe('AuditLogRepository', () => {
       addOrderBy: jest.fn().mockReturnThis(),
       take: jest.fn().mockReturnThis(),
       getMany: jest.fn().mockResolvedValue([entry]),
+      insert: jest.fn().mockReturnThis(),
+      into: jest.fn().mockReturnThis(),
+      values: jest.fn().mockReturnThis(),
+      returning: jest.fn().mockReturnThis(),
+      execute: jest.fn().mockResolvedValue({ generatedMaps: [entry] }),
     };
 
     mockTypeOrmRepo = {
       create: jest.fn((value: Partial<AuditLog>) => value),
-      save: jest.fn().mockResolvedValue(entry),
       findOne: jest.fn().mockResolvedValue(entry),
       createQueryBuilder: jest.fn().mockReturnValue(mockQb),
     };
@@ -69,20 +77,23 @@ describe('AuditLogRepository', () => {
     repository = module.get(AuditLogRepository);
   });
 
-  it('inserts an audit log entry', async () => {
-    await expect(
-      repository.insert({
-        tenantId: entry.tenantId,
-        actorId: entry.actorId,
-        actorType: entry.actorType,
-        action: entry.action,
-        resourceType: entry.resourceType,
-        resourceId: entry.resourceId,
-      }),
-    ).resolves.toEqual(entry);
+  it('inserts an audit log entry via INSERT ... RETURNING', async () => {
+    const payload = {
+      tenantId: entry.tenantId,
+      actorId: entry.actorId,
+      actorType: entry.actorType,
+      action: entry.action,
+      resourceType: entry.resourceType,
+      resourceId: entry.resourceId,
+    };
 
-    expect(mockTypeOrmRepo.create).toHaveBeenCalled();
-    expect(mockTypeOrmRepo.save).toHaveBeenCalled();
+    await expect(repository.insert(payload)).resolves.toEqual(entry);
+
+    expect(mockQb.insert).toHaveBeenCalled();
+    expect(mockQb.into).toHaveBeenCalledWith(AuditLog);
+    expect(mockQb.values).toHaveBeenCalledWith(payload);
+    expect(mockQb.returning).toHaveBeenCalledWith('*');
+    expect(mockTypeOrmRepo.create).toHaveBeenCalledWith(entry);
   });
 
   it('finds by tenant and id', async () => {

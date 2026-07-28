@@ -42,6 +42,9 @@ jest.mock('../connection/connection.module', () => ({
 jest.mock('../operation/operation.module', () => ({
   OperationModule: jest.fn(),
 }));
+jest.mock('../audit-log/audit-log.module', () => ({
+  AuditLogModule: jest.fn(),
+}));
 
 import { SwaggerService } from './swagger.service';
 

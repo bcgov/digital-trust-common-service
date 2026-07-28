@@ -44,7 +44,10 @@ export class JobsService implements ShutdownParticipant, OnModuleInit {
     }
 
     if (!this.ensureQueuesPromise) {
-      this.ensureQueuesPromise = this.createQueuesOnce();
+      this.ensureQueuesPromise = this.createQueuesOnce().catch((err) => {
+        this.ensureQueuesPromise = null;
+        throw err;
+      });
     }
 
     await this.ensureQueuesPromise;

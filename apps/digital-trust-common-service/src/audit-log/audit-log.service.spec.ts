@@ -111,4 +111,19 @@ describe('AuditLogService', () => {
     expect(csv).toContain('id,tenant_id,actor_id');
     expect(csv).toContain(mockEntry.id);
   });
+
+  it('neutralizes CSV formula injection', async () => {
+    mockFindForExport.mockResolvedValue([
+      {
+        ...mockEntry,
+        actorId: '=cmd()',
+        ipAddress: '+1-555-0100',
+      },
+    ]);
+
+    const csv = await service.exportCsv(mockEntry.tenantId, {});
+
+    expect(csv).toContain("'=cmd()");
+    expect(csv).toContain("'+1-555-0100");
+  });
 });

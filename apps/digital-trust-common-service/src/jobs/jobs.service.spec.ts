@@ -145,6 +145,18 @@ describe('JobsService', () => {
     expect(createQueue).toHaveBeenCalledTimes(10);
   });
 
+  it('should retry ensureQueues after a previous failure', async () => {
+    createQueue
+      .mockRejectedValueOnce(new Error('transient'))
+      .mockResolvedValue(undefined);
+
+    await expect(service.ensureQueues()).rejects.toThrow('transient');
+    await expect(service.ensureQueues()).resolves.toBeUndefined();
+
+    // First attempt fails mid-way after 1 call; second attempt creates 10.
+    expect(createQueue).toHaveBeenCalledTimes(11);
+  });
+
   it('should propagate errors from pg-boss', async () => {
     const error = new Error('send failed');
 

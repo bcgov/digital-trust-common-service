@@ -99,36 +99,32 @@ export class AuditLogService {
       AUDIT_LOG_EXPORT_MAX_ROWS,
     );
 
-    const header = [
-      'id',
-      'tenant_id',
-      'actor_id',
-      'actor_type',
-      'action',
-      'resource_type',
-      'resource_id',
-      'operation_id',
-      'ip_address',
-      'created_at',
-      'metadata',
-    ].join(',');
+    const columns: Array<{
+      header: string;
+      value: (row: AuditLog) => string;
+    }> = [
+      { header: 'id', value: (row) => row.id },
+      { header: 'tenant_id', value: (row) => row.tenantId },
+      { header: 'actor_id', value: (row) => row.actorId },
+      { header: 'actor_type', value: (row) => row.actorType },
+      { header: 'action', value: (row) => row.action },
+      { header: 'resource_type', value: (row) => row.resourceType },
+      { header: 'resource_id', value: (row) => row.resourceId },
+      { header: 'operation_id', value: (row) => row.operationId ?? '' },
+      { header: 'ip_address', value: (row) => row.ipAddress ?? '' },
+      {
+        header: 'created_at',
+        value: (row) => row.createdAt.toISOString(),
+      },
+      {
+        header: 'metadata',
+        value: (row) => JSON.stringify(row.metadata ?? {}),
+      },
+    ];
 
+    const header = columns.map((column) => column.header).join(',');
     const lines = rows.map((row) =>
-      [
-        row.id,
-        row.tenantId,
-        row.actorId,
-        row.actorType,
-        row.action,
-        row.resourceType,
-        row.resourceId,
-        row.operationId ?? '',
-        row.ipAddress ?? '',
-        row.createdAt.toISOString(),
-        JSON.stringify(row.metadata ?? {}),
-      ]
-        .map((value) => this.csvEscape(String(value)))
-        .join(','),
+      columns.map((column) => this.csvEscape(column.value(row))).join(','),
     );
 
     return [header, ...lines].join('\n');
@@ -155,9 +151,11 @@ export class AuditLogService {
   }
 
   private csvEscape(value: string): string {
-    if (/[",\n]/.test(value)) {
-      return `"${value.replace(/"/g, '""')}"`;
+    // Neutralize spreadsheet formula injection before quoting.
+    const safe = /^[=+\-@]/.test(value) ? `'${value}` : value;
+    if (/[",\n]/.test(safe)) {
+      return `"${safe.replace(/"/g, '""')}"`;
     }
-    return value;
+    return safe;
   }
 }

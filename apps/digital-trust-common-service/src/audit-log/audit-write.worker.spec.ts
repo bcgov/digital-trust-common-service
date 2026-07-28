@@ -70,7 +70,10 @@ describe('AuditWriteWorker', () => {
 
     await worker.handle(job);
 
-    expect(mockWrite).toHaveBeenCalledWith(job.data);
+    expect(mockWrite).toHaveBeenCalledWith({
+      ...job.data,
+      operationId: null,
+    });
   });
 
   it('rejects invalid payloads', async () => {
@@ -104,6 +107,45 @@ describe('AuditWriteWorker', () => {
           action: AuditAction.LOGIN,
           resourceType: 'session',
           resourceId: 'not-a-uuid',
+        },
+      } as Job<AuditWriteJobData>),
+    ).rejects.toThrow('Invalid audit.write payload');
+  });
+
+  it('normalizes empty operationId to null', async () => {
+    const job = {
+      id: 'job-1',
+      data: {
+        tenantId: '123e4567-e89b-12d3-a456-426614174001',
+        actorId: 'user-1',
+        actorType: AuditActorType.USER,
+        action: AuditAction.LOGIN,
+        resourceType: 'session',
+        resourceId: '123e4567-e89b-12d3-a456-426614174099',
+        operationId: '',
+      },
+    } as Job<AuditWriteJobData>;
+
+    await worker.handle(job);
+
+    expect(mockWrite).toHaveBeenCalledWith({
+      ...job.data,
+      operationId: null,
+    });
+  });
+
+  it('rejects non-uuid operation ids', async () => {
+    await expect(
+      worker.handle({
+        id: 'x',
+        data: {
+          tenantId: '123e4567-e89b-12d3-a456-426614174001',
+          actorId: 'user-1',
+          actorType: AuditActorType.USER,
+          action: AuditAction.LOGIN,
+          resourceType: 'session',
+          resourceId: '123e4567-e89b-12d3-a456-426614174099',
+          operationId: 'not-a-uuid',
         },
       } as Job<AuditWriteJobData>),
     ).rejects.toThrow('Invalid audit.write payload');

@@ -69,12 +69,15 @@ export class AuditWriteWorker implements OnModuleInit {
       throw new Error('Invalid audit.write payload');
     }
 
+    const operationId =
+      data.operationId === '' || data.operationId == null
+        ? null
+        : data.operationId;
+
     if (
       !UUID_RE.test(data.tenantId) ||
       !UUID_RE.test(data.resourceId) ||
-      (data.operationId != null &&
-        data.operationId !== '' &&
-        !UUID_RE.test(data.operationId))
+      (operationId != null && !UUID_RE.test(operationId))
     ) {
       throw new Error('Invalid audit.write payload');
     }
@@ -87,6 +90,6 @@ export class AuditWriteWorker implements OnModuleInit {
       throw new Error('Invalid audit.write payload');
     }
 
-    return data;
+    return { ...data, operationId };
   }
 }
