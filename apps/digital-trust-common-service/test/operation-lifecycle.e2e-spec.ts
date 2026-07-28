@@ -7,6 +7,10 @@ import { Repository } from 'typeorm';
 
 import { AppModule } from '../src/app.module';
 import { OperationPurgeService } from '../src/operation/operation-purge.service';
+import {
+  DEFAULT_CREATED_TTL_MS,
+  DEFAULT_OPERATION_TTL_MS,
+} from '../src/operation/operation-ttl.util';
 import { Operation, OperationState } from '../src/operation/operation.entity';
 import { OperationService } from '../src/operation/operation.service';
 import { Tenant } from '../src/tenant/tenant.entity';
@@ -69,7 +73,7 @@ describe('Operation TTL & purge (e2e)', () => {
     return tenantRepo.save(tenant);
   }
 
-  it('applies the system-default 72h TTL on creation when the tenant has no override', async () => {
+  it('applies the system-default pending_stale (24h) TTL on creation when the tenant has no override', async () => {
     const tenant = await createTenant('ttl-default');
 
     const before = Date.now();
@@ -80,7 +84,7 @@ describe('Operation TTL & purge (e2e)', () => {
     });
     const after = Date.now();
 
-    const expectedMinMs = 72 * 60 * 60 * 1000;
+    const expectedMinMs = DEFAULT_OPERATION_TTL_MS.pendingStale;
     const actualMs =
       operation.expiresAt.getTime() - operation.createdAt.getTime();
 
@@ -104,10 +108,10 @@ describe('Operation TTL & purge (e2e)', () => {
 
     const createdActualMs =
       created.expiresAt.getTime() - created.createdAt.getTime();
-    const systemDefaultMs = 72 * 60 * 60 * 1000;
+    const pendingDefaultMs = DEFAULT_OPERATION_TTL_MS.pendingStale;
 
-    expect(createdActualMs).toBeGreaterThanOrEqual(systemDefaultMs - 1000);
-    expect(createdActualMs).toBeLessThanOrEqual(systemDefaultMs + 1000);
+    expect(createdActualMs).toBeGreaterThanOrEqual(pendingDefaultMs - 1000);
+    expect(createdActualMs).toBeLessThanOrEqual(pendingDefaultMs + 1000);
 
     const processing = await operationService.transitionState(
       created.id,
@@ -116,10 +120,13 @@ describe('Operation TTL & purge (e2e)', () => {
 
     const processingActualMs =
       processing.expiresAt.getTime() - processing.createdAt.getTime();
+    const processingDefaultMs = DEFAULT_CREATED_TTL_MS;
 
     expect(processing.state).toBe(OperationState.PROCESSING);
-    expect(processingActualMs).toBeGreaterThanOrEqual(systemDefaultMs - 1000);
-    expect(processingActualMs).toBeLessThanOrEqual(systemDefaultMs + 1000);
+    expect(processingActualMs).toBeGreaterThanOrEqual(
+      processingDefaultMs - 1000,
+    );
+    expect(processingActualMs).toBeLessThanOrEqual(processingDefaultMs + 1000);
   });
 
   it('honors a per-tenant operation_ttl.completed_unviewed override', async () => {
@@ -234,7 +241,7 @@ describe('Operation TTL & purge (e2e)', () => {
     expect(actualMs).toBeLessThanOrEqual(expectedMs + 1000);
   });
 
-  it('honors a per-tenant operation_ttl.pending_stale override while pending', async () => {
+  it('honors a per-tenant operation_ttl.pending_stale override at creation', async () => {
     const tenant = await createTenant('ttl-pending-stale', {
       operation_ttl: { pending_stale: '4h' },
     });
@@ -245,21 +252,38 @@ describe('Operation TTL & purge (e2e)', () => {
       request: { method: 'POST', path: '/x', body: {} },
     });
 
-    // transitionState() recomputes expiresAt via computeExpiresAt() for the
-    // *current* state, so re-asserting PENDING exercises the pending_stale
-    // branch (creation always uses the create-time default; PE-08's stale
-    // sweep is what would apply this override to a still-pending operation).
-    const pending = await operationService.transitionState(
-      operation.id,
-      OperationState.PENDING,
-    );
-
-    const actualMs = pending.expiresAt.getTime() - pending.createdAt.getTime();
+    const actualMs =
+      operation.expiresAt.getTime() - operation.createdAt.getTime();
     const expectedMs = 4 * 60 * 60 * 1000;
 
-    expect(pending.state).toBe(OperationState.PENDING);
+    expect(operation.state).toBe(OperationState.PENDING);
     expect(actualMs).toBeGreaterThanOrEqual(expectedMs - 1000);
     expect(actualMs).toBeLessThanOrEqual(expectedMs + 1000);
+  });
+
+  it('does not change expiresAt when marking a still-PENDING operation as viewed (regression: viewing must never shorten a non-terminal TTL)', async () => {
+    const tenant = await createTenant('ttl-pending-viewed', {
+      operation_ttl: { pending_stale: '4h' },
+    });
+
+    const operation = await operationService.createOperation({
+      tenantId: tenant.id,
+      type: 'credential.offer',
+      request: { method: 'POST', path: '/x', body: {} },
+    });
+
+    const viewed = await operationService.markViewed(operation.id);
+
+    expect(viewed.state).toBe(OperationState.PENDING);
+    expect(viewed.viewedAt).not.toBeNull();
+    // The key assertion is that viewing didn't recompute expiry off a different
+    // TTL constant (the pre-fix bug shifted PENDING from pending_stale 4h to a
+    // 72h create-default — an hours-sized jump). A small (<2s) delta is expected
+    // and benign: createOperation() bases expiry on the app clock while
+    // markViewed() recomputes from the DB-assigned createdAt a few ms later.
+    expect(
+      Math.abs(viewed.expiresAt.getTime() - operation.expiresAt.getTime()),
+    ).toBeLessThanOrEqual(2000);
   });
 
   it('falls back to the system default when a tenant override is malformed', async () => {
@@ -281,7 +305,8 @@ describe('Operation TTL & purge (e2e)', () => {
 
     const actualMs =
       completed.expiresAt.getTime() - completed.createdAt.getTime();
-    const expectedMs = 72 * 60 * 60 * 1000; // system default, override ignored
+    // Malformed completed_unviewed override → falls back to system default.
+    const expectedMs = DEFAULT_OPERATION_TTL_MS.completedUnviewed;
 
     expect(actualMs).toBeGreaterThanOrEqual(expectedMs - 1000);
     expect(actualMs).toBeLessThanOrEqual(expectedMs + 1000);

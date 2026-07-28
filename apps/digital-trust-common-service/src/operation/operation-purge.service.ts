@@ -28,7 +28,13 @@ export class OperationPurgeService implements OnModuleInit {
   public async onModuleInit(): Promise<void> {
     const { boss } = this.bossService;
 
-    await boss.createQueue(OPERATION_PURGE_QUEUE);
+    // 'exclusive' policy: at most one purge job may be queued OR active at a
+    // time across the whole cluster. The purge is an idempotent cleanup sweep,
+    // so if a run ever outlives its hourly schedule (large backlog), the next
+    // tick's job is dropped rather than run concurrently — the following
+    // scheduled run drains the remainder. This guarantees a single pod runs the
+    // purge at a time without leader election. See pg-boss QueuePolicy docs.
+    await boss.createQueue(OPERATION_PURGE_QUEUE, { policy: 'exclusive' });
     await boss.schedule(OPERATION_PURGE_QUEUE, PURGE_SCHEDULE_CRON);
     await boss.work(OPERATION_PURGE_QUEUE, () => this.purgeExpiredOperations());
   }

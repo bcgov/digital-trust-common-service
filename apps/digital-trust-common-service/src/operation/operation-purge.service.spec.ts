@@ -55,7 +55,9 @@ describe('OperationPurgeService', () => {
     it('creates the queue, schedules the hourly cron, and registers the worker', async () => {
       await service.onModuleInit();
 
-      expect(mockCreateQueue).toHaveBeenCalledWith(OPERATION_PURGE_QUEUE);
+      expect(mockCreateQueue).toHaveBeenCalledWith(OPERATION_PURGE_QUEUE, {
+        policy: 'exclusive',
+      });
       expect(mockSchedule).toHaveBeenCalledWith(
         OPERATION_PURGE_QUEUE,
         '0 * * * *',

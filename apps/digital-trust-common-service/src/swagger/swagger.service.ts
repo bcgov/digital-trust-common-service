@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { Response } from 'express';
 
+import { AdminModule } from '../admin/admin.module';
 import { ConnectionModule } from '../connection/connection.module';
 import { CredentialDefinitionModule } from '../credential-definition/credential-definition.module';
 import { OperationModule } from '../operation/operation.module';
@@ -23,6 +24,14 @@ const swaggerApps = [
     description: 'API endpoints for Digital Credential operations',
     version: '1.0',
     modules: [ConnectionModule, OperationModule],
+  },
+  {
+    name: 'admin',
+    title: 'Platform Administration API',
+    description:
+      'Cross-tenant platform administration endpoints for platform operators and internal tooling',
+    version: '1.0',
+    modules: [AdminModule],
   },
 ];
 

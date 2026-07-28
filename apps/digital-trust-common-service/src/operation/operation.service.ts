@@ -73,13 +73,14 @@ export class OperationService {
     input: CreateOperationInput,
   ): Promise<Operation> {
     const now = new Date();
+    const tenant = await this.tenants.findById(input.tenantId);
 
-    // On create the operation is pending: expires_at = created_at + the fixed
-    // system default (issue spec: 72h), not the tenant's completed_unviewed
-    // override — that override only applies once the operation has actually
-    // completed without being viewed (see computeExpiresAt()). The
-    // pending_stale TTL is applied only by the PE-08 purge sweep for stale
-    // pending operations, not at creation.
+    // On create the operation is pending: expires_at = created_at +
+    // tenant.config.operation_ttl.pending_stale (default 24h), resolved via
+    // computeExpiresAt() so creation and any later recompute (e.g.
+    // markViewed() on a still-pending operation) agree on the same value —
+    // otherwise viewing a still-pending operation would rewrite its expiry
+    // to a different TTL than the one it was created with.
     const operation = this.operations.create({
       tenantId: input.tenantId,
       type: input.type,
@@ -87,7 +88,12 @@ export class OperationService {
       batchId: input.batchId ?? null,
       externalId: input.externalId ?? null,
       state: OperationState.PENDING,
-      expiresAt: new Date(now.getTime() + DEFAULT_CREATED_TTL_MS),
+      expiresAt: this.computeExpiresAt(
+        OperationState.PENDING,
+        now,
+        null,
+        tenant.config,
+      ),
     });
 
     return this.operations.save(operation);

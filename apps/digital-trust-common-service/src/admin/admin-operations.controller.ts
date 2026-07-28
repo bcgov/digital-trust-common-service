@@ -9,7 +9,7 @@ import { OperationStatsResponseDto } from './dto/operation-stats-response.dto';
 // TODOs) that will validate the app-issued JWT and required admin scope once
 // implemented. Applied here per the project's intended admin auth pattern.
 @ApiTags('admin')
-@Controller('api/v1/admin/operations')
+@Controller('admin/operations')
 @UseGuards(JwtGuard, ScopeGuard)
 export class AdminOperationsController {
   public constructor(

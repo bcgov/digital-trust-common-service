@@ -102,9 +102,9 @@ describe('AdminOperationsController (e2e)', () => {
     return operationRepo.findOneByOrFail({ id: saved.id });
   }
 
-  it('/api/v1/admin/operations/stats (GET) returns zeroed stats when no operations exist', async () => {
+  it('/admin/operations/stats (GET) returns zeroed stats when no operations exist', async () => {
     const response = await request(app.getHttpServer())
-      .get('/api/v1/admin/operations/stats')
+      .get('/admin/operations/stats')
       .expect(200);
 
     expect(response.body).toEqual({
@@ -119,7 +119,7 @@ describe('AdminOperationsController (e2e)', () => {
     });
   });
 
-  it('/api/v1/admin/operations/stats (GET) aggregates counts by state and finds the oldest pending operation across tenants', async () => {
+  it('/admin/operations/stats (GET) aggregates counts by state and finds the oldest pending operation across tenants', async () => {
     const tenantA = await createTenant('admin-stats-tenant-a');
     const tenantB = await createTenant('admin-stats-tenant-b');
 
@@ -143,7 +143,7 @@ describe('AdminOperationsController (e2e)', () => {
     await createOperation(tenantA, OperationState.FAILED, new Date(now));
 
     const response = await request(app.getHttpServer())
-      .get('/api/v1/admin/operations/stats')
+      .get('/admin/operations/stats')
       .expect(200);
 
     expect(response.body).toEqual({
@@ -196,9 +196,9 @@ describe('AdminOperationsController (e2e) — guard stubs', () => {
     await app.close();
   });
 
-  it('/api/v1/admin/operations/stats (GET) returns 501 while JwtGuard/ScopeGuard remain stub implementations', async () => {
+  it('/admin/operations/stats (GET) returns 501 while JwtGuard/ScopeGuard remain stub implementations', async () => {
     await request(app.getHttpServer())
-      .get('/api/v1/admin/operations/stats')
+      .get('/admin/operations/stats')
       .expect(501);
   });
 });

@@ -42,6 +42,9 @@ jest.mock('../connection/connection.module', () => ({
 jest.mock('../operation/operation.module', () => ({
   OperationModule: jest.fn(),
 }));
+jest.mock('../admin/admin.module', () => ({
+  AdminModule: jest.fn(),
+}));
 
 import { SwaggerService } from './swagger.service';
 
@@ -89,8 +92,8 @@ describe('SwaggerService', () => {
       SwaggerService.setupSwagger(mockApp, mockConfigService);
 
       expect(SwaggerModule.createDocument).toHaveBeenCalled();
-      expect(SwaggerModule.setup).toHaveBeenCalledTimes(3);
-      expect(mockHttpAdapterGet).toHaveBeenCalledTimes(3);
+      expect(SwaggerModule.setup).toHaveBeenCalledTimes(4);
+      expect(mockHttpAdapterGet).toHaveBeenCalledTimes(4);
     });
 
     it('should setup full documentation when SWAGGER_ENABLED is explicitly true', (): void => {
@@ -103,8 +106,8 @@ describe('SwaggerService', () => {
       SwaggerService.setupSwagger(mockApp, mockConfigService);
 
       expect(SwaggerModule.createDocument).toHaveBeenCalled();
-      expect(SwaggerModule.setup).toHaveBeenCalledTimes(3);
-      expect(mockHttpAdapterGet).toHaveBeenCalledTimes(3);
+      expect(SwaggerModule.setup).toHaveBeenCalledTimes(4);
+      expect(mockHttpAdapterGet).toHaveBeenCalledTimes(4);
     });
 
     it('should skip setup when SWAGGER_ENABLED is false and SWAGGER_JSON_ENABLED is not set', (): void => {
@@ -132,7 +135,7 @@ describe('SwaggerService', () => {
 
       expect(SwaggerModule.createDocument).toHaveBeenCalled();
       expect(SwaggerModule.setup).not.toHaveBeenCalled();
-      expect(mockHttpAdapterGet).toHaveBeenCalledTimes(3);
+      expect(mockHttpAdapterGet).toHaveBeenCalledTimes(4);
     });
 
     it('should setup full documentation when SWAGGER_JSON_ENABLED is true and SWAGGER_ENABLED is true', (): void => {
@@ -145,8 +148,8 @@ describe('SwaggerService', () => {
       SwaggerService.setupSwagger(mockApp, mockConfigService);
 
       expect(SwaggerModule.createDocument).toHaveBeenCalled();
-      expect(SwaggerModule.setup).toHaveBeenCalledTimes(3);
-      expect(mockHttpAdapterGet).toHaveBeenCalledTimes(3);
+      expect(SwaggerModule.setup).toHaveBeenCalledTimes(4);
+      expect(mockHttpAdapterGet).toHaveBeenCalledTimes(4);
     });
   });
 
@@ -181,6 +184,23 @@ describe('SwaggerService', () => {
       );
 
       expect(tenantJsonCall).toBeDefined();
+    });
+
+    it('should register /api/docs/admin/json endpoint', (): void => {
+      mockConfigServiceGet.mockImplementation(
+        (_key: string, defaultValue: unknown) => defaultValue,
+      );
+
+      SwaggerService.setupSwagger(mockApp, mockConfigService);
+
+      const calls = mockHttpAdapterGet.mock.calls as Array<
+        [string, (...args: unknown[]) => void]
+      >;
+      const adminJsonCall = calls.find(
+        (call) => call[0] === '/api/docs/admin/json',
+      );
+
+      expect(adminJsonCall).toBeDefined();
     });
 
     it('JSON endpoint callback should call res.json with document', (): void => {
