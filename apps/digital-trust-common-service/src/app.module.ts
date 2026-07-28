@@ -11,30 +11,30 @@ import { ConnectionModule } from './connection/connection.module';
 import { ConnectorCredentialModule } from './connector-credential/connector-credential.module';
 import { CredentialDefinitionModule } from './credential-definition/credential-definition.module';
 import { HealthModule } from './health/health.module';
+import { IssuanceProfileModule } from './issuance-profile/issuance-profile.module';
 import { JobsModule } from './jobs/jobs.module';
 import { OAuthClientModule } from './oauth-client/oauth-client.module';
 import { OperationModule } from './operation/operation.module';
 import { ShutdownModule } from './shutdown/shutdown.module';
 import { TenantModule } from './tenant/tenant.module';
 import { TenantUserModule } from './tenant-user/tenant-user.module';
+import { VerificationProfileModule } from './verification-profile/verification-profile.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
-    ConnectionModule,
-    ConnectorCredentialModule,
-    CredentialDefinitionModule,
     DatabaseModule,
     EncryptionModule,
     HealthModule,
-    JobsModule,
-    OAuthClientModule,
-    OperationModule,
     ShutdownModule,
     TenantModule,
     TenantUserModule,
     CredentialDefinitionModule,
+    IssuanceProfileModule,
+    VerificationProfileModule,
     ConnectionModule,
+    ConnectorCredentialModule,
+    OAuthClientModule,
     OperationModule,
     JobsModule,
     AdminModule,
