@@ -144,3 +144,6 @@ vite.config.ts.timestamp-*
 
 # Git worktrees
 .worktrees/
+
+# Configuration files
+config/encryption-keys.json

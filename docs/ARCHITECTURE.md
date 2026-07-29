@@ -1055,7 +1055,7 @@ graph TD
   "roles": ["admin"],
   "scope": "credentials:offer credentials:verify connections:manage profiles:manage",
   "aud": "digital-trust-common-service",
-  "iss": "https://vc-common.example.com/oidc",
+  "iss": "https://digital-trust-common-service.example.com/oidc",
   "exp": 1718500300,
   "iat": 1718500000
 }
@@ -1070,7 +1070,7 @@ For API clients (`client_credentials` grant):
   "roles": [],
   "scope": "credentials:offer credentials:verify",
   "aud": "digital-trust-common-service",
-  "iss": "https://vc-common.example.com/oidc",
+  "iss": "https://digital-trust-common-service.example.com/oidc",
   "exp": 1718500300,
   "iat": 1718500000
 }
