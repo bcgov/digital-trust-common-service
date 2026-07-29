@@ -268,7 +268,7 @@ rather than hardcoding `/api/v1`.
 |----------|--------|----------|
 | **Strategy** | URI (`/api/v1/...`) | Single visible, cacheable, copy-pasteable version location; matches the path-addressed API. No Accept-header negotiation (avoids a second axis that can disagree with the URL) |
 | **Explicitness** | No `defaultVersion` | Each business controller sets `version: API_VERSION`; an unversioned business request returns `404`, keeping the version an explicit part of every client contract |
-| **Operational endpoints** | Version-neutral | `/health/live` and `api/docs` stay on stable, unversioned paths (Helm probes, monitoring, codegen) — excluded from the prefix, never dual-exposed under `/api/v1` |
+| **Operational endpoints** | Version-neutral | `/health/live` and `/api/docs` stay on stable, unversioned paths (Helm probes, monitoring, codegen) — excluded from the prefix, never dual-exposed under `/api/v1` |
 | **Deprecation** | Scaffolded, inert | `@Deprecated()` + a global interceptor can emit `Deprecation`/`Sunset`/`Link` headers; unused until the first v2 transition |
 
 ### API Documentation Strategy (Multi-Document)
