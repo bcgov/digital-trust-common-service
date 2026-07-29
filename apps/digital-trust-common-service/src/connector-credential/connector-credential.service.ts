@@ -170,6 +170,17 @@ export class ConnectorCredentialService {
   }
 
   public async decryptCredential(key: string, id: string): Promise<string> {
+    // Type guard: ensure key is a string (defense in depth against parameter tampering)
+    if (Array.isArray(key)) {
+      throw new BadRequestException(
+        'Parameter "key" must be a single string value, not an array.',
+      );
+    }
+
+    if (typeof key !== 'string') {
+      throw new BadRequestException('Parameter "key" must be a string value.');
+    }
+
     const credential = await this.findById(id);
 
     if (!credential) {

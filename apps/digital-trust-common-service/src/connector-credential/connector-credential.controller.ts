@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -159,8 +160,18 @@ export class ConnectorCredentialController {
   })
   public async decrypt(
     @Param('id', ParseUUIDPipe) id: string,
-    @Query('key') key: string,
+    @Query('key') key: string | string[],
   ): Promise<string> {
+    if (Array.isArray(key)) {
+      throw new BadRequestException(
+        'Parameter "key" must be a single string value, not an array.',
+      );
+    }
+
+    if (typeof key !== 'string') {
+      throw new BadRequestException('Parameter "key" must be a string value.');
+    }
+
     return await this.credentialService.decryptCredential(key, id);
   }
 

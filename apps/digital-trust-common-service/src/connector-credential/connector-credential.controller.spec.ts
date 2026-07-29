@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-argument */
 import { Test, TestingModule } from '@nestjs/testing';
 
 import { ConnectorType } from '../connection/connection.entity';
@@ -252,6 +253,28 @@ describe('ConnectorCredentialController', () => {
       await expect(
         controller.decrypt(mockCredential.id, validHexKey),
       ).rejects.toThrow();
+    });
+
+    it('should throw BadRequestException when key is an array (type confusion vulnerability)', async () => {
+      const keyArray = [validHexKey, 'another_key'] as any;
+
+      await expect(
+        controller.decrypt(mockCredential.id, keyArray),
+      ).rejects.toThrow(
+        'Parameter "key" must be a single string value, not an array.',
+      );
+
+      expect(mockDecryptCredential).not.toHaveBeenCalled();
+    });
+
+    it('should throw BadRequestException when key is not a string type', async () => {
+      const invalidKeyType = 12345 as any;
+
+      await expect(
+        controller.decrypt(mockCredential.id, invalidKeyType),
+      ).rejects.toThrow('Parameter "key" must be a string value.');
+
+      expect(mockDecryptCredential).not.toHaveBeenCalled();
     });
   });
 });

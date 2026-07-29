@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-argument */
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 
@@ -308,6 +309,36 @@ describe('ConnectorCredentialService', () => {
       await expect(
         service.decryptCredential(validHexKey, mockCredential.id),
       ).rejects.toThrow(/Failed to decrypt connector credential/);
+    });
+
+    it('should throw BadRequestException when key is an array (type confusion vulnerability)', async () => {
+      const keyArray = [validHexKey, 'another_key'] as any;
+
+      await expect(
+        service.decryptCredential(keyArray, mockCredential.id),
+      ).rejects.toThrow(BadRequestException);
+
+      await expect(
+        service.decryptCredential(keyArray, mockCredential.id),
+      ).rejects.toThrow(
+        'Parameter "key" must be a single string value, not an array.',
+      );
+
+      expect(mockFindById).not.toHaveBeenCalled();
+    });
+
+    it('should throw BadRequestException when key is not a string type', async () => {
+      const invalidKeyType = 12345 as any;
+
+      await expect(
+        service.decryptCredential(invalidKeyType, mockCredential.id),
+      ).rejects.toThrow(BadRequestException);
+
+      await expect(
+        service.decryptCredential(invalidKeyType, mockCredential.id),
+      ).rejects.toThrow('Parameter "key" must be a string value.');
+
+      expect(mockFindById).not.toHaveBeenCalled();
     });
   });
 });
