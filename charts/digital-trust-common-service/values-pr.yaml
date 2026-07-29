@@ -18,3 +18,11 @@ secret:
   # (With existingSecret set the chart creates no Secret of its own; leftover
   # per-PR objects are removed by pr-cleanup.yml's label-based delete.)
   existingSecret: digital-trust-common-service-pr-secret
+
+connectorEncryption:
+  existingSecret: ""
+  create: true
+
+  currentVersion: 1
+  keys:
+    "1": <generated-per-deployment-key>"

@@ -4,8 +4,11 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { Response } from 'express';
 
 import { AdminModule } from '../admin/admin.module';
+import { AuditLogModule } from '../audit-log/audit-log.module';
 import { ConnectionModule } from '../connection/connection.module';
+import { ConnectorCredentialModule } from '../connector-credential/connector-credential.module';
 import { CredentialDefinitionModule } from '../credential-definition/credential-definition.module';
+import { OAuthClientModule } from '../oauth-client/oauth-client.module';
 import { OperationModule } from '../operation/operation.module';
 import { TenantModule } from '../tenant/tenant.module';
 import { TenantUserModule } from '../tenant-user/tenant-user.module';
@@ -16,14 +19,24 @@ const swaggerApps = [
     title: 'Tenant API',
     description: 'API endpoints for tenant and tenant user management',
     version: '1.0',
-    modules: [TenantModule, TenantUserModule, CredentialDefinitionModule],
+    modules: [
+      TenantModule,
+      TenantUserModule,
+      CredentialDefinitionModule,
+      AuditLogModule,
+    ],
   },
   {
     name: 'dc',
     title: 'Digital Credential Operations API',
     description: 'API endpoints for Digital Credential operations',
     version: '1.0',
-    modules: [ConnectionModule, OperationModule],
+    modules: [
+      ConnectionModule,
+      ConnectorCredentialModule,
+      OAuthClientModule,
+      OperationModule,
+    ],
   },
   {
     name: 'admin',

@@ -90,7 +90,6 @@ describe('PgBossService', () => {
         return Promise.resolve();
       };
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
       (jest.spyOn(service as any, 'delay') as any).mockImplementation(
         mockDelay,
       );

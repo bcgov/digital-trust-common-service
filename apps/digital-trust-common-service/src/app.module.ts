@@ -5,10 +5,14 @@ import { ConfigModule } from '@nestjs/config';
 import { AdminModule } from './admin/admin.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { AuditLogModule } from './audit-log/audit-log.module';
+import { EncryptionModule } from './common/crypto/encryption.module';
 import { ConnectionModule } from './connection/connection.module';
+import { ConnectorCredentialModule } from './connector-credential/connector-credential.module';
 import { CredentialDefinitionModule } from './credential-definition/credential-definition.module';
 import { HealthModule } from './health/health.module';
 import { JobsModule } from './jobs/jobs.module';
+import { OAuthClientModule } from './oauth-client/oauth-client.module';
 import { OperationModule } from './operation/operation.module';
 import { ShutdownModule } from './shutdown/shutdown.module';
 import { TenantModule } from './tenant/tenant.module';
@@ -17,8 +21,15 @@ import { TenantUserModule } from './tenant-user/tenant-user.module';
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    ConnectionModule,
+    ConnectorCredentialModule,
+    CredentialDefinitionModule,
     DatabaseModule,
+    EncryptionModule,
     HealthModule,
+    JobsModule,
+    OAuthClientModule,
+    OperationModule,
     ShutdownModule,
     TenantModule,
     TenantUserModule,
@@ -27,6 +38,7 @@ import { TenantUserModule } from './tenant-user/tenant-user.module';
     OperationModule,
     JobsModule,
     AdminModule,
+    AuditLogModule,
   ],
   controllers: [AppController],
   providers: [AppService],

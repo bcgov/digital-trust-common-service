@@ -246,6 +246,7 @@ config:
   DB_LOGGING: "false"
   SWAGGER_ENABLED: "true"
   SWAGGER_JSON_ENABLED: "true"
+  CONNECTOR_ENCRYPTION_KEYS_PATH: "/etc/connector/encryption-keys.json"
 
 # -- Extra plain environment variables appended to every container (name/value list)
 extraEnv: []
@@ -265,6 +266,21 @@ secret:
   data:
     DB_USERNAME: ""
     DB_PASSWORD: ""
+
+connectorEncryption:
+  # -- Name of an existing Secret to consume for env vars
+  existingSecret: ""
+  # -- Create a chart-managed Secret from the values below
+  create: false
+  # -- Keep the chart-managed Secret when the release is uninstalled
+  retainOnUninstall: true
+  # -- Mounted path inside the container
+  mountPath: /etc/connector
+
+  currentVersion: 1
+  keys:
+    "1": "< key placeholder >"
+
 
 # NetworkPolicy. Restricts ingress to the OpenShift router and declares explicit
 # inter-service communication (API/Worker -> Postgres, API -> Keycloak).
@@ -310,8 +326,12 @@ networkPolicy:
 
 # -- Extra volumes for the API/Worker pods
 volumes: []
+
 # -- Extra volume mounts for the API/Worker containers
-volumeMounts: []
+volumeMounts:
+  - name: connector-encryption
+    mountPath: /etc/connector
+    readOnly: true
 
 # -- Node selector for API pods
 nodeSelector: {}

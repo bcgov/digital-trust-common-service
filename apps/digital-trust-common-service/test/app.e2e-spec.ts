@@ -18,7 +18,7 @@ describe('AppController (e2e)', () => {
     // whole AppModule fails to initialize (see OperationPurgeService).
     createQueue: jest.fn().mockResolvedValue(undefined),
     schedule: jest.fn().mockResolvedValue(undefined),
-    work: jest.fn().mockResolvedValue(undefined),
+    work: jest.fn().mockResolvedValue('worker-1'),
   };
 
   beforeEach(async () => {

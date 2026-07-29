@@ -31,7 +31,7 @@ export class TenantRepository {
     return this.repo.create(data);
   }
 
-  public save(entity: Tenant): Promise<Tenant> {
+  public update(entity: Tenant): Promise<Tenant> {
     return this.repo.save(entity);
   }
 

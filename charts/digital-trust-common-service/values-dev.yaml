@@ -55,3 +55,7 @@ networkPolicy:
   enabled: true
   keycloak:
     enabled: false
+
+connectorEncryption:
+  existingSecret: digital-trust-common-service-dev-connector-encryption
+  create: false

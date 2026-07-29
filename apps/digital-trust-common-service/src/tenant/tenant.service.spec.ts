@@ -9,7 +9,7 @@ import { TenantService } from './tenant.service';
 describe('TenantService', () => {
   let service: TenantService;
   let mockCreate: jest.Mock;
-  let mockSave: jest.Mock;
+  let mockUpdate: jest.Mock;
   let mockFindAll: jest.Mock;
   let mockFindById: jest.Mock;
   let mockFindBySlug: jest.Mock;
@@ -30,7 +30,7 @@ describe('TenantService', () => {
 
   beforeEach(async () => {
     mockCreate = jest.fn();
-    mockSave = jest.fn();
+    mockUpdate = jest.fn();
     mockFindAll = jest.fn();
     mockFindById = jest.fn();
     mockFindBySlug = jest.fn();
@@ -39,7 +39,7 @@ describe('TenantService', () => {
 
     const mockRepository = {
       create: mockCreate,
-      save: mockSave,
+      update: mockUpdate,
       findAll: mockFindAll,
       findById: mockFindById,
       findBySlug: mockFindBySlug,
@@ -75,13 +75,13 @@ describe('TenantService', () => {
 
       mockFindBySlug.mockResolvedValue(null);
       mockCreate.mockReturnValue(mockTenant);
-      mockSave.mockResolvedValue(mockTenant);
+      mockUpdate.mockResolvedValue(mockTenant);
 
       const result = await service.create(dto);
 
       expect(mockFindBySlug).toHaveBeenCalledWith(dto.slug);
       expect(mockCreate).toHaveBeenCalledWith(dto);
-      expect(mockSave).toHaveBeenCalledWith(mockTenant);
+      expect(mockUpdate).toHaveBeenCalledWith(mockTenant);
       expect(result).toEqual(mockTenant);
     });
 
@@ -108,12 +108,12 @@ describe('TenantService', () => {
       const updatedTenant = { ...mockTenant, ...dto };
 
       mockFindById.mockResolvedValue(mockTenant);
-      mockSave.mockResolvedValue(updatedTenant);
+      mockUpdate.mockResolvedValue(updatedTenant);
 
       const result = await service.update(id, dto);
 
       expect(mockFindById).toHaveBeenCalledWith(id);
-      expect(mockSave).toHaveBeenCalled();
+      expect(mockUpdate).toHaveBeenCalled();
       expect(result).toEqual(updatedTenant);
     });
 
@@ -125,7 +125,7 @@ describe('TenantService', () => {
 
       await expect(service.update(id, dto)).rejects.toThrow(NotFoundException);
       expect(mockFindById).toHaveBeenCalledWith(id);
-      expect(mockSave).not.toHaveBeenCalled();
+      expect(mockUpdate).not.toHaveBeenCalled();
     });
   });
 
