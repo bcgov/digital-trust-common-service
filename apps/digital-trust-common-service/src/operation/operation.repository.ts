@@ -138,6 +138,11 @@ export class OperationRepository {
    * loop until an empty array is returned to fully drain the backlog.
    */
   public async purgeExpiredBatch(limit: number): Promise<PurgeTenantCount[]> {
+    // Clamp to a positive integer: LIMIT must stay bounded to preserve the
+    // lock-bounding guarantee above. A non-positive or non-integer value would
+    // either error or (for some inputs) remove the bound entirely.
+    const safeLimit = Math.max(1, Math.floor(limit));
+
     const rows = await this.repo.manager.query<
       { tenant_id: string; count: string }[]
     >(
@@ -152,7 +157,7 @@ export class OperationRepository {
         RETURNING tenant_id
       )
       SELECT tenant_id, COUNT(*) AS count FROM deleted GROUP BY tenant_id`,
-      [limit],
+      [safeLimit],
     );
 
     return rows.map((row) => ({

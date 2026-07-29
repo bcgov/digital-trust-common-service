@@ -244,6 +244,22 @@ describe('OperationRepository', () => {
 
       expect(result).toEqual([]);
     });
+
+    it('clamps a non-positive or non-integer limit to a positive integer', async () => {
+      mockManagerQuery.mockResolvedValue([]);
+
+      await repository.purgeExpiredBatch(-5);
+      expect(mockManagerQuery).toHaveBeenLastCalledWith(
+        expect.stringContaining('LIMIT $1'),
+        [1],
+      );
+
+      await repository.purgeExpiredBatch(499.9);
+      expect(mockManagerQuery).toHaveBeenLastCalledWith(
+        expect.stringContaining('LIMIT $1'),
+        [499],
+      );
+    });
   });
 
   describe('getStats', () => {
