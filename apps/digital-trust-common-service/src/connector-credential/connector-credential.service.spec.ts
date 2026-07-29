@@ -1,8 +1,9 @@
-import { NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 
 import { EncryptionService } from '../common/crypto/encryption.service';
 import { ConnectorType } from '../connection/connection.entity';
+import { TenantService } from '../tenant/tenant.service';
 
 import { ConnectorCredential } from './connector-credential.entity';
 import { ConnectorCredentialRepository } from './connector-credential.repository';
@@ -18,6 +19,10 @@ describe('ConnectorCredentialService', () => {
   let mockCreate: jest.Mock;
   let mockUpdate: jest.Mock;
   let mockDelete: jest.Mock;
+  let mockTenantServiceFindById: jest.Mock;
+  let mockEncrypt: jest.Mock;
+  let mockDecryptWithKey: jest.Mock;
+  let mockRequiresRotation: jest.Mock;
 
   const mockCredential: ConnectorCredential = {
     id: '123e4567-e89b-12d3-a456-426614174000',
@@ -40,6 +45,15 @@ describe('ConnectorCredentialService', () => {
     mockCreate = jest.fn();
     mockUpdate = jest.fn();
     mockDelete = jest.fn();
+    mockTenantServiceFindById = jest
+      .fn()
+      .mockResolvedValue({ id: mockCredential.tenantId });
+    mockEncrypt = jest.fn().mockReturnValue({
+      ciphertext: Buffer.from('encrypted_data'),
+      keyVersion: 1,
+    });
+    mockDecryptWithKey = jest.fn();
+    mockRequiresRotation = jest.fn().mockReturnValue(false);
 
     const mockRepository = {
       findById: mockFindById,
@@ -60,12 +74,18 @@ describe('ConnectorCredentialService', () => {
           useValue: mockRepository,
         },
         {
+          provide: TenantService,
+          useValue: {
+            findById: mockTenantServiceFindById,
+          },
+        },
+        {
           provide: EncryptionService,
           useValue: {
-            encrypt: jest.fn().mockReturnValue({
-              ciphertext: Buffer.from('encrypted_data'),
-              keyVersion: 1,
-            }),
+            encrypt: mockEncrypt,
+            decryptWithKey: mockDecryptWithKey,
+            requiresRotation: mockRequiresRotation,
+            decrypt: jest.fn(),
           },
         },
       ],
@@ -88,7 +108,6 @@ describe('ConnectorCredentialService', () => {
         credentialsPlainText: Buffer.from('encrypted_data').toString('base64'),
         endpointUrl: mockCredential.endpointUrl,
         active: mockCredential.active,
-        keyVersion: mockCredential.keyVersion,
       };
 
       mockCreate.mockResolvedValue(mockCredential);
@@ -209,6 +228,86 @@ describe('ConnectorCredentialService', () => {
       await expect(service.delete('nonexistent')).rejects.toThrow(
         NotFoundException,
       );
+    });
+  });
+
+  describe('decryptCredential', () => {
+    const validHexKey =
+      '2222222222222222222222222222222222222222222222222222222222222222';
+
+    it('should decrypt a connector credential with valid key', async () => {
+      const decryptedValue = 'decrypted_credentials_content';
+
+      mockFindById.mockResolvedValue(mockCredential);
+      mockDecryptWithKey.mockReturnValue(decryptedValue);
+
+      const result = await service.decryptCredential(
+        validHexKey,
+        mockCredential.id,
+      );
+
+      expect(mockFindById).toHaveBeenCalledWith(mockCredential.id);
+      expect(mockDecryptWithKey).toHaveBeenCalledWith(
+        mockCredential.credentialsEncrypted,
+        Buffer.from(validHexKey, 'hex'),
+      );
+      expect(result).toEqual(decryptedValue);
+    });
+
+    it('should throw BadRequestException for key with invalid length', async () => {
+      mockFindById.mockResolvedValue(mockCredential);
+
+      const shortKey = 'tooshort';
+
+      await expect(
+        service.decryptCredential(shortKey, mockCredential.id),
+      ).rejects.toThrow(BadRequestException);
+
+      await expect(
+        service.decryptCredential(shortKey, mockCredential.id),
+      ).rejects.toThrow(
+        `Invalid key format. Expected 64 hex characters (32 bytes) but got ${shortKey.length} characters.`,
+      );
+    });
+
+    it('should throw BadRequestException for invalid hexadecimal key', async () => {
+      mockFindById.mockResolvedValue(mockCredential);
+
+      const invalidHexKey =
+        '0000000000000000000000000000000000000000000000000000000000000 00';
+
+      await expect(
+        service.decryptCredential(invalidHexKey, mockCredential.id),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should throw NotFoundException when credential not found', async () => {
+      mockFindById.mockResolvedValue(null);
+
+      await expect(
+        service.decryptCredential(validHexKey, 'nonexistent'),
+      ).rejects.toThrow(NotFoundException);
+
+      await expect(
+        service.decryptCredential(validHexKey, 'nonexistent'),
+      ).rejects.toThrow(
+        `Connector credential with ID 'nonexistent' was not found.`,
+      );
+    });
+
+    it('should throw BadRequestException on decryption failure', async () => {
+      mockFindById.mockResolvedValue(mockCredential);
+      mockDecryptWithKey.mockImplementation(() => {
+        throw new Error('Authentication tag mismatch');
+      });
+
+      await expect(
+        service.decryptCredential(validHexKey, mockCredential.id),
+      ).rejects.toThrow(BadRequestException);
+
+      await expect(
+        service.decryptCredential(validHexKey, mockCredential.id),
+      ).rejects.toThrow(/Failed to decrypt connector credential/);
     });
   });
 });

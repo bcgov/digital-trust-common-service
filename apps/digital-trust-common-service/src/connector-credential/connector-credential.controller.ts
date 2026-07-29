@@ -14,6 +14,7 @@ import {
   ApiCreatedResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
+  ApiQuery,
 } from '@nestjs/swagger';
 
 import { ConnectorType } from '../connection/connection.entity';
@@ -44,10 +45,9 @@ export class ConnectorCredentialController {
         value: {
           tenantId: '123e4567-e89b-12d3-a456-426614174000',
           connectorType: 'traction',
-          credentialsEncrypted: 'base64encodedencryptedcredentials==',
+          credentialsPlainText: 'base64plaintextcredentials==',
           endpointUrl: 'https://api.example.com/v1',
           active: true,
-          keyVersion: 1,
         },
       },
     },
@@ -142,6 +142,26 @@ export class ConnectorCredentialController {
   @ApiNotFoundResponse({ description: 'Connector credential not found' })
   public async delete(@Param('id', ParseUUIDPipe) id: string): Promise<void> {
     return await this.credentialService.delete(id);
+  }
+
+  @Get(':id/decrypt')
+  @ApiOkResponse({
+    description: 'Connector credential decrypted successfully',
+    type: String,
+  })
+  @ApiNotFoundResponse({ description: 'Connector credential not found' })
+  @ApiQuery({
+    name: 'key',
+    description:
+      'Encryption key as a 64-character hexadecimal string (32 bytes)',
+    type: String,
+    example: '25a1d9892813680c2a7e6363818f22005b633d394083f3da8937c405d1ef9f86',
+  })
+  public async decrypt(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query('key') key: string,
+  ): Promise<string> {
+    return await this.credentialService.decryptCredential(key, id);
   }
 
   private toResponseDto(

@@ -137,4 +137,91 @@ describe('EncryptionService', () => {
       expect(service.requiresRotation(1)).toBe(true);
     });
   });
+
+  describe('decryptWithKey', () => {
+    it('should decrypt a value with the correct key', () => {
+      const testValue = { message: 'hello', count: 42 };
+
+      const encrypted = service.encrypt(testValue);
+
+      const decrypted = service.decryptWithKey<typeof testValue>(
+        encrypted.ciphertext,
+        KEY_V1,
+      );
+
+      expect(decrypted).toEqual(testValue);
+    });
+
+    it('should throw if the payload is too small', () => {
+      expect(() => service.decryptWithKey(Buffer.alloc(5), KEY_V1)).toThrow(
+        'Invalid encrypted payload.',
+      );
+    });
+
+    it('should throw when decrypted with the wrong key', () => {
+      const encrypted = service.encrypt({
+        message: 'secret',
+      });
+
+      expect(() =>
+        service.decryptWithKey(encrypted.ciphertext, KEY_V2),
+      ).toThrow();
+    });
+
+    it('should throw if the ciphertext has been modified', () => {
+      const encrypted = service.encrypt({
+        message: 'secret',
+      });
+
+      const tampered = Buffer.from(encrypted.ciphertext);
+
+      tampered[tampered.length - 1] ^= 0xff;
+
+      expect(() => service.decryptWithKey(tampered, KEY_V1)).toThrow();
+    });
+
+    it('should throw if the auth tag has been modified', () => {
+      const encrypted = service.encrypt({
+        message: 'secret',
+      });
+
+      const tampered = Buffer.from(encrypted.ciphertext);
+
+      // Auth tag begins after the 12-byte IV.
+      tampered[12] ^= 0xff;
+
+      expect(() => service.decryptWithKey(tampered, KEY_V1)).toThrow();
+    });
+
+    it('should throw if the IV has been modified', () => {
+      const encrypted = service.encrypt({
+        message: 'secret',
+      });
+
+      const tampered = Buffer.from(encrypted.ciphertext);
+
+      tampered[0] ^= 0xff;
+
+      expect(() => service.decryptWithKey(tampered, KEY_V1)).toThrow();
+    });
+
+    it('should handle different data types', () => {
+      const testCases = [
+        { value: 'string', expected: 'string' },
+        { value: 123, expected: 123 },
+        { value: true, expected: true },
+        { value: [1, 2, 3], expected: [1, 2, 3] },
+        {
+          value: { nested: { object: 'data' } },
+          expected: { nested: { object: 'data' } },
+        },
+      ];
+
+      testCases.forEach(({ value, expected }) => {
+        const encrypted = service.encrypt(value);
+        const decrypted = service.decryptWithKey(encrypted.ciphertext, KEY_V1);
+        expect(decrypted).toEqual(expected);
+      });
+    });
+  });
 });

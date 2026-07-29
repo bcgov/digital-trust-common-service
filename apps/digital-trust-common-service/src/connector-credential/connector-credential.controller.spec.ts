@@ -18,6 +18,7 @@ describe('ConnectorCredentialController', () => {
   let mockFindByTenantAndConnectorTypeAndActive: jest.Mock;
   let mockUpdate: jest.Mock;
   let mockDelete: jest.Mock;
+  let mockDecryptCredential: jest.Mock;
 
   const mockCredential: ConnectorCredential = {
     id: '123e4567-e89b-12d3-a456-426614174000',
@@ -51,6 +52,7 @@ describe('ConnectorCredentialController', () => {
     mockFindByTenantAndConnectorTypeAndActive = jest.fn();
     mockUpdate = jest.fn();
     mockDelete = jest.fn();
+    mockDecryptCredential = jest.fn();
 
     const mockService = {
       create: mockCreate,
@@ -61,6 +63,7 @@ describe('ConnectorCredentialController', () => {
         mockFindByTenantAndConnectorTypeAndActive,
       update: mockUpdate,
       delete: mockDelete,
+      decryptCredential: mockDecryptCredential,
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -90,7 +93,6 @@ describe('ConnectorCredentialController', () => {
         credentialsPlainText: Buffer.from('encrypted_data').toString('base64'),
         endpointUrl: mockCredential.endpointUrl,
         active: mockCredential.active,
-        keyVersion: mockCredential.keyVersion,
       };
 
       mockCreate.mockResolvedValue(mockCredential);
@@ -180,6 +182,76 @@ describe('ConnectorCredentialController', () => {
       await controller.delete(mockCredential.id);
 
       expect(mockDelete).toHaveBeenCalledWith(mockCredential.id);
+    });
+  });
+
+  describe('GET /connector-credentials/:id/decrypt', () => {
+    const validHexKey =
+      '2222222222222222222222222222222222222222222222222222222222222222';
+
+    it('should decrypt a connector credential with valid key', async () => {
+      const decryptedValue = 'decrypted_credentials_content';
+
+      mockDecryptCredential.mockResolvedValue(decryptedValue);
+
+      const result = await controller.decrypt(mockCredential.id, validHexKey);
+
+      expect(mockDecryptCredential).toHaveBeenCalledWith(
+        validHexKey,
+        mockCredential.id,
+      );
+      expect(result).toEqual(decryptedValue);
+    });
+
+    it('should throw BadRequestException for invalid key length', async () => {
+      const invalidKey = 'tooshort';
+
+      mockDecryptCredential.mockRejectedValue(
+        new Error(
+          `Invalid key format. Expected 64 hex characters (32 bytes) but got ${invalidKey.length} characters.`,
+        ),
+      );
+
+      await expect(
+        controller.decrypt(mockCredential.id, invalidKey),
+      ).rejects.toThrow();
+    });
+
+    it('should throw BadRequestException for invalid hex key', async () => {
+      const invalidHexKey =
+        'ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ';
+
+      mockDecryptCredential.mockRejectedValue(
+        new Error(`Key must be a valid hexadecimal string.`),
+      );
+
+      await expect(
+        controller.decrypt(mockCredential.id, invalidHexKey),
+      ).rejects.toThrow();
+    });
+
+    it('should throw NotFoundException when credential not found', async () => {
+      mockDecryptCredential.mockRejectedValue(
+        new Error(
+          `Connector credential with ID '${mockCredential.id}' was not found.`,
+        ),
+      );
+
+      await expect(
+        controller.decrypt(mockCredential.id, validHexKey),
+      ).rejects.toThrow();
+    });
+
+    it('should throw BadRequestException on decryption failure', async () => {
+      mockDecryptCredential.mockRejectedValue(
+        new Error(
+          `Failed to decrypt connector credential with ID '${mockCredential.id}': Authentication tag mismatch`,
+        ),
+      );
+
+      await expect(
+        controller.decrypt(mockCredential.id, validHexKey),
+      ).rejects.toThrow();
     });
   });
 });
