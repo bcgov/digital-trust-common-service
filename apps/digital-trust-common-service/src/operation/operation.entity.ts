@@ -17,6 +17,7 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 
+import { API_BASE_PATH } from '../common/constants/api-version.constants';
 import { Tenant } from '../tenant/tenant.entity';
 
 export enum OperationState {
@@ -110,7 +111,7 @@ export class Operation {
       'The full request context persisted at creation time (method, path, body)',
     example: {
       method: 'POST',
-      path: '/api/v1/tenants/:tenantId/credentials/offer',
+      path: `${API_BASE_PATH}/tenants/:tenantId/credentials/offer`,
       body: {},
     },
   })

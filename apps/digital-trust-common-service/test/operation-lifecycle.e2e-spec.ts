@@ -5,6 +5,7 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { App } from 'supertest/types';
 import { Repository } from 'typeorm';
 
+import { configureApp } from '../src/app.config';
 import { AppModule } from '../src/app.module';
 import { OperationPurgeService } from '../src/operation/operation-purge.service';
 import {
@@ -43,6 +44,7 @@ describe('Operation TTL & purge (e2e)', () => {
       .compile();
 
     app = moduleFixture.createNestApplication();
+    configureApp(app);
     await app.init();
 
     tenantRepo = moduleFixture.get(getRepositoryToken(Tenant));
