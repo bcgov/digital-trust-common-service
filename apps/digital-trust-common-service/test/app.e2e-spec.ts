@@ -13,7 +13,11 @@ describe('AppController (e2e)', () => {
     start: jest.fn().mockResolvedValue(undefined),
     stop: jest.fn().mockResolvedValue(undefined),
     send: jest.fn().mockResolvedValue(undefined),
+    // OperationPurgeService.onModuleInit() registers its cron queue/worker on
+    // every app bootstrap, so the mock boss must support these too or the
+    // whole AppModule fails to initialize (see OperationPurgeService).
     createQueue: jest.fn().mockResolvedValue(undefined),
+    schedule: jest.fn().mockResolvedValue(undefined),
     work: jest.fn().mockResolvedValue('worker-1'),
   };
 
