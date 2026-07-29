@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unsafe-argument */
 import { Test, TestingModule } from '@nestjs/testing';
 
 import { ConnectorType } from '../connection/connection.entity';
@@ -192,10 +191,11 @@ describe('ConnectorCredentialController', () => {
 
     it('should decrypt a connector credential with valid key', async () => {
       const decryptedValue = 'decrypted_credentials_content';
+      const dto = { key: validHexKey };
 
       mockDecryptCredential.mockResolvedValue(decryptedValue);
 
-      const result = await controller.decrypt(mockCredential.id, validHexKey);
+      const result = await controller.decrypt(mockCredential.id, dto);
 
       expect(mockDecryptCredential).toHaveBeenCalledWith(
         validHexKey,
@@ -206,6 +206,7 @@ describe('ConnectorCredentialController', () => {
 
     it('should throw BadRequestException for invalid key length', async () => {
       const invalidKey = 'tooshort';
+      const dto = { key: invalidKey };
 
       mockDecryptCredential.mockRejectedValue(
         new Error(
@@ -214,24 +215,27 @@ describe('ConnectorCredentialController', () => {
       );
 
       await expect(
-        controller.decrypt(mockCredential.id, invalidKey),
+        controller.decrypt(mockCredential.id, dto),
       ).rejects.toThrow();
     });
 
     it('should throw BadRequestException for invalid hex key', async () => {
       const invalidHexKey =
         'ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ';
+      const dto = { key: invalidHexKey };
 
       mockDecryptCredential.mockRejectedValue(
         new Error(`Key must be a valid hexadecimal string.`),
       );
 
       await expect(
-        controller.decrypt(mockCredential.id, invalidHexKey),
+        controller.decrypt(mockCredential.id, dto),
       ).rejects.toThrow();
     });
 
     it('should throw NotFoundException when credential not found', async () => {
+      const dto = { key: validHexKey };
+
       mockDecryptCredential.mockRejectedValue(
         new Error(
           `Connector credential with ID '${mockCredential.id}' was not found.`,
@@ -239,11 +243,13 @@ describe('ConnectorCredentialController', () => {
       );
 
       await expect(
-        controller.decrypt(mockCredential.id, validHexKey),
+        controller.decrypt(mockCredential.id, dto),
       ).rejects.toThrow();
     });
 
     it('should throw BadRequestException on decryption failure', async () => {
+      const dto = { key: validHexKey };
+
       mockDecryptCredential.mockRejectedValue(
         new Error(
           `Failed to decrypt connector credential with ID '${mockCredential.id}': Authentication tag mismatch`,
@@ -251,30 +257,8 @@ describe('ConnectorCredentialController', () => {
       );
 
       await expect(
-        controller.decrypt(mockCredential.id, validHexKey),
+        controller.decrypt(mockCredential.id, dto),
       ).rejects.toThrow();
-    });
-
-    it('should throw BadRequestException when key is an array (type confusion vulnerability)', async () => {
-      const keyArray = [validHexKey, 'another_key'] as any;
-
-      await expect(
-        controller.decrypt(mockCredential.id, keyArray),
-      ).rejects.toThrow(
-        'Parameter "key" must be a single string value, not an array.',
-      );
-
-      expect(mockDecryptCredential).not.toHaveBeenCalled();
-    });
-
-    it('should throw BadRequestException when key is not a string type', async () => {
-      const invalidKeyType = 12345 as any;
-
-      await expect(
-        controller.decrypt(mockCredential.id, invalidKeyType),
-      ).rejects.toThrow('Parameter "key" must be a string value.');
-
-      expect(mockDecryptCredential).not.toHaveBeenCalled();
     });
   });
 });

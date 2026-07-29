@@ -24,12 +24,7 @@ export class ConnectorCredentialService {
   public async create(
     dto: CreateConnectorCredentialDto,
   ): Promise<ConnectorCredential> {
-    const tenant = await this.tenantService.findById(dto.tenantId);
-    if (!tenant) {
-      throw new NotFoundException(
-        `Tenant with ID '${dto.tenantId}' was not found.`,
-      );
-    }
+    await this.tenantService.findById(dto.tenantId);
 
     const encryptedCredentials = this.encryptionService.encrypt(
       dto.credentialsPlainText,
@@ -85,9 +80,7 @@ export class ConnectorCredentialService {
   public async findByTenant(tenantId: string): Promise<ConnectorCredential[]> {
     const credentials = await this.credentialRepository.findByTenant(tenantId);
     if (!credentials || credentials.length === 0) {
-      throw new NotFoundException(
-        `No connector credentials found for tenant with ID '${tenantId}'.`,
-      );
+      return [];
     }
 
     await Promise.all(credentials.map((c) => this.lazyRotateKeyIfNeeded(c)));
@@ -105,9 +98,7 @@ export class ConnectorCredentialService {
       );
 
     if (!credentials || credentials.length === 0) {
-      throw new NotFoundException(
-        `No connector credentials found for tenant with ID '${tenantId}'.`,
-      );
+      return [];
     }
 
     await Promise.all(credentials.map((c) => this.lazyRotateKeyIfNeeded(c)));
@@ -126,9 +117,7 @@ export class ConnectorCredentialService {
         active,
       );
     if (!credentials || credentials.length === 0) {
-      throw new NotFoundException(
-        `No connector credentials found for tenant with ID '${tenantId}'.`,
-      );
+      return [];
     }
 
     await Promise.all(credentials.map((c) => this.lazyRotateKeyIfNeeded(c)));
@@ -181,7 +170,7 @@ export class ConnectorCredentialService {
       throw new BadRequestException('Parameter "key" must be a string value.');
     }
 
-    const credential = await this.findById(id);
+    const credential = await this.credentialRepository.findById(id);
 
     if (!credential) {
       throw new NotFoundException(
@@ -193,6 +182,11 @@ export class ConnectorCredentialService {
       throw new BadRequestException(
         `Invalid key format. Expected 64 hex characters (32 bytes) but got ${key.length} characters.`,
       );
+    }
+
+    // Validate hex format using regex before attempting Buffer conversion
+    if (!/^[0-9a-fA-F]{64}$/.test(key)) {
+      throw new BadRequestException(`Key must be a valid hexadecimal string.`);
     }
 
     let keyBuffer: Buffer;

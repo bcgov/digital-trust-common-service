@@ -1,9 +1,9 @@
 import {
-  BadRequestException,
   Body,
   Controller,
   Delete,
   Get,
+  Header,
   Param,
   ParseUUIDPipe,
   Patch,
@@ -15,7 +15,6 @@ import {
   ApiCreatedResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
-  ApiQuery,
 } from '@nestjs/swagger';
 
 import { ConnectorType } from '../connection/connection.entity';
@@ -24,6 +23,7 @@ import { ConnectorCredential } from './connector-credential.entity';
 import { ConnectorCredentialService } from './connector-credential.service';
 import { ConnectorCredentialResponseDto } from './dto/connector-credential-response.dto';
 import { CreateConnectorCredentialDto } from './dto/create-connector-credential.dto';
+import { DecryptConnectorCredentialDto } from './dto/decrypt-connector-credential.dto';
 import { UpdateConnectorCredentialDto } from './dto/update-connector-credential.dto';
 
 @Controller('connector-credentials')
@@ -145,34 +145,32 @@ export class ConnectorCredentialController {
     return await this.credentialService.delete(id);
   }
 
-  @Get(':id/decrypt')
+  @Post(':id/decrypt')
+  @Header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+  @Header('Pragma', 'no-cache')
+  @Header('Expires', '0')
   @ApiOkResponse({
     description: 'Connector credential decrypted successfully',
     type: String,
   })
   @ApiNotFoundResponse({ description: 'Connector credential not found' })
-  @ApiQuery({
-    name: 'key',
-    description:
-      'Encryption key as a 64-character hexadecimal string (32 bytes)',
-    type: String,
-    example: '25a1d9892813680c2a7e6363818f22005b633d394083f3da8937c405d1ef9f86',
+  @ApiBody({
+    description: 'Request body containing the decryption key',
+    type: DecryptConnectorCredentialDto,
+    examples: {
+      example1: {
+        summary: 'Decrypt a connector credential',
+        value: {
+          key: '25a1d9892813680c2a7e6363818f22005b633d394083f3da8937c405d1ef9f86',
+        },
+      },
+    },
   })
   public async decrypt(
     @Param('id', ParseUUIDPipe) id: string,
-    @Query('key') key: string | string[],
+    @Body() dto: DecryptConnectorCredentialDto,
   ): Promise<string> {
-    if (Array.isArray(key)) {
-      throw new BadRequestException(
-        'Parameter "key" must be a single string value, not an array.',
-      );
-    }
-
-    if (typeof key !== 'string') {
-      throw new BadRequestException('Parameter "key" must be a string value.');
-    }
-
-    return await this.credentialService.decryptCredential(key, id);
+    return await this.credentialService.decryptCredential(dto.key, id);
   }
 
   private toResponseDto(
