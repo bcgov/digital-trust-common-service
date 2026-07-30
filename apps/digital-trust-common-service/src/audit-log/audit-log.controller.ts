@@ -14,13 +14,15 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 
+import { API_VERSION } from '../common/constants/api-version.constants';
+
 import { AuditLog } from './audit-log.entity';
 import { AuditLogService, PaginatedAuditLogs } from './audit-log.service';
 import { ExportAuditLogsQueryDto } from './dto/export-audit-logs-query.dto';
 import { ListAuditLogsQueryDto } from './dto/list-audit-logs-query.dto';
 
 @ApiTags('Audit Logs')
-@Controller('tenants/:tenantId/audit-logs')
+@Controller({ path: 'tenants/:tenantId/audit-logs', version: API_VERSION })
 export class AuditLogController {
   public constructor(private readonly auditLogService: AuditLogService) {}
 

@@ -15,12 +15,14 @@ import {
   ApiNotFoundResponse,
 } from '@nestjs/swagger';
 
+import { API_VERSION } from '../common/constants/api-version.constants';
+
 import { CreateTenantUserDto } from './dto/create-tenant-user.dto';
 import { UpdateTenantUserDto } from './dto/update-tenant-user.dto';
 import { TenantUser } from './tenant-user.entity';
 import { TenantUserService } from './tenant-user.service';
 
-@Controller('tenant-users')
+@Controller({ path: 'tenant-users', version: API_VERSION })
 export class TenantUserController {
   public constructor(private readonly tenantUserService: TenantUserService) {}
 

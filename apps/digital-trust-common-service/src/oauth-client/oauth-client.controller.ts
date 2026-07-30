@@ -15,6 +15,8 @@ import {
   ApiOkResponse,
 } from '@nestjs/swagger';
 
+import { API_VERSION } from '../common/constants/api-version.constants';
+
 import { CreateOAuthClientResponseDto } from './dto/create-oauth-client-response.dto';
 import { CreateOAuthClientDto } from './dto/create-oauth-client.dto';
 import { OAuthClientResponseDto } from './dto/oauth-client-response.dto';
@@ -22,7 +24,7 @@ import { UpdateOAuthClientDto } from './dto/update-oauth-client.dto';
 import { OAuthClient } from './oauth-client.entity';
 import { OAuthClientService } from './oauth-client.service';
 
-@Controller('oauth-clients')
+@Controller({ path: 'oauth-clients', version: API_VERSION })
 export class OAuthClientController {
   public constructor(private readonly oauthClientService: OAuthClientService) {}
 

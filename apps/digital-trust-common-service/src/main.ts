@@ -1,7 +1,7 @@
-import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 
+import { configureApp } from './app.config';
 import { AppModule } from './app.module';
 import { SwaggerService } from './swagger/swagger.service';
 
@@ -11,13 +11,7 @@ async function bootstrap() {
 
   app.enableShutdownHooks();
 
-  app.useGlobalPipes(
-    new ValidationPipe({
-      whitelist: true,
-      forbidNonWhitelisted: true,
-      transform: true,
-    }),
-  );
+  configureApp(app);
 
   SwaggerService.setupSwagger(app, configService);
 

@@ -16,6 +16,7 @@ import {
   ApiOkResponse,
 } from '@nestjs/swagger';
 
+import { API_VERSION } from '../common/constants/api-version.constants';
 import { ConnectorType } from '../connection/connection.entity';
 
 import { ConnectorCredential } from './connector-credential.entity';
@@ -24,7 +25,7 @@ import { ConnectorCredentialResponseDto } from './dto/connector-credential-respo
 import { CreateConnectorCredentialDto } from './dto/create-connector-credential.dto';
 import { UpdateConnectorCredentialDto } from './dto/update-connector-credential.dto';
 
-@Controller('connector-credentials')
+@Controller({ path: 'connector-credentials', version: API_VERSION })
 export class ConnectorCredentialController {
   public constructor(
     private readonly credentialService: ConnectorCredentialService,

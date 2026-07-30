@@ -256,6 +256,21 @@ The API uses a **hybrid** approach for identifying credential format and backend
 | **Protocol (DIDComm vs OID4VCI)** | Presence/absence of `connection_id` | DIDComm needs an existing connection; OID4VCI is connectionless |
 | **Backend override** | Query param `?adapter=traction` | Escape hatch for platform-admins; optional, ignored in v1 MVP |
 
+### API Versioning (AG-01)
+
+Versioning is **URI-based** with a global `api` prefix, configured once in `main.ts` (via the shared
+`configureApp()` helper, also used by e2e/integration bootstraps). The current version is `1`, so
+business routes live under `/api/v1`. The prefix and version are centralized in
+`common/constants/api-version.constants.ts`; code needing a full path builds it from `API_BASE_PATH`
+rather than hardcoding `/api/v1`.
+
+| Decision | Choice | Rationale |
+|----------|--------|----------|
+| **Strategy** | URI (`/api/v1/...`) | Single visible, cacheable, copy-pasteable version location; matches the path-addressed API. No Accept-header negotiation (avoids a second axis that can disagree with the URL) |
+| **Explicitness** | No `defaultVersion` | Each business controller sets `version: API_VERSION`; an unversioned business request returns `404`, keeping the version an explicit part of every client contract |
+| **Operational endpoints** | Version-neutral | `/health/live` and `/api/docs` stay on stable, unversioned paths (Helm probes, monitoring, codegen) — excluded from the prefix, never dual-exposed under `/api/v1` |
+| **Deprecation** | Scaffolded, inert | `@Deprecated()` + a global interceptor can emit `Deprecation`/`Sunset`/`Link` headers; unused until the first v2 transition |
+
 ### API Documentation Strategy (Multi-Document)
 
 The API is organized into three audience-scoped surfaces. A single NestJS application generates
