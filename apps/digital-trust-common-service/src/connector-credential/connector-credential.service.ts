@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 
@@ -15,6 +16,8 @@ import { UpdateConnectorCredentialDto } from './dto/update-connector-credential.
 
 @Injectable()
 export class ConnectorCredentialService {
+  private readonly logger = new Logger(ConnectorCredentialService.name);
+
   public constructor(
     private readonly credentialRepository: ConnectorCredentialRepository,
     private readonly tenantService: TenantService,
@@ -161,13 +164,15 @@ export class ConnectorCredentialService {
   public async decryptCredential(key: string, id: string): Promise<string> {
     // Type guard: ensure key is a string (defense in depth against parameter tampering)
     if (Array.isArray(key)) {
-      throw new BadRequestException(
-        'Parameter "key" must be a single string value, not an array.',
-      );
+      this.logger.warn(`Key parameter is an array for credential ID: ${id}`);
+      throw new BadRequestException('Invalid key provided.');
     }
 
     if (typeof key !== 'string') {
-      throw new BadRequestException('Parameter "key" must be a string value.');
+      this.logger.warn(
+        `Key parameter is not a string for credential ID: ${id}`,
+      );
+      throw new BadRequestException('Invalid key provided.');
     }
 
     const credential = await this.credentialRepository.findById(id);
@@ -179,28 +184,36 @@ export class ConnectorCredentialService {
     }
 
     if (key.length !== 64) {
-      throw new BadRequestException(
-        `Invalid key format. Expected 64 hex characters (32 bytes) but got ${key.length} characters.`,
+      this.logger.warn(
+        `Invalid key length for credential ID ${id}: expected 64 characters, got ${key.length}`,
       );
+      throw new BadRequestException('Invalid key provided.');
     }
 
     // Validate hex format using regex before attempting Buffer conversion
     if (!/^[0-9a-fA-F]{64}$/.test(key)) {
-      throw new BadRequestException(`Key must be a valid hexadecimal string.`);
+      this.logger.warn(
+        `Invalid key format for credential ID ${id}: not a valid hexadecimal string`,
+      );
+      throw new BadRequestException('Invalid key provided.');
     }
 
     let keyBuffer: Buffer;
 
     try {
       keyBuffer = Buffer.from(key, 'hex');
-    } catch {
-      throw new BadRequestException(`Key must be a valid hexadecimal string.`);
+    } catch (error) {
+      this.logger.error(
+        `Failed to convert key to buffer for credential ID ${id}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      throw new BadRequestException('Invalid key provided.');
     }
 
     if (keyBuffer.length !== 32) {
-      throw new BadRequestException(
-        `Invalid key length. Expected 32 bytes (256 bits) but got ${keyBuffer.length} bytes.`,
+      this.logger.warn(
+        `Invalid key buffer length for credential ID ${id}: expected 32 bytes, got ${keyBuffer.length} bytes`,
       );
+      throw new BadRequestException('Invalid key provided.');
     }
 
     try {
@@ -211,9 +224,10 @@ export class ConnectorCredentialService {
 
       return decrypted;
     } catch (error) {
-      throw new BadRequestException(
+      this.logger.error(
         `Failed to decrypt connector credential with ID '${id}': ${error instanceof Error ? error.message : String(error)}`,
       );
+      throw new BadRequestException('Invalid key provided.');
     }
   }
 }

@@ -266,9 +266,7 @@ describe('ConnectorCredentialService', () => {
 
       await expect(
         service.decryptCredential(shortKey, mockCredential.id),
-      ).rejects.toThrow(
-        `Invalid key format. Expected 64 hex characters (32 bytes) but got ${shortKey.length} characters.`,
-      );
+      ).rejects.toThrow('Invalid key provided.');
     });
 
     it('should throw BadRequestException for invalid hexadecimal key', async () => {
@@ -308,7 +306,7 @@ describe('ConnectorCredentialService', () => {
 
       await expect(
         service.decryptCredential(validHexKey, mockCredential.id),
-      ).rejects.toThrow(/Failed to decrypt connector credential/);
+      ).rejects.toThrow('Invalid key provided.');
     });
 
     it('should throw BadRequestException when key is an array (type confusion vulnerability)', async () => {
@@ -320,9 +318,7 @@ describe('ConnectorCredentialService', () => {
 
       await expect(
         service.decryptCredential(keyArray, mockCredential.id),
-      ).rejects.toThrow(
-        'Parameter "key" must be a single string value, not an array.',
-      );
+      ).rejects.toThrow('Invalid key provided.');
 
       expect(mockFindById).not.toHaveBeenCalled();
     });
@@ -336,7 +332,7 @@ describe('ConnectorCredentialService', () => {
 
       await expect(
         service.decryptCredential(invalidKeyType, mockCredential.id),
-      ).rejects.toThrow('Parameter "key" must be a string value.');
+      ).rejects.toThrow('Invalid key provided.');
 
       expect(mockFindById).not.toHaveBeenCalled();
     });
