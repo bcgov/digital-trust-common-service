@@ -1098,7 +1098,7 @@ For API clients (`client_credentials` grant):
 | [`oidc-provider`](https://github.com/panva/node-oidc-provider) | OpenID Certified OIDC server — handles token signing, JWKS, discovery, grants, key rotation |
 | [`jose`](https://github.com/panva/jose) | Low-level JWT/JWK operations (used internally by oidc-provider; available for custom needs) |
 | `argon2` | Client secret hashing |
-| `passport-openidconnect` | Federation with upstream Keycloak for user login |
+| [`openid-client`](https://github.com/panva/openid-client) | Upstream OIDC federation client (Keycloak login), including discovery and Authorization Code + PKCE support |
 | PostgreSQL | Session/grant storage adapter for oidc-provider (custom adapter using TypeORM) |
 
 ---
