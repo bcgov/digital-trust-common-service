@@ -70,6 +70,29 @@ export class EncryptionService {
     return JSON.parse(decrypted.toString('utf8')) as T;
   }
 
+  public decryptWithKey<T>(ciphertext: Buffer, key: Buffer): T {
+    if (ciphertext.length < IV_LENGTH + AUTH_TAG_LENGTH) {
+      throw new Error('Invalid encrypted payload.');
+    }
+
+    const iv = ciphertext.subarray(0, IV_LENGTH);
+
+    const authTag = ciphertext.subarray(IV_LENGTH, IV_LENGTH + AUTH_TAG_LENGTH);
+
+    const encrypted = ciphertext.subarray(IV_LENGTH + AUTH_TAG_LENGTH);
+
+    const decipher = createDecipheriv(ALGORITHM, key, iv);
+
+    decipher.setAuthTag(authTag);
+
+    const decrypted = Buffer.concat([
+      decipher.update(encrypted),
+      decipher.final(),
+    ]);
+
+    return JSON.parse(decrypted.toString('utf8')) as T;
+  }
+
   /**
    * Returns true if the supplied key version is not the current version.
    */

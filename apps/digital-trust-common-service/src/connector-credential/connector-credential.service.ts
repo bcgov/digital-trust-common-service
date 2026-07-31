@@ -1,7 +1,13 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 
 import { EncryptionService } from '../common/crypto/encryption.service';
 import { ConnectorType } from '../connection/connection.entity';
+import { TenantService } from '../tenant/tenant.service';
 
 import { ConnectorCredential } from './connector-credential.entity';
 import { ConnectorCredentialRepository } from './connector-credential.repository';
@@ -10,14 +16,19 @@ import { UpdateConnectorCredentialDto } from './dto/update-connector-credential.
 
 @Injectable()
 export class ConnectorCredentialService {
+  private readonly logger = new Logger(ConnectorCredentialService.name);
+
   public constructor(
     private readonly credentialRepository: ConnectorCredentialRepository,
+    private readonly tenantService: TenantService,
     private readonly encryptionService: EncryptionService,
   ) {}
 
   public async create(
     dto: CreateConnectorCredentialDto,
   ): Promise<ConnectorCredential> {
+    await this.tenantService.findById(dto.tenantId);
+
     const encryptedCredentials = this.encryptionService.encrypt(
       dto.credentialsPlainText,
     );
@@ -34,6 +45,27 @@ export class ConnectorCredentialService {
     return credential;
   }
 
+  private async lazyRotateKeyIfNeeded(
+    credential: ConnectorCredential,
+  ): Promise<void> {
+    if (this.encryptionService.requiresRotation(credential.keyVersion)) {
+      const decrypted = this.encryptionService.decrypt<string>(
+        credential.credentialsEncrypted,
+        credential.keyVersion,
+      );
+
+      const encryptedCredentials = this.encryptionService.encrypt(decrypted);
+
+      credential.credentialsEncrypted = encryptedCredentials.ciphertext;
+      credential.keyVersion = encryptedCredentials.keyVersion;
+
+      await this.credentialRepository.update(credential.id, {
+        credentialsEncrypted: encryptedCredentials.ciphertext,
+        keyVersion: encryptedCredentials.keyVersion,
+      });
+    }
+  }
+
   public async findById(id: string): Promise<ConnectorCredential> {
     const credential = await this.credentialRepository.findById(id);
 
@@ -43,21 +75,37 @@ export class ConnectorCredentialService {
       );
     }
 
+    await this.lazyRotateKeyIfNeeded(credential);
+
     return credential;
   }
 
   public async findByTenant(tenantId: string): Promise<ConnectorCredential[]> {
-    return await this.credentialRepository.findByTenant(tenantId);
+    const credentials = await this.credentialRepository.findByTenant(tenantId);
+    if (!credentials || credentials.length === 0) {
+      return [];
+    }
+
+    await Promise.all(credentials.map((c) => this.lazyRotateKeyIfNeeded(c)));
+    return credentials;
   }
 
   public async findByTenantAndConnectorType(
     tenantId: string,
     connectorType: ConnectorType,
   ): Promise<ConnectorCredential[]> {
-    return await this.credentialRepository.findByTenantAndConnectorType(
-      tenantId,
-      connectorType,
-    );
+    const credentials =
+      await this.credentialRepository.findByTenantAndConnectorType(
+        tenantId,
+        connectorType,
+      );
+
+    if (!credentials || credentials.length === 0) {
+      return [];
+    }
+
+    await Promise.all(credentials.map((c) => this.lazyRotateKeyIfNeeded(c)));
+    return credentials;
   }
 
   public async findByTenantAndConnectorTypeAndActive(
@@ -65,11 +113,18 @@ export class ConnectorCredentialService {
     connectorType: ConnectorType,
     active: boolean,
   ): Promise<ConnectorCredential[]> {
-    return await this.credentialRepository.findByTenantAndConnectorTypeAndActive(
-      tenantId,
-      connectorType,
-      active,
-    );
+    const credentials =
+      await this.credentialRepository.findByTenantAndConnectorTypeAndActive(
+        tenantId,
+        connectorType,
+        active,
+      );
+    if (!credentials || credentials.length === 0) {
+      return [];
+    }
+
+    await Promise.all(credentials.map((c) => this.lazyRotateKeyIfNeeded(c)));
+    return credentials;
   }
 
   public async update(
@@ -96,11 +151,83 @@ export class ConnectorCredentialService {
       );
     }
 
+    await this.lazyRotateKeyIfNeeded(updated);
+
     return updated;
   }
 
   public async delete(id: string): Promise<void> {
     await this.findById(id);
     await this.credentialRepository.delete(id);
+  }
+
+  public async decryptCredential(key: string, id: string): Promise<string> {
+    // Type guard: ensure key is a string (defense in depth against parameter tampering)
+    if (Array.isArray(key)) {
+      this.logger.warn(`Key parameter is an array for credential ID: ${id}`);
+      throw new BadRequestException('Invalid key provided.');
+    }
+
+    if (typeof key !== 'string') {
+      this.logger.warn(
+        `Key parameter is not a string for credential ID: ${id}`,
+      );
+      throw new BadRequestException('Invalid key provided.');
+    }
+
+    const credential = await this.credentialRepository.findById(id);
+
+    if (!credential) {
+      throw new NotFoundException(
+        `Connector credential with ID '${id}' was not found.`,
+      );
+    }
+
+    if (key.length !== 64) {
+      this.logger.warn(
+        `Invalid key length for credential ID ${id}: expected 64 characters, got ${key.length}`,
+      );
+      throw new BadRequestException('Invalid key provided.');
+    }
+
+    // Validate hex format using regex before attempting Buffer conversion
+    if (!/^[0-9a-fA-F]{64}$/.test(key)) {
+      this.logger.warn(
+        `Invalid key format for credential ID ${id}: not a valid hexadecimal string`,
+      );
+      throw new BadRequestException('Invalid key provided.');
+    }
+
+    let keyBuffer: Buffer;
+
+    try {
+      keyBuffer = Buffer.from(key, 'hex');
+    } catch (error) {
+      this.logger.error(
+        `Failed to convert key to buffer for credential ID ${id}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      throw new BadRequestException('Invalid key provided.');
+    }
+
+    if (keyBuffer.length !== 32) {
+      this.logger.warn(
+        `Invalid key buffer length for credential ID ${id}: expected 32 bytes, got ${keyBuffer.length} bytes`,
+      );
+      throw new BadRequestException('Invalid key provided.');
+    }
+
+    try {
+      const decrypted = this.encryptionService.decryptWithKey<string>(
+        credential.credentialsEncrypted,
+        keyBuffer,
+      );
+
+      return decrypted;
+    } catch (error) {
+      this.logger.error(
+        `Failed to decrypt connector credential with ID '${id}': ${error instanceof Error ? error.message : String(error)}`,
+      );
+      throw new BadRequestException('Invalid key provided.');
+    }
   }
 }
