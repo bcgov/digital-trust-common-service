@@ -19,7 +19,7 @@ export class CreateCredentialRecord1785460000011 implements MigrationInterface {
         tenant_id UUID NOT NULL,
         issuance_profile_id UUID,
         connection_id UUID,
-        connector_id UUID,
+        connector_id UUID NOT NULL,
         external_id VARCHAR(255),
         format credential_definition_format NOT NULL,
         state credential_state NOT NULL DEFAULT 'offered',
@@ -48,7 +48,7 @@ export class CreateCredentialRecord1785460000011 implements MigrationInterface {
         CONSTRAINT fk_credential_connector
           FOREIGN KEY (connector_id)
           REFERENCES connector_credential(id)
-          ON DELETE SET NULL,
+          ON DELETE RESTRICT,
 
         CONSTRAINT fk_credential_operation
           FOREIGN KEY (operation_id)

@@ -83,20 +83,18 @@ export class Credential {
   public connection?: Connection | null;
 
   @ApiProperty({
-    description: 'Connector credential that issued this credential',
+    description:
+      'Connector credential that issued this credential (required for revocation routing)',
     example: '123e4567-e89b-12d3-a456-426614174000',
-    required: false,
-    nullable: true,
   })
-  @Column({ name: 'connector_id', type: 'uuid', nullable: true })
-  public connectorId?: string | null;
+  @Column({ name: 'connector_id', type: 'uuid' })
+  public connectorId!: string;
 
   @ManyToOne(() => ConnectorCredential, {
-    onDelete: 'SET NULL',
-    nullable: true,
+    onDelete: 'RESTRICT',
   })
   @JoinColumn({ name: 'connector_id' })
-  public connector?: ConnectorCredential | null;
+  public connector!: ConnectorCredential;
 
   @ApiProperty({
     description: 'Adapter-assigned exchange / credential id',

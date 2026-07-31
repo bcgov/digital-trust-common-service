@@ -23,9 +23,10 @@ describe('CreateCredentialRecord migration', () => {
     const joined = queries.join('\n');
     expect(joined).toContain('CREATE TABLE credential');
     expect(joined).toContain('CREATE TYPE credential_state');
-    expect(joined).toContain('connector_id UUID');
+    expect(joined).toContain('connector_id UUID NOT NULL');
     expect(joined).toContain('fk_credential_connector');
     expect(joined).toContain('REFERENCES connector_credential(id)');
+    expect(joined).toContain('ON DELETE RESTRICT');
     expect(joined).toContain('fk_credential_issuance_profile');
     expect(joined).toContain('fk_credential_operation');
     expect(joined).toContain('WHERE external_id IS NOT NULL');
