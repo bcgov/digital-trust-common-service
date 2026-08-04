@@ -130,6 +130,14 @@ describe('audit log schema integration', () => {
   it('supports keyset cursor pagination with CAST bindings', async () => {
     const resourceId = '123e4567-e89b-12d3-a456-426614174077';
 
+    // Use timestamps in the current UTC month so rows land in a partition
+    // created by CreateAuditLogSchema (current month + 3 months ahead).
+    const now = new Date();
+    const monthPrefix = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}-10`;
+    const createdAtValues = ['10:00:00.000Z', '11:00:00.000Z', '12:00:00.000Z'].map(
+      (time) => `${monthPrefix}T${time}`,
+    );
+
     const rows = await dataSource.query<
       Array<{ id: string; created_at: Date }>
     >(
@@ -138,14 +146,14 @@ describe('audit log schema integration', () => {
            tenant_id, actor_id, actor_type, action,
            resource_type, resource_id, metadata, created_at
          ) VALUES
-           ($1, 'user-a', 'user', 'verify', 'credential', $2, '{}'::jsonb, '2026-07-10T10:00:00.000Z'),
-           ($1, 'user-b', 'user', 'verify', 'credential', $2, '{}'::jsonb, '2026-07-10T11:00:00.000Z'),
-           ($1, 'user-c', 'user', 'verify', 'credential', $2, '{}'::jsonb, '2026-07-10T12:00:00.000Z')
+           ($1, 'user-a', 'user', 'verify', 'credential', $2, '{}'::jsonb, $3),
+           ($1, 'user-b', 'user', 'verify', 'credential', $2, '{}'::jsonb, $4),
+           ($1, 'user-c', 'user', 'verify', 'credential', $2, '{}'::jsonb, $5)
          RETURNING id, created_at
        )
        SELECT id, created_at FROM inserted
        ORDER BY created_at DESC, id DESC`,
-      [tenantId, resourceId],
+      [tenantId, resourceId, ...createdAtValues],
     );
 
     expect(rows).toHaveLength(3);
