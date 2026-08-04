@@ -130,6 +130,20 @@ describe('audit log schema integration', () => {
   it('supports keyset cursor pagination with CAST bindings', async () => {
     const resourceId = '123e4567-e89b-12d3-a456-426614174077';
 
+    // Timestamps must fall inside a partition that actually exists.
+    // CreateAuditLogSchema1784901000002 only pre-creates partitions for
+    // "current month + next 3 months" *relative to whenever the migration
+    // is applied* (see buildMonthlyPartitionSpecs), so a hardcoded calendar
+    // date here would silently start failing with "no partition of
+    // relation audit_log found for row" once enough time passes. Anchor to
+    // `Date.now()` (with small forward offsets, never backward, so this
+    // can never fall outside the pre-created window even right at a month
+    // boundary) instead so this test keeps inserting into whichever
+    // partition the migration actually created for "now".
+    const now = Date.now();
+    const hoursFromNow = (hours: number): string =>
+      new Date(now + hours * 60 * 60 * 1000).toISOString();
+
     const rows = await dataSource.query<
       Array<{ id: string; created_at: Date }>
     >(
@@ -138,14 +152,14 @@ describe('audit log schema integration', () => {
            tenant_id, actor_id, actor_type, action,
            resource_type, resource_id, metadata, created_at
          ) VALUES
-           ($1, 'user-a', 'user', 'verify', 'credential', $2, '{}'::jsonb, '2026-07-10T10:00:00.000Z'),
-           ($1, 'user-b', 'user', 'verify', 'credential', $2, '{}'::jsonb, '2026-07-10T11:00:00.000Z'),
-           ($1, 'user-c', 'user', 'verify', 'credential', $2, '{}'::jsonb, '2026-07-10T12:00:00.000Z')
+           ($1, 'user-a', 'user', 'verify', 'credential', $2, '{}'::jsonb, CAST($3 AS timestamptz)),
+           ($1, 'user-b', 'user', 'verify', 'credential', $2, '{}'::jsonb, CAST($4 AS timestamptz)),
+           ($1, 'user-c', 'user', 'verify', 'credential', $2, '{}'::jsonb, CAST($5 AS timestamptz))
          RETURNING id, created_at
        )
        SELECT id, created_at FROM inserted
        ORDER BY created_at DESC, id DESC`,
-      [tenantId, resourceId],
+      [tenantId, resourceId, hoursFromNow(0), hoursFromNow(1), hoursFromNow(2)],
     );
 
     expect(rows).toHaveLength(3);
