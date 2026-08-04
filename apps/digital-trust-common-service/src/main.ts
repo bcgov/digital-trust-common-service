@@ -1,3 +1,4 @@
+import { OidcMountService } from '@app/oidc';
 import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
@@ -18,6 +19,8 @@ async function bootstrap() {
       transform: true,
     }),
   );
+
+  OidcMountService.mount(app);
 
   SwaggerService.setupSwagger(app, configService);
 

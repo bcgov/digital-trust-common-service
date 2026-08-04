@@ -1,12 +1,26 @@
 import { randomBytes } from 'crypto';
 
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { argon2i, hash, verify } from 'argon2';
 
 import { CreateOAuthClientDto } from './dto/create-oauth-client.dto';
 import { UpdateOAuthClientDto } from './dto/update-oauth-client.dto';
 import { OAuthClient } from './oauth-client.entity';
 import { OAuthClientRepository } from './oauth-client.repository';
+
+/**
+ * Interactive user login (the authorization_code flow) is not implemented
+ * yet; `OidcProviderService.findAccount` (AU-01) is a stub that throws
+ * until AU-02 (#35) lands. Registering a client with `authorization_code`
+ * (or any other interactive grant) today would create a client that always
+ * fails at the token/authorize endpoints with an opaque 500. Reject that
+ * state here, at the clearest boundary, rather than let it surface later.
+ */
+const SUPPORTED_GRANT_TYPES = ['client_credentials'];
 
 @Injectable()
 export class OAuthClientService {
@@ -17,6 +31,8 @@ export class OAuthClientService {
   public async createClient(
     dto: CreateOAuthClientDto,
   ): Promise<{ client: OAuthClient; clientSecret: string }> {
+    this.assertSupportedGrantTypes(dto.grantTypes);
+
     const clientSecret = randomBytes(32).toString('hex');
     const clientId = this.generateClientId();
     const clientSecretHash = await this.hashClientSecret(clientSecret);
@@ -55,6 +71,8 @@ export class OAuthClientService {
     id: string,
     dto: UpdateOAuthClientDto,
   ): Promise<OAuthClient> {
+    this.assertSupportedGrantTypes(dto.grantTypes);
+
     const client = await this.oauthClientRepository.findById(id);
 
     if (!client) {
@@ -105,6 +123,18 @@ export class OAuthClientService {
 
   private generateClientId(): string {
     return `client_${randomBytes(16).toString('hex')}`;
+  }
+
+  private assertSupportedGrantTypes(grantTypes?: string[]): void {
+    const unsupported = grantTypes?.filter(
+      (grantType) => !SUPPORTED_GRANT_TYPES.includes(grantType),
+    );
+
+    if (unsupported && unsupported.length > 0) {
+      throw new BadRequestException(
+        `Unsupported grant type(s): ${unsupported.join(', ')}. Only ${SUPPORTED_GRANT_TYPES.join(', ')} is currently supported; interactive flows land in AU-02 (#35).`,
+      );
+    }
   }
 
   private async hashClientSecret(secret: string): Promise<string> {

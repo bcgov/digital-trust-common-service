@@ -1,4 +1,4 @@
-import { NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 
 import { CreateOAuthClientDto } from './dto/create-oauth-client.dto';
@@ -94,6 +94,19 @@ describe('OAuthClientService', () => {
       expect(result.clientSecret).toBeDefined();
       expect(result.clientSecret).toHaveLength(64); // hex string of 32 bytes
       expect(mockCreate).toHaveBeenCalled();
+    });
+
+    it('should reject an unsupported grant type', async () => {
+      const dto: CreateOAuthClientDto = {
+        tenantId: mockOAuthClient.tenantId,
+        name: mockOAuthClient.name,
+        grantTypes: ['authorization_code'],
+      };
+
+      await expect(service.createClient(dto)).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(mockCreate).not.toHaveBeenCalled();
     });
   });
 
@@ -252,6 +265,15 @@ describe('OAuthClientService', () => {
       await expect(
         service.update('nonexistent', { name: 'Updated Name' }),
       ).rejects.toThrow(NotFoundException);
+    });
+
+    it('should reject an unsupported grant type', async () => {
+      await expect(
+        service.update(mockOAuthClient.id, {
+          grantTypes: ['authorization_code'],
+        }),
+      ).rejects.toThrow(BadRequestException);
+      expect(mockFindById).not.toHaveBeenCalled();
     });
   });
 });

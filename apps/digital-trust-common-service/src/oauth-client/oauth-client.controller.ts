@@ -42,7 +42,7 @@ export class OAuthClientController {
           name: 'Mobile App',
           scopes: ['read:credentials', 'write:credentials'],
           redirectUris: ['https://app.example.com/callback'],
-          grantTypes: ['authorization_code', 'refresh_token'],
+          grantTypes: ['client_credentials'],
           createdBy: '223e4567-e89b-12d3-a456-426614174000',
         },
       },

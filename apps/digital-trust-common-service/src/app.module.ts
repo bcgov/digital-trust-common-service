@@ -1,4 +1,5 @@
 import { DatabaseModule } from '@app/database';
+import { OIDC_CLIENT_LOOKUP_PORT, OidcModule } from '@app/oidc';
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 
@@ -12,6 +13,7 @@ import { ConnectorCredentialModule } from './connector-credential/connector-cred
 import { CredentialDefinitionModule } from './credential-definition/credential-definition.module';
 import { HealthModule } from './health/health.module';
 import { JobsModule } from './jobs/jobs.module';
+import { OAuthClientLookupAdapter } from './oauth-client/oauth-client-lookup.adapter';
 import { OAuthClientModule } from './oauth-client/oauth-client.module';
 import { OperationModule } from './operation/operation.module';
 import { ShutdownModule } from './shutdown/shutdown.module';
@@ -29,6 +31,13 @@ import { TenantUserModule } from './tenant-user/tenant-user.module';
     HealthModule,
     JobsModule,
     OAuthClientModule,
+    OidcModule.forRoot({
+      imports: [OAuthClientModule],
+      clientLookupProvider: {
+        provide: OIDC_CLIENT_LOOKUP_PORT,
+        useClass: OAuthClientLookupAdapter,
+      },
+    }),
     OperationModule,
     ShutdownModule,
     TenantModule,
