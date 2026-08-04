@@ -134,9 +134,11 @@ describe('audit log schema integration', () => {
     // created by CreateAuditLogSchema (current month + 3 months ahead).
     const now = new Date();
     const monthPrefix = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}-10`;
-    const createdAtValues = ['10:00:00.000Z', '11:00:00.000Z', '12:00:00.000Z'].map(
-      (time) => `${monthPrefix}T${time}`,
-    );
+    const createdAtValues = [
+      '10:00:00.000Z',
+      '11:00:00.000Z',
+      '12:00:00.000Z',
+    ].map((time) => `${monthPrefix}T${time}`);
 
     const rows = await dataSource.query<
       Array<{ id: string; created_at: Date }>
