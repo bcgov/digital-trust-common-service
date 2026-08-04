@@ -24,7 +24,9 @@ describe('OidcKeysService', () => {
   const keysPath = '/tmp/oidc-keys.json';
 
   const validJwks = JSON.stringify({
-    keys: [{ kid: 'key-1', kty: 'RSA', alg: 'RS256', use: 'sig' }],
+    keys: [
+      { kid: 'key-1', kty: 'RSA', alg: 'RS256', use: 'sig', d: 'private-d' },
+    ],
   });
 
   const buildService = async (
@@ -93,6 +95,21 @@ describe('OidcKeysService', () => {
 
     await expect(service.onModuleInit()).rejects.toThrow(
       /only RSA \(RS256\) keys are supported/,
+    );
+  });
+
+  it('throws when a key has no private key material (public-only JWK)', async () => {
+    (existsSync as jest.Mock).mockReturnValue(true);
+    (readFileSync as jest.Mock).mockReturnValue(
+      JSON.stringify({
+        keys: [{ kid: 'k1', kty: 'RSA', n: 'abc', e: 'AQAB' }],
+      }),
+    );
+
+    const service = await buildService({ OIDC_KEYS_PATH: keysPath });
+
+    await expect(service.onModuleInit()).rejects.toThrow(
+      /must include private key material/,
     );
   });
 

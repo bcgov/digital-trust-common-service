@@ -130,6 +130,16 @@ export class OidcKeysService implements OnModuleInit {
           )}"; only RSA (RS256) keys are supported.`,
         );
       }
+
+      // oidc-provider signs RS256 tokens with these keys, so each JWK must
+      // carry private key material (the "d" parameter). A public-only JWK
+      // would otherwise pass this check and fail later inside oidc-provider,
+      // so reject it here with a clear, domain-specific error instead.
+      if (!key.d || typeof key.d !== 'string') {
+        throw new Error(
+          'Every OIDC signing key must include private key material (the "d" parameter); a public-only JWKS cannot sign tokens.',
+        );
+      }
     }
   }
 
