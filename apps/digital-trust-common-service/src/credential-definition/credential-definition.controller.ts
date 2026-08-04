@@ -16,6 +16,8 @@ import {
   ApiNotFoundResponse,
 } from '@nestjs/swagger';
 
+import { API_VERSION } from '../common/constants/api-version.constants';
+
 import {
   CredentialDefinition,
   CredentialDefinitionConnectorType,
@@ -25,7 +27,7 @@ import { CredentialDefinitionService } from './credential-definition.service';
 import { CreateCredentialDefinitionDto } from './dto/create-credential-definition.dto';
 import { UpdateCredentialDefinitionDto } from './dto/update-credential-definition.dto';
 
-@Controller('credential-definitions')
+@Controller({ path: 'credential-definitions', version: API_VERSION })
 export class CredentialDefinitionController {
   public constructor(
     private readonly credentialDefinitionService: CredentialDefinitionService,

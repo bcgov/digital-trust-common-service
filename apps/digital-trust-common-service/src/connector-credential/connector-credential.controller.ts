@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  Header,
   Param,
   ParseUUIDPipe,
   Patch,
@@ -16,15 +17,17 @@ import {
   ApiOkResponse,
 } from '@nestjs/swagger';
 
+import { API_VERSION } from '../common/constants/api-version.constants';
 import { ConnectorType } from '../connection/connection.entity';
 
 import { ConnectorCredential } from './connector-credential.entity';
 import { ConnectorCredentialService } from './connector-credential.service';
 import { ConnectorCredentialResponseDto } from './dto/connector-credential-response.dto';
 import { CreateConnectorCredentialDto } from './dto/create-connector-credential.dto';
+import { DecryptConnectorCredentialDto } from './dto/decrypt-connector-credential.dto';
 import { UpdateConnectorCredentialDto } from './dto/update-connector-credential.dto';
 
-@Controller('connector-credentials')
+@Controller({ path: 'connector-credentials', version: API_VERSION })
 export class ConnectorCredentialController {
   public constructor(
     private readonly credentialService: ConnectorCredentialService,
@@ -44,10 +47,9 @@ export class ConnectorCredentialController {
         value: {
           tenantId: '123e4567-e89b-12d3-a456-426614174000',
           connectorType: 'traction',
-          credentialsEncrypted: 'base64encodedencryptedcredentials==',
+          credentialsPlainText: 'base64plaintextcredentials==',
           endpointUrl: 'https://api.example.com/v1',
           active: true,
-          keyVersion: 1,
         },
       },
     },
@@ -142,6 +144,34 @@ export class ConnectorCredentialController {
   @ApiNotFoundResponse({ description: 'Connector credential not found' })
   public async delete(@Param('id', ParseUUIDPipe) id: string): Promise<void> {
     return await this.credentialService.delete(id);
+  }
+
+  @Post(':id/decrypt')
+  @Header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+  @Header('Pragma', 'no-cache')
+  @Header('Expires', '0')
+  @ApiOkResponse({
+    description: 'Connector credential decrypted successfully',
+    type: String,
+  })
+  @ApiNotFoundResponse({ description: 'Connector credential not found' })
+  @ApiBody({
+    description: 'Request body containing the decryption key',
+    type: DecryptConnectorCredentialDto,
+    examples: {
+      example1: {
+        summary: 'Decrypt a connector credential',
+        value: {
+          key: '25a1d9892813680c2a7e6363818f22005b633d394083f3da8937c405d1ef9f86',
+        },
+      },
+    },
+  })
+  public async decrypt(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: DecryptConnectorCredentialDto,
+  ): Promise<string> {
+    return await this.credentialService.decryptCredential(dto.key, id);
   }
 
   private toResponseDto(

@@ -7,9 +7,11 @@ import { CreateCredentialDefinitionRegistry1784316680145 } from './migrations/00
 import { CreateConnectionState1784732194397 } from './migrations/000005_create-connection-state';
 import { CreateOperationEntity1784242000000 } from './migrations/000006_create-operation-entity';
 import { CreateAuditLogSchema1784901000002 } from './migrations/000007_create-audit-log-schema';
-import { CreateOidcModel1785431598677 } from './migrations/000010_create-oidc-model';
-import { CreateOauthClient1785262142662 } from './migrations/00008_create-oauth-client';
-import { CreateConnectorCredential1785262250704 } from './migrations/00009_create-connector-credential';
+import { CreateOauthClient1785262142662 } from './migrations/000008_create-oauth-client';
+import { CreateConnectorCredential1785262250704 } from './migrations/000009_create-connector-credential';
+import { CreateIssuanceVerificationProfiles1785360000010 } from './migrations/000010_create-issuance-verification-profiles';
+import { CreateCredentialRecord1785460000011 } from './migrations/000011_create-credential-record';
+import { CreateOidcModel1785431598677 } from './migrations/000012_create-oidc-model';
 import { buildSslConfig } from './ssl.util';
 
 export const AppDataSource = new DataSource({
@@ -30,6 +32,8 @@ export const AppDataSource = new DataSource({
     CreateAuditLogSchema1784901000002,
     CreateOauthClient1785262142662,
     CreateConnectorCredential1785262250704,
+    CreateIssuanceVerificationProfiles1785360000010,
+    CreateCredentialRecord1785460000011,
     CreateOidcModel1785431598677,
   ],
   ssl: buildSslConfig(

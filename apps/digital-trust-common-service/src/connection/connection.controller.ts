@@ -18,12 +18,14 @@ import {
   ApiQuery,
 } from '@nestjs/swagger';
 
+import { API_VERSION } from '../common/constants/api-version.constants';
+
 import { Connection, ConnectionState } from './connection.entity';
 import { ConnectionService } from './connection.service';
 import { CreateConnectionDto } from './dto/create-connection.dto';
 import { UpdateConnectionDto } from './dto/update-connection.dto';
 
-@Controller('connections')
+@Controller({ path: 'connections', version: API_VERSION })
 export class ConnectionController {
   public constructor(private readonly connectionService: ConnectionService) {}
 

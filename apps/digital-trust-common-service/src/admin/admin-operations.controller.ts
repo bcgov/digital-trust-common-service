@@ -2,6 +2,8 @@ import { JwtGuard, ScopeGuard } from '@app/auth';
 import { Controller, Get, UseGuards } from '@nestjs/common';
 import { ApiOkResponse, ApiTags } from '@nestjs/swagger';
 
+import { API_VERSION } from '../common/constants/api-version.constants';
+
 import { AdminOperationsService } from './admin-operations.service';
 import { OperationStatsResponseDto } from './dto/operation-stats-response.dto';
 
@@ -9,7 +11,7 @@ import { OperationStatsResponseDto } from './dto/operation-stats-response.dto';
 // TODOs) that will validate the app-issued JWT and required admin scope once
 // implemented. Applied here per the project's intended admin auth pattern.
 @ApiTags('admin')
-@Controller('admin/operations')
+@Controller({ path: 'admin/operations', version: API_VERSION })
 @UseGuards(JwtGuard, ScopeGuard)
 export class AdminOperationsController {
   public constructor(

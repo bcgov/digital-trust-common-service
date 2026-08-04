@@ -12,7 +12,7 @@ import {
  * (Session, AuthorizationCode, AccessToken, RefreshToken, DeviceCode,
  * Interaction, ReplayDetection, PushedAuthorizationRequest, etc).
  *
- * Mirrors migration `000010_create-oidc-model`. Client credentials are
+ * Mirrors migration `000012_create-oidc-model`. Client credentials are
  * NOT stored here, see `OAuthClient` / `OAuthClientService`.
  */
 @Entity({ name: 'oidc_model' })

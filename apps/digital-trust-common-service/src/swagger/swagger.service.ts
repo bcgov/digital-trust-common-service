@@ -5,6 +5,7 @@ import { Response } from 'express';
 
 import { AdminModule } from '../admin/admin.module';
 import { AuditLogModule } from '../audit-log/audit-log.module';
+import { API_BASE_PATH } from '../common/constants/api-version.constants';
 import { ConnectionModule } from '../connection/connection.module';
 import { ConnectorCredentialModule } from '../connector-credential/connector-credential.module';
 import { CredentialDefinitionModule } from '../credential-definition/credential-definition.module';
@@ -12,6 +13,20 @@ import { OAuthClientModule } from '../oauth-client/oauth-client.module';
 import { OperationModule } from '../operation/operation.module';
 import { TenantModule } from '../tenant/tenant.module';
 import { TenantUserModule } from '../tenant-user/tenant-user.module';
+
+const FULL_DOC_TITLE = 'Digital Credential Common Service API';
+
+/**
+ * Description shared by the full-documentation `DocumentBuilder` instances
+ * (UI and JSON-only paths). Kept as a single constant so the two builders
+ * cannot drift out of sync. `${API_BASE_PATH}` is interpolated so the stated
+ * base path always tracks the AG-01 version constants.
+ */
+const FULL_DOC_DESCRIPTION =
+  'A comprehensive API for managing Digital Credential Common Service models. Provides functionality for credential lifecycle management, schema validation, and multi-tenant support. ' +
+  `All business routes are served under the versioned base path ${API_BASE_PATH} (see AG-01); the OpenAPI document version below (1.0) is this document's own revision, distinct from the URL version segment.`;
+
+const FULL_DOC_VERSION = '1.0';
 
 const swaggerApps = [
   {
@@ -108,11 +123,9 @@ export class SwaggerService {
    */
   private static setupFullDocumentation(app: INestApplication): void {
     const config = new DocumentBuilder()
-      .setTitle('Digital Credential Common Service API')
-      .setDescription(
-        'A comprehensive API for managing Digital Credential Common Service models. Provides functionality for credential lifecycle management, schema validation, and multi-tenant support.',
-      )
-      .setVersion('1.0')
+      .setTitle(FULL_DOC_TITLE)
+      .setDescription(FULL_DOC_DESCRIPTION)
+      .setVersion(FULL_DOC_VERSION)
       .addTag('digital-trust-common-service')
       .build();
 
@@ -130,11 +143,9 @@ export class SwaggerService {
     document?: ReturnType<typeof SwaggerModule.createDocument>,
   ): void {
     const config = new DocumentBuilder()
-      .setTitle('Digital Credential Common Service API')
-      .setDescription(
-        'A comprehensive API for managing Digital Credential Common Service models. Provides functionality for credential lifecycle management, schema validation, and multi-tenant support.',
-      )
-      .setVersion('1.0')
+      .setTitle(FULL_DOC_TITLE)
+      .setDescription(FULL_DOC_DESCRIPTION)
+      .setVersion(FULL_DOC_VERSION)
       .addTag('digital-trust-common-service')
       .build();
 

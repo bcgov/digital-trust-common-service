@@ -11,7 +11,9 @@ import request from 'supertest';
 import { App } from 'supertest/types';
 import { Repository } from 'typeorm';
 
+import { configureApp } from '../src/app.config';
 import { AppModule } from '../src/app.module';
+import { API_BASE_PATH } from '../src/common/constants/api-version.constants';
 import { Operation, OperationState } from '../src/operation/operation.entity';
 import { Tenant } from '../src/tenant/tenant.entity';
 
@@ -56,6 +58,7 @@ describe('AdminOperationsController (e2e)', () => {
       .compile();
 
     app = moduleFixture.createNestApplication();
+    configureApp(app);
     await app.init();
 
     tenantRepo = moduleFixture.get(getRepositoryToken(Tenant));
@@ -104,7 +107,7 @@ describe('AdminOperationsController (e2e)', () => {
 
   it('/admin/operations/stats (GET) returns zeroed stats when no operations exist', async () => {
     const response = await request(app.getHttpServer())
-      .get('/admin/operations/stats')
+      .get(`${API_BASE_PATH}/admin/operations/stats`)
       .expect(200);
 
     expect(response.body).toEqual({
@@ -143,7 +146,7 @@ describe('AdminOperationsController (e2e)', () => {
     await createOperation(tenantA, OperationState.FAILED, new Date(now));
 
     const response = await request(app.getHttpServer())
-      .get('/admin/operations/stats')
+      .get(`${API_BASE_PATH}/admin/operations/stats`)
       .expect(200);
 
     expect(response.body).toEqual({
@@ -189,6 +192,7 @@ describe('AdminOperationsController (e2e) — guard stubs', () => {
       .compile();
 
     app = moduleFixture.createNestApplication();
+    configureApp(app);
     await app.init();
   });
 
@@ -198,7 +202,7 @@ describe('AdminOperationsController (e2e) — guard stubs', () => {
 
   it('/admin/operations/stats (GET) returns 501 while JwtGuard/ScopeGuard remain stub implementations', async () => {
     await request(app.getHttpServer())
-      .get('/admin/operations/stats')
+      .get(`${API_BASE_PATH}/admin/operations/stats`)
       .expect(501);
   });
 });
