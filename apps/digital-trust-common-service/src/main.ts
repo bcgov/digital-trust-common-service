@@ -3,6 +3,7 @@ import { NestFactory } from '@nestjs/core';
 
 import { configureApp } from './app.config';
 import { AppModule } from './app.module';
+import { DevSeedService } from './seed/dev-seed.service';
 import { SwaggerService } from './swagger/swagger.service';
 
 async function bootstrap() {
@@ -14,6 +15,10 @@ async function bootstrap() {
   configureApp(app);
 
   SwaggerService.setupSwagger(app, configService);
+
+  if (configService.get<string>('SEED_ON_START') === 'true') {
+    await app.get(DevSeedService).run();
+  }
 
   const port = parseInt(configService.get<string>('PORT', '3000'), 10);
   await app.listen(port);

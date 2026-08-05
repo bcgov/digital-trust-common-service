@@ -162,6 +162,42 @@ npm run build
 npm run migrate:down
 ```
 
+## Development Seed Data (IN-11)
+
+After migrations, load idempotent demo data for local UI/API development:
+
+```bash
+npm run seed
+```
+
+Or with Docker Compose (runs migrate, then seed):
+
+```bash
+docker compose up seed
+```
+
+To seed automatically when the application starts, set in `.env`:
+
+```env
+SEED_ON_START=true
+```
+
+**What gets seeded**
+
+| Resource | Details |
+|----------|---------|
+| Tenants | `acme-corp`, `test-org` (active), `suspended-co` (suspended) |
+| Users | owner / admin / member per tenant |
+| Connectors | Mock Traction endpoint per tenant |
+| Credential defs | Person credential, Employee badge (active tenants) |
+| Issuance profiles | Published `person-credential/1.0`, draft `employee-badge/1.0` |
+| Verification profile | Published `identity-check/1.0` with age predicate |
+| OAuth clients | One per tenant; new clients use secret `dev-seed-client-secret` |
+| Connections | Five states per active tenant |
+| Operations | pending, completed, failed per active tenant |
+
+Re-running the seed updates existing rows keyed by slug, external IDs, and profile name/version — it does not create duplicates.
+
 ## Testing
 
 ### Run Unit Tests
@@ -202,8 +238,8 @@ docker compose --profile test down -v
 ```
 
 This starts `db-test` on port `5433`, runs migrations via `migrate-test`, and
-applies the placeholder seed script (`libs/database/src/seeds/test-seed.sql`,
-currently just a marker table until tenant/user entities exist).
+applies the placeholder integration-test seed script (`libs/database/src/seeds/test-seed.sql`,
+a marker table only — use `npm run seed` against a dev database for full demo data).
 
 Note CI runs integration tests against a different PostgreSQL instance
 (GitHub Actions `services: postgres` on `localhost:5432` /

@@ -57,4 +57,10 @@ export class VerificationProfileRepository {
   ): Promise<void> {
     await this.repository.update(id, { status });
   }
+
+  public async save(
+    profile: VerificationProfile,
+  ): Promise<VerificationProfile> {
+    return await this.repository.save(profile);
+  }
 }

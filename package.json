@@ -25,7 +25,8 @@
     "test:e2e": "jest --config ./apps/digital-trust-common-service/test/jest-e2e.json",
     "migration:create": "ts-node libs/database/src/migrations/create-migration.ts",
     "migrate:up": "typeorm migration:run -d dist/libs/database/src/data-source.js",
-    "migrate:down": "typeorm migration:revert -d dist/libs/database/src/data-source.js"
+    "migrate:down": "typeorm migration:revert -d dist/libs/database/src/data-source.js",
+    "seed": "npm run build && node dist/apps/digital-trust-common-service/src/seed/run-seed.js"
   },
   "dependencies": {
     "@nestjs/common": "^11.1.28",

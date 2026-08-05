@@ -18,6 +18,7 @@ import { IssuanceProfileModule } from './issuance-profile/issuance-profile.modul
 import { JobsModule } from './jobs/jobs.module';
 import { OAuthClientModule } from './oauth-client/oauth-client.module';
 import { OperationModule } from './operation/operation.module';
+import { SeedModule } from './seed/seed.module';
 import { ShutdownModule } from './shutdown/shutdown.module';
 import { TenantModule } from './tenant/tenant.module';
 import { TenantUserModule } from './tenant-user/tenant-user.module';
@@ -43,6 +44,7 @@ import { VerificationProfileModule } from './verification-profile/verification-p
     JobsModule,
     AdminModule,
     AuditLogModule,
+    SeedModule,
   ],
   controllers: [AppController],
   providers: [
