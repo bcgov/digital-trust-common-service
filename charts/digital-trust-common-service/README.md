@@ -63,7 +63,7 @@ OpenShift. Key characteristics:
 | connectorEncryption.currentVersion | int | `1` |  |
 | connectorEncryption.existingSecret | string | `""` | Name of an existing Secret to use for connector encryption keys (takes precedence over chart-managed creation). When set, the secret volume will be mounted even if `create` is false. |
 | connectorEncryption.keys.1 | string | `"< key placeholder >"` |  |
-| connectorEncryption.mountPath | string | `"/etc/connector"` | Mounted path inside the container. The volume is mounted when either `create` is true or `existingSecret` is provided. |
+| connectorEncryption.mountPath | string | `"/etc/connector"` | Mounted path inside the container |
 | connectorEncryption.retainOnUninstall | bool | `true` | Keep the chart-managed Secret when the release is uninstalled |
 | extraEnv | list | `[]` | Extra plain environment variables appended to every container (name/value list) |
 | extraEnvFrom | list | `[]` | Extra envFrom sources (configMapRef/secretRef) for every container |
