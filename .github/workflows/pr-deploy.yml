@@ -158,6 +158,7 @@ jobs:
             --set image.tag="${IMAGE_TAG}" \
             --set config.DB_NAME="${DB_NAME}" \
             --set route.host="${ROUTE_HOST}" \
+            --set config.OIDC_ISSUER="https://${ROUTE_HOST}/oidc" \
             "${EXTRA_ARGS[@]}" \
             --wait --timeout 10m
 

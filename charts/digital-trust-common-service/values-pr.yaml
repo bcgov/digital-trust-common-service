@@ -12,6 +12,24 @@ config:
   LOG_LEVEL: debug
   DB_HOST: digital-trust-common-service-pr-db
   DB_LOGGING: "true"
+  # /app is root-owned and the pod runs as non-root, so the dev-mode key
+  # autogeneration cannot mkdir the default ./config directory. Point it at a
+  # writable emptyDir instead. Keys are ephemeral per pod, which is fine while
+  # PR previews stay at replicaCount: 1 (see #156 for the multi-replica story).
+  OIDC_KEYS_PATH: /etc/oidc/oidc-keys.json
+
+# Helm replaces list values wholesale, so the chart-default connector-encryption
+# mount has to be repeated here alongside the OIDC keys volume.
+volumes:
+  - name: oidc-keys
+    emptyDir: {}
+
+volumeMounts:
+  - name: connector-encryption
+    mountPath: /etc/connector
+    readOnly: true
+  - name: oidc-keys
+    mountPath: /etc/oidc
 
 secret:
   # PR databases are owned by the same application user as dev; reuse the dev Secret.
