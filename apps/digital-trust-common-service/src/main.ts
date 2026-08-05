@@ -4,6 +4,7 @@ import { NestFactory } from '@nestjs/core';
 import { configureApp } from './app.config';
 import { AppModule } from './app.module';
 import { DevSeedService } from './seed/dev-seed.service';
+import { shouldRunDevSeedOnStart } from './seed/seed-on-start.util';
 import { SwaggerService } from './swagger/swagger.service';
 
 async function bootstrap() {
@@ -16,7 +17,7 @@ async function bootstrap() {
 
   SwaggerService.setupSwagger(app, configService);
 
-  if (configService.get<string>('SEED_ON_START') === 'true') {
+  if (shouldRunDevSeedOnStart(configService)) {
     await app.get(DevSeedService).run();
   }
 

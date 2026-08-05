@@ -182,6 +182,8 @@ To seed automatically when the application starts, set in `.env`:
 SEED_ON_START=true
 ```
 
+`SEED_ON_START` is ignored when `NODE_ENV=production` unless you also set `SEED_ALLOW_PRODUCTION=true`.
+
 **What gets seeded**
 
 | Resource | Details |

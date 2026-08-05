@@ -10,7 +10,6 @@ import { IssuanceProfileRepository } from '../issuance-profile/issuance-profile.
 import { OAuthClientRepository } from '../oauth-client/oauth-client.repository';
 import { Operation } from '../operation/operation.entity';
 import { OperationRepository } from '../operation/operation.repository';
-import { OperationService } from '../operation/operation.service';
 import { Tenant, TenantStatus } from '../tenant/tenant.entity';
 import { TenantRepository } from '../tenant/tenant.repository';
 import { TenantUserRepository } from '../tenant-user/tenant-user.repository';
@@ -77,12 +76,6 @@ describe('DevSeedService', () => {
     save: jest.fn(),
   };
 
-  const operationService = {
-    computeExpiresAt: jest
-      .fn()
-      .mockReturnValue(new Date('2030-01-01T00:00:00Z')),
-  };
-
   const encryptionService = {
     encrypt: jest.fn().mockReturnValue({
       ciphertext: Buffer.from('encrypted'),
@@ -117,7 +110,6 @@ describe('DevSeedService', () => {
         { provide: OAuthClientRepository, useValue: oauthClientRepo },
         { provide: ConnectionRepository, useValue: connectionRepo },
         { provide: OperationRepository, useValue: operationRepo },
-        { provide: OperationService, useValue: operationService },
         { provide: EncryptionService, useValue: encryptionService },
       ],
     }).compile();

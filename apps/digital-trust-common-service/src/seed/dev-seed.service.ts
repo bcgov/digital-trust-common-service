@@ -16,9 +16,9 @@ import { IssuanceProfile } from '../issuance-profile/issuance-profile.entity';
 import { IssuanceProfileRepository } from '../issuance-profile/issuance-profile.repository';
 import { OAuthClient } from '../oauth-client/oauth-client.entity';
 import { OAuthClientRepository } from '../oauth-client/oauth-client.repository';
+import { computeOperationExpiresAt } from '../operation/operation-ttl.util';
 import { Operation, OperationState } from '../operation/operation.entity';
 import { OperationRepository } from '../operation/operation.repository';
-import { OperationService } from '../operation/operation.service';
 import { Tenant, TenantStatus } from '../tenant/tenant.entity';
 import { TenantRepository } from '../tenant/tenant.repository';
 import { TenantUserStatus } from '../tenant-user/tenant-user.entity';
@@ -70,7 +70,6 @@ export class DevSeedService {
     private readonly oauthClients: OAuthClientRepository,
     private readonly connections: ConnectionRepository,
     private readonly operations: OperationRepository,
-    private readonly operationService: OperationService,
     private readonly encryptionService: EncryptionService,
   ) {}
 
@@ -470,7 +469,7 @@ export class DevSeedService {
         request,
         result: def.result ?? null,
         viewedAt,
-        expiresAt: this.operationService.computeExpiresAt(
+        expiresAt: computeOperationExpiresAt(
           def.state,
           createdAt,
           viewedAt,

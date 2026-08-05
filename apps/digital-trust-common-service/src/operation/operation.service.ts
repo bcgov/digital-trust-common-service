@@ -2,10 +2,7 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 
 import { TenantService } from '../tenant/tenant.service';
 
-import {
-  resolveOperationTtlMs,
-  DEFAULT_CREATED_TTL_MS,
-} from './operation-ttl.util';
+import { computeOperationExpiresAt } from './operation-ttl.util';
 import {
   Operation,
   OperationRequest,
@@ -49,24 +46,7 @@ export class OperationService {
     viewedAt?: Date | null,
     tenantConfig?: Record<string, unknown> | null,
   ): Date {
-    const ttl = resolveOperationTtlMs(tenantConfig);
-
-    switch (state) {
-      case OperationState.PENDING:
-        return new Date(createdAt.getTime() + ttl.pendingStale);
-      case OperationState.PROCESSING:
-        return new Date(createdAt.getTime() + DEFAULT_CREATED_TTL_MS);
-      case OperationState.COMPLETED:
-        return viewedAt
-          ? new Date(viewedAt.getTime() + ttl.completedViewed)
-          : new Date(createdAt.getTime() + ttl.completedUnviewed);
-      case OperationState.FAILED:
-        return viewedAt
-          ? new Date(viewedAt.getTime() + ttl.failedViewed)
-          : new Date(createdAt.getTime() + ttl.failedUnviewed);
-      default:
-        return new Date(createdAt.getTime() + DEFAULT_CREATED_TTL_MS);
-    }
+    return computeOperationExpiresAt(state, createdAt, viewedAt, tenantConfig);
   }
 
   public async createOperation(
