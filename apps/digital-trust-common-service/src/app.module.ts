@@ -1,10 +1,12 @@
 import { DatabaseModule } from '@app/database';
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { APP_INTERCEPTOR } from '@nestjs/core';
 
 import { AdminModule } from './admin/admin.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { AuditAutoInterceptor } from './audit-log/audit-auto.interceptor';
 import { AuditLogModule } from './audit-log/audit-log.module';
 import { EncryptionModule } from './common/crypto/encryption.module';
 import { ConnectionModule } from './connection/connection.module';
@@ -43,6 +45,12 @@ import { VerificationProfileModule } from './verification-profile/verification-p
     AuditLogModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [
+    AppService,
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: AuditAutoInterceptor,
+    },
+  ],
 })
 export class AppModule {}

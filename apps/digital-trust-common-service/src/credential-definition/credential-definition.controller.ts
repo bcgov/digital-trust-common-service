@@ -16,6 +16,7 @@ import {
   ApiNotFoundResponse,
 } from '@nestjs/swagger';
 
+import { SkipAutoAudit } from '../audit-log/skip-auto-audit.decorator';
 import { API_VERSION } from '../common/constants/api-version.constants';
 
 import {
@@ -27,6 +28,7 @@ import { CredentialDefinitionService } from './credential-definition.service';
 import { CreateCredentialDefinitionDto } from './dto/create-credential-definition.dto';
 import { UpdateCredentialDefinitionDto } from './dto/update-credential-definition.dto';
 
+@SkipAutoAudit()
 @Controller({ path: 'credential-definitions', version: API_VERSION })
 export class CredentialDefinitionController {
   public constructor(
