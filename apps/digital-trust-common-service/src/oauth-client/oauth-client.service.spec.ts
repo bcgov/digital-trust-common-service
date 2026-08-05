@@ -24,6 +24,7 @@ describe('OAuthClientService', () => {
   let mockUpdate: jest.Mock;
   let mockGetConfig: jest.Mock;
   let mockRepository: any;
+  let createService: () => Promise<OAuthClientService>;
 
   const mockOAuthClient: OAuthClient = {
     id: '123e4567-e89b-12d3-a456-426614174000',
@@ -64,21 +65,28 @@ describe('OAuthClientService', () => {
       repository: mockRepository,
     };
 
-    const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        OAuthClientService,
-        {
-          provide: OAuthClientRepository,
-          useValue: mockOAuthClientRepository,
-        },
-        {
-          provide: OidcConfigService,
-          useValue: { getConfig: mockGetConfig },
-        },
-      ],
-    }).compile();
+    // OAuthClientService captures the grant-type allowlist at construction,
+    // so tests that need a different allowlist rebuild the service after
+    // adjusting mockGetConfig.
+    createService = async (): Promise<OAuthClientService> => {
+      const module: TestingModule = await Test.createTestingModule({
+        providers: [
+          OAuthClientService,
+          {
+            provide: OAuthClientRepository,
+            useValue: mockOAuthClientRepository,
+          },
+          {
+            provide: OidcConfigService,
+            useValue: { getConfig: mockGetConfig },
+          },
+        ],
+      }).compile();
 
-    service = module.get<OAuthClientService>(OAuthClientService);
+      return module.get<OAuthClientService>(OAuthClientService);
+    };
+
+    service = await createService();
   });
 
   it('should be defined', () => {
@@ -122,6 +130,7 @@ describe('OAuthClientService', () => {
       mockGetConfig.mockReturnValue({
         grantTypes: ['client_credentials', 'refresh_token'],
       });
+      service = await createService();
       mockCreate.mockResolvedValue(mockOAuthClient);
 
       const dto: CreateOAuthClientDto = {
@@ -138,6 +147,7 @@ describe('OAuthClientService', () => {
       mockGetConfig.mockReturnValue({
         grantTypes: ['client_credentials', 'refresh_token'],
       });
+      service = await createService();
       mockCreate.mockResolvedValue(mockOAuthClient);
 
       await service.createClient({

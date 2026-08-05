@@ -15,18 +15,26 @@ import { OAuthClientRepository } from './oauth-client.repository';
 
 @Injectable()
 export class OAuthClientService {
+  // Captured once at construction: the grant-type allowlist is sourced from
+  // deployment configuration (OIDC_GRANT_TYPES), which cannot change without
+  // rolling out a new deployment. Holding it in a readonly field keeps the
+  // value stable for the lifetime of the service instead of re-reading it on
+  // every request.
+  private readonly supportedGrantTypes: string[];
+
   public constructor(
     private readonly oauthClientRepository: OAuthClientRepository,
     private readonly oidcConfigService: OidcConfigService,
-  ) {}
+  ) {
+    this.supportedGrantTypes = this.oidcConfigService.getConfig().grantTypes;
+  }
 
   public async createClient(
     dto: CreateOAuthClientDto,
   ): Promise<{ client: OAuthClient; clientSecret: string }> {
     // A client that names no grant type gets the configured allowlist, so
     // the default can never fall outside it.
-    const grantTypes =
-      dto.grantTypes ?? this.oidcConfigService.getConfig().grantTypes;
+    const grantTypes = dto.grantTypes ?? this.supportedGrantTypes;
 
     this.assertSupportedGrantTypes(grantTypes);
 
@@ -130,7 +138,7 @@ export class OAuthClientService {
    * enabling further grants needs no change here.
    */
   private assertSupportedGrantTypes(grantTypes?: string[]): void {
-    const supported = this.oidcConfigService.getConfig().grantTypes;
+    const supported = this.supportedGrantTypes;
     const unsupported = grantTypes?.filter(
       (grantType) => !supported.includes(grantType),
     );
