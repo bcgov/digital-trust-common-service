@@ -1,5 +1,4 @@
 import { Logger } from '@nestjs/common';
-import { NestFactory } from '@nestjs/core';
 
 import { DevSeedService } from './dev-seed.service';
 import { runSeed } from './run-seed';
@@ -10,6 +9,10 @@ jest.mock('@nestjs/core', () => ({
     createApplicationContext: jest.fn(),
   },
 }));
+
+const mockCreateApplicationContext = jest.requireMock<{
+  NestFactory: { createApplicationContext: jest.Mock };
+}>('@nestjs/core').NestFactory.createApplicationContext;
 
 describe('runSeed', () => {
   const mockRun = jest.fn();
@@ -23,7 +26,7 @@ describe('runSeed', () => {
     mockClose.mockResolvedValue(undefined);
     mockGet.mockReturnValue({ run: mockRun });
 
-    (NestFactory.createApplicationContext as jest.Mock).mockResolvedValue({
+    mockCreateApplicationContext.mockResolvedValue({
       get: mockGet,
       close: mockClose,
     });
@@ -32,9 +35,7 @@ describe('runSeed', () => {
   it('bootstraps SeedModule and runs DevSeedService', async () => {
     await runSeed();
 
-    const createApplicationContext = NestFactory.createApplicationContext as jest.Mock;
-
-    expect(createApplicationContext).toHaveBeenCalledWith(
+    expect(mockCreateApplicationContext).toHaveBeenCalledWith(
       SeedModule,
       expect.objectContaining({ logger: ['log', 'warn', 'error'] }),
     );
