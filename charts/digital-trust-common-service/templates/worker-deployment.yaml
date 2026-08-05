@@ -65,13 +65,39 @@ spec:
           resources:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          {{- with (include "digital-trust-common-service.volumeMounts" . | trim) }}
+          {{- $connectorSecret := or .Values.connectorEncryption.create .Values.connectorEncryption.existingSecret }}
+          {{- $oidcSecret := or .Values.oidcSigning.create .Values.oidcSigning.existingSecret }}
+          {{- if or .Values.volumeMounts $connectorSecret $oidcSecret }}
           volumeMounts:
-            {{- . | nindent 12 }}
+            {{- with .Values.volumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+            {{- if $connectorSecret }}
+            - name: connector-encryption
+              mountPath: {{ .Values.connectorEncryption.mountPath }}
+              readOnly: true
+            {{- end }}
+            {{- if $oidcSecret }}
+            - name: oidc-signing
+              mountPath: {{ .Values.oidcSigning.mountPath }}
+              readOnly: true
+            {{- end }}
           {{- end }}
-      {{- with (include "digital-trust-common-service.volumes" . | trim) }}
+      {{- if or .Values.volumes $connectorSecret $oidcSecret }}
       volumes:
-        {{- . | nindent 8 }}
+        {{- with .Values.volumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+        {{- if $connectorSecret }}
+        - name: connector-encryption
+          secret:
+            secretName: {{ include "digital-trust-common-service.connectorEncryptionSecretName" . }}
+        {{- end }}
+        {{- if $oidcSecret }}
+        - name: oidc-signing
+          secret:
+            secretName: {{ include "digital-trust-common-service.oidcSigningSecretName" . }}
+        {{- end }}
       {{- end }}
       {{- with .Values.worker.nodeSelector }}
       nodeSelector:

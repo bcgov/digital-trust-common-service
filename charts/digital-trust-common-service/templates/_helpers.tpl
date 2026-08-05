@@ -141,55 +141,6 @@ Name of the Secret holding the OIDC RS256 signing JWKS.
 {{- end }}
 
 {{/*
-Pod volumes shared by the API and Worker.
-
-The secret-backed volumes are rendered whenever the corresponding Secret is in
-play, chart-managed or pre-provisioned, because the matching volumeMounts are
-chart defaults. Gating them on `create` alone leaves any release that consumes
-an existing Secret with a mount pointing at a volume that was never declared,
-which the kubelet rejects.
-*/}}
-{{- define "digital-trust-common-service.volumes" -}}
-{{- with .Values.volumes }}
-{{- toYaml . }}
-{{- end }}
-{{- if or .Values.connectorEncryption.create .Values.connectorEncryption.existingSecret }}
-- name: connector-encryption
-  secret:
-    secretName: {{ include "digital-trust-common-service.connectorEncryptionSecretName" . }}
-{{- end }}
-{{- if or .Values.oidcSigning.create .Values.oidcSigning.existingSecret }}
-- name: oidc-signing
-  secret:
-    secretName: {{ include "digital-trust-common-service.oidcSigningSecretName" . }}
-{{- end }}
-{{- end }}
-
-{{/*
-Container volume mounts shared by the API and Worker.
-
-Kept in step with the volumes above: a mount is only emitted when the Secret
-behind it is actually rendered. Declaring them in values instead would force
-every overlay that adds a mount of its own to repeat these, since Helm
-replaces list values wholesale rather than merging them.
-*/}}
-{{- define "digital-trust-common-service.volumeMounts" -}}
-{{- with .Values.volumeMounts }}
-{{- toYaml . }}
-{{- end }}
-{{- if or .Values.connectorEncryption.create .Values.connectorEncryption.existingSecret }}
-- name: connector-encryption
-  mountPath: {{ .Values.connectorEncryption.mountPath }}
-  readOnly: true
-{{- end }}
-{{- if or .Values.oidcSigning.create .Values.oidcSigning.existingSecret }}
-- name: oidc-signing
-  mountPath: {{ .Values.oidcSigning.mountPath }}
-  readOnly: true
-{{- end }}
-{{- end }}
-
-{{/*
 Name of the ConfigMap holding non-secret application configuration.
 */}}
 {{- define "digital-trust-common-service.configMapName" -}}
