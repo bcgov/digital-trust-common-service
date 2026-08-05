@@ -7,6 +7,7 @@ export const JOB_QUEUES = {
   WEBHOOK_DISPATCH: 'webhook.dispatch',
   EMAIL_SEND: 'email.send',
   AUDIT_WRITE: 'audit.write',
+  AUDIT_PARTITION_MAINTAIN: 'audit.partition-maintain',
 } as const;
 
 export type JobQueueName = (typeof JOB_QUEUES)[keyof typeof JOB_QUEUES];
@@ -17,6 +18,7 @@ export const JOB_DEAD_LETTER_QUEUES = {
   WEBHOOK_DISPATCH: 'webhook.dispatch.dlq',
   EMAIL_SEND: 'email.send.dlq',
   AUDIT_WRITE: 'audit.write.dlq',
+  AUDIT_PARTITION_MAINTAIN: 'audit.partition-maintain.dlq',
 } as const;
 
 export type QueueDefinition = {
@@ -61,6 +63,13 @@ export const QUEUE_DEFINITIONS: QueueDefinition[] = [
     deadLetter: JOB_DEAD_LETTER_QUEUES.AUDIT_WRITE,
     retryLimit: 5,
     retryDelay: 15,
+    retryBackoff: true,
+  },
+  {
+    name: JOB_QUEUES.AUDIT_PARTITION_MAINTAIN,
+    deadLetter: JOB_DEAD_LETTER_QUEUES.AUDIT_PARTITION_MAINTAIN,
+    retryLimit: 3,
+    retryDelay: 60,
     retryBackoff: true,
   },
 ];

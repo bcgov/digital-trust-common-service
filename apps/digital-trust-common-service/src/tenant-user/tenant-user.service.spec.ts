@@ -1,6 +1,9 @@
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 
+import { AuditAction } from '../audit-log/audit-log.entity';
+import { DomainAuditService } from '../audit-log/domain-audit.service';
+
 import { CreateTenantUserDto } from './dto/create-tenant-user.dto';
 import {
   TenantUser,
@@ -19,6 +22,7 @@ describe('TenantUserService', () => {
   let mockFindByTenantAndExternalUserId: jest.Mock;
   let mockUpdate: jest.Mock;
   let mockDelete: jest.Mock;
+  let mockEmit: jest.Mock;
 
   const mockTenantUser: TenantUser = {
     id: '123e4567-e89b-12d3-a456-426614174000',
@@ -41,6 +45,7 @@ describe('TenantUserService', () => {
     mockFindByTenantAndExternalUserId = jest.fn();
     mockUpdate = jest.fn();
     mockDelete = jest.fn();
+    mockEmit = jest.fn().mockResolvedValue(undefined);
 
     const mockRepository = {
       create: mockCreate,
@@ -58,6 +63,10 @@ describe('TenantUserService', () => {
         {
           provide: TenantUserRepository,
           useValue: mockRepository,
+        },
+        {
+          provide: DomainAuditService,
+          useValue: { emit: mockEmit },
         },
       ],
     }).compile();
@@ -97,6 +106,12 @@ describe('TenantUserService', () => {
         role: dto.role,
         status: dto.status,
       });
+      expect(mockEmit).toHaveBeenCalledWith({
+        tenantId: mockTenantUser.tenantId,
+        action: AuditAction.CREATE,
+        resourceType: 'tenant_user',
+        resourceId: mockTenantUser.id,
+      });
       expect(result).toEqual(mockTenantUser);
     });
 
@@ -118,6 +133,7 @@ describe('TenantUserService', () => {
         dto.externalUserId,
       );
       expect(mockCreate).not.toHaveBeenCalled();
+      expect(mockEmit).not.toHaveBeenCalled();
     });
   });
 
@@ -198,6 +214,12 @@ describe('TenantUserService', () => {
 
       expect(mockFindById).toHaveBeenCalledWith(id);
       expect(mockUpdate).toHaveBeenCalled();
+      expect(mockEmit).toHaveBeenCalledWith({
+        tenantId: updatedTenantUser.tenantId,
+        action: AuditAction.UPDATE,
+        resourceType: 'tenant_user',
+        resourceId: updatedTenantUser.id,
+      });
       expect(result).toEqual(updatedTenantUser);
     });
 
@@ -222,6 +244,12 @@ describe('TenantUserService', () => {
 
       expect(mockFindById).toHaveBeenCalledWith(id);
       expect(mockDelete).toHaveBeenCalledWith(id);
+      expect(mockEmit).toHaveBeenCalledWith({
+        tenantId: mockTenantUser.tenantId,
+        action: AuditAction.DELETE,
+        resourceType: 'tenant_user',
+        resourceId: id,
+      });
     });
 
     it('should throw NotFoundException if tenant user not found', async () => {
@@ -230,6 +258,7 @@ describe('TenantUserService', () => {
 
       await expect(service.delete(id)).rejects.toThrow(NotFoundException);
       expect(mockDelete).not.toHaveBeenCalled();
+      expect(mockEmit).not.toHaveBeenCalled();
     });
   });
 });

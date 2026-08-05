@@ -4,13 +4,19 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 
+import { AuditAction } from '../audit-log/audit-log.entity';
+import { DomainAuditService } from '../audit-log/domain-audit.service';
+
 import { CreateTenantDto } from './dto/create-tenant.dto';
 import { UpdateTenantDto } from './dto/update-tenant.dto';
 import { TenantRepository } from './tenant.repository';
 
 @Injectable()
 export class TenantService {
-  public constructor(private readonly tenants: TenantRepository) {}
+  public constructor(
+    private readonly tenants: TenantRepository,
+    private readonly domainAudit: DomainAuditService,
+  ) {}
 
   public async create(dto: CreateTenantDto) {
     const existing = await this.tenants.findBySlug(dto.slug);
@@ -20,8 +26,16 @@ export class TenantService {
     }
 
     const tenant = this.tenants.create(dto);
+    const saved = await this.tenants.update(tenant);
 
-    return this.tenants.update(tenant);
+    await this.domainAudit.emit({
+      tenantId: saved.id,
+      action: AuditAction.CREATE,
+      resourceType: 'tenant',
+      resourceId: saved.id,
+    });
+
+    return saved;
   }
 
   public async findAll() {
@@ -67,7 +81,16 @@ export class TenantService {
       tenant.config = dto.config;
     }
 
-    return this.tenants.update(tenant);
+    const saved = await this.tenants.update(tenant);
+
+    await this.domainAudit.emit({
+      tenantId: saved.id,
+      action: AuditAction.UPDATE,
+      resourceType: 'tenant',
+      resourceId: saved.id,
+    });
+
+    return saved;
   }
 
   public async delete(id: string) {
@@ -78,6 +101,13 @@ export class TenantService {
     }
 
     await this.tenants.delete(id);
+
+    await this.domainAudit.emit({
+      tenantId: id,
+      action: AuditAction.DELETE,
+      resourceType: 'tenant',
+      resourceId: id,
+    });
   }
 
   public async restore(id: string) {
@@ -90,5 +120,13 @@ export class TenantService {
         'Restore failed: Tenant not found after restore',
       );
     }
+
+    await this.domainAudit.emit({
+      tenantId: tenant.id,
+      action: AuditAction.UPDATE,
+      resourceType: 'tenant',
+      resourceId: tenant.id,
+      metadata: { restored: true },
+    });
   }
 }
