@@ -132,8 +132,8 @@ export class OAuthClientService {
 
     if (unsupported && unsupported.length > 0) {
       throw new BadRequestException(
-        `Unsupported grant type(s): ${unsupported.join(', ')}. Only ${SUPPORTED_GRANT_TYPES.join(', ')} is currently supported; interactive flows land in AU-02 (#35).`,
-      );
+  `Unsupported grant type(s): ${unsupported.join(', ')}. Supported grant type(s): ${SUPPORTED_GRANT_TYPES.join(', ')}.`,
+);
     }
   }
 
