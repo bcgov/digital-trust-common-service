@@ -22,6 +22,16 @@ export interface OidcConfig {
    * here, or the client fails to load with `invalid_client_metadata`.
    */
   scopes: string[];
+  /**
+   * Grant types a client may be registered with. Only grants the provider
+   * can actually serve are accepted: grants requiring interactive user
+   * login have no account backend behind them yet (`findAccount` throws),
+   * so enabling one through configuration is rejected at startup rather
+   * than producing clients that fail at the authorize endpoint. The
+   * setting is an operational escape hatch across the grants that are
+   * implemented, not a way to turn on unimplemented ones.
+   */
+  grantTypes: string[];
 }
 
 const DEFAULT_ACCESS_TOKEN_TTL_SECONDS = 5 * 60;
@@ -37,6 +47,14 @@ const DEFAULT_SCOPES = [
   'read:connections',
   'write:connections',
 ];
+const DEFAULT_GRANT_TYPES = ['client_credentials'];
+// Grants the provider is wired to serve today. `refresh_token` is included
+// because oidc-provider issues and consumes refresh tokens on its own, with
+// no account lookup involved. Everything else — authorization_code, device
+// code, and the other interactive flows — needs a working `findAccount`,
+// which is still a stub, so accepting them here would only defer the
+// failure to the authorize endpoint.
+const SERVICEABLE_GRANT_TYPES = ['client_credentials', 'refresh_token'];
 
 @Injectable()
 export class OidcConfigService {
@@ -64,6 +82,7 @@ export class OidcConfigService {
         ) !== 'false',
       cookieKeys: this.getCookieKeys(),
       scopes: this.getScopes(),
+      grantTypes: this.getGrantTypes(),
     };
   }
 
@@ -133,16 +152,35 @@ export class OidcConfigService {
   }
 
   private getScopes(): string[] {
-    const raw = this.configService.get<string>('OIDC_SCOPES');
-
-    const configured = raw
-      ?.split(',')
-      .map((scope) => scope.trim())
-      .filter((scope) => scope.length > 0);
-
-    const scopes =
-      configured && configured.length > 0 ? configured : DEFAULT_SCOPES;
+    const scopes = this.getCsv('OIDC_SCOPES', DEFAULT_SCOPES);
 
     return scopes.includes('openid') ? scopes : ['openid', ...scopes];
+  }
+
+  private getGrantTypes(): string[] {
+    const grantTypes = this.getCsv('OIDC_GRANT_TYPES', DEFAULT_GRANT_TYPES);
+    const unserviceable = grantTypes.filter(
+      (grantType) => !SERVICEABLE_GRANT_TYPES.includes(grantType),
+    );
+
+    if (unserviceable.length > 0) {
+      throw new Error(
+        `OIDC_GRANT_TYPES contains grant type(s) this provider cannot serve: ${unserviceable.join(
+          ', ',
+        )}. Serviceable grant type(s): ${SERVICEABLE_GRANT_TYPES.join(', ')}.`,
+      );
+    }
+
+    return grantTypes;
+  }
+
+  private getCsv(key: string, fallback: string[]): string[] {
+    const configured = this.configService
+      .get<string>(key)
+      ?.split(',')
+      .map((value) => value.trim())
+      .filter((value) => value.length > 0);
+
+    return configured && configured.length > 0 ? configured : fallback;
   }
 }

@@ -1,10 +1,10 @@
 import { PgBossModule } from '@app/pg-boss';
 import { DynamicModule, Module, Provider } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { OidcAdapterFactory } from './adapters/oidc-adapter.factory';
 import { OidcModel } from './entities/oidc-model.entity';
+import { OidcConfigModule } from './oidc-config.module';
 import { OidcConfigService } from './oidc-config.service';
 import { OidcKeysService } from './oidc-keys.service';
 import { OidcModelPurgeRepository } from './oidc-model-purge.repository';
@@ -32,13 +32,12 @@ export class OidcModule {
     return {
       module: OidcModule,
       imports: [
-        ConfigModule,
+        OidcConfigModule,
         TypeOrmModule.forFeature([OidcModel]),
         PgBossModule,
         ...(options.imports ?? []),
       ],
       providers: [
-        OidcConfigService,
         OidcKeysService,
         OidcAdapterFactory,
         OidcProviderService,

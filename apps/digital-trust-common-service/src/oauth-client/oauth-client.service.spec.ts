@@ -1,3 +1,4 @@
+import { OidcConfigService } from '@app/oidc/config';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 
@@ -21,6 +22,7 @@ describe('OAuthClientService', () => {
   let mockCreate: jest.Mock;
   let mockRevoke: jest.Mock;
   let mockUpdate: jest.Mock;
+  let mockGetConfig: jest.Mock;
   let mockRepository: any;
 
   const mockOAuthClient: OAuthClient = {
@@ -44,6 +46,9 @@ describe('OAuthClientService', () => {
     mockCreate = jest.fn();
     mockRevoke = jest.fn();
     mockUpdate = jest.fn();
+    mockGetConfig = jest
+      .fn()
+      .mockReturnValue({ grantTypes: ['client_credentials'] });
 
     mockRepository = {
       findOne: jest.fn(),
@@ -65,6 +70,10 @@ describe('OAuthClientService', () => {
         {
           provide: OAuthClientRepository,
           useValue: mockOAuthClientRepository,
+        },
+        {
+          provide: OidcConfigService,
+          useValue: { getConfig: mockGetConfig },
         },
       ],
     }).compile();
@@ -107,6 +116,40 @@ describe('OAuthClientService', () => {
         BadRequestException,
       );
       expect(mockCreate).not.toHaveBeenCalled();
+    });
+
+    it('should accept a grant type the OIDC configuration enables', async () => {
+      mockGetConfig.mockReturnValue({
+        grantTypes: ['client_credentials', 'refresh_token'],
+      });
+      mockCreate.mockResolvedValue(mockOAuthClient);
+
+      const dto: CreateOAuthClientDto = {
+        tenantId: mockOAuthClient.tenantId,
+        name: mockOAuthClient.name,
+        grantTypes: ['refresh_token'],
+      };
+
+      await expect(service.createClient(dto)).resolves.toBeDefined();
+      expect(mockCreate).toHaveBeenCalled();
+    });
+
+    it('should default an omitted grant type to the configured allowlist', async () => {
+      mockGetConfig.mockReturnValue({
+        grantTypes: ['client_credentials', 'refresh_token'],
+      });
+      mockCreate.mockResolvedValue(mockOAuthClient);
+
+      await service.createClient({
+        tenantId: mockOAuthClient.tenantId,
+        name: mockOAuthClient.name,
+      });
+
+      expect(mockCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          grantTypes: ['client_credentials', 'refresh_token'],
+        }),
+      );
     });
   });
 

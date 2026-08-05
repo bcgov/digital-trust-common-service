@@ -102,6 +102,41 @@ describe('OidcConfigService', () => {
       expect(service.getConfig().scopes).toEqual(['openid', 'read:foo']);
     });
 
+    it('allows only client_credentials by default', async () => {
+      await buildModule({ NODE_ENV: 'development' });
+
+      expect(service.getConfig().grantTypes).toEqual(['client_credentials']);
+    });
+
+    it('parses a comma-separated OIDC_GRANT_TYPES override', async () => {
+      await buildModule({
+        OIDC_GRANT_TYPES: ' client_credentials , refresh_token ,',
+      });
+
+      expect(service.getConfig().grantTypes).toEqual([
+        'client_credentials',
+        'refresh_token',
+      ]);
+    });
+
+    it('throws when OIDC_GRANT_TYPES enables a grant the provider cannot serve', async () => {
+      await buildModule({
+        OIDC_GRANT_TYPES: 'client_credentials,authorization_code',
+      });
+
+      expect(() => service.getConfig()).toThrow(
+        'OIDC_GRANT_TYPES contains grant type(s) this provider cannot serve: authorization_code',
+      );
+    });
+
+    it('throws on a misspelled grant type', async () => {
+      await buildModule({ OIDC_GRANT_TYPES: 'client_credential' });
+
+      expect(() => service.getConfig()).toThrow(
+        'OIDC_GRANT_TYPES contains grant type(s) this provider cannot serve: client_credential',
+      );
+    });
+
     it('throws on a non-positive TTL', async () => {
       await buildModule({ OIDC_ACCESS_TOKEN_TTL_SECONDS: '0' });
 

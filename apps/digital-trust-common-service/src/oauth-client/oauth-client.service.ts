@@ -1,5 +1,6 @@
 import { randomBytes } from 'crypto';
 
+import { OidcConfigService } from '@app/oidc/config';
 import {
   BadRequestException,
   Injectable,
@@ -12,26 +13,22 @@ import { UpdateOAuthClientDto } from './dto/update-oauth-client.dto';
 import { OAuthClient } from './oauth-client.entity';
 import { OAuthClientRepository } from './oauth-client.repository';
 
-/**
- * Interactive user login (the authorization_code flow) is not implemented
- * yet; `OidcProviderService.findAccount` (AU-01) is a stub that throws
- * until AU-02 (#35) lands. Registering a client with `authorization_code`
- * (or any other interactive grant) today would create a client that always
- * fails at the token/authorize endpoints with an opaque 500. Reject that
- * state here, at the clearest boundary, rather than let it surface later.
- */
-const SUPPORTED_GRANT_TYPES = ['client_credentials'];
-
 @Injectable()
 export class OAuthClientService {
   public constructor(
     private readonly oauthClientRepository: OAuthClientRepository,
+    private readonly oidcConfigService: OidcConfigService,
   ) {}
 
   public async createClient(
     dto: CreateOAuthClientDto,
   ): Promise<{ client: OAuthClient; clientSecret: string }> {
-    this.assertSupportedGrantTypes(dto.grantTypes);
+    // A client that names no grant type gets the configured allowlist, so
+    // the default can never fall outside it.
+    const grantTypes =
+      dto.grantTypes ?? this.oidcConfigService.getConfig().grantTypes;
+
+    this.assertSupportedGrantTypes(grantTypes);
 
     const clientSecret = randomBytes(32).toString('hex');
     const clientId = this.generateClientId();
@@ -44,7 +41,7 @@ export class OAuthClientService {
       name: dto.name,
       scopes: dto.scopes || [],
       redirectUris: dto.redirectUris || [],
-      grantTypes: dto.grantTypes || ['client_credentials'],
+      grantTypes,
       createdBy: dto.createdBy,
     } as OAuthClient);
 
@@ -125,15 +122,23 @@ export class OAuthClientService {
     return `client_${randomBytes(16).toString('hex')}`;
   }
 
+  /**
+   * Grants the provider cannot serve are rejected at registration time.
+   * A client registered with an unserviceable grant would otherwise be
+   * accepted here and then fail with an opaque error at the token or
+   * authorize endpoint. The allowlist comes from OIDC configuration, so
+   * enabling further grants needs no change here.
+   */
   private assertSupportedGrantTypes(grantTypes?: string[]): void {
+    const supported = this.oidcConfigService.getConfig().grantTypes;
     const unsupported = grantTypes?.filter(
-      (grantType) => !SUPPORTED_GRANT_TYPES.includes(grantType),
+      (grantType) => !supported.includes(grantType),
     );
 
     if (unsupported && unsupported.length > 0) {
       throw new BadRequestException(
-  `Unsupported grant type(s): ${unsupported.join(', ')}. Supported grant type(s): ${SUPPORTED_GRANT_TYPES.join(', ')}.`,
-);
+        `Unsupported grant type(s): ${unsupported.join(', ')}. Supported grant type(s): ${supported.join(', ')}.`,
+      );
     }
   }
 

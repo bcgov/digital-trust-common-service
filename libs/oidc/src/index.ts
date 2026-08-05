@@ -1,5 +1,6 @@
 export { OidcModule } from './oidc.module';
 export type { OidcModuleOptions } from './oidc.module';
+export { OidcConfigModule } from './oidc-config.module';
 export { OidcConfigService } from './oidc-config.service';
 export type { OidcConfig } from './oidc-config.service';
 export { OidcKeysService } from './oidc-keys.service';
