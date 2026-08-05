@@ -1,6 +1,9 @@
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 
+import { AuditAction } from '../audit-log/audit-log.entity';
+import { DomainAuditService } from '../audit-log/domain-audit.service';
+
 import {
   Connection,
   ConnectorType,
@@ -20,6 +23,7 @@ describe('ConnectionService', () => {
   let mockFindByTenantIdAndState: jest.Mock;
   let mockUpdate: jest.Mock;
   let mockDelete: jest.Mock;
+  let mockEmit: jest.Mock;
 
   const mockConnection: Connection = {
     id: '123e4567-e89b-12d3-a456-426614174000',
@@ -44,6 +48,7 @@ describe('ConnectionService', () => {
     mockFindByTenantIdAndState = jest.fn();
     mockUpdate = jest.fn();
     mockDelete = jest.fn();
+    mockEmit = jest.fn().mockResolvedValue(undefined);
 
     const mockRepository = {
       create: mockCreate,
@@ -61,6 +66,10 @@ describe('ConnectionService', () => {
         {
           provide: ConnectionRepository,
           useValue: mockRepository,
+        },
+        {
+          provide: DomainAuditService,
+          useValue: { emit: mockEmit },
         },
       ],
     }).compile();
@@ -103,6 +112,12 @@ describe('ConnectionService', () => {
         protocol: dto.protocol,
         metadata: dto.metadata || {},
       });
+      expect(mockEmit).toHaveBeenCalledWith({
+        tenantId: mockConnection.tenantId,
+        action: AuditAction.CREATE,
+        resourceType: 'connection',
+        resourceId: mockConnection.id,
+      });
       expect(result).toEqual(mockConnection);
     });
 
@@ -118,6 +133,7 @@ describe('ConnectionService', () => {
       mockFindByExternalConnectionId.mockResolvedValue(mockConnection);
 
       await expect(service.create(dto)).rejects.toThrow(ConflictException);
+      expect(mockEmit).not.toHaveBeenCalled();
     });
   });
 
@@ -204,6 +220,12 @@ describe('ConnectionService', () => {
 
       expect(mockFindById).toHaveBeenCalledWith(mockConnection.id);
       expect(mockUpdate).toHaveBeenCalled();
+      expect(mockEmit).toHaveBeenCalledWith({
+        tenantId: mockConnection.tenantId,
+        action: AuditAction.UPDATE,
+        resourceType: 'connection',
+        resourceId: mockConnection.id,
+      });
       expect(result.state).toEqual(ConnectionState.COMPLETED);
     });
 
@@ -224,6 +246,12 @@ describe('ConnectionService', () => {
 
       expect(mockFindById).toHaveBeenCalledWith(mockConnection.id);
       expect(mockDelete).toHaveBeenCalledWith(mockConnection.id);
+      expect(mockEmit).toHaveBeenCalledWith({
+        tenantId: mockConnection.tenantId,
+        action: AuditAction.DELETE,
+        resourceType: 'connection',
+        resourceId: mockConnection.id,
+      });
     });
 
     it('should throw NotFoundException if connection not found on delete', async () => {
@@ -232,6 +260,7 @@ describe('ConnectionService', () => {
       await expect(service.delete(mockConnection.id)).rejects.toThrow(
         NotFoundException,
       );
+      expect(mockEmit).not.toHaveBeenCalled();
     });
   });
 });

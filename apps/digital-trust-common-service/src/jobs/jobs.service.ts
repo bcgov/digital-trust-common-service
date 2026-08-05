@@ -73,6 +73,19 @@ export class JobsService implements ShutdownParticipant, OnModuleInit {
   }
 
   /**
+   * Ensure a recurring pg-boss cron schedule for a queue (idempotent upsert).
+   */
+  public async schedule(
+    name: string,
+    cron: string,
+    data: object | null = null,
+  ): Promise<void> {
+    await this.ensureQueues();
+    await this.bossService.boss.schedule(name, cron, data);
+    this.logger.log(`Scheduled ${name} with cron '${cron}'`);
+  }
+
+  /**
    * Enqueue a job using the same DB transaction as the caller's EntityManager.
    */
   public async sendInTransaction(

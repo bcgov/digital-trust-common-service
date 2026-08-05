@@ -4,6 +4,9 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 
+import { AuditAction } from '../audit-log/audit-log.entity';
+import { DomainAuditService } from '../audit-log/domain-audit.service';
+
 import {
   CredentialDefinition,
   CredentialDefinitionConnectorType,
@@ -17,6 +20,7 @@ import { UpdateCredentialDefinitionDto } from './dto/update-credential-definitio
 export class CredentialDefinitionService {
   public constructor(
     private readonly credentialDefinitionRepository: CredentialDefinitionRepository,
+    private readonly domainAudit: DomainAuditService,
   ) {}
 
   public async create(
@@ -35,7 +39,7 @@ export class CredentialDefinitionService {
       );
     }
 
-    return await this.credentialDefinitionRepository.create({
+    const created = await this.credentialDefinitionRepository.create({
       tenantId: dto.tenantId,
       name: dto.name,
       format: dto.format,
@@ -44,6 +48,15 @@ export class CredentialDefinitionService {
       connectorType: dto.connectorType,
       metadata: dto.metadata,
     });
+
+    await this.domainAudit.emit({
+      tenantId: created.tenantId,
+      action: AuditAction.CREATE,
+      resourceType: 'credential_definition',
+      resourceId: created.id,
+    });
+
+    return created;
   }
 
   public async findById(id: string): Promise<CredentialDefinition> {
@@ -93,14 +106,29 @@ export class CredentialDefinitionService {
       credentialDefinition.metadata = dto.metadata;
     }
 
-    return await this.credentialDefinitionRepository.update(
-      credentialDefinition,
-    );
+    const updated =
+      await this.credentialDefinitionRepository.update(credentialDefinition);
+
+    await this.domainAudit.emit({
+      tenantId: updated.tenantId,
+      action: AuditAction.UPDATE,
+      resourceType: 'credential_definition',
+      resourceId: updated.id,
+    });
+
+    return updated;
   }
 
   public async delete(id: string): Promise<void> {
-    await this.findById(id);
+    const credentialDefinition = await this.findById(id);
 
     await this.credentialDefinitionRepository.delete(id);
+
+    await this.domainAudit.emit({
+      tenantId: credentialDefinition.tenantId,
+      action: AuditAction.DELETE,
+      resourceType: 'credential_definition',
+      resourceId: id,
+    });
   }
 }

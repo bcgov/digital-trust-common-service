@@ -18,6 +18,7 @@ import {
   ApiQuery,
 } from '@nestjs/swagger';
 
+import { SkipAutoAudit } from '../audit-log/skip-auto-audit.decorator';
 import { API_VERSION } from '../common/constants/api-version.constants';
 
 import { Connection, ConnectionState } from './connection.entity';
@@ -25,6 +26,7 @@ import { ConnectionService } from './connection.service';
 import { CreateConnectionDto } from './dto/create-connection.dto';
 import { UpdateConnectionDto } from './dto/update-connection.dto';
 
+@SkipAutoAudit()
 @Controller({ path: 'connections', version: API_VERSION })
 export class ConnectionController {
   public constructor(private readonly connectionService: ConnectionService) {}
