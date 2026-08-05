@@ -40,6 +40,7 @@ worker:
 
 config:
   NODE_ENV: development
+  OIDC_ISSUER: https://digital-trust-common-service-dev.apps.silver.devops.gov.bc.ca/oidc
   LOG_LEVEL: debug
   # Bare hostname only — DB_PORT defaults to 5432 separately, do not append ":5432" here.
   DB_HOST: digital-trust-common-service-db
@@ -58,4 +59,11 @@ networkPolicy:
 
 connectorEncryption:
   existingSecret: digital-trust-common-service-dev-connector-encryption
+  create: false
+
+# Signing keys are provisioned by ops, not the chart. Generate the JWKS with
+# `npm run oidc:generate-keys` and load it into the Secret as oidc-keys.json,
+# alongside an OIDC_COOKIE_KEYS entry.
+oidcSigning:
+  existingSecret: digital-trust-common-service-dev-oidc-signing
   create: false

@@ -153,6 +153,18 @@ jobs:
             echo "::notice::PR_DB_HOST variable not set; using the DB_HOST default from values-pr.yaml."
           fi
 
+          # The provider signs tokens with an RS256 JWKS the chart cannot
+          # generate. Create one on the first deploy of this PR; on later
+          # deploys the Secret already exists and the chart carries its
+          # contents forward, so the signing key stays stable for the life of
+          # the preview.
+          if oc get secret "${RELEASE_NAME}-oidc-signing" >/dev/null 2>&1; then
+            echo "::notice::Reusing the existing OIDC signing key for ${RELEASE_NAME}."
+          else
+            node scripts/generate-oidc-keys.mjs "${RUNNER_TEMP}/oidc-keys.json"
+            EXTRA_ARGS+=(--set-file "oidcSigning.keys=${RUNNER_TEMP}/oidc-keys.json")
+          fi
+
           helm upgrade --install "${RELEASE_NAME}" ./charts/digital-trust-common-service \
             -f charts/digital-trust-common-service/values-pr.yaml \
             --set image.tag="${IMAGE_TAG}" \

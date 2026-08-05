@@ -247,6 +247,7 @@ config:
   SWAGGER_ENABLED: "true"
   SWAGGER_JSON_ENABLED: "true"
   CONNECTOR_ENCRYPTION_KEYS_PATH: "/etc/connector/encryption-keys.json"
+  OIDC_KEYS_PATH: "/etc/oidc/oidc-keys.json"
 
 # -- Extra plain environment variables appended to every container (name/value list)
 extraEnv: []
@@ -280,6 +281,27 @@ connectorEncryption:
   currentVersion: 1
   keys:
     "1": "< key placeholder >"
+
+# RS256 signing keys for the OIDC provider. The application only reads the
+# JWKS from disk; it never generates one outside local development, so every
+# deployed environment needs this Secret.
+oidcSigning:
+  # -- Name of an existing Secret holding the signing JWKS
+  existingSecret: ""
+  # -- Create a chart-managed Secret from the values below
+  create: false
+  # -- Keep the chart-managed Secret when the release is uninstalled
+  retainOnUninstall: true
+  # -- Mounted path inside the container
+  mountPath: /etc/oidc
+  # -- RS256 JWKS document. Helm cannot generate one, so it is supplied by the
+  # caller: `npm run oidc:generate-keys > oidc-keys.json` then
+  # `--set-file oidcSigning.keys=oidc-keys.json`. Left empty on upgrade, the
+  # keys already in the live Secret are kept.
+  keys: ""
+  # -- Comma-separated cookie signing secrets (OIDC_COOKIE_KEYS). Generated
+  # once and preserved across upgrades when empty.
+  cookieKeys: ""
 
 
 # NetworkPolicy. Restricts ingress to the OpenShift router and declares explicit
@@ -327,11 +349,10 @@ networkPolicy:
 # -- Extra volumes for the API/Worker pods
 volumes: []
 
-# -- Extra volume mounts for the API/Worker containers
-volumeMounts:
-  - name: connector-encryption
-    mountPath: /etc/connector
-    readOnly: true
+# -- Extra volume mounts for the API/Worker containers. The connector
+# encryption and OIDC signing mounts are added by the chart alongside their
+# Secrets and do not need to be listed here.
+volumeMounts: []
 
 # -- Node selector for API pods
 nodeSelector: {}

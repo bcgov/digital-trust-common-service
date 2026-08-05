@@ -19,6 +19,9 @@ spec:
         checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
         checksum/connector-encryption: {{ include (print $.Template.BasePath "/connector-encryption-secret.yaml") . | sha256sum }}
         {{- end }}
+        {{- if .Values.oidcSigning.create }}
+        checksum/oidc-signing: {{ include (print $.Template.BasePath "/oidc-signing-secret.yaml") . | sha256sum }}
+        {{- end }}
         {{- with .Values.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -51,9 +54,22 @@ spec:
               protocol: TCP
           envFrom:
             {{- include "digital-trust-common-service.envFrom" . | nindent 12 }}
-          {{- with .Values.extraEnv }}
+          {{- if or .Values.extraEnv (or .Values.oidcSigning.create .Values.oidcSigning.existingSecret) }}
           env:
+            {{- with .Values.extraEnv }}
             {{- toYaml . | nindent 12 }}
+            {{- end }}
+            {{- if or .Values.oidcSigning.create .Values.oidcSigning.existingSecret }}
+            # Marked optional so a pre-provisioned Secret that only carries the
+            # signing JWKS still starts; the application fails fast on its own
+            # if cookie keys are missing in production.
+            - name: OIDC_COOKIE_KEYS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "digital-trust-common-service.oidcSigningSecretName" . }}
+                  key: OIDC_COOKIE_KEYS
+                  optional: true
+            {{- end }}
           {{- end }}
           {{- with .Values.livenessProbe }}
           livenessProbe:
@@ -67,19 +83,14 @@ spec:
           resources:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          {{- with .Values.volumeMounts }}
+          {{- with (include "digital-trust-common-service.volumeMounts" . | trim) }}
           volumeMounts:
-            {{- toYaml . | nindent 12 }}
+            {{- . | nindent 12 }}
           {{- end }}
+      {{- with (include "digital-trust-common-service.volumes" . | trim) }}
       volumes:
-        {{- with .Values.volumes }}
-        {{- toYaml . | nindent 8 }}
-        {{- end }}
-        {{- if .Values.connectorEncryption.create }}
-        - name: connector-encryption
-          secret:
-            secretName: {{ include "digital-trust-common-service.fullname" $ }}-connector-encryption
-        {{- end }}
+        {{- . | nindent 8 }}
+      {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
