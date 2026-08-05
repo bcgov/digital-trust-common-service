@@ -4,7 +4,7 @@ import { NestFactory } from '@nestjs/core';
 import { DevSeedService } from './dev-seed.service';
 import { SeedModule } from './seed.module';
 
-async function runSeed(): Promise<void> {
+export async function runSeed(): Promise<void> {
   const logger = new Logger('SeedCLI');
   const app = await NestFactory.createApplicationContext(SeedModule, {
     logger: ['log', 'warn', 'error'],
@@ -23,4 +23,11 @@ async function runSeed(): Promise<void> {
   }
 }
 
-void runSeed();
+const entryScript = process.argv[1]?.replace(/\\/g, '/');
+
+if (
+  entryScript?.endsWith('run-seed.js') ||
+  entryScript?.endsWith('run-seed.ts')
+) {
+  void runSeed();
+}

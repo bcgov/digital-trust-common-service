@@ -1,7 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
 
 import { EncryptionService } from '../common/crypto/encryption.service';
+import { Connection } from '../connection/connection.entity';
 import { ConnectionRepository } from '../connection/connection.repository';
+import { ConnectorCredential } from '../connector-credential/connector-credential.entity';
 import { ConnectorCredentialRepository } from '../connector-credential/connector-credential.repository';
 import { CredentialDefinition } from '../credential-definition/credential-definition.entity';
 import { CredentialDefinitionRepository } from '../credential-definition/credential-definition.repository';
@@ -12,10 +14,19 @@ import { Operation } from '../operation/operation.entity';
 import { OperationRepository } from '../operation/operation.repository';
 import { Tenant, TenantStatus } from '../tenant/tenant.entity';
 import { TenantRepository } from '../tenant/tenant.repository';
+import {
+  TenantUser,
+  TenantUserStatus,
+} from '../tenant-user/tenant-user.entity';
 import { TenantUserRepository } from '../tenant-user/tenant-user.repository';
+import { VerificationProfile } from '../verification-profile/verification-profile.entity';
 import { VerificationProfileRepository } from '../verification-profile/verification-profile.repository';
 
-import { DEV_SEED_CLIENT_SECRET, seedApiClientId } from './dev-seed.data';
+import {
+  DEV_SEED_CLIENT_SECRET,
+  MOCK_TRACTION_ENDPOINT,
+  seedApiClientId,
+} from './dev-seed.data';
 import { DevSeedService } from './dev-seed.service';
 
 describe('DevSeedService', () => {
@@ -261,5 +272,192 @@ describe('DevSeedService', () => {
 
     expect(createCall).toBeDefined();
     expect(DEV_SEED_CLIENT_SECRET).toBe('dev-seed-client-secret');
+  });
+
+  it('updates existing tenant users instead of creating duplicates', async () => {
+    const existingUser = {
+      id: 'user-1',
+      tenantId: 'tenant-acme',
+      externalUserId: 'dev-acme-corp-owner',
+      email: 'old@example.test',
+      role: 'owner',
+      status: TenantUserStatus.INVITED,
+    } as TenantUser;
+
+    tenantUserRepo.findByTenantAndExternalUserId.mockImplementation(
+      (_tenantId: string, externalUserId: string) =>
+        Promise.resolve(
+          externalUserId === 'dev-acme-corp-owner' ? existingUser : null,
+        ),
+    );
+
+    await service.run();
+
+    expect(tenantUserRepo.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        email: 'owner@acme-corp.example.test',
+        status: TenantUserStatus.ACTIVE,
+      }),
+    );
+  });
+
+  it('updates an existing connector credential for the mock traction endpoint', async () => {
+    const existingConnector = {
+      id: 'connector-existing',
+      endpointUrl: MOCK_TRACTION_ENDPOINT,
+      credentialsEncrypted: Buffer.from('old'),
+      keyVersion: 1,
+    } as ConnectorCredential;
+
+    connectorCredentialRepo.findByTenant.mockResolvedValue([existingConnector]);
+
+    await service.run();
+
+    expect(connectorCredentialRepo.update).toHaveBeenCalledWith(
+      'connector-existing',
+      expect.objectContaining({
+        active: true,
+        keyVersion: 1,
+      }),
+    );
+    expect(connectorCredentialRepo.create).not.toHaveBeenCalled();
+  });
+
+  it('updates existing credential definitions on re-run', async () => {
+    const existing = {
+      id: 'cred-existing',
+      name: 'Person credential',
+      format: 'anoncreds',
+    } as CredentialDefinition;
+
+    credentialDefinitionRepo.findByTenantAndNameAndFormat.mockResolvedValue(
+      existing,
+    );
+    credentialDefinitionRepo.update.mockResolvedValue(existing);
+
+    await service.run();
+
+    expect(credentialDefinitionRepo.update).toHaveBeenCalled();
+  });
+
+  it('updates existing issuance and verification profiles on re-run', async () => {
+    const existingIssuance = {
+      id: 'ip-existing',
+      name: 'person-credential',
+      version: '1.0',
+    } as IssuanceProfile;
+
+    const existingVerification = {
+      id: 'vp-existing',
+      name: 'identity-check',
+      version: '1.0',
+    } as VerificationProfile;
+
+    issuanceProfileRepo.findByNameAndVersion.mockResolvedValue(
+      existingIssuance,
+    );
+    issuanceProfileRepo.save.mockResolvedValue(existingIssuance);
+    verificationProfileRepo.findByNameAndVersion.mockResolvedValue(
+      existingVerification,
+    );
+    verificationProfileRepo.save.mockResolvedValue(existingVerification);
+
+    await service.run();
+
+    expect(issuanceProfileRepo.save).toHaveBeenCalled();
+    expect(verificationProfileRepo.save).toHaveBeenCalled();
+  });
+
+  it('updates existing connections and operations on re-run', async () => {
+    const existingConnection = {
+      id: 'conn-1',
+      externalConnectionId: 'acme-corp-seed-conn-invited',
+    } as Connection;
+
+    const existingOperation = {
+      id: 'op-1',
+      externalId: 'acme-corp-seed-op-pending',
+      createdAt: new Date('2026-01-01T00:00:00Z'),
+      viewedAt: null,
+    } as Operation;
+
+    connectionRepo.findByExternalConnectionId.mockImplementation(
+      (externalConnectionId: string) =>
+        Promise.resolve(
+          externalConnectionId === 'acme-corp-seed-conn-invited'
+            ? existingConnection
+            : null,
+        ),
+    );
+
+    operationRepo.findByExternalId.mockImplementation((externalId: string) =>
+      Promise.resolve(
+        externalId === 'acme-corp-seed-op-pending' ? existingOperation : null,
+      ),
+    );
+
+    await service.run();
+
+    expect(connectionRepo.update).toHaveBeenCalled();
+    expect(operationRepo.save).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'op-1' }),
+    );
+  });
+
+  it('seeds suspended-co with users and clients but without demo graph data', async () => {
+    tenantRepo.findBySlug.mockImplementation((slug: string) => {
+      if (slug === 'suspended-co') {
+        return Promise.resolve({
+          id: 'tenant-suspended',
+          slug,
+          name: 'Suspended Co',
+          status: TenantStatus.SUSPENDED,
+          config: {},
+        } as Tenant);
+      }
+
+      if (slug === 'acme-corp') {
+        return Promise.resolve({
+          id: 'tenant-acme',
+          slug,
+          name: 'Acme Corp',
+          status: TenantStatus.ACTIVE,
+          config: {},
+        } as Tenant);
+      }
+
+      return Promise.resolve(null);
+    });
+
+    oauthClientRepo.findByClientId.mockResolvedValue(null);
+
+    const summary = await service.run();
+
+    expect(summary.users).toBe(9);
+    expect(summary.connections).toBe(10);
+    expect(oauthClientRepo.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        clientId: seedApiClientId('suspended-co'),
+        scopes: expect.arrayContaining(['credentials:offer']),
+      }),
+    );
+  });
+
+  it('skips operations when the tenant record disappears mid-run', async () => {
+    tenantRepo.findById.mockResolvedValue(null);
+
+    const summary = await service.run();
+
+    expect(summary.operations).toBe(0);
+  });
+
+  it('skips verification profile when the issuance profile is missing', async () => {
+    issuanceProfileRepo.create.mockResolvedValue(null);
+    issuanceProfileRepo.findByNameAndVersion.mockResolvedValue(null);
+
+    const summary = await service.run();
+
+    expect(summary.verificationProfiles).toBe(0);
+    expect(verificationProfileRepo.create).not.toHaveBeenCalled();
   });
 });
