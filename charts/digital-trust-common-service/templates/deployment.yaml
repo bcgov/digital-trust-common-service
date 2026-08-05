@@ -75,10 +75,11 @@ spec:
         {{- with .Values.volumes }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
-        {{- if .Values.connectorEncryption.create }}
+
+        {{- if or .Values.connectorEncryption.create .Values.connectorEncryption.existingSecret }}
         - name: connector-encryption
           secret:
-            secretName: {{ include "digital-trust-common-service.fullname" $ }}-connector-encryption
+            secretName: {{ include "digital-trust-common-service.connectorEncryptionSecretName" . }}
         {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:

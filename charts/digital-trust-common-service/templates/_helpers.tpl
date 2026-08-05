@@ -141,3 +141,15 @@ stays in sync.
 {{ toYaml . }}
 {{ end }}
 {{- end }}
+
+{{/*
+Name of the Secret holding connector encryption keys.
+If connectorEncryption.existingSecret is set, use it; otherwise fall back to a chart-managed name.
+*/}}
+{{- define "digital-trust-common-service.connectorEncryptionSecretName" -}}
+{{- if .Values.connectorEncryption.existingSecret -}}
+{{- tpl .Values.connectorEncryption.existingSecret . -}}
+{{- else -}}
+{{- printf "%s-connector-encryption" (include "digital-trust-common-service.fullname" .) -}}
+{{- end -}}
+{{- end }}
