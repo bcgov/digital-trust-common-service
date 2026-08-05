@@ -120,8 +120,13 @@ jobs:
         working-directory: charts
         run: |
           helm template ci digital-trust-common-service -f digital-trust-common-service/ci/ci-values.yaml > /dev/null
+          # Overlays that enable oidcSigning.create expect the JWKS to be
+          # injected at deploy time via `--set-file oidcSigning.keys=...`.
+          # Supply a placeholder here so the smoke render exercises the
+          # Secret template instead of hitting its fail-closed guard.
           for f in digital-trust-common-service/values-*.yaml; do
-            helm template rel digital-trust-common-service -f "$f" > /dev/null
+            helm template rel digital-trust-common-service -f "$f" \
+              --set-file oidcSigning.keys=digital-trust-common-service/ci/placeholder-oidc-keys.json > /dev/null
           done
       - name: yamllint (values and Chart.yaml)
         run: |

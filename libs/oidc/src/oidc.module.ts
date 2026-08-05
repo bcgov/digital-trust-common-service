@@ -5,7 +5,6 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { OidcAdapterFactory } from './adapters/oidc-adapter.factory';
 import { OidcModel } from './entities/oidc-model.entity';
 import { OidcConfigModule } from './oidc-config.module';
-import { OidcConfigService } from './oidc-config.service';
 import { OidcKeysService } from './oidc-keys.service';
 import { OidcModelPurgeRepository } from './oidc-model-purge.repository';
 import { OidcModelPurgeService } from './oidc-model-purge.service';
@@ -46,7 +45,7 @@ export class OidcModule {
         options.clientLookupProvider,
       ],
       exports: [
-        OidcConfigService,
+        OidcConfigModule,
         OidcKeysService,
         OidcAdapterFactory,
         OidcProviderService,
