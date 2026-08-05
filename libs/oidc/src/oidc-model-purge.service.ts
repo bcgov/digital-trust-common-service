@@ -16,7 +16,7 @@ const PURGE_SCHEDULE_CRON = '0 * * * *';
 const BATCH_SIZE = 500;
 
 // Safety cap on batches processed per job run so a large backlog can't make a
-// single run run indefinitely; any remainder is purged on the next scheduled run.
+// single run continue indefinitely; any remainder is purged on the next scheduled run.
 const MAX_BATCHES_PER_RUN = 50;
 
 /**
