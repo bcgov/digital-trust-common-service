@@ -58,4 +58,32 @@ describe('runSeed', () => {
 
     errorSpy.mockRestore();
   });
+
+  const originalArgv = process.argv;
+
+  afterEach(() => {
+    process.argv = originalArgv;
+  });
+
+  it('auto-runs when loaded as the node entry script', async () => {
+    process.argv = [
+      'node',
+      '/dist/apps/digital-trust-common-service/src/seed/run-seed.js',
+    ];
+
+    jest.isolateModules(() => {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports -- reload entry side effects
+      require('./run-seed');
+    });
+
+    await new Promise<void>((resolve) => setImmediate(resolve));
+
+    expect(mockCreateApplicationContext).toHaveBeenCalledWith(
+      expect.any(Function),
+      { logger: ['log', 'warn', 'error'] },
+    );
+    expect(mockGet).toHaveBeenCalledTimes(1);
+    expect(mockRun).toHaveBeenCalled();
+    expect(mockClose).toHaveBeenCalled();
+  });
 });
