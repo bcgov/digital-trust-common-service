@@ -120,5 +120,5 @@ export class OAuthClient {
     type: 'timestamptz',
     nullable: true,
   })
-  public revokedAt?: Date;
+  public revokedAt?: Date | null;
 }

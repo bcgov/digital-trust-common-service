@@ -63,5 +63,5 @@ export class OAuthClientResponseDto {
     required: false,
     nullable: true,
   })
-  public revokedAt?: Date;
+  public revokedAt?: Date | null;
 }
