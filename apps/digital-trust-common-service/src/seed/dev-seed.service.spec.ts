@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 
 import { EncryptionService } from '../common/crypto/encryption.service';
@@ -252,6 +253,39 @@ describe('DevSeedService', () => {
     );
   });
 
+  it('clears revokedAt when updating an existing OAuth client', async () => {
+    oauthClientRepo.findByClientId.mockImplementation((clientId: string) =>
+      Promise.resolve({
+        id: 'client-1',
+        clientId,
+        clientSecretHash: 'existing-hash',
+        scopes: [],
+        grantTypes: ['client_credentials'],
+        revokedAt: new Date('2026-01-01T00:00:00Z'),
+      }),
+    );
+
+    await service.run();
+
+    expect(oauthClientRepo.update).toHaveBeenCalledWith(
+      expect.objectContaining({ revokedAt: null }),
+    );
+  });
+
+  it('does not log OAuth client secrets', async () => {
+    const logSpy = jest
+      .spyOn(Logger.prototype, 'log')
+      .mockImplementation(() => undefined);
+
+    await service.run();
+
+    for (const [message] of logSpy.mock.calls) {
+      expect(String(message)).not.toContain(DEV_SEED_CLIENT_SECRET);
+    }
+
+    logSpy.mockRestore();
+  });
+
   it('seeds full demo graph for active tenants with seedDemoData', async () => {
     const summary = await service.run();
 
@@ -321,6 +355,25 @@ describe('DevSeedService', () => {
       }),
     );
     expect(connectorCredentialRepo.create).not.toHaveBeenCalled();
+  });
+
+  it('binds issuance profiles to the mock traction connector', async () => {
+    connectorCredentialRepo.findByTenant.mockResolvedValue([
+      {
+        id: 'connector-other',
+        endpointUrl: 'https://other.example.test',
+      },
+      {
+        id: 'connector-seed',
+        endpointUrl: MOCK_TRACTION_ENDPOINT,
+      },
+    ] as ConnectorCredential[]);
+
+    await service.run();
+
+    expect(issuanceProfileRepo.create).toHaveBeenCalledWith(
+      expect.objectContaining({ connectorId: 'connector-seed' }),
+    );
   });
 
   it('updates existing credential definitions on re-run', async () => {

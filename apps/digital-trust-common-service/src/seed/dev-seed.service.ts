@@ -239,7 +239,7 @@ export class DevSeedService {
       existing.name = 'Dev Integration Client';
       existing.scopes = [...new Set(scopes)];
       existing.grantTypes = ['client_credentials'];
-      existing.revokedAt = undefined;
+      existing.revokedAt = null;
       await this.oauthClients.update(existing);
       return 1;
     }
@@ -304,8 +304,10 @@ export class DevSeedService {
     credDefs: CredentialDefinition[],
   ): Promise<Map<string, IssuanceProfile>> {
     const byKey = new Map<string, IssuanceProfile>();
-    const connectors = await this.connectorCredentials.findByTenant(tenantId);
-    const connectorId = connectors[0]?.id ?? null;
+    const seedConnector = (
+      await this.connectorCredentials.findByTenant(tenantId)
+    ).find((credential) => credential.endpointUrl === MOCK_TRACTION_ENDPOINT);
+    const connectorId = seedConnector?.id ?? null;
 
     for (const def of SEED_ISSUANCE_PROFILES) {
       const credDef = credDefs.find(
@@ -513,7 +515,7 @@ export class DevSeedService {
 
     if (summary.createdOAuthClients.length > 0) {
       this.logger.log(
-        `New OAuth clients (client_id → secret "${DEV_SEED_CLIENT_SECRET}"):`,
+        'New OAuth clients created (see docs/DEVELOPER.md for the dev client secret):',
       );
       for (const clientId of summary.createdOAuthClients) {
         this.logger.log(`  - ${clientId}`);
