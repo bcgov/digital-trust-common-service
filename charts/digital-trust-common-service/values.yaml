@@ -271,8 +271,13 @@ secret:
     DB_USERNAME: ""
     DB_PASSWORD: ""
 
+# Connector encryption secret. The secret is mounted to the containers when either
+# `create` is true OR `existingSecret` is provided. The app reads encryption keys from
+# the mounted path defined by `mountPath` (default: /etc/connector/encryption-keys.json).
 connectorEncryption:
-  # -- Name of an existing Secret to consume for env vars
+  # -- Name of an existing Secret to use for connector encryption keys (takes precedence
+  # over chart-managed creation). When set, the secret volume will be mounted even if
+  # `create` is false.
   existingSecret: ""
   # -- Create a chart-managed Secret from the values below
   create: false

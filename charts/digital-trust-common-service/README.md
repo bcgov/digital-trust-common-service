@@ -61,7 +61,7 @@ OpenShift. Key characteristics:
 | config | object | `{"AUDIT_AUTO_INTERCEPTOR_ENABLED":"false","AUDIT_PARTITION_CRON":"0 3 * * *","AUDIT_PARTITION_MONTHS_AHEAD":"3","CONNECTOR_ENCRYPTION_KEYS_PATH":"/etc/connector/encryption-keys.json","DB_HOST":"","DB_LOGGING":"false","DB_NAME":"dc_common_service","DB_PORT":"5432","DB_SYNCHRONIZE":"false","LOG_LEVEL":"info","NODE_ENV":"production","OIDC_KEYS_PATH":"/etc/oidc/oidc-keys.json","PORT":"3000","SWAGGER_ENABLED":"true","SWAGGER_JSON_ENABLED":"true"}` | Non-secret application configuration, rendered into a ConfigMap and injected as environment variables into all containers. |
 | connectorEncryption.create | bool | `false` | Create a chart-managed Secret from the values below |
 | connectorEncryption.currentVersion | int | `1` |  |
-| connectorEncryption.existingSecret | string | `""` | Name of an existing Secret to consume for env vars |
+| connectorEncryption.existingSecret | string | `""` | Name of an existing Secret to use for connector encryption keys (takes precedence over chart-managed creation). When set, the secret volume will be mounted even if `create` is false. |
 | connectorEncryption.keys.1 | string | `"< key placeholder >"` |  |
 | connectorEncryption.mountPath | string | `"/etc/connector"` | Mounted path inside the container |
 | connectorEncryption.retainOnUninstall | bool | `true` | Keep the chart-managed Secret when the release is uninstalled |
