@@ -119,6 +119,28 @@ If secret.existingSecret is set, use it; otherwise fall back to a chart-managed 
 {{- end }}
 
 {{/*
+Name of the Secret holding the connector encryption keys.
+*/}}
+{{- define "digital-trust-common-service.connectorEncryptionSecretName" -}}
+{{- if .Values.connectorEncryption.existingSecret -}}
+{{- tpl .Values.connectorEncryption.existingSecret . -}}
+{{- else -}}
+{{- printf "%s-connector-encryption" (include "digital-trust-common-service.fullname" .) -}}
+{{- end -}}
+{{- end }}
+
+{{/*
+Name of the Secret holding the OIDC RS256 signing JWKS.
+*/}}
+{{- define "digital-trust-common-service.oidcSigningSecretName" -}}
+{{- if .Values.oidcSigning.existingSecret -}}
+{{- tpl .Values.oidcSigning.existingSecret . -}}
+{{- else -}}
+{{- printf "%s-oidc-signing" (include "digital-trust-common-service.fullname" .) -}}
+{{- end -}}
+{{- end }}
+
+{{/*
 Name of the ConfigMap holding non-secret application configuration.
 */}}
 {{- define "digital-trust-common-service.configMapName" -}}
@@ -140,16 +162,4 @@ stays in sync.
 {{ with .Values.extraEnvFrom }}
 {{ toYaml . }}
 {{ end }}
-{{- end }}
-
-{{/*
-Name of the Secret holding connector encryption keys.
-If connectorEncryption.existingSecret is set, use it; otherwise fall back to a chart-managed name.
-*/}}
-{{- define "digital-trust-common-service.connectorEncryptionSecretName" -}}
-{{- if .Values.connectorEncryption.existingSecret -}}
-{{- tpl .Values.connectorEncryption.existingSecret . -}}
-{{- else -}}
-{{- printf "%s-connector-encryption" (include "digital-trust-common-service.fullname" .) -}}
-{{- end -}}
 {{- end }}

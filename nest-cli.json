@@ -10,13 +10,13 @@
     "tsConfigPath": "apps/digital-trust-common-service/tsconfig.app.json"
   },
   "projects": {
-    "digital-trust-common-service": {
-      "type": "application",
-      "root": "apps/digital-trust-common-service",
-      "entryFile": "main",
-      "sourceRoot": "apps/digital-trust-common-service/src",
+    "auth": {
+      "type": "library",
+      "root": "libs/auth",
+      "entryFile": "index",
+      "sourceRoot": "libs/auth/src",
       "compilerOptions": {
-        "tsConfigPath": "apps/digital-trust-common-service/tsconfig.app.json"
+        "tsConfigPath": "libs/auth/tsconfig.lib.json"
       }
     },
     "common": {
@@ -28,6 +28,15 @@
         "tsConfigPath": "libs/common/tsconfig.lib.json"
       }
     },
+    "credential-ports": {
+      "type": "library",
+      "root": "libs/credential-ports",
+      "entryFile": "index",
+      "sourceRoot": "libs/credential-ports/src",
+      "compilerOptions": {
+        "tsConfigPath": "libs/credential-ports/tsconfig.lib.json"
+      }
+    },
     "database": {
       "type": "library",
       "root": "libs/database",
@@ -37,22 +46,22 @@
         "tsConfigPath": "libs/database/tsconfig.lib.json"
       }
     },
-    "auth": {
-      "type": "library",
-      "root": "libs/auth",
-      "entryFile": "index",
-      "sourceRoot": "libs/auth/src",
+    "digital-trust-common-service": {
+      "type": "application",
+      "root": "apps/digital-trust-common-service",
+      "entryFile": "main",
+      "sourceRoot": "apps/digital-trust-common-service/src",
       "compilerOptions": {
-        "tsConfigPath": "libs/auth/tsconfig.lib.json"
+        "tsConfigPath": "apps/digital-trust-common-service/tsconfig.app.json"
       }
     },
-    "credential-ports": {
+    "oidc": {
       "type": "library",
-      "root": "libs/credential-ports",
+      "root": "libs/oidc",
       "entryFile": "index",
-      "sourceRoot": "libs/credential-ports/src",
+      "sourceRoot": "libs/oidc/src",
       "compilerOptions": {
-        "tsConfigPath": "libs/credential-ports/tsconfig.lib.json"
+        "tsConfigPath": "libs/oidc/tsconfig.lib.json"
       }
     }
   }

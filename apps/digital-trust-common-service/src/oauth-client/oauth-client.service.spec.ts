@@ -1,4 +1,5 @@
-import { NotFoundException } from '@nestjs/common';
+import { OidcConfigService } from '@app/oidc/config';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 
 import { CreateOAuthClientDto } from './dto/create-oauth-client.dto';
@@ -21,7 +22,9 @@ describe('OAuthClientService', () => {
   let mockCreate: jest.Mock;
   let mockRevoke: jest.Mock;
   let mockUpdate: jest.Mock;
+  let mockGetConfig: jest.Mock;
   let mockRepository: any;
+  let createService: () => Promise<OAuthClientService>;
 
   const mockOAuthClient: OAuthClient = {
     id: '123e4567-e89b-12d3-a456-426614174000',
@@ -44,6 +47,9 @@ describe('OAuthClientService', () => {
     mockCreate = jest.fn();
     mockRevoke = jest.fn();
     mockUpdate = jest.fn();
+    mockGetConfig = jest
+      .fn()
+      .mockReturnValue({ grantTypes: ['client_credentials'] });
 
     mockRepository = {
       findOne: jest.fn(),
@@ -59,17 +65,28 @@ describe('OAuthClientService', () => {
       repository: mockRepository,
     };
 
-    const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        OAuthClientService,
-        {
-          provide: OAuthClientRepository,
-          useValue: mockOAuthClientRepository,
-        },
-      ],
-    }).compile();
+    // OAuthClientService captures the grant-type allowlist at construction,
+    // so tests that need a different allowlist rebuild the service after
+    // adjusting mockGetConfig.
+    createService = async (): Promise<OAuthClientService> => {
+      const module: TestingModule = await Test.createTestingModule({
+        providers: [
+          OAuthClientService,
+          {
+            provide: OAuthClientRepository,
+            useValue: mockOAuthClientRepository,
+          },
+          {
+            provide: OidcConfigService,
+            useValue: { getConfig: mockGetConfig },
+          },
+        ],
+      }).compile();
 
-    service = module.get<OAuthClientService>(OAuthClientService);
+      return module.get<OAuthClientService>(OAuthClientService);
+    };
+
+    service = await createService();
   });
 
   it('should be defined', () => {
@@ -94,6 +111,55 @@ describe('OAuthClientService', () => {
       expect(result.clientSecret).toBeDefined();
       expect(result.clientSecret).toHaveLength(64); // hex string of 32 bytes
       expect(mockCreate).toHaveBeenCalled();
+    });
+
+    it('should reject an unsupported grant type', async () => {
+      const dto: CreateOAuthClientDto = {
+        tenantId: mockOAuthClient.tenantId,
+        name: mockOAuthClient.name,
+        grantTypes: ['authorization_code'],
+      };
+
+      await expect(service.createClient(dto)).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(mockCreate).not.toHaveBeenCalled();
+    });
+
+    it('should accept a grant type the OIDC configuration enables', async () => {
+      mockGetConfig.mockReturnValue({
+        grantTypes: ['client_credentials', 'refresh_token'],
+      });
+      service = await createService();
+      mockCreate.mockResolvedValue(mockOAuthClient);
+
+      const dto: CreateOAuthClientDto = {
+        tenantId: mockOAuthClient.tenantId,
+        name: mockOAuthClient.name,
+        grantTypes: ['refresh_token'],
+      };
+
+      await expect(service.createClient(dto)).resolves.toBeDefined();
+      expect(mockCreate).toHaveBeenCalled();
+    });
+
+    it('should default an omitted grant type to the configured allowlist', async () => {
+      mockGetConfig.mockReturnValue({
+        grantTypes: ['client_credentials', 'refresh_token'],
+      });
+      service = await createService();
+      mockCreate.mockResolvedValue(mockOAuthClient);
+
+      await service.createClient({
+        tenantId: mockOAuthClient.tenantId,
+        name: mockOAuthClient.name,
+      });
+
+      expect(mockCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          grantTypes: ['client_credentials', 'refresh_token'],
+        }),
+      );
     });
   });
 
@@ -252,6 +318,15 @@ describe('OAuthClientService', () => {
       await expect(
         service.update('nonexistent', { name: 'Updated Name' }),
       ).rejects.toThrow(NotFoundException);
+    });
+
+    it('should reject an unsupported grant type', async () => {
+      await expect(
+        service.update(mockOAuthClient.id, {
+          grantTypes: ['authorization_code'],
+        }),
+      ).rejects.toThrow(BadRequestException);
+      expect(mockFindById).not.toHaveBeenCalled();
     });
   });
 });

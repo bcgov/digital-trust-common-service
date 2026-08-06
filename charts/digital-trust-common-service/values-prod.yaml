@@ -53,6 +53,7 @@ worker:
 
 config:
   NODE_ENV: production
+  OIDC_ISSUER: https://digital-trust-common-service.apps.silver.devops.gov.bc.ca/oidc
   LOG_LEVEL: info
   # TODO: point at the production PostgreSQL service.
   DB_HOST: <PROD_DB_HOST>
@@ -72,4 +73,11 @@ networkPolicy:
 
 connectorEncryption:
   existingSecret: digital-trust-common-service-prod-connector-encryption
+  create: false
+
+# Signing keys are provisioned by ops, not the chart. Generate the JWKS with
+# `npm run oidc:generate-keys` and load it into the Secret as oidc-keys.json,
+# alongside an OIDC_COOKIE_KEYS entry.
+oidcSigning:
+  existingSecret: digital-trust-common-service-prod-oidc-signing
   create: false
