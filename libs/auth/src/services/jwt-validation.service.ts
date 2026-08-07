@@ -172,16 +172,21 @@ function mapJoseError(error: unknown): AuthenticationRequiredException {
     return error;
   }
 
-  const message =
-    error instanceof Error ? error.message : 'Token validation failed';
-  const lowerMessage = message.toLowerCase();
-
-  if (lowerMessage.includes('expired')) {
+  if (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    (error as { code?: string }).code === 'ERR_JWT_EXPIRED'
+  ) {
     return new AuthenticationRequiredException(
       'invalid_token',
       'Token has expired',
     );
   }
+
+  const message =
+    error instanceof Error ? error.message : 'Token validation failed';
+  const lowerMessage = message.toLowerCase();
 
   if (
     lowerMessage.includes('signature') ||

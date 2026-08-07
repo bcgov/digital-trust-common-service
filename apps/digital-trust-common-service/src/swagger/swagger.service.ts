@@ -1,3 +1,4 @@
+import { APP_JWT_BEARER_SCHEME } from '@app/auth';
 import { INestApplication, Type } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
@@ -170,11 +171,25 @@ export class SwaggerService {
     version: string,
     modules: Array<Type<unknown>> = [TenantModule, TenantUserModule],
   ): void {
-    const config = new DocumentBuilder()
+    let configBuilder = new DocumentBuilder()
       .setTitle(title)
       .setDescription(description)
-      .setVersion(version)
-      .build();
+      .setVersion(version);
+
+    if (name === 'admin') {
+      configBuilder = configBuilder.addBearerAuth(
+        {
+          type: 'http',
+          scheme: 'bearer',
+          bearerFormat: 'JWT',
+          description:
+            'App-issued access token from POST /oidc/token (client_credentials or user login)',
+        },
+        APP_JWT_BEARER_SCHEME,
+      );
+    }
+
+    const config = configBuilder.build();
 
     const document = SwaggerModule.createDocument(app, config, {
       include: modules,
@@ -205,11 +220,25 @@ export class SwaggerService {
     modules: Array<Type<unknown>> = [TenantModule, TenantUserModule],
     document?: ReturnType<typeof SwaggerModule.createDocument>,
   ): void {
-    const config = new DocumentBuilder()
+    let configBuilder = new DocumentBuilder()
       .setTitle(title)
       .setDescription(description)
-      .setVersion(version)
-      .build();
+      .setVersion(version);
+
+    if (name === 'admin') {
+      configBuilder = configBuilder.addBearerAuth(
+        {
+          type: 'http',
+          scheme: 'bearer',
+          bearerFormat: 'JWT',
+          description:
+            'App-issued access token from POST /oidc/token (client_credentials or user login)',
+        },
+        APP_JWT_BEARER_SCHEME,
+      );
+    }
+
+    const config = configBuilder.build();
 
     const docToUse =
       document ||

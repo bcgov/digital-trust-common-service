@@ -65,6 +65,34 @@ describe('jwt-validation helpers', () => {
 
     expect(plainClient.tokenType).toBe('client');
     expect(plainClient.clientId).toBe('plain-client-id');
+
+    const explicitClient = normalizeAuthPayload({
+      sub: 'non-uuid-subject',
+      client_id: 'explicit-client',
+      tenant_id: 'tenant-1',
+      scope: ['read:credentials', 'write:credentials'],
+      iss: 'http://localhost:3000/oidc',
+      aud: 'http://localhost:3000/oidc',
+      exp: 123,
+      iat: 100,
+    });
+
+    expect(explicitClient.tokenType).toBe('client');
+    expect(explicitClient.clientId).toBe('explicit-client');
+    expect(explicitClient.scopes).toEqual([
+      'read:credentials',
+      'write:credentials',
+    ]);
+
+    expect(() =>
+      normalizeAuthPayload({
+        scope: 'read:credentials',
+        iss: 'http://localhost:3000/oidc',
+        aud: 'http://localhost:3000/oidc',
+        exp: 123,
+        iat: 100,
+      }),
+    ).toThrow(AuthenticationRequiredException);
   });
 });
 
@@ -133,6 +161,7 @@ describe('JwtValidationService', () => {
       service.validateAuthorizationHeader(`Bearer ${token}`),
     ).rejects.toMatchObject({
       wwwAuthenticateError: 'invalid_token',
+      errorDescription: 'Token has expired',
     });
   });
 
@@ -145,6 +174,20 @@ describe('JwtValidationService', () => {
     await expect(
       service.validateAuthorizationHeader(`Bearer ${token}`),
     ).rejects.toBeInstanceOf(AuthenticationRequiredException);
+  });
+
+  it('retries JWKS resolution after an initial cache miss', async () => {
+    jwksCacheService.resolveKey
+      .mockRejectedValueOnce(new Error('cache miss'))
+      .mockResolvedValueOnce(publicJwk);
+    jwksCacheService.refresh.mockResolvedValue(undefined);
+
+    const token = await signToken({ sub: 'client:test-client' });
+
+    const auth = await service.validateAuthorizationHeader(`Bearer ${token}`);
+
+    expect(auth.clientId).toBe('test-client');
+    expect(jwksCacheService.refresh.mock.calls).toHaveLength(1);
   });
 
   it('verifyAccessToken rejects non-RS256 algorithms', async () => {
@@ -162,6 +205,78 @@ describe('JwtValidationService', () => {
       }),
     ).rejects.toMatchObject({
       wwwAuthenticateError: 'invalid_token',
+    });
+  });
+
+  it('verifyAccessToken rejects tokens missing kid', async () => {
+    const token = await new SignJWT({ sub: 'client:test-client' })
+      .setProtectedHeader({ alg: 'RS256' })
+      .setIssuer(issuer)
+      .setAudience(issuer)
+      .setExpirationTime('5m')
+      .sign(privateKey);
+
+    await expect(
+      verifyAccessToken(token, () => Promise.resolve(publicJwk), {
+        issuer,
+        audience: issuer,
+      }),
+    ).rejects.toMatchObject({
+      errorDescription: 'Token header missing kid',
+    });
+  });
+
+  it('rejects tokens with wrong issuer', async () => {
+    const token = await new SignJWT({ sub: 'client:test-client' })
+      .setProtectedHeader({ alg: 'RS256', kid: 'test-key' })
+      .setIssuer('http://wrong.example/oidc')
+      .setAudience(issuer)
+      .setIssuedAt()
+      .setExpirationTime('5m')
+      .sign(privateKey);
+
+    await expect(
+      service.validateAuthorizationHeader(`Bearer ${token}`),
+    ).rejects.toBeInstanceOf(AuthenticationRequiredException);
+  });
+
+  it('rejects tokens with wrong audience', async () => {
+    const token = await new SignJWT({ sub: 'client:test-client' })
+      .setProtectedHeader({ alg: 'RS256', kid: 'test-key' })
+      .setIssuer(issuer)
+      .setAudience('http://wrong.example/oidc')
+      .setIssuedAt()
+      .setExpirationTime('5m')
+      .sign(privateKey);
+
+    await expect(
+      service.validateAuthorizationHeader(`Bearer ${token}`),
+    ).rejects.toMatchObject({
+      wwwAuthenticateError: 'invalid_token',
+    });
+  });
+
+  it('maps malformed tokens to invalid_token', async () => {
+    await expect(
+      service.validateAuthorizationHeader('Bearer not-a-jwt'),
+    ).rejects.toMatchObject({
+      wwwAuthenticateError: 'invalid_token',
+    });
+  });
+
+  it('maps missing kid headers to invalid_token through the guard service', async () => {
+    const token = await new SignJWT({ sub: 'client:test-client' })
+      .setProtectedHeader({ alg: 'RS256' })
+      .setIssuer(issuer)
+      .setAudience(issuer)
+      .setIssuedAt()
+      .setExpirationTime('5m')
+      .sign(privateKey);
+
+    await expect(
+      service.validateAuthorizationHeader(`Bearer ${token}`),
+    ).rejects.toMatchObject({
+      errorDescription: 'Token header missing kid',
     });
   });
 });
