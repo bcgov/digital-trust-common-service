@@ -1,3 +1,5 @@
+import { JwtGuard, ScopeGuard } from '@app/auth';
+import { CanActivate } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 
 import { OperationState } from '../operation/operation.entity';
@@ -5,6 +7,12 @@ import { OperationState } from '../operation/operation.entity';
 import { AdminOperationsController } from './admin-operations.controller';
 import { AdminOperationsService } from './admin-operations.service';
 import { OperationStatsResponseDto } from './dto/operation-stats-response.dto';
+
+class AllowGuard implements CanActivate {
+  public canActivate(): boolean {
+    return true;
+  }
+}
 
 describe('AdminOperationsController', () => {
   let controller: AdminOperationsController;
@@ -21,7 +29,12 @@ describe('AdminOperationsController', () => {
           useValue: { getStats: mockGetStats },
         },
       ],
-    }).compile();
+    })
+      .overrideGuard(JwtGuard)
+      .useClass(AllowGuard)
+      .overrideGuard(ScopeGuard)
+      .useClass(AllowGuard)
+      .compile();
 
     controller = module.get<AdminOperationsController>(
       AdminOperationsController,
