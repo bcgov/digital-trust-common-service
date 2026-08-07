@@ -1,4 +1,4 @@
-import { APP_JWT_BEARER_SCHEME } from '@app/auth';
+import { APP_JWT_BEARER_SCHEME } from '@app/auth/constants/app-jwt-bearer.constants';
 import { INestApplication, Type } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
