@@ -26,3 +26,12 @@ connectorEncryption:
   currentVersion: 1
   keys:
     "1": <generated-per-deployment-key>"
+
+oidcSigning:
+  existingSecret: ""
+  create: true
+  # Preview Secrets are per-PR and disposable; pr-cleanup.yml removes them
+  # with the rest of the release.
+  retainOnUninstall: false
+  # oidcSigning.keys is injected by pr-deploy.yml (--set-file) the first time
+  # a PR deploys, and omitted afterwards so redeploys reuse the same key.

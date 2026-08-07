@@ -1,0 +1,13 @@
+{
+  "keys": [
+    {
+      "kty": "RSA",
+      "kid": "ci-placeholder-not-a-real-key",
+      "use": "sig",
+      "alg": "RS256",
+      "n": "ci-placeholder",
+      "e": "AQAB",
+      "d": "ci-placeholder"
+    }
+  ]
+}

@@ -1,4 +1,5 @@
 import { DatabaseModule } from '@app/database';
+import { OIDC_CLIENT_LOOKUP_PORT, OidcModule } from '@app/oidc';
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_INTERCEPTOR } from '@nestjs/core';
@@ -16,6 +17,7 @@ import { CredentialDefinitionModule } from './credential-definition/credential-d
 import { HealthModule } from './health/health.module';
 import { IssuanceProfileModule } from './issuance-profile/issuance-profile.module';
 import { JobsModule } from './jobs/jobs.module';
+import { OAuthClientLookupAdapter } from './oauth-client/oauth-client-lookup.adapter';
 import { OAuthClientModule } from './oauth-client/oauth-client.module';
 import { OperationModule } from './operation/operation.module';
 import { SeedModule } from './seed/seed.module';
@@ -30,6 +32,16 @@ import { VerificationProfileModule } from './verification-profile/verification-p
     DatabaseModule,
     EncryptionModule,
     HealthModule,
+    JobsModule,
+    OAuthClientModule,
+    OidcModule.forRoot({
+      imports: [OAuthClientModule],
+      clientLookupProvider: {
+        provide: OIDC_CLIENT_LOOKUP_PORT,
+        useClass: OAuthClientLookupAdapter,
+      },
+    }),
+    OperationModule,
     ShutdownModule,
     TenantModule,
     TenantUserModule,
@@ -38,10 +50,7 @@ import { VerificationProfileModule } from './verification-profile/verification-p
     VerificationProfileModule,
     ConnectionModule,
     ConnectorCredentialModule,
-    OAuthClientModule,
-    OperationModule,
     CredentialModule,
-    JobsModule,
     AdminModule,
     AuditLogModule,
     SeedModule,

@@ -147,3 +147,4 @@ vite.config.ts.timestamp-*
 
 # Configuration files
 config/encryption-keys.json
+config/oidc-keys.json

@@ -29,6 +29,8 @@
       "@app/auth/*": ["./libs/auth/src/*"],
       "@app/credential-ports": ["./libs/credential-ports/src"],
       "@app/credential-ports/*": ["./libs/credential-ports/src/*"],
+      "@app/oidc": ["./libs/oidc/src"],
+      "@app/oidc/*": ["./libs/oidc/src/*"],
       "@app/pg-boss": ["./libs/pg-boss/src"],
       "@app/pg-boss/*": ["./libs/pg-boss/src/*"]
     }

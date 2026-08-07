@@ -1,6 +1,11 @@
 import { randomBytes } from 'crypto';
 
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { OidcConfigService } from '@app/oidc/config';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { argon2i, hash, verify } from 'argon2';
 
 import { CreateOAuthClientDto } from './dto/create-oauth-client.dto';
@@ -10,13 +15,29 @@ import { OAuthClientRepository } from './oauth-client.repository';
 
 @Injectable()
 export class OAuthClientService {
+  // Captured once at construction: the grant-type allowlist is sourced from
+  // deployment configuration (OIDC_GRANT_TYPES), which cannot change without
+  // rolling out a new deployment. Holding it in a readonly field keeps the
+  // value stable for the lifetime of the service instead of re-reading it on
+  // every request.
+  private readonly supportedGrantTypes: string[];
+
   public constructor(
     private readonly oauthClientRepository: OAuthClientRepository,
-  ) {}
+    private readonly oidcConfigService: OidcConfigService,
+  ) {
+    this.supportedGrantTypes = this.oidcConfigService.getConfig().grantTypes;
+  }
 
   public async createClient(
     dto: CreateOAuthClientDto,
   ): Promise<{ client: OAuthClient; clientSecret: string }> {
+    // A client that names no grant type gets the configured allowlist, so
+    // the default can never fall outside it.
+    const grantTypes = dto.grantTypes ?? this.supportedGrantTypes;
+
+    this.assertSupportedGrantTypes(grantTypes);
+
     const clientSecret = randomBytes(32).toString('hex');
     const clientId = this.generateClientId();
     const clientSecretHash = await this.hashClientSecret(clientSecret);
@@ -28,7 +49,7 @@ export class OAuthClientService {
       name: dto.name,
       scopes: dto.scopes || [],
       redirectUris: dto.redirectUris || [],
-      grantTypes: dto.grantTypes || ['client_credentials'],
+      grantTypes,
       createdBy: dto.createdBy,
     } as OAuthClient);
 
@@ -55,6 +76,8 @@ export class OAuthClientService {
     id: string,
     dto: UpdateOAuthClientDto,
   ): Promise<OAuthClient> {
+    this.assertSupportedGrantTypes(dto.grantTypes);
+
     const client = await this.oauthClientRepository.findById(id);
 
     if (!client) {
@@ -105,6 +128,26 @@ export class OAuthClientService {
 
   private generateClientId(): string {
     return `client_${randomBytes(16).toString('hex')}`;
+  }
+
+  /**
+   * Grants the provider cannot serve are rejected at registration time.
+   * A client registered with an unserviceable grant would otherwise be
+   * accepted here and then fail with an opaque error at the token or
+   * authorize endpoint. The allowlist comes from OIDC configuration, so
+   * enabling further grants needs no change here.
+   */
+  private assertSupportedGrantTypes(grantTypes?: string[]): void {
+    const supported = this.supportedGrantTypes;
+    const unsupported = grantTypes?.filter(
+      (grantType) => !supported.includes(grantType),
+    );
+
+    if (unsupported && unsupported.length > 0) {
+      throw new BadRequestException(
+        `Unsupported grant type(s): ${unsupported.join(', ')}. Supported grant type(s): ${supported.join(', ')}.`,
+      );
+    }
   }
 
   private async hashClientSecret(secret: string): Promise<string> {

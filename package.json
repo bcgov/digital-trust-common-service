@@ -23,6 +23,7 @@
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:integration": "jest --config ./apps/digital-trust-common-service/test/jest-integration.json --runInBand",
     "test:e2e": "jest --config ./apps/digital-trust-common-service/test/jest-e2e.json",
+    "oidc:generate-keys": "node scripts/generate-oidc-keys.mjs",
     "migration:create": "ts-node libs/database/src/migrations/create-migration.ts",
     "migrate:up": "typeorm migration:run -d dist/libs/database/src/data-source.js",
     "migrate:down": "typeorm migration:revert -d dist/libs/database/src/data-source.js",
@@ -40,6 +41,8 @@
     "argon2": "^0.45.1",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.15.1",
+    "jose": "^6.2.5",
+    "oidc-provider": "^9.11.1",
     "pg": "^8.22.0",
     "pg-boss": "^12.26.0",
     "reflect-metadata": "^0.2.2",
@@ -55,6 +58,7 @@
     "@types/express": "^5.0.6",
     "@types/jest": "^30.0.0",
     "@types/node": "^26.1.1",
+    "@types/oidc-provider": "^9.5.0",
     "@types/supertest": "^7.2.0",
     "eslint": "^9.39.4",
     "eslint-config-prettier": "^10.1.8",
@@ -103,9 +107,10 @@
       "!apps/**/test/**"
     ],
     "moduleNameMapper": {
+      "^@app/auth(|/.*)$": "<rootDir>/libs/auth/src/$1",
       "^@app/common(|/.*)$": "<rootDir>/libs/common/src/$1",
       "^@app/database(|/.*)$": "<rootDir>/libs/database/src/$1",
-      "^@app/auth(|/.*)$": "<rootDir>/libs/auth/src/$1",
+      "^@app/oidc(|/.*)$": "<rootDir>/libs/oidc/src/$1",
       "^@app/pg-boss(|/.*)$": "<rootDir>/libs/pg-boss/src/$1"
     },
     "coverageDirectory": "./coverage",

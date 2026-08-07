@@ -1,3 +1,4 @@
+import { OidcMountService } from '@app/oidc';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 
@@ -14,6 +15,8 @@ async function bootstrap() {
   app.enableShutdownHooks();
 
   configureApp(app);
+
+  OidcMountService.mount(app);
 
   SwaggerService.setupSwagger(app, configService);
 

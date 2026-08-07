@@ -11,6 +11,7 @@ import { CreateOauthClient1785262142662 } from './migrations/000008_create-oauth
 import { CreateConnectorCredential1785262250704 } from './migrations/000009_create-connector-credential';
 import { CreateIssuanceVerificationProfiles1785360000010 } from './migrations/000010_create-issuance-verification-profiles';
 import { CreateCredentialRecord1785460000011 } from './migrations/000011_create-credential-record';
+import { CreateOidcModel1785431598677 } from './migrations/000012_create-oidc-model';
 import { buildSslConfig } from './ssl.util';
 
 export const AppDataSource = new DataSource({
@@ -33,6 +34,7 @@ export const AppDataSource = new DataSource({
     CreateConnectorCredential1785262250704,
     CreateIssuanceVerificationProfiles1785360000010,
     CreateCredentialRecord1785460000011,
+    CreateOidcModel1785431598677,
   ],
   ssl: buildSslConfig(
     process.env.DB_SSL,
