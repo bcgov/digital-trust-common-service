@@ -1,4 +1,8 @@
 export { AuthModule } from './auth.module';
+export {
+  ApiAppJwtAuth,
+  APP_JWT_BEARER_SCHEME,
+} from './decorators/api-app-jwt-auth.decorator';
 export { CurrentAuth } from './decorators/current-auth.decorator';
 export { AuthenticationRequiredException } from './exceptions/authentication-required.exception';
 export { JwtAuthExceptionFilter } from './filters/jwt-auth.exception-filter';

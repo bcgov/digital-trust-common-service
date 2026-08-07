@@ -95,4 +95,47 @@ describe('JwtGuard', () => {
       guard.canActivate(createContext(request)),
     ).rejects.toBeInstanceOf(AuthenticationRequiredException);
   });
+
+  it('reads bearer tokens from array-style authorization headers', async () => {
+    const auth: AuthContext = {
+      sub: 'client:test-client',
+      tokenType: 'client',
+      clientId: 'test-client',
+      tenantId: 'tenant-1',
+      roles: [],
+      scope: 'read:credentials',
+      scopes: ['read:credentials'],
+      iss: 'http://localhost:3000/oidc',
+      aud: 'http://localhost:3000/oidc',
+      exp: 123,
+      iat: 100,
+    };
+
+    jwtValidationService.validateAuthorizationHeader.mockResolvedValue(auth);
+
+    const request = {
+      headers: { authorization: ['Bearer token', 'Bearer ignored'] },
+    };
+
+    await guard.canActivate(createContext(request));
+
+    expect(
+      jwtValidationService.validateAuthorizationHeader.mock.calls[0]?.[0],
+    ).toBe('Bearer token');
+  });
+
+  it('wraps unexpected validation failures as invalid_token', async () => {
+    jwtValidationService.validateAuthorizationHeader.mockRejectedValue(
+      new Error('unexpected failure'),
+    );
+
+    const request = { headers: { authorization: 'Bearer token' } };
+
+    await expect(
+      guard.canActivate(createContext(request)),
+    ).rejects.toMatchObject({
+      wwwAuthenticateError: 'invalid_token',
+      errorDescription: 'Token validation failed',
+    });
+  });
 });

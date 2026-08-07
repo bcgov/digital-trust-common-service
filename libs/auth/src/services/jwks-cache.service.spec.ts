@@ -122,4 +122,59 @@ describe('JwksCacheService', () => {
       'JWKS fetch failed with status 503',
     );
   });
+
+  it('throws when refreshed JWKS does not contain the requested kid', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: () => ({
+        keys: [{ kid: 'other-key', kty: 'RSA', n: 'abc', e: 'AQAB' }],
+      }),
+    });
+
+    await expect(service.resolveKey('missing-kid')).rejects.toThrow(
+      'Signing key "missing-kid" not found in JWKS',
+    );
+  });
+
+  it('throws when JWKS response is missing a keys array', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: () => ({}),
+    });
+
+    await expect(service.resolveKey('key-1')).rejects.toThrow(
+      'JWKS response is missing a keys array',
+    );
+  });
+
+  it('clearCache forces the next resolve to fetch again within TTL', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: () => ({
+        keys: [{ kid: 'key-1', kty: 'RSA', n: 'abc', e: 'AQAB' }],
+      }),
+    });
+
+    await service.resolveKey('key-1');
+    service.clearCache();
+    await service.resolveKey('key-1');
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('ignores JWKS entries without a usable kid', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: () => ({
+        keys: [
+          { kid: '', kty: 'RSA' },
+          { kty: 'RSA', n: 'abc', e: 'AQAB' },
+        ],
+      }),
+    });
+
+    await expect(service.resolveKey('key-1')).rejects.toThrow(
+      'Signing key "key-1" not found in JWKS',
+    );
+  });
 });
