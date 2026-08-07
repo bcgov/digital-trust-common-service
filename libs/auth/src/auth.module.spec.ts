@@ -1,16 +1,18 @@
+import { ConfigModule } from '@nestjs/config';
 import { Test, TestingModule } from '@nestjs/testing';
 
 import { AuthModule } from './auth.module';
 import { JwtGuard } from './guards/jwt.guard';
 import { ScopeGuard } from './guards/scope.guard';
 import { TenantGuard } from './guards/tenant.guard';
+import { JwtValidationService } from './services/jwt-validation.service';
 
 describe('AuthModule', () => {
   let module: TestingModule;
 
   beforeEach(async () => {
     module = await Test.createTestingModule({
-      imports: [AuthModule],
+      imports: [ConfigModule.forRoot({ isGlobal: true }), AuthModule],
     }).compile();
   });
 
@@ -24,5 +26,11 @@ describe('AuthModule', () => {
 
   it('should provide TenantGuard', () => {
     expect(module.get<TenantGuard>(TenantGuard)).toBeDefined();
+  });
+
+  it('should provide JwtValidationService', () => {
+    expect(
+      module.get<JwtValidationService>(JwtValidationService),
+    ).toBeDefined();
   });
 });
