@@ -1,7 +1,9 @@
 import { applyDecorators } from '@nestjs/common';
 import { ApiBearerAuth, ApiUnauthorizedResponse } from '@nestjs/swagger';
 
-export const APP_JWT_BEARER_SCHEME = 'app-jwt';
+import { APP_JWT_BEARER_SCHEME } from '../constants/app-jwt-bearer.constants';
+
+export { APP_JWT_BEARER_SCHEME };
 
 /**
  * Documents endpoints protected by {@link JwtGuard}: Bearer auth plus the
