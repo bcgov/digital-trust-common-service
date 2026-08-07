@@ -105,7 +105,7 @@ describe('OIDC client_credentials grant (e2e)', () => {
         clientId,
         clientSecretHash,
         name: 'E2E Test Client',
-        scopes: ['read:credentials'],
+        scopes: ['credentials:offer'],
         grantTypes: ['client_credentials'],
       }),
     );
@@ -127,13 +127,13 @@ describe('OIDC client_credentials grant (e2e)', () => {
       app.getHttpServer(),
       clientId,
       clientSecret,
-      'read:credentials',
+      'credentials:offer',
     );
 
     expect(token.tokenType).toBe('Bearer');
     expect(token.accessToken).toEqual(expect.any(String));
     expect(payload.tenant_id).toBe(tenantId);
-    expect(payload.scope).toBe('read:credentials');
+    expect(payload.scope).toBe('credentials:offer');
   });
 
   it('rejects client_credentials requests with an invalid client secret', async () => {
@@ -169,7 +169,7 @@ describe('OIDC client_credentials grant (e2e)', () => {
   });
 
   it('rejects a scope the client was not granted, rather than silently issuing it', async () => {
-    // The seeded client only has `read:credentials`; requesting a scope
+    // The seeded client only has `credentials:offer`; requesting a scope
     // outside that allowlist must not silently succeed with the extra
     // scope granted (OAuthClient.scopes is the source of truth for what a
     // given client may act as, see OidcClientAdapter/client_schema.js).
@@ -179,7 +179,7 @@ describe('OIDC client_credentials grant (e2e)', () => {
       .type('form')
       .send({
         grant_type: 'client_credentials',
-        scope: 'read:credentials write:credentials',
+        scope: 'credentials:offer credentials:verify',
       })
       .expect(400);
 
@@ -251,7 +251,7 @@ describe('OIDC client_credentials grant (e2e)', () => {
         .post('/oidc/token')
         .set('Authorization', buildBasicAuthHeader(clientId, clientSecret))
         .type('form')
-        .send({ grant_type: 'client_credentials', scope: 'read:credentials' })
+        .send({ grant_type: 'client_credentials', scope: 'credentials:offer' })
         .expect(200);
 
       const tokenBody = tokenResponse.body as { access_token: string };

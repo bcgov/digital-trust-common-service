@@ -55,7 +55,7 @@ describe('buildOidcConfiguration', () => {
     refreshTokenTtlSeconds: 28800,
     refreshTokenRotationEnabled: true,
     cookieKeys: ['secret-1'],
-    scopes: ['openid', 'read:credentials'],
+    scopes: ['openid', 'credentials:offer'],
   };
 
   const jwks: OidcJwks = { keys: [{ kid: 'k1', kty: 'RSA' }] };
@@ -77,7 +77,7 @@ describe('buildOidcConfiguration', () => {
   it('wires the configured server-wide scope allowlist unchanged', () => {
     const configuration = buildOidcConfiguration(config, jwks, adapterFactory);
 
-    expect(configuration.scopes).toEqual(['openid', 'read:credentials']);
+    expect(configuration.scopes).toEqual(['openid', 'credentials:offer']);
   });
 
   it('maps TTLs and refresh rotation from OidcConfig', () => {
@@ -128,7 +128,7 @@ describe('buildOidcConfiguration', () => {
       );
 
     expect(resourceServerInfo).toEqual({
-      scope: 'openid read:credentials',
+      scope: 'openid credentials:offer',
       accessTokenFormat: 'jwt',
       jwt: { sign: { alg: 'RS256' } },
     });
@@ -140,10 +140,34 @@ describe('buildOidcConfiguration', () => {
     expect(configuration.extraClientMetadata?.properties).toEqual([
       'client_secret_hash',
       'tenant_id',
+      'roles',
     ]);
   });
 
   describe('extraTokenClaims', () => {
+    it('stamps tenant_id and roles claims when present on the token client', () => {
+      const configuration = buildOidcConfiguration(
+        config,
+        jwks,
+        adapterFactory,
+      );
+
+      const claims = configuration.extraTokenClaims?.(
+        {} as never,
+        {
+          client: {
+            tenant_id: 'tenant-1',
+            roles: ['platform-admin'],
+          },
+        } as never,
+      );
+
+      expect(claims).toEqual({
+        tenant_id: 'tenant-1',
+        roles: ['platform-admin'],
+      });
+    });
+
     it('stamps the tenant_id claim when present on the token client', () => {
       const configuration = buildOidcConfiguration(
         config,

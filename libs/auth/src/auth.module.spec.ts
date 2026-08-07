@@ -6,6 +6,7 @@ import { JwtGuard } from './guards/jwt.guard';
 import { ScopeGuard } from './guards/scope.guard';
 import { TenantGuard } from './guards/tenant.guard';
 import { JwtValidationService } from './services/jwt-validation.service';
+import { ScopeAuthorizationService } from './services/scope-authorization.service';
 
 describe('AuthModule', () => {
   let module: TestingModule;
@@ -26,6 +27,12 @@ describe('AuthModule', () => {
 
   it('should provide TenantGuard', () => {
     expect(module.get<TenantGuard>(TenantGuard)).toBeDefined();
+  });
+
+  it('should provide ScopeAuthorizationService', () => {
+    expect(
+      module.get<ScopeAuthorizationService>(ScopeAuthorizationService),
+    ).toBeDefined();
   });
 
   it('should provide JwtValidationService', () => {

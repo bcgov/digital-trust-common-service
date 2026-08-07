@@ -1051,6 +1051,9 @@ graph TD
 - `platform-admin` role bypasses ScopeGuard and TenantGuard entirely (not a scope — checked by role)
 
 **Role → scope mappings (seed):**
+
+> **Live registry:** canonical scope names, levels, and migration notes are maintained in [DEVELOPER.md](./DEVELOPER.md#authorization-scope-catalog-au-04) until AU-07 (#40) exposes a scope-management API.
+
 | Role | Scopes |
 |------|--------|
 | platform-admin | _bypasses guards_ |
