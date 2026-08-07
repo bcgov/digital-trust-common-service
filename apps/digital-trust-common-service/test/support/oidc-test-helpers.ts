@@ -1,3 +1,4 @@
+import { extractBearerToken, verifyAccessToken } from '@app/auth';
 import { importJWK, jwtVerify } from 'jose';
 import request from 'supertest';
 import { App } from 'supertest/types';
@@ -59,19 +60,35 @@ export async function issueTokenAndVerify(
     keys: Array<Record<string, unknown>>;
   };
 
-  const { payload } = await jwtVerify(
-    tokenBody.access_token,
-    async (protectedHeader) => {
-      const jwk = jwksBody.keys.find((key) => key.kid === protectedHeader.kid);
+  const token = extractBearerToken(`Bearer ${tokenBody.access_token}`);
 
-      if (!jwk) {
-        throw new Error('Signing key not found in JWKS response');
-      }
+  const payload = issuer
+    ? await verifyAccessToken(
+        token,
+        (kid) => {
+          const jwk = jwksBody.keys.find((key) => key.kid === kid);
 
-      return importJWK(jwk, protectedHeader.alg);
-    },
-    issuer ? { issuer } : undefined,
-  );
+          if (!jwk) {
+            throw new Error('Signing key not found in JWKS response');
+          }
+
+          return Promise.resolve(jwk);
+        },
+        { issuer, audience: issuer },
+      )
+    : (
+        await jwtVerify(token, async (protectedHeader) => {
+          const jwk = jwksBody.keys.find(
+            (key) => key.kid === protectedHeader.kid,
+          );
+
+          if (!jwk) {
+            throw new Error('Signing key not found in JWKS response');
+          }
+
+          return importJWK(jwk, protectedHeader.alg);
+        })
+      ).payload;
 
   return {
     token: {
