@@ -22,9 +22,10 @@ describe('OAuthClientLookupAdapter', () => {
     clientId: 'client_abc123',
     clientSecretHash: 'hashed_secret',
     name: 'Test Client',
-    scopes: ['read:credentials'],
+    scopes: ['credentials:offer'],
     redirectUris: ['https://example.com/callback'],
     grantTypes: ['client_credentials'],
+    roles: [],
     createdBy: '123e4567-e89b-12d3-a456-426614174002',
     createdAt: new Date(),
     revokedAt: undefined,
@@ -49,9 +50,10 @@ describe('OAuthClientLookupAdapter', () => {
       clientSecretHash: 'hashed_secret',
       name: 'Test Client',
       tenantId: '123e4567-e89b-12d3-a456-426614174001',
-      scopes: ['read:credentials'],
+      scopes: ['credentials:offer'],
       redirectUris: ['https://example.com/callback'],
       grantTypes: ['client_credentials'],
+      roles: [],
     });
   });
 

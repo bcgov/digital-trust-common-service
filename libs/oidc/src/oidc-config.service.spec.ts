@@ -79,10 +79,17 @@ describe('OidcConfigService', () => {
 
       expect(service.getConfig().scopes).toEqual([
         'openid',
-        'read:credentials',
-        'write:credentials',
-        'read:connections',
-        'write:connections',
+        'tenants:admin',
+        'credentials:offer',
+        'credentials:verify',
+        'credentials:hold',
+        'credentials:revoke',
+        'connections:manage',
+        'profiles:manage',
+        'users:manage',
+        'clients:manage',
+        'logs:read',
+        'audit:read',
       ]);
     });
 

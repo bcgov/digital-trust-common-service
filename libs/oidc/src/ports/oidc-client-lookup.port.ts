@@ -14,6 +14,8 @@ export interface OidcClientRecord {
   scopes: string[];
   redirectUris: string[];
   grantTypes: string[];
+  /** JWT role claims for machine clients (e.g. platform-admin). */
+  roles: string[];
 }
 
 export interface OidcClientLookupPort {

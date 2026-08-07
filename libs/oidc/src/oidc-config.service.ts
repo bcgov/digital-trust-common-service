@@ -41,11 +41,20 @@ const DEV_COOKIE_KEY = 'dev-insecure-cookie-key';
 // (see oauth-client-response.dto.ts, oauth-client.controller.ts). The app
 // does not yet have a canonical scope registry, so this doubles as the
 // closest thing to one until a dedicated scope-catalog module exists.
+// Canonical scope names — keep in sync with @app/auth OIDC_SCOPE_ALLOWLIST
+// (minus openid, which is injected automatically in getScopes()).
 const DEFAULT_SCOPES = [
-  'read:credentials',
-  'write:credentials',
-  'read:connections',
-  'write:connections',
+  'tenants:admin',
+  'credentials:offer',
+  'credentials:verify',
+  'credentials:hold',
+  'credentials:revoke',
+  'connections:manage',
+  'profiles:manage',
+  'users:manage',
+  'clients:manage',
+  'logs:read',
+  'audit:read',
 ];
 const DEFAULT_GRANT_TYPES = ['client_credentials'];
 // Grants the provider is wired to serve today. `refresh_token` is included

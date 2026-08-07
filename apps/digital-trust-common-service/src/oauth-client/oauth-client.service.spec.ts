@@ -32,9 +32,10 @@ describe('OAuthClientService', () => {
     clientId: 'client_abc123',
     clientSecretHash: 'hashed_secret',
     name: 'Test Client',
-    scopes: ['read:credentials'],
+    scopes: ['credentials:offer'],
     redirectUris: ['https://example.com/callback'],
     grantTypes: ['client_credentials'],
+    roles: [],
     createdBy: '123e4567-e89b-12d3-a456-426614174002',
     createdAt: new Date(),
     tenant: undefined as any,
@@ -280,19 +281,22 @@ describe('OAuthClientService', () => {
       const updatedClient = {
         ...mockOAuthClient,
         name: 'Updated Client',
-        scopes: ['read:credentials', 'write:credentials'],
+        scopes: ['credentials:offer', 'credentials:verify'],
       };
       mockUpdate.mockResolvedValue(updatedClient);
 
       const result = await service.update(mockOAuthClient.id, {
         name: 'Updated Client',
-        scopes: ['read:credentials', 'write:credentials'],
+        scopes: ['credentials:offer', 'credentials:verify'],
       });
 
       expect(mockFindById).toHaveBeenCalledWith(mockOAuthClient.id);
       expect(mockUpdate).toHaveBeenCalled();
       expect(result.name).toBe('Updated Client');
-      expect(result.scopes).toEqual(['read:credentials', 'write:credentials']);
+      expect(result.scopes).toEqual([
+        'credentials:offer',
+        'credentials:verify',
+      ]);
     });
 
     it('should preserve existing values when partial update is provided', async () => {

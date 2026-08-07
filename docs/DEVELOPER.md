@@ -200,6 +200,41 @@ SEED_ON_START=true
 
 Re-running the seed updates existing rows keyed by slug, external IDs, and profile name/version — it does not create duplicates.
 
+## Authorization scope catalog (AU-04)
+
+The canonical OAuth scope names live in `@app/auth` (`libs/auth/src/constants/scopes.constants.ts`) and are seeded into the `role_scope` table by migration `000013_create-role-scopes`.
+
+### Scope levels
+
+| Level | Scopes |
+|-------|--------|
+| **Level 1 — tenant superuser** | `tenants:admin` (implicitly grants all Level 2 + Level 3 scopes) |
+| **Level 2 — domain operations** | `credentials:offer`, `credentials:verify`, `credentials:hold`, `credentials:revoke`, `connections:manage`, `profiles:manage`, `users:manage`, `clients:manage` |
+| **Level 3 — read-only** | `logs:read`, `audit:read` |
+
+### Role → scope seed (`role_scope` table)
+
+| Role | Scopes |
+|------|--------|
+| `owner` | `tenants:admin` |
+| `admin` | all Level 2 + Level 3 scopes |
+| `member` | `credentials:offer`, `credentials:verify` |
+| `readonly` | _(none — GET endpoints that require no specific scope)_ |
+
+`platform-admin` is **not** a scope. It is a JWT **role** claim that bypasses `ScopeGuard` and `TenantGuard`. Until interactive user login lands (AU-02), machine clients may carry `platform-admin` via the `oauth_client.roles` column.
+
+**User-token scope resolution:** the `role_scope` seed is consumed by `ScopeGuard` indirectly (scopes must appear on the JWT). Mapping `tenant_user.role` → `role_scope` → JWT `scope` at issuance is deferred to **[AU-02 #35](https://github.com/bcgov/digital-trust-common-service/issues/35)** (interactive login + `extraTokenClaims`). Client-credentials tokens continue to take scopes from `oauth_client.scopes` at registration.
+
+### Migration from placeholder scopes
+
+AU-04 replaces early placeholder scope names (`read:credentials`, `write:credentials`, `read:connections`, `write:connections`) with the architecture catalog above. After upgrading:
+
+1. Run migrations (`000013_create-role-scopes`).
+2. Update `OIDC_SCOPES` in `.env` if you override the default allowlist.
+3. Re-seed or update existing `oauth_client.scopes` rows to use the new names — clients registered with placeholder scopes will fail token requests until updated.
+
+The server-wide allowlist is configured via `OIDC_SCOPES` (see `.env.example`). Every scope granted to an `oauth_client` must appear in that allowlist.
+
 ## Testing
 
 ### Run Unit Tests

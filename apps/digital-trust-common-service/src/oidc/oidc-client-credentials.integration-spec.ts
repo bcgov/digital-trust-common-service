@@ -84,7 +84,7 @@ describe('OIDC client_credentials grant (integration)', () => {
         tenantId,
         clientId,
         clientSecretHash,
-        ['read:credentials'],
+        ['credentials:offer'],
         ['client_credentials'],
       ],
     );
@@ -121,7 +121,7 @@ describe('OIDC client_credentials grant (integration)', () => {
       app.getHttpServer(),
       clientId,
       clientSecret,
-      'read:credentials',
+      'credentials:offer',
       process.env.OIDC_ISSUER,
     );
 
@@ -130,7 +130,7 @@ describe('OIDC client_credentials grant (integration)', () => {
     expect(token.expiresIn).toBe(5 * 60);
 
     expect(payload.tenant_id).toBe(tenantId);
-    expect(payload.scope).toBe('read:credentials');
+    expect(payload.scope).toBe('credentials:offer');
     expect(payload.iat).toEqual(expect.any(Number));
     expect(payload.exp).toEqual(expect.any(Number));
     expect(
