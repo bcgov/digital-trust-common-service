@@ -223,6 +223,8 @@ The canonical OAuth scope names live in `@app/auth` (`libs/auth/src/constants/sc
 
 `platform-admin` is **not** a scope. It is a JWT **role** claim that bypasses `ScopeGuard` and `TenantGuard`. Until interactive user login lands (AU-02), machine clients may carry `platform-admin` via the `oauth_client.roles` column.
 
+**User-token scope resolution:** the `role_scope` seed is consumed by `ScopeGuard` indirectly (scopes must appear on the JWT). Mapping `tenant_user.role` → `role_scope` → JWT `scope` at issuance is deferred to **[AU-02 #35](https://github.com/bcgov/digital-trust-common-service/issues/35)** (interactive login + `extraTokenClaims`). Client-credentials tokens continue to take scopes from `oauth_client.scopes` at registration.
+
 ### Migration from placeholder scopes
 
 AU-04 replaces early placeholder scope names (`read:credentials`, `write:credentials`, `read:connections`, `write:connections`) with the architecture catalog above. After upgrading:

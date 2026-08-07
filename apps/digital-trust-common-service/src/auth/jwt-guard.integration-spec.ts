@@ -4,11 +4,18 @@ import { createServer } from 'http';
 import { tmpdir } from 'os';
 import { join } from 'path';
 
+import { JwtGuard, RequireScopes, ScopeGuard, AuthModule } from '@app/auth';
 import { AppDataSource } from '@app/database/data-source';
 import { buildSslConfig } from '@app/database/ssl.util';
 import { OidcMountService } from '@app/oidc';
 import { PgBossService } from '@app/pg-boss';
-import { INestApplication } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  INestApplication,
+  Module,
+  UseGuards,
+} from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { hash, argon2i } from 'argon2';
 import request from 'supertest';
@@ -18,7 +25,30 @@ import { DataSource } from 'typeorm';
 import { issueTokenAndVerify } from '../../test/support/oidc-test-helpers';
 import { configureApp } from '../app.config';
 import { AppModule } from '../app.module';
-import { API_BASE_PATH } from '../common/constants/api-version.constants';
+import {
+  API_BASE_PATH,
+  API_VERSION,
+} from '../common/constants/api-version.constants';
+
+/**
+ * Registered only in this integration module to exercise @RequireScopes without
+ * rolling guards out to product controllers (#165).
+ */
+@Controller({ path: 'integration/scope-check', version: API_VERSION })
+@UseGuards(JwtGuard, ScopeGuard)
+class ScopeCheckIntegrationController {
+  @Get('offer')
+  @RequireScopes('credentials:offer')
+  public checkOfferScope(): { ok: true } {
+    return { ok: true };
+  }
+}
+
+@Module({
+  imports: [AuthModule],
+  controllers: [ScopeCheckIntegrationController],
+})
+class ScopeCheckIntegrationModule {}
 
 async function getFreePort(): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -54,8 +84,14 @@ describe('JwtGuard and ScopeGuard (integration)', () => {
   let tenantId: string;
   let tenantClientId: string;
   let platformAdminClientId: string;
+  let logsReadClientId: string;
+  let tenantSuperuserClientId: string;
   const tenantClientSecret = 'jwt-guard-integration-secret';
   const platformAdminClientSecret = 'platform-admin-integration-secret';
+  const logsReadClientSecret = 'logs-read-integration-secret';
+  const tenantSuperuserClientSecret = 'tenant-superuser-integration-secret';
+
+  const scopeCheckPath = `${API_BASE_PATH}/integration/scope-check/offer`;
 
   const mockBoss = {
     start: jest.fn().mockResolvedValue(undefined),
@@ -134,8 +170,47 @@ describe('JwtGuard and ScopeGuard (integration)', () => {
       ],
     );
 
+    logsReadClientId = `logs-read-client-${randomUUID()}`;
+    tenantSuperuserClientId = `tenant-superuser-client-${randomUUID()}`;
+    const logsReadSecretHash = await hash(logsReadClientSecret, {
+      type: argon2i,
+    });
+    const tenantSuperuserSecretHash = await hash(tenantSuperuserClientSecret, {
+      type: argon2i,
+    });
+
+    await dataSource.query(
+      `INSERT INTO oauth_client (
+         tenant_id, client_id, client_secret_hash, name, scopes, grant_types, roles
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [
+        tenantId,
+        logsReadClientId,
+        logsReadSecretHash,
+        'Logs Read Integration Client',
+        ['logs:read'],
+        ['client_credentials'],
+        [],
+      ],
+    );
+
+    await dataSource.query(
+      `INSERT INTO oauth_client (
+         tenant_id, client_id, client_secret_hash, name, scopes, grant_types, roles
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [
+        tenantId,
+        tenantSuperuserClientId,
+        tenantSuperuserSecretHash,
+        'Tenant Superuser Integration Client',
+        ['tenants:admin'],
+        ['client_credentials'],
+        [],
+      ],
+    );
+
     const moduleFixture: TestingModule = await Test.createTestingModule({
-      imports: [AppModule],
+      imports: [AppModule, ScopeCheckIntegrationModule],
     })
       .overrideProvider(PgBossService)
       .useValue({
@@ -231,5 +306,59 @@ describe('JwtGuard and ScopeGuard (integration)', () => {
     expect(response.body).toMatchObject({
       error: { code: 'AUTHENTICATION_REQUIRED' },
     });
+  });
+
+  it('allows a token with the required scope through @RequireScopes', async () => {
+    const { token } = await issueTokenAndVerify(
+      app.getHttpServer(),
+      tenantClientId,
+      tenantClientSecret,
+      'credentials:offer',
+      process.env.OIDC_ISSUER,
+    );
+
+    await request(app.getHttpServer())
+      .get(scopeCheckPath)
+      .set('Authorization', `Bearer ${token.accessToken}`)
+      .expect(200)
+      .expect({ ok: true });
+  });
+
+  it('returns 403 when @RequireScopes is not satisfied', async () => {
+    const { token } = await issueTokenAndVerify(
+      app.getHttpServer(),
+      logsReadClientId,
+      logsReadClientSecret,
+      'logs:read',
+      process.env.OIDC_ISSUER,
+    );
+
+    const response = await request(app.getHttpServer())
+      .get(scopeCheckPath)
+      .set('Authorization', `Bearer ${token.accessToken}`)
+      .expect(403);
+
+    expect(response.body).toMatchObject({
+      error: {
+        code: 'INSUFFICIENT_SCOPE',
+        required_scopes: ['credentials:offer'],
+      },
+    });
+  });
+
+  it('grants Level 2 scopes when the token has tenants:admin', async () => {
+    const { token } = await issueTokenAndVerify(
+      app.getHttpServer(),
+      tenantSuperuserClientId,
+      tenantSuperuserClientSecret,
+      'tenants:admin',
+      process.env.OIDC_ISSUER,
+    );
+
+    await request(app.getHttpServer())
+      .get(scopeCheckPath)
+      .set('Authorization', `Bearer ${token.accessToken}`)
+      .expect(200)
+      .expect({ ok: true });
   });
 });

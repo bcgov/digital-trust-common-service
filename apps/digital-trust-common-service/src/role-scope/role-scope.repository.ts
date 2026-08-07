@@ -4,7 +4,10 @@ import { DataSource } from 'typeorm';
 
 /**
  * Resolves tenant-user role → scope mappings from the `role_scope` table.
- * Used by OIDC token issuance for interactive user tokens (AU-02 hook).
+ *
+ * Wired into OIDC user-token issuance in AU-02 (#35). AU-04 seeds the table
+ * and implements ScopeGuard enforcement only; client_credentials scopes still
+ * come from `oauth_client.scopes`.
  */
 @Injectable()
 export class RoleScopeRepository {
