@@ -37,6 +37,7 @@ export class OAuthClientLookupAdapter implements OidcClientLookupPort {
       scopes: client.scopes,
       redirectUris: client.redirectUris,
       grantTypes: client.grantTypes,
+      roles: client.roles,
     };
   }
 }

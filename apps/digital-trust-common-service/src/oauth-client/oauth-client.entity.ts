@@ -53,7 +53,7 @@ export class OAuthClient {
 
   @ApiProperty({
     description: 'Array of OAuth scopes allowed for this client',
-    example: ['read:connections', 'write:credentials'],
+    example: ['credentials:offer', 'connections:manage'],
   })
   @Column({
     type: 'text',
@@ -61,6 +61,19 @@ export class OAuthClient {
     default: [],
   })
   public scopes!: string[];
+
+  @ApiProperty({
+    description:
+      'JWT role claims stamped on tokens issued to this client (e.g. platform-admin for service accounts)',
+    example: ['platform-admin'],
+    required: false,
+  })
+  @Column({
+    type: 'text',
+    array: true,
+    default: [],
+  })
+  public roles!: string[];
 
   @ApiProperty({
     description: 'Array of allowed redirect URIs',

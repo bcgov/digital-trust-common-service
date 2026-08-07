@@ -17,11 +17,6 @@ import { API_BASE_PATH } from '../src/common/constants/api-version.constants';
 import { Operation, OperationState } from '../src/operation/operation.entity';
 import { Tenant } from '../src/tenant/tenant.entity';
 
-// JwtGuard/ScopeGuard are currently stub implementations that always throw
-// NotImplementedException (see @app/auth TODOs). They are overridden here so
-// this suite can exercise the admin stats business logic against a real
-// database ahead of the JWT/scope work landing; once implemented, this
-// override should be replaced with a valid admin-scoped token.
 class AllowGuard implements CanActivate {
   public canActivate(_context: ExecutionContext): boolean {
     return true;
@@ -98,8 +93,6 @@ describe('AdminOperationsController (e2e)', () => {
     });
     const saved = await operationRepo.save(operation);
 
-    // createdAt is a @CreateDateColumn set automatically on insert; overwrite
-    // it directly so the oldest-pending assertion below is deterministic.
     await operationRepo.update(saved.id, { createdAt });
 
     return operationRepo.findOneByOrFail({ id: saved.id });
@@ -162,7 +155,7 @@ describe('AdminOperationsController (e2e)', () => {
   });
 });
 
-describe('AdminOperationsController (e2e) — guard stubs', () => {
+describe('AdminOperationsController (e2e) — auth enforcement', () => {
   let app: INestApplication<App>;
 
   const mockBoss = {
@@ -175,9 +168,6 @@ describe('AdminOperationsController (e2e) — guard stubs', () => {
   };
 
   beforeAll(async () => {
-    // No guard overrides here: this documents *actual* current production
-    // behavior of the endpoint. JwtGuard now returns 401 for missing/invalid
-    // tokens; ScopeGuard remains a stub that returns 501 once JwtGuard passes.
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     })

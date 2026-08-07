@@ -20,6 +20,7 @@ import { OidcKeysService } from './oidc-keys.service';
 export interface ClientExtraMetadata {
   client_secret_hash?: string;
   tenant_id?: string;
+  roles?: string[];
 }
 
 /**
@@ -49,7 +50,7 @@ export function buildOidcConfiguration(
     },
     scopes: config.scopes,
     extraClientMetadata: {
-      properties: ['client_secret_hash', 'tenant_id'],
+      properties: ['client_secret_hash', 'tenant_id', 'roles'],
     },
     extraTokenClaims: (_ctx, token) => {
       const client = token.client as ClientExtraMetadata | undefined;
@@ -58,7 +59,15 @@ export function buildOidcConfiguration(
         return undefined;
       }
 
-      return { tenant_id: client.tenant_id };
+      const claims: Record<string, unknown> = {
+        tenant_id: client.tenant_id,
+      };
+
+      if (client.roles && client.roles.length > 0) {
+        claims.roles = client.roles;
+      }
+
+      return claims;
     },
     features: {
       clientCredentials: { enabled: true },

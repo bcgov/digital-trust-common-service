@@ -1,8 +1,20 @@
 export { APP_JWT_BEARER_SCHEME } from './constants/app-jwt-bearer.constants';
+export {
+  ALL_TENANT_SCOPES,
+  LEVEL2_SCOPES,
+  LEVEL3_SCOPES,
+  OIDC_SCOPE_ALLOWLIST,
+  PLATFORM_ADMIN_ROLE,
+  TENANT_SUPERUSER_SCOPE,
+} from './constants/scopes.constants';
 export { AuthModule } from './auth.module';
 export { CurrentAuth } from './decorators/current-auth.decorator';
 export { ApiAppJwtAuth } from './decorators/api-app-jwt-auth.decorator';
+export { RequireRoles } from './decorators/require-roles.decorator';
+export { RequireScopes } from './decorators/require-scopes.decorator';
 export { AuthenticationRequiredException } from './exceptions/authentication-required.exception';
+export { InsufficientScopeException } from './exceptions/insufficient-scope.exception';
+export { InsufficientScopeExceptionFilter } from './filters/insufficient-scope.exception-filter';
 export { JwtAuthExceptionFilter } from './filters/jwt-auth.exception-filter';
 export { JwtGuard, ScopeGuard, TenantGuard } from './guards';
 export type {
@@ -16,3 +28,4 @@ export {
   normalizeAuthPayload,
   verifyAccessToken,
 } from './services/jwt-validation.service';
+export { ScopeAuthorizationService } from './services/scope-authorization.service';
