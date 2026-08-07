@@ -55,4 +55,8 @@ export class IssuanceProfileRepository {
   ): Promise<void> {
     await this.repository.update(id, { status });
   }
+
+  public async save(profile: IssuanceProfile): Promise<IssuanceProfile> {
+    return await this.repository.save(profile);
+  }
 }

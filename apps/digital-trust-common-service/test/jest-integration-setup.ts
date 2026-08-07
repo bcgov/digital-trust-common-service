@@ -1,3 +1,5 @@
+import * as path from 'node:path';
+
 import './jest-e2e-setup';
 
 // Apply local-dev defaults in Node so the integration tier stays cross-platform
@@ -10,6 +12,10 @@ const envDefaults: Record<string, string> = {
   DB_USERNAME: 'postgres',
   DB_PASSWORD: 'postgres',
   DB_NAME: 'dc_common_service_test',
+  CONNECTOR_ENCRYPTION_KEYS_PATH: path.resolve(
+    __dirname,
+    '../../../config/encryption-keys.json',
+  ),
 };
 
 for (const [key, value] of Object.entries(envDefaults)) {

@@ -83,4 +83,12 @@ describe('VerificationProfileRepository', () => {
       status: VerificationProfileStatus.PUBLISHED,
     });
   });
+
+  it('save persists an existing profile', async () => {
+    const entity = { id: 'vp-1' } as VerificationProfile;
+    (mockRepo.save as jest.Mock).mockResolvedValue(entity);
+
+    await expect(repository.save(entity)).resolves.toBe(entity);
+    expect(mockRepo.save).toHaveBeenCalledWith(entity);
+  });
 });

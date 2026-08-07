@@ -83,4 +83,12 @@ describe('IssuanceProfileRepository', () => {
       status: IssuanceProfileStatus.DEPRECATED,
     });
   });
+
+  it('save persists an existing profile', async () => {
+    const entity = { id: 'ip-1' } as IssuanceProfile;
+    (mockRepo.save as jest.Mock).mockResolvedValue(entity);
+
+    await expect(repository.save(entity)).resolves.toBe(entity);
+    expect(mockRepo.save).toHaveBeenCalledWith(entity);
+  });
 });

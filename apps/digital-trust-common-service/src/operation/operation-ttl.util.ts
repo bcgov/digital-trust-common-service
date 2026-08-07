@@ -1,5 +1,7 @@
 import { Logger } from '@nestjs/common';
 
+import { OperationState } from './operation.entity';
+
 const logger = new Logger('OperationTtlConfig');
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -108,4 +110,34 @@ export function resolveOperationTtlMs(
   );
 
   return resolved;
+}
+
+/**
+ * Compute the expiry timestamp for an operation based on its state and view status.
+ * Shared by OperationService, seed scripts, and ME-02 (#91).
+ */
+export function computeOperationExpiresAt(
+  state: OperationState,
+  createdAt: Date,
+  viewedAt?: Date | null,
+  tenantConfig?: Record<string, unknown> | null,
+): Date {
+  const ttl = resolveOperationTtlMs(tenantConfig);
+
+  switch (state) {
+    case OperationState.PENDING:
+      return new Date(createdAt.getTime() + ttl.pendingStale);
+    case OperationState.PROCESSING:
+      return new Date(createdAt.getTime() + DEFAULT_CREATED_TTL_MS);
+    case OperationState.COMPLETED:
+      return viewedAt
+        ? new Date(viewedAt.getTime() + ttl.completedViewed)
+        : new Date(createdAt.getTime() + ttl.completedUnviewed);
+    case OperationState.FAILED:
+      return viewedAt
+        ? new Date(viewedAt.getTime() + ttl.failedViewed)
+        : new Date(createdAt.getTime() + ttl.failedUnviewed);
+    default:
+      return new Date(createdAt.getTime() + DEFAULT_CREATED_TTL_MS);
+  }
 }

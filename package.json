@@ -26,7 +26,8 @@
     "oidc:generate-keys": "node scripts/generate-oidc-keys.mjs",
     "migration:create": "ts-node libs/database/src/migrations/create-migration.ts",
     "migrate:up": "typeorm migration:run -d dist/libs/database/src/data-source.js",
-    "migrate:down": "typeorm migration:revert -d dist/libs/database/src/data-source.js"
+    "migrate:down": "typeorm migration:revert -d dist/libs/database/src/data-source.js",
+    "seed": "npm run build && node dist/apps/digital-trust-common-service/src/seed/run-seed.js"
   },
   "dependencies": {
     "@nestjs/common": "^11.1.28",
@@ -102,7 +103,8 @@
       "!**/migrations/**",
       "!**/*.module.ts",
       "!**/main.ts",
-      "!**/data-source.ts"
+      "!**/data-source.ts",
+      "!apps/**/test/**"
     ],
     "moduleNameMapper": {
       "^@app/auth(|/.*)$": "<rootDir>/libs/auth/src/$1",

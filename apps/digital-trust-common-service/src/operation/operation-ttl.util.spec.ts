@@ -1,8 +1,11 @@
 import {
+  DEFAULT_CREATED_TTL_MS,
   DEFAULT_OPERATION_TTL_MS,
+  computeOperationExpiresAt,
   parseDurationMs,
   resolveOperationTtlMs,
 } from './operation-ttl.util';
+import { OperationState } from './operation.entity';
 
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
@@ -79,6 +82,21 @@ describe('resolveOperationTtlMs', () => {
   it('ignores a non-object operation_ttl value', () => {
     expect(resolveOperationTtlMs({ operation_ttl: 'not-an-object' })).toEqual(
       DEFAULT_OPERATION_TTL_MS,
+    );
+  });
+});
+
+describe('computeOperationExpiresAt', () => {
+  const createdAt = new Date('2024-01-01T00:00:00Z');
+
+  it('uses created TTL for unknown states', () => {
+    const expiresAt = computeOperationExpiresAt(
+      'unexpected' as OperationState,
+      createdAt,
+    );
+
+    expect(expiresAt.getTime()).toBe(
+      createdAt.getTime() + DEFAULT_CREATED_TTL_MS,
     );
   });
 });
