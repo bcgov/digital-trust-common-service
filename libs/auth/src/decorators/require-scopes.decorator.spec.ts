@@ -10,11 +10,12 @@ describe('RequireScopes', () => {
       public handler(this: void): void {}
     }
 
-    const metadata = Reflect.getMetadata(
-      REQUIRED_SCOPES_KEY,
+    const handler = Object.getOwnPropertyDescriptor(
       TestController.prototype,
       'handler',
-    );
+    )?.value as object;
+
+    const metadata = Reflect.getMetadata(REQUIRED_SCOPES_KEY, handler);
 
     expect(metadata).toEqual(['credentials:offer', 'audit:read']);
   });
@@ -27,11 +28,12 @@ describe('RequireRoles', () => {
       public handler(this: void): void {}
     }
 
-    const metadata = Reflect.getMetadata(
-      REQUIRED_ROLES_KEY,
+    const handler = Object.getOwnPropertyDescriptor(
       TestController.prototype,
       'handler',
-    );
+    )?.value as object;
+
+    const metadata = Reflect.getMetadata(REQUIRED_ROLES_KEY, handler);
 
     expect(metadata).toEqual(['platform-admin']);
   });
