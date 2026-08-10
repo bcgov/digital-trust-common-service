@@ -1,5 +1,6 @@
 import { execFileSync } from 'child_process';
 import {
+  chmodSync,
   existsSync,
   mkdtempSync,
   readFileSync,
@@ -99,6 +100,17 @@ describe('generate-oidc-keys.mjs', () => {
 
     expect(jwks.keys).toHaveLength(3);
     expect(new Set(kids).size).toBe(3);
+  });
+
+  it('hardens the file to 0600 on --append even if it started world-readable', () => {
+    const path = join(dir, 'keys.json');
+    run(path);
+    // Simulate a JWKS fetched via shell redirection (default 0644).
+    chmodSync(path, 0o644);
+
+    run('--append', path);
+
+    expect(statSync(path).mode & 0o777).toBe(0o600);
   });
 
   it('fails when --append targets a missing file', () => {

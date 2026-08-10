@@ -15,7 +15,6 @@
  *   # Rotation — prepend a new key to an existing JWKS (newest-first),
  *   # keeping the old key(s) so already-issued tokens still validate:
  *   node scripts/generate-oidc-keys.mjs --append oidc-keys.json
- *   node scripts/generate-oidc-keys.mjs --append existing.json > rotated.json
  *
  * oidc-provider signs with the FIRST key in the array and publishes every key
  * at /oidc/jwks for verification, so the freshly generated key becomes the
@@ -24,7 +23,7 @@
  * has elapsed (see docs/OIDC-KEY-ROTATION.md).
  */
 import { generateKeyPairSync, randomUUID } from 'node:crypto';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, readFileSync, writeFileSync } from 'node:fs';
 
 function parseArgs(argv) {
   const args = { append: false, path: undefined };
@@ -91,8 +90,8 @@ function main() {
     const existing = readExistingKeys(args.path);
     const existingKids = new Set(existing.map((key) => key.kid));
 
-    // randomUUID collisions are effectively impossible, but guard anyway so a
-    // rotation can never silently produce a duplicate kid.
+    // Guard against a duplicate kid, even though a randomUUID collision is
+    // effectively impossible.
     if (existingKids.has(newKey.kid)) {
       throw new Error('Generated kid collided with an existing key; re-run.');
     }
@@ -104,7 +103,10 @@ function main() {
   const jwks = `${JSON.stringify({ keys }, null, 2)}\n`;
 
   if (args.path) {
+    // chmod as well as pass mode: writeFileSync only applies mode when it
+    // creates the file, so --append onto an existing 0644 JWKS needs the chmod.
     writeFileSync(args.path, jwks, { mode: 0o600 });
+    chmodSync(args.path, 0o600);
   } else {
     process.stdout.write(jwks);
   }

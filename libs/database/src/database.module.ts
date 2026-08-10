@@ -4,6 +4,54 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { buildSslConfig } from './ssl.util';
 
+function parsePoolInt(
+  config: ConfigService,
+  key: string,
+  fallback: number,
+  min: number,
+): number {
+  const raw = config.get<string>(key);
+
+  if (raw === undefined || raw === '') {
+    return fallback;
+  }
+
+  if (!/^\d+$/.test(raw.trim())) {
+    throw new Error(`${key} must be a non-negative integer, got "${raw}".`);
+  }
+
+  const value = parseInt(raw, 10);
+
+  if (value < min) {
+    throw new Error(`${key} must be >= ${min}, got ${value}.`);
+  }
+
+  return value;
+}
+
+function buildPoolConfig(config: ConfigService): {
+  max: number;
+  min: number;
+  idleTimeoutMillis: number;
+} {
+  const max = parsePoolInt(config, 'DB_POOL_MAX', 10, 1);
+  const min = parsePoolInt(config, 'DB_POOL_MIN', 2, 0);
+  const idleTimeoutMillis = parsePoolInt(
+    config,
+    'DB_POOL_IDLE_TIMEOUT_MS',
+    30000,
+    0,
+  );
+
+  if (min > max) {
+    throw new Error(
+      `DB_POOL_MIN (${min}) must not exceed DB_POOL_MAX (${max}).`,
+    );
+  }
+
+  return { max, min, idleTimeoutMillis };
+}
+
 @Module({
   imports: [
     TypeOrmModule.forRootAsync({
@@ -19,19 +67,10 @@ import { buildSslConfig } from './ssl.util';
         synchronize: false,
         migrationsRun: false,
         logging: config.get<string>('DB_LOGGING') === 'true',
-        // Bound the node-postgres pool explicitly instead of relying on the
-        // driver default of 10. Deployed environments connect directly to the
-        // Crunchy `-primary` service (not pgBouncer), so the ceiling is
-        // Postgres' `max_connections`; size the per-pod pool against the HPA
-        // replica ceiling, the worker, and the migration Job. See issue #156.
-        extra: {
-          max: parseInt(config.get<string>('DB_POOL_MAX', '10'), 10),
-          min: parseInt(config.get<string>('DB_POOL_MIN', '2'), 10),
-          idleTimeoutMillis: parseInt(
-            config.get<string>('DB_POOL_IDLE_TIMEOUT_MS', '30000'),
-            10,
-          ),
-        },
+        // Bound the node-postgres pool explicitly (driver default is 10).
+        // Deployed pods connect direct to Crunchy `-primary` (not pgBouncer),
+        // so the ceiling is Postgres `max_connections`. See issue #156.
+        extra: buildPoolConfig(config),
         ssl: buildSslConfig(
           config.get<string>('DB_SSL'),
           config.get<string>('DB_SSL_REJECT_UNAUTHORIZED'),

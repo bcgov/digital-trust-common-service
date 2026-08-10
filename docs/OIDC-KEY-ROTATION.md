@@ -52,6 +52,19 @@ PR preview environments are the exception: `values-pr.yaml` sets `oidcSigning.cr
 
 Rotation is two passes. The first introduces the new key while the old one keeps verifying; the second removes the old key once nothing signed by it can still be valid.
 
+> **Multi-replica rollout window.** `--append` makes the new key the *signer*
+> immediately (it is prepended). During a rolling restart the fleet is briefly
+> mixed: new pods already sign with `new` and publish `[new, old]`, while
+> not-yet-restarted pods still publish only `[old]`. A token minted by a new pod
+> whose `/oidc/jwks` request is load-balanced to an old pod fails verification
+> until the rollout completes (typically seconds, bounded by `rollout status`).
+> With a single replica there is no window. For a zero-gap rollout under multiple
+> replicas, split it into two deploys: first publish the new key **without**
+> signing (append it to the *end* of the `keys` array so `old` stays first),
+> roll out, then move it to the front and roll out again to activate it. The
+> steps below use the single-pass `--append`, which is the right default for the
+> current single-writer, short-TTL setup.
+
 ### Pass 1: introduce the new signing key
 
 1. Fetch the current JWKS from the live Secret.

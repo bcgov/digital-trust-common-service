@@ -3,13 +3,11 @@
 # Per-PR values (image.tag, config.DB_NAME, route.host) and config.DB_HOST
 # (from the PR_DB_HOST repository variable) are injected via --set.
 
-# Two replicas so every PR deploy exercises the multi-replica path: all pods
-# must load the same OIDC signing JWKS from the shared Secret, otherwise a
-# token minted by one pod fails verification against the other's /oidc/jwks.
-# This continuously exercises the stateless client_credentials path. Real
-# cross-pod verification of the interactive/session path (session & state
-# cookies, PG-backed interaction store hitting different pods) depends on the
-# interactive flows landing in AU-02 (#35) and is deferred there.
+# Two replicas so PR deploys run a realistic multi-replica topology: every pod
+# must load the same OIDC signing JWKS from the shared Secret, or a token minted
+# by one pod fails verification against another's /oidc/jwks. Note this does not
+# by itself prove the cross-pod path (the workflow only waits for readiness);
+# a per-pod smoke check and the interactive/session path land with AU-02 (#35).
 replicaCount: 2
 
 resources:

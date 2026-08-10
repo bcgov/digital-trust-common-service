@@ -60,5 +60,23 @@ describe('DatabaseModule', () => {
         idleTimeoutMillis: 15000,
       });
     });
+
+    it('rejects a non-integer pool value instead of silently coercing it', () => {
+      expect(() => getFactory()(buildConfig({ DB_POOL_MAX: '10x' }))).toThrow(
+        /DB_POOL_MAX/,
+      );
+    });
+
+    it('rejects DB_POOL_MIN greater than DB_POOL_MAX', () => {
+      expect(() =>
+        getFactory()(buildConfig({ DB_POOL_MAX: '5', DB_POOL_MIN: '9' })),
+      ).toThrow(/DB_POOL_MIN/);
+    });
+
+    it('rejects a zero DB_POOL_MAX', () => {
+      expect(() => getFactory()(buildConfig({ DB_POOL_MAX: '0' }))).toThrow(
+        /DB_POOL_MAX/,
+      );
+    });
   });
 });
