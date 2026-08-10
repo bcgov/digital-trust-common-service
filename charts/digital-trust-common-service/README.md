@@ -107,7 +107,7 @@ OpenShift. Key characteristics:
 | networkPolicy.keycloak.podSelector | object | `{}` | Pod selector matching the Keycloak pods |
 | networkPolicy.keycloak.port | int | `443` | Keycloak port |
 | nodeSelector | object | `{}` | Node selector for API pods |
-| oidcSigning.cookieKeys | string | `""` | Comma-separated cookie signing secrets (OIDC_COOKIE_KEYS). Generated once and preserved across upgrades when empty. |
+| oidcSigning.cookieKeys | string | `""` | Comma-separated cookie signing secrets (OIDC_COOKIE_KEYS). Generated once and preserved across upgrades when empty. Preservation relies on an in-cluster `helm upgrade` (the template reads the live Secret via `lookup`); a client-side `helm template`/`helm diff`/GitOps render cannot see the cluster and would rotate these keys, invalidating active sessions. Pin them via existingSecret or an explicit value if you adopt such a flow. |
 | oidcSigning.create | bool | `false` | Create a chart-managed Secret from the values below |
 | oidcSigning.existingSecret | string | `""` | Name of an existing Secret holding the signing JWKS |
 | oidcSigning.keys | string | `""` | RS256 JWKS document. Helm cannot generate one, so it is supplied by the caller: `npm run oidc:generate-keys > oidc-keys.json` then `--set-file oidcSigning.keys=oidc-keys.json`. Left empty on upgrade, the keys already in the live Secret are kept. |

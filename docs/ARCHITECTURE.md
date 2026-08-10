@@ -1095,7 +1095,7 @@ For API clients (`client_credentials` grant):
 
 | Library | Role |
 |---------|------|
-| [`oidc-provider`](https://github.com/panva/node-oidc-provider) | OpenID Certified OIDC server — handles token signing, JWKS, discovery, grants, key rotation |
+| [`oidc-provider`](https://github.com/panva/node-oidc-provider) | OpenID Certified OIDC server — handles token signing, JWKS, discovery, and grants |
 | [`jose`](https://github.com/panva/jose) | Low-level JWT/JWK operations (used internally by oidc-provider; available for custom needs) |
 | `argon2` | Client secret hashing |
 | [`openid-client`](https://github.com/panva/openid-client) | Upstream OIDC federation client (Keycloak login), including discovery and Authorization Code + PKCE support |
@@ -1326,7 +1326,7 @@ graph TB
 | Concern | Mitigation |
 |---------|-----------|
 | Tenant data isolation | `tenant_id` FK on all data; TenantGuard enforces at request level |
-| Token issuance | App owns OIDC provider (`oidc-provider`); RS256 signing with auto-rotated keys; short-lived tokens (5 min) |
+| Token issuance | App owns OIDC provider (`oidc-provider`); RS256 signing with operator-rotated keys (see [OIDC key rotation](./OIDC-KEY-ROTATION.md)); short-lived tokens (5 min) |
 | Client secret storage | Argon2 hash; full secret shown only once at registration |
 | Credential at rest | Connector credentials encrypted with app-level key (AES-256-GCM) |
 | Token security | No long-lived tokens; refresh rotation; PostgreSQL-backed session store |

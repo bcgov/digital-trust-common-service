@@ -308,7 +308,11 @@ oidcSigning:
   # keys already in the live Secret are kept.
   keys: ""
   # -- Comma-separated cookie signing secrets (OIDC_COOKIE_KEYS). Generated
-  # once and preserved across upgrades when empty.
+  # once and preserved across upgrades when empty. Preservation relies on an
+  # in-cluster `helm upgrade` (the template reads the live Secret via `lookup`);
+  # a client-side `helm template`/`helm diff`/GitOps render cannot see the
+  # cluster and would rotate these keys, invalidating active sessions. Pin them
+  # via existingSecret or an explicit value if you adopt such a flow.
   cookieKeys: ""
 
 

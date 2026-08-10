@@ -19,6 +19,19 @@ import { buildSslConfig } from './ssl.util';
         synchronize: false,
         migrationsRun: false,
         logging: config.get<string>('DB_LOGGING') === 'true',
+        // Bound the node-postgres pool explicitly instead of relying on the
+        // driver default of 10. Deployed environments connect directly to the
+        // Crunchy `-primary` service (not pgBouncer), so the ceiling is
+        // Postgres' `max_connections`; size the per-pod pool against the HPA
+        // replica ceiling, the worker, and the migration Job. See issue #156.
+        extra: {
+          max: parseInt(config.get<string>('DB_POOL_MAX', '10'), 10),
+          min: parseInt(config.get<string>('DB_POOL_MIN', '2'), 10),
+          idleTimeoutMillis: parseInt(
+            config.get<string>('DB_POOL_IDLE_TIMEOUT_MS', '30000'),
+            10,
+          ),
+        },
         ssl: buildSslConfig(
           config.get<string>('DB_SSL'),
           config.get<string>('DB_SSL_REJECT_UNAUTHORIZED'),
