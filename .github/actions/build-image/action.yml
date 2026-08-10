@@ -43,8 +43,8 @@ outputs:
     description: "All tags applied to the image"
     value: ${{ steps.meta.outputs.tags }}
   image_tag:
-    description: "Immutable PR tag (pr-<N>-<short-sha>) when pr_number is set; the metadata version otherwise"
-    value: ${{ steps.tags.outputs.image_tag || steps.meta.outputs.version }}
+    description: "PR tag (pr-<N>) when pr_number is set; the metadata version otherwise"
+    value: ${{ inputs.pr_number && format('pr-{0}', inputs.pr_number) || steps.meta.outputs.version }}
 
 runs:
   using: composite
@@ -64,38 +64,16 @@ runs:
         username: ${{ inputs.registry_username }}
         password: ${{ inputs.registry_password }}
 
-    # Single source for tag rules on both paths. Building the non-PR list in an
-    # expression is a trap: `\n` inside ${{ }} string literals is a literal
-    # backslash-n, which collapses the rules into one malformed line.
-    - name: Compute tag rules
+    - name: Compute PR tag
       id: tags
       shell: bash
       env:
         PR_NUMBER: ${{ inputs.pr_number }}
-        HEAD_SHA: ${{ github.event.pull_request.head.sha }}
       run: |
         if [ -n "${PR_NUMBER}" ]; then
-          SHORT_SHA="${HEAD_SHA:0:7}"
-          if [ -z "${SHORT_SHA}" ]; then
-            SHORT_SHA="${GITHUB_SHA:0:7}"
-          fi
-          echo "image_tag=pr-${PR_NUMBER}-${SHORT_SHA}" >> "$GITHUB_OUTPUT"
-          {
-            echo "tags<<EOF"
-            echo "type=raw,value=pr-${PR_NUMBER}"
-            echo "type=raw,value=pr-${PR_NUMBER}-${SHORT_SHA}"
-            echo "EOF"
-          } >> "$GITHUB_OUTPUT"
+          echo "pr_tags=type=raw,value=pr-${PR_NUMBER}" >> "$GITHUB_OUTPUT"
         else
-          {
-            echo "tags<<EOF"
-            echo "type=sha,prefix=sha-,enable={{!is_semver_version}}"
-            echo "type=raw,value=main,enable={{is_default_branch}}"
-            echo "type=semver,pattern={{version}}"
-            echo "type=semver,pattern={{major}}.{{minor}}"
-            echo "type=raw,value=latest,enable={{is_semver_version}}"
-            echo "EOF"
-          } >> "$GITHUB_OUTPUT"
+          echo "pr_tags=" >> "$GITHUB_OUTPUT"
         fi
 
     - name: Extract Docker metadata
@@ -103,7 +81,13 @@ runs:
       uses: docker/metadata-action@902fa8ec7d6ecbf8d84d538b9b233a880e428804 # v5.7.0
       with:
         images: ${{ inputs.registry }}/${{ inputs.image_name }}
-        tags: ${{ steps.tags.outputs.tags }}
+        tags: |
+          ${{ steps.tags.outputs.pr_tags }}
+          type=sha,prefix=sha-
+          type=raw,value=main,enable={{is_default_branch}}
+          type=semver,pattern={{version}}
+          type=semver,pattern={{major}}.{{minor}}
+          type=raw,value=latest,enable={{is_semver_version}}
 
     - name: Build and push image
       id: build
