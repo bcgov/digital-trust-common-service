@@ -89,10 +89,11 @@ runs:
         else
           {
             echo "tags<<EOF"
-            echo "type=sha,prefix=sha-"
+            echo "type=sha,prefix=sha-,enable={{!is_semver_version}}"
             echo "type=raw,value=main,enable={{is_default_branch}}"
             echo "type=semver,pattern={{version}}"
             echo "type=semver,pattern={{major}}.{{minor}}"
+            echo "type=raw,value=latest,enable={{is_semver_version}}"
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
         fi
