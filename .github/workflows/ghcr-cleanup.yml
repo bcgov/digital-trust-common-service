@@ -1,0 +1,47 @@
+name: GHCR Cleanup
+
+on:
+  schedule:
+    # Run nightly at 2 AM UTC to clean up orphaned and untagged images
+    - cron: "0 2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  cleanup-untagged:
+    # Only run on bcgov repo (fork PRs don't have write access to org packages anyway)
+    if: github.repository_owner == 'bcgov'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete untagged images
+        # v3.1.0+ required: earlier versions delete multi-arch child manifests that tagged releases still reference.
+        uses: snok/container-retention-policy@d3bdcf5ce9b05f685154e4a16c39233b245e3d53 # v3.1.0
+        with:
+          account: ${{ github.repository_owner }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+          image-names: ${{ github.event.repository.name }}
+          untagged-only: true
+          # Preserve recent orphans in case a rollback or manual inspection is needed
+          cut-off: 24h
+          dry-run: false
+
+  cleanup-stale-pr-tags:
+    # Catches old pr-<N>-<sha> tags from the previous tagging strategy and
+    # stale pr-<N> tags from PRs whose cleanup workflow was skipped (e.g. forks).
+    if: github.repository_owner == 'bcgov'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete stale PR-tagged images
+        # v3.1.0+ required: see note on cleanup-untagged job.
+        uses: snok/container-retention-policy@d3bdcf5ce9b05f685154e4a16c39233b245e3d53 # v3.1.0
+        with:
+          account: ${{ github.repository_owner }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+          image-names: ${{ github.event.repository.name }}
+          image-tags: "pr-*"
+          # PRs rarely stay open for 7+ days without a push; safe cutoff for stale tags
+          cut-off: 7d
+          dry-run: false

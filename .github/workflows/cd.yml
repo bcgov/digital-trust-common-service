@@ -109,6 +109,7 @@ jobs:
           helm upgrade --install digital-trust-common-service ./charts/digital-trust-common-service \
             -f charts/digital-trust-common-service/values-dev.yaml \
             --set image.tag="${IMAGE_TAG}" \
+            --set "podAnnotations.deploy/image-sha=${GITHUB_SHA}" \
             --wait --timeout 10m
 
   notify-teams:
