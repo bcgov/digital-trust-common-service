@@ -17,6 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Delete untagged images
+        # v3.1.0+ required: earlier versions delete multi-arch child manifests that tagged releases still reference.
         uses: snok/container-retention-policy@d3bdcf5ce9b05f685154e4a16c39233b245e3d53 # v3.1.0
         with:
           account: ${{ github.repository_owner }}
@@ -34,6 +35,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Delete stale PR-tagged images
+        # v3.1.0+ required: see note on cleanup-untagged job.
         uses: snok/container-retention-policy@d3bdcf5ce9b05f685154e4a16c39233b245e3d53 # v3.1.0
         with:
           account: ${{ github.repository_owner }}
