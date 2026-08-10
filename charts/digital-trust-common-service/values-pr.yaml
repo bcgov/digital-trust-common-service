@@ -10,6 +10,9 @@
 # a per-pod smoke check and the interactive/session path land with AU-02 (#35).
 replicaCount: 2
 
+image:
+  pullPolicy: Always
+
 resources:
   requests:
     cpu: 25m
@@ -18,11 +21,11 @@ config:
   NODE_ENV: development
   LOG_LEVEL: debug
   DB_HOST: digital-trust-common-service-pr-db
-  DB_LOGGING: "true"
+  DB_LOGGING: 'true'
   # Two replicas share the PR database, so cap each pod's pool to keep the
   # total (2 x max + worker + migration Job) well under the primary's
   # max_connections. Applies the sizing guidance from .env.example.
-  DB_POOL_MAX: "5"
+  DB_POOL_MAX: '5'
 
 secret:
   # PR databases are owned by the same application user as dev; reuse the dev Secret.
@@ -31,15 +34,15 @@ secret:
   existingSecret: digital-trust-common-service-pr-secret
 
 connectorEncryption:
-  existingSecret: ""
+  existingSecret: ''
   create: true
 
   currentVersion: 1
   keys:
-    "1": <generated-per-deployment-key>"
+    '1': <generated-per-deployment-key>"
 
 oidcSigning:
-  existingSecret: ""
+  existingSecret: ''
   create: true
   # Preview Secrets are per-PR and disposable; pr-cleanup.yml removes them
   # with the rest of the release.
