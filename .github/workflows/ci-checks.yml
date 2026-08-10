@@ -130,7 +130,7 @@ jobs:
           done
       - name: Helm unit tests
         run: |
-          helm plugin install https://github.com/helm-unittest/helm-unittest --version v1.1.2
+          helm plugin install https://github.com/helm-unittest/helm-unittest --version v1.0.1
           helm unittest charts/digital-trust-common-service
       - name: yamllint (values and Chart.yaml)
         run: |
