@@ -124,6 +124,26 @@ describe('generate-oidc-keys.mjs', () => {
     expect(() => run('--append', path)).toThrow();
   });
 
+  it('fails when --append targets a public-only JWKS (no private "d")', () => {
+    const path = join(dir, 'public.json');
+    writeFileSync(
+      path,
+      JSON.stringify({
+        keys: [{ kid: 'pub-1', kty: 'RSA', alg: 'RS256', use: 'sig', n: 'x' }],
+      }),
+    );
+
+    expect(() => run('--append', path)).toThrow(/private material/);
+  });
+
+  it('fails when --append targets a JWKS with duplicate kids', () => {
+    const path = join(dir, 'dupe.json');
+    const key = { kid: 'dup', kty: 'RSA', alg: 'RS256', use: 'sig', d: 'x' };
+    writeFileSync(path, JSON.stringify({ keys: [key, key] }));
+
+    expect(() => run('--append', path)).toThrow(/duplicate kid/);
+  });
+
   it('fails on an unknown flag', () => {
     expect(() => run('--bogus')).toThrow();
   });

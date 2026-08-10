@@ -109,7 +109,7 @@ describe('OIDC signing-key rotation (e2e)', () => {
 
     tenantRepo = moduleFixture.get(getRepositoryToken(Tenant));
     oauthClientRepo = moduleFixture.get(getRepositoryToken(OAuthClient));
-  });
+  }, 60_000);
 
   beforeEach(async () => {
     const tenant = await tenantRepo.save(

@@ -23,7 +23,7 @@
  * has elapsed (see docs/OIDC-KEY-ROTATION.md).
  */
 import { generateKeyPairSync, randomUUID } from 'node:crypto';
-import { chmodSync, readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, renameSync, writeFileSync } from 'node:fs';
 
 function parseArgs(argv) {
   const args = { append: false, path: undefined };
@@ -73,6 +73,28 @@ function readExistingKeys(path) {
     );
   }
 
+  const seenKids = new Set();
+
+  for (const key of parsed.keys) {
+    // Reject a public-only JWKS (e.g. one accidentally fetched from
+    // /oidc/jwks): without the private `d` parameter OidcKeysService refuses
+    // to boot, and appending to it would ship a Secret that fails mid-rotation.
+    if (!key || typeof key.kid !== 'string' || typeof key.d !== 'string') {
+      throw new Error(
+        `--append target "${path}" contains a key without private material ` +
+          `(each key needs a "kid" and a "d"); it looks like a public JWKS.`,
+      );
+    }
+
+    if (seenKids.has(key.kid)) {
+      throw new Error(
+        `--append target "${path}" already contains duplicate kid "${key.kid}".`,
+      );
+    }
+
+    seenKids.add(key.kid);
+  }
+
   return parsed.keys;
 }
 
@@ -103,10 +125,12 @@ function main() {
   const jwks = `${JSON.stringify({ keys }, null, 2)}\n`;
 
   if (args.path) {
-    // chmod as well as pass mode: writeFileSync only applies mode when it
-    // creates the file, so --append onto an existing 0644 JWKS needs the chmod.
-    writeFileSync(args.path, jwks, { mode: 0o600 });
-    chmodSync(args.path, 0o600);
+    // Write to a sibling temp file at 0600, then atomically rename into place.
+    // A crash can't truncate the operator's only JWKS, and the new private
+    // keys are never briefly world-readable (unlike an in-place 0644 rewrite).
+    const tmpPath = `${args.path}.tmp`;
+    writeFileSync(tmpPath, jwks, { mode: 0o600 });
+    renameSync(tmpPath, args.path);
   } else {
     process.stdout.write(jwks);
   }

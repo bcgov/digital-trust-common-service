@@ -110,7 +110,7 @@ OpenShift. Key characteristics:
 | oidcSigning.cookieKeys | string | `""` | Comma-separated cookie signing secrets (OIDC_COOKIE_KEYS). Generated once and preserved across upgrades when empty. Preservation needs an in-cluster `helm upgrade`; a client-side render (template/diff/GitOps) would rotate them and drop active sessions, so pin them if you use one. |
 | oidcSigning.create | bool | `false` | Create a chart-managed Secret from the values below |
 | oidcSigning.existingSecret | string | `""` | Name of an existing Secret holding the signing JWKS |
-| oidcSigning.keys | string | `""` | RS256 JWKS document. Helm cannot generate one, so it is supplied by the caller: `npm run oidc:generate-keys > oidc-keys.json` then `--set-file oidcSigning.keys=oidc-keys.json`. Left empty on upgrade, the keys already in the live Secret are kept. |
+| oidcSigning.keys | string | `""` | RS256 JWKS document. Helm cannot generate one, so it is supplied by the caller: `node scripts/generate-oidc-keys.mjs oidc-keys.json` then `--set-file oidcSigning.keys=oidc-keys.json`. Left empty on upgrade, the keys already in the live Secret are kept. |
 | oidcSigning.mountPath | string | `"/etc/oidc"` | Mounted path inside the container |
 | oidcSigning.retainOnUninstall | bool | `true` | Keep the chart-managed Secret when the release is uninstalled |
 | podAnnotations | object | `{}` | Annotations added to the API/Worker pods |

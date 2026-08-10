@@ -30,7 +30,7 @@ Verification is looked up by `kid`, so a token signed by an older key keeps vali
 
 ```bash
 node scripts/generate-oidc-keys.mjs oidc-keys.json
-# or: npm run oidc:generate-keys > oidc-keys.json
+# or: npm run --silent oidc:generate-keys > oidc-keys.json
 ```
 
 Create the Secret the environment's values file expects. `values-dev/test/prod.yaml` set `oidcSigning.create: false` and point at a pre-provisioned Secret named `digital-trust-common-service-{env}-oidc-signing`:
@@ -78,6 +78,8 @@ Rotation is two passes. The first introduces the new key while the old one keeps
 
    ```bash
    node scripts/generate-oidc-keys.mjs --append oidc-keys.json
+   # or via the npm alias (note the `--` so npm forwards the path):
+   #   npm run oidc:rotate-keys -- oidc-keys.json
    ```
 
    The file now holds the new key first, followed by the previous key(s). Confirm before proceeding:
@@ -144,7 +146,27 @@ Update the Secret and restart exactly as in steps 3 and 4. Keeping a retired key
 
 ### Emergency rotation (suspected key compromise)
 
-Skip the two-pass procedure. Generate a fresh single-key JWKS without `--append`, update the Secret, and restart. Every previously issued token is immediately invalidated, which is the point. Expect all clients to re-authenticate.
+Skip the two-pass procedure. Generate a fresh single-key JWKS **without**
+`--append`, update the Secret, and restart. Every previously issued JWT
+(access / ID token) is immediately invalidated, because none of them verify
+against the new key.
+
+Signing-key rotation does **not** touch refresh tokens: they are opaque adapter
+records validated by database lookup, not by the JWKS. An attacker holding a
+stolen refresh token could otherwise keep minting fresh access tokens — signed
+by the *new* key — straight through the rotation. So in a compromise scenario,
+also revoke the stored grants:
+
+```sql
+-- Invalidate all refresh tokens (and, if you want a hard cutover, sessions).
+DELETE FROM oidc_model WHERE model_name = 'RefreshToken';
+```
+
+Then restart. Expect all clients to re-authenticate.
+
+> Refresh tokens are moot today — this service only exposes `client_credentials`,
+> which issues no refresh token. This step matters once the interactive flows in
+> AU-02 (#35) land, and the runbook is written to be correct for that.
 
 ## Rotating cookie signing keys
 
