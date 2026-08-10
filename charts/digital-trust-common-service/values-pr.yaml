@@ -3,6 +3,9 @@
 # Per-PR values (image.tag, config.DB_NAME, route.host) and config.DB_HOST
 # (from the PR_DB_HOST repository variable) are injected via --set.
 
+image:
+  pullPolicy: Always
+
 resources:
   requests:
     cpu: 25m
