@@ -138,6 +138,7 @@ jobs:
       # requires this repository to have the Admin role in the package
       # settings (GHCR package -> Manage Actions access).
       - name: Delete PR image tags
+        # v3.1.0+ required: earlier versions delete multi-arch child manifests that tagged releases still reference.
         uses: snok/container-retention-policy@d3bdcf5ce9b05f685154e4a16c39233b245e3d53 # v3.1.0
         with:
           account: ${{ github.repository_owner }}
