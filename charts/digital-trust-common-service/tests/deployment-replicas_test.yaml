@@ -1,0 +1,41 @@
+suite: api deployment replicas
+templates:
+  - templates/deployment.yaml
+  - templates/configmap.yaml
+  - templates/secret.yaml
+  - templates/connector-encryption-secret.yaml
+  - templates/oidc-signing-secret.yaml
+tests:
+  - it: defaults to a single replica
+    set:
+      oidcSigning:
+        create: true
+        keys: |
+          {"keys":[{"kty":"RSA","kid":"test-kid"}]}
+        cookieKeys: "placeholder-cookie-key"
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 1
+        template: templates/deployment.yaml
+        documentIndex: 0
+
+  # Locks in the multi-replica exercise for issue #156: every PR deploy must run
+  # two pods so the cross-pod JWKS path is continuously exercised. A regression
+  # that drops values-pr.yaml back to one replica should fail here.
+  - it: runs two replicas under the PR overlay to exercise the cross-pod path
+    values:
+      - ../values-pr.yaml
+    set:
+      # values-pr.yaml enables oidcSigning.create; supply a placeholder JWKS so
+      # this render exercises the deployment rather than the secret guard.
+      oidcSigning:
+        keys: |
+          {"keys":[{"kty":"RSA","kid":"test-kid"}]}
+        cookieKeys: "placeholder-cookie-key"
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 2
+        template: templates/deployment.yaml
+        documentIndex: 0

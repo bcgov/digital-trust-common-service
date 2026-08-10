@@ -128,6 +128,10 @@ jobs:
             helm template rel digital-trust-common-service -f "$f" \
               --set-file oidcSigning.keys=digital-trust-common-service/ci/placeholder-oidc-keys.json > /dev/null
           done
+      - name: Helm unit tests
+        run: |
+          helm plugin install https://github.com/helm-unittest/helm-unittest --version v1.1.2
+          helm unittest charts/digital-trust-common-service
       - name: yamllint (values and Chart.yaml)
         run: |
           pipx install yamllint || pip install yamllint
