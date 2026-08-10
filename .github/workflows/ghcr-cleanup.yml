@@ -4,7 +4,7 @@ on:
   schedule:
     # Run nightly at 2 AM UTC to clean up orphaned and untagged images
     - cron: "0 2 * * *"
-  workflow_dispatch
+  workflow_dispatch:
 
 permissions:
   contents: read
