@@ -144,8 +144,8 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           image-names: ${{ github.event.repository.name }}
           # Must match the PR tag rules in .github/actions/build-image
-          # (pr-<N> and pr-<N>-<short-sha>). Space/comma-separated wildmatch.
-          image-tags: "pr-${{ github.event.number }} pr-${{ github.event.number }}-*"
+          # Single mutable tag per PR: pr-<N>
+          image-tags: "pr-${{ github.event.number }}"
           cut-off: 1s
           dry-run: false
 
