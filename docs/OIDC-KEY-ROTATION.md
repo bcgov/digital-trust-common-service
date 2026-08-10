@@ -30,7 +30,6 @@ Verification is looked up by `kid`, so a token signed by an older key keeps vali
 
 ```bash
 node scripts/generate-oidc-keys.mjs oidc-keys.json
-# or: npm run --silent oidc:generate-keys > oidc-keys.json
 ```
 
 Create the Secret the environment's values file expects. `values-dev/test/prod.yaml` set `oidcSigning.create: false` and point at a pre-provisioned Secret named `digital-trust-common-service-{env}-oidc-signing`:
@@ -78,8 +77,6 @@ Rotation is two passes. The first introduces the new key while the old one keeps
 
    ```bash
    node scripts/generate-oidc-keys.mjs --append oidc-keys.json
-   # or via the npm alias (note the `--` so npm forwards the path):
-   #   npm run oidc:rotate-keys -- oidc-keys.json
    ```
 
    The file now holds the new key first, followed by the previous key(s). Confirm before proceeding:
