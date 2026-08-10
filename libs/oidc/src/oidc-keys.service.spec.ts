@@ -61,6 +61,26 @@ describe('OidcKeysService', () => {
     expect(readFileSync).toHaveBeenCalledWith(keysPath, 'utf8');
   });
 
+  it('loads a multi-key (rotated) JWKS, preserving newest-first order', async () => {
+    const rotatedJwks = JSON.stringify({
+      keys: [
+        { kid: 'key-new', kty: 'RSA', alg: 'RS256', use: 'sig', d: 'new-d' },
+        { kid: 'key-old', kty: 'RSA', alg: 'RS256', use: 'sig', d: 'old-d' },
+      ],
+    });
+    (existsSync as jest.Mock).mockReturnValue(true);
+    (readFileSync as jest.Mock).mockReturnValue(rotatedJwks);
+
+    const service = await buildService({ OIDC_KEYS_PATH: keysPath });
+    await service.onModuleInit();
+
+    const loaded = service.getJwks();
+    expect(loaded.keys).toHaveLength(2);
+    // oidc-provider signs with the first key, so newest-first must be preserved.
+    expect(loaded.keys[0].kid).toBe('key-new');
+    expect(loaded.keys[1].kid).toBe('key-old');
+  });
+
   it('throws on an empty keys array', async () => {
     (existsSync as jest.Mock).mockReturnValue(true);
     (readFileSync as jest.Mock).mockReturnValue(JSON.stringify({ keys: [] }));
