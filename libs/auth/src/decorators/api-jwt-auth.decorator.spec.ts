@@ -1,7 +1,4 @@
-import {
-  ApiJwtAuth,
-  APP_JWT_BEARER_SCHEME,
-} from './api-jwt-auth.decorator';
+import { ApiJwtAuth, APP_JWT_BEARER_SCHEME } from './api-jwt-auth.decorator';
 
 describe('ApiJwtAuth', () => {
   it('exports the bearer scheme name used by Swagger setup', () => {

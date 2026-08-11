@@ -4,10 +4,7 @@ import { generateKeyPair, exportJWK, SignJWT } from 'jose';
 
 import { AuthenticationRequiredException } from '../exceptions/authentication-required.exception';
 
-import {
-  JwksCacheService,
-  JwksKeyNotFoundError,
-} from './jwks-cache.service';
+import { JwksCacheService, JwksKeyNotFoundError } from './jwks-cache.service';
 import {
   extractBearerToken,
   JwtValidationService,
@@ -185,7 +182,7 @@ describe('JwtValidationService', () => {
     await expect(
       service.validateAuthorizationHeader(`Bearer ${token}`),
     ).rejects.toBeInstanceOf(AuthenticationRequiredException);
-    expect(jwksCacheService.refresh).not.toHaveBeenCalled();
+    expect(jwksCacheService.refresh.mock.calls).toHaveLength(0);
   });
 
   it('retries JWKS resolution after a transient fetch failure', async () => {
