@@ -39,7 +39,7 @@ connectorEncryption:
 
   currentVersion: 1
   keys:
-    '1': <generated-per-deployment-key>"
+    '1': <generated-per-deployment-key>
 
 oidcSigning:
   existingSecret: ''

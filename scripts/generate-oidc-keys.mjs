@@ -23,7 +23,7 @@
  * has elapsed (see docs/OIDC-KEY-ROTATION.md).
  */
 import { generateKeyPairSync, randomUUID } from 'node:crypto';
-import { readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 
 function parseArgs(argv) {
   const args = { append: false, path: undefined };
@@ -128,9 +128,29 @@ function main() {
     // Write to a sibling temp file at 0600, then atomically rename into place.
     // A crash can't truncate the operator's only JWKS, and the new private
     // keys are never briefly world-readable (unlike an in-place 0644 rewrite).
+    // `flag: 'wx'` forces an exclusive create so the 0600 mode always applies
+    // (mode is ignored when opening an existing file) and a pre-existing or
+    // symlinked `.tmp` can't be followed or truncated with its own looser mode.
     const tmpPath = `${args.path}.tmp`;
-    writeFileSync(tmpPath, jwks, { mode: 0o600 });
-    renameSync(tmpPath, args.path);
+    let created = false;
+    try {
+      writeFileSync(tmpPath, jwks, { mode: 0o600, flag: 'wx' });
+      created = true;
+      renameSync(tmpPath, args.path);
+    } catch (err) {
+      // Only clean up a temp file we created; never delete a foreign file that
+      // triggered EEXIST (that's exactly what `wx` is protecting).
+      if (created) {
+        rmSync(tmpPath, { force: true });
+      }
+      if (err.code === 'EEXIST' && !created) {
+        throw new Error(
+          `Refusing to overwrite existing temp file ${tmpPath}. ` +
+            `Remove it and retry.`,
+        );
+      }
+      throw err;
+    }
   } else {
     process.stdout.write(jwks);
   }

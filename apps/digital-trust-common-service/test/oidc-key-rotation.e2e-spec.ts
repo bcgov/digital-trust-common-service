@@ -86,10 +86,8 @@ describe('OIDC signing-key rotation (e2e)', () => {
     const jwks = JSON.parse(readFileSync(keysPath, 'utf8')) as {
       keys: Array<{ kid: string }>;
     };
-    expect(jwks.keys).toHaveLength(2);
     newestKid = jwks.keys[0].kid;
     previousKid = jwks.keys[1].kid;
-    expect(newestKid).not.toBe(previousKid);
 
     process.env.OIDC_KEYS_PATH = keysPath;
 
@@ -147,18 +145,30 @@ describe('OIDC signing-key rotation (e2e)', () => {
     rmSync(keysDir, { recursive: true, force: true });
   });
 
+  it('rotates into a 2-key JWKS with distinct kids', () => {
+    const jwks = JSON.parse(readFileSync(keysPath, 'utf8')) as {
+      keys: Array<{ kid: string }>;
+    };
+    expect(jwks.keys).toHaveLength(2);
+    expect(jwks.keys[0].kid).not.toBe(jwks.keys[1].kid);
+  });
+
   it('publishes every key from a rotated JWKS at /oidc/jwks', async () => {
     const jwksResponse = await request(app.getHttpServer())
       .get('/oidc/jwks')
       .expect(200);
 
     const jwksBody = jwksResponse.body as {
-      keys: Array<{ kid: string }>;
+      keys: Array<{ kid: string; d?: string }>;
     };
 
     const publishedKids = jwksBody.keys.map((key) => key.kid);
     expect(publishedKids).toContain(newestKid);
     expect(publishedKids).toContain(previousKid);
+
+    // The public JWKS must never leak private material — a regression that
+    // serves `d`/`p`/`q` through /oidc/jwks would otherwise pass silently.
+    expect(jwksBody.keys.every((key) => !('d' in key))).toBe(true);
   });
 
   it('signs new tokens with the newest (first) key while retaining the old key for verification', async () => {

@@ -121,11 +121,17 @@ JWKS, and are therefore **not** invalidated by signing-key rotation.
 | Token | Format | Default TTL | Depends on signing key? |
 |---|---|---|---|
 | Access / client credentials | JWT (RS256) | 300s (5 min), `OIDC_ACCESS_TOKEN_TTL_SECONDS` | Yes |
+| ID token | JWT (RS256) | 3600s (1 hour), oidc-provider default — `ttl.IdToken` is unset | Yes |
 | Refresh | Opaque (adapter) | 28800s (8 hours), `OIDC_REFRESH_TOKEN_TTL_SECONDS` | No |
 
-Retirement is therefore gated by the longest-lived **JWT** TTL — the access-token
-TTL (5 minutes by default), not the refresh-token TTL. Wait at least
-`OIDC_ACCESS_TOKEN_TTL_SECONDS` after the pass 1 rollout finished so no unexpired
+Retirement is therefore gated by the longest-lived **JWT** TTL, not the
+refresh-token TTL. Today only `client_credentials` is enabled, so the only JWTs
+minted are access tokens and the gate is the 5-minute access-token TTL. Once an
+interactive flow (AU-02, #35) starts minting ID tokens, those are RS256 JWTs
+signed by the same key but fall back to oidc-provider's **1-hour** default
+(`ttl.IdToken` is not set in `oidc-provider.service.ts`), so the gate becomes
+`max(OIDC_ACCESS_TOKEN_TTL_SECONDS, 3600s) = 1 hour`. Wait at least that long
+after the pass 1 rollout finished so no unexpired
 JWT was signed by the old key. (A refresh exchange during that window mints its
 new access-token JWT with the *current* key, so it is unaffected.) Then drop the
 old key by regenerating a single-key JWKS, or by editing the array down to just

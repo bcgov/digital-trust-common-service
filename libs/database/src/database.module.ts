@@ -35,7 +35,13 @@ function buildPoolConfig(config: ConfigService): {
   idleTimeoutMillis: number;
 } {
   const max = parsePoolInt(config, 'DB_POOL_MAX', 10, 1);
+  // `min` is a "don't reap below" floor, not a pre-warm — pg-pool won't open
+  // connections at boot, so `min` buys nothing until traffic has opened that
+  // many. 0 is a valid floor (reap everything when idle).
   const min = parsePoolInt(config, 'DB_POOL_MIN', 2, 0);
+  // 0 is an intentional escape hatch meaning "never reap idle clients"
+  // (pg-pool semantics); at that setting a busy pod can pin up to `max`
+  // connections indefinitely. Leave non-zero unless you deliberately want that.
   const idleTimeoutMillis = parsePoolInt(
     config,
     'DB_POOL_IDLE_TIMEOUT_MS',

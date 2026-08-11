@@ -113,6 +113,24 @@ describe('generate-oidc-keys.mjs', () => {
     expect(statSync(path).mode & 0o777).toBe(0o600);
   });
 
+  it('refuses to clobber a pre-existing temp file and leaves the JWKS intact', () => {
+    const path = join(dir, 'keys.json');
+    run(path);
+    const original = readFileSync(path, 'utf8');
+
+    // Simulate a leftover temp file from a crashed run (or a planted symlink
+    // target). The exclusive `wx` create must refuse it rather than truncate
+    // it or write private keys through it.
+    const tmpPath = `${path}.tmp`;
+    writeFileSync(tmpPath, 'stale', { mode: 0o644 });
+
+    expect(() => run('--append', path)).toThrow(/existing temp file/);
+    // The operator's live JWKS is untouched...
+    expect(readFileSync(path, 'utf8')).toBe(original);
+    // ...and the foreign temp file was not deleted or overwritten.
+    expect(readFileSync(tmpPath, 'utf8')).toBe('stale');
+  });
+
   it('fails when --append targets a missing file', () => {
     expect(() => run('--append', join(dir, 'nope.json'))).toThrow();
   });
