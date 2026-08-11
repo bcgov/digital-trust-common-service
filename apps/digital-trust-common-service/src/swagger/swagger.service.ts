@@ -64,6 +64,37 @@ const swaggerApps = [
   },
 ];
 
+function addAppJwtBearerAuth(configBuilder: DocumentBuilder): DocumentBuilder {
+  return configBuilder.addBearerAuth(
+    {
+      type: 'http',
+      scheme: 'bearer',
+      bearerFormat: 'JWT',
+      description:
+        'App-issued access token from POST /oidc/token (client_credentials or user login)',
+    },
+    APP_JWT_BEARER_SCHEME,
+  );
+}
+
+function buildDocumentConfig(
+  title: string,
+  description: string,
+  version: string,
+  options: { includeAppJwtBearerAuth?: boolean } = {},
+): ReturnType<DocumentBuilder['build']> {
+  let configBuilder = new DocumentBuilder()
+    .setTitle(title)
+    .setDescription(description)
+    .setVersion(version);
+
+  if (options.includeAppJwtBearerAuth) {
+    configBuilder = addAppJwtBearerAuth(configBuilder);
+  }
+
+  return configBuilder.build();
+}
+
 export class SwaggerService {
   /**
    * Setup Swagger documentation for the application
@@ -171,25 +202,9 @@ export class SwaggerService {
     version: string,
     modules: Array<Type<unknown>> = [TenantModule, TenantUserModule],
   ): void {
-    let configBuilder = new DocumentBuilder()
-      .setTitle(title)
-      .setDescription(description)
-      .setVersion(version);
-
-    if (name === 'admin') {
-      configBuilder = configBuilder.addBearerAuth(
-        {
-          type: 'http',
-          scheme: 'bearer',
-          bearerFormat: 'JWT',
-          description:
-            'App-issued access token from POST /oidc/token (client_credentials or user login)',
-        },
-        APP_JWT_BEARER_SCHEME,
-      );
-    }
-
-    const config = configBuilder.build();
+    const config = buildDocumentConfig(title, description, version, {
+      includeAppJwtBearerAuth: name === 'admin',
+    });
 
     const document = SwaggerModule.createDocument(app, config, {
       include: modules,
@@ -220,25 +235,9 @@ export class SwaggerService {
     modules: Array<Type<unknown>> = [TenantModule, TenantUserModule],
     document?: ReturnType<typeof SwaggerModule.createDocument>,
   ): void {
-    let configBuilder = new DocumentBuilder()
-      .setTitle(title)
-      .setDescription(description)
-      .setVersion(version);
-
-    if (name === 'admin') {
-      configBuilder = configBuilder.addBearerAuth(
-        {
-          type: 'http',
-          scheme: 'bearer',
-          bearerFormat: 'JWT',
-          description:
-            'App-issued access token from POST /oidc/token (client_credentials or user login)',
-        },
-        APP_JWT_BEARER_SCHEME,
-      );
-    }
-
-    const config = configBuilder.build();
+    const config = buildDocumentConfig(title, description, version, {
+      includeAppJwtBearerAuth: name === 'admin',
+    });
 
     const docToUse =
       document ||

@@ -1,4 +1,4 @@
-import { JwtGuard, ScopeGuard, ApiAppJwtAuth } from '@app/auth';
+import { JwtGuard, ScopeGuard, ApiJwtAuth } from '@app/auth';
 import { Controller, Get, UseGuards } from '@nestjs/common';
 import { ApiOkResponse, ApiTags } from '@nestjs/swagger';
 
@@ -10,7 +10,7 @@ import { OperationStatsResponseDto } from './dto/operation-stats-response.dto';
 // JwtGuard validates app-issued Bearer JWTs (AU-03). ScopeGuard remains a stub
 // until scope enforcement lands; valid tokens therefore still receive 501 here.
 @ApiTags('admin')
-@ApiAppJwtAuth()
+@ApiJwtAuth()
 @Controller({ path: 'admin/operations', version: API_VERSION })
 @UseGuards(JwtGuard, ScopeGuard)
 export class AdminOperationsController {
