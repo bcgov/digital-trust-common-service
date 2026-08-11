@@ -26,6 +26,41 @@ export interface IssuedTokenResponse {
 }
 
 /**
+ * Verifies an already-issued access token against the live `/oidc/jwks`
+ * endpoint, selecting the verification key by the JWT's `kid`. Split out from
+ * `issueTokenAndVerify` so a token minted against one running instance can be
+ * verified against another (see `oidc-key-rotation.e2e-spec.ts`, which mints
+ * before a key rotation and verifies after it).
+ */
+export async function verifyTokenAgainstJwks(
+  httpServer: App,
+  accessToken: string,
+  issuer?: string,
+): Promise<Record<string, unknown>> {
+  const jwksResponse = await request(httpServer).get('/oidc/jwks').expect(200);
+
+  const jwksBody = jwksResponse.body as {
+    keys: Array<Record<string, unknown>>;
+  };
+
+  const { payload } = await jwtVerify(
+    accessToken,
+    async (protectedHeader) => {
+      const jwk = jwksBody.keys.find((key) => key.kid === protectedHeader.kid);
+
+      if (!jwk) {
+        throw new Error('Signing key not found in JWKS response');
+      }
+
+      return importJWK(jwk, protectedHeader.alg);
+    },
+    issuer ? { issuer } : undefined,
+  );
+
+  return payload;
+}
+
+/**
  * Requests a client_credentials access token, then verifies it against the
  * live `/oidc/jwks` endpoint. Returns both the raw token response fields
  * and the verified JWT payload/claims.
@@ -53,24 +88,10 @@ export async function issueTokenAndVerify(
     expires_in: number;
   };
 
-  const jwksResponse = await request(httpServer).get('/oidc/jwks').expect(200);
-
-  const jwksBody = jwksResponse.body as {
-    keys: Array<Record<string, unknown>>;
-  };
-
-  const { payload } = await jwtVerify(
+  const payload = await verifyTokenAgainstJwks(
+    httpServer,
     tokenBody.access_token,
-    async (protectedHeader) => {
-      const jwk = jwksBody.keys.find((key) => key.kid === protectedHeader.kid);
-
-      if (!jwk) {
-        throw new Error('Signing key not found in JWKS response');
-      }
-
-      return importJWK(jwk, protectedHeader.alg);
-    },
-    issuer ? { issuer } : undefined,
+    issuer,
   );
 
   return {
