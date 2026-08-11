@@ -1,9 +1,13 @@
 import { OidcConfigService } from '@app/oidc';
+import { ConfigService } from '@nestjs/config';
 import { generateKeyPair, exportJWK, SignJWT } from 'jose';
 
 import { AuthenticationRequiredException } from '../exceptions/authentication-required.exception';
 
-import { JwksCacheService } from './jwks-cache.service';
+import {
+  JwksCacheService,
+  JwksKeyNotFoundError,
+} from './jwks-cache.service';
 import {
   extractBearerToken,
   JwtValidationService,
@@ -121,9 +125,15 @@ describe('JwtValidationService', () => {
       clearCache: jest.fn(),
     } as unknown as jest.Mocked<JwksCacheService>;
 
-    service = new JwtValidationService(jwksCacheService, {
-      getConfig: () => ({ issuer }),
-    } as OidcConfigService);
+    service = new JwtValidationService(
+      jwksCacheService,
+      {
+        getConfig: () => ({ issuer }),
+      } as OidcConfigService,
+      {
+        get: () => undefined,
+      } as unknown as ConfigService,
+    );
   });
 
   async function signToken(
@@ -165,20 +175,22 @@ describe('JwtValidationService', () => {
     });
   });
 
-  it('rejects tokens signed with an unknown kid after refresh', async () => {
-    jwksCacheService.resolveKey.mockRejectedValue(new Error('missing kid'));
-    jwksCacheService.refresh.mockResolvedValue(undefined);
+  it('rejects tokens signed with an unknown kid without redundant refresh', async () => {
+    jwksCacheService.resolveKey.mockRejectedValue(
+      new JwksKeyNotFoundError('test-key'),
+    );
 
     const token = await signToken({ sub: 'client:test-client' });
 
     await expect(
       service.validateAuthorizationHeader(`Bearer ${token}`),
     ).rejects.toBeInstanceOf(AuthenticationRequiredException);
+    expect(jwksCacheService.refresh).not.toHaveBeenCalled();
   });
 
-  it('retries JWKS resolution after an initial cache miss', async () => {
+  it('retries JWKS resolution after a transient fetch failure', async () => {
     jwksCacheService.resolveKey
-      .mockRejectedValueOnce(new Error('cache miss'))
+      .mockRejectedValueOnce(new Error('JWKS fetch failed with status 503'))
       .mockResolvedValueOnce(publicJwk);
     jwksCacheService.refresh.mockResolvedValue(undefined);
 
@@ -188,6 +200,35 @@ describe('JwtValidationService', () => {
 
     expect(auth.clientId).toBe('test-client');
     expect(jwksCacheService.refresh.mock.calls).toHaveLength(1);
+  });
+
+  it('validates against JWT_AUDIENCE when configured', async () => {
+    const audience = 'https://api.example/resource';
+    service = new JwtValidationService(
+      jwksCacheService,
+      {
+        getConfig: () => ({ issuer }),
+      } as OidcConfigService,
+      {
+        get: (key: string) => (key === 'JWT_AUDIENCE' ? audience : undefined),
+      } as unknown as ConfigService,
+    );
+
+    const token = await new SignJWT({
+      sub: 'client:test-client',
+      client_id: 'test-client',
+    })
+      .setProtectedHeader({ alg: 'RS256', kid: 'test-key' })
+      .setIssuer(issuer)
+      .setAudience(audience)
+      .setIssuedAt()
+      .setExpirationTime('5m')
+      .sign(privateKey);
+
+    const auth = await service.validateAuthorizationHeader(`Bearer ${token}`);
+
+    expect(auth.clientId).toBe('test-client');
+    expect(auth.aud).toBe(audience);
   });
 
   it('verifyAccessToken rejects non-RS256 algorithms', async () => {

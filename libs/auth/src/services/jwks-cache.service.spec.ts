@@ -41,6 +41,7 @@ describe('JwksCacheService', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock).toHaveBeenCalledWith('http://localhost:3000/oidc/jwks', {
       headers: { Accept: 'application/json' },
+      signal: expect.any(AbortSignal),
     });
 
     await service.resolveKey('key-1');
@@ -112,6 +113,7 @@ describe('JwksCacheService', () => {
 
     expect(fetchMock).toHaveBeenCalledWith('http://custom.example/jwks', {
       headers: { Accept: 'application/json' },
+      signal: expect.any(AbortSignal),
     });
   });
 

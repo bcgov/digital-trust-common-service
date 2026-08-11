@@ -1,11 +1,15 @@
 import { OidcConfigService } from '@app/oidc';
 import { Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { importJWK, jwtVerify, type JWTPayload } from 'jose';
 
 import { AuthenticationRequiredException } from '../exceptions/authentication-required.exception';
 import type { AuthContext } from '../interfaces/auth-context.interface';
 
-import { JwksCacheService } from './jwks-cache.service';
+import {
+  JwksCacheService,
+  JwksKeyNotFoundError,
+} from './jwks-cache.service';
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -207,6 +211,7 @@ export class JwtValidationService {
   public constructor(
     private readonly jwksCacheService: JwksCacheService,
     private readonly oidcConfigService: OidcConfigService,
+    private readonly configService: ConfigService,
   ) {}
 
   public async validateAuthorizationHeader(
@@ -214,6 +219,8 @@ export class JwtValidationService {
   ): Promise<AuthContext> {
     const token = extractBearerToken(authorizationHeader);
     const { issuer } = this.oidcConfigService.getConfig();
+    const audience =
+      this.configService.get<string>('JWT_AUDIENCE')?.trim() || issuer;
 
     try {
       const payload = await verifyAccessToken(
@@ -221,7 +228,7 @@ export class JwtValidationService {
         async (kid) => this.resolveKeyWithRefresh(kid),
         {
           issuer,
-          audience: issuer,
+          audience,
         },
       );
 
@@ -231,12 +238,21 @@ export class JwtValidationService {
     }
   }
 
+  /**
+   * Retries JWKS resolution once for transient fetch/parse failures.
+   * Does not re-refresh when the key is confirmed missing from JWKS —
+   * {@link JwksCacheService.resolveKey} already refreshes on cache miss.
+   */
   private async resolveKeyWithRefresh(
     kid: string,
   ): Promise<Record<string, unknown>> {
     try {
       return await this.jwksCacheService.resolveKey(kid);
-    } catch {
+    } catch (error) {
+      if (error instanceof JwksKeyNotFoundError) {
+        throw error;
+      }
+
       await this.jwksCacheService.refresh();
       return this.jwksCacheService.resolveKey(kid);
     }

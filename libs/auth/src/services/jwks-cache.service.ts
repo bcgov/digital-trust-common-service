@@ -3,6 +3,14 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
 const DEFAULT_JWKS_CACHE_TTL_SECONDS = 5 * 60;
+const DEFAULT_JWKS_FETCH_TIMEOUT_MS = 5_000;
+
+export class JwksKeyNotFoundError extends Error {
+  public constructor(kid: string) {
+    super(`Signing key "${kid}" not found in JWKS`);
+    this.name = 'JwksKeyNotFoundError';
+  }
+}
 
 interface JwksDocument {
   keys: Array<Record<string, unknown>>;
@@ -40,7 +48,7 @@ export class JwksCacheService {
     const refreshed = this.getCachedKey(kid);
 
     if (!refreshed) {
-      throw new Error(`Signing key "${kid}" not found in JWKS`);
+      throw new JwksKeyNotFoundError(kid);
     }
 
     return refreshed;
@@ -51,8 +59,14 @@ export class JwksCacheService {
     const jwksUri = this.getJwksUri();
     this.logger.debug(`Fetching JWKS from ${jwksUri}`);
 
+    const timeoutMs = this.configService.get<number>(
+      'JWT_JWKS_FETCH_TIMEOUT_MS',
+      DEFAULT_JWKS_FETCH_TIMEOUT_MS,
+    );
+
     const response = await fetch(jwksUri, {
       headers: { Accept: 'application/json' },
+      signal: AbortSignal.timeout(timeoutMs),
     });
 
     if (!response.ok) {

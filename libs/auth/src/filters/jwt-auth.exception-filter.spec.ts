@@ -35,4 +35,28 @@ describe('JwtAuthExceptionFilter', () => {
       },
     });
   });
+
+  it('escapes quotes and strips CR/LF in WWW-Authenticate descriptions', () => {
+    const filter = new JwtAuthExceptionFilter();
+    const exception = new AuthenticationRequiredException(
+      'invalid_token',
+      'bad "token"\r\ninjected',
+    );
+    const json = jest.fn();
+    const setHeader = jest.fn().mockReturnThis();
+    const status = jest.fn().mockReturnValue({ json, setHeader });
+
+    const host = {
+      switchToHttp: () => ({
+        getResponse: () => ({ status, setHeader }),
+      }),
+    } as unknown as ArgumentsHost;
+
+    filter.catch(exception, host);
+
+    expect(setHeader).toHaveBeenCalledWith(
+      'WWW-Authenticate',
+      'Bearer error="invalid_token", error_description="bad \\"token\\"injected"',
+    );
+  });
 });

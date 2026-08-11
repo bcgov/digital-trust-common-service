@@ -9,7 +9,10 @@ export type {
   AuthContext,
   AuthTokenType,
 } from './interfaces/auth-context.interface';
-export { JwksCacheService } from './services/jwks-cache.service';
+export {
+  JwksCacheService,
+  JwksKeyNotFoundError,
+} from './services/jwks-cache.service';
 export {
   extractBearerToken,
   JwtValidationService,
