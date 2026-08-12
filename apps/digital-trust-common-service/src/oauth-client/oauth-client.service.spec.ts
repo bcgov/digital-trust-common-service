@@ -162,6 +162,25 @@ describe('OAuthClientService', () => {
         }),
       );
     });
+
+    it('should persist roles when provided on create', async () => {
+      mockCreate.mockResolvedValue({
+        ...mockOAuthClient,
+        roles: ['platform-admin'],
+      });
+
+      await service.createClient({
+        tenantId: mockOAuthClient.tenantId,
+        name: mockOAuthClient.name,
+        roles: ['platform-admin'],
+      });
+
+      expect(mockCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          roles: ['platform-admin'],
+        }),
+      );
+    });
   });
 
   describe('findByClientId', () => {
@@ -297,6 +316,26 @@ describe('OAuthClientService', () => {
         'credentials:offer',
         'credentials:verify',
       ]);
+    });
+
+    it('should update roles when provided', async () => {
+      mockFindById.mockResolvedValue(mockOAuthClient);
+      const updatedClient = {
+        ...mockOAuthClient,
+        roles: ['platform-admin'],
+      };
+      mockUpdate.mockResolvedValue(updatedClient);
+
+      const result = await service.update(mockOAuthClient.id, {
+        roles: ['platform-admin'],
+      });
+
+      expect(mockUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          roles: ['platform-admin'],
+        }),
+      );
+      expect(result.roles).toEqual(['platform-admin']);
     });
 
     it('should preserve existing values when partial update is provided', async () => {

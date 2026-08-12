@@ -1058,7 +1058,7 @@ graph TD
 |------|--------|
 | platform-admin | _bypasses guards_ |
 | owner | tenants:admin (superuser — implicitly has all) |
-| admin | credentials:offer, credentials:verify, connections:manage, profiles:manage, users:manage, clients:manage, logs:read |
+| admin | all Level 2 + Level 3 (`credentials:offer`, `credentials:verify`, `credentials:hold`, `credentials:revoke`, `connections:manage`, `profiles:manage`, `users:manage`, `clients:manage`, `logs:read`, `audit:read`) |
 | member | credentials:offer, credentials:verify |
 | readonly | _(no scopes — GET endpoints only)_ |
 

@@ -43,6 +43,7 @@ export class OAuthClientController {
           tenantId: '123e4567-e89b-12d3-a456-426614174000',
           name: 'Mobile App',
           scopes: ['credentials:offer', 'credentials:verify'],
+          roles: [],
           redirectUris: ['https://app.example.com/callback'],
           grantTypes: ['client_credentials'],
           createdBy: '223e4567-e89b-12d3-a456-426614174000',
@@ -108,6 +109,12 @@ export class OAuthClientController {
         },
       },
       example2: {
+        summary: 'Grant platform-admin role for machine admin access',
+        value: {
+          roles: ['platform-admin'],
+        },
+      },
+      example3: {
         summary: 'Update redirect URIs',
         value: {
           redirectUris: ['https://app.updated.com/callback'],
@@ -139,6 +146,7 @@ export class OAuthClientController {
       clientId: client.clientId,
       name: client.name,
       scopes: client.scopes,
+      roles: client.roles,
       redirectUris: client.redirectUris,
       grantTypes: client.grantTypes,
       createdBy: client.createdBy,

@@ -48,6 +48,7 @@ export class OAuthClientService {
       clientSecretHash,
       name: dto.name,
       scopes: dto.scopes || [],
+      roles: dto.roles || [],
       redirectUris: dto.redirectUris || [],
       grantTypes,
       createdBy: dto.createdBy,
@@ -90,6 +91,10 @@ export class OAuthClientService {
 
     if (dto.scopes !== undefined) {
       client.scopes = dto.scopes;
+    }
+
+    if (dto.roles !== undefined) {
+      client.roles = dto.roles;
     }
 
     if (dto.redirectUris !== undefined) {

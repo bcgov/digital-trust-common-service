@@ -32,6 +32,13 @@ export class OAuthClientResponseDto {
   public scopes!: string[];
 
   @ApiProperty({
+    description:
+      'JWT role claims stamped on tokens for this client (e.g. platform-admin)',
+    example: ['platform-admin'],
+  })
+  public roles!: string[];
+
+  @ApiProperty({
     description: 'Array of allowed redirect URIs',
     example: ['https://app.example.com/callback'],
   })

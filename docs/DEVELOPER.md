@@ -217,13 +217,18 @@ The canonical OAuth scope names live in `@app/auth` (`libs/auth/src/constants/sc
 | Role | Scopes |
 |------|--------|
 | `owner` | `tenants:admin` |
-| `admin` | all Level 2 + Level 3 scopes |
+| `admin` | all Level 2 + Level 3 scopes (including `credentials:hold` / `credentials:revoke`) |
 | `member` | `credentials:offer`, `credentials:verify` |
 | `readonly` | _(none — GET endpoints that require no specific scope)_ |
 
 `platform-admin` is **not** a scope. It is a JWT **role** claim that bypasses `ScopeGuard` and `TenantGuard`. Until interactive user login lands (AU-02), machine clients may carry `platform-admin` via the `oauth_client.roles` column.
 
-**User-token scope resolution:** the `role_scope` seed is consumed by `ScopeGuard` indirectly (scopes must appear on the JWT). Mapping `tenant_user.role` → `role_scope` → JWT `scope` at issuance is deferred to **[AU-02 #35](https://github.com/bcgov/digital-trust-common-service/issues/35)** (interactive login + `extraTokenClaims`). Client-credentials tokens continue to take scopes from `oauth_client.scopes` at registration.
+**Setting `oauth_client.roles` for platform-admin machine clients:**
+
+1. Prefer the OAuth client API: `POST /api/v1/oauth-clients` with `"roles": ["platform-admin"]`, or `PATCH /api/v1/oauth-clients/:id` with the same field. Responses include `roles`.
+2. Tokens issued via `client_credentials` for that client include a `roles` claim, which `ScopeGuard` uses (e.g. for `GET /admin/operations/stats`).
+
+**User-token scope resolution:** the `role_scope` seed is consumed by `ScopeGuard` indirectly (scopes must appear on the JWT). Mapping `tenant_user.role` → `role_scope` → JWT `scope` at issuance is deferred to **[AU-02 #35](https://github.com/bcgov/digital-trust-common-service/issues/35)** (interactive login + `extraTokenClaims`). `RoleScopeRepository` is injectable for that work. Client-credentials tokens continue to take scopes from `oauth_client.scopes` at registration.
 
 ### Migration from placeholder scopes
 

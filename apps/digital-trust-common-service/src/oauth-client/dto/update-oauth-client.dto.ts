@@ -14,6 +14,11 @@ export class UpdateOAuthClientDto {
   @IsOptional()
   @IsArray()
   @IsString({ each: true })
+  public roles?: string[];
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
   public redirectUris?: string[];
 
   @IsOptional()

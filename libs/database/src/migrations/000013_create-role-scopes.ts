@@ -5,6 +5,10 @@ export const migrationName = 'CreateRoleScopes';
 /**
  * Seeds the canonical role→scope mapping used by ScopeGuard and (future)
  * user-token issuance in AU-02. Scope names match docs/DEVELOPER.md.
+ *
+ * Deliberate vs early AU-04 issue draft: `admin` gets all Level 2 + Level 3
+ * scopes (including credentials:hold / credentials:revoke), not the shorter
+ * draft list. See docs/DEVELOPER.md "Role → scope seed".
  */
 export class CreateRoleScopes1785560000013 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
