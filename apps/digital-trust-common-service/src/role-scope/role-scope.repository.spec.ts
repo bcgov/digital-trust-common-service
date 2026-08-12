@@ -41,8 +41,6 @@ describe('RoleScopeRepository', () => {
   it('returns an empty array when the role has no mappings', async () => {
     mockQuery.mockResolvedValue([]);
 
-    await expect(repository.findScopesForRole('readonly')).resolves.toEqual(
-      [],
-    );
+    await expect(repository.findScopesForRole('readonly')).resolves.toEqual([]);
   });
 });
