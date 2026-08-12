@@ -80,6 +80,81 @@ The application uses AES-256-GCM encryption to protect sensitive data. Encryptio
 - **Development**: Use the provided `config/encryption-keys.json` with default test keys
 - **Production**: Generate strong random keys and store securely (e.g., in a secrets manager)
 
+### 4. Upstream OIDC Federation Configuration
+
+The application supports upstream OIDC federation with Keycloak using the `openid-client` library. This library **strictly enforces HTTPS** connections for all OIDC discovery and token endpoints.
+
+For local development, you need to use **ngrok** to expose your local services over HTTPS:
+
+#### Install and Start ngrok
+
+Create a ngrok configuration file at `~/.ngrok2/ngrok.yml` (or `~/Library/Application Support/ngrok/ngrok.yml` on macOS):
+
+```yaml
+authtoken: YOUR_NGROK_AUTH_TOKEN
+
+tunnels:
+  oidc-provider:
+    addr: 3000
+    proto: http
+  keycloak:
+    addr: 8080
+    proto: http
+```
+
+Then start all tunnels with:
+
+```bash
+ngrok start --all
+```
+
+ngrok will provide URLs like `https://xxxx-xx-xxx-xx-xxx-x.ngrok.io` for each tunnel. Note the URLs assigned to `oidc-provider` and `keycloak`.
+
+#### Configure Keycloak Endpoint
+
+Update **`config/upstream-identity-federation.json`** with the ngrok URL for Keycloak:
+
+```json
+{
+  "issuer": "https://YOUR_KEYCLOAK_NGROK_URL/realms/vc-common-service",
+  "clientId": "vc-common-service",
+  "clientSecret": "your-client-secret"
+}
+```
+
+#### Configure Docker Compose
+
+Update **`docker-compose.yml`** to use the ngrok URL for Keycloak:
+
+```yaml
+environment:
+  - KC_HOSTNAME=https://YOUR_KEYCLOAK_NGROK_URL
+```
+
+Also update **`keycloak/config/realm.json`** to set client redirect URIs to your ngrok URL:
+
+```json
+{
+  "clientId": "dtsc-oidc-provider",
+  "redirectUris": [
+    "https://YOUR_OIDC_PROVIDER_NGROK_URL/*", "https://YOUR_OIDC_PROVIDER_NGROK_URL/digital-trust/digital-trust-common-service/callback"
+  ],
+  "webOrigins": ["https://YOUR_OIDC_PROVIDER_NGROK_URL"],
+}
+```
+
+#### Configure OIDC Provider Issuer
+
+Set the **`OIDC_ISSUER`** environment variable to your ngrok endpoint for localhost:3000:
+
+```env
+OIDC_ISSUER=https://YOUR_OIDC_PROVIDER_NGROK_URL
+```
+
+This URL is used by Keycloak clients to discover the OIDC provider configuration and validate tokens.
+
+**Important**: All client configurations in `keycloak/config/realm.json` that reference your OIDC provider must use the same ngrok endpoint URL.
+
 ## Running the Application
 
 ### Option 1: Docker Compose (Recommended for Development)
@@ -458,6 +533,8 @@ npm run migrate:down
 # Rebuild and try again
 npm run build && npm run migrate:up
 ```
+
+
 
 ## Additional Resources
 

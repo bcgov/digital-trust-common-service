@@ -42,6 +42,7 @@
     "class-validator": "^0.15.1",
     "jose": "^6.2.5",
     "oidc-provider": "^9.11.1",
+    "openid-client": "^6.8.4",
     "pg": "^8.22.0",
     "pg-boss": "^12.26.0",
     "reflect-metadata": "^0.2.2",
@@ -95,7 +96,7 @@
       "^.+\\.(t|j)s$": "ts-jest"
     },
     "transformIgnorePatterns": [
-      "node_modules/(?!(jose|oidc-provider|quick-lru|nanoid|eta|jsesc|raw-body)/)"
+      "node_modules/(?!(jose|oidc-provider|openid-client|oauth4webapi|quick-lru|nanoid|eta|jsesc|raw-body)/)"
     ],
     "collectCoverageFrom": [
       "**/*.{ts,js}",
@@ -116,7 +117,10 @@
       "^@app/pg-boss(|/.*)$": "<rootDir>/libs/pg-boss/src/$1"
     },
     "coverageDirectory": "./coverage",
-    "testEnvironment": "node"
+    "testEnvironment": "node",
+    "setupFilesAfterEnv": [
+      "<rootDir>/jest.setup.js"
+    ]
   },
   "allowScripts": {
     "unrs-resolver@1.12.2": true

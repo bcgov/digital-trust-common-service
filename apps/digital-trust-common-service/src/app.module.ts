@@ -26,14 +26,22 @@ import { SeedModule } from './seed/seed.module';
 import { ShutdownModule } from './shutdown/shutdown.module';
 import { TenantModule } from './tenant/tenant.module';
 import { TenantUserModule } from './tenant-user/tenant-user.module';
+import { UpstreamOidcModule } from './upstream-oidc/oidc-upstream.module';
 import { VerificationProfileModule } from './verification-profile/verification-profile.module';
 
 @Module({
   imports: [
+    AdminModule,
+    AuditLogModule,
     ConfigModule.forRoot({ isGlobal: true }),
+    ConnectionModule,
+    ConnectorCredentialModule,
+    CredentialDefinitionModule,
+    CredentialModule,
     DatabaseModule,
     EncryptionModule,
     HealthModule,
+    IssuanceProfileModule,
     JobsModule,
     OAuthClientModule,
     OidcModule.forRoot({
@@ -49,8 +57,7 @@ import { VerificationProfileModule } from './verification-profile/verification-p
     ShutdownModule,
     TenantModule,
     TenantUserModule,
-    CredentialDefinitionModule,
-    IssuanceProfileModule,
+    UpstreamOidcModule,
     VerificationProfileModule,
     ConnectionModule,
     ConnectorCredentialModule,

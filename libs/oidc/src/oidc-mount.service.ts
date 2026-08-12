@@ -1,6 +1,6 @@
 import type { INestApplication } from '@nestjs/common';
 import { Logger } from '@nestjs/common';
-import type { Request, Response, Express } from 'express';
+import type { Request, Response, Express, NextFunction } from 'express';
 
 import { OidcProviderService } from './oidc-provider.service';
 
@@ -45,7 +45,16 @@ export class OidcMountService {
 
     app.use(
       OidcMountService.MOUNT_PATH,
-      (req: Request, res: Response): void => {
+      (req: Request, res: Response, next: NextFunction): void => {
+        // Let NestJS handle /oidc/interaction/* and /oidc/callback/* routes
+        if (
+          req.path.startsWith('/interaction') ||
+          req.path.startsWith('/callback')
+        ) {
+          next();
+          return;
+        }
+
         callback ??= oidcProviderService.getProvider().callback();
 
         // Koa already catches errors thrown inside the middleware chain and

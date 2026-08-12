@@ -63,7 +63,11 @@ const DEFAULT_GRANT_TYPES = ['client_credentials'];
 // code, and the other interactive flows — needs a working `findAccount`,
 // which is still a stub, so accepting them here would only defer the
 // failure to the authorize endpoint.
-const SERVICEABLE_GRANT_TYPES = ['client_credentials', 'refresh_token'];
+const SERVICEABLE_GRANT_TYPES = [
+  'client_credentials',
+  'refresh_token',
+  'authorization_code',
+];
 
 @Injectable()
 export class OidcConfigService {

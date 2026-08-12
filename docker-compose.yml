@@ -59,7 +59,7 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: dc_common_service
     volumes:
-      - postgres-data:/var/lib/postgresql/data
+      - postgres-data:/var/lib/postgresql
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U postgres']
       interval: 5s
@@ -118,6 +118,53 @@ services:
       migrate-test:
         condition: service_completed_successfully
 
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.5
+    command: start-dev --import-realm
+    profiles:
+      - dev
+      - prod
+    ports:
+      - '8080:8080'
+    volumes:
+      - ./keycloak/config:/opt/keycloak/data/import
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://keycloak-db:5432/keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: keycloak
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      KC_HTTP_ENABLED: true
+      # Disable HTTPS enforcement for local dev. With start-dev + HOSTNAME_STRICT=false
+      # Keycloak derives its URL from the request Host header (localhost:8080), so
+      # the OIDC issuer matches what the browser uses and token validation succeeds.
+      KC_HOSTNAME_STRICT: 'true'
+      # To use https which is required for OIDC, you can use a reverse proxy like ngrok to expose the local Keycloak instance over HTTPS.
+      # KC_HOSTNAME: 'https://<ngrok url>'
+    depends_on:
+      keycloak-db:
+        condition: service_healthy
+
+  keycloak-db:
+    image: postgres:15-alpine
+    profiles:
+      - dev
+      - prod
+    environment:
+      POSTGRES_DB: keycloak
+      POSTGRES_USER: keycloak
+      POSTGRES_PASSWORD: keycloak
+    volumes:
+      - keycloak-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U keycloak']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
 volumes:
   postgres-data:
   postgres-test-data:
+  keycloak-db-data:
+

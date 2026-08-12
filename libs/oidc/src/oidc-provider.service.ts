@@ -3,6 +3,8 @@ import { verify } from 'argon2';
 import Provider from 'oidc-provider';
 import type { Configuration } from 'oidc-provider';
 
+import { TenantUserService } from '../../../apps/digital-trust-common-service/src/tenant-user/tenant-user.service';
+
 import { OidcAdapterFactory } from './adapters/oidc-adapter.factory';
 import type { OidcConfig } from './oidc-config.service';
 import { OidcConfigService } from './oidc-config.service';
@@ -33,6 +35,7 @@ export function buildOidcConfiguration(
   config: OidcConfig,
   jwks: OidcJwks,
   adapterFactory: OidcAdapterFactory,
+  tenantUserService: TenantUserService,
 ): Configuration {
   return {
     adapter: adapterFactory.forModel,
@@ -47,6 +50,9 @@ export function buildOidcConfiguration(
     },
     claims: {
       openid: ['sub'],
+      profile: ['name'],
+      email: ['email'],
+      tenant: ['tenant_id', 'tenant_role'],
     },
     scopes: config.scopes,
     extraClientMetadata: {
@@ -92,6 +98,9 @@ export function buildOidcConfiguration(
           jwt: { sign: { alg: 'RS256' } },
         }),
       },
+      rpInitiatedLogout: {
+        enabled: true,
+      },
     },
     ttl: {
       AccessToken: config.accessTokenTtlSeconds,
@@ -102,11 +111,27 @@ export function buildOidcConfiguration(
     cookies: {
       keys: config.cookieKeys,
     },
-    // Interactive user login (authorization_code) is wired in AU-02 (#35).
-    findAccount: () => {
-      throw new Error(
-        'Interactive user login is not implemented yet; see AU-02 (#35).',
-      );
+    findAccount: async (_ctx, accountId) => {
+      const user = await tenantUserService.findById(accountId);
+
+      if (!user) {
+        return undefined;
+      }
+      return {
+        accountId: user.id,
+        claims: () => ({
+          sub: user.id,
+          email: user.email,
+          name: user.displayName,
+          tenant_id: user.tenantId,
+          tenant_role: user.role,
+        }),
+      };
+    },
+    interactions: {
+      url: (ctx, interaction) => {
+        return `/oidc/interaction/${interaction.uid}`;
+      },
     },
   };
 }
@@ -139,10 +164,6 @@ export function applyClientSecretHashComparator(provider: Provider): void {
  * and the argon2 `compareClientSecret` override required because our
  * `oauth_client` table only ever stores a hashed secret (see
  * `OidcClientAdapter` for the full rationale).
- *
- * User login (`findAccount`, the authorization_code interactive flow) is a
- * stub here; it is fully wired in AU-02 (#35). `client_credentials` is
- * fully functional as of AU-01.
  */
 @Injectable()
 export class OidcProviderService implements OnModuleInit {
@@ -154,6 +175,7 @@ export class OidcProviderService implements OnModuleInit {
     private readonly oidcConfigService: OidcConfigService,
     private readonly oidcKeysService: OidcKeysService,
     private readonly adapterFactory: OidcAdapterFactory,
+    private readonly tenantUserService: TenantUserService,
   ) {}
 
   public async onModuleInit(): Promise<void> {
@@ -165,7 +187,12 @@ export class OidcProviderService implements OnModuleInit {
 
     const provider = new Provider(
       config.issuer,
-      buildOidcConfiguration(config, jwks, this.adapterFactory),
+      buildOidcConfiguration(
+        config,
+        jwks,
+        this.adapterFactory,
+        this.tenantUserService,
+      ),
     );
 
     applyClientSecretHashComparator(provider);

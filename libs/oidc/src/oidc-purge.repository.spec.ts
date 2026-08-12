@@ -1,11 +1,13 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 
+import { OidcUpstreamInteraction } from '../../../apps/digital-trust-common-service/src/upstream-oidc/oidc-upstream-interaction.entity';
+
 import { OidcModel } from './entities/oidc-model.entity';
-import { OidcModelPurgeRepository } from './oidc-model-purge.repository';
+import { OidcPurgeRepository } from './oidc-purge.repository';
 
 describe('OidcModelPurgeRepository', () => {
-  let repository: OidcModelPurgeRepository;
+  let repository: OidcPurgeRepository;
   let mockQuery: jest.Mock;
 
   beforeEach(async () => {
@@ -17,15 +19,19 @@ describe('OidcModelPurgeRepository', () => {
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
-        OidcModelPurgeRepository,
+        OidcPurgeRepository,
         {
           provide: getRepositoryToken(OidcModel),
+          useValue: mockRepo,
+        },
+        {
+          provide: getRepositoryToken(OidcUpstreamInteraction),
           useValue: mockRepo,
         },
       ],
     }).compile();
 
-    repository = module.get<OidcModelPurgeRepository>(OidcModelPurgeRepository);
+    repository = module.get<OidcPurgeRepository>(OidcPurgeRepository);
   });
 
   it('deletes expired rows in a single batched query, grouped by model name', async () => {
@@ -52,5 +58,26 @@ describe('OidcModelPurgeRepository', () => {
 
     await repository.purgeExpiredBatch(12.9);
     expect(mockQuery).toHaveBeenCalledWith(expect.any(String), [12]);
+  });
+
+  it('deletes expired upstream interaction records in a single batched query', async () => {
+    mockQuery.mockResolvedValue([{ id: 'id-1' }, { id: 'id-2' }]);
+
+    const result = await repository.purgeExpiredUpstreamInteractionsBatch(500);
+
+    expect(mockQuery).toHaveBeenCalledWith(expect.any(String), [500]);
+    expect(mockQuery.mock.calls[0][0]).toContain('oidc_upstream_interaction');
+    expect(mockQuery.mock.calls[0][0]).toContain('expires_at < now()');
+    expect(result).toEqual({ count: 2 });
+  });
+
+  it('clamps the limit for upstream interaction batch deletion', async () => {
+    mockQuery.mockResolvedValue([]);
+
+    await repository.purgeExpiredUpstreamInteractionsBatch(-10);
+    expect(mockQuery).toHaveBeenCalledWith(expect.any(String), [1]);
+
+    await repository.purgeExpiredUpstreamInteractionsBatch(25.7);
+    expect(mockQuery).toHaveBeenCalledWith(expect.any(String), [25]);
   });
 });

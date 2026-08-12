@@ -73,7 +73,7 @@ describe('OidcMountService', () => {
       (req: unknown, res: unknown) => void,
     ];
 
-    const req = { method: 'GET', originalUrl: '/oidc/token' };
+    const req = { method: 'GET', originalUrl: '/oidc/token', path: '/token' };
     const res = { headersSent: false, statusCode: 200, end: jest.fn() };
 
     handler(req, res);
@@ -117,7 +117,7 @@ describe('OidcMountService', () => {
       (req: unknown, res: unknown) => void,
     ];
 
-    const req = { method: 'GET', originalUrl: '/oidc/token' };
+    const req = { method: 'GET', originalUrl: '/oidc/token', path: '/token' };
     const res = { headersSent: true, statusCode: 200, end: jest.fn() };
 
     handler(req, res);
@@ -153,11 +153,11 @@ describe('OidcMountService', () => {
       (req: unknown, res: unknown) => void,
     ];
 
-    const req1 = { id: 'req1' };
+    const req1 = { id: 'req1', path: '/token' };
     const res1 = { id: 'res1' };
     handler(req1, res1);
 
-    const req2 = { id: 'req2' };
+    const req2 = { id: 'req2', path: '/token' };
     const res2 = { id: 'res2' };
     handler(req2, res2);
 
@@ -189,8 +189,106 @@ describe('OidcMountService', () => {
       (req: unknown, res: unknown) => void,
     ];
 
-    expect(() => handler({}, {})).toThrow(
+    expect(() => handler({ path: '/token' }, {})).toThrow(
       'OIDC provider has not been initialized yet.',
     );
+  });
+
+  it('calls next() for /interaction routes without invoking the callback', () => {
+    const callback = jest.fn();
+    const provider = { callback: jest.fn().mockReturnValue(callback) };
+    const oidcProviderService = {
+      getProvider: jest.fn().mockReturnValue(provider),
+    };
+
+    const app = {
+      get: jest.fn().mockReturnValue(oidcProviderService),
+      getHttpAdapter: jest.fn().mockReturnValue({
+        getInstance: jest.fn().mockReturnValue({ set: jest.fn() }),
+      }),
+      use: jest.fn(),
+    } as unknown as INestApplication;
+
+    OidcMountService.mount(app);
+
+    const [, handler] = (app.use as jest.Mock).mock.calls[0] as [
+      string,
+      (req: unknown, res: unknown) => void,
+    ];
+
+    const next = jest.fn();
+    const req = { path: '/interaction/uid-123' };
+    const res = {};
+
+    handler(req, res, next);
+
+    expect(next).toHaveBeenCalled();
+    expect(callback).not.toHaveBeenCalled();
+  });
+
+  it('calls next() for /callback routes without invoking the callback', () => {
+    const callback = jest.fn();
+    const provider = { callback: jest.fn().mockReturnValue(callback) };
+    const oidcProviderService = {
+      getProvider: jest.fn().mockReturnValue(provider),
+    };
+
+    const app = {
+      get: jest.fn().mockReturnValue(oidcProviderService),
+      getHttpAdapter: jest.fn().mockReturnValue({
+        getInstance: jest.fn().mockReturnValue({ set: jest.fn() }),
+      }),
+      use: jest.fn(),
+    } as unknown as INestApplication;
+
+    OidcMountService.mount(app);
+
+    const [, handler] = (app.use as jest.Mock).mock.calls[0] as [
+      string,
+      (req: unknown, res: unknown) => void,
+    ];
+
+    const next = jest.fn();
+    const req = { path: '/callback' };
+    const res = {};
+
+    handler(req, res, next);
+
+    expect(next).toHaveBeenCalled();
+    expect(callback).not.toHaveBeenCalled();
+  });
+
+  it('invokes the callback for non-interaction/callback OIDC routes', async () => {
+    const callback = jest.fn().mockResolvedValue(undefined);
+    const provider = { callback: jest.fn().mockReturnValue(callback) };
+    const oidcProviderService = {
+      getProvider: jest.fn().mockReturnValue(provider),
+    };
+
+    const app = {
+      get: jest.fn().mockReturnValue(oidcProviderService),
+      getHttpAdapter: jest.fn().mockReturnValue({
+        getInstance: jest.fn().mockReturnValue({ set: jest.fn() }),
+      }),
+      use: jest.fn(),
+    } as unknown as INestApplication;
+
+    OidcMountService.mount(app);
+
+    const [, handler] = (app.use as jest.Mock).mock.calls[0] as [
+      string,
+      (req: unknown, res: unknown) => void,
+    ];
+
+    const next = jest.fn();
+    const req = { path: '/token' };
+    const res = {};
+
+    handler(req, res, next);
+
+    await new Promise((resolve) => process.nextTick(resolve));
+
+    expect(callback).toHaveBeenCalledWith(req, res);
+    expect(next).not.toHaveBeenCalled();
   });
 });

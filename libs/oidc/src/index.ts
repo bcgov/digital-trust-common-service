@@ -21,6 +21,6 @@ export {
 } from './oidc-provider.service';
 export type { ClientExtraMetadata } from './oidc-provider.service';
 export { OidcMountService } from './oidc-mount.service';
-export { OidcModelPurgeRepository } from './oidc-model-purge.repository';
-export type { PurgeModelCount } from './oidc-model-purge.repository';
-export { OidcModelPurgeService } from './oidc-model-purge.service';
+export { OidcPurgeRepository as OidcModelPurgeRepository } from './oidc-purge.repository';
+export type { PurgeModelCount } from './oidc-purge.repository';
+export { OidcPurgeService as OidcModelPurgeService } from './oidc-purge.service';

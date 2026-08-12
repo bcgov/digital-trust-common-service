@@ -1,12 +1,9 @@
 import { PgBossService } from '@app/pg-boss';
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 
-import {
-  OidcModelPurgeRepository,
-  PurgeModelCount,
-} from './oidc-model-purge.repository';
+import { OidcPurgeRepository, PurgeModelCount } from './oidc-purge.repository';
 
-export const OIDC_MODEL_PURGE_QUEUE = 'oidc-model-purge';
+export const OIDC_PURGE_QUEUE = 'oidc-purge';
 
 // Hourly cron (top of every hour).
 const PURGE_SCHEDULE_CRON = '0 * * * *';
@@ -21,16 +18,17 @@ const MAX_BATCHES_PER_RUN = 50;
 
 /**
  * Hourly pg-boss job that deletes expired `oidc_model` rows (sessions,
- * authorization codes, access/refresh tokens, interactions, etc). Mirrors
- * `OperationPurgeService`'s batching/scheduling pattern.
+ * authorization codes, access/refresh tokens, interactions, etc) and expired
+ * `oidc_upstream_interaction` records. Mirrors `OperationPurgeService`'s
+ * batching/scheduling pattern.
  */
 @Injectable()
-export class OidcModelPurgeService implements OnModuleInit {
-  private readonly logger = new Logger(OidcModelPurgeService.name);
+export class OidcPurgeService implements OnModuleInit {
+  private readonly logger = new Logger(OidcPurgeService.name);
 
   public constructor(
     private readonly bossService: PgBossService,
-    private readonly purgeRepository: OidcModelPurgeRepository,
+    private readonly purgeRepository: OidcPurgeRepository,
   ) {}
 
   public async onModuleInit(): Promise<void> {
@@ -42,29 +40,37 @@ export class OidcModelPurgeService implements OnModuleInit {
     // tick's job is dropped rather than run concurrently; the following
     // scheduled run drains the remainder. This guarantees a single pod runs the
     // purge at a time without leader election. See pg-boss QueuePolicy docs.
-    await boss.createQueue(OIDC_MODEL_PURGE_QUEUE, { policy: 'exclusive' });
-    await boss.schedule(OIDC_MODEL_PURGE_QUEUE, PURGE_SCHEDULE_CRON);
-    await boss.work(OIDC_MODEL_PURGE_QUEUE, () => this.purgeExpiredModels());
+    await boss.createQueue(OIDC_PURGE_QUEUE, { policy: 'exclusive' });
+    await boss.schedule(OIDC_PURGE_QUEUE, PURGE_SCHEDULE_CRON);
+    await boss.work(OIDC_PURGE_QUEUE, () => this.purgeExpiredModels());
   }
 
   /**
-   * Repeatedly deletes batches of expired oidc_model rows
-   * (expires_at < now()), logging the purge count per model kind, until
-   * either the backlog is drained or the per-run batch cap is reached.
+   * Repeatedly deletes batches of expired oidc_model rows and
+   * oidc_upstream_interaction records (expires_at < now()), logging the
+   * purge count per type, until either the backlog is drained or the
+   * per-run batch cap is reached.
    */
   public async purgeExpiredModels(): Promise<void> {
     const totalsByModel = new Map<string, number>();
+    let upstreamInteractionsTotal = 0;
     let batches = 0;
     let batchCount = 0;
 
     do {
       let batch: PurgeModelCount[];
+      let upstreamCount = 0;
 
       try {
         batch = await this.purgeRepository.purgeExpiredBatch(BATCH_SIZE);
+        const upstreamResult =
+          await this.purgeRepository.purgeExpiredUpstreamInteractionsBatch(
+            BATCH_SIZE,
+          );
+        upstreamCount = upstreamResult.count;
       } catch (error) {
         this.logger.error(
-          'Failed to purge a batch of expired oidc_model rows',
+          'Failed to purge a batch of expired OIDC records',
           error instanceof Error ? error.stack : String(error),
         );
         throw error;
@@ -79,6 +85,8 @@ export class OidcModelPurgeService implements OnModuleInit {
           (totalsByModel.get(entry.modelName) ?? 0) + entry.count,
         );
       }
+
+      upstreamInteractionsTotal += upstreamCount;
     } while (batchCount > 0 && batches < MAX_BATCHES_PER_RUN);
 
     const totalPurged = Array.from(totalsByModel.values()).reduce(
@@ -86,8 +94,8 @@ export class OidcModelPurgeService implements OnModuleInit {
       0,
     );
 
-    if (totalPurged === 0) {
-      this.logger.log('OIDC model purge run complete: no expired records');
+    if (totalPurged === 0 && upstreamInteractionsTotal === 0) {
+      this.logger.log('OIDC purge run complete: no expired records');
       return;
     }
 
@@ -95,8 +103,14 @@ export class OidcModelPurgeService implements OnModuleInit {
       this.logger.log(`Purged ${count} expired ${modelName} record(s)`);
     }
 
+    if (upstreamInteractionsTotal > 0) {
+      this.logger.log(
+        `Purged ${upstreamInteractionsTotal} expired upstream interaction record(s)`,
+      );
+    }
+
     this.logger.log(
-      `OIDC model purge run complete: purged ${totalPurged} record(s) across ${totalsByModel.size} model kind(s) in ${batches} batch(es)`,
+      `OIDC purge run complete: purged ${totalPurged + upstreamInteractionsTotal} total record(s) in ${batches} batch(es)`,
     );
   }
 }

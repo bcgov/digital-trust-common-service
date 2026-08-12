@@ -2,6 +2,8 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 
+import { OidcUpstreamInteraction } from '../../../apps/digital-trust-common-service/src/upstream-oidc/oidc-upstream-interaction.entity';
+
 import { OidcModel } from './entities/oidc-model.entity';
 
 export interface PurgeModelCount {
@@ -9,9 +11,13 @@ export interface PurgeModelCount {
   count: number;
 }
 
+export interface PurgeInteractionCount {
+  count: number;
+}
+
 /**
- * Deletes expired `oidc_model` rows in bounded batches, used by
- * `OidcModelPurgeService`.
+ * Deletes expired `oidc_model` rows and `oidc_upstream_interaction` records
+ * in bounded batches, used by `OidcPurgeService`.
  *
  * Rows with a `null` `expires_at` (e.g. `Grant` records, which
  * oidc-provider never assigns a TTL to) are intentionally never purged
@@ -19,10 +25,12 @@ export interface PurgeModelCount {
  * access/refresh token is consumed or destroyed instead.
  */
 @Injectable()
-export class OidcModelPurgeRepository {
+export class OidcPurgeRepository {
   public constructor(
     @InjectRepository(OidcModel)
-    private readonly repo: Repository<OidcModel>,
+    private readonly oidcModelRepo: Repository<OidcModel>,
+    @InjectRepository(OidcUpstreamInteraction)
+    private readonly upstreamInteractionRepo: Repository<OidcUpstreamInteraction>,
   ) {}
 
   public async purgeExpiredBatch(limit: number): Promise<PurgeModelCount[]> {
@@ -31,7 +39,7 @@ export class OidcModelPurgeRepository {
     // either error or (for some inputs) remove the bound entirely.
     const safeLimit = Math.max(1, Math.floor(limit));
 
-    const rows = await this.repo.manager.query<
+    const rows = await this.oidcModelRepo.manager.query<
       { model_name: string; count: string }[]
     >(
       `WITH deleted AS (
@@ -52,5 +60,33 @@ export class OidcModelPurgeRepository {
       modelName: row.model_name,
       count: Number(row.count),
     }));
+  }
+
+  /**
+   * Deletes expired `oidc_upstream_interaction` records in a bounded batch
+   * to avoid long-held locks on the table.
+   */
+  public async purgeExpiredUpstreamInteractionsBatch(
+    limit: number,
+  ): Promise<PurgeInteractionCount> {
+    const safeLimit = Math.max(1, Math.floor(limit));
+
+    const result = await this.upstreamInteractionRepo.manager.query<
+      { count: string }[]
+    >(
+      `DELETE FROM oidc_upstream_interaction
+       WHERE id IN (
+         SELECT id FROM oidc_upstream_interaction
+         WHERE expires_at < now()
+         ORDER BY expires_at
+         LIMIT $1
+       )
+       RETURNING id`,
+      [safeLimit],
+    );
+
+    return {
+      count: result.length,
+    };
   }
 }

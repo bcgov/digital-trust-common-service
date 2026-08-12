@@ -313,6 +313,17 @@ oidcSigning:
   # would rotate them and drop active sessions, so pin them if you use one.
   cookieKeys: ""
 
+upstreamFederation:
+  # -- Existing Secret reference for upstream federation config JSON.
+  # The chart never creates this Secret; it must be provisioned manually.
+  existingSecret:
+    name: ""
+    key: upstream-identity-federation.json
+  # -- Mounted directory that contains the upstream federation config file.
+  mountPath: /etc/upstream-identity-federation
+  # -- Filename for the upstream federation config JSON.
+  fileName: upstream-identity-federation.json
+
 
 # NetworkPolicy. Restricts ingress to the OpenShift router and declares explicit
 # inter-service communication (API/Worker -> Postgres, API -> Keycloak).

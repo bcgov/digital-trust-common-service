@@ -31,6 +31,10 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
     spec:
+      {{- $connectorSecret := or .Values.connectorEncryption.create .Values.connectorEncryption.existingSecret }}
+      {{- $oidcSecret := or .Values.oidcSigning.create .Values.oidcSigning.existingSecret }}
+      {{- $upstreamFederationSecretName := required "upstreamFederation.existingSecret.name is required" .Values.upstreamFederation.existingSecret.name }}
+      {{- $upstreamFederationSecretKey := required "upstreamFederation.existingSecret.key is required" .Values.upstreamFederation.existingSecret.key }}
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
@@ -54,11 +58,12 @@ spec:
               protocol: TCP
           envFrom:
             {{- include "digital-trust-common-service.envFrom" . | nindent 12 }}
-          {{- if or .Values.extraEnv (or .Values.oidcSigning.create .Values.oidcSigning.existingSecret) }}
           env:
             {{- with .Values.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
+            - name: UPSTREAM_IDENTITY_FEDERATION_CONFIG_PATH
+              value: {{ printf "%s/%s" .Values.upstreamFederation.mountPath .Values.upstreamFederation.fileName | quote }}
             {{- if or .Values.oidcSigning.create .Values.oidcSigning.existingSecret }}
             # Marked optional so a pre-provisioned Secret that only carries the
             # signing JWKS still starts; the application fails fast on its own
@@ -70,7 +75,6 @@ spec:
                   key: OIDC_COOKIE_KEYS
                   optional: true
             {{- end }}
-          {{- end }}
           {{- with .Values.livenessProbe }}
           livenessProbe:
             {{- toYaml . | nindent 12 }}
@@ -83,9 +87,6 @@ spec:
           resources:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          {{- $connectorSecret := or .Values.connectorEncryption.create .Values.connectorEncryption.existingSecret }}
-          {{- $oidcSecret := or .Values.oidcSigning.create .Values.oidcSigning.existingSecret }}
-          {{- if or .Values.volumeMounts $connectorSecret $oidcSecret }}
           volumeMounts:
             {{- with .Values.volumeMounts }}
             {{- toYaml . | nindent 12 }}
@@ -100,8 +101,10 @@ spec:
               mountPath: {{ .Values.oidcSigning.mountPath }}
               readOnly: true
             {{- end }}
-          {{- end }}
-      {{- if or .Values.volumes $connectorSecret $oidcSecret }}
+            - name: upstream-federation-config
+              mountPath: {{ .Values.upstreamFederation.mountPath }}
+              readOnly: true
+
       volumes:
         {{- with .Values.volumes }}
         {{- toYaml . | nindent 8 }}
@@ -116,7 +119,13 @@ spec:
           secret:
             secretName: {{ include "digital-trust-common-service.oidcSigningSecretName" . }}
         {{- end }}
-      {{- end }}
+        - name: upstream-federation-config
+          secret:
+            secretName: {{ include "digital-trust-common-service.upstreamFederationSecretName" . }}
+            items:
+              - key: {{ $upstreamFederationSecretKey }}
+                path: {{ .Values.upstreamFederation.fileName }}
+
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

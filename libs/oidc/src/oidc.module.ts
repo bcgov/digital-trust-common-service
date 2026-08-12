@@ -2,13 +2,19 @@ import { PgBossModule } from '@app/pg-boss';
 import { DynamicModule, Module, Provider } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
+import { OAuthClientModule } from '../../../apps/digital-trust-common-service/src/oauth-client/oauth-client.module';
+import { TenantUserModule } from '../../../apps/digital-trust-common-service/src/tenant-user/tenant-user.module';
+import { OidcUpstreamInteraction } from '../../../apps/digital-trust-common-service/src/upstream-oidc/oidc-upstream-interaction.entity';
+import { UpstreamOidcModule } from '../../../apps/digital-trust-common-service/src/upstream-oidc/oidc-upstream.module';
+
 import { OidcAdapterFactory } from './adapters/oidc-adapter.factory';
 import { OidcModel } from './entities/oidc-model.entity';
 import { OidcConfigModule } from './oidc-config.module';
+import { OidcInteractionController } from './oidc-interaction.controller';
 import { OidcKeysService } from './oidc-keys.service';
-import { OidcModelPurgeRepository } from './oidc-model-purge.repository';
-import { OidcModelPurgeService } from './oidc-model-purge.service';
 import { OidcProviderService } from './oidc-provider.service';
+import { OidcPurgeRepository } from './oidc-purge.repository';
+import { OidcPurgeService } from './oidc-purge.service';
 
 export interface OidcModuleOptions {
   /** Modules exporting the provider bound to OIDC_CLIENT_LOOKUP_PORT. */
@@ -32,16 +38,20 @@ export class OidcModule {
       module: OidcModule,
       imports: [
         OidcConfigModule,
-        TypeOrmModule.forFeature([OidcModel]),
+        OAuthClientModule,
+        UpstreamOidcModule,
+        TenantUserModule,
+        TypeOrmModule.forFeature([OidcModel, OidcUpstreamInteraction]),
         PgBossModule,
         ...(options.imports ?? []),
       ],
+      controllers: [OidcInteractionController],
       providers: [
         OidcKeysService,
         OidcAdapterFactory,
         OidcProviderService,
-        OidcModelPurgeRepository,
-        OidcModelPurgeService,
+        OidcPurgeRepository,
+        OidcPurgeService,
         options.clientLookupProvider,
       ],
       exports: [

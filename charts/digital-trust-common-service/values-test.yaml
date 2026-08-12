@@ -71,3 +71,8 @@ connectorEncryption:
 oidcSigning:
   existingSecret: digital-trust-common-service-test-oidc-signing
   create: false
+
+upstreamFederation:
+  existingSecret:
+    name: dtsc-test-oidc-client
+    key: upstream-identity-federation.json
