@@ -89,5 +89,9 @@ describe('ScopeAuthorizationService', () => {
         ),
       ).toBe(false);
     });
+
+    it('returns true when no scopes are required', () => {
+      expect(service.hasRequiredScopes(['credentials:offer'], [])).toBe(true);
+    });
   });
 });

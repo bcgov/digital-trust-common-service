@@ -203,6 +203,18 @@ describe('OidcConfigService', () => {
       );
     });
 
+    it('rejects OIDC_COOKIE_KEYS that contain only empty entries', async () => {
+      await buildModule({
+        NODE_ENV: 'production',
+        OIDC_ISSUER: 'https://app.example.com/oidc',
+        OIDC_COOKIE_KEYS: ' , , ',
+      });
+
+      expect(() => service.getConfig()).toThrow(
+        'OIDC_COOKIE_KEYS must contain at least one non-empty secret.',
+      );
+    });
+
     it('succeeds in production with all required values set', async () => {
       await buildModule({
         NODE_ENV: 'production',

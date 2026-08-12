@@ -338,6 +338,32 @@ describe('OAuthClientService', () => {
       expect(result.roles).toEqual(['platform-admin']);
     });
 
+    it('should update redirectUris and grantTypes when provided', async () => {
+      mockFindById.mockResolvedValue(mockOAuthClient);
+      const updatedClient = {
+        ...mockOAuthClient,
+        redirectUris: ['https://updated.example.com/callback'],
+        grantTypes: ['client_credentials'],
+      };
+      mockUpdate.mockResolvedValue(updatedClient);
+
+      const result = await service.update(mockOAuthClient.id, {
+        redirectUris: ['https://updated.example.com/callback'],
+        grantTypes: ['client_credentials'],
+      });
+
+      expect(mockUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          redirectUris: ['https://updated.example.com/callback'],
+          grantTypes: ['client_credentials'],
+        }),
+      );
+      expect(result.redirectUris).toEqual([
+        'https://updated.example.com/callback',
+      ]);
+      expect(result.grantTypes).toEqual(['client_credentials']);
+    });
+
     it('should preserve existing values when partial update is provided', async () => {
       mockFindById.mockResolvedValue(mockOAuthClient);
       const updatedClient = {
