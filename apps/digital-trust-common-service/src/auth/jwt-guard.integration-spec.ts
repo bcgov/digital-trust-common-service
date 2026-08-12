@@ -470,6 +470,29 @@ describe('JwtGuard, ScopeGuard, and TenantGuard (integration)', () => {
     });
   });
 
+  it('returns 403 when a client for tenant B accesses tenant A', async () => {
+    const { token } = await issueTokenAndVerify(
+      app.getHttpServer(),
+      otherTenantClientId,
+      otherTenantClientSecret,
+      'credentials:offer',
+      process.env.OIDC_ISSUER,
+    );
+
+    const response = await request(app.getHttpServer())
+      .get(tenantCheckPath(tenantId))
+      .set('Authorization', `Bearer ${token.accessToken}`)
+      .expect(403);
+
+    expect(response.body).toMatchObject({
+      error: {
+        code: 'TENANT_ACCESS_DENIED',
+        required_tenant_id: tenantId,
+        token_tenant_id: otherTenantId,
+      },
+    });
+  });
+
   it('allows platform-admin to access another tenant through TenantGuard', async () => {
     const { token } = await issueTokenAndVerify(
       app.getHttpServer(),
