@@ -15,8 +15,10 @@ export { RequireRoles } from './decorators/require-roles.decorator';
 export { RequireScopes } from './decorators/require-scopes.decorator';
 export { AuthenticationRequiredException } from './exceptions/authentication-required.exception';
 export { InsufficientScopeException } from './exceptions/insufficient-scope.exception';
+export { TenantAccessDeniedException } from './exceptions/tenant-access-denied.exception';
 export { InsufficientScopeExceptionFilter } from './filters/insufficient-scope.exception-filter';
 export { JwtAuthExceptionFilter } from './filters/jwt-auth.exception-filter';
+export { TenantAccessDeniedExceptionFilter } from './filters/tenant-access-denied.exception-filter';
 export { JwtGuard, ScopeGuard, TenantGuard } from './guards';
 export type {
   AuthContext,

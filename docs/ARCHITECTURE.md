@@ -1048,6 +1048,8 @@ graph TD
 - Users get scopes derived from their role (role→scope mapping in DB)
 - API clients get explicitly assigned scopes at registration time
 - Tenant isolation enforced separately — valid token + correct scope + wrong tenant = 403
+  (`TenantGuard` claim-matches JWT `tenant_id` to route `:tenantId`; live membership
+  lookup deferred to AU-02 / AU-09 — see [DEVELOPER.md](./DEVELOPER.md#tenantguard-au-05))
 - `platform-admin` role bypasses ScopeGuard and TenantGuard entirely (not a scope — checked by role)
 
 **Role → scope mappings (seed):**

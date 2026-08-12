@@ -4,6 +4,7 @@ import { APP_FILTER } from '@nestjs/core';
 
 import { InsufficientScopeExceptionFilter } from './filters/insufficient-scope.exception-filter';
 import { JwtAuthExceptionFilter } from './filters/jwt-auth.exception-filter';
+import { TenantAccessDeniedExceptionFilter } from './filters/tenant-access-denied.exception-filter';
 import { JwtGuard } from './guards/jwt.guard';
 import { ScopeGuard } from './guards/scope.guard';
 import { TenantGuard } from './guards/tenant.guard';
@@ -27,6 +28,10 @@ import { ScopeAuthorizationService } from './services/scope-authorization.servic
     {
       provide: APP_FILTER,
       useClass: InsufficientScopeExceptionFilter,
+    },
+    {
+      provide: APP_FILTER,
+      useClass: TenantAccessDeniedExceptionFilter,
     },
   ],
   exports: [

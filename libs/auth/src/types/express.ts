@@ -6,4 +6,6 @@ export type AuthenticatedRequest = Request & {
   auth?: AuthContext;
   user?: AuthContext;
   client?: AuthContext;
+  /** Route tenant resolved by TenantGuard after a successful check. */
+  tenantId?: string;
 };

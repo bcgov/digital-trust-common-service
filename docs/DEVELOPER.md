@@ -240,6 +240,21 @@ AU-04 replaces early placeholder scope names (`read:credentials`, `write:credent
 
 The server-wide allowlist is configured via `OIDC_SCOPES` (see `.env.example`). Every scope granted to an `oauth_client` must appear in that allowlist.
 
+## TenantGuard (AU-05)
+
+`TenantGuard` enforces tenant isolation after `JwtGuard` and `ScopeGuard`:
+
+1. If the route has no `:tenantId` param (or it is blank), the guard is a **no-op** (safe on admin / mixed stacks).
+2. `platform-admin` bypasses the check and may access any `:tenantId`.
+3. Otherwise the JWT `tenant_id` claim must equal the route `:tenantId`.
+4. On success, the resolved id is stamped on `request.tenantId` for downstream handlers.
+
+Mismatch / missing claim → **403** `{ error: { code: "TENANT_ACCESS_DENIED", required_tenant_id, token_tenant_id } }`.
+
+**v1 is claim-match only.** Live `TenantUser` membership lookup (PE-02) is deferred until interactive user tokens (AU-02) / tenant switching (AU-09). Client-credentials tokens already carry a fixed `tenant_id` from `oauth_client`.
+
+Product controllers are not all wired yet — rollout is tracked in **[AU-followup #165](https://github.com/bcgov/digital-trust-common-service/issues/165)**. Integration coverage uses ephemeral `/api/v1/integration/tenant-check/:tenantId` routes.
+
 ## Testing
 
 ### Run Unit Tests
