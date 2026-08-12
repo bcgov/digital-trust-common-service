@@ -9,11 +9,13 @@ import { Response } from 'express';
 
 // Mock modules before importing the service
 jest.mock('@nestjs/swagger', () => {
+  const decorator = (): (() => void) => () => undefined;
   const mockDocumentBuilder = {
     setTitle: jest.fn().mockReturnThis(),
     setDescription: jest.fn().mockReturnThis(),
     setVersion: jest.fn().mockReturnThis(),
     addTag: jest.fn().mockReturnThis(),
+    addBearerAuth: jest.fn().mockReturnThis(),
     build: jest.fn().mockReturnValue({
       openapi: '3.0.0',
     }),
@@ -25,6 +27,9 @@ jest.mock('@nestjs/swagger', () => {
       createDocument: jest.fn(),
       setup: jest.fn(),
     },
+    ApiProperty: decorator,
+    ApiBearerAuth: decorator,
+    ApiUnauthorizedResponse: decorator,
   };
 });
 

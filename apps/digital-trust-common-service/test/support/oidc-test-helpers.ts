@@ -1,3 +1,4 @@
+import { extractBearerToken, verifyAccessToken } from '@app/auth';
 import { importJWK, jwtVerify } from 'jose';
 import request from 'supertest';
 import { App } from 'supertest/types';
@@ -23,6 +24,45 @@ export interface IssuedTokenResponse {
   accessToken: string;
   tokenType: string;
   expiresIn: number;
+}
+
+type JwksDocument = {
+  keys: Array<Record<string, unknown>>;
+};
+
+function resolveJwkFromDocument(
+  keys: Array<Record<string, unknown>>,
+  kid: string | undefined,
+): Record<string, unknown> {
+  const jwk = keys.find((key) => key.kid === kid);
+
+  if (!jwk) {
+    throw new Error('Signing key not found in JWKS response');
+  }
+
+  return jwk;
+}
+
+async function verifyTokenAgainstJwks(
+  token: string,
+  jwksBody: JwksDocument,
+  issuer?: string,
+): Promise<Record<string, unknown>> {
+  if (issuer) {
+    return verifyAccessToken(
+      token,
+      (kid) => Promise.resolve(resolveJwkFromDocument(jwksBody.keys, kid)),
+      { issuer, audience: issuer },
+    );
+  }
+
+  const { payload } = await jwtVerify(token, async (protectedHeader) => {
+    const jwk = resolveJwkFromDocument(jwksBody.keys, protectedHeader.kid);
+
+    return importJWK(jwk, protectedHeader.alg);
+  });
+
+  return payload;
 }
 
 /**
@@ -54,24 +94,9 @@ export async function issueTokenAndVerify(
   };
 
   const jwksResponse = await request(httpServer).get('/oidc/jwks').expect(200);
-
-  const jwksBody = jwksResponse.body as {
-    keys: Array<Record<string, unknown>>;
-  };
-
-  const { payload } = await jwtVerify(
-    tokenBody.access_token,
-    async (protectedHeader) => {
-      const jwk = jwksBody.keys.find((key) => key.kid === protectedHeader.kid);
-
-      if (!jwk) {
-        throw new Error('Signing key not found in JWKS response');
-      }
-
-      return importJWK(jwk, protectedHeader.alg);
-    },
-    issuer ? { issuer } : undefined,
-  );
+  const jwksBody = jwksResponse.body as JwksDocument;
+  const token = extractBearerToken(`Bearer ${tokenBody.access_token}`);
+  const payload = await verifyTokenAgainstJwks(token, jwksBody, issuer);
 
   return {
     token: {

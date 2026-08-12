@@ -1,4 +1,4 @@
-import { JwtGuard, ScopeGuard } from '@app/auth';
+import { JwtGuard, ScopeGuard, ApiJwtAuth } from '@app/auth';
 import { Controller, Get, UseGuards } from '@nestjs/common';
 import { ApiOkResponse, ApiTags } from '@nestjs/swagger';
 
@@ -7,10 +7,10 @@ import { API_VERSION } from '../common/constants/api-version.constants';
 import { AdminOperationsService } from './admin-operations.service';
 import { OperationStatsResponseDto } from './dto/operation-stats-response.dto';
 
-// NOTE: JwtGuard/ScopeGuard are currently stub implementations (see @app/auth
-// TODOs) that will validate the app-issued JWT and required admin scope once
-// implemented. Applied here per the project's intended admin auth pattern.
+// JwtGuard validates app-issued Bearer JWTs (AU-03). ScopeGuard remains a stub
+// until scope enforcement lands; valid tokens therefore still receive 501 here.
 @ApiTags('admin')
+@ApiJwtAuth()
 @Controller({ path: 'admin/operations', version: API_VERSION })
 @UseGuards(JwtGuard, ScopeGuard)
 export class AdminOperationsController {

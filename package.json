@@ -95,6 +95,9 @@
     "transform": {
       "^.+\\.(t|j)s$": "ts-jest"
     },
+    "transformIgnorePatterns": [
+      "node_modules/(?!(jose|oidc-provider|quick-lru|nanoid|eta|jsesc|raw-body)/)"
+    ],
     "collectCoverageFrom": [
       "**/*.{ts,js}",
       "!**/*.spec.ts",

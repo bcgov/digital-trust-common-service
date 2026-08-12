@@ -1,3 +1,4 @@
+import { AuthModule } from '@app/auth';
 import { DatabaseModule } from '@app/database';
 import { OIDC_CLIENT_LOOKUP_PORT, OidcModule } from '@app/oidc';
 import { Module } from '@nestjs/common';
@@ -41,6 +42,7 @@ import { VerificationProfileModule } from './verification-profile/verification-p
         useClass: OAuthClientLookupAdapter,
       },
     }),
+    AuthModule,
     OperationModule,
     ShutdownModule,
     TenantModule,
