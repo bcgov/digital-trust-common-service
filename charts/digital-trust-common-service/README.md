@@ -10,6 +10,7 @@ A Helm chart to deploy the Digital Credential Common Service (NestJS) on BC Gov 
 - Helm 3.8.0+
 - An external PostgreSQL database and (optionally) a Keycloak instance
 - A pre-provisioned `Secret` with database credentials (or set `secret.create=true`)
+- A pre-provisioned upstream federation `Secret` for every deployment environment, referenced by `upstreamFederation.existingSecret.name` (the chart does not create this secret)
 
 ## Installing the Chart
 
@@ -42,6 +43,15 @@ OpenShift. Key characteristics:
 - **NetworkPolicies** — restrict ingress to the OpenShift router and declare
   explicit egress to PostgreSQL/Keycloak, with a DNS-allow policy so hostname
   resolution keeps working once egress rules are in effect.
+
+## Upstream Federation Secret
+
+The `upstreamFederation` configuration is always consumed from an existing Kubernetes Secret.
+
+- The chart never creates this Secret.
+- You must pre-provision it in every deployment environment (dev, test, prod, pr, ci).
+- Set `upstreamFederation.existingSecret.name` to that Secret, and
+  `upstreamFederation.existingSecret.key` to the JSON key containing the upstream IdP client config.
 
 ## Maintainers
 
