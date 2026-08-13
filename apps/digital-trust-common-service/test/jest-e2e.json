@@ -9,7 +9,7 @@
     "^.+\\.(t|j)s$": "ts-jest"
   },
   "transformIgnorePatterns": [
-    "node_modules/(?!(jose|oidc-provider|quick-lru|nanoid|eta|jsesc|raw-body)/)"
+    "node_modules/(?!(jose|oidc-provider|openid-client|oauth4webapi|quick-lru|nanoid|eta|jsesc|raw-body)/)"
   ],
   "moduleNameMapper": {
     "^@app/common(|/.*)$": "<rootDir>/../../../libs/common/src/$1",
