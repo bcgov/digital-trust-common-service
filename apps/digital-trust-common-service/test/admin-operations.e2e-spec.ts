@@ -61,12 +61,19 @@ describe('AdminOperationsController (e2e)', () => {
   });
 
   afterEach(async () => {
-    await operationRepo.query('DELETE FROM operation');
-    await tenantRepo.query('DELETE FROM tenant');
+    if (operationRepo) {
+      await operationRepo.query('DELETE FROM operation');
+    }
+
+    if (tenantRepo) {
+      await tenantRepo.query('DELETE FROM tenant');
+    }
   });
 
   afterAll(async () => {
-    await app.close();
+    if (app) {
+      await app.close();
+    }
   });
 
   async function createTenant(slug: string): Promise<Tenant> {
@@ -184,7 +191,9 @@ describe('AdminOperationsController (e2e) — auth enforcement', () => {
   });
 
   afterAll(async () => {
-    await app.close();
+    if (app) {
+      await app.close();
+    }
   });
 
   it('/admin/operations/stats (GET) returns 401 when no bearer token is provided', async () => {
