@@ -26,6 +26,29 @@ Verification is looked up by `kid`, so a token signed by an older key keeps vali
 - Only RSA/RS256 keys are supported today.
 - In production the service refuses to start if the JWKS file is missing. It never generates one for you.
 
+## Before the first deploy
+
+The OIDC signing Secret is **not optional**. `templates/deployment.yaml` mounts
+`oidc-keys.json` as a required volume (only `OIDC_COOKIE_KEYS` is
+`optional: true`), and the chart never creates this Secret for you in
+dev/test/prod (`oidcSigning.create: false`, pointing at a pre-provisioned
+Secret). If you deploy to an environment before that Secret exists, pods sit
+in `ContainerCreating` / `FailedMount` indefinitely waiting for the volume.
+`cd.yml` runs `helm upgrade --wait --timeout 10m`, so what you actually see in
+the pipeline is a generic **rollout timeout** — not the missing-Secret cause.
+
+Before triggering the first deploy to a new environment, confirm the Secret
+already exists and carries both keys:
+
+```bash
+oc get secret digital-trust-common-service-<env>-oidc-signing -n <namespace> \
+  -o jsonpath='{.data.oidc-keys\.json}' | base64 -d | head -c 100
+```
+
+An empty result (or `NotFound` from `oc get`) means the Secret hasn't been
+provisioned yet — do the [First issuance](#first-issuance) steps below first,
+or the deploy will hang and time out with no indication of why.
+
 ## First issuance
 
 ```bash
@@ -50,6 +73,20 @@ PR preview environments are the exception: `values-pr.yaml` sets `oidcSigning.cr
 ## Rotating the signing key
 
 Rotation is two passes. The first introduces the new key while the old one keeps verifying; the second removes the old key once nothing signed by it can still be valid.
+
+> **Rollback safety.** `oc set data` overwrites the Secret in place, so a bad
+> file at step 3 destroys the only copy of the key material — every live JWT
+> dies with no undo. Keep the pre-rotation `oidc-keys.json` file (the one you
+> fetched before running `--append`) until Pass 2 completes successfully, then
+> destroy it.
+
+> **Rotation cadence.** Rotate the signing key at least once a year, and
+> immediately outside that schedule whenever someone with access to the
+> signing Secret (or the cluster namespace it lives in) leaves the team, or a
+> compromise is suspected (see [Emergency rotation](#emergency-rotation-suspected-key-compromise)
+> below). Nothing expires these keys and nothing currently alerts on their
+> age, so track the next rotation date on a team calendar or recurring
+> reminder — this doc has no way to enforce it for you.
 
 > **Multi-replica rollout window.** `--append` makes the new key the *signer*
 > immediately (it is prepended). During a rolling restart the fleet is briefly
@@ -133,9 +170,24 @@ signed by the same key but fall back to oidc-provider's **1-hour** default
 `max(OIDC_ACCESS_TOKEN_TTL_SECONDS, 3600s) = 1 hour`. Wait at least that long
 after the pass 1 rollout finished so no unexpired
 JWT was signed by the old key. (A refresh exchange during that window mints its
-new access-token JWT with the *current* key, so it is unaffected.) Then drop the
-old key by regenerating a single-key JWKS, or by editing the array down to just
-the current signer:
+new access-token JWT with the *current* key, so it is unaffected.)
+
+Pass 2 typically runs at least an hour after Pass 1, realistically in a
+different shell — do not reuse the local `oidc-keys.json` from Pass 1 without
+re-checking it against the live Secret first. Re-fetch and re-confirm the
+`kid` order before trimming:
+
+```bash
+oc get secret digital-trust-common-service-dev-oidc-signing -n <namespace> \
+  -o jsonpath='{.data.oidc-keys\.json}' | base64 -d > oidc-keys.json
+
+python3 -c "import json;print([k['kid'] for k in json.load(open('oidc-keys.json'))['keys']])"
+```
+
+Confirm the array is `[new, old]` in that order — the entry at index `0` is
+the current signer and must be the one you keep. Then drop the old key by
+regenerating a single-key JWKS, or by editing the array down to just the
+current signer:
 
 ```bash
 python3 -c "
@@ -161,8 +213,10 @@ by the *new* key — straight through the rotation. So in a compromise scenario,
 also revoke the stored grants:
 
 ```sql
--- Invalidate all refresh tokens (and, if you want a hard cutover, sessions).
+-- Invalidate all refresh tokens.
 DELETE FROM oidc_model WHERE model_name = 'RefreshToken';
+-- Hard cutover: also invalidate active interactive sessions.
+DELETE FROM oidc_model WHERE model_name = 'Session';
 ```
 
 Then restart. Expect all clients to re-authenticate.
