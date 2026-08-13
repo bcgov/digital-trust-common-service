@@ -1,5 +1,5 @@
 {
-  "url": "httpa://localhost:8080/realms/digital-trust-common-service",
+  "url": "https://localhost:8080/realms/digital-trust-common-service",
   "clientId": "dtsc-oidc-provider",
   "clientSecret": "my-secret"
 }

@@ -139,6 +139,9 @@ OpenShift. Key characteristics:
 | serviceAccount.create | bool | `true` | Create a service account |
 | serviceAccount.name | string | `""` | Service account name (generated from the fullname when empty and `create` is true) |
 | tolerations | list | `[]` | Tolerations for API pods |
+| upstreamFederation.existingSecret | object | `{"key":"upstream-identity-federation.json","name":""}` | Existing Secret reference for upstream federation config JSON. The chart never creates this Secret; it must be provisioned manually. |
+| upstreamFederation.fileName | string | `"upstream-identity-federation.json"` | Filename for the upstream federation config JSON. |
+| upstreamFederation.mountPath | string | `"/etc/upstream-identity-federation"` | Mounted directory that contains the upstream federation config file. |
 | volumeMounts | list | `[]` | Extra volume mounts for the API/Worker containers. The connector encryption and OIDC signing mounts are added by the chart alongside their Secrets and do not need to be listed here. |
 | volumes | list | `[]` | Extra volumes for the API/Worker pods |
 | worker.affinity | object | `{}` | Affinity for Worker pods |
