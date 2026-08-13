@@ -1,15 +1,15 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { verify } from 'argon2';
 import Provider from 'oidc-provider';
 import type { Configuration } from 'oidc-provider';
-
-import { TenantUserService } from '../../../apps/digital-trust-common-service/src/tenant-user/tenant-user.service';
 
 import { OidcAdapterFactory } from './adapters/oidc-adapter.factory';
 import type { OidcConfig } from './oidc-config.service';
 import { OidcConfigService } from './oidc-config.service';
 import type { OidcJwks } from './oidc-keys.service';
 import { OidcKeysService } from './oidc-keys.service';
+import { OIDC_TENANT_USER_PORT } from './ports/oidc-tenant-user.port';
+import type { OidcTenantUserPort } from './ports/oidc-tenant-user.port';
 
 /**
  * Custom metadata `OidcClientAdapter` attaches to each `Client` instance.
@@ -35,7 +35,7 @@ export function buildOidcConfiguration(
   config: OidcConfig,
   jwks: OidcJwks,
   adapterFactory: OidcAdapterFactory,
-  tenantUserService: TenantUserService,
+  tenantUserService: OidcTenantUserPort,
 ): Configuration {
   return {
     adapter: adapterFactory.forModel,
@@ -114,7 +114,7 @@ export function buildOidcConfiguration(
     findAccount: async (_ctx, accountId) => {
       const user = await tenantUserService.findById(accountId);
 
-      if (!user) {
+      if (!user || user.status !== 'active') {
         return undefined;
       }
       return {
@@ -175,7 +175,8 @@ export class OidcProviderService implements OnModuleInit {
     private readonly oidcConfigService: OidcConfigService,
     private readonly oidcKeysService: OidcKeysService,
     private readonly adapterFactory: OidcAdapterFactory,
-    private readonly tenantUserService: TenantUserService,
+    @Inject(OIDC_TENANT_USER_PORT)
+    private readonly tenantUserService: OidcTenantUserPort,
   ) {}
 
   public async onModuleInit(): Promise<void> {
@@ -216,5 +217,9 @@ export class OidcProviderService implements OnModuleInit {
     }
 
     return this.provider;
+  }
+
+  public getAdapterFactory(): OidcAdapterFactory {
+    return this.adapterFactory;
   }
 }

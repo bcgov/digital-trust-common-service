@@ -11,6 +11,22 @@ export type {
   OidcClientLookupPort,
   OidcClientRecord,
 } from './ports/oidc-client-lookup.port';
+export { OIDC_TENANT_USER_PORT } from './ports/oidc-tenant-user.port';
+export type {
+  OidcTenantUserPort,
+  OidcTenantUserRecord,
+  OidcCreateTenantUserInput,
+  OidcTenantUserRole,
+  OidcTenantUserStatus,
+} from './ports/oidc-tenant-user.port';
+export { OIDC_UPSTREAM_FEDERATION_PORT } from './ports/oidc-upstream-federation.port';
+export type {
+  OidcUpstreamFederationPort,
+  OidcUpstreamInteractionRecord,
+  OidcUpstreamLoginResult,
+  OidcUpstreamClaims,
+  OidcUpstreamCallbackResult,
+} from './ports/oidc-upstream-federation.port';
 export { OidcModelAdapter } from './adapters/oidc-model.adapter';
 export { OidcClientAdapter } from './adapters/oidc-client.adapter';
 export { OidcAdapterFactory } from './adapters/oidc-adapter.factory';

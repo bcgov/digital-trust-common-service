@@ -139,7 +139,7 @@ services:
       # Disable HTTPS enforcement for local dev. With start-dev + HOSTNAME_STRICT=false
       # Keycloak derives its URL from the request Host header (localhost:8080), so
       # the OIDC issuer matches what the browser uses and token validation succeeds.
-      KC_HOSTNAME_STRICT: 'true'
+      KC_HOSTNAME_STRICT: 'false'
       # To use https which is required for OIDC, you can use a reverse proxy like ngrok to expose the local Keycloak instance over HTTPS.
       # KC_HOSTNAME: 'https://<ngrok url>'
     depends_on:

@@ -1,7 +1,5 @@
 import Provider from 'oidc-provider';
 
-import { TenantUserService } from '../../../apps/digital-trust-common-service/src/tenant-user/tenant-user.service';
-
 import type { OidcAdapterFactory } from './adapters/oidc-adapter.factory';
 import type { OidcConfig } from './oidc-config.service';
 import type { OidcJwks } from './oidc-keys.service';
@@ -10,6 +8,7 @@ import {
   applyClientSecretHashComparator,
   buildOidcConfiguration,
 } from './oidc-provider.service';
+import type { OidcTenantUserPort } from './ports/oidc-tenant-user.port';
 
 jest.mock('argon2', () => ({
   verify: jest.fn(),
@@ -64,14 +63,14 @@ describe('buildOidcConfiguration', () => {
   const jwks: OidcJwks = { keys: [{ kid: 'k1', kty: 'RSA' }] };
 
   let adapterFactory: OidcAdapterFactory;
-  let tenantUserService: TenantUserService;
+  let tenantUserService: OidcTenantUserPort;
 
   beforeEach(() => {
     adapterFactory = { forModel: jest.fn() } as unknown as OidcAdapterFactory;
     tenantUserService = {
       forModel: jest.fn(),
       findById: jest.fn(),
-    } as unknown as TenantUserService;
+    } as unknown as OidcTenantUserPort;
   });
 
   it('wires the adapter, jwks and cookie keys through unchanged', () => {
@@ -254,8 +253,11 @@ describe('buildOidcConfiguration', () => {
       const mockUser = {
         id: 'user-id-123',
         tenantId: 'tenant-123',
+        externalUserId: 'external-user-123',
         email: 'user@example.com',
         displayName: 'Test User',
+        role: 'member',
+        status: 'active',
       };
 
       (tenantUserService.findById as jest.Mock).mockResolvedValue(mockUser);
@@ -281,12 +283,12 @@ describe('buildOidcConfiguration', () => {
         email: 'user@example.com',
         name: 'Test User',
         tenant_id: 'tenant-123',
-        tenant_role: undefined,
+        tenant_role: 'member',
       });
     });
 
     it('returns undefined when user is not found', async () => {
-      (tenantUserService.findById as jest.Mock).mockResolvedValue(null);
+      (tenantUserService.findById as jest.Mock).mockResolvedValue(undefined);
 
       const configuration = buildOidcConfiguration(
         config,
@@ -302,6 +304,32 @@ describe('buildOidcConfiguration', () => {
 
       // eslint-disable-next-line @typescript-eslint/unbound-method
       expect(tenantUserService.findById).toHaveBeenCalledWith('unknown-id');
+      expect(account).toBeUndefined();
+    });
+
+    it('returns undefined when user exists but is not active', async () => {
+      (tenantUserService.findById as jest.Mock).mockResolvedValue({
+        id: 'user-id-123',
+        tenantId: 'tenant-123',
+        externalUserId: 'external-user-123',
+        email: 'user@example.com',
+        displayName: 'Test User',
+        role: 'member',
+        status: 'disabled',
+      });
+
+      const configuration = buildOidcConfiguration(
+        config,
+        jwks,
+        adapterFactory,
+        tenantUserService,
+      );
+
+      const account = await configuration.findAccount?.(
+        {} as never,
+        'user-id-123',
+      );
+
       expect(account).toBeUndefined();
     });
   });
@@ -353,7 +381,7 @@ describe('OidcProviderService', () => {
   let oidcKeysService: { ensureLoaded: jest.Mock };
   let adapterFactory: OidcAdapterFactory;
   let service: OidcProviderService;
-  let tenantUserService: TenantUserService;
+  let tenantUserService: OidcTenantUserPort;
 
   const jwks: OidcJwks = { keys: [{ kid: 'test-key', kty: 'RSA' }] };
 
@@ -375,7 +403,7 @@ describe('OidcProviderService', () => {
     tenantUserService = {
       forModel: jest.fn(),
       findById: jest.fn(),
-    } as unknown as TenantUserService;
+    } as unknown as OidcTenantUserPort;
 
     service = new OidcProviderService(
       oidcConfigService as never,

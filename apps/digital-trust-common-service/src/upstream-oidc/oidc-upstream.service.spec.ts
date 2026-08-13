@@ -23,6 +23,7 @@ const mockConfigService = {
 
 const mockInteractionRepository = {
   create: jest.fn(),
+  upsertByInteractionUid: jest.fn(),
   findByState: jest.fn(),
   findByInteractionUid: jest.fn(),
   update: jest.fn(),
@@ -162,7 +163,9 @@ describe('UpstreamOidcService', () => {
         consumedAt: undefined,
       };
 
-      mockInteractionRepository.create.mockResolvedValue(mockInteraction);
+      mockInteractionRepository.upsertByInteractionUid.mockResolvedValue(
+        mockInteraction,
+      );
 
       const result = await service.storeInteraction(
         'test-state',
@@ -173,7 +176,9 @@ describe('UpstreamOidcService', () => {
       );
 
       expect(result).toEqual(mockInteraction);
-      expect(mockInteractionRepository.create).toHaveBeenCalled();
+      expect(
+        mockInteractionRepository.upsertByInteractionUid,
+      ).toHaveBeenCalled();
     });
 
     it('should store interaction with custom TTL', async () => {
@@ -190,7 +195,9 @@ describe('UpstreamOidcService', () => {
         consumedAt: undefined,
       };
 
-      mockInteractionRepository.create.mockResolvedValue(mockInteraction);
+      mockInteractionRepository.upsertByInteractionUid.mockResolvedValue(
+        mockInteraction,
+      );
 
       const result = await service.storeInteraction(
         'test-state',
@@ -481,7 +488,9 @@ describe('UpstreamOidcService', () => {
         new URL('http://localhost:8080/auth?state=test-state'),
       );
 
-      mockInteractionRepository.create.mockResolvedValue(mockInteraction);
+      mockInteractionRepository.upsertByInteractionUid.mockResolvedValue(
+        mockInteraction,
+      );
 
       await service.onModuleInit();
 
@@ -493,7 +502,9 @@ describe('UpstreamOidcService', () => {
 
       expect(result).toHaveProperty('state');
       expect(result).toHaveProperty('authorizationUrl');
-      expect(mockInteractionRepository.create).toHaveBeenCalled();
+      expect(
+        mockInteractionRepository.upsertByInteractionUid,
+      ).toHaveBeenCalled();
     });
   });
 

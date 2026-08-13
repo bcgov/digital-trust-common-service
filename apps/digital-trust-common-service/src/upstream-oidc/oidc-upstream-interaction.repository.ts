@@ -26,9 +26,43 @@ export class OidcUpstreamInteractionRepository {
   public async findByInteractionUid(
     uid: string,
   ): Promise<OidcUpstreamInteraction | null> {
-    return await this.repository.findOne({
-      where: { interactionUid: uid },
+    return await this.repository
+      .createQueryBuilder('interaction')
+      .where('interaction.interactionUid = :uid', { uid })
+      .orderBy('interaction.consumedAt', 'ASC', 'NULLS FIRST')
+      .addOrderBy('interaction.createdAt', 'DESC')
+      .getOne();
+  }
+
+  public async upsertByInteractionUid(
+    interaction: Partial<OidcUpstreamInteraction>,
+  ): Promise<OidcUpstreamInteraction> {
+    if (!interaction.interactionUid) {
+      throw new Error('interactionUid is required for upsertByInteractionUid');
+    }
+
+    await this.repository.upsert(
+      {
+        ...interaction,
+        // Re-initiating the same oidc-provider interaction should reactivate
+        // this row with fresh state/PKCE data.
+        consumedAt: null,
+        tenantUserId: interaction.tenantUserId ?? null,
+      },
+      ['interactionUid'],
+    );
+
+    const saved = await this.repository.findOne({
+      where: { interactionUid: interaction.interactionUid },
     });
+
+    if (!saved) {
+      throw new Error(
+        `Unable to load upserted interaction for uid ${interaction.interactionUid}`,
+      );
+    }
+
+    return saved;
   }
 
   public async findByState(

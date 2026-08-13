@@ -36,6 +36,11 @@ secret:
   # per-PR objects are removed by pr-cleanup.yml's label-based delete.)
   existingSecret: digital-trust-common-service-pr-secret
 
+networkPolicy:
+  enabled: true
+  keycloak:
+    enabled: true
+
 connectorEncryption:
   existingSecret: ""
   create: true

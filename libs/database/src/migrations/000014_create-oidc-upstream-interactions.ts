@@ -10,7 +10,7 @@ export class CreateOidcUpstreamInteraction1786386020201 implements MigrationInte
 
           state TEXT NOT NULL UNIQUE,
           nonce TEXT NOT NULL,
-          interaction_uid TEXT NOT NULL,
+          interaction_uid TEXT NOT NULL UNIQUE,
 
           code_verifier TEXT NOT NULL,
           tenant_id TEXT NOT NULL,
@@ -30,7 +30,7 @@ export class CreateOidcUpstreamInteraction1786386020201 implements MigrationInte
 
     await queryRunner.query(`
       CREATE OR REPLACE FUNCTION consume_oidc_upstream_interaction(p_state TEXT)
-      RETURNS TABLE(id UUID, state TEXT, nonce TEXT, interaction_uid TEXT, code_verifier TEXT, created_at TIMESTAMPTZ, expires_at TIMESTAMPTZ, consumed_at TIMESTAMPTZ) AS $$
+      RETURNS TABLE(id UUID, state TEXT, nonce TEXT, interaction_uid TEXT, code_verifier TEXT, created_at TIMESTAMPTZ, expires_at TIMESTAMPTZ, tenant_id TEXT, tenant_user_id TEXT, consumed_at TIMESTAMPTZ) AS $$
       BEGIN
         RETURN QUERY
         UPDATE oidc_upstream_interaction
@@ -44,10 +44,10 @@ export class CreateOidcUpstreamInteraction1786386020201 implements MigrationInte
           oidc_upstream_interaction.nonce,
           oidc_upstream_interaction.interaction_uid,
           oidc_upstream_interaction.code_verifier,
-          oidc_upstream_interaction.tenant_id,
-          oidc_upstream_interaction.tenant_user_id,
           oidc_upstream_interaction.created_at,
           oidc_upstream_interaction.expires_at,
+          oidc_upstream_interaction.tenant_id,
+          oidc_upstream_interaction.tenant_user_id,
           oidc_upstream_interaction.consumed_at;
       END;
       $$ LANGUAGE plpgsql;

@@ -1,6 +1,11 @@
 import { AuthModule } from '@app/auth';
 import { DatabaseModule } from '@app/database';
-import { OIDC_CLIENT_LOOKUP_PORT, OidcModule } from '@app/oidc';
+import {
+  OIDC_CLIENT_LOOKUP_PORT,
+  OIDC_TENANT_USER_PORT,
+  OIDC_UPSTREAM_FEDERATION_PORT,
+  OidcModule,
+} from '@app/oidc';
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_INTERCEPTOR } from '@nestjs/core';
@@ -25,7 +30,9 @@ import { RoleScopeModule } from './role-scope/role-scope.module';
 import { SeedModule } from './seed/seed.module';
 import { ShutdownModule } from './shutdown/shutdown.module';
 import { TenantModule } from './tenant/tenant.module';
+import { OidcTenantUserAdapter } from './tenant-user/oidc-tenant-user.adapter';
 import { TenantUserModule } from './tenant-user/tenant-user.module';
+import { OidcUpstreamFederationAdapter } from './upstream-oidc/oidc-upstream-federation.adapter';
 import { UpstreamOidcModule } from './upstream-oidc/oidc-upstream.module';
 import { VerificationProfileModule } from './verification-profile/verification-profile.module';
 
@@ -45,10 +52,18 @@ import { VerificationProfileModule } from './verification-profile/verification-p
     JobsModule,
     OAuthClientModule,
     OidcModule.forRoot({
-      imports: [OAuthClientModule],
+      imports: [OAuthClientModule, TenantUserModule, UpstreamOidcModule],
       clientLookupProvider: {
         provide: OIDC_CLIENT_LOOKUP_PORT,
         useClass: OAuthClientLookupAdapter,
+      },
+      tenantUserProvider: {
+        provide: OIDC_TENANT_USER_PORT,
+        useClass: OidcTenantUserAdapter,
+      },
+      upstreamFederationProvider: {
+        provide: OIDC_UPSTREAM_FEDERATION_PORT,
+        useClass: OidcUpstreamFederationAdapter,
       },
     }),
     AuthModule,

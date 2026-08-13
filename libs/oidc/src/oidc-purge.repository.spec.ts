@@ -1,8 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 
-import { OidcUpstreamInteraction } from '../../../apps/digital-trust-common-service/src/upstream-oidc/oidc-upstream-interaction.entity';
-
 import { OidcModel } from './entities/oidc-model.entity';
 import { OidcPurgeRepository } from './oidc-purge.repository';
 
@@ -22,10 +20,6 @@ describe('OidcModelPurgeRepository', () => {
         OidcPurgeRepository,
         {
           provide: getRepositoryToken(OidcModel),
-          useValue: mockRepo,
-        },
-        {
-          provide: getRepositoryToken(OidcUpstreamInteraction),
           useValue: mockRepo,
         },
       ],

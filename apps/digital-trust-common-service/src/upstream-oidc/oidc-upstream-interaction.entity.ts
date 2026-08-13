@@ -8,6 +8,9 @@ import {
 
 @Entity({ name: 'oidc_upstream_interaction' })
 @Index('idx_oidc_upstream_interaction_expires_at', ['expiresAt'])
+@Index('uq_oidc_upstream_interaction_interaction_uid', ['interactionUid'], {
+  unique: true,
+})
 export class OidcUpstreamInteraction {
   @PrimaryGeneratedColumn('uuid')
   public id!: string;
@@ -27,8 +30,8 @@ export class OidcUpstreamInteraction {
   @Column({ name: 'tenant_id', type: 'text' })
   public tenantId!: string;
 
-  @Column({ name: 'tenant_user_id', type: 'text' })
-  public tenantUserId?: string;
+  @Column({ name: 'tenant_user_id', type: 'text', nullable: true })
+  public tenantUserId?: string | null;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   public createdAt!: Date;
@@ -37,5 +40,5 @@ export class OidcUpstreamInteraction {
   public expiresAt!: Date;
 
   @Column({ name: 'consumed_at', type: 'timestamptz', nullable: true })
-  public consumedAt?: Date;
+  public consumedAt?: Date | null;
 }

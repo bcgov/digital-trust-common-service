@@ -2,11 +2,6 @@ import { PgBossModule } from '@app/pg-boss';
 import { DynamicModule, Module, Provider } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
-import { OAuthClientModule } from '../../../apps/digital-trust-common-service/src/oauth-client/oauth-client.module';
-import { TenantUserModule } from '../../../apps/digital-trust-common-service/src/tenant-user/tenant-user.module';
-import { OidcUpstreamInteraction } from '../../../apps/digital-trust-common-service/src/upstream-oidc/oidc-upstream-interaction.entity';
-import { UpstreamOidcModule } from '../../../apps/digital-trust-common-service/src/upstream-oidc/oidc-upstream.module';
-
 import { OidcAdapterFactory } from './adapters/oidc-adapter.factory';
 import { OidcModel } from './entities/oidc-model.entity';
 import { OidcConfigModule } from './oidc-config.module';
@@ -17,13 +12,17 @@ import { OidcPurgeRepository } from './oidc-purge.repository';
 import { OidcPurgeService } from './oidc-purge.service';
 
 export interface OidcModuleOptions {
-  /** Modules exporting the provider bound to OIDC_CLIENT_LOOKUP_PORT. */
+  /** Modules exporting providers bound to the OIDC port tokens. */
   imports?: DynamicModule['imports'];
   /**
    * Provider binding for OIDC_CLIENT_LOOKUP_PORT, e.g.
    * `{ provide: OIDC_CLIENT_LOOKUP_PORT, useClass: OAuthClientLookupAdapter }`.
    */
   clientLookupProvider: Provider;
+  /** Provider binding for OIDC_TENANT_USER_PORT. */
+  tenantUserProvider: Provider;
+  /** Provider binding for OIDC_UPSTREAM_FEDERATION_PORT. */
+  upstreamFederationProvider: Provider;
 }
 
 @Module({})
@@ -38,10 +37,7 @@ export class OidcModule {
       module: OidcModule,
       imports: [
         OidcConfigModule,
-        OAuthClientModule,
-        UpstreamOidcModule,
-        TenantUserModule,
-        TypeOrmModule.forFeature([OidcModel, OidcUpstreamInteraction]),
+        TypeOrmModule.forFeature([OidcModel]),
         PgBossModule,
         ...(options.imports ?? []),
       ],
@@ -53,6 +49,8 @@ export class OidcModule {
         OidcPurgeRepository,
         OidcPurgeService,
         options.clientLookupProvider,
+        options.tenantUserProvider,
+        options.upstreamFederationProvider,
       ],
       exports: [
         OidcConfigModule,

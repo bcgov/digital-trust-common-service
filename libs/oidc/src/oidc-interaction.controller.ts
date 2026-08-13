@@ -1,29 +1,31 @@
 import { IncomingMessage, ServerResponse } from 'http';
 import { Http2ServerRequest, Http2ServerResponse } from 'http2';
 
-import { Controller, Get, Query, Req, Res } from '@nestjs/common';
+import { Controller, Get, Inject, Query, Req, Res } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
-import { OAuthClientService } from '../../../apps/digital-trust-common-service/src/oauth-client/oauth-client.service';
-import {
-  TenantUserRole,
-  TenantUserStatus,
-} from '../../../apps/digital-trust-common-service/src/tenant-user/tenant-user.entity';
-import { TenantUserService } from '../../../apps/digital-trust-common-service/src/tenant-user/tenant-user.service';
-import { UpstreamOidcService } from '../../../apps/digital-trust-common-service/src/upstream-oidc/oidc-upstream.service';
-
+import { buildOidcIssuerUrl } from './oidc-issuer-url.util';
 import { OidcProviderService } from './oidc-provider.service';
+import * as oidcClientLookupPort from './ports/oidc-client-lookup.port';
+import * as oidcTenantUserPort from './ports/oidc-tenant-user.port';
+import * as oidcUpstreamFederationPort from './ports/oidc-upstream-federation.port';
 
 type OidcResponse =
   ServerResponse<IncomingMessage> | Http2ServerResponse<Http2ServerRequest>;
 
 @Controller({ path: 'oidc/' })
 export class OidcInteractionController {
+  private static readonly ACTIVE_TENANT_USER_STATUS = 'active';
+  private static readonly DEFAULT_TENANT_USER_ROLE = 'readonly';
+
   public constructor(
     private readonly providerService: OidcProviderService,
-    private readonly upstreamOidcService: UpstreamOidcService,
-    private readonly tenantUserService: TenantUserService,
-    private readonly oauthClientService: OAuthClientService,
+    @Inject(oidcUpstreamFederationPort.OIDC_UPSTREAM_FEDERATION_PORT)
+    private readonly upstreamOidcService: oidcUpstreamFederationPort.OidcUpstreamFederationPort,
+    @Inject(oidcTenantUserPort.OIDC_TENANT_USER_PORT)
+    private readonly tenantUserService: oidcTenantUserPort.OidcTenantUserPort,
+    @Inject(oidcClientLookupPort.OIDC_CLIENT_LOOKUP_PORT)
+    private readonly clientLookup: oidcClientLookupPort.OidcClientLookupPort,
     private readonly configService: ConfigService,
   ) {}
 
@@ -209,17 +211,22 @@ export class OidcInteractionController {
       throw new Error('Missing client_id in interaction params');
     }
 
-    const client = await this.oauthClientService.findByClientId(clientId);
+    const client = await this.clientLookup.findActiveClient(clientId);
 
     if (!client) {
       throw new Error(`OAuth client not found: ${clientId}`);
     }
 
+    const oidcIssuer = this.configService.get<string>(
+      'OIDC_ISSUER',
+      'http://localhost:3000/oidc',
+    );
+
     const { authorizationUrl } =
       await this.upstreamOidcService.initiateUpstreamLogin(
         details.uid,
         client.tenantId,
-        `${this.configService.get<string>('OIDC_ISSUER', 'http://localhost:3000/oidc')}/callback`,
+        buildOidcIssuerUrl(oidcIssuer, 'callback'),
       );
 
     res.statusCode = 302;
@@ -295,14 +302,22 @@ export class OidcInteractionController {
           claims.sub,
         );
 
+      if (
+        federatedUser &&
+        federatedUser.status !==
+          OidcInteractionController.ACTIVE_TENANT_USER_STATUS
+      ) {
+        throw new Error('Federated user is not active');
+      }
+
       if (!federatedUser) {
         federatedUser = await this.tenantUserService.create({
           tenantId,
           externalUserId: claims.sub,
           email: claims.email ?? '',
           displayName: claims.name ?? claims.email ?? claims.sub,
-          role: TenantUserRole.READONLY,
-          status: TenantUserStatus.ACTIVE,
+          role: OidcInteractionController.DEFAULT_TENANT_USER_ROLE,
+          status: OidcInteractionController.ACTIVE_TENANT_USER_STATUS,
         });
       }
 
@@ -325,7 +340,14 @@ export class OidcInteractionController {
        * The interaction UID came from interactionDetails() when
        * we started the upstream flow.
        */
-      const interactionUrl = `${this.configService.get<string>('OIDC_ISSUER', 'http://localhost:3000/oidc')}/interaction/${interaction.interactionUid}`;
+      const oidcIssuer = this.configService.get<string>(
+        'OIDC_ISSUER',
+        'http://localhost:3000/oidc',
+      );
+      const interactionUrl = buildOidcIssuerUrl(
+        oidcIssuer,
+        `interaction/${interaction.interactionUid}`,
+      );
 
       res.statusCode = 302;
       res.setHeader('Location', interactionUrl);

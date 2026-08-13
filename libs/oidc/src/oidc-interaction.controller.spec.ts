@@ -20,16 +20,15 @@ import { IncomingMessage } from 'http';
 import { ConfigService } from '@nestjs/config';
 import { Test, TestingModule } from '@nestjs/testing';
 
-import { OAuthClientService } from '../../../apps/digital-trust-common-service/src/oauth-client/oauth-client.service';
-import {
-  TenantUserRole,
-  TenantUserStatus,
-} from '../../../apps/digital-trust-common-service/src/tenant-user/tenant-user.entity';
-import { TenantUserService } from '../../../apps/digital-trust-common-service/src/tenant-user/tenant-user.service';
-import { UpstreamOidcService } from '../../../apps/digital-trust-common-service/src/upstream-oidc/oidc-upstream.service';
-
 import { OidcInteractionController } from './oidc-interaction.controller';
 import { OidcProviderService } from './oidc-provider.service';
+import { OIDC_CLIENT_LOOKUP_PORT } from './ports/oidc-client-lookup.port';
+import {
+  OIDC_TENANT_USER_PORT,
+  OidcTenantUserRole,
+  OidcTenantUserStatus,
+} from './ports/oidc-tenant-user.port';
+import { OIDC_UPSTREAM_FEDERATION_PORT } from './ports/oidc-upstream-federation.port';
 
 describe('OidcInteractionController', () => {
   let controller: OidcInteractionController;
@@ -52,8 +51,8 @@ describe('OidcInteractionController', () => {
     create: jest.fn(),
   };
 
-  const mockOAuthClientService = {
-    findByClientId: jest.fn(),
+  const mockClientLookup = {
+    findActiveClient: jest.fn(),
   };
 
   const mockConfigService = {
@@ -71,16 +70,16 @@ describe('OidcInteractionController', () => {
           useValue: mockProviderService,
         },
         {
-          provide: UpstreamOidcService,
+          provide: OIDC_UPSTREAM_FEDERATION_PORT,
           useValue: mockUpstreamOidcService,
         },
         {
-          provide: TenantUserService,
+          provide: OIDC_TENANT_USER_PORT,
           useValue: mockTenantUserService,
         },
         {
-          provide: OAuthClientService,
-          useValue: mockOAuthClientService,
+          provide: OIDC_CLIENT_LOOKUP_PORT,
+          useValue: mockClientLookup,
         },
         {
           provide: ConfigService,
@@ -177,9 +176,15 @@ describe('OidcInteractionController', () => {
       mockProviderService.getProvider.mockReturnValue(mockProvider);
       mockUpstreamOidcService.getInteractionByUid.mockResolvedValue(null);
       mockConfigService.get.mockReturnValue('http://localhost:3000/oidc');
-
-      const mockClient = { id: 'client-123', tenantId: 'tenant-123' };
-      mockOAuthClientService.findByClientId.mockResolvedValue(mockClient);
+      mockClientLookup.findActiveClient.mockResolvedValue({
+        clientId: 'client-123',
+        clientSecretHash: 'secret-hash',
+        name: 'Client',
+        tenantId: 'tenant-123',
+        scopes: ['openid'],
+        redirectUris: ['http://localhost/callback'],
+        grantTypes: ['authorization_code'],
+      });
 
       const mockAuthUrl = new URL('http://keycloak:8080/auth?state=test');
       mockUpstreamOidcService.initiateUpstreamLogin.mockResolvedValue({
@@ -209,6 +214,53 @@ describe('OidcInteractionController', () => {
         mockAuthUrl.href,
       );
       expect(mockRes.end).toHaveBeenCalled();
+    });
+
+    it('should normalize trailing slash when building callback URL', async () => {
+      const mockProvider = {
+        interactionDetails: jest.fn().mockResolvedValue({
+          uid: 'interaction-uid',
+          prompt: { name: 'login' },
+          params: { client_id: 'client-123' },
+          session: null,
+        }),
+      };
+
+      mockProviderService.getProvider.mockReturnValue(mockProvider);
+      mockUpstreamOidcService.getInteractionByUid.mockResolvedValue(null);
+      mockConfigService.get.mockReturnValue('http://localhost:3000/oidc/');
+      mockClientLookup.findActiveClient.mockResolvedValue({
+        clientId: 'client-123',
+        clientSecretHash: 'secret-hash',
+        name: 'Client',
+        tenantId: 'tenant-123',
+        scopes: ['openid'],
+        redirectUris: ['http://localhost/callback'],
+        grantTypes: ['authorization_code'],
+      });
+
+      const mockAuthUrl = new URL('http://keycloak:8080/auth?state=test');
+      mockUpstreamOidcService.initiateUpstreamLogin.mockResolvedValue({
+        state: 'test',
+        authorizationUrl: mockAuthUrl,
+      });
+
+      const mockReq = {} as IncomingMessage;
+      const mockRes = {
+        statusCode: 200,
+        setHeader: jest.fn(),
+        end: jest.fn(),
+      } as any;
+
+      await controller.interaction(mockReq, mockRes);
+
+      expect(
+        mockUpstreamOidcService.initiateUpstreamLogin,
+      ).toHaveBeenCalledWith(
+        'interaction-uid',
+        'tenant-123',
+        'http://localhost:3000/oidc/callback',
+      );
     });
 
     it('should throw error when trying to login with existing session', async () => {
@@ -243,7 +295,7 @@ describe('OidcInteractionController', () => {
 
       mockProviderService.getProvider.mockReturnValue(mockProvider);
       mockUpstreamOidcService.getInteractionByUid.mockResolvedValue(null);
-      mockOAuthClientService.findByClientId.mockResolvedValue(null);
+      mockClientLookup.findActiveClient.mockResolvedValue(undefined);
 
       const mockReq = {} as IncomingMessage;
       const mockRes = {} as any;
@@ -420,6 +472,8 @@ describe('OidcInteractionController', () => {
         externalUserId: 'external-user-123',
         email: 'user@example.com',
         displayName: 'Test User',
+        role: 'readonly' as OidcTenantUserRole,
+        status: 'active' as OidcTenantUserStatus,
       };
 
       mockTenantUserService.findByTenantAndExternalUserId.mockResolvedValue(
@@ -476,6 +530,79 @@ describe('OidcInteractionController', () => {
       expect(mockRes.end).toHaveBeenCalled();
     });
 
+    it('should normalize trailing slash when building interaction redirect URL', async () => {
+      const mockInteraction = {
+        id: 'interaction-123',
+        state: 'state-123',
+        nonce: 'nonce-123',
+        interactionUid: 'interaction-uid',
+        codeVerifier: 'verifier',
+        tenantId: 'tenant-123',
+        tenantUserId: null,
+        createdAt: new Date(),
+        expiresAt: new Date(),
+        consumedAt: null,
+      };
+
+      mockUpstreamOidcService.handleUpstreamCallback.mockResolvedValue({
+        claims: {
+          sub: 'external-user-123',
+          email: 'user@example.com',
+          name: 'Test User',
+        },
+        interaction: mockInteraction,
+      });
+
+      const mockFederatedUser = {
+        id: 'local-user-123',
+        tenantId: 'tenant-123',
+        externalUserId: 'external-user-123',
+        email: 'user@example.com',
+        displayName: 'Test User',
+        role: 'readonly' as OidcTenantUserRole,
+        status: 'active' as OidcTenantUserStatus,
+      };
+
+      mockTenantUserService.findByTenantAndExternalUserId.mockResolvedValue(
+        mockFederatedUser,
+      );
+      mockUpstreamOidcService.setTenantUserIdForInteraction.mockResolvedValue(
+        mockInteraction,
+      );
+      mockUpstreamOidcService.consumeInteraction.mockResolvedValue(
+        mockInteraction,
+      );
+
+      mockConfigService.get.mockReturnValue('http://localhost:3000/oidc/');
+
+      const mockReq = {
+        headers: { host: 'localhost:3000' },
+        url: '/oidc/callback?code=auth-code&state=state-123',
+      } as IncomingMessage;
+
+      const mockRes = {
+        headersSent: false,
+        statusCode: 200,
+        setHeader: jest.fn(),
+        end: jest.fn(),
+      } as any;
+
+      await controller.callback(
+        'auth-code',
+        'state-123',
+        'nonce-123',
+        undefined,
+        undefined,
+        mockReq,
+        mockRes,
+      );
+
+      expect(mockRes.setHeader).toHaveBeenCalledWith(
+        'Location',
+        'http://localhost:3000/oidc/interaction/interaction-uid',
+      );
+    });
+
     it('should create new user if federated user does not exist', async () => {
       const mockInteraction = {
         id: 'interaction-123',
@@ -508,8 +635,8 @@ describe('OidcInteractionController', () => {
         externalUserId: 'external-user-new',
         email: 'newuser@example.com',
         displayName: 'New User',
-        role: TenantUserRole.READONLY,
-        status: TenantUserStatus.ACTIVE,
+        role: 'readonly' as OidcTenantUserRole,
+        status: 'active' as OidcTenantUserStatus,
       };
 
       mockTenantUserService.create.mockResolvedValue(mockNewUser);
@@ -549,8 +676,8 @@ describe('OidcInteractionController', () => {
         externalUserId: 'external-user-new',
         email: 'newuser@example.com',
         displayName: 'New User',
-        role: TenantUserRole.READONLY,
-        status: TenantUserStatus.ACTIVE,
+        role: 'readonly',
+        status: 'active',
       });
     });
 
@@ -708,6 +835,8 @@ describe('OidcInteractionController', () => {
         externalUserId: 'external-user-123',
         email: 'user@example.com',
         displayName: 'Test User',
+        role: 'readonly' as OidcTenantUserRole,
+        status: 'active' as OidcTenantUserStatus,
       };
 
       mockTenantUserService.findByTenantAndExternalUserId.mockResolvedValue(
@@ -784,6 +913,8 @@ describe('OidcInteractionController', () => {
         externalUserId: 'external-user-123',
         email: 'user@example.com',
         displayName: 'Test User',
+        role: 'readonly' as OidcTenantUserRole,
+        status: 'active' as OidcTenantUserStatus,
       };
 
       mockTenantUserService.findByTenantAndExternalUserId.mockResolvedValue(

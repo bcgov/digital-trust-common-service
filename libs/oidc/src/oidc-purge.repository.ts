@@ -2,8 +2,6 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 
-import { OidcUpstreamInteraction } from '../../../apps/digital-trust-common-service/src/upstream-oidc/oidc-upstream-interaction.entity';
-
 import { OidcModel } from './entities/oidc-model.entity';
 
 export interface PurgeModelCount {
@@ -29,8 +27,6 @@ export class OidcPurgeRepository {
   public constructor(
     @InjectRepository(OidcModel)
     private readonly oidcModelRepo: Repository<OidcModel>,
-    @InjectRepository(OidcUpstreamInteraction)
-    private readonly upstreamInteractionRepo: Repository<OidcUpstreamInteraction>,
   ) {}
 
   public async purgeExpiredBatch(limit: number): Promise<PurgeModelCount[]> {
@@ -71,9 +67,7 @@ export class OidcPurgeRepository {
   ): Promise<PurgeInteractionCount> {
     const safeLimit = Math.max(1, Math.floor(limit));
 
-    const result = await this.upstreamInteractionRepo.manager.query<
-      { count: string }[]
-    >(
+    const result = await this.oidcModelRepo.manager.query<{ count: string }[]>(
       `DELETE FROM oidc_upstream_interaction
        WHERE id IN (
          SELECT id FROM oidc_upstream_interaction

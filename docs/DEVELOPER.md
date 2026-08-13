@@ -116,7 +116,7 @@ Update **`config/upstream-identity-federation.json`** with the ngrok URL for Key
 
 ```json
 {
-  "issuer": "https://YOUR_KEYCLOAK_NGROK_URL/realms/vc-common-service",
+  "url": "https://YOUR_KEYCLOAK_NGROK_URL/realms/vc-common-service",
   "clientId": "vc-common-service",
   "clientSecret": "your-client-secret"
 }
@@ -148,7 +148,7 @@ Also update **`keycloak/config/realm.json`** to set client redirect URIs to your
 Set the **`OIDC_ISSUER`** environment variable to your ngrok endpoint for localhost:3000:
 
 ```env
-OIDC_ISSUER=https://YOUR_OIDC_PROVIDER_NGROK_URL
+OIDC_ISSUER=https://YOUR_OIDC_PROVIDER_NGROK_URL/oidc
 ```
 
 This URL is used by Keycloak clients to discover the OIDC provider configuration and validate tokens.

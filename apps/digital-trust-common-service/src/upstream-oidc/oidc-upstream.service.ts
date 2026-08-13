@@ -92,15 +92,17 @@ export class UpstreamOidcService implements OnModuleInit {
   ): Promise<OidcUpstreamInteraction> {
     const expiresAt = new Date(Date.now() + ttlMinutes * 60 * 1000);
 
-    const interaction = await this.interactionRepository.create({
-      state,
-      nonce,
-      interactionUid,
-      codeVerifier,
-      tenantId,
-      tenantUserId,
-      expiresAt,
-    });
+    const interaction = await this.interactionRepository.upsertByInteractionUid(
+      {
+        state,
+        nonce,
+        interactionUid,
+        codeVerifier,
+        tenantId,
+        tenantUserId,
+        expiresAt,
+      },
+    );
 
     this.logger.debug(
       `Stored upstream OIDC interaction with state: ${state.substring(0, 8)}...`,

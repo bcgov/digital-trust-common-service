@@ -248,6 +248,9 @@ config:
   SWAGGER_JSON_ENABLED: "true"
   CONNECTOR_ENCRYPTION_KEYS_PATH: "/etc/connector/encryption-keys.json"
   OIDC_KEYS_PATH: "/etc/oidc/oidc-keys.json"
+  # Allow registration of confidential clients for auth code + refresh flow,
+  # while retaining existing client_credentials support.
+  OIDC_GRANT_TYPES: "client_credentials,authorization_code,refresh_token"
   AUDIT_AUTO_INTERCEPTOR_ENABLED: "false"
   AUDIT_PARTITION_CRON: "0 3 * * *"
   AUDIT_PARTITION_MONTHS_AHEAD: "3"
