@@ -998,6 +998,23 @@ sequenceDiagram
 | `POST /oidc/token/introspection` | Token introspection (RFC 7662) |
 | `POST /oidc/token/revocation` | Token revocation (RFC 7009) |
 
+### Token & Session Lifecycle
+
+| Artifact | Default TTL | Env var |
+|----------|-------------|---------|
+| Access token | 5 min | `OIDC_ACCESS_TOKEN_TTL_SECONDS` |
+| Refresh token | 8 hours | `OIDC_REFRESH_TOKEN_TTL_SECONDS` |
+| Session | inherits refresh TTL | `OIDC_SESSION_TTL_SECONDS` |
+| Grant | 14 days | `OIDC_GRANT_TTL_SECONDS` |
+
+- **Rotation**: on by default; each use issues a new refresh token and invalidates the old one.
+- **Per-client refresh TTL**: `oauth_client.refresh_token_ttl_seconds`; `NULL` inherits the default.
+- **`client_credentials`**: access token only, no refresh token (RFC 6749 4.4.3).
+- **`offline_access`**: must stay in the scope allowlist or `oidc-provider` never registers the `refresh_token` grant.
+- **Grant TTL**: caps a refresh chain, since the Grant is not re-saved on rotation. Do not set it below the refresh TTL.
+- **Concurrent sessions**: `OIDC_MAX_CONCURRENT_SESSIONS` (default 5, `0` disables), evict-oldest. Needs a call site from AU-02 to take effect.
+- **Force-logout**: `POST /api/v1/admin/users/:id/revoke-sessions` drops all sessions, grants, and tokens for a user. Returns 501 until AU-04 implements the guards.
+
 ### Authorization Model
 
 ```mermaid

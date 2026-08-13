@@ -48,6 +48,24 @@ describe('OidcModelAdapter', () => {
       );
     });
 
+    it('promotes accountId out of the payload for account-scoped lookups', async () => {
+      await adapter.upsert('oidc-id-1', { accountId: 'account-1' }, 3600);
+
+      expect(mockUpsert).toHaveBeenCalledWith(
+        expect.objectContaining({ accountId: 'account-1' }),
+        expect.any(Object),
+      );
+    });
+
+    it('stores a null accountId for records with no subject', async () => {
+      await adapter.upsert('oidc-id-1', {}, 3600);
+
+      expect(mockUpsert).toHaveBeenCalledWith(
+        expect.objectContaining({ accountId: null }),
+        expect.any(Object),
+      );
+    });
+
     it('resets consumedAt to null on re-upsert', async () => {
       await adapter.upsert('oidc-id-1', {}, 3600);
 

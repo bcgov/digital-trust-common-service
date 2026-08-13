@@ -88,6 +88,16 @@ export class OidcClientAdapter implements Adapter {
       token_endpoint_auth_method: 'client_secret_basic',
     };
 
+    // Only emit the key when set. oidc-provider validates every declared
+    // extra metadata property, and an explicit `undefined`/`null` would be
+    // indistinguishable from "configured as no-expiry" in the TTL function.
+    if (
+      client.refreshTokenTtlSeconds !== undefined &&
+      client.refreshTokenTtlSeconds !== null
+    ) {
+      metadata.refresh_token_ttl_seconds = client.refreshTokenTtlSeconds;
+    }
+
     return metadata;
   }
 }

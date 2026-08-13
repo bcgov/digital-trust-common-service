@@ -66,6 +66,37 @@ describe('OidcClientAdapter', () => {
 
       expect(metadata?.response_types).toEqual([]);
     });
+
+    /**
+     * AU-08 (#41): the per-client refresh TTL reaches oidc-provider as extra
+     * client metadata, which `ttl.RefreshToken` reads. The exact-match test
+     * above already pins that the key is absent when unset — that absence is
+     * what makes the service fall back to the server-wide default.
+     */
+    it('passes through a per-client refresh token TTL when configured', async () => {
+      mockFindActiveClient.mockResolvedValue({
+        ...record,
+        refreshTokenTtlSeconds: 3600,
+      });
+
+      const metadata = await adapter.find('client-1');
+
+      expect(metadata?.refresh_token_ttl_seconds).toBe(3600);
+    });
+
+    it.each([null, undefined])(
+      'omits the refresh token TTL when it is %p',
+      async (value) => {
+        mockFindActiveClient.mockResolvedValue({
+          ...record,
+          refreshTokenTtlSeconds: value,
+        });
+
+        const metadata = await adapter.find('client-1');
+
+        expect(metadata).not.toHaveProperty('refresh_token_ttl_seconds');
+      },
+    );
   });
 
   describe('unsupported operations', () => {

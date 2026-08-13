@@ -7,6 +7,7 @@ import {
   OidcProviderService,
   applyClientSecretHashComparator,
   buildOidcConfiguration,
+  resolveRefreshTokenTtl,
 } from './oidc-provider.service';
 
 jest.mock('argon2', () => ({
@@ -53,6 +54,9 @@ describe('buildOidcConfiguration', () => {
     keysPath: '/tmp/keys.json',
     accessTokenTtlSeconds: 300,
     refreshTokenTtlSeconds: 28800,
+    sessionTtlSeconds: 28800,
+    grantTtlSeconds: 1209600,
+    maxConcurrentSessions: 5,
     refreshTokenRotationEnabled: true,
     cookieKeys: ['secret-1'],
     scopes: ['openid', 'credentials:offer'],
@@ -86,9 +90,97 @@ describe('buildOidcConfiguration', () => {
     expect(configuration.ttl).toMatchObject({
       AccessToken: 300,
       ClientCredentials: 300,
-      RefreshToken: 28800,
     });
     expect(configuration.rotateRefreshToken).toBe(true);
+  });
+
+  /**
+   * AU-08 (#41) requires a per-client refresh TTL, which oidc-provider only
+   * supports via the (ctx, token, client) function form.
+   */
+  describe('per-client refresh token TTL', () => {
+    it('exposes RefreshToken as a function rather than a scalar', () => {
+      const configuration = buildOidcConfiguration(
+        config,
+        jwks,
+        adapterFactory,
+      );
+
+      expect(typeof configuration.ttl?.RefreshToken).toBe('function');
+    });
+
+    it('falls back to the server-wide TTL when the client sets none', () => {
+      const configuration = buildOidcConfiguration(
+        config,
+        jwks,
+        adapterFactory,
+      );
+      const ttlFn = configuration.ttl?.RefreshToken as (
+        ctx: unknown,
+        token: unknown,
+        client: unknown,
+      ) => number;
+
+      expect(ttlFn(undefined, undefined, {})).toBe(28800);
+    });
+
+    it('honours a per-client override', () => {
+      const configuration = buildOidcConfiguration(
+        config,
+        jwks,
+        adapterFactory,
+      );
+      const ttlFn = configuration.ttl?.RefreshToken as (
+        ctx: unknown,
+        token: unknown,
+        client: unknown,
+      ) => number;
+
+      expect(
+        ttlFn(undefined, undefined, { refresh_token_ttl_seconds: 3600 }),
+      ).toBe(3600);
+    });
+
+    it('registers refresh_token_ttl_seconds as extra client metadata', () => {
+      const configuration = buildOidcConfiguration(
+        config,
+        jwks,
+        adapterFactory,
+      );
+
+      expect(configuration.extraClientMetadata?.properties).toContain(
+        'refresh_token_ttl_seconds',
+      );
+    });
+  });
+
+  describe('resolveRefreshTokenTtl', () => {
+    it('uses the default when the client is undefined', () => {
+      expect(resolveRefreshTokenTtl(28800, undefined)).toBe(28800);
+    });
+
+    it.each([0, -1])(
+      'ignores a non-positive per-client value of %p',
+      (value) => {
+        expect(
+          resolveRefreshTokenTtl(28800, {
+            refresh_token_ttl_seconds: value,
+          }),
+        ).toBe(28800);
+      },
+    );
+  });
+
+  // Left unset, oidc-provider silently applies a 14-day default to both,
+  // which would let a session outlive its 8-hour refresh token and make the
+  // concurrent-session limit count sessions that are effectively dead.
+  it('sets Session and Grant TTLs explicitly rather than inheriting defaults', () => {
+    const configuration = buildOidcConfiguration(config, jwks, adapterFactory);
+
+    expect(configuration.ttl).toMatchObject({
+      Session: 28800,
+      Grant: 1209600,
+    });
   });
 
   it('always requires PKCE regardless of client auth method', () => {
@@ -134,13 +226,14 @@ describe('buildOidcConfiguration', () => {
     });
   });
 
-  it('registers client_secret_hash and tenant_id as extra client metadata', () => {
+  it('registers every extra client metadata property', () => {
     const configuration = buildOidcConfiguration(config, jwks, adapterFactory);
 
     expect(configuration.extraClientMetadata?.properties).toEqual([
       'client_secret_hash',
       'tenant_id',
       'roles',
+      'refresh_token_ttl_seconds',
     ]);
   });
 

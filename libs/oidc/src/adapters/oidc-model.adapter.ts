@@ -42,6 +42,9 @@ export class OidcModelAdapter implements Adapter {
         grantId: payload.grantId ?? null,
         userCode: payload.userCode ?? null,
         uid: payload.uid ?? null,
+        // Promoted out of the JSONB payload so AU-08's session cap and
+        // force-logout can look records up by user without scanning.
+        accountId: payload.accountId ?? null,
         expiresAt,
         consumedAt: null,
       } as QueryDeepPartialEntity<OidcModel>,

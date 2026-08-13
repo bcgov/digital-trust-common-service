@@ -13,10 +13,13 @@ export interface PurgeModelCount {
  * Deletes expired `oidc_model` rows in bounded batches, used by
  * `OidcModelPurgeService`.
  *
- * Rows with a `null` `expires_at` (e.g. `Grant` records, which
- * oidc-provider never assigns a TTL to) are intentionally never purged
- * here; they are removed via `revokeByGrantId` when their owning
- * access/refresh token is consumed or destroyed instead.
+ * Rows with a `null` `expires_at` are never purged here. In practice every
+ * model kind oidc-provider persists is given a TTL (`Grant` and `Session`
+ * both fall back to the library's 14-day default when `ttl.Grant` /
+ * `ttl.Session` are not configured), so a null `expires_at` is not the
+ * normal case for grants; such rows are removed via `revokeByGrantId` when
+ * their owning access/refresh token is consumed or destroyed, or by
+ * `OidcAccountSessionRepository` on force-logout.
  */
 @Injectable()
 export class OidcModelPurgeRepository {

@@ -146,4 +146,66 @@ describe('OIDC client_credentials grant (integration)', () => {
       .send({ grant_type: 'client_credentials' })
       .expect(401);
   });
+
+  /**
+   * AU-08 (#41) requires that machine clients get an access token only, with
+   * no refresh token, per RFC 6749 §4.4.3 ("A refresh token SHOULD NOT be
+   * included"). A client can always re-authenticate with its own credentials,
+   * so a refresh token would be a longer-lived secret with no added benefit.
+   */
+  it('does not issue a refresh token for the client_credentials grant', async () => {
+    const response = await request(app.getHttpServer())
+      .post('/oidc/token')
+      .set('Authorization', buildBasicAuthHeader(clientId, clientSecret))
+      .type('form')
+      .send({ grant_type: 'client_credentials', scope: 'read:credentials' })
+      .expect(200);
+
+    const body = response.body as Record<string, unknown>;
+
+    expect(body.access_token).toEqual(expect.any(String));
+    expect(body).not.toHaveProperty('refresh_token');
+  });
+
+  it('does not persist a RefreshToken record for a machine client', async () => {
+    await request(app.getHttpServer())
+      .post('/oidc/token')
+      .set('Authorization', buildBasicAuthHeader(clientId, clientSecret))
+      .type('form')
+      .send({ grant_type: 'client_credentials', scope: 'read:credentials' })
+      .expect(200);
+
+    const rows = await dataSource.query<Array<{ count: string }>>(
+      `SELECT COUNT(*)::text AS count FROM oidc_model WHERE model_name = 'RefreshToken'`,
+    );
+
+    expect(Number(rows[0]?.count ?? 0)).toBe(0);
+  });
+
+  /**
+   * The refresh_token grant is listed as serviceable so oidc-provider can
+   * consume refresh tokens once AU-02 (#35) issues them, but a machine client
+   * must not be able to ask for one directly.
+   */
+  it('rejects a refresh_token grant request from a client_credentials client', async () => {
+    const response = await request(app.getHttpServer())
+      .post('/oidc/token')
+      .set('Authorization', buildBasicAuthHeader(clientId, clientSecret))
+      .type('form')
+      .send({ grant_type: 'refresh_token', refresh_token: 'not-a-real-token' });
+
+    expect(response.status).toBeGreaterThanOrEqual(400);
+
+    const body = response.body as {
+      error?: string;
+      error_description?: string;
+    };
+
+    // The grant itself is registered (a missing grant would answer
+    // `unsupported_grant_type`); it is this client that may not use it.
+    expect(body.error).not.toBe('unsupported_grant_type');
+    expect(body.error_description).toBe(
+      'requested grant type is not allowed for this client',
+    );
+  });
 });

@@ -18,9 +18,22 @@ export {
   OidcProviderService,
   buildOidcConfiguration,
   applyClientSecretHashComparator,
+  resolveRefreshTokenTtl,
 } from './oidc-provider.service';
 export type { ClientExtraMetadata } from './oidc-provider.service';
 export { OidcMountService } from './oidc-mount.service';
 export { OidcModelPurgeRepository } from './oidc-model-purge.repository';
 export type { PurgeModelCount } from './oidc-model-purge.repository';
 export { OidcModelPurgeService } from './oidc-model-purge.service';
+export { OidcAccountSessionModule } from './oidc-account-session.module';
+export {
+  OidcAccountSessionRepository,
+  ACCOUNT_BOUND_MODELS,
+  SESSION_MODEL,
+} from './oidc-account-session.repository';
+export type {
+  AccountSession,
+  DeletedModelCount,
+} from './oidc-account-session.repository';
+export { SessionLimitService } from './session-limit.service';
+export type { SessionLimitResult } from './session-limit.service';

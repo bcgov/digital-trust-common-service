@@ -19,6 +19,11 @@ import {
 @Index('idx_oidc_model_grant_id', ['modelName', 'grantId'])
 @Index('idx_oidc_model_user_code', ['modelName', 'userCode'])
 @Index('idx_oidc_model_uid', ['modelName', 'uid'])
+// Partial, matching migration 000013. Declared with the same `WHERE` clause
+// so a future generated migration does not see a spurious index diff.
+@Index('idx_oidc_model_account_id', ['modelName', 'accountId'], {
+  where: 'account_id IS NOT NULL',
+})
 @Index('idx_oidc_model_expires_at', ['expiresAt'])
 export class OidcModel {
   @ApiProperty({
@@ -72,6 +77,14 @@ export class OidcModel {
   })
   @Column({ type: 'varchar', length: 255, nullable: true })
   public uid?: string | null;
+
+  @ApiProperty({
+    description: 'The account (user) this record belongs to, if any',
+    required: false,
+    nullable: true,
+  })
+  @Column({ name: 'account_id', type: 'varchar', length: 255, nullable: true })
+  public accountId?: string | null;
 
   @ApiProperty({
     description: 'When this record expires and becomes eligible for purge',
