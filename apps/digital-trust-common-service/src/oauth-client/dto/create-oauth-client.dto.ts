@@ -1,5 +1,7 @@
+import { OAUTH_CLIENT_ALLOWED_ROLES } from '@app/auth';
 import {
   IsArray,
+  IsIn,
   IsOptional,
   IsString,
   IsUUID,
@@ -18,6 +20,11 @@ export class CreateOAuthClientDto {
   @IsArray()
   @IsString({ each: true })
   public scopes?: string[];
+
+  @IsOptional()
+  @IsArray()
+  @IsIn([...OAUTH_CLIENT_ALLOWED_ROLES], { each: true })
+  public roles?: string[];
 
   @IsOptional()
   @IsArray()

@@ -4,11 +4,18 @@ import { createServer } from 'http';
 import { tmpdir } from 'os';
 import { join } from 'path';
 
+import { JwtGuard, RequireScopes, ScopeGuard, AuthModule } from '@app/auth';
 import { AppDataSource } from '@app/database/data-source';
 import { buildSslConfig } from '@app/database/ssl.util';
 import { OidcMountService } from '@app/oidc';
 import { PgBossService } from '@app/pg-boss';
-import { INestApplication } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  INestApplication,
+  Module,
+  UseGuards,
+} from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { hash, argon2i } from 'argon2';
 import request from 'supertest';
@@ -18,7 +25,30 @@ import { DataSource } from 'typeorm';
 import { issueTokenAndVerify } from '../../test/support/oidc-test-helpers';
 import { configureApp } from '../app.config';
 import { AppModule } from '../app.module';
-import { API_BASE_PATH } from '../common/constants/api-version.constants';
+import {
+  API_BASE_PATH,
+  API_VERSION,
+} from '../common/constants/api-version.constants';
+
+/**
+ * Registered only in this integration module to exercise @RequireScopes without
+ * rolling guards out to product controllers (#165).
+ */
+@Controller({ path: 'integration/scope-check', version: API_VERSION })
+@UseGuards(JwtGuard, ScopeGuard)
+class ScopeCheckIntegrationController {
+  @Get('offer')
+  @RequireScopes('credentials:offer')
+  public checkOfferScope(): { ok: true } {
+    return { ok: true };
+  }
+}
+
+@Module({
+  imports: [AuthModule],
+  controllers: [ScopeCheckIntegrationController],
+})
+class ScopeCheckIntegrationModule {}
 
 async function getFreePort(): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -46,14 +76,22 @@ async function getFreePort(): Promise<number> {
   });
 }
 
-describe('JwtGuard (integration)', () => {
+describe('JwtGuard and ScopeGuard (integration)', () => {
   let app: INestApplication<App>;
   let dataSource: DataSource;
   let keysDir: string;
   let listenPort: number;
   let tenantId: string;
-  let clientId: string;
-  const clientSecret = 'jwt-guard-integration-secret';
+  let tenantClientId: string;
+  let platformAdminClientId: string;
+  let logsReadClientId: string;
+  let tenantSuperuserClientId: string;
+  const tenantClientSecret = 'jwt-guard-integration-secret';
+  const platformAdminClientSecret = 'platform-admin-integration-secret';
+  const logsReadClientSecret = 'logs-read-integration-secret';
+  const tenantSuperuserClientSecret = 'tenant-superuser-integration-secret';
+
+  const scopeCheckPath = `${API_BASE_PATH}/integration/scope-check/offer`;
 
   const mockBoss = {
     start: jest.fn().mockResolvedValue(undefined),
@@ -93,25 +131,86 @@ describe('JwtGuard (integration)', () => {
     );
     tenantId = tenants[0].id;
 
-    clientId = `jwt-guard-client-${randomUUID()}`;
-    const clientSecretHash = await hash(clientSecret, { type: argon2i });
+    tenantClientId = `jwt-guard-client-${randomUUID()}`;
+    platformAdminClientId = `platform-admin-client-${randomUUID()}`;
+    const tenantClientSecretHash = await hash(tenantClientSecret, {
+      type: argon2i,
+    });
+    const platformAdminSecretHash = await hash(platformAdminClientSecret, {
+      type: argon2i,
+    });
 
     await dataSource.query(
       `INSERT INTO oauth_client (
-         tenant_id, client_id, client_secret_hash, name, scopes, grant_types
-       ) VALUES ($1, $2, $3, $4, $5, $6)`,
+         tenant_id, client_id, client_secret_hash, name, scopes, grant_types, roles
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
       [
         tenantId,
-        clientId,
-        clientSecretHash,
+        tenantClientId,
+        tenantClientSecretHash,
         'JWT Guard Integration Client',
-        ['read:credentials'],
+        ['credentials:offer'],
         ['client_credentials'],
+        [],
+      ],
+    );
+
+    await dataSource.query(
+      `INSERT INTO oauth_client (
+         tenant_id, client_id, client_secret_hash, name, scopes, grant_types, roles
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [
+        tenantId,
+        platformAdminClientId,
+        platformAdminSecretHash,
+        'Platform Admin Integration Client',
+        ['credentials:offer'],
+        ['client_credentials'],
+        ['platform-admin'],
+      ],
+    );
+
+    logsReadClientId = `logs-read-client-${randomUUID()}`;
+    tenantSuperuserClientId = `tenant-superuser-client-${randomUUID()}`;
+    const logsReadSecretHash = await hash(logsReadClientSecret, {
+      type: argon2i,
+    });
+    const tenantSuperuserSecretHash = await hash(tenantSuperuserClientSecret, {
+      type: argon2i,
+    });
+
+    await dataSource.query(
+      `INSERT INTO oauth_client (
+         tenant_id, client_id, client_secret_hash, name, scopes, grant_types, roles
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [
+        tenantId,
+        logsReadClientId,
+        logsReadSecretHash,
+        'Logs Read Integration Client',
+        ['logs:read'],
+        ['client_credentials'],
+        [],
+      ],
+    );
+
+    await dataSource.query(
+      `INSERT INTO oauth_client (
+         tenant_id, client_id, client_secret_hash, name, scopes, grant_types, roles
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [
+        tenantId,
+        tenantSuperuserClientId,
+        tenantSuperuserSecretHash,
+        'Tenant Superuser Integration Client',
+        ['tenants:admin'],
+        ['client_credentials'],
+        [],
       ],
     );
 
     const moduleFixture: TestingModule = await Test.createTestingModule({
-      imports: [AppModule],
+      imports: [AppModule, ScopeCheckIntegrationModule],
     })
       .overrideProvider(PgBossService)
       .useValue({
@@ -150,27 +249,49 @@ describe('JwtGuard (integration)', () => {
     });
   });
 
-  it('accepts a valid app-issued token before ScopeGuard enforcement lands', async () => {
+  it('returns 403 when a valid token lacks the platform-admin role', async () => {
     const { token } = await issueTokenAndVerify(
       app.getHttpServer(),
-      clientId,
-      clientSecret,
-      'read:credentials',
+      tenantClientId,
+      tenantClientSecret,
+      'credentials:offer',
+      process.env.OIDC_ISSUER,
+    );
+
+    const response = await request(app.getHttpServer())
+      .get(`${API_BASE_PATH}/admin/operations/stats`)
+      .set('Authorization', `Bearer ${token.accessToken}`)
+      .expect(403);
+
+    expect(response.body).toMatchObject({
+      error: {
+        code: 'INSUFFICIENT_SCOPE',
+        required_roles: ['platform-admin'],
+      },
+    });
+  });
+
+  it('allows a platform-admin token through ScopeGuard', async () => {
+    const { token } = await issueTokenAndVerify(
+      app.getHttpServer(),
+      platformAdminClientId,
+      platformAdminClientSecret,
+      'credentials:offer',
       process.env.OIDC_ISSUER,
     );
 
     await request(app.getHttpServer())
       .get(`${API_BASE_PATH}/admin/operations/stats`)
       .set('Authorization', `Bearer ${token.accessToken}`)
-      .expect(501);
+      .expect(200);
   });
 
   it('returns 401 for a tampered bearer token', async () => {
     const { token } = await issueTokenAndVerify(
       app.getHttpServer(),
-      clientId,
-      clientSecret,
-      'read:credentials',
+      tenantClientId,
+      tenantClientSecret,
+      'credentials:offer',
       process.env.OIDC_ISSUER,
     );
 
@@ -182,6 +303,62 @@ describe('JwtGuard (integration)', () => {
       .set('Authorization', `Bearer ${tamperedToken}`)
       .expect(401);
 
-    expect(response.headers['www-authenticate']).toMatch(/invalid_token/);
+    expect(response.body).toMatchObject({
+      error: { code: 'AUTHENTICATION_REQUIRED' },
+    });
+  });
+
+  it('allows a token with the required scope through @RequireScopes', async () => {
+    const { token } = await issueTokenAndVerify(
+      app.getHttpServer(),
+      tenantClientId,
+      tenantClientSecret,
+      'credentials:offer',
+      process.env.OIDC_ISSUER,
+    );
+
+    await request(app.getHttpServer())
+      .get(scopeCheckPath)
+      .set('Authorization', `Bearer ${token.accessToken}`)
+      .expect(200)
+      .expect({ ok: true });
+  });
+
+  it('returns 403 when @RequireScopes is not satisfied', async () => {
+    const { token } = await issueTokenAndVerify(
+      app.getHttpServer(),
+      logsReadClientId,
+      logsReadClientSecret,
+      'logs:read',
+      process.env.OIDC_ISSUER,
+    );
+
+    const response = await request(app.getHttpServer())
+      .get(scopeCheckPath)
+      .set('Authorization', `Bearer ${token.accessToken}`)
+      .expect(403);
+
+    expect(response.body).toMatchObject({
+      error: {
+        code: 'INSUFFICIENT_SCOPE',
+        required_scopes: ['credentials:offer'],
+      },
+    });
+  });
+
+  it('grants Level 2 scopes when the token has tenants:admin', async () => {
+    const { token } = await issueTokenAndVerify(
+      app.getHttpServer(),
+      tenantSuperuserClientId,
+      tenantSuperuserClientSecret,
+      'tenants:admin',
+      process.env.OIDC_ISSUER,
+    );
+
+    await request(app.getHttpServer())
+      .get(scopeCheckPath)
+      .set('Authorization', `Bearer ${token.accessToken}`)
+      .expect(200)
+      .expect({ ok: true });
   });
 });

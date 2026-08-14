@@ -22,7 +22,8 @@ describe('OAuthClientController', () => {
     clientId: 'client_abc123',
     clientSecretHash: 'hashed_secret',
     name: 'Test Client',
-    scopes: ['read:credentials'],
+    scopes: ['credentials:offer'],
+    roles: [],
     redirectUris: ['https://example.com/callback'],
     grantTypes: ['client_credentials'],
     createdBy: '123e4567-e89b-12d3-a456-426614174002',
@@ -37,6 +38,7 @@ describe('OAuthClientController', () => {
     clientId: mockOAuthClient.clientId,
     name: mockOAuthClient.name,
     scopes: mockOAuthClient.scopes,
+    roles: mockOAuthClient.roles,
     redirectUris: mockOAuthClient.redirectUris,
     grantTypes: mockOAuthClient.grantTypes,
     createdBy: mockOAuthClient.createdBy,
@@ -139,7 +141,7 @@ describe('OAuthClientController', () => {
     it('should update an OAuth client', async () => {
       const dto: UpdateOAuthClientDto = {
         name: 'Updated Client',
-        scopes: ['read:credentials', 'write:credentials'],
+        scopes: ['credentials:offer', 'credentials:verify'],
       };
 
       const updatedClient: OAuthClient = {
@@ -153,7 +155,10 @@ describe('OAuthClientController', () => {
 
       expect(mockUpdate).toHaveBeenCalledWith(mockOAuthClient.id, dto);
       expect(result.name).toBe('Updated Client');
-      expect(result.scopes).toEqual(['read:credentials', 'write:credentials']);
+      expect(result.scopes).toEqual([
+        'credentials:offer',
+        'credentials:verify',
+      ]);
     });
 
     it('should update only specified fields', async () => {

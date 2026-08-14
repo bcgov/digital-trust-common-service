@@ -1,0 +1,61 @@
+import {
+  ALL_TENANT_SCOPES,
+  APP_JWT_BEARER_SCHEME,
+  ApiJwtAuth,
+  AuthModule,
+  AuthenticationRequiredException,
+  CurrentAuth,
+  InsufficientScopeException,
+  InsufficientScopeExceptionFilter,
+  JwksCacheService,
+  JwksKeyNotFoundError,
+  JwtAuthExceptionFilter,
+  JwtGuard,
+  JwtValidationService,
+  LEVEL2_SCOPES,
+  LEVEL3_SCOPES,
+  OIDC_SCOPE_ALLOWLIST,
+  OAUTH_CLIENT_ALLOWED_ROLES,
+  PLATFORM_ADMIN_ROLE,
+  RequireRoles,
+  RequireScopes,
+  ScopeAuthorizationService,
+  ScopeGuard,
+  TENANT_SUPERUSER_SCOPE,
+  TenantGuard,
+  extractBearerToken,
+  normalizeAuthPayload,
+  verifyAccessToken,
+} from './index';
+
+describe('auth package index', () => {
+  it('re-exports AU-03 and AU-04 public symbols', () => {
+    expect(APP_JWT_BEARER_SCHEME).toBeDefined();
+    expect(ALL_TENANT_SCOPES.length).toBeGreaterThan(0);
+    expect(LEVEL2_SCOPES.length).toBeGreaterThan(0);
+    expect(LEVEL3_SCOPES.length).toBeGreaterThan(0);
+    expect(OIDC_SCOPE_ALLOWLIST).toContain('openid');
+    expect(PLATFORM_ADMIN_ROLE).toBe('platform-admin');
+    expect(OAUTH_CLIENT_ALLOWED_ROLES).toContain(PLATFORM_ADMIN_ROLE);
+    expect(TENANT_SUPERUSER_SCOPE).toBe('tenants:admin');
+    expect(AuthModule).toBeDefined();
+    expect(CurrentAuth).toBeDefined();
+    expect(ApiJwtAuth).toBeDefined();
+    expect(RequireRoles).toBeDefined();
+    expect(RequireScopes).toBeDefined();
+    expect(AuthenticationRequiredException).toBeDefined();
+    expect(InsufficientScopeException).toBeDefined();
+    expect(InsufficientScopeExceptionFilter).toBeDefined();
+    expect(JwtAuthExceptionFilter).toBeDefined();
+    expect(JwtGuard).toBeDefined();
+    expect(ScopeGuard).toBeDefined();
+    expect(TenantGuard).toBeDefined();
+    expect(JwksCacheService).toBeDefined();
+    expect(JwksKeyNotFoundError).toBeDefined();
+    expect(JwtValidationService).toBeDefined();
+    expect(extractBearerToken).toBeDefined();
+    expect(normalizeAuthPayload).toBeDefined();
+    expect(verifyAccessToken).toBeDefined();
+    expect(ScopeAuthorizationService).toBeDefined();
+  });
+});

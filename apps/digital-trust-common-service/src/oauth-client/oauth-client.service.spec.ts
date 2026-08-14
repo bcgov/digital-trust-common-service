@@ -32,9 +32,10 @@ describe('OAuthClientService', () => {
     clientId: 'client_abc123',
     clientSecretHash: 'hashed_secret',
     name: 'Test Client',
-    scopes: ['read:credentials'],
+    scopes: ['credentials:offer'],
     redirectUris: ['https://example.com/callback'],
     grantTypes: ['client_credentials'],
+    roles: [],
     createdBy: '123e4567-e89b-12d3-a456-426614174002',
     createdAt: new Date(),
     tenant: undefined as any,
@@ -161,6 +162,55 @@ describe('OAuthClientService', () => {
         }),
       );
     });
+
+    it('should persist roles when provided on create', async () => {
+      mockCreate.mockResolvedValue({
+        ...mockOAuthClient,
+        roles: ['platform-admin'],
+      });
+
+      await service.createClient({
+        tenantId: mockOAuthClient.tenantId,
+        name: mockOAuthClient.name,
+        roles: ['platform-admin'],
+        grantTypes: ['client_credentials'],
+      });
+
+      expect(mockCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          roles: ['platform-admin'],
+        }),
+      );
+    });
+
+    it('should reject unknown roles on create', async () => {
+      await expect(
+        service.createClient({
+          tenantId: mockOAuthClient.tenantId,
+          name: mockOAuthClient.name,
+          roles: ['superuser'],
+          grantTypes: ['client_credentials'],
+        }),
+      ).rejects.toThrow(BadRequestException);
+      expect(mockCreate).not.toHaveBeenCalled();
+    });
+
+    it('should reject roles when grant types are not client_credentials-only', async () => {
+      mockGetConfig.mockReturnValue({
+        grantTypes: ['client_credentials', 'authorization_code'],
+      });
+      service = await createService();
+
+      await expect(
+        service.createClient({
+          tenantId: mockOAuthClient.tenantId,
+          name: mockOAuthClient.name,
+          roles: ['platform-admin'],
+          grantTypes: ['client_credentials', 'authorization_code'],
+        }),
+      ).rejects.toThrow(BadRequestException);
+      expect(mockCreate).not.toHaveBeenCalled();
+    });
   });
 
   describe('findByClientId', () => {
@@ -280,19 +330,117 @@ describe('OAuthClientService', () => {
       const updatedClient = {
         ...mockOAuthClient,
         name: 'Updated Client',
-        scopes: ['read:credentials', 'write:credentials'],
+        scopes: ['credentials:offer', 'credentials:verify'],
       };
       mockUpdate.mockResolvedValue(updatedClient);
 
       const result = await service.update(mockOAuthClient.id, {
         name: 'Updated Client',
-        scopes: ['read:credentials', 'write:credentials'],
+        scopes: ['credentials:offer', 'credentials:verify'],
       });
 
       expect(mockFindById).toHaveBeenCalledWith(mockOAuthClient.id);
       expect(mockUpdate).toHaveBeenCalled();
       expect(result.name).toBe('Updated Client');
-      expect(result.scopes).toEqual(['read:credentials', 'write:credentials']);
+      expect(result.scopes).toEqual([
+        'credentials:offer',
+        'credentials:verify',
+      ]);
+    });
+
+    it('should update roles when provided', async () => {
+      mockFindById.mockResolvedValue(mockOAuthClient);
+      const updatedClient = {
+        ...mockOAuthClient,
+        roles: ['platform-admin'],
+      };
+      mockUpdate.mockResolvedValue(updatedClient);
+
+      const result = await service.update(mockOAuthClient.id, {
+        roles: ['platform-admin'],
+      });
+
+      expect(mockUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          roles: ['platform-admin'],
+        }),
+      );
+      expect(result.roles).toEqual(['platform-admin']);
+    });
+
+    it('should reject unknown roles on update', async () => {
+      mockFindById.mockResolvedValue(mockOAuthClient);
+
+      await expect(
+        service.update(mockOAuthClient.id, {
+          roles: ['superuser'],
+        }),
+      ).rejects.toThrow(BadRequestException);
+      expect(mockUpdate).not.toHaveBeenCalled();
+    });
+
+    it('should reject adding interactive grants to a client with roles', async () => {
+      mockGetConfig.mockReturnValue({
+        grantTypes: ['client_credentials', 'authorization_code'],
+      });
+      service = await createService();
+      mockFindById.mockResolvedValue({
+        ...mockOAuthClient,
+        roles: ['platform-admin'],
+        grantTypes: ['client_credentials'],
+      });
+
+      await expect(
+        service.update(mockOAuthClient.id, {
+          grantTypes: ['client_credentials', 'authorization_code'],
+        }),
+      ).rejects.toThrow(BadRequestException);
+      expect(mockUpdate).not.toHaveBeenCalled();
+    });
+
+    it('should reject adding roles to a non-machine client', async () => {
+      mockGetConfig.mockReturnValue({
+        grantTypes: ['client_credentials', 'authorization_code'],
+      });
+      service = await createService();
+      mockFindById.mockResolvedValue({
+        ...mockOAuthClient,
+        roles: [],
+        grantTypes: ['authorization_code'],
+      });
+
+      await expect(
+        service.update(mockOAuthClient.id, {
+          roles: ['platform-admin'],
+        }),
+      ).rejects.toThrow(BadRequestException);
+      expect(mockUpdate).not.toHaveBeenCalled();
+    });
+
+    it('should update redirectUris and grantTypes when provided', async () => {
+      mockFindById.mockResolvedValue(mockOAuthClient);
+      const updatedClient = {
+        ...mockOAuthClient,
+        redirectUris: ['https://updated.example.com/callback'],
+        grantTypes: ['client_credentials'],
+      };
+      mockUpdate.mockResolvedValue(updatedClient);
+
+      const result = await service.update(mockOAuthClient.id, {
+        redirectUris: ['https://updated.example.com/callback'],
+        grantTypes: ['client_credentials'],
+      });
+
+      expect(mockUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          redirectUris: ['https://updated.example.com/callback'],
+          grantTypes: ['client_credentials'],
+        }),
+      );
+      expect(result.redirectUris).toEqual([
+        'https://updated.example.com/callback',
+      ]);
+      expect(result.grantTypes).toEqual(['client_credentials']);
     });
 
     it('should preserve existing values when partial update is provided', async () => {
