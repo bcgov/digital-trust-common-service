@@ -1,9 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 
-import {
-  AccountSession,
-  OidcAccountSessionRepository,
-} from './oidc-account-session.repository';
+import { OidcAccountSessionRepository } from './oidc-account-session.repository';
 import { OidcConfigService } from './oidc-config.service';
 
 export interface SessionLimitResult {
@@ -60,35 +57,34 @@ export class SessionLimitService {
       };
     }
 
-    const sessions = await this.accountSessions.findActiveSessions(accountId);
-    // The new session is already persisted, so it is included in this count;
-    // the account is over the limit only when the total exceeds it.
-    const surplus = sessions.length - limit;
+    const priorSessionCount =
+      await this.accountSessions.countActiveSessions(accountId);
 
-    if (surplus <= 0) {
+    const evicted = await this.accountSessions.claimSurplusSessions(
+      accountId,
+      limit,
+      newSessionId,
+    );
+
+    if (evicted.length === 0) {
       return {
-        priorSessionCount: sessions.length,
+        priorSessionCount,
         evictedSessionCount: 0,
         limit,
       };
     }
 
-    // Oldest first, minus the session that just logged in. A surplus greater
-    // than one is possible if the limit was lowered, or if concurrent logins
-    // raced past the cap.
-    const toEvict: AccountSession[] = sessions
-      .filter((session) => session.oidcId !== newSessionId)
-      .slice(0, surplus);
-
-    await this.accountSessions.deleteSessions(toEvict);
+    // The session rows are already gone; this clears the grants and tokens
+    // hanging off them, which are not reachable from the session id alone.
+    await this.accountSessions.deleteSessions(evicted);
 
     this.logger.log(
-      `Evicted ${toEvict.length} session(s) for an account exceeding the concurrent session limit of ${limit}`,
+      `Evicted ${evicted.length} session(s) for an account exceeding the concurrent session limit of ${limit}`,
     );
 
     return {
-      priorSessionCount: sessions.length,
-      evictedSessionCount: toEvict.length,
+      priorSessionCount,
+      evictedSessionCount: evicted.length,
       limit,
     };
   }

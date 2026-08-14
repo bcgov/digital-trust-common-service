@@ -51,6 +51,22 @@ describe('AddOauthClientRefreshTokenTtl migration', () => {
     );
   });
 
+  it('adds the constraint NOT VALID and validates it separately', async () => {
+    const { runner, queries } = createQueryRunner();
+
+    await new AddOauthClientRefreshTokenTtl1786567439996().up(runner as never);
+
+    const addIndex = queries.findIndex((query) =>
+      query.includes('ADD CONSTRAINT'),
+    );
+    const validateIndex = queries.findIndex((query) =>
+      query.includes('VALIDATE CONSTRAINT'),
+    );
+
+    expect(queries[addIndex]).toContain('NOT VALID');
+    expect(validateIndex).toBeGreaterThan(addIndex);
+  });
+
   it('drops the constraint before the column on revert', async () => {
     const { runner, queries } = createQueryRunner();
 

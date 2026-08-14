@@ -62,6 +62,7 @@ describe('AuditLogRepository', () => {
       create: jest.fn((value: Partial<AuditLog>) => value),
       findOne: jest.fn().mockResolvedValue(entry),
       createQueryBuilder: jest.fn().mockReturnValue(mockQb),
+      manager: { createQueryBuilder: jest.fn().mockReturnValue(mockQb) },
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -94,6 +95,16 @@ describe('AuditLogRepository', () => {
     expect(mockQb.values).toHaveBeenCalledWith(payload);
     expect(mockQb.returning).toHaveBeenCalledWith('*');
     expect(mockTypeOrmRepo.create).toHaveBeenCalledWith(entry);
+  });
+
+  it('uses a supplied manager so the write joins the caller transaction', async () => {
+    const txnQb = { ...mockQb };
+    const manager = { createQueryBuilder: jest.fn().mockReturnValue(txnQb) };
+
+    await repository.insert({ tenantId: entry.tenantId }, manager as never);
+
+    expect(manager.createQueryBuilder).toHaveBeenCalled();
+    expect(mockTypeOrmRepo.manager.createQueryBuilder).not.toHaveBeenCalled();
   });
 
   it('finds by tenant and id', async () => {

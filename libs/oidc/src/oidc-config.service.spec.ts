@@ -135,6 +135,20 @@ describe('OidcConfigService', () => {
       expect(service.getConfig().maxConcurrentSessions).toBe(0);
     });
 
+    it('falls back to the default when the concurrent session limit is blank', async () => {
+      // An empty env var reads as '', and Number('') is 0, which would
+      // otherwise pass as an explicit "disabled" and switch the cap off.
+      await buildModule({ OIDC_MAX_CONCURRENT_SESSIONS: '' });
+
+      expect(service.getConfig().maxConcurrentSessions).toBe(5);
+    });
+
+    it('falls back to the default when a TTL is blank', async () => {
+      await buildModule({ OIDC_REFRESH_TOKEN_TTL_SECONDS: '   ' });
+
+      expect(service.getConfig().refreshTokenTtlSeconds).toBe(28800);
+    });
+
     it('rejects a negative concurrent session limit', async () => {
       await buildModule({ OIDC_MAX_CONCURRENT_SESSIONS: '-1' });
 

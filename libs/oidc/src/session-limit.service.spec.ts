@@ -9,21 +9,23 @@ import { SessionLimitService } from './session-limit.service';
 
 describe('SessionLimitService', () => {
   let service: SessionLimitService;
-  let findActiveSessions: jest.Mock;
+  let countActiveSessions: jest.Mock;
+  let claimSurplusSessions: jest.Mock;
   let deleteSessions: jest.Mock;
   let maxConcurrentSessions: number;
 
-  function session(oidcId: string, minutesOld: number): AccountSession {
+  function session(oidcId: string): AccountSession {
     return {
       oidcId,
-      createdAt: new Date(Date.now() - minutesOld * 60_000),
+      createdAt: new Date(),
       grantIds: [`grant-for-${oidcId}`],
     };
   }
 
   beforeEach(async () => {
     maxConcurrentSessions = 5;
-    findActiveSessions = jest.fn().mockResolvedValue([]);
+    countActiveSessions = jest.fn().mockResolvedValue(0);
+    claimSurplusSessions = jest.fn().mockResolvedValue([]);
     deleteSessions = jest.fn().mockResolvedValue([]);
 
     const module: TestingModule = await Test.createTestingModule({
@@ -31,7 +33,11 @@ describe('SessionLimitService', () => {
         SessionLimitService,
         {
           provide: OidcAccountSessionRepository,
-          useValue: { findActiveSessions, deleteSessions },
+          useValue: {
+            countActiveSessions,
+            claimSurplusSessions,
+            deleteSessions,
+          },
         },
         {
           provide: OidcConfigService,
@@ -43,8 +49,8 @@ describe('SessionLimitService', () => {
     service = module.get(SessionLimitService);
   });
 
-  it('does nothing when the account is under the limit', async () => {
-    findActiveSessions.mockResolvedValue([session('s1', 10), session('s2', 5)]);
+  it('reports no eviction when the account is within the limit', async () => {
+    countActiveSessions.mockResolvedValue(2);
 
     const result = await service.enforce('user-1', 's2');
 
@@ -56,118 +62,41 @@ describe('SessionLimitService', () => {
     });
   });
 
-  it('does nothing when the account is exactly at the limit', async () => {
-    findActiveSessions.mockResolvedValue([
-      session('s1', 50),
-      session('s2', 40),
-      session('s3', 30),
-      session('s4', 20),
-      session('s5', 10),
-    ]);
+  it('passes the limit and the new session id through to the claim', async () => {
+    await service.enforce('user-1', 'new');
 
-    const result = await service.enforce('user-1', 's5');
-
-    expect(deleteSessions).not.toHaveBeenCalled();
-    expect(result.evictedSessionCount).toBe(0);
+    expect(claimSurplusSessions).toHaveBeenCalledWith('user-1', 5, 'new');
   });
 
-  it('evicts the oldest session when the new login exceeds the limit', async () => {
-    findActiveSessions.mockResolvedValue([
-      session('oldest', 60),
-      session('s2', 50),
-      session('s3', 40),
-      session('s4', 30),
-      session('s5', 20),
-      session('new', 0),
-    ]);
+  it('clears the grants and tokens of every claimed session', async () => {
+    countActiveSessions.mockResolvedValue(7);
+    claimSurplusSessions.mockResolvedValue([session('old'), session('older')]);
 
     const result = await service.enforce('user-1', 'new');
 
     expect(deleteSessions).toHaveBeenCalledTimes(1);
     expect(
-      deleteSessions.mock.calls[0][0].map((s: AccountSession) => s.oidcId),
-    ).toEqual(['oldest']);
-    expect(result.evictedSessionCount).toBe(1);
-  });
-
-  it('never evicts the session that just logged in', async () => {
-    // The new session is the oldest by timestamp (e.g. clock skew across
-    // pods), so ordering alone would pick it first.
-    findActiveSessions.mockResolvedValue([
-      session('new', 99),
-      session('s1', 50),
-      session('s2', 40),
-      session('s3', 30),
-      session('s4', 20),
-      session('s5', 10),
-    ]);
-
-    await service.enforce('user-1', 'new');
-
-    const evicted = deleteSessions.mock.calls[0][0].map(
-      (s: AccountSession) => s.oidcId,
-    );
-    expect(evicted).not.toContain('new');
-    expect(evicted).toEqual(['s1']);
-  });
-
-  it('evicts several sessions at once when the limit was lowered', async () => {
-    maxConcurrentSessions = 2;
-    findActiveSessions.mockResolvedValue([
-      session('s1', 60),
-      session('s2', 50),
-      session('s3', 40),
-      session('s4', 30),
-      session('new', 0),
-    ]);
-
-    const result = await service.enforce('user-1', 'new');
-
-    expect(
-      deleteSessions.mock.calls[0][0].map((s: AccountSession) => s.oidcId),
-    ).toEqual(['s1', 's2', 's3']);
-    expect(result.evictedSessionCount).toBe(3);
-  });
-
-  it('evicts grants and tokens along with the session', async () => {
-    maxConcurrentSessions = 1;
-    findActiveSessions.mockResolvedValue([
-      session('old', 60),
-      session('new', 0),
-    ]);
-
-    await service.enforce('user-1', 'new');
-
-    expect(deleteSessions.mock.calls[0][0][0].grantIds).toEqual([
-      'grant-for-old',
-    ]);
+      deleteSessions.mock.calls[0][0].map((s: AccountSession) => s.grantIds),
+    ).toEqual([['grant-for-old'], ['grant-for-older']]);
+    expect(result.evictedSessionCount).toBe(2);
   });
 
   it('is disabled when the limit is zero', async () => {
     maxConcurrentSessions = 0;
-    findActiveSessions.mockResolvedValue([
-      session('s1', 60),
-      session('s2', 50),
-    ]);
 
     const result = await service.enforce('user-1', 's2');
 
-    expect(findActiveSessions).not.toHaveBeenCalled();
+    expect(countActiveSessions).not.toHaveBeenCalled();
+    expect(claimSurplusSessions).not.toHaveBeenCalled();
     expect(deleteSessions).not.toHaveBeenCalled();
     expect(result.evictedSessionCount).toBe(0);
   });
 
   it('enforces the limit even when no new session id is supplied', async () => {
     maxConcurrentSessions = 1;
-    findActiveSessions.mockResolvedValue([
-      session('s1', 60),
-      session('s2', 10),
-    ]);
 
     await service.enforce('user-1');
 
-    expect(
-      deleteSessions.mock.calls[0][0].map((s: AccountSession) => s.oidcId),
-    ).toEqual(['s1']);
+    expect(claimSurplusSessions).toHaveBeenCalledWith('user-1', 1, undefined);
   });
 });

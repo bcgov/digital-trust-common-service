@@ -2,7 +2,9 @@ import { OAUTH_CLIENT_ALLOWED_ROLES } from '@app/auth';
 import {
   IsArray,
   IsIn,
+  IsInt,
   IsOptional,
+  IsPositive,
   IsString,
   IsUUID,
   MaxLength,
@@ -35,6 +37,11 @@ export class CreateOAuthClientDto {
   @IsArray()
   @IsString({ each: true })
   public grantTypes?: string[];
+
+  @IsOptional()
+  @IsInt()
+  @IsPositive()
+  public refreshTokenTtlSeconds?: number;
 
   @IsOptional()
   @IsUUID()

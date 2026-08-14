@@ -151,6 +151,7 @@ export class OAuthClientController {
       roles: client.roles,
       redirectUris: client.redirectUris,
       grantTypes: client.grantTypes,
+      refreshTokenTtlSeconds: client.refreshTokenTtlSeconds ?? null,
       createdBy: client.createdBy,
       createdAt: client.createdAt,
       revokedAt: client.revokedAt,

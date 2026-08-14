@@ -16,21 +16,20 @@ export const migrationName = 'AddOidcModelAccountId';
  * Not every model kind carries an `accountId` (`ClientCredentials`,
  * `Interaction` before login completes, `ReplayDetection`), so the column is
  * nullable and the index is partial.
+ *
+ * Schema only, deliberately. `ADD COLUMN` with no default is metadata-only on
+ * PG 11+, and the partial index matches zero rows while every `account_id` is
+ * still NULL, so both statements finish in milliseconds. The ACCESS EXCLUSIVE
+ * lock this takes on `oidc_model` blocks reads as well as writes, and that
+ * table is on the path of every token, session and interaction write, so
+ * nothing slow may share a transaction with it. The payload backfill runs
+ * separately in `000015`.
  */
 export class AddOidcModelAccountId1786486033339 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
       ALTER TABLE oidc_model
         ADD COLUMN account_id VARCHAR(255);
-    `);
-
-    // Backfill from the JSONB payload so any session or grant already live at
-    // deploy time stays reachable by the account-scoped queries, rather than
-    // being invisible to the session cap and to force-logout until it expires.
-    await queryRunner.query(`
-      UPDATE oidc_model
-        SET account_id = payload->>'accountId'
-        WHERE payload->>'accountId' IS NOT NULL;
     `);
 
     // Partial index: only a minority of rows carry an account_id, and every

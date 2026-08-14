@@ -164,7 +164,7 @@ export class OidcConfigService {
   private getPositiveInt(key: string, fallback: number): number {
     const raw = this.configService.get<string>(key);
 
-    if (raw === undefined) {
+    if (raw === undefined || raw.trim() === '') {
       return fallback;
     }
 
@@ -180,11 +180,15 @@ export class OidcConfigService {
   /**
    * Like `getPositiveInt` but allows `0`, used for settings where zero means
    * "disabled" rather than an invalid value.
+   *
+   * An empty value is treated as unset. `Number('')` is `0`, which would
+   * otherwise read as an explicit "disabled" and silently switch off whatever
+   * the setting guards.
    */
   private getNonNegativeInt(key: string, fallback: number): number {
     const raw = this.configService.get<string>(key);
 
-    if (raw === undefined) {
+    if (raw === undefined || raw.trim() === '') {
       return fallback;
     }
 

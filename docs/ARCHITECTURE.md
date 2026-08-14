@@ -1004,10 +1004,12 @@ sequenceDiagram
 |----------|-------------|---------|
 | Access token | 5 min | `OIDC_ACCESS_TOKEN_TTL_SECONDS` |
 | Refresh token | 8 hours | `OIDC_REFRESH_TOKEN_TTL_SECONDS` |
-| Session | inherits refresh TTL | `OIDC_SESSION_TTL_SECONDS` |
+| Session | 8 hours idle | `OIDC_SESSION_TTL_SECONDS` |
 | Grant | 14 days | `OIDC_GRANT_TTL_SECONDS` |
 
 - **Rotation**: on by default; each use issues a new refresh token and invalidates the old one.
+- **Session TTL is idle, not absolute**: `oidc-provider` re-saves the session on every request, so an active browser session persists until the Grant expires.
+- **Max refresh chain**: 14 days. Rotation resets the refresh TTL, so the Grant is the real ceiling.
 - **Per-client refresh TTL**: `oauth_client.refresh_token_ttl_seconds`; `NULL` inherits the default.
 - **`client_credentials`**: access token only, no refresh token (RFC 6749 4.4.3).
 - **`offline_access`**: must stay in the scope allowlist or `oidc-provider` never registers the `refresh_token` grant.

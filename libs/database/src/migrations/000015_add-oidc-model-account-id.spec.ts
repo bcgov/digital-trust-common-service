@@ -38,30 +38,15 @@ describe('AddOidcModelAccountId migration', () => {
     expect(joined).toContain('WHERE account_id IS NOT NULL');
   });
 
-  it('backfills account_id from the existing JSONB payload', async () => {
+  it('does not backfill, so nothing slow shares the ALTER TABLE lock', async () => {
     const { runner, queries } = createQueryRunner();
 
     await new AddOidcModelAccountId1786486033339().up(runner as never);
 
-    const backfill = queries.find((query) => query.includes('UPDATE'));
-    expect(backfill).toContain(`SET account_id = payload->>'accountId'`);
-    expect(backfill).toContain(`WHERE payload->>'accountId' IS NOT NULL`);
-  });
-
-  it('backfills before creating the index so the index is built once', async () => {
-    const { runner, queries } = createQueryRunner();
-
-    await new AddOidcModelAccountId1786486033339().up(runner as never);
-
-    const backfillIndex = queries.findIndex((query) =>
-      query.includes('UPDATE'),
-    );
-    const createIndexIndex = queries.findIndex((query) =>
-      query.includes('CREATE INDEX'),
-    );
-
-    expect(backfillIndex).toBeGreaterThanOrEqual(0);
-    expect(createIndexIndex).toBeGreaterThan(backfillIndex);
+    // ADD COLUMN takes ACCESS EXCLUSIVE on oidc_model, held until the
+    // migration commits. A row-rewriting backfill in the same transaction
+    // turns that into an auth outage, so it lives in 000015 instead.
+    expect(queries.some((query) => query.includes('UPDATE'))).toBe(false);
   });
 
   it('drops the index and column on down', async () => {

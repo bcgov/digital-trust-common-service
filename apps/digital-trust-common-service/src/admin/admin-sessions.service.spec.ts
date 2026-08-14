@@ -1,6 +1,7 @@
 import { OidcAccountSessionRepository } from '@app/oidc/sessions';
 import { NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
+import { DataSource } from 'typeorm';
 
 import { AuditAction, AuditActorType } from '../audit-log/audit-log.entity';
 import { AuditLogService } from '../audit-log/audit-log.service';
@@ -17,6 +18,8 @@ describe('AdminSessionsService', () => {
   let tenantUsers: { findById: jest.Mock };
   let accountSessions: { deleteAllForAccount: jest.Mock };
   let auditLog: { write: jest.Mock };
+  let dataSource: { transaction: jest.Mock };
+  let manager: unknown;
 
   beforeEach(async () => {
     tenantUsers = {
@@ -34,6 +37,12 @@ describe('AdminSessionsService', () => {
       ]),
     };
     auditLog = { write: jest.fn().mockResolvedValue(undefined) };
+    manager = { id: 'txn-manager' };
+    dataSource = {
+      transaction: jest.fn((work: (m: unknown) => Promise<unknown>) =>
+        work(manager),
+      ),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -44,6 +53,7 @@ describe('AdminSessionsService', () => {
           useValue: accountSessions,
         },
         { provide: AuditLogService, useValue: auditLog },
+        { provide: DataSource, useValue: dataSource },
       ],
     }).compile();
 
@@ -53,7 +63,10 @@ describe('AdminSessionsService', () => {
   it('revokes sessions using the external user id as the OIDC account id', async () => {
     const result = await service.revokeSessions(tenantUserId);
 
-    expect(accountSessions.deleteAllForAccount).toHaveBeenCalledWith(accountId);
+    expect(accountSessions.deleteAllForAccount).toHaveBeenCalledWith(
+      accountId,
+      manager,
+    );
     expect(result).toEqual({
       tenantUserId,
       accountId,
@@ -81,6 +94,25 @@ describe('AdminSessionsService', () => {
         resourceType: 'oidc_session',
         resourceId: tenantUserId,
       }),
+      manager,
+    );
+  });
+
+  it('writes the audit entry in the same transaction as the delete', async () => {
+    await service.revokeSessions(tenantUserId, 'admin-sub-1');
+
+    // Both must commit together: a failed audit write cannot be allowed to
+    // leave the sessions deleted with no record of who deleted them.
+    expect(dataSource.transaction).toHaveBeenCalledTimes(1);
+    expect(accountSessions.deleteAllForAccount.mock.calls[0][1]).toBe(manager);
+    expect(auditLog.write.mock.calls[0][1]).toBe(manager);
+  });
+
+  it('surfaces an audit write failure so the delete rolls back', async () => {
+    auditLog.write.mockRejectedValue(new Error('audit unavailable'));
+
+    await expect(service.revokeSessions(tenantUserId)).rejects.toThrow(
+      'audit unavailable',
     );
   });
 
@@ -101,6 +133,7 @@ describe('AdminSessionsService', () => {
         actorId: 'system',
         actorType: AuditActorType.SYSTEM,
       }),
+      manager,
     );
   });
 

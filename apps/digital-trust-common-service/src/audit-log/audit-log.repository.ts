@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, SelectQueryBuilder } from 'typeorm';
+import { EntityManager, Repository, SelectQueryBuilder } from 'typeorm';
 import type { QueryDeepPartialEntity } from 'typeorm/query-builder/QueryPartialEntity';
 
 import { AuditAction, AuditLog } from './audit-log.entity';
@@ -42,11 +42,19 @@ export class AuditLogRepository {
     private readonly repository: Repository<AuditLog>,
   ) {}
 
-  /** Insert-only write path — no update/delete methods by design (PE-04). */
-  public async insert(entry: AuditLogInsert): Promise<AuditLog> {
+  /**
+   * Insert-only write path — no update/delete methods by design (PE-04).
+   *
+   * Pass `manager` to enlist the write in a caller's transaction, so an audit
+   * entry cannot survive a rolled-back action or vice versa.
+   */
+  public async insert(
+    entry: AuditLogInsert,
+    manager?: EntityManager,
+  ): Promise<AuditLog> {
     // QueryDeepPartialEntity rejects Record<string, unknown> jsonb fields;
     // cast is safe — callers only supply scalar/json insert columns.
-    const result = await this.repository
+    const result = await (manager ?? this.repository.manager)
       .createQueryBuilder()
       .insert()
       .into(AuditLog)

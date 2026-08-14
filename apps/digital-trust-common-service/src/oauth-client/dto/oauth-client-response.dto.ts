@@ -59,6 +59,15 @@ export class OAuthClientResponseDto {
   public createdBy?: string;
 
   @ApiProperty({
+    description:
+      'Refresh token lifetime in seconds for this client. Null inherits the server default.',
+    example: 28800,
+    required: false,
+    nullable: true,
+  })
+  public refreshTokenTtlSeconds?: number | null;
+
+  @ApiProperty({
     description: 'The date and time when the OAuth client was created',
     example: '2024-01-01T00:00:00Z',
   })

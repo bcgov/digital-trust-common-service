@@ -298,5 +298,21 @@ describe('OidcAccountSessionRepository (integration)', () => {
 
       expect(await accountSessions.countActiveSessions('user-2')).toBe(1);
     });
+
+    it('does not leave an account over the limit when logins race', async () => {
+      for (let index = 0; index < 7; index += 1) {
+        await writeSession(`s${index}`, 'user-1');
+      }
+
+      // Two logins enforcing at once. Selecting then deleting in separate
+      // round trips let both pick the same oldest row, so the account stayed
+      // one over the cap.
+      await Promise.all([
+        sessionLimit.enforce('user-1', 's6'),
+        sessionLimit.enforce('user-1', 's6'),
+      ]);
+
+      expect(await accountSessions.countActiveSessions('user-1')).toBe(5);
+    });
   });
 });

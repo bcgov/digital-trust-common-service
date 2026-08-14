@@ -443,6 +443,43 @@ describe('OAuthClientService', () => {
       expect(result.grantTypes).toEqual(['client_credentials']);
     });
 
+    it('sets a per-client refresh token TTL', async () => {
+      mockFindById.mockResolvedValue({ ...mockOAuthClient });
+      mockUpdate.mockImplementation((client: unknown) => client);
+
+      await service.update(mockOAuthClient.id, {
+        refreshTokenTtlSeconds: 3600,
+      });
+
+      expect(mockUpdate.mock.calls[0][0].refreshTokenTtlSeconds).toBe(3600);
+    });
+
+    it('clears the TTL override when explicitly set to null', async () => {
+      mockFindById.mockResolvedValue({
+        ...mockOAuthClient,
+        refreshTokenTtlSeconds: 3600,
+      });
+      mockUpdate.mockImplementation((client: unknown) => client);
+
+      await service.update(mockOAuthClient.id, {
+        refreshTokenTtlSeconds: null,
+      });
+
+      expect(mockUpdate.mock.calls[0][0].refreshTokenTtlSeconds).toBeNull();
+    });
+
+    it('leaves the TTL untouched when the field is omitted', async () => {
+      mockFindById.mockResolvedValue({
+        ...mockOAuthClient,
+        refreshTokenTtlSeconds: 3600,
+      });
+      mockUpdate.mockImplementation((client: unknown) => client);
+
+      await service.update(mockOAuthClient.id, { name: 'Renamed' });
+
+      expect(mockUpdate.mock.calls[0][0].refreshTokenTtlSeconds).toBe(3600);
+    });
+
     it('should preserve existing values when partial update is provided', async () => {
       mockFindById.mockResolvedValue(mockOAuthClient);
       const updatedClient = {

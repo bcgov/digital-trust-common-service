@@ -3,6 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { EntityManager } from 'typeorm';
 
 import { AuditAction, AuditActorType, AuditLog } from './audit-log.entity';
 import {
@@ -40,18 +41,28 @@ export type PaginatedAuditLogs = {
 export class AuditLogService {
   public constructor(private readonly auditLogRepository: AuditLogRepository) {}
 
-  public async write(input: WriteAuditLogInput): Promise<AuditLog> {
-    return await this.auditLogRepository.insert({
-      tenantId: input.tenantId,
-      actorId: input.actorId,
-      actorType: input.actorType,
-      action: input.action,
-      resourceType: input.resourceType,
-      resourceId: input.resourceId,
-      operationId: input.operationId ?? null,
-      metadata: input.metadata ?? {},
-      ipAddress: input.ipAddress ?? null,
-    });
+  /**
+   * Writes an audit entry. Pass `manager` to join a caller's transaction so
+   * the entry and the action it records commit together.
+   */
+  public async write(
+    input: WriteAuditLogInput,
+    manager?: EntityManager,
+  ): Promise<AuditLog> {
+    return await this.auditLogRepository.insert(
+      {
+        tenantId: input.tenantId,
+        actorId: input.actorId,
+        actorType: input.actorType,
+        action: input.action,
+        resourceType: input.resourceType,
+        resourceId: input.resourceId,
+        operationId: input.operationId ?? null,
+        metadata: input.metadata ?? {},
+        ipAddress: input.ipAddress ?? null,
+      },
+      manager,
+    );
   }
 
   public async findById(tenantId: string, id: string): Promise<AuditLog> {

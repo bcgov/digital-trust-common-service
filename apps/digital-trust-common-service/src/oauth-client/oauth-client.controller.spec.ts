@@ -41,6 +41,7 @@ describe('OAuthClientController', () => {
     roles: mockOAuthClient.roles,
     redirectUris: mockOAuthClient.redirectUris,
     grantTypes: mockOAuthClient.grantTypes,
+    refreshTokenTtlSeconds: mockOAuthClient.refreshTokenTtlSeconds ?? null,
     createdBy: mockOAuthClient.createdBy,
     createdAt: mockOAuthClient.createdAt,
     revokedAt: mockOAuthClient.revokedAt,

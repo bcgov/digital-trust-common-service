@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { EntityManager, Repository } from 'typeorm';
 
 import { OidcModel } from './entities/oidc-model.entity';
 
@@ -84,8 +84,11 @@ export class OidcAccountSessionRepository {
   }
 
   /**
-   * Returns the account's unexpired sessions, oldest first, so a caller
-   * enforcing a limit can evict from the front of the list.
+   * Returns the account's unexpired sessions, oldest first.
+   *
+   * Eviction does not use this: it selects and deletes in one statement to
+   * stay race-free. This is the read-only view of the same set, used by tests
+   * and available for an admin session listing.
    */
   public async findActiveSessions(
     accountId: string,
@@ -146,13 +149,16 @@ export class OidcAccountSessionRepository {
    * Removes every record bound to an account: sessions, grants, and all
    * issued tokens and codes. Used by admin force-logout.
    *
-   * Every account-bound model carries `account_id`, so a single predicate is
-   * sufficient; grant-linked rows are additionally matched by `grant_id` to
-   * catch anything written before the `000013` backfill that has since been
-   * re-upserted without a subject.
+   * The first predicate covers every model that carries `account_id`. The
+   * `grant_id` branch is not redundant with it: it catches rows whose model
+   * is outside `ACCOUNT_BOUND_MODELS` but which still hang off one of the
+   * account's grants.
+   *
+   * Pass `manager` to run inside a caller's transaction.
    */
   public async deleteAllForAccount(
     accountId: string,
+    manager?: EntityManager,
   ): Promise<DeletedModelCount[]> {
     return this.deleteAndCount(
       `WITH targeted AS (
@@ -167,14 +173,60 @@ export class OidcAccountSessionRepository {
       )
       SELECT model_name, COUNT(*) AS count FROM deleted GROUP BY model_name`,
       [[...ACCOUNT_BOUND_MODELS], accountId],
+      manager,
     );
+  }
+
+  /**
+   * Deletes the oldest sessions that put an account over `limit`, and returns
+   * them so their grants and tokens can be cleaned up.
+   *
+   * Selecting victims and deleting them in separate round trips is racy: two
+   * logins landing together both see the same list and both target the same
+   * oldest row, leaving the account over the cap. Here the DELETE is what
+   * picks them, so a row can only be claimed once.
+   *
+   * `newSessionId` is excluded from the candidates and takes one slot of the
+   * limit, so a fresh login always survives.
+   */
+  public async claimSurplusSessions(
+    accountId: string,
+    limit: number,
+    newSessionId?: string,
+  ): Promise<AccountSession[]> {
+    const keep = newSessionId ? limit - 1 : limit;
+
+    const rows = await this.repo.manager.query<
+      { oidc_id: string; created_at: Date; payload: Record<string, unknown> }[]
+    >(
+      `DELETE FROM oidc_model
+        WHERE oidc_id IN (
+          SELECT oidc_id FROM oidc_model
+           WHERE model_name = $1
+             AND account_id = $2
+             AND (expires_at IS NULL OR expires_at > now())
+             AND ($4::varchar IS NULL OR oidc_id <> $4::varchar)
+           ORDER BY created_at DESC, oidc_id DESC
+           OFFSET $3
+           FOR UPDATE SKIP LOCKED
+        )
+        RETURNING oidc_id, created_at, payload`,
+      [SESSION_MODEL, accountId, Math.max(keep, 0), newSessionId ?? null],
+    );
+
+    return rows.map((row) => ({
+      oidcId: row.oidc_id,
+      createdAt: row.created_at,
+      grantIds: extractGrantIds(row.payload),
+    }));
   }
 
   private async deleteAndCount(
     sql: string,
     parameters: unknown[],
+    manager?: EntityManager,
   ): Promise<DeletedModelCount[]> {
-    const rows = await this.repo.manager.query<
+    const rows = await (manager ?? this.repo.manager).query<
       { model_name: string; count: string }[]
     >(sql, parameters);
 

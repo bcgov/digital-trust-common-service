@@ -25,10 +25,22 @@ export class AddOauthClientRefreshTokenTtl1786567439996 implements MigrationInte
 
     // Guard against a zero/negative TTL, which oidc-provider would treat as
     // an already-expired token rather than "no expiry".
+    //
+    // NOT VALID, then VALIDATE separately: adding a CHECK in one step scans
+    // the whole table under ACCESS EXCLUSIVE, while VALIDATE takes only SHARE
+    // UPDATE EXCLUSIVE and lets reads and writes through. oauth_client is
+    // small enough that it makes no practical difference here, but this is the
+    // pattern to copy onto tables where it does.
     await queryRunner.query(`
       ALTER TABLE oauth_client
         ADD CONSTRAINT chk_oauth_client_refresh_token_ttl_positive
-        CHECK (refresh_token_ttl_seconds IS NULL OR refresh_token_ttl_seconds > 0);
+        CHECK (refresh_token_ttl_seconds IS NULL OR refresh_token_ttl_seconds > 0)
+        NOT VALID;
+    `);
+
+    await queryRunner.query(`
+      ALTER TABLE oauth_client
+        VALIDATE CONSTRAINT chk_oauth_client_refresh_token_ttl_positive;
     `);
   }
 
