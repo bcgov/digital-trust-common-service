@@ -84,15 +84,15 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run test:cov
-      - name: Run integration tests
-        run: npm run test:integration
-      - name: Build and apply migrations for e2e
-        # DatabaseModule always runs with synchronize: false, so e2e specs that
-        # touch real tables (tenant/operation) require the schema to be created
-        # via migrations first; nothing else in this job does that.
+      - name: Build and apply migrations
+        # DatabaseModule always runs with synchronize: false, so specs that
+        # touch real tables require the schema to be created via migrations
+        # first; nothing else in this job does that.
         run: |
           npm run build
           npm run migrate:up
+      - name: Run integration tests
+        run: npm run test:integration
       - name: Run e2e tests
         run: npm run test:e2e
       - name: Report coverage to Coveralls

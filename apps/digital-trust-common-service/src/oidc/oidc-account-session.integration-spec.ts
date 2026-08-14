@@ -51,6 +51,12 @@ describe('OidcAccountSessionRepository (integration)', () => {
     oidcModelRepo = moduleFixture.get(getRepositoryToken(OidcModel));
     accountSessions = moduleFixture.get(OidcAccountSessionRepository);
     sessionLimit = moduleFixture.get(SessionLimitService);
+
+    // DatabaseModule runs with synchronize: false, so the schema only exists
+    // if migrations have been applied. Applying them here keeps this spec
+    // runnable on its own rather than depending on another spec having gone
+    // first, which parallel workers do not guarantee.
+    await oidcModelRepo.manager.connection.runMigrations();
   }, 30000);
 
   afterAll(async () => {
