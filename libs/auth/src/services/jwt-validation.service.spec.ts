@@ -26,7 +26,7 @@ describe('jwt-validation helpers', () => {
   it('normalizeAuthPayload handles user and client token shapes', () => {
     const user = normalizeAuthPayload({
       sub: 'a3f8c2d1-1111-4123-8123-123456789abc',
-      scope: 'read:credentials write:credentials',
+      scope: 'credentials:offer credentials:verify',
       tenant_id: 'tenant-1',
       roles: ['admin'],
       iss: 'http://localhost:3000/oidc',
@@ -38,13 +38,13 @@ describe('jwt-validation helpers', () => {
     expect(user.tokenType).toBe('user');
     expect(user.clientId).toBeNull();
     expect(user.roles).toEqual(['admin']);
-    expect(user.scopes).toEqual(['read:credentials', 'write:credentials']);
+    expect(user.scopes).toEqual(['credentials:offer', 'credentials:verify']);
 
     const client = normalizeAuthPayload({
       sub: 'client:ext-service-1',
       client_id: 'ext-service-1',
       tenant_id: 'tenant-1',
-      scope: 'read:credentials',
+      scope: 'credentials:offer',
       iss: 'http://localhost:3000/oidc',
       aud: 'http://localhost:3000/oidc',
       exp: 123,
@@ -57,7 +57,7 @@ describe('jwt-validation helpers', () => {
     const plainClient = normalizeAuthPayload({
       sub: 'plain-client-id',
       tenant_id: 'tenant-1',
-      scope: 'read:credentials',
+      scope: 'credentials:offer',
       iss: 'http://localhost:3000/oidc',
       aud: 'http://localhost:3000/oidc',
       exp: 123,
@@ -71,7 +71,7 @@ describe('jwt-validation helpers', () => {
       sub: 'non-uuid-subject',
       client_id: 'explicit-client',
       tenant_id: 'tenant-1',
-      scope: ['read:credentials', 'write:credentials'],
+      scope: ['credentials:offer', 'credentials:verify'],
       iss: 'http://localhost:3000/oidc',
       aud: 'http://localhost:3000/oidc',
       exp: 123,
@@ -81,13 +81,13 @@ describe('jwt-validation helpers', () => {
     expect(explicitClient.tokenType).toBe('client');
     expect(explicitClient.clientId).toBe('explicit-client');
     expect(explicitClient.scopes).toEqual([
-      'read:credentials',
-      'write:credentials',
+      'credentials:offer',
+      'credentials:verify',
     ]);
 
     expect(() =>
       normalizeAuthPayload({
-        scope: 'read:credentials',
+        scope: 'credentials:offer',
         iss: 'http://localhost:3000/oidc',
         aud: 'http://localhost:3000/oidc',
         exp: 123,
@@ -151,7 +151,7 @@ describe('JwtValidationService', () => {
       sub: 'client:test-client',
       client_id: 'test-client',
       tenant_id: 'tenant-1',
-      scope: 'read:credentials',
+      scope: 'credentials:offer',
     });
 
     const auth = await service.validateAuthorizationHeader(`Bearer ${token}`);

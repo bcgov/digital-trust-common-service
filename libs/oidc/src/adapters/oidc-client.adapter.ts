@@ -78,6 +78,7 @@ export class OidcClientAdapter implements Adapter {
       client_secret_hash: client.clientSecretHash,
       client_name: client.name,
       tenant_id: client.tenantId,
+      roles: client.roles,
       redirect_uris: client.redirectUris,
       grant_types: client.grantTypes,
       response_types: responseTypes,

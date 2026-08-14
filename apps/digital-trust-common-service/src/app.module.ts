@@ -21,6 +21,7 @@ import { JobsModule } from './jobs/jobs.module';
 import { OAuthClientLookupAdapter } from './oauth-client/oauth-client-lookup.adapter';
 import { OAuthClientModule } from './oauth-client/oauth-client.module';
 import { OperationModule } from './operation/operation.module';
+import { RoleScopeModule } from './role-scope/role-scope.module';
 import { SeedModule } from './seed/seed.module';
 import { ShutdownModule } from './shutdown/shutdown.module';
 import { TenantModule } from './tenant/tenant.module';
@@ -44,6 +45,7 @@ import { VerificationProfileModule } from './verification-profile/verification-p
     }),
     AuthModule,
     OperationModule,
+    RoleScopeModule,
     ShutdownModule,
     TenantModule,
     TenantUserModule,

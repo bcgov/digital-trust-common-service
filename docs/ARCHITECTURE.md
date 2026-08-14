@@ -1051,11 +1051,14 @@ graph TD
 - `platform-admin` role bypasses ScopeGuard and TenantGuard entirely (not a scope — checked by role)
 
 **Role → scope mappings (seed):**
+
+> **Live registry:** canonical scope names, levels, and migration notes are maintained in [DEVELOPER.md](./DEVELOPER.md#authorization-scope-catalog-au-04) until AU-07 (#40) exposes a scope-management API.
+
 | Role | Scopes |
 |------|--------|
 | platform-admin | _bypasses guards_ |
 | owner | tenants:admin (superuser — implicitly has all) |
-| admin | credentials:offer, credentials:verify, connections:manage, profiles:manage, users:manage, clients:manage, logs:read |
+| admin | all Level 2 + Level 3 (`credentials:offer`, `credentials:verify`, `credentials:hold`, `credentials:revoke`, `connections:manage`, `profiles:manage`, `users:manage`, `clients:manage`, `logs:read`, `audit:read`) |
 | member | credentials:offer, credentials:verify |
 | readonly | _(no scopes — GET endpoints only)_ |
 

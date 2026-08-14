@@ -42,7 +42,8 @@ export class OAuthClientController {
         value: {
           tenantId: '123e4567-e89b-12d3-a456-426614174000',
           name: 'Mobile App',
-          scopes: ['read:credentials', 'write:credentials'],
+          scopes: ['credentials:offer', 'credentials:verify'],
+          roles: [],
           redirectUris: ['https://app.example.com/callback'],
           grantTypes: ['client_credentials'],
           createdBy: '223e4567-e89b-12d3-a456-426614174000',
@@ -100,10 +101,22 @@ export class OAuthClientController {
         summary: 'Update OAuth client name and scopes',
         value: {
           name: 'Updated Mobile App',
-          scopes: ['read:credentials', 'write:credentials', 'read:connections'],
+          scopes: [
+            'credentials:offer',
+            'credentials:verify',
+            'connections:manage',
+          ],
         },
       },
       example2: {
+        summary:
+          'Grant platform-admin on a client_credentials-only machine client',
+        value: {
+          roles: ['platform-admin'],
+          grantTypes: ['client_credentials'],
+        },
+      },
+      example3: {
         summary: 'Update redirect URIs',
         value: {
           redirectUris: ['https://app.updated.com/callback'],
@@ -135,6 +148,7 @@ export class OAuthClientController {
       clientId: client.clientId,
       name: client.name,
       scopes: client.scopes,
+      roles: client.roles,
       redirectUris: client.redirectUris,
       grantTypes: client.grantTypes,
       createdBy: client.createdBy,

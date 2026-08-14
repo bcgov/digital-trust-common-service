@@ -17,6 +17,7 @@ describe('OidcClientAdapter', () => {
     scopes: ['read', 'write'],
     redirectUris: ['https://example.com/callback'],
     grantTypes: ['client_credentials', 'authorization_code'],
+    roles: ['platform-admin'],
   };
 
   beforeEach(() => {
@@ -46,6 +47,7 @@ describe('OidcClientAdapter', () => {
         client_secret_hash: 'argon2-hash',
         client_name: 'Test Client',
         tenant_id: 'tenant-1',
+        roles: ['platform-admin'],
         redirect_uris: ['https://example.com/callback'],
         grant_types: ['client_credentials', 'authorization_code'],
         response_types: ['code'],

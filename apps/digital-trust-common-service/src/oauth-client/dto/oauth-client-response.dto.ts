@@ -27,9 +27,16 @@ export class OAuthClientResponseDto {
 
   @ApiProperty({
     description: 'Array of OAuth scopes allowed for this client',
-    example: ['read:connections', 'write:credentials'],
+    example: ['credentials:offer', 'connections:manage'],
   })
   public scopes!: string[];
+
+  @ApiProperty({
+    description:
+      'JWT role claims stamped on tokens for this client (machine clients only; currently platform-admin)',
+    example: [],
+  })
+  public roles!: string[];
 
   @ApiProperty({
     description: 'Array of allowed redirect URIs',
