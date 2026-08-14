@@ -20,8 +20,8 @@
       "standardFlowEnabled": true,
       "directAccessGrantsEnabled": false,
       "serviceAccountsEnabled": false,
-      "redirectUris": ["http://localhost:3000/*"],
-      "webOrigins": ["http://localhost:3000"],
+      "redirectUris": ["https://oidc.localhost/*"],
+      "webOrigins": ["https://oidc.localhost"],
       "attributes": {
         "pkce.code.challenge.method": "S256"
       }

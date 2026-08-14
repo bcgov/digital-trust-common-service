@@ -153,3 +153,5 @@ config/oidc-keys.json
 # rotation runbook, which both work in the repo root (oidc-keys.json,
 # oidc-keys.json.pre-rotation, and the script's .tmp file).
 oidc-keys.json*
+# Caddy
+root.crt

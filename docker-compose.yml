@@ -136,12 +136,9 @@ services:
       KC_BOOTSTRAP_ADMIN_USERNAME: admin
       KC_BOOTSTRAP_ADMIN_PASSWORD: admin
       KC_HTTP_ENABLED: true
-      # Disable HTTPS enforcement for local dev. With start-dev + HOSTNAME_STRICT=false
-      # Keycloak derives its URL from the request Host header (localhost:8080), so
-      # the OIDC issuer matches what the browser uses and token validation succeeds.
-      KC_HOSTNAME_STRICT: 'false'
-      # To use https which is required for OIDC, you can use a reverse proxy like ngrok to expose the local Keycloak instance over HTTPS.
-      # KC_HOSTNAME: 'https://<ngrok url>'
+      KC_HOSTNAME_STRICT: 'true'
+      # To use https which is required for OIDC
+      KC_HOSTNAME: 'https://keycloak.localhost'
     depends_on:
       keycloak-db:
         condition: service_healthy
@@ -163,8 +160,22 @@ services:
       timeout: 5s
       retries: 5
 
+  caddy:
+    image: caddy:2
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+
 volumes:
   postgres-data:
   postgres-test-data:
   keycloak-db-data:
-
+  caddy_data:
+  caddy_config:

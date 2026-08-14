@@ -84,39 +84,55 @@ The application uses AES-256-GCM encryption to protect sensitive data. Encryptio
 
 The application supports upstream OIDC federation with Keycloak using the `openid-client` library. This library **strictly enforces HTTPS** connections for all OIDC discovery and token endpoints.
 
-For local development, you need to use **ngrok** to expose your local services over HTTPS:
+For local development, this repo uses **Caddy** with locally trusted TLS for:
 
-#### Install and Start ngrok
+- `https://oidc.localhost` -> local app on port `3000`
+- `https://keycloak.localhost` -> Keycloak in Docker on port `8080`
 
-Create a ngrok configuration file at `~/.ngrok2/ngrok.yml` (or `~/Library/Application Support/ngrok/ngrok.yml` on macOS):
+#### Start the local HTTPS stack
 
-```yaml
-authtoken: YOUR_NGROK_AUTH_TOKEN
-
-tunnels:
-  oidc-provider:
-    addr: 3000
-    proto: http
-  keycloak:
-    addr: 8080
-    proto: http
-```
-
-Then start all tunnels with:
+Bring up the local services, including Caddy and Keycloak:
 
 ```bash
-ngrok start --all
+docker compose --profile dev up
 ```
 
-ngrok will provide URLs like `https://xxxx-xx-xxx-xx-xxx-x.ngrok.io` for each tunnel. Note the URLs assigned to `oidc-provider` and `keycloak`.
+#### Export and trust the Caddy local CA
+
+Caddy issues its own local development certificates. Export its root CA certificate from the running container:
+
+```bash
+docker compose cp \
+  caddy:/data/caddy/pki/authorities/local/root.crt \
+  ./caddy/root.crt
+```
+
+Install that certificate into your system trust store so browsers and other local tooling trust `*.localhost` served by Caddy:
+
+```bash
+sudo cp ./caddy/root.crt /usr/local/share/ca-certificates/caddy-local.crt
+sudo update-ca-certificates
+```
+
+#### Configure Node.js to trust the local CA
+
+Node does not automatically use your OS trust store in every setup, so local OIDC calls should also trust the exported certificate explicitly.
+
+Set this in your `.env` file:
+
+```env
+NODE_EXTRA_CA_CERTS="$PWD/caddy/root.crt"
+```
+
+This matches the default shown in `.env.example` and allows the app to call `https://keycloak.localhost` successfully during upstream federation flows.
 
 #### Configure Keycloak Endpoint
 
-Update **`config/upstream-identity-federation.json`** with the ngrok URL for Keycloak:
+Update **`config/upstream-identity-federation.json`** to point at the local Keycloak issuer exposed by Caddy:
 
 ```json
 {
-  "url": "https://YOUR_KEYCLOAK_NGROK_URL/realms/vc-common-service",
+  "url": "https://keycloak.localhost/realms/vc-common-service",
   "clientId": "vc-common-service",
   "clientSecret": "your-client-secret"
 }
@@ -124,36 +140,34 @@ Update **`config/upstream-identity-federation.json`** with the ngrok URL for Key
 
 #### Configure Docker Compose
 
-Update **`docker-compose.yml`** to use the ngrok URL for Keycloak:
+The local compose file already sets the Keycloak hostname correctly:
 
 ```yaml
 environment:
-  - KC_HOSTNAME=https://YOUR_KEYCLOAK_NGROK_URL
+  - KC_HOSTNAME=https://keycloak.localhost
 ```
 
-Also update **`keycloak/config/realm.json`** to set client redirect URIs to your ngrok URL:
+The checked-in **`keycloak/config/realm.json`** already uses the local OIDC provider hostname for redirect URIs:
 
 ```json
 {
   "clientId": "dtsc-oidc-provider",
-  "redirectUris": [
-    "https://YOUR_OIDC_PROVIDER_NGROK_URL/*", "https://YOUR_OIDC_PROVIDER_NGROK_URL/digital-trust/digital-trust-common-service/callback"
-  ],
-  "webOrigins": ["https://YOUR_OIDC_PROVIDER_NGROK_URL"],
+  "redirectUris": ["https://oidc.localhost/*"],
+  "webOrigins": ["https://oidc.localhost"]
 }
 ```
 
 #### Configure OIDC Provider Issuer
 
-Set the **`OIDC_ISSUER`** environment variable to your ngrok endpoint for localhost:3000:
+Set the **`OIDC_ISSUER`** environment variable to the local Caddy endpoint for the app's OIDC provider:
 
 ```env
-OIDC_ISSUER=https://YOUR_OIDC_PROVIDER_NGROK_URL/oidc
+OIDC_ISSUER=https://oidc.localhost/oidc
 ```
 
 This URL is used by Keycloak clients to discover the OIDC provider configuration and validate tokens.
 
-**Important**: All client configurations in `keycloak/config/realm.json` that reference your OIDC provider must use the same ngrok endpoint URL.
+**Important**: The local CA certificate must be trusted both by your system and by Node via `NODE_EXTRA_CA_CERTS`, or OIDC discovery/token requests will fail with TLS errors.
 
 ## Running the Application
 
