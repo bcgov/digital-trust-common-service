@@ -109,9 +109,11 @@ export class OAuthClientController {
         },
       },
       example2: {
-        summary: 'Grant platform-admin role for machine admin access',
+        summary:
+          'Grant platform-admin on a client_credentials-only machine client',
         value: {
           roles: ['platform-admin'],
+          grantTypes: ['client_credentials'],
         },
       },
       example3: {

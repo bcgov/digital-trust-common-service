@@ -173,6 +173,7 @@ describe('OAuthClientService', () => {
         tenantId: mockOAuthClient.tenantId,
         name: mockOAuthClient.name,
         roles: ['platform-admin'],
+        grantTypes: ['client_credentials'],
       });
 
       expect(mockCreate).toHaveBeenCalledWith(
@@ -180,6 +181,35 @@ describe('OAuthClientService', () => {
           roles: ['platform-admin'],
         }),
       );
+    });
+
+    it('should reject unknown roles on create', async () => {
+      await expect(
+        service.createClient({
+          tenantId: mockOAuthClient.tenantId,
+          name: mockOAuthClient.name,
+          roles: ['superuser'],
+          grantTypes: ['client_credentials'],
+        }),
+      ).rejects.toThrow(BadRequestException);
+      expect(mockCreate).not.toHaveBeenCalled();
+    });
+
+    it('should reject roles when grant types are not client_credentials-only', async () => {
+      mockGetConfig.mockReturnValue({
+        grantTypes: ['client_credentials', 'authorization_code'],
+      });
+      service = await createService();
+
+      await expect(
+        service.createClient({
+          tenantId: mockOAuthClient.tenantId,
+          name: mockOAuthClient.name,
+          roles: ['platform-admin'],
+          grantTypes: ['client_credentials', 'authorization_code'],
+        }),
+      ).rejects.toThrow(BadRequestException);
+      expect(mockCreate).not.toHaveBeenCalled();
     });
   });
 
@@ -336,6 +366,55 @@ describe('OAuthClientService', () => {
         }),
       );
       expect(result.roles).toEqual(['platform-admin']);
+    });
+
+    it('should reject unknown roles on update', async () => {
+      mockFindById.mockResolvedValue(mockOAuthClient);
+
+      await expect(
+        service.update(mockOAuthClient.id, {
+          roles: ['superuser'],
+        }),
+      ).rejects.toThrow(BadRequestException);
+      expect(mockUpdate).not.toHaveBeenCalled();
+    });
+
+    it('should reject adding interactive grants to a client with roles', async () => {
+      mockGetConfig.mockReturnValue({
+        grantTypes: ['client_credentials', 'authorization_code'],
+      });
+      service = await createService();
+      mockFindById.mockResolvedValue({
+        ...mockOAuthClient,
+        roles: ['platform-admin'],
+        grantTypes: ['client_credentials'],
+      });
+
+      await expect(
+        service.update(mockOAuthClient.id, {
+          grantTypes: ['client_credentials', 'authorization_code'],
+        }),
+      ).rejects.toThrow(BadRequestException);
+      expect(mockUpdate).not.toHaveBeenCalled();
+    });
+
+    it('should reject adding roles to a non-machine client', async () => {
+      mockGetConfig.mockReturnValue({
+        grantTypes: ['client_credentials', 'authorization_code'],
+      });
+      service = await createService();
+      mockFindById.mockResolvedValue({
+        ...mockOAuthClient,
+        roles: [],
+        grantTypes: ['authorization_code'],
+      });
+
+      await expect(
+        service.update(mockOAuthClient.id, {
+          roles: ['platform-admin'],
+        }),
+      ).rejects.toThrow(BadRequestException);
+      expect(mockUpdate).not.toHaveBeenCalled();
     });
 
     it('should update redirectUris and grantTypes when provided', async () => {

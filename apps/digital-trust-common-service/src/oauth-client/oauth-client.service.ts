@@ -1,5 +1,6 @@
 import { randomBytes } from 'crypto';
 
+import { OAUTH_CLIENT_ALLOWED_ROLES } from '@app/auth';
 import { OidcConfigService } from '@app/oidc/config';
 import {
   BadRequestException,
@@ -12,6 +13,8 @@ import { CreateOAuthClientDto } from './dto/create-oauth-client.dto';
 import { UpdateOAuthClientDto } from './dto/update-oauth-client.dto';
 import { OAuthClient } from './oauth-client.entity';
 import { OAuthClientRepository } from './oauth-client.repository';
+
+const MACHINE_GRANT_TYPE = 'client_credentials';
 
 @Injectable()
 export class OAuthClientService {
@@ -35,8 +38,10 @@ export class OAuthClientService {
     // A client that names no grant type gets the configured allowlist, so
     // the default can never fall outside it.
     const grantTypes = dto.grantTypes ?? this.supportedGrantTypes;
+    const roles = dto.roles ?? [];
 
     this.assertSupportedGrantTypes(grantTypes);
+    this.assertRoleConstraints(roles, grantTypes);
 
     const clientSecret = randomBytes(32).toString('hex');
     const clientId = this.generateClientId();
@@ -48,7 +53,7 @@ export class OAuthClientService {
       clientSecretHash,
       name: dto.name,
       scopes: dto.scopes || [],
-      roles: dto.roles || [],
+      roles,
       redirectUris: dto.redirectUris || [],
       grantTypes,
       createdBy: dto.createdBy,
@@ -84,6 +89,14 @@ export class OAuthClientService {
     if (!client) {
       throw new NotFoundException(`OAuth client '${id}' was not found.`);
     }
+
+    const nextRoles = dto.roles !== undefined ? dto.roles : client.roles;
+    const nextGrantTypes =
+      dto.grantTypes !== undefined ? dto.grantTypes : client.grantTypes;
+
+    // Validate the post-update combination so roles and grantTypes cannot
+    // drift independently into an unsafe pairing.
+    this.assertRoleConstraints(nextRoles, nextGrantTypes);
 
     if (dto.name !== undefined) {
       client.name = dto.name;
@@ -151,6 +164,37 @@ export class OAuthClientService {
     if (unsupported && unsupported.length > 0) {
       throw new BadRequestException(
         `Unsupported grant type(s): ${unsupported.join(', ')}. Supported grant type(s): ${supported.join(', ')}.`,
+      );
+    }
+  }
+
+  /**
+   * Roles are security-sensitive JWT claims for machine clients only.
+   * Unknown role strings are rejected, and any non-empty role set requires
+   * the client to be restricted to client_credentials alone.
+   */
+  private assertRoleConstraints(roles: string[], grantTypes: string[]): void {
+    const allowed = new Set<string>(OAUTH_CLIENT_ALLOWED_ROLES);
+    const unknown = roles.filter((role) => !allowed.has(role));
+
+    if (unknown.length > 0) {
+      throw new BadRequestException(
+        `Unsupported role(s): ${unknown.join(', ')}. Allowed role(s): ${OAUTH_CLIENT_ALLOWED_ROLES.join(', ')}.`,
+      );
+    }
+
+    if (roles.length === 0) {
+      return;
+    }
+
+    const uniqueGrantTypes = [...new Set(grantTypes)];
+    const isMachineOnly =
+      uniqueGrantTypes.length === 1 &&
+      uniqueGrantTypes[0] === MACHINE_GRANT_TYPE;
+
+    if (!isMachineOnly) {
+      throw new BadRequestException(
+        `Roles may only be assigned to clients restricted to the ${MACHINE_GRANT_TYPE} grant.`,
       );
     }
   }

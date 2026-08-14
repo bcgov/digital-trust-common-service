@@ -3,6 +3,7 @@ import { Reflector } from '@nestjs/core';
 
 import { REQUIRED_ROLES_KEY } from '../decorators/require-roles.decorator';
 import { REQUIRED_SCOPES_KEY } from '../decorators/require-scopes.decorator';
+import { AuthenticationRequiredException } from '../exceptions/authentication-required.exception';
 import { InsufficientScopeException } from '../exceptions/insufficient-scope.exception';
 import type { AuthContext } from '../interfaces/auth-context.interface';
 import { ScopeAuthorizationService } from '../services/scope-authorization.service';
@@ -151,11 +152,11 @@ describe('ScopeGuard', () => {
     );
   });
 
-  it('throws when auth context is missing', () => {
+  it('throws AuthenticationRequiredException when auth context is missing', () => {
     reflector.getAllAndOverride.mockReturnValue(['platform-admin']);
 
     expect(() => guard.canActivate(createContext(undefined))).toThrow(
-      InsufficientScopeException,
+      AuthenticationRequiredException,
     );
   });
 });

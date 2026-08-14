@@ -3,6 +3,7 @@ import { Reflector } from '@nestjs/core';
 
 import { REQUIRED_ROLES_KEY } from '../decorators/require-roles.decorator';
 import { REQUIRED_SCOPES_KEY } from '../decorators/require-scopes.decorator';
+import { AuthenticationRequiredException } from '../exceptions/authentication-required.exception';
 import { InsufficientScopeException } from '../exceptions/insufficient-scope.exception';
 import { ScopeAuthorizationService } from '../services/scope-authorization.service';
 import type { AuthenticatedRequest } from '../types/express';
@@ -18,8 +19,11 @@ export class ScopeGuard implements CanActivate {
     const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
     const auth = request.auth;
 
+    // Missing auth means JwtGuard did not run (or failed to attach context).
+    // That is an authentication failure (401), not insufficient scope (403).
     if (!auth) {
-      throw new InsufficientScopeException(
+      throw new AuthenticationRequiredException(
+        'invalid_token',
         'Authenticated request context is missing',
       );
     }

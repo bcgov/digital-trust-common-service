@@ -4,6 +4,12 @@ export const TENANT_SUPERUSER_SCOPE = 'tenants:admin';
 /** Platform operator role — bypasses ScopeGuard and TenantGuard (not a scope). */
 export const PLATFORM_ADMIN_ROLE = 'platform-admin';
 
+/**
+ * Roles that may be persisted on OAuth clients and stamped into machine tokens.
+ * Keep this tight: roles are privilege escalations, not free-form labels.
+ */
+export const OAUTH_CLIENT_ALLOWED_ROLES = [PLATFORM_ADMIN_ROLE] as const;
+
 /** Level 2 domain-operation scopes. */
 export const LEVEL2_SCOPES = [
   'credentials:offer',

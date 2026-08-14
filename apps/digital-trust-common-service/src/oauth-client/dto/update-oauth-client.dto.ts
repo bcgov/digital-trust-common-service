@@ -1,4 +1,11 @@
-import { IsArray, IsOptional, IsString, MaxLength } from 'class-validator';
+import { OAUTH_CLIENT_ALLOWED_ROLES } from '@app/auth';
+import {
+  IsArray,
+  IsIn,
+  IsOptional,
+  IsString,
+  MaxLength,
+} from 'class-validator';
 
 export class UpdateOAuthClientDto {
   @IsOptional()
@@ -13,7 +20,7 @@ export class UpdateOAuthClientDto {
 
   @IsOptional()
   @IsArray()
-  @IsString({ each: true })
+  @IsIn([...OAUTH_CLIENT_ALLOWED_ROLES], { each: true })
   public roles?: string[];
 
   @IsOptional()

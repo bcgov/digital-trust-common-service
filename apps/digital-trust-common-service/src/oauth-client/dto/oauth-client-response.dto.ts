@@ -33,8 +33,8 @@ export class OAuthClientResponseDto {
 
   @ApiProperty({
     description:
-      'JWT role claims stamped on tokens for this client (e.g. platform-admin)',
-    example: ['platform-admin'],
+      'JWT role claims stamped on tokens for this client (machine clients only; currently platform-admin)',
+    example: [],
   })
   public roles!: string[];
 

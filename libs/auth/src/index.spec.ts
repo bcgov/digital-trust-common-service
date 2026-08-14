@@ -15,6 +15,7 @@ import {
   LEVEL2_SCOPES,
   LEVEL3_SCOPES,
   OIDC_SCOPE_ALLOWLIST,
+  OAUTH_CLIENT_ALLOWED_ROLES,
   PLATFORM_ADMIN_ROLE,
   RequireRoles,
   RequireScopes,
@@ -35,6 +36,7 @@ describe('auth package index', () => {
     expect(LEVEL3_SCOPES.length).toBeGreaterThan(0);
     expect(OIDC_SCOPE_ALLOWLIST).toContain('openid');
     expect(PLATFORM_ADMIN_ROLE).toBe('platform-admin');
+    expect(OAUTH_CLIENT_ALLOWED_ROLES).toContain(PLATFORM_ADMIN_ROLE);
     expect(TENANT_SUPERUSER_SCOPE).toBe('tenants:admin');
     expect(AuthModule).toBeDefined();
     expect(CurrentAuth).toBeDefined();

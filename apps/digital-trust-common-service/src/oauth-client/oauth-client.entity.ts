@@ -64,8 +64,8 @@ export class OAuthClient {
 
   @ApiProperty({
     description:
-      'JWT role claims stamped on tokens issued to this client (e.g. platform-admin for service accounts)',
-    example: ['platform-admin'],
+      'JWT role claims stamped on tokens issued to this client (machine / client_credentials clients only; currently platform-admin)',
+    example: [],
     required: false,
   })
   @Column({
