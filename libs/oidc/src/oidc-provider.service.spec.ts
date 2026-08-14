@@ -94,7 +94,7 @@ describe('buildOidcConfiguration', () => {
       tenantUserService,
     );
 
-    expect(configuration.scopes).toEqual(['openid', 'credentials:offer']);
+    expect(configuration.scopes).toEqual(['openid', 'read:credentials']);
   });
 
   it('maps TTLs and refresh rotation from OidcConfig', () => {
@@ -165,7 +165,7 @@ describe('buildOidcConfiguration', () => {
       );
 
     expect(resourceServerInfo).toEqual({
-      scope: 'openid credentials:offer',
+      scope: 'openid read:credentials',
       accessTokenFormat: 'jwt',
       jwt: { sign: { alg: 'RS256' } },
     });
