@@ -48,6 +48,12 @@ export interface DeletedModelCount {
   count: number;
 }
 
+interface ClaimedSessionRow {
+  oidc_id: string;
+  created_at: Date;
+  payload: Record<string, unknown>;
+}
+
 /**
  * Account-scoped reads and deletes over `oidc_model`, backing AU-08's
  * concurrent-session limit and admin force-logout.
@@ -196,25 +202,28 @@ export class OidcAccountSessionRepository {
   ): Promise<AccountSession[]> {
     const keep = newSessionId ? limit - 1 : limit;
 
-    const rows = await this.repo.manager.query<
-      { oidc_id: string; created_at: Date; payload: Record<string, unknown> }[]
+    // TypeORM returns `[rows, rowCount]` for DELETE and UPDATE, even with a
+    // RETURNING clause, so the rows have to be pulled out of the tuple.
+    const result = await this.repo.manager.query<
+      [ClaimedSessionRow[], number] | undefined
     >(
       `DELETE FROM oidc_model
-        WHERE oidc_id IN (
-          SELECT oidc_id FROM oidc_model
-           WHERE model_name = $1
-             AND account_id = $2
-             AND (expires_at IS NULL OR expires_at > now())
-             AND ($4::varchar IS NULL OR oidc_id <> $4::varchar)
-           ORDER BY created_at DESC, oidc_id DESC
-           OFFSET $3
-           FOR UPDATE SKIP LOCKED
-        )
+        WHERE model_name = $1
+          AND oidc_id IN (
+            SELECT oidc_id FROM oidc_model
+             WHERE model_name = $1
+               AND account_id = $2
+               AND (expires_at IS NULL OR expires_at > now())
+               AND ($4::varchar IS NULL OR oidc_id <> $4::varchar)
+             ORDER BY created_at DESC, oidc_id DESC
+             OFFSET $3
+             FOR UPDATE SKIP LOCKED
+          )
         RETURNING oidc_id, created_at, payload`,
       [SESSION_MODEL, accountId, Math.max(keep, 0), newSessionId ?? null],
     );
 
-    return rows.map((row) => ({
+    return (result?.[0] ?? []).map((row) => ({
       oidcId: row.oidc_id,
       createdAt: row.created_at,
       grantIds: extractGrantIds(row.payload),

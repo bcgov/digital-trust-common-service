@@ -105,6 +105,78 @@ describe('OidcAccountSessionRepository', () => {
     });
   });
 
+  describe('claimSurplusSessions', () => {
+    /**
+     * TypeORM's Postgres driver returns `[rows, rowCount]` for DELETE and
+     * UPDATE, including when a RETURNING clause is present, so the mock has
+     * to use that shape rather than a bare row array.
+     */
+    it('unwraps the driver tuple and keeps only the returned rows', async () => {
+      mockQuery.mockResolvedValue([
+        [
+          {
+            oidc_id: 'session-1',
+            created_at: new Date('2026-01-01T00:00:00Z'),
+            payload: { authorizations: { 'client-a': { grantId: 'grant-a' } } },
+          },
+        ],
+        1,
+      ]);
+
+      const claimed = await repository.claimSurplusSessions('user-1', 5, 'new');
+
+      expect(claimed).toEqual([
+        {
+          oidcId: 'session-1',
+          createdAt: new Date('2026-01-01T00:00:00Z'),
+          grantIds: ['grant-a'],
+        },
+      ]);
+    });
+
+    it('returns nothing when the delete affected no rows', async () => {
+      mockQuery.mockResolvedValue([[], 0]);
+
+      await expect(
+        repository.claimSurplusSessions('user-1', 5, 'new'),
+      ).resolves.toEqual([]);
+    });
+
+    it('reserves a slot for the new session and never evicts it', async () => {
+      await repository.claimSurplusSessions('user-1', 5, 'new');
+
+      const [sql, params] = mockQuery.mock.calls[0];
+      expect(sql).toContain('FOR UPDATE SKIP LOCKED');
+      expect(params).toEqual(['Session', 'user-1', 4, 'new']);
+    });
+
+    it('offsets by the full limit when there is no new session', async () => {
+      await repository.claimSurplusSessions('user-1', 5);
+
+      const [, params] = mockQuery.mock.calls[0];
+      expect(params).toEqual(['Session', 'user-1', 5, null]);
+    });
+
+    it('never offsets by a negative amount', async () => {
+      await repository.claimSurplusSessions('user-1', 0, 'new');
+
+      const [, params] = mockQuery.mock.calls[0];
+      expect(params[2]).toBe(0);
+    });
+
+    /**
+     * `oidc_model` is keyed on `(model_name, oidc_id)`, so an id can be
+     * reused across model kinds. Without the outer filter the delete would
+     * take unrelated rows that happen to share a session id.
+     */
+    it('constrains the outer delete to Session rows', async () => {
+      await repository.claimSurplusSessions('user-1', 5, 'new');
+
+      const [sql] = mockQuery.mock.calls[0];
+      expect(sql).toMatch(/DELETE FROM oidc_model\s+WHERE model_name = \$1/);
+    });
+  });
+
   describe('deleteSessions', () => {
     it('does not issue a query when there is nothing to delete', async () => {
       await expect(repository.deleteSessions([])).resolves.toEqual([]);
