@@ -1,4 +1,11 @@
-import { ApiJwtAuth, CurrentAuth, JwtGuard, ScopeGuard } from '@app/auth';
+import {
+  ApiJwtAuth,
+  CurrentAuth,
+  JwtGuard,
+  PLATFORM_ADMIN_ROLE,
+  RequireRoles,
+  ScopeGuard,
+} from '@app/auth';
 import type { AuthContext } from '@app/auth';
 import {
   Controller,
@@ -8,6 +15,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import {
+  ApiForbiddenResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
@@ -20,12 +28,10 @@ import { API_VERSION } from '../common/constants/api-version.constants';
 import { AdminSessionsService } from './admin-sessions.service';
 import { RevokeSessionsResponseDto } from './dto/revoke-sessions-response.dto';
 
-// NOTE: ScopeGuard is still a stub that throws NotImplementedException, so an
-// authenticated caller gets 501 until #37 lands. That fails closed, which is
-// why this destructive endpoint can ship ahead of scope enforcement.
 @ApiTags('admin')
 @ApiJwtAuth()
 @Controller({ path: 'admin/users', version: API_VERSION })
+@RequireRoles(PLATFORM_ADMIN_ROLE)
 @UseGuards(JwtGuard, ScopeGuard)
 export class AdminSessionsController {
   public constructor(
@@ -48,6 +54,7 @@ export class AdminSessionsController {
     type: RevokeSessionsResponseDto,
   })
   @ApiNotFoundResponse({ description: 'Tenant user not found' })
+  @ApiForbiddenResponse({ description: 'Caller is not a platform admin' })
   public async revokeSessions(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentAuth() auth?: AuthContext,

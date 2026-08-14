@@ -30,15 +30,23 @@ export class AdminSessionsService {
    * that has already been cleared.
    *
    * `actorId` is the administrator performing the revocation. It stays
-   * optional because ScopeGuard is still a stub (#37), so the endpoint has no
-   * authenticated caller to attribute the action to in some paths.
+   * optional so a future internal caller (a scheduled job, say) can revoke
+   * without an authenticated principal; those are recorded as SYSTEM.
+   *
+   * The OIDC account key is `tenant_user.id`, not `external_user_id`. Two
+   * reasons: `external_user_id` is only unique per tenant
+   * (`uq_tenant_user_external_user` covers `(tenant_id, external_user_id)`),
+   * so two tenants federating the same IdP subject would share an account
+   * key and revoke each other's sessions; and AU-02 (#35) sets
+   * `login.accountId` to the tenant user id, so this is the value that will
+   * actually be on the session rows.
    */
   public async revokeSessions(
     tenantUserId: string,
     actorId?: string,
   ): Promise<RevokeSessionsResponseDto> {
     const tenantUser = await this.tenantUsers.findById(tenantUserId);
-    const accountId = tenantUser.externalUserId;
+    const accountId = tenantUser.id;
 
     const revokedRecordCount = await this.dataSource.transaction(
       async (manager) => {

@@ -23,10 +23,10 @@ import {
   TenantUserStatus,
 } from '../src/tenant-user/tenant-user.entity';
 
-// See admin-operations.e2e-spec.ts: ScopeGuard is still a stub that throws
-// NotImplementedException, so the guards are overridden to exercise the
-// business logic. The unauthenticated behaviour is asserted in the second
-// describe below.
+// See admin-operations.e2e-spec.ts: the guards are overridden so these cases
+// exercise the business logic rather than token validation. Unauthenticated
+// behaviour is asserted in the second describe below, and the platform-admin
+// role requirement is asserted in admin-sessions.controller.spec.ts.
 const ADMIN_SUBJECT = 'e2e-admin-sub-1';
 
 class AllowGuard implements CanActivate {
@@ -57,8 +57,8 @@ describe('AdminSessionsController (e2e)', () => {
   let oidcRepo: Repository<OidcModel>;
   let auditRepo: Repository<AuditLog>;
 
-  const accountId = 'e2e-keycloak-sub-1';
-  const otherAccountId = 'e2e-keycloak-sub-2';
+  const externalUserId = 'e2e-keycloak-sub-1';
+  const otherExternalUserId = 'e2e-keycloak-sub-2';
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -152,9 +152,9 @@ describe('AdminSessionsController (e2e)', () => {
   }
 
   it('revokes every session, grant and token for the user', async () => {
-    const user = await createUser(accountId);
-    await seedSession(accountId, 'sess-1', 'grant-1');
-    await seedSession(accountId, 'sess-2', 'grant-2');
+    const user = await createUser(externalUserId);
+    await seedSession(user.id, 'sess-1', 'grant-1');
+    await seedSession(user.id, 'sess-2', 'grant-2');
 
     const response = await request(app.getHttpServer())
       .post(`${API_BASE_PATH}/admin/users/${user.id}/revoke-sessions`)
@@ -162,17 +162,17 @@ describe('AdminSessionsController (e2e)', () => {
 
     expect(response.body).toEqual({
       tenantUserId: user.id,
-      accountId,
+      accountId: user.id,
       revokedRecordCount: 6,
     });
     expect(await oidcRepo.count()).toBe(0);
   });
 
   it('leaves other accounts untouched', async () => {
-    const user = await createUser(accountId);
-    await createUser(otherAccountId);
-    await seedSession(accountId, 'sess-1', 'grant-1');
-    await seedSession(otherAccountId, 'sess-9', 'grant-9');
+    const user = await createUser(externalUserId);
+    const other = await createUser(otherExternalUserId);
+    await seedSession(user.id, 'sess-1', 'grant-1');
+    await seedSession(other.id, 'sess-9', 'grant-9');
 
     await request(app.getHttpServer())
       .post(`${API_BASE_PATH}/admin/users/${user.id}/revoke-sessions`)
@@ -180,14 +180,12 @@ describe('AdminSessionsController (e2e)', () => {
 
     const remaining = await oidcRepo.find();
     expect(remaining).toHaveLength(3);
-    expect(remaining.every((row) => row.accountId === otherAccountId)).toBe(
-      true,
-    );
+    expect(remaining.every((row) => row.accountId === other.id)).toBe(true);
   });
 
   it('writes a revoke audit entry scoped to the user tenant', async () => {
-    const user = await createUser(accountId);
-    await seedSession(accountId, 'sess-1', 'grant-1');
+    const user = await createUser(externalUserId);
+    await seedSession(user.id, 'sess-1', 'grant-1');
 
     await request(app.getHttpServer())
       .post(`${API_BASE_PATH}/admin/users/${user.id}/revoke-sessions`)
@@ -206,7 +204,7 @@ describe('AdminSessionsController (e2e)', () => {
   });
 
   it('is idempotent when the user has no sessions', async () => {
-    const user = await createUser(accountId);
+    const user = await createUser(externalUserId);
 
     const response = await request(app.getHttpServer())
       .post(`${API_BASE_PATH}/admin/users/${user.id}/revoke-sessions`)
@@ -214,7 +212,7 @@ describe('AdminSessionsController (e2e)', () => {
 
     expect(response.body).toEqual({
       tenantUserId: user.id,
-      accountId,
+      accountId: user.id,
       revokedRecordCount: 0,
     });
   });
@@ -238,9 +236,9 @@ describe('AdminSessionsController (e2e) — unauthenticated', () => {
   let app: INestApplication<App>;
 
   beforeAll(async () => {
-    // No guard overrides: documents actual production behaviour. AU-03 landed
-    // the real JwtGuard, so an unauthenticated request is now rejected at the
-    // door rather than reaching the still-stubbed ScopeGuard.
+    // No guard overrides: documents actual production behaviour. The real
+    // JwtGuard rejects an unauthenticated request at the door, before
+    // ScopeGuard gets to check the platform-admin role.
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     })

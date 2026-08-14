@@ -12,7 +12,10 @@ import { AdminSessionsService } from './admin-sessions.service';
 describe('AdminSessionsService', () => {
   const tenantUserId = '8f2b1c4e-9d3a-4f57-b6c1-0e7a52d81b34';
   const tenantId = '11111111-1111-4111-8111-111111111111';
-  const accountId = 'keycloak-sub-abc';
+  // The OIDC account key is the tenant user id. externalUserId is kept
+  // deliberately different so the assertions prove which one is used.
+  const accountId = tenantUserId;
+  const externalUserId = 'keycloak-sub-abc';
 
   let service: AdminSessionsService;
   let tenantUsers: { findById: jest.Mock };
@@ -26,7 +29,7 @@ describe('AdminSessionsService', () => {
       findById: jest.fn().mockResolvedValue({
         id: tenantUserId,
         tenantId,
-        externalUserId: accountId,
+        externalUserId,
       }),
     };
     accountSessions = {
@@ -60,11 +63,15 @@ describe('AdminSessionsService', () => {
     service = module.get<AdminSessionsService>(AdminSessionsService);
   });
 
-  it('revokes sessions using the external user id as the OIDC account id', async () => {
+  it('revokes sessions using the tenant user id as the OIDC account id', async () => {
     const result = await service.revokeSessions(tenantUserId);
 
     expect(accountSessions.deleteAllForAccount).toHaveBeenCalledWith(
       accountId,
+      manager,
+    );
+    expect(accountSessions.deleteAllForAccount).not.toHaveBeenCalledWith(
+      externalUserId,
       manager,
     );
     expect(result).toEqual({
