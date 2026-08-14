@@ -1,3 +1,4 @@
+import { extractBearerToken, verifyAccessToken } from '@app/auth';
 import { importJWK, jwtVerify } from 'jose';
 import request from 'supertest';
 import { App } from 'supertest/types';
@@ -25,6 +26,45 @@ export interface IssuedTokenResponse {
   expiresIn: number;
 }
 
+type JwksDocument = {
+  keys: Array<Record<string, unknown>>;
+};
+
+function resolveJwkFromDocument(
+  keys: Array<Record<string, unknown>>,
+  kid: string | undefined,
+): Record<string, unknown> {
+  const jwk = keys.find((key) => key.kid === kid);
+
+  if (!jwk) {
+    throw new Error('Signing key not found in JWKS response');
+  }
+
+  return jwk;
+}
+
+async function verifyTokenWithJwksDocument(
+  token: string,
+  jwksBody: JwksDocument,
+  issuer?: string,
+): Promise<Record<string, unknown>> {
+  if (issuer) {
+    return verifyAccessToken(
+      token,
+      (kid) => Promise.resolve(resolveJwkFromDocument(jwksBody.keys, kid)),
+      { issuer, audience: issuer },
+    );
+  }
+
+  const { payload } = await jwtVerify(token, async (protectedHeader) => {
+    const jwk = resolveJwkFromDocument(jwksBody.keys, protectedHeader.kid);
+
+    return importJWK(jwk, protectedHeader.alg);
+  });
+
+  return payload;
+}
+
 /**
  * Verifies an already-issued access token against the live `/oidc/jwks`
  * endpoint, selecting the verification key by the JWT's `kid`. Split out from
@@ -38,26 +78,10 @@ export async function verifyTokenAgainstJwks(
   issuer?: string,
 ): Promise<Record<string, unknown>> {
   const jwksResponse = await request(httpServer).get('/oidc/jwks').expect(200);
+  const jwksBody = jwksResponse.body as JwksDocument;
+  const token = extractBearerToken(`Bearer ${accessToken}`);
 
-  const jwksBody = jwksResponse.body as {
-    keys: Array<Record<string, unknown>>;
-  };
-
-  const { payload } = await jwtVerify(
-    accessToken,
-    async (protectedHeader) => {
-      const jwk = jwksBody.keys.find((key) => key.kid === protectedHeader.kid);
-
-      if (!jwk) {
-        throw new Error('Signing key not found in JWKS response');
-      }
-
-      return importJWK(jwk, protectedHeader.alg);
-    },
-    issuer ? { issuer } : undefined,
-  );
-
-  return payload;
+  return verifyTokenWithJwksDocument(token, jwksBody, issuer);
 }
 
 /**

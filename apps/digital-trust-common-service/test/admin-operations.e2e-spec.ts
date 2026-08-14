@@ -176,11 +176,8 @@ describe('AdminOperationsController (e2e) — guard stubs', () => {
 
   beforeAll(async () => {
     // No guard overrides here: this documents *actual* current production
-    // behavior of the endpoint. JwtGuard/ScopeGuard are stubs that always
-    // throw NotImplementedException (-> HTTP 501). Once real JWT/scope
-    // enforcement lands, this test must be updated to expect 401/403 for an
-    // unauthenticated/unauthorized request instead of 501 — its failure is
-    // the intended signal that the guards have been implemented.
+    // behavior of the endpoint. JwtGuard now returns 401 for missing/invalid
+    // tokens; ScopeGuard remains a stub that returns 501 once JwtGuard passes.
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     })
@@ -200,9 +197,14 @@ describe('AdminOperationsController (e2e) — guard stubs', () => {
     await app.close();
   });
 
-  it('/admin/operations/stats (GET) returns 501 while JwtGuard/ScopeGuard remain stub implementations', async () => {
-    await request(app.getHttpServer())
+  it('/admin/operations/stats (GET) returns 401 when no bearer token is provided', async () => {
+    const response = await request(app.getHttpServer())
       .get(`${API_BASE_PATH}/admin/operations/stats`)
-      .expect(501);
+      .expect(401);
+
+    expect(response.headers['www-authenticate']).toMatch(/Bearer error="/);
+    expect(response.body).toMatchObject({
+      error: { code: 'AUTHENTICATION_REQUIRED' },
+    });
   });
 });

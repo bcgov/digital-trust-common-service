@@ -1,3 +1,4 @@
+import { APP_JWT_BEARER_SCHEME } from '@app/auth/constants/app-jwt-bearer.constants';
 import { INestApplication, Type } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
@@ -62,6 +63,37 @@ const swaggerApps = [
     modules: [AdminModule],
   },
 ];
+
+function addAppJwtBearerAuth(configBuilder: DocumentBuilder): DocumentBuilder {
+  return configBuilder.addBearerAuth(
+    {
+      type: 'http',
+      scheme: 'bearer',
+      bearerFormat: 'JWT',
+      description:
+        'App-issued access token from POST /oidc/token (client_credentials or user login)',
+    },
+    APP_JWT_BEARER_SCHEME,
+  );
+}
+
+function buildDocumentConfig(
+  title: string,
+  description: string,
+  version: string,
+  options: { includeAppJwtBearerAuth?: boolean } = {},
+): ReturnType<DocumentBuilder['build']> {
+  let configBuilder = new DocumentBuilder()
+    .setTitle(title)
+    .setDescription(description)
+    .setVersion(version);
+
+  if (options.includeAppJwtBearerAuth) {
+    configBuilder = addAppJwtBearerAuth(configBuilder);
+  }
+
+  return configBuilder.build();
+}
 
 export class SwaggerService {
   /**
@@ -170,11 +202,9 @@ export class SwaggerService {
     version: string,
     modules: Array<Type<unknown>> = [TenantModule, TenantUserModule],
   ): void {
-    const config = new DocumentBuilder()
-      .setTitle(title)
-      .setDescription(description)
-      .setVersion(version)
-      .build();
+    const config = buildDocumentConfig(title, description, version, {
+      includeAppJwtBearerAuth: name === 'admin',
+    });
 
     const document = SwaggerModule.createDocument(app, config, {
       include: modules,
@@ -205,11 +235,9 @@ export class SwaggerService {
     modules: Array<Type<unknown>> = [TenantModule, TenantUserModule],
     document?: ReturnType<typeof SwaggerModule.createDocument>,
   ): void {
-    const config = new DocumentBuilder()
-      .setTitle(title)
-      .setDescription(description)
-      .setVersion(version)
-      .build();
+    const config = buildDocumentConfig(title, description, version, {
+      includeAppJwtBearerAuth: name === 'admin',
+    });
 
     const docToUse =
       document ||
