@@ -29,9 +29,9 @@ export class AdminSessionsService {
    * removed them, and return an error that invites a retry against an account
    * that has already been cleared.
    *
-   * `actorId` is the administrator performing the revocation. It is optional
-   * only because JwtGuard does not yet populate a request principal (#37);
-   * once it does, the controller always supplies it.
+   * `actorId` is the administrator performing the revocation. It stays
+   * optional because ScopeGuard is still a stub (#37), so the endpoint has no
+   * authenticated caller to attribute the action to in some paths.
    */
   public async revokeSessions(
     tenantUserId: string,

@@ -23,11 +23,20 @@ import {
   TenantUserStatus,
 } from '../src/tenant-user/tenant-user.entity';
 
-// See admin-operations.e2e-spec.ts: the guards are stubs that throw
-// NotImplementedException, so they are overridden to exercise the business
-// logic. The unguarded behaviour is asserted in the second describe below.
+// See admin-operations.e2e-spec.ts: ScopeGuard is still a stub that throws
+// NotImplementedException, so the guards are overridden to exercise the
+// business logic. The unauthenticated behaviour is asserted in the second
+// describe below.
+const ADMIN_SUBJECT = 'e2e-admin-sub-1';
+
 class AllowGuard implements CanActivate {
-  public canActivate(_context: ExecutionContext): boolean {
+  public canActivate(context: ExecutionContext): boolean {
+    // Stand in for JwtGuard so the audit actor is a real subject rather than
+    // the unauthenticated 'system' fallback.
+    context.switchToHttp().getRequest<{ auth?: { sub: string } }>().auth = {
+      sub: ADMIN_SUBJECT,
+    };
+
     return true;
   }
 }
@@ -188,6 +197,8 @@ describe('AdminSessionsController (e2e)', () => {
     expect(entries).toHaveLength(1);
     expect(entries[0]).toMatchObject({
       tenantId: user.tenantId,
+      actorId: ADMIN_SUBJECT,
+      actorType: 'user',
       action: 'revoke',
       resourceType: 'oidc_session',
       resourceId: user.id,
@@ -223,14 +234,13 @@ describe('AdminSessionsController (e2e)', () => {
   });
 });
 
-describe('AdminSessionsController (e2e) — guard stubs', () => {
+describe('AdminSessionsController (e2e) — unauthenticated', () => {
   let app: INestApplication<App>;
 
   beforeAll(async () => {
-    // No guard overrides: documents actual production behaviour. This
-    // destructive endpoint fails closed (501) until #37 implements the
-    // guards. When that lands this must become 401/403 — the failure is the
-    // intended signal.
+    // No guard overrides: documents actual production behaviour. AU-03 landed
+    // the real JwtGuard, so an unauthenticated request is now rejected at the
+    // door rather than reaching the still-stubbed ScopeGuard.
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     })
@@ -250,11 +260,11 @@ describe('AdminSessionsController (e2e) — guard stubs', () => {
     await app.close();
   });
 
-  it('returns 501 while JwtGuard/ScopeGuard remain stub implementations', async () => {
+  it('rejects a request with no bearer token', async () => {
     await request(app.getHttpServer())
       .post(
         `${API_BASE_PATH}/admin/users/3f1d9c88-4b2e-4a6d-9f10-7c5b8e2a1d44/revoke-sessions`,
       )
-      .expect(501);
+      .expect(401);
   });
 });

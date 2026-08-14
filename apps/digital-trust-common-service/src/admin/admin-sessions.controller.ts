@@ -1,4 +1,5 @@
-import { JwtGuard, ScopeGuard } from '@app/auth';
+import { ApiJwtAuth, CurrentAuth, JwtGuard, ScopeGuard } from '@app/auth';
+import type { AuthContext } from '@app/auth';
 import {
   Controller,
   Param,
@@ -19,11 +20,11 @@ import { API_VERSION } from '../common/constants/api-version.constants';
 import { AdminSessionsService } from './admin-sessions.service';
 import { RevokeSessionsResponseDto } from './dto/revoke-sessions-response.dto';
 
-// NOTE: JwtGuard/ScopeGuard are currently stub implementations that throw
-// NotImplementedException, so this route responds 501 until #37 lands. That
-// fails closed, which is why this destructive endpoint can ship ahead of auth.
-// TODO(#37): pass the authenticated admin's subject as the audit actorId.
+// NOTE: ScopeGuard is still a stub that throws NotImplementedException, so an
+// authenticated caller gets 501 until #37 lands. That fails closed, which is
+// why this destructive endpoint can ship ahead of scope enforcement.
 @ApiTags('admin')
+@ApiJwtAuth()
 @Controller({ path: 'admin/users', version: API_VERSION })
 @UseGuards(JwtGuard, ScopeGuard)
 export class AdminSessionsController {
@@ -49,7 +50,8 @@ export class AdminSessionsController {
   @ApiNotFoundResponse({ description: 'Tenant user not found' })
   public async revokeSessions(
     @Param('id', ParseUUIDPipe) id: string,
+    @CurrentAuth() auth?: AuthContext,
   ): Promise<RevokeSessionsResponseDto> {
-    return this.adminSessionsService.revokeSessions(id);
+    return this.adminSessionsService.revokeSessions(id, auth?.sub);
   }
 }
