@@ -16,10 +16,16 @@ describe('BackfillOidcModelAccountId migration', () => {
       runner: {
         query: jest.fn((sql: string) => {
           queries.push(sql);
-          const rows = new Array<number>(batchSizes[call] ?? 0).fill(1);
+          const affected = batchSizes[call] ?? 0;
           call += 1;
 
-          return Promise.resolve(rows);
+          // TypeORM's Postgres driver returns [rows, rowCount] for UPDATE.
+          // The outer array is always length 2, so a loop that counts it
+          // instead of reading index 1 never terminates.
+          return Promise.resolve([
+            new Array<number>(affected).fill(1),
+            affected,
+          ]);
         }),
       },
     };
@@ -54,6 +60,16 @@ describe('BackfillOidcModelAccountId migration', () => {
     await new BackfillOidcModelAccountId1786600000000().up(runner as never);
 
     expect(runner.query).toHaveBeenCalledTimes(4);
+  });
+
+  it('stops on the first pass when there is nothing to backfill', async () => {
+    // Guards the loop condition. Reading the length of TypeORM's [rows, count]
+    // result instead of the count never reaches zero, so this would hang.
+    const { runner } = createQueryRunner([0]);
+
+    await new BackfillOidcModelAccountId1786600000000().up(runner as never);
+
+    expect(runner.query).toHaveBeenCalledTimes(1);
   });
 
   it('does not touch the schema on down', async () => {

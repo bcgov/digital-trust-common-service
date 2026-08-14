@@ -29,9 +29,10 @@ export class BackfillOidcModelAccountId1786600000000 implements MigrationInterfa
     let updated = 0;
 
     do {
-      // RETURNING so the affected count comes back as a row array, which is
-      // consistent across drivers, rather than relying on the raw result shape.
-      const rows = (await queryRunner.query(
+      // TypeORM's Postgres driver returns [rows, rowCount] for UPDATE, so the
+      // count comes from index 1. RETURNING would not help: the array is two
+      // elements wide whatever the statement affected.
+      const result = (await queryRunner.query(
         `WITH batch AS (
           SELECT ctid FROM oidc_model
            WHERE account_id IS NULL
@@ -40,12 +41,11 @@ export class BackfillOidcModelAccountId1786600000000 implements MigrationInterfa
         )
         UPDATE oidc_model
            SET account_id = payload->>'accountId'
-          WHERE ctid IN (SELECT ctid FROM batch)
-        RETURNING 1`,
+          WHERE ctid IN (SELECT ctid FROM batch)`,
         [BackfillOidcModelAccountId1786600000000.BATCH_SIZE],
-      )) as unknown[];
+      )) as [unknown[], number] | undefined;
 
-      updated = rows.length;
+      updated = result?.[1] ?? 0;
     } while (updated > 0);
   }
 
