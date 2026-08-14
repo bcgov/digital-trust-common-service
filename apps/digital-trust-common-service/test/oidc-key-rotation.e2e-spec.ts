@@ -143,7 +143,7 @@ describe('OIDC signing-key rotation (e2e)', () => {
         clientId: seededClientId,
         clientSecretHash,
         name: 'Rotation E2E Test Client',
-        scopes: ['read:credentials'],
+        scopes: ['credentials:offer'],
         grantTypes: ['client_credentials'],
       }),
     );
@@ -171,21 +171,27 @@ describe('OIDC signing-key rotation (e2e)', () => {
     [previousKid] = readKids();
 
     const preRotation = await bootApp();
-    const preRotationSeed = await seedClient(
-      preRotation.moduleFixture.get(getRepositoryToken(Tenant)),
-      preRotation.moduleFixture.get(getRepositoryToken(OAuthClient)),
-    );
 
-    const { token } = await issueTokenAndVerify(
-      preRotation.instance.getHttpServer(),
-      preRotationSeed.clientId,
-      clientSecret,
-      'read:credentials',
-    );
-    preRotationToken = token.accessToken;
-    preRotationTenantId = preRotationSeed.tenantId;
+    // The close must run even if seeding or token issuance throws: an
+    // un-closed instance leaves its database pool open, which keeps the jest
+    // process alive indefinitely instead of reporting the failure.
+    try {
+      const preRotationSeed = await seedClient(
+        preRotation.moduleFixture.get(getRepositoryToken(Tenant)),
+        preRotation.moduleFixture.get(getRepositoryToken(OAuthClient)),
+      );
 
-    await preRotation.instance.close();
+      const { token } = await issueTokenAndVerify(
+        preRotation.instance.getHttpServer(),
+        preRotationSeed.clientId,
+        clientSecret,
+        'credentials:offer',
+      );
+      preRotationToken = token.accessToken;
+      preRotationTenantId = preRotationSeed.tenantId;
+    } finally {
+      await preRotation.instance.close();
+    }
 
     // Phase 2 — rotate via the shipped tooling rather than hand-rolling a
     // JWKS, so this proves the real rotation artifact loads and verifies end
@@ -215,7 +221,8 @@ describe('OIDC signing-key rotation (e2e)', () => {
   });
 
   afterAll(async () => {
-    await app.close();
+    // `app` is unset when beforeAll failed before the post-rotation boot.
+    await app?.close();
     delete process.env.OIDC_KEYS_PATH;
     rmSync(keysDir, { recursive: true, force: true });
   });
@@ -253,7 +260,7 @@ describe('OIDC signing-key rotation (e2e)', () => {
       app.getHttpServer(),
       clientId,
       clientSecret,
-      'read:credentials',
+      'credentials:offer',
     );
 
     // The verification inside issueTokenAndVerify already selects the signing
