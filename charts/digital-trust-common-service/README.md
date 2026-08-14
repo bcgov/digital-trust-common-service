@@ -53,6 +53,101 @@ The `upstreamFederation` configuration is always consumed from an existing Kuber
 - Set `upstreamFederation.existingSecret.name` to that Secret, and
   `upstreamFederation.existingSecret.key` to the JSON key containing the upstream IdP client config.
 
+## Pre-provisioned Secret Examples
+
+Several chart values point at existing Kubernetes Secrets rather than creating them automatically. The examples below show the expected structure and key names with placeholder values.
+
+### Database Credentials Secret
+
+Referenced by `secret.existingSecret`.
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: digital-trust-common-service-secret
+type: Opaque
+stringData:
+  DB_USERNAME: <database-username>
+  DB_PASSWORD: <database-password>
+```
+
+### Upstream Federation Secret
+
+Referenced by `upstreamFederation.existingSecret.name` and `upstreamFederation.existingSecret.key`.
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: dtsc-dev-oidc-client
+type: Opaque
+stringData:
+  upstream-identity-federation.json: |
+    {
+      "url": "https://<keycloak-or-idp-host>/realms/<realm>",
+      "clientId": "<upstream-client-id>",
+      "clientSecret": "<upstream-client-secret>"
+    }
+```
+
+### Connector Encryption Secret
+
+Referenced by `connectorEncryption.existingSecret`.
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: digital-trust-common-service-dev-connector-encryption
+type: Opaque
+stringData:
+  encryption-keys.json: |
+    {
+      "currentVersion": 1,
+      "keys": {
+        "1": "<64-char-hex-aes256-key>"
+      }
+    }
+```
+
+This Secret is mounted at `/etc/connector`, so the JSON key name should match the filename implied by `CONNECTOR_ENCRYPTION_KEYS_PATH` unless you also override that path.
+
+### OIDC Signing Secret
+
+Referenced by `oidcSigning.existingSecret`.
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: digital-trust-common-service-dev-oidc-signing
+type: Opaque
+stringData:
+  oidc-keys.json: |
+    {
+      "keys": [
+        {
+          "kty": "RSA",
+          "kid": "<key-id>",
+          "use": "sig",
+          "alg": "RS256",
+          "n": "<base64url-modulus>",
+          "e": "AQAB",
+          "d": "<base64url-private-exponent>",
+          "p": "<base64url-prime-p>",
+          "q": "<base64url-prime-q>",
+          "dp": "<base64url-dp>",
+          "dq": "<base64url-dq>",
+          "qi": "<base64url-qi>"
+        }
+      ]
+    }
+  OIDC_COOKIE_KEYS: <comma-separated-cookie-signing-secrets>
+```
+
+Generate the JWKS payload with `npm run oidc:generate-keys > oidc-keys.json`, then copy that file content into the `oidc-keys.json` entry above.
+
 ## Maintainers
 
 | Name | Email | Url |
