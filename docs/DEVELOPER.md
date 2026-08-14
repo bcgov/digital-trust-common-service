@@ -249,7 +249,8 @@ The server-wide allowlist is configured via `OIDC_SCOPES` (see `.env.example`). 
 3. Otherwise the JWT `tenant_id` claim must equal the route `:tenantId`.
 4. On success, the resolved id is stamped on `request.tenantId` for downstream handlers (distinct from `request.auth.tenantId`, which is the JWT claim).
 
-Mismatch / missing claim → **403** `{ error: { code: "TENANT_ACCESS_DENIED", required_tenant_id, token_tenant_id } }`.
+Missing `request.auth` (JwtGuard not run) → **401** `AUTHENTICATION_REQUIRED`.
+Mismatch / missing `tenant_id` claim → **403** `{ error: { code: "TENANT_ACCESS_DENIED", required_tenant_id, token_tenant_id } }`.
 
 **v1 is claim-match only.** Live `TenantUser` membership lookup (PE-02) is deferred until interactive user tokens (AU-02) / tenant switching (AU-09). Client-credentials tokens already carry a fixed `tenant_id` from `oauth_client`.
 

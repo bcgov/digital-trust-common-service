@@ -1,5 +1,6 @@
 import { ExecutionContext } from '@nestjs/common';
 
+import { AuthenticationRequiredException } from '../exceptions/authentication-required.exception';
 import { TenantAccessDeniedException } from '../exceptions/tenant-access-denied.exception';
 import type { AuthContext } from '../interfaces/auth-context.interface';
 import { ScopeAuthorizationService } from '../services/scope-authorization.service';
@@ -48,11 +49,11 @@ describe('TenantGuard', () => {
     guard = new TenantGuard(scopeAuthorizationService);
   });
 
-  it('throws when auth context is missing', () => {
+  it('throws AuthenticationRequiredException when auth context is missing', () => {
     const { context } = createContext(undefined);
 
     expect(() => guard.canActivate(context)).toThrow(
-      TenantAccessDeniedException,
+      AuthenticationRequiredException,
     );
   });
 

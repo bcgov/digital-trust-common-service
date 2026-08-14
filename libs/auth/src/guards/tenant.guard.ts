@@ -1,5 +1,6 @@
 import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
 
+import { AuthenticationRequiredException } from '../exceptions/authentication-required.exception';
 import { TenantAccessDeniedException } from '../exceptions/tenant-access-denied.exception';
 import { ScopeAuthorizationService } from '../services/scope-authorization.service';
 import type { AuthenticatedRequest } from '../types/express';
@@ -21,8 +22,11 @@ export class TenantGuard implements CanActivate {
     const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
     const auth = request.auth;
 
+    // Missing auth means JwtGuard did not run (or failed to attach context).
+    // That is an authentication failure (401), not tenant access denied (403).
     if (!auth) {
-      throw new TenantAccessDeniedException(
+      throw new AuthenticationRequiredException(
+        'invalid_token',
         'Authenticated request context is missing',
       );
     }
