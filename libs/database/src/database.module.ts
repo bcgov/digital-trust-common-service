@@ -2,32 +2,8 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
+import { parsePoolInt } from './pool.util';
 import { buildSslConfig } from './ssl.util';
-
-function parsePoolInt(
-  config: ConfigService,
-  key: string,
-  fallback: number,
-  min: number,
-): number {
-  const raw = config.get<string>(key);
-
-  if (raw === undefined || raw === '') {
-    return fallback;
-  }
-
-  if (!/^\d+$/.test(raw.trim())) {
-    throw new Error(`${key} must be a non-negative integer, got "${raw}".`);
-  }
-
-  const value = parseInt(raw, 10);
-
-  if (value < min) {
-    throw new Error(`${key} must be >= ${min}, got ${value}.`);
-  }
-
-  return value;
-}
 
 function buildPoolConfig(config: ConfigService): {
   max: number;
@@ -74,6 +50,9 @@ function buildPoolConfig(config: ConfigService): {
         migrationsRun: false,
         logging: config.get<string>('DB_LOGGING') === 'true',
         // Bound the node-postgres pool explicitly (driver default is 10).
+        // This is not a pod's whole connection budget: pg-boss opens a second,
+        // independent pool of its own (PGBOSS_POOL_MAX, see PgBossService), so
+        // size a pod as DB_POOL_MAX + PGBOSS_POOL_MAX.
         // Deployed pods connect direct to Crunchy `-primary` (not pgBouncer),
         // so the ceiling is Postgres `max_connections`. See issue #156.
         extra: buildPoolConfig(config),

@@ -8,8 +8,9 @@
  * and can run straight from a checkout with no install step.
  *
  * Usage:
- *   # First issuance — write a fresh single-key JWKS:
- *   node scripts/generate-oidc-keys.mjs > oidc-keys.json
+ *   # First issuance — write a fresh single-key JWKS. Pass the path rather
+ *   # than redirecting: only the path form can create the file 0600, while a
+ *   # shell redirect creates it under the caller's umask (commonly 0644).
  *   node scripts/generate-oidc-keys.mjs oidc-keys.json
  *
  *   # Rotation — prepend a new key to an existing JWKS (newest-first),

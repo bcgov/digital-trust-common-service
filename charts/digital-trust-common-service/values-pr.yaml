@@ -22,10 +22,13 @@ config:
   LOG_LEVEL: debug
   DB_HOST: digital-trust-common-service-pr-db
   DB_LOGGING: "true"
-  # Two replicas share the PR database, so cap each pod's pool to keep the
-  # total (2 x max + worker + migration Job) well under the primary's
-  # max_connections. Applies the sizing guidance from .env.example.
+  # Two replicas share the PR database, so cap each pod's pools to keep the
+  # total well under the primary's max_connections. A pod opens both, so its
+  # ceiling is DB_POOL_MAX + PGBOSS_POOL_MAX = 8, i.e. 16 across the two
+  # replicas before the worker and migration Job. Applies the sizing guidance
+  # from .env.example.
   DB_POOL_MAX: "5"
+  PGBOSS_POOL_MAX: "3"
 
 secret:
   # PR databases are owned by the same application user as dev; reuse the dev Secret.
