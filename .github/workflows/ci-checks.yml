@@ -46,6 +46,10 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
+    # The full job runs in ~2 minutes. A jest suite that leaves a database pool
+    # open never exits on its own, so without a cap a hung run holds a runner
+    # until the 6-hour default (see the e2e hang on PR #168).
+    timeout-minutes: 20
     permissions:
       contents: read
       pull-requests: write
