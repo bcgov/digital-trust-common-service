@@ -359,6 +359,17 @@ Product controllers are not all wired yet — rollout is tracked in **[AU-follow
 
 Do **not** treat every `:id` as a tenant id — most are resource primary keys.
 
+## JWT audience (AU-164)
+
+App-issued access tokens carry a stable API `aud`, not the OIDC issuer URL:
+
+- Default `JWT_AUDIENCE` / RFC 8707 default resource: `https://digital-trust-common-service`
+- `JwtGuard` accepts **only** that audience
+- Clients omit `resource` at `/oidc/token` for API tokens
+- Downstream gateways (OB-07 Loki) request `resource=<absolute URI>` and must be listed in `JWT_ADDITIONAL_AUDIENCES` (e.g. `https://loki-gateway`). Those JWTs are rejected by `JwtGuard` by design.
+
+`JWT_AUDIENCE` and extra resources must be absolute URIs without fragments (RFC 8707 / oidc-provider). Override via `.env` if needed; Helm `config.JWT_AUDIENCE` defaults to the same URI in every environment.
+
 ## Testing
 
 ### Run Unit Tests

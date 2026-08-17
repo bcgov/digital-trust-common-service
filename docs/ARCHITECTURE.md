@@ -1093,7 +1093,7 @@ graph TD
   "tenant_id": "b7e4a1f0-...",
   "roles": ["admin"],
   "scope": "credentials:offer credentials:verify connections:manage profiles:manage",
-  "aud": "digital-trust-common-service",
+  "aud": "https://digital-trust-common-service",
   "iss": "https://digital-trust-common-service.example.com/oidc",
   "exp": 1718500300,
   "iat": 1718500000
@@ -1108,12 +1108,25 @@ For API clients (`client_credentials` grant):
   "tenant_id": "b7e4a1f0-...",
   "roles": [],
   "scope": "credentials:offer credentials:verify",
-  "aud": "digital-trust-common-service",
+  "aud": "https://digital-trust-common-service",
   "iss": "https://digital-trust-common-service.example.com/oidc",
   "exp": 1718500300,
   "iat": 1718500000
 }
 ```
+
+### JWT audience (`aud`)
+
+API access tokens use a **fixed API resource audience**, not the OIDC issuer URL.
+
+| Token | How it is minted | `aud` claim | Who validates it |
+|-------|------------------|-------------|------------------|
+| This API | Omit `resource` (default) | `https://digital-trust-common-service` (`JWT_AUDIENCE`) | `JwtGuard` |
+| Downstream (e.g. Loki) | `resource=<absolute URI>` listed in `JWT_ADDITIONAL_AUDIENCES` | that resource URI | that gateway, **not** `JwtGuard` |
+
+`oidc-provider` requires RFC 8707 resource indicators to be absolute URIs, so the documented logical name `digital-trust-common-service` is minted as `https://digital-trust-common-service`. The AU-01 interim of `aud = OIDC_ISSUER` is no longer used.
+
+See [DEVELOPER.md](./DEVELOPER.md#jwt-audience-au-164) and [tenant-observability-design.md](./tenant-observability-design.md) for the API vs gateway split.
 
 ### Key Libraries
 

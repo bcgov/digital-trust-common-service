@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
-import { DEFAULT_OIDC_KEYS_PATH } from './oidc.constants';
+import { DEFAULT_JWT_AUDIENCE, DEFAULT_OIDC_KEYS_PATH } from './oidc.constants';
 
 export interface OidcConfig {
   /** Base URL at which the OIDC provider is mounted, e.g. https://api.example.com/oidc */
@@ -49,6 +49,35 @@ export interface OidcConfig {
    * implemented, not a way to turn on unimplemented ones.
    */
   grantTypes: string[];
+  /**
+   * JWT `aud` for API access tokens and the default RFC 8707 resource
+   * indicator (`features.resourceIndicators.defaultResource`). JwtGuard
+   * accepts only this value. Must be an absolute URI without a fragment.
+   */
+  audience: string;
+  /**
+   * Extra RFC 8707 resource indicators oidc-provider may mint JWTs for
+   * (downstream gateways such as Loki). Those tokens are not accepted by
+   * JwtGuard.
+   */
+  additionalAudiences: string[];
+}
+
+/**
+ * RFC 8707 / oidc-provider require resource indicators to be absolute URIs
+ * without a fragment. Used for `JWT_AUDIENCE` and `JWT_ADDITIONAL_AUDIENCES`.
+ */
+export function parseResourceIndicator(value: string, envName: string): string {
+  const trimmed = value.trim();
+  const href = URL.parse(trimmed)?.href;
+
+  if (!href || href.includes('#')) {
+    throw new Error(
+      `${envName} must be an absolute URI without a fragment (RFC 8707). Got "${value}".`,
+    );
+  }
+
+  return trimmed;
 }
 
 const DEFAULT_ACCESS_TOKEN_TTL_SECONDS = 5 * 60;
@@ -105,6 +134,7 @@ export class OidcConfigService {
       'OIDC_REFRESH_TOKEN_TTL_SECONDS',
       DEFAULT_REFRESH_TOKEN_TTL_SECONDS,
     );
+    const audience = this.getAudience();
 
     return {
       issuer: this.getIssuer(),
@@ -141,6 +171,8 @@ export class OidcConfigService {
       cookieKeys: this.getCookieKeys(),
       scopes: this.getScopes(),
       grantTypes: this.getGrantTypes(),
+      audience,
+      additionalAudiences: this.getAdditionalAudiences(audience),
     };
   }
 
@@ -270,6 +302,23 @@ export class OidcConfigService {
     }
 
     return grantTypes;
+  }
+
+  private getAudience(): string {
+    const configured = this.configService.get<string>('JWT_AUDIENCE')?.trim();
+
+    return parseResourceIndicator(
+      configured && configured.length > 0 ? configured : DEFAULT_JWT_AUDIENCE,
+      'JWT_AUDIENCE',
+    );
+  }
+
+  private getAdditionalAudiences(audience: string): string[] {
+    const additional = this.getCsv('JWT_ADDITIONAL_AUDIENCES', []).map(
+      (value) => parseResourceIndicator(value, 'JWT_ADDITIONAL_AUDIENCES'),
+    );
+
+    return [...new Set(additional.filter((value) => value !== audience))];
   }
 
   private getCsv(key: string, fallback: string[]): string[] {

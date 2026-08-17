@@ -1,5 +1,4 @@
-import { OidcConfigService } from '@app/oidc';
-import { ConfigService } from '@nestjs/config';
+import { DEFAULT_JWT_AUDIENCE, OidcConfigService } from '@app/oidc';
 import { generateKeyPair, exportJWK, SignJWT } from 'jose';
 
 import { AuthenticationRequiredException } from '../exceptions/authentication-required.exception';
@@ -122,15 +121,9 @@ describe('JwtValidationService', () => {
       clearCache: jest.fn(),
     } as unknown as jest.Mocked<JwksCacheService>;
 
-    service = new JwtValidationService(
-      jwksCacheService,
-      {
-        getConfig: () => ({ issuer }),
-      } as OidcConfigService,
-      {
-        get: () => undefined,
-      } as unknown as ConfigService,
-    );
+    service = new JwtValidationService(jwksCacheService, {
+      getConfig: () => ({ issuer, audience: DEFAULT_JWT_AUDIENCE }),
+    } as OidcConfigService);
   });
 
   async function signToken(
@@ -140,7 +133,7 @@ describe('JwtValidationService', () => {
     return new SignJWT(claims)
       .setProtectedHeader({ alg: 'RS256', kid: 'test-key' })
       .setIssuer(issuer)
-      .setAudience(issuer)
+      .setAudience(DEFAULT_JWT_AUDIENCE)
       .setIssuedAt()
       .setExpirationTime(`${expiresInSeconds}s`)
       .sign(privateKey);
@@ -159,6 +152,7 @@ describe('JwtValidationService', () => {
     expect(auth.tokenType).toBe('client');
     expect(auth.clientId).toBe('test-client');
     expect(auth.tenantId).toBe('tenant-1');
+    expect(auth.aud).toBe(DEFAULT_JWT_AUDIENCE);
   });
 
   it('rejects expired tokens', async () => {
@@ -199,17 +193,11 @@ describe('JwtValidationService', () => {
     expect(jwksCacheService.refresh.mock.calls).toHaveLength(1);
   });
 
-  it('validates against JWT_AUDIENCE when configured', async () => {
+  it('validates against OidcConfig.audience', async () => {
     const audience = 'https://api.example/resource';
-    service = new JwtValidationService(
-      jwksCacheService,
-      {
-        getConfig: () => ({ issuer }),
-      } as OidcConfigService,
-      {
-        get: (key: string) => (key === 'JWT_AUDIENCE' ? audience : undefined),
-      } as unknown as ConfigService,
-    );
+    service = new JwtValidationService(jwksCacheService, {
+      getConfig: () => ({ issuer, audience }),
+    } as OidcConfigService);
 
     const token = await new SignJWT({
       sub: 'client:test-client',
@@ -268,7 +256,7 @@ describe('JwtValidationService', () => {
     const token = await new SignJWT({ sub: 'client:test-client' })
       .setProtectedHeader({ alg: 'RS256', kid: 'test-key' })
       .setIssuer('http://wrong.example/oidc')
-      .setAudience(issuer)
+      .setAudience(DEFAULT_JWT_AUDIENCE)
       .setIssuedAt()
       .setExpirationTime('5m')
       .sign(privateKey);
@@ -276,6 +264,22 @@ describe('JwtValidationService', () => {
     await expect(
       service.validateAuthorizationHeader(`Bearer ${token}`),
     ).rejects.toBeInstanceOf(AuthenticationRequiredException);
+  });
+
+  it('rejects tokens whose aud is the issuer URL (AU-01 interim)', async () => {
+    const token = await new SignJWT({ sub: 'client:test-client' })
+      .setProtectedHeader({ alg: 'RS256', kid: 'test-key' })
+      .setIssuer(issuer)
+      .setAudience(issuer)
+      .setIssuedAt()
+      .setExpirationTime('5m')
+      .sign(privateKey);
+
+    await expect(
+      service.validateAuthorizationHeader(`Bearer ${token}`),
+    ).rejects.toMatchObject({
+      wwwAuthenticateError: 'invalid_token',
+    });
   });
 
   it('rejects tokens with wrong audience', async () => {
@@ -306,7 +310,7 @@ describe('JwtValidationService', () => {
     const token = await new SignJWT({ sub: 'client:test-client' })
       .setProtectedHeader({ alg: 'RS256' })
       .setIssuer(issuer)
-      .setAudience(issuer)
+      .setAudience(DEFAULT_JWT_AUDIENCE)
       .setIssuedAt()
       .setExpirationTime('5m')
       .sign(privateKey);

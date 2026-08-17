@@ -334,4 +334,63 @@ describe('OidcConfigService', () => {
       expect(() => service.getConfig()).not.toThrow();
     });
   });
+
+  describe('JWT audience (AU-164)', () => {
+    it('defaults JWT_AUDIENCE to the API resource URI', async () => {
+      await buildModule({ NODE_ENV: 'development' });
+
+      expect(service.getConfig().audience).toBe(
+        'https://digital-trust-common-service',
+      );
+      expect(service.getConfig().additionalAudiences).toEqual([]);
+    });
+
+    it('uses a configured JWT_AUDIENCE', async () => {
+      await buildModule({
+        JWT_AUDIENCE: 'https://api.example.com/resource',
+      });
+
+      expect(service.getConfig().audience).toBe(
+        'https://api.example.com/resource',
+      );
+    });
+
+    it('parses JWT_ADDITIONAL_AUDIENCES and drops the API audience', async () => {
+      await buildModule({
+        JWT_AUDIENCE: 'https://digital-trust-common-service',
+        JWT_ADDITIONAL_AUDIENCES:
+          ' https://loki-gateway ,https://digital-trust-common-service, https://loki-gateway ',
+      });
+
+      expect(service.getConfig().additionalAudiences).toEqual([
+        'https://loki-gateway',
+      ]);
+    });
+
+    it('rejects a non-URI JWT_AUDIENCE', async () => {
+      await buildModule({ JWT_AUDIENCE: 'digital-trust-common-service' });
+
+      expect(() => service.getConfig()).toThrow(
+        'JWT_AUDIENCE must be an absolute URI without a fragment (RFC 8707)',
+      );
+    });
+
+    it('rejects a JWT_AUDIENCE with a fragment', async () => {
+      await buildModule({
+        JWT_AUDIENCE: 'https://digital-trust-common-service#api',
+      });
+
+      expect(() => service.getConfig()).toThrow(
+        'JWT_AUDIENCE must be an absolute URI without a fragment (RFC 8707)',
+      );
+    });
+
+    it('rejects a non-URI additional audience', async () => {
+      await buildModule({ JWT_ADDITIONAL_AUDIENCES: 'loki-gateway' });
+
+      expect(() => service.getConfig()).toThrow(
+        'JWT_ADDITIONAL_AUDIENCES must be an absolute URI without a fragment (RFC 8707)',
+      );
+    });
+  });
 });
