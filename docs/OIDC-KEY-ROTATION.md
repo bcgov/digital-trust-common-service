@@ -42,12 +42,22 @@ already exists and carries both keys:
 
 ```bash
 oc get secret digital-trust-common-service-<env>-oidc-signing -n <namespace> \
-  -o jsonpath='{.data.oidc-keys\.json}' | base64 -d | head -c 100
+  -o go-template='{{range $k, $v := .data}}{{$k}}{{"\n"}}{{end}}'
 ```
 
-An empty result (or `NotFound` from `oc get`) means the Secret hasn't been
-provisioned yet — do the [First issuance](#first-issuance) steps below first,
-or the deploy will hang and time out with no indication of why.
+Expect **both** `oidc-keys.json` and `OIDC_COOKIE_KEYS` in the output. Listing
+the key names rather than decoding one of them keeps private material off your
+terminal, and catches the case where only the JWKS was provisioned:
+`OIDC_COOKIE_KEYS` is mounted `optional: true`, but `OidcConfigService` throws
+at startup when it is missing and `NODE_ENV=production` — which both
+`values-test.yaml` and `values-prod.yaml` set. The volume then mounts fine and
+the pod crash-loops instead, hitting the same 10-minute rollout timeout for a
+different reason.
+
+`NotFound` from `oc get`, or a missing key in the listing, means the Secret
+hasn't been fully provisioned yet — do the [First issuance](#first-issuance)
+steps below first, or the deploy will hang and time out with no indication of
+why.
 
 ## First issuance
 
@@ -76,9 +86,11 @@ Rotation is two passes. The first introduces the new key while the old one keeps
 
 > **Rollback safety.** `oc set data` overwrites the Secret in place, so a bad
 > file at step 3 destroys the only copy of the key material — every live JWT
-> dies with no undo. Keep the pre-rotation `oidc-keys.json` file (the one you
-> fetched before running `--append`) until Pass 2 completes successfully, then
-> destroy it.
+> dies with no undo. Pass 1 step 1 therefore fetches to
+> `oidc-keys.json.pre-rotation` and works on a copy: `--append` renames its
+> output over `oidc-keys.json`, and Pass 2 re-fetches to the same path again,
+> so only the separately-named file survives both passes. Keep it until Pass 2
+> completes successfully, then destroy it.
 
 > **Rotation cadence.** Rotate the signing key at least once a year, and
 > immediately outside that schedule whenever someone with access to the
@@ -103,11 +115,15 @@ Rotation is two passes. The first introduces the new key while the old one keeps
 
 ### Pass 1: introduce the new signing key
 
-1. Fetch the current JWKS from the live Secret.
+1. Fetch the current JWKS from the live Secret, keeping the pre-rotation copy
+   under its own name. `--append` renames its output over `oidc-keys.json`, so
+   without this the only copy of the old key material is gone the moment step 2
+   runs.
 
    ```bash
    oc get secret digital-trust-common-service-dev-oidc-signing -n <namespace> \
-     -o jsonpath='{.data.oidc-keys\.json}' | base64 -d > oidc-keys.json
+     -o jsonpath='{.data.oidc-keys\.json}' | base64 -d > oidc-keys.json.pre-rotation
+   cp oidc-keys.json.pre-rotation oidc-keys.json
    ```
 
 2. Prepend a freshly generated key, keeping the existing ones.
@@ -198,6 +214,10 @@ json.dump({'keys': d['keys'][:1]}, open('oidc-keys.json','w'), indent=2)
 ```
 
 Update the Secret and restart exactly as in steps 3 and 4. Keeping a retired key around longer than necessary widens the blast radius if the Secret ever leaks, so do not skip this pass.
+
+Once the restart is healthy, destroy both local files — the working
+`oidc-keys.json` and the `oidc-keys.json.pre-rotation` rollback copy. They hold
+private key material and the rollback copy is no longer of any use.
 
 ### Emergency rotation (suspected key compromise)
 
