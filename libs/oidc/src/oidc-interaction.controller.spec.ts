@@ -23,6 +23,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { OidcInteractionController } from './oidc-interaction.controller';
 import { OidcProviderService } from './oidc-provider.service';
 import { OIDC_CLIENT_LOOKUP_PORT } from './ports/oidc-client-lookup.port';
+import { OIDC_ROLE_SCOPE_PORT } from './ports/oidc-role-scope.port';
 import {
   OIDC_TENANT_USER_PORT,
   OidcTenantUserRole,
@@ -47,8 +48,13 @@ describe('OidcInteractionController', () => {
   };
 
   const mockTenantUserService = {
+    findById: jest.fn(),
     findByTenantAndExternalUserId: jest.fn(),
     create: jest.fn(),
+  };
+
+  const mockRoleScopeService = {
+    findScopesForRole: jest.fn(),
   };
 
   const mockClientLookup = {
@@ -76,6 +82,10 @@ describe('OidcInteractionController', () => {
         {
           provide: OIDC_TENANT_USER_PORT,
           useValue: mockTenantUserService,
+        },
+        {
+          provide: OIDC_ROLE_SCOPE_PORT,
+          useValue: mockRoleScopeService,
         },
         {
           provide: OIDC_CLIENT_LOOKUP_PORT,
@@ -123,6 +133,16 @@ describe('OidcInteractionController', () => {
       };
 
       mockProviderService.getProvider.mockReturnValue(mockProvider);
+      mockTenantUserService.findById.mockResolvedValue({
+        id: 'user-123',
+        tenantId: 'tenant-123',
+        externalUserId: 'external-user-123',
+        email: 'user@example.com',
+        displayName: 'User 123',
+        role: 'member' as OidcTenantUserRole,
+        status: 'active' as OidcTenantUserStatus,
+      });
+      mockRoleScopeService.findScopesForRole.mockResolvedValue([]);
 
       const consumedInteraction = {
         id: 'interaction-123',
@@ -334,6 +354,18 @@ describe('OidcInteractionController', () => {
       };
 
       mockProviderService.getProvider.mockReturnValue(mockProvider);
+      mockTenantUserService.findById.mockResolvedValue({
+        id: 'account-123',
+        tenantId: 'tenant-123',
+        externalUserId: 'external-user-123',
+        email: 'user@example.com',
+        displayName: 'Test User',
+        role: 'member' as OidcTenantUserRole,
+        status: 'active' as OidcTenantUserStatus,
+      });
+      mockRoleScopeService.findScopesForRole.mockResolvedValue([
+        'credentials:verify',
+      ]);
 
       const mockReq = {} as IncomingMessage;
       const mockRes = {
@@ -419,6 +451,72 @@ describe('OidcInteractionController', () => {
 
       expect(mockGrant.addOIDCScope).not.toHaveBeenCalled();
       expect(mockGrant.addResourceScope).not.toHaveBeenCalled();
+    });
+
+    it('returns 403 when requested API scopes exceed the tenant-user role', async () => {
+      const mockGrant = {
+        addOIDCScope: jest.fn(),
+        addResourceScope: jest.fn(),
+        save: jest.fn().mockResolvedValue('grant-id'),
+      };
+
+      const mockProvider = {
+        interactionDetails: jest.fn().mockResolvedValue({
+          uid: 'interaction-uid',
+          prompt: {
+            name: 'consent',
+            details: {
+              missingOIDCScope: [
+                'openid',
+                'profile',
+                'credentials:verify',
+                'clients:manage',
+              ],
+              missingResourceScopes: null,
+            },
+          },
+          params: { client_id: 'client-123' },
+          session: { accountId: 'account-123' },
+        }),
+        Grant: jest.fn().mockImplementation(() => mockGrant),
+        interactionFinished: jest.fn().mockResolvedValue(undefined),
+      };
+
+      mockProviderService.getProvider.mockReturnValue(mockProvider);
+      mockTenantUserService.findById.mockResolvedValue({
+        id: 'account-123',
+        tenantId: 'tenant-123',
+        externalUserId: 'external-user-123',
+        email: 'user@example.com',
+        displayName: 'Test User',
+        role: 'member' as OidcTenantUserRole,
+        status: 'active' as OidcTenantUserStatus,
+      });
+      mockRoleScopeService.findScopesForRole.mockResolvedValue([
+        'credentials:verify',
+      ]);
+
+      const mockRes = {
+        headersSent: false,
+        statusCode: 200,
+        setHeader: jest.fn(),
+        end: jest.fn(),
+      } as any;
+
+      await controller.interaction({} as IncomingMessage, mockRes);
+
+      expect(mockRes.statusCode).toBe(403);
+      expect(mockRes.setHeader).toHaveBeenCalledWith(
+        'Content-Type',
+        'text/plain',
+      );
+      expect(mockRes.end).toHaveBeenCalledWith(
+        'Insufficient role for requested scopes: Requested scopes exceed tenant-user role &quot;member&quot;: clients:manage',
+      );
+      expect(mockGrant.addOIDCScope).not.toHaveBeenCalled();
+      expect(mockGrant.addResourceScope).not.toHaveBeenCalled();
+      expect(mockGrant.save).not.toHaveBeenCalled();
+      expect(mockProvider.interactionFinished).not.toHaveBeenCalled();
     });
   });
 

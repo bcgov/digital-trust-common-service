@@ -2,6 +2,7 @@ import { AuthModule } from '@app/auth';
 import { DatabaseModule } from '@app/database';
 import {
   OIDC_CLIENT_LOOKUP_PORT,
+  OIDC_ROLE_SCOPE_PORT,
   OIDC_TENANT_USER_PORT,
   OIDC_UPSTREAM_FEDERATION_PORT,
   OidcModule,
@@ -27,6 +28,7 @@ import { OAuthClientLookupAdapter } from './oauth-client/oauth-client-lookup.ada
 import { OAuthClientModule } from './oauth-client/oauth-client.module';
 import { OperationModule } from './operation/operation.module';
 import { RoleScopeModule } from './role-scope/role-scope.module';
+import { RoleScopeRepository } from './role-scope/role-scope.repository';
 import { SeedModule } from './seed/seed.module';
 import { ShutdownModule } from './shutdown/shutdown.module';
 import { TenantModule } from './tenant/tenant.module';
@@ -52,7 +54,12 @@ import { VerificationProfileModule } from './verification-profile/verification-p
     JobsModule,
     OAuthClientModule,
     OidcModule.forRoot({
-      imports: [OAuthClientModule, TenantUserModule, UpstreamOidcModule],
+      imports: [
+        OAuthClientModule,
+        TenantUserModule,
+        UpstreamOidcModule,
+        RoleScopeModule,
+      ],
       clientLookupProvider: {
         provide: OIDC_CLIENT_LOOKUP_PORT,
         useClass: OAuthClientLookupAdapter,
@@ -60,6 +67,10 @@ import { VerificationProfileModule } from './verification-profile/verification-p
       tenantUserProvider: {
         provide: OIDC_TENANT_USER_PORT,
         useClass: OidcTenantUserAdapter,
+      },
+      roleScopeProvider: {
+        provide: OIDC_ROLE_SCOPE_PORT,
+        useClass: RoleScopeRepository,
       },
       upstreamFederationProvider: {
         provide: OIDC_UPSTREAM_FEDERATION_PORT,

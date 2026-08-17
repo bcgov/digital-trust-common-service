@@ -19,6 +19,8 @@ export type {
   OidcTenantUserRole,
   OidcTenantUserStatus,
 } from './ports/oidc-tenant-user.port';
+export { OIDC_ROLE_SCOPE_PORT } from './ports/oidc-role-scope.port';
+export type { OidcRoleScopePort } from './ports/oidc-role-scope.port';
 export { OIDC_UPSTREAM_FEDERATION_PORT } from './ports/oidc-upstream-federation.port';
 export type {
   OidcUpstreamFederationPort,

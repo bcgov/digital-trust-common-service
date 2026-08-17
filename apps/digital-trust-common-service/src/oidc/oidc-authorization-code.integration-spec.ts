@@ -44,7 +44,7 @@ describe('OIDC authorization_code grant (integration)', () => {
   let clientId: string;
 
   const clientSecret = 'authorization-code-secret-value';
-  const redirectUri = 'http://127.0.0.1/callback';
+  const redirectUri = 'https://oidc.localhost/callback';
 
   const mockBoss = {
     start: jest.fn().mockResolvedValue(undefined),
@@ -62,9 +62,11 @@ describe('OIDC authorization_code grant (integration)', () => {
     getInteractionByUid: jest.fn((uid: string) => {
       return Promise.resolve(interactionsByUid.get(uid) ?? null);
     }),
+
     initiateUpstreamLogin: jest.fn(
       (interactionUid: string, interactionTenantId: string) => {
         const state = `mock-state-${randomUUID()}`;
+
         const interaction: MockUpstreamInteraction = {
           id: randomUUID(),
           state,
@@ -89,6 +91,7 @@ describe('OIDC authorization_code grant (integration)', () => {
         });
       },
     ),
+
     handleUpstreamCallback: jest.fn((state: string, code: string) => {
       if (code === 'invalid-code') {
         throw new Error('invalid_grant');
@@ -102,13 +105,14 @@ describe('OIDC authorization_code grant (integration)', () => {
 
       return Promise.resolve({
         claims: {
-          sub: `external-${state}`,
+          sub: 'external-test-user',
           email: 'federated.user@example.com',
           name: 'Federated User',
         },
         interaction,
       });
     }),
+
     setTenantUserIdForInteraction: jest.fn(
       (state: string, tenantUserId: string) => {
         const interaction = interactionsByState.get(state);
@@ -118,9 +122,11 @@ describe('OIDC authorization_code grant (integration)', () => {
         }
 
         interaction.tenantUserId = tenantUserId;
+
         return Promise.resolve(interaction);
       },
     ),
+
     consumeInteraction: jest.fn((state: string) => {
       const interaction = interactionsByState.get(state);
 
@@ -129,12 +135,12 @@ describe('OIDC authorization_code grant (integration)', () => {
       }
 
       interaction.consumedAt = new Date();
+
       return Promise.resolve(interaction);
     }),
   };
 
   const generatePkceVerifier = (): string => {
-    // 43+ chars (RFC 7636) and URL-safe when base64url encoded.
     return randomBytes(32).toString('base64url');
   };
 
@@ -142,10 +148,19 @@ describe('OIDC authorization_code grant (integration)', () => {
     return createHash('sha256').update(verifier).digest('base64url');
   };
 
+  /**
+   * Follows the authorization flow from /oidc/auth through the upstream
+   * callback until the authorization code is redirected back to the client.
+   *
+   * We intentionally do not use supertest's redirect-following support here
+   * because the interaction/upstream flow crosses hosts and the upstream
+   * federation endpoint is mocked.
+   */
   const completeAuthorizationCodeFlow = async (state: string) => {
     const codeVerifier = generatePkceVerifier();
     const codeChallenge = toS256CodeChallenge(codeVerifier);
-    const issuerBase = process.env.OIDC_ISSUER ?? 'http://localhost:3000/oidc';
+    const issuer = process.env.OIDC_ISSUER as string;
+    const issuerBase = new URL(issuer);
     const browser = request.agent(app.getHttpServer());
 
     const authorizeResponse = await browser
@@ -164,24 +179,33 @@ describe('OIDC authorization_code grant (integration)', () => {
         expect([302, 303]).toContain(res.status);
       });
 
-    const interactionPath = new URL(
+    expect(authorizeResponse.headers.location).toEqual(expect.any(String));
+
+    const interactionUrl = new URL(
       authorizeResponse.headers.location,
       issuerBase,
-    ).pathname;
+    );
 
-    const interactionResponseWithSession = await browser
-      .get(interactionPath)
+    /*
+     * The interaction endpoint starts the upstream federation flow.
+     */
+    const interactionResponse = await browser
+      .get(`${interactionUrl.pathname}${interactionUrl.search}`)
       .expect((res) => {
         expect([302, 303]).toContain(res.status);
       });
 
-    const upstreamRedirectUrl = new URL(
-      interactionResponseWithSession.headers.location,
-    );
+    expect(interactionResponse.headers.location).toEqual(expect.any(String));
+
+    const upstreamRedirectUrl = new URL(interactionResponse.headers.location);
+
     const upstreamState = upstreamRedirectUrl.searchParams.get('state');
 
     expect(upstreamState).toEqual(expect.any(String));
 
+    /*
+     * Simulate the upstream IdP redirecting back to our federation callback.
+     */
     const callbackResponse = await browser
       .get('/oidc/callback')
       .set('host', 'localhost:3000')
@@ -193,10 +217,20 @@ describe('OIDC authorization_code grant (integration)', () => {
         expect([302, 303]).toContain(res.status);
       });
 
+    expect(callbackResponse.headers.location).toEqual(expect.any(String));
+
+    /*
+     * The callback should redirect back into oidc-provider. Follow the
+     * returned Location headers until the authorization code is delivered
+     * to the RP.
+     *
+     * A 404 is allowed only after we have already observed the RP redirect.
+     * A 404 before that point means the authorization flow failed.
+     */
     let nextLocation = callbackResponse.headers.location;
     let clientRedirect: URL | undefined;
 
-    for (let hop = 0; hop < 5; hop++) {
+    for (let hop = 0; hop < 10; hop++) {
       const resolvedLocation = new URL(nextLocation, issuerBase);
 
       if (resolvedLocation.href.startsWith(redirectUri)) {
@@ -204,30 +238,54 @@ describe('OIDC authorization_code grant (integration)', () => {
         break;
       }
 
-      const hopResponse = await browser
-        .get(`${resolvedLocation.pathname}${resolvedLocation.search}`)
-        .expect((res) => {
-          expect([302, 303]).toContain(res.status);
-        });
+      /*
+       * oidc-provider interaction URLs are normally relative to the issuer.
+       * Strip the external origin so Supertest sends the request to our
+       * Nest application.
+       */
+      const path = `${resolvedLocation.pathname}${resolvedLocation.search}`;
 
-      expect(hopResponse.headers.location).toEqual(expect.any(String));
-      nextLocation = hopResponse.headers.location;
+      const hopResponse = await browser.get(path);
+
+      if ([302, 303].includes(hopResponse.status)) {
+        expect(hopResponse.headers.location).toEqual(expect.any(String));
+        nextLocation = hopResponse.headers.location;
+        continue;
+      }
+
+      /*
+       * Once the interaction has been consumed, some oidc-provider versions
+       * can return 404 for a stale interaction URL. That is not itself the
+       * success condition; the actual success condition is the RP redirect
+       * containing the authorization code.
+       */
+      if (hopResponse.status === 404) {
+        break;
+      }
+
+      throw new Error(
+        `Unexpected authorization flow response: ${hopResponse.status} ${path}`,
+      );
     }
 
     expect(clientRedirect).toBeDefined();
 
-    const code = clientRedirect?.searchParams.get('code');
+    const authorizationCode = clientRedirect?.searchParams.get('code');
 
-    expect(code).toEqual(expect.any(String));
+    expect(authorizationCode).toEqual(expect.any(String));
     expect(clientRedirect?.searchParams.get('state')).toBe(state);
 
-    return { code: code as string, codeVerifier };
+    return {
+      code: authorizationCode as string,
+      codeVerifier,
+    };
   };
 
   beforeAll(async () => {
     keysDir = mkdtempSync(join(tmpdir(), 'oidc-auth-code-it-'));
+
     process.env.OIDC_KEYS_PATH = join(keysDir, 'oidc-keys.json');
-    process.env.OIDC_ISSUER = 'http://localhost:3000/oidc';
+    process.env.OIDC_ISSUER = 'http://127.0.0.1/oidc';
     process.env.OIDC_COOKIE_KEYS = 'authorization-code-cookie-key';
     process.env.OIDC_GRANT_TYPES =
       'client_credentials,authorization_code,refresh_token';
@@ -251,10 +309,35 @@ describe('OIDC authorization_code grant (integration)', () => {
        RETURNING id`,
       ['OIDC Auth Code Tenant', `oidc-auth-code-it-${Date.now()}`],
     );
+
     tenantId = tenants[0].id;
 
+    const externalUserId = 'external-test-user';
+
+    await dataSource.query(
+      `INSERT INTO tenant_user (
+        tenant_id,
+        external_user_id,
+        email,
+        display_name,
+        role,
+        status
+      ) VALUES ($1, $2, $3, $4, $5, $6)`,
+      [
+        tenantId,
+        externalUserId,
+        'federated.user@example.com',
+        'Federated User',
+        'member',
+        'active',
+      ],
+    );
+
     clientId = `oidc-auth-code-client-${randomUUID()}`;
-    const clientSecretHash = await hash(clientSecret, { type: argon2i });
+
+    const clientSecretHash = await hash(clientSecret, {
+      type: argon2i,
+    });
 
     await dataSource.query(
       `INSERT INTO oauth_client (
@@ -290,7 +373,9 @@ describe('OIDC authorization_code grant (integration)', () => {
       .compile();
 
     app = moduleFixture.createNestApplication();
+
     OidcMountService.mount(app);
+
     await app.init();
   }, 30000);
 
@@ -304,16 +389,24 @@ describe('OIDC authorization_code grant (integration)', () => {
     }
 
     delete process.env.OIDC_GRANT_TYPES;
+    delete process.env.OIDC_KEYS_PATH;
+    delete process.env.OIDC_ISSUER;
+    delete process.env.OIDC_COOKIE_KEYS;
 
-    rmSync(keysDir, { recursive: true, force: true });
+    rmSync(keysDir, {
+      recursive: true,
+      force: true,
+    });
   });
 
   afterEach(() => {
     interactionsByState.clear();
     interactionsByUid.clear();
+
+    jest.clearAllMocks();
   });
 
-  it('completes authorization_code flow and exchanges code for bearer token', async () => {
+  it('completes authorization_code flow and filters requested API scopes through the tenant-user role', async () => {
     const { code: authorizationCode, codeVerifier } =
       await completeAuthorizationCodeFlow(`rp-state-${randomUUID()}`);
 
@@ -328,18 +421,38 @@ describe('OIDC authorization_code grant (integration)', () => {
         code_verifier: codeVerifier,
       })
       .expect(200);
+
     const tokenBody = tokenResponse.body as Record<string, unknown>;
 
     expect(tokenBody.access_token).toEqual(expect.any(String));
     expect(tokenBody.token_type).toBe('Bearer');
     expect(tokenBody.expires_in).toBe(5 * 60);
 
-    expect(mockUpstreamOidcService.initiateUpstreamLogin).toHaveBeenCalledTimes(
-      1,
-    );
-    expect(
-      mockUpstreamOidcService.handleUpstreamCallback,
-    ).toHaveBeenCalledTimes(1);
+    const introspectionResponse = await request(app.getHttpServer())
+      .post('/oidc/token/introspection')
+      .set('Authorization', buildBasicAuthHeader(clientId, clientSecret))
+      .type('form')
+      .send({
+        token: tokenBody.access_token as string,
+      })
+      .expect(200);
+
+    const introspectionBody = introspectionResponse.body as Record<
+      string,
+      unknown
+    >;
+
+    expect(introspectionBody.active).toBe(true);
+    expect(introspectionBody.client_id).toBe(clientId);
+    expect(introspectionBody.tenant_id).toBe(tenantId);
+    expect(introspectionBody.tenant_role).toBe('member');
+
+    const grantedScopes =
+      typeof introspectionBody.scope === 'string'
+        ? introspectionBody.scope.split(/\s+/).filter(Boolean)
+        : [];
+
+    expect(grantedScopes).toContain('credentials:verify');
   });
 
   it('rejects token exchange with invalid client secret', async () => {
@@ -362,7 +475,8 @@ describe('OIDC authorization_code grant (integration)', () => {
   it('returns 400 when upstream callback fails', async () => {
     const codeVerifier = generatePkceVerifier();
     const codeChallenge = toS256CodeChallenge(codeVerifier);
-    const issuerBase = process.env.OIDC_ISSUER ?? 'http://localhost:3000/oidc';
+    const issuer = process.env.OIDC_ISSUER as string;
+    const issuerBase = new URL(issuer);
     const browser = request.agent(app.getHttpServer());
 
     const authorizeResponse = await browser
@@ -381,16 +495,26 @@ describe('OIDC authorization_code grant (integration)', () => {
         expect([302, 303]).toContain(res.status);
       });
 
-    const interactionPath = new URL(
+    expect(authorizeResponse.headers.location).toEqual(expect.any(String));
+
+    const interactionUrl = new URL(
       authorizeResponse.headers.location,
       issuerBase,
-    ).pathname;
+    );
 
-    const interactionResponse = await browser.get(interactionPath).expect(302);
+    const interactionResponse = await browser
+      .get(`${interactionUrl.pathname}${interactionUrl.search}`)
+      .expect((res) => {
+        expect([302, 303]).toContain(res.status);
+      });
+
+    expect(interactionResponse.headers.location).toEqual(expect.any(String));
 
     const upstreamState = new URL(
       interactionResponse.headers.location,
-    ).searchParams.get('state') as string;
+    ).searchParams.get('state');
+
+    expect(upstreamState).toEqual(expect.any(String));
 
     const response = await browser
       .get('/oidc/callback')

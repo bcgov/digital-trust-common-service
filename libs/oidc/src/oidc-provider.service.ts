@@ -58,8 +58,26 @@ export function buildOidcConfiguration(
     extraClientMetadata: {
       properties: ['client_secret_hash', 'tenant_id', 'roles'],
     },
-    extraTokenClaims: (_ctx, token) => {
-      const client = token.client as ClientExtraMetadata | undefined;
+    extraTokenClaims: async (_ctx, token) => {
+      const tokenMetadata = token as {
+        client?: ClientExtraMetadata;
+        accountId?: string;
+      };
+      const client = tokenMetadata.client;
+      const accountId = tokenMetadata.accountId;
+
+      if (accountId) {
+        const user = await tenantUserService.findById(accountId);
+
+        if (!user || user.status !== 'active') {
+          return undefined;
+        }
+
+        return {
+          tenant_id: user.tenantId,
+          tenant_role: user.role,
+        };
+      }
 
       if (!client?.tenant_id) {
         return undefined;
@@ -129,7 +147,7 @@ export function buildOidcConfiguration(
       };
     },
     interactions: {
-      url: (ctx, interaction) => {
+      url: (_ctx, interaction) => {
         return `/oidc/interaction/${interaction.uid}`;
       },
     },

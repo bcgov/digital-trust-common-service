@@ -21,6 +21,8 @@ export interface OidcModuleOptions {
   clientLookupProvider: Provider;
   /** Provider binding for OIDC_TENANT_USER_PORT. */
   tenantUserProvider: Provider;
+  /** Provider binding for OIDC_ROLE_SCOPE_PORT. */
+  roleScopeProvider: Provider;
   /** Provider binding for OIDC_UPSTREAM_FEDERATION_PORT. */
   upstreamFederationProvider: Provider;
 }
@@ -50,6 +52,7 @@ export class OidcModule {
         OidcPurgeService,
         options.clientLookupProvider,
         options.tenantUserProvider,
+        options.roleScopeProvider,
         options.upstreamFederationProvider,
       ],
       exports: [

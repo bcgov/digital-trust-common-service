@@ -187,7 +187,7 @@ describe('buildOidcConfiguration', () => {
   });
 
   describe('extraTokenClaims', () => {
-    it('stamps tenant_id and roles claims when present on the token client', () => {
+    it('stamps tenant_id and roles claims when present on the token client', async () => {
       const configuration = buildOidcConfiguration(
         config,
         jwks,
@@ -195,7 +195,7 @@ describe('buildOidcConfiguration', () => {
         tenantUserService,
       );
 
-      const claims = configuration.extraTokenClaims?.(
+      const claims = await configuration.extraTokenClaims?.(
         {} as never,
         {
           client: {
@@ -211,7 +211,7 @@ describe('buildOidcConfiguration', () => {
       });
     });
 
-    it('stamps the tenant_id claim when present on the token client', () => {
+    it('stamps the tenant_id claim when present on the token client', async () => {
       const configuration = buildOidcConfiguration(
         config,
         jwks,
@@ -219,7 +219,7 @@ describe('buildOidcConfiguration', () => {
         tenantUserService,
       );
 
-      const claims = configuration.extraTokenClaims?.(
+      const claims = await configuration.extraTokenClaims?.(
         {} as never,
         {
           client: { tenant_id: 'tenant-1' },
@@ -229,7 +229,7 @@ describe('buildOidcConfiguration', () => {
       expect(claims).toEqual({ tenant_id: 'tenant-1' });
     });
 
-    it('returns undefined when the token has no client tenant_id', () => {
+    it('returns undefined when the token has no client tenant_id', async () => {
       const configuration = buildOidcConfiguration(
         config,
         jwks,
@@ -237,7 +237,7 @@ describe('buildOidcConfiguration', () => {
         tenantUserService,
       );
 
-      const claims = configuration.extraTokenClaims?.(
+      const claims = await configuration.extraTokenClaims?.(
         {} as never,
         {
           client: undefined,
@@ -245,6 +245,37 @@ describe('buildOidcConfiguration', () => {
       );
 
       expect(claims).toBeUndefined();
+    });
+
+    it('stamps tenant_id and tenant_role claims for user tokens', async () => {
+      (tenantUserService.findById as jest.Mock).mockResolvedValue({
+        id: 'user-id-123',
+        tenantId: 'tenant-123',
+        externalUserId: 'external-user-123',
+        email: 'user@example.com',
+        displayName: 'Test User',
+        role: 'member',
+        status: 'active',
+      });
+      const configuration = buildOidcConfiguration(
+        config,
+        jwks,
+        adapterFactory,
+        tenantUserService,
+      );
+
+      const claims = await configuration.extraTokenClaims?.(
+        {} as never,
+        {
+          accountId: 'user-id-123',
+          client: undefined,
+        } as never,
+      );
+
+      expect(claims).toEqual({
+        tenant_id: 'tenant-123',
+        tenant_role: 'member',
+      });
     });
   });
 

@@ -3,6 +3,7 @@ import { Http2ServerRequest, Http2ServerResponse } from 'http2';
 
 import { Controller, Get, Inject, Query, Req, Res } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import escapeHtml from 'escape-html';
 
 import { buildOidcIssuerUrl } from './oidc-issuer-url.util';
 import { OidcProviderService } from './oidc-provider.service';
@@ -12,11 +13,34 @@ import * as oidcUpstreamFederationPort from './ports/oidc-upstream-federation.po
 
 type OidcResponse =
   ServerResponse<IncomingMessage> | Http2ServerResponse<Http2ServerRequest>;
+type RoleScopeLookup = {
+  findScopesForRole(
+    role: oidcTenantUserPort.OidcTenantUserRole,
+  ): Promise<string[]>;
+};
+
+class UnauthorizedOidcScopeRequestError extends Error {
+  public constructor(
+    public readonly role: oidcTenantUserPort.OidcTenantUserRole,
+    public readonly deniedScopes: readonly string[],
+  ) {
+    super(
+      `Requested scopes exceed tenant-user role "${role}": ${deniedScopes.join(', ')}`,
+    );
+  }
+}
 
 @Controller({ path: 'oidc/' })
 export class OidcInteractionController {
   private static readonly ACTIVE_TENANT_USER_STATUS = 'active';
   private static readonly DEFAULT_TENANT_USER_ROLE = 'readonly';
+  private static readonly STANDARD_OIDC_SCOPES = new Set([
+    'openid',
+    'profile',
+    'email',
+    'tenant',
+    'offline_access',
+  ]);
 
   public constructor(
     private readonly providerService: OidcProviderService,
@@ -24,6 +48,8 @@ export class OidcInteractionController {
     private readonly upstreamOidcService: oidcUpstreamFederationPort.OidcUpstreamFederationPort,
     @Inject(oidcTenantUserPort.OIDC_TENANT_USER_PORT)
     private readonly tenantUserService: oidcTenantUserPort.OidcTenantUserPort,
+    @Inject('OIDC_ROLE_SCOPE_PORT')
+    private readonly roleScopeService: RoleScopeLookup,
     @Inject(oidcClientLookupPort.OIDC_CLIENT_LOOKUP_PORT)
     private readonly clientLookup: oidcClientLookupPort.OidcClientLookupPort,
     private readonly configService: ConfigService,
@@ -58,25 +84,33 @@ export class OidcInteractionController {
       if (interaction?.consumedAt) {
         const { params, prompt } = details;
 
-        const grantId = await this.createAndSaveGrant(
-          params.client_id as string,
-          interaction.tenantUserId as string,
-          prompt,
-        );
+        try {
+          const grantId = await this.createAndSaveGrant(
+            params.client_id as string,
+            interaction.tenantUserId as string,
+            prompt,
+          );
 
-        await provider.interactionFinished(
-          req,
-          res,
-          {
-            login: {
-              accountId: interaction.tenantUserId as string,
+          await provider.interactionFinished(
+            req,
+            res,
+            {
+              login: {
+                accountId: interaction.tenantUserId as string,
+              },
+              consent: {
+                grantId,
+              },
             },
-            consent: {
-              grantId,
-            },
-          },
-          { mergeWithLastSubmission: false },
-        );
+            { mergeWithLastSubmission: false },
+          );
+        } catch (error) {
+          if (this.tryWriteScopeDeniedResponse(res, error)) {
+            return;
+          }
+
+          throw error;
+        }
 
         return;
       }
@@ -108,31 +142,39 @@ export class OidcInteractionController {
         throw new Error('No authenticated session');
       }
 
-      const grantId = await this.createAndSaveGrant(
-        params.client_id as string,
-        session.accountId,
-        prompt,
-      );
+      try {
+        const grantId = await this.createAndSaveGrant(
+          params.client_id as string,
+          session.accountId,
+          prompt,
+        );
 
-      /*
-       * For now, approve everything that oidc-provider is asking
-       * for.
-       *
-       * interactionFinished() owns the HTTP response. DO NOT call
-       * res.end(), res.redirect(), or set Location afterwards.
-       */
-      await provider.interactionFinished(
-        req,
-        res,
-        {
-          consent: {
-            grantId,
+        /*
+         * For now, approve everything that oidc-provider is asking
+         * for.
+         *
+         * interactionFinished() owns the HTTP response. DO NOT call
+         * res.end(), res.redirect(), or set Location afterwards.
+         */
+        await provider.interactionFinished(
+          req,
+          res,
+          {
+            consent: {
+              grantId,
+            },
           },
-        },
-        {
-          mergeWithLastSubmission: false,
-        },
-      );
+          {
+            mergeWithLastSubmission: false,
+          },
+        );
+      } catch (error) {
+        if (this.tryWriteScopeDeniedResponse(res, error)) {
+          return;
+        }
+
+        throw error;
+      }
 
       return;
     }
@@ -159,6 +201,13 @@ export class OidcInteractionController {
     >['prompt'],
   ): Promise<string> {
     const provider = this.providerService.getProvider();
+    const user = await this.tenantUserService.findById(accountId);
+
+    if (!user || user.status !== 'active') {
+      throw new Error(`Active tenant user not found: ${accountId}`);
+    }
+
+    const roleScopes = await this.roleScopeService.findScopesForRole(user.role);
 
     const grant = new provider.Grant({
       clientId,
@@ -166,9 +215,26 @@ export class OidcInteractionController {
     });
 
     if (prompt.details.missingOIDCScope) {
-      grant.addOIDCScope(
-        (prompt.details.missingOIDCScope as string[]).join(' '),
+      const requestedScopes = prompt.details.missingOIDCScope as string[];
+      const deniedScopes = requestedScopes.filter(
+        (scope) =>
+          !OidcInteractionController.STANDARD_OIDC_SCOPES.has(scope) &&
+          !roleScopes.includes(scope),
       );
+
+      if (deniedScopes.length > 0) {
+        throw new UnauthorizedOidcScopeRequestError(user.role, deniedScopes);
+      }
+
+      const grantedScopes = requestedScopes.filter(
+        (scope) =>
+          OidcInteractionController.STANDARD_OIDC_SCOPES.has(scope) ||
+          roleScopes.includes(scope),
+      );
+
+      if (grantedScopes.length > 0) {
+        grant.addOIDCScope(grantedScopes.join(' '));
+      }
     }
 
     if (prompt.details.missingResourceScopes) {
@@ -181,6 +247,23 @@ export class OidcInteractionController {
 
     const grantId = await grant.save();
     return grantId;
+  }
+
+  private tryWriteScopeDeniedResponse(
+    res: OidcResponse,
+    error: unknown,
+  ): boolean {
+    if (!(error instanceof UnauthorizedOidcScopeRequestError)) {
+      return false;
+    }
+
+    res.statusCode = 403;
+    res.setHeader('Content-Type', 'text/plain');
+    res.end(
+      `Insufficient role for requested scopes: ${escapeHtml(error.message)}`,
+    );
+
+    return true;
   }
 
   /**
@@ -248,7 +331,7 @@ export class OidcInteractionController {
       res.statusCode = 400;
       res.setHeader('Content-Type', 'text/plain');
       res.end(
-        `Upstream OIDC error: ${this.escapeHtml(error)}\n${this.escapeHtml(errorDescription ?? '')}`,
+        `Upstream OIDC error: ${escapeHtml(error)}\n${escapeHtml(errorDescription ?? '')}`,
       );
       return;
     }
@@ -360,24 +443,10 @@ export class OidcInteractionController {
       res.statusCode = 400;
       res.setHeader('Content-Type', 'text/plain');
       res.end(
-        `Error processing callback: ${this.escapeHtml(
+        `Error processing callback: ${escapeHtml(
           err instanceof Error ? err.message : String(err),
         )}`,
       );
     }
-  }
-
-  /**
-   * Escape HTML special characters to prevent XSS.
-   */
-  private escapeHtml(text: string): string {
-    const htmlEscapeMap: Record<string, string> = {
-      '&': '&amp;',
-      '<': '&lt;',
-      '>': '&gt;',
-      '"': '&quot;',
-      "'": '&#39;',
-    };
-    return text.replace(/[&<>"']/g, (char) => htmlEscapeMap[char] ?? char);
   }
 }
