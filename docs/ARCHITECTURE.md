@@ -1015,7 +1015,7 @@ sequenceDiagram
 - **`offline_access`**: must stay in the scope allowlist or `oidc-provider` never registers the `refresh_token` grant.
 - **Grant TTL**: caps a refresh chain, since the Grant is not re-saved on rotation. Do not set it below the refresh TTL.
 - **Concurrent sessions**: `OIDC_MAX_CONCURRENT_SESSIONS` (default 5, `0` disables), evict-oldest. Needs a call site from AU-02 to take effect.
-- **Force-logout**: `POST /api/v1/admin/users/:id/revoke-sessions` drops all sessions, grants, and tokens for a user. Returns 501 until AU-04 implements `ScopeGuard`.
+- **Force-logout**: `POST /api/v1/admin/users/:id/revoke-sessions` drops all sessions, grants, and tokens for a user. Platform-admin only, enforced by `JwtGuard` + `ScopeGuard`.
 
 ### Authorization Model
 

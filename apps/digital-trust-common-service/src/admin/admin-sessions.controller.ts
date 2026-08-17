@@ -15,9 +15,9 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import {
+  ApiCreatedResponse,
   ApiForbiddenResponse,
   ApiNotFoundResponse,
-  ApiOkResponse,
   ApiOperation,
   ApiParam,
   ApiTags,
@@ -49,7 +49,7 @@ export class AdminSessionsController {
     description: 'Tenant user identifier',
     format: 'uuid',
   })
-  @ApiOkResponse({
+  @ApiCreatedResponse({
     description: 'Sessions revoked',
     type: RevokeSessionsResponseDto,
   })

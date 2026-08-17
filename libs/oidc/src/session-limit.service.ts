@@ -4,7 +4,10 @@ import { OidcAccountSessionRepository } from './oidc-account-session.repository'
 import { OidcConfigService } from './oidc-config.service';
 
 export interface SessionLimitResult {
-  /** Sessions the account held before enforcement ran. */
+  /**
+   * Sessions the account held before enforcement ran. Reported as `0` when
+   * the cap is disabled, since `enforce()` returns without querying.
+   */
   priorSessionCount: number;
   /** Sessions removed to make room for the new one. */
   evictedSessionCount: number;

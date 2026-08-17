@@ -89,8 +89,9 @@ export class OidcClientAdapter implements Adapter {
     };
 
     // Only emit the key when set. oidc-provider validates every declared
-    // extra metadata property, and an explicit `undefined`/`null` would be
-    // indistinguishable from "configured as no-expiry" in the TTL function.
+    // extra metadata property, so leaving an explicit `undefined`/`null` on
+    // the metadata risks tripping that validation; `resolveRefreshTokenTtl`
+    // falls back to the default TTL either way.
     if (
       client.refreshTokenTtlSeconds !== undefined &&
       client.refreshTokenTtlSeconds !== null
