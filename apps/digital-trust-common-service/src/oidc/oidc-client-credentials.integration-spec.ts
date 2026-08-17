@@ -158,7 +158,7 @@ describe('OIDC client_credentials grant (integration)', () => {
       .post('/oidc/token')
       .set('Authorization', buildBasicAuthHeader(clientId, clientSecret))
       .type('form')
-      .send({ grant_type: 'client_credentials', scope: 'read:credentials' })
+      .send({ grant_type: 'client_credentials', scope: 'credentials:offer' })
       .expect(200);
 
     const body = response.body as Record<string, unknown>;
@@ -172,7 +172,7 @@ describe('OIDC client_credentials grant (integration)', () => {
       .post('/oidc/token')
       .set('Authorization', buildBasicAuthHeader(clientId, clientSecret))
       .type('form')
-      .send({ grant_type: 'client_credentials', scope: 'read:credentials' })
+      .send({ grant_type: 'client_credentials', scope: 'credentials:offer' })
       .expect(200);
 
     const rows = await dataSource.query<Array<{ count: string }>>(
