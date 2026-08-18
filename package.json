@@ -114,6 +114,7 @@
     "moduleNameMapper": {
       "^@app/auth(|/.*)$": "<rootDir>/libs/auth/src/$1",
       "^@app/common(|/.*)$": "<rootDir>/libs/common/src/$1",
+      "^@app/credential-ports(|/.*)$": "<rootDir>/libs/credential-ports/src/$1",
       "^@app/database(|/.*)$": "<rootDir>/libs/database/src/$1",
       "^@app/oidc(|/.*)$": "<rootDir>/libs/oidc/src/$1",
       "^@app/pg-boss(|/.*)$": "<rootDir>/libs/pg-boss/src/$1"
