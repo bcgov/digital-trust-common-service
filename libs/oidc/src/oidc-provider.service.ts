@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { verify } from 'argon2';
 import Provider from 'oidc-provider';
 import type { Configuration } from 'oidc-provider';
@@ -8,6 +8,8 @@ import type { OidcConfig } from './oidc-config.service';
 import { OidcConfigService } from './oidc-config.service';
 import type { OidcJwks } from './oidc-keys.service';
 import { OidcKeysService } from './oidc-keys.service';
+import { OIDC_TENANT_USER_PORT } from './ports/oidc-tenant-user.port';
+import type { OidcTenantUserPort } from './ports/oidc-tenant-user.port';
 
 /**
  * Custom metadata `OidcClientAdapter` attaches to each `Client` instance.
@@ -33,6 +35,7 @@ export function buildOidcConfiguration(
   config: OidcConfig,
   jwks: OidcJwks,
   adapterFactory: OidcAdapterFactory,
+  tenantUserService: OidcTenantUserPort,
 ): Configuration {
   return {
     adapter: adapterFactory.forModel,
@@ -47,13 +50,34 @@ export function buildOidcConfiguration(
     },
     claims: {
       openid: ['sub'],
+      profile: ['name'],
+      email: ['email'],
+      tenant: ['tenant_id', 'tenant_role'],
     },
     scopes: config.scopes,
     extraClientMetadata: {
       properties: ['client_secret_hash', 'tenant_id', 'roles'],
     },
-    extraTokenClaims: (_ctx, token) => {
-      const client = token.client as ClientExtraMetadata | undefined;
+    extraTokenClaims: async (_ctx, token) => {
+      const tokenMetadata = token as {
+        client?: ClientExtraMetadata;
+        accountId?: string;
+      };
+      const client = tokenMetadata.client;
+      const accountId = tokenMetadata.accountId;
+
+      if (accountId) {
+        const user = await tenantUserService.findById(accountId);
+
+        if (!user || user.status !== 'active') {
+          return undefined;
+        }
+
+        return {
+          tenant_id: user.tenantId,
+          tenant_role: user.role,
+        };
+      }
 
       if (!client?.tenant_id) {
         return undefined;
@@ -92,6 +116,9 @@ export function buildOidcConfiguration(
           jwt: { sign: { alg: 'RS256' } },
         }),
       },
+      rpInitiatedLogout: {
+        enabled: true,
+      },
     },
     ttl: {
       AccessToken: config.accessTokenTtlSeconds,
@@ -102,11 +129,27 @@ export function buildOidcConfiguration(
     cookies: {
       keys: config.cookieKeys,
     },
-    // Interactive user login (authorization_code) is wired in AU-02 (#35).
-    findAccount: () => {
-      throw new Error(
-        'Interactive user login is not implemented yet; see AU-02 (#35).',
-      );
+    findAccount: async (_ctx, accountId) => {
+      const user = await tenantUserService.findById(accountId);
+
+      if (!user || user.status !== 'active') {
+        return undefined;
+      }
+      return {
+        accountId: user.id,
+        claims: () => ({
+          sub: user.id,
+          email: user.email,
+          name: user.displayName,
+          tenant_id: user.tenantId,
+          tenant_role: user.role,
+        }),
+      };
+    },
+    interactions: {
+      url: (_ctx, interaction) => {
+        return `/oidc/interaction/${interaction.uid}`;
+      },
     },
   };
 }
@@ -139,10 +182,6 @@ export function applyClientSecretHashComparator(provider: Provider): void {
  * and the argon2 `compareClientSecret` override required because our
  * `oauth_client` table only ever stores a hashed secret (see
  * `OidcClientAdapter` for the full rationale).
- *
- * User login (`findAccount`, the authorization_code interactive flow) is a
- * stub here; it is fully wired in AU-02 (#35). `client_credentials` is
- * fully functional as of AU-01.
  */
 @Injectable()
 export class OidcProviderService implements OnModuleInit {
@@ -154,6 +193,8 @@ export class OidcProviderService implements OnModuleInit {
     private readonly oidcConfigService: OidcConfigService,
     private readonly oidcKeysService: OidcKeysService,
     private readonly adapterFactory: OidcAdapterFactory,
+    @Inject(OIDC_TENANT_USER_PORT)
+    private readonly tenantUserService: OidcTenantUserPort,
   ) {}
 
   public async onModuleInit(): Promise<void> {
@@ -165,7 +206,12 @@ export class OidcProviderService implements OnModuleInit {
 
     const provider = new Provider(
       config.issuer,
-      buildOidcConfiguration(config, jwks, this.adapterFactory),
+      buildOidcConfiguration(
+        config,
+        jwks,
+        this.adapterFactory,
+        this.tenantUserService,
+      ),
     );
 
     applyClientSecretHashComparator(provider);
@@ -189,5 +235,9 @@ export class OidcProviderService implements OnModuleInit {
     }
 
     return this.provider;
+  }
+
+  public getAdapterFactory(): OidcAdapterFactory {
+    return this.adapterFactory;
   }
 }

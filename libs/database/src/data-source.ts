@@ -13,6 +13,7 @@ import { CreateIssuanceVerificationProfiles1785360000010 } from './migrations/00
 import { CreateCredentialRecord1785460000011 } from './migrations/000011_create-credential-record';
 import { CreateOidcModel1785431598677 } from './migrations/000012_create-oidc-model';
 import { CreateRoleScopes1785560000013 } from './migrations/000013_create-role-scopes';
+import { CreateOidcUpstreamInteraction1786386020201 } from './migrations/000014_create-oidc-upstream-interactions';
 import { buildSslConfig } from './ssl.util';
 
 export const AppDataSource = new DataSource({
@@ -37,6 +38,7 @@ export const AppDataSource = new DataSource({
     CreateCredentialRecord1785460000011,
     CreateOidcModel1785431598677,
     CreateRoleScopes1785560000013,
+    CreateOidcUpstreamInteraction1786386020201,
   ],
   ssl: buildSslConfig(
     process.env.DB_SSL,

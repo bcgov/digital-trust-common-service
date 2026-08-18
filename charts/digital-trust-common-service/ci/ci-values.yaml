@@ -32,5 +32,9 @@ networkPolicy:
   keycloak:
     enabled: true
 
+upstreamFederation:
+  existingSecret:
+    name: dtsc-ci-oidc-client
+
 config:
   DB_HOST: postgres

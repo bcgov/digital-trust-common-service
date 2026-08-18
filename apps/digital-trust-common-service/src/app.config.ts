@@ -37,6 +37,7 @@ export function configureApp(app: INestApplication): void {
       { path: '/', method: RequestMethod.GET },
       { path: 'health', method: RequestMethod.ALL },
       { path: 'health/(.*)', method: RequestMethod.ALL },
+      { path: 'oidc/(.*)', method: RequestMethod.ALL },
     ],
   });
   app.enableVersioning({

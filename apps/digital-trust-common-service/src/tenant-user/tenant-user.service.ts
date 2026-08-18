@@ -69,6 +69,16 @@ export class TenantUserService {
     return await this.tenantUserRepository.findByExternalUserId(externalUserId);
   }
 
+  public async findByTenantAndExternalUserId(
+    tenantId: string,
+    externalUserId: string,
+  ): Promise<TenantUser | null> {
+    return await this.tenantUserRepository.findByTenantAndExternalUserId(
+      tenantId,
+      externalUserId,
+    );
+  }
+
   public async update(
     id: string,
     dto: UpdateTenantUserDto,
