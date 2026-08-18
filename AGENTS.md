@@ -19,6 +19,9 @@ The rules that must never be broken:
   templates in the same change.
 - **Done means green.** `npm run lint:ci`, `npm run build`, and `npm test` must all pass, with specs
   added for new behaviour. Never use `--no-verify`.
+- **Prefer small, targeted changes.** Change only what the task requires; no opportunistic
+  refactors, reformatting, or new abstractions. If a rewrite is genuinely unavoidable, explain why
+  first and keep it in its own commit.
 - **Commits are Conventional and self-contained.** `<type>(<scope>): <subject>`, enforced by
   commitlint in a `commit-msg` hook and in CI. One logical change per commit, staged explicitly with
   `git add <paths>`, preferably with `--signoff`. Never rewrite history on `main`.

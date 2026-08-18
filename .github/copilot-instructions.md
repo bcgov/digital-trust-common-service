@@ -54,6 +54,26 @@ actionlint, and yamllint at the versions CI uses.
 - **Do not bypass CI gates.** No `--no-verify`, no blanket lint-rule disables, no skipped tests to go
   green.
 
+## Scope of change
+
+Prefer the smallest targeted edit that solves the problem. A large rewrite is hard to review, buries
+the actual fix, and in a multi-tenant service with hand-enforced `tenantId` filters it is exactly how
+an isolation bug slips through.
+
+- Change only what the task requires. Leave surrounding code, naming, and structure alone even when
+  you would have written them differently.
+- Do not opportunistically refactor, reformat, reorder imports, or "tidy" files you are only passing
+  through. Prettier and ESLint already own formatting.
+- Do not add abstractions, helpers, options, or error handling for cases the task does not call for.
+- Follow the conventions already in the file, even where they differ from your preference. Raise the
+  inconsistency instead of unilaterally resolving it.
+- Extend an existing module, service, or migration rather than introducing a parallel one.
+- When a rewrite genuinely is unavoidable — a schema change with no incremental path, a security fix
+  that cannot be patched in place — say so and why before starting, and keep it in its own commit
+  separate from any behaviour change.
+- Deleting or rewriting a test to make a change pass is not a fix. Adjust the test only when the
+  behaviour it asserts was deliberately changed.
+
 ## Style
 
 Enforced by ESLint (type-aware, flat config) with Prettier as an error-level rule, so
