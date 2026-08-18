@@ -10,7 +10,8 @@ in `docs/ARCHITECTURE.md` and `docs/DEVELOPER.md`, and the human-facing workflow
 
 ## Commands
 
-npm only (`package-lock.json`, `npm ci`). Node `>=22.12.0`.
+npm only (`package-lock.json`, `npm ci`). Node 24 — pinned in `.mise.toml`, required by `engines`,
+used by CI and the `node:24-alpine` image.
 
 | Task | Command |
 | --- | --- |
@@ -151,5 +152,4 @@ Keep changesets self-contained:
 
 - Adding an ESM-only dependency requires updating `transformIgnorePatterns` in all three jest configs.
 - Chart edits fail CI unless the chart README is regenerated with helm-docs.
-- Node version signals disagree: `engines` says `>=22.12.0`, `.mise.toml` pins 24, CI uses 22.
 - `TenantGuard` is still a stub, so tenant checks must stay explicit in services and repositories.

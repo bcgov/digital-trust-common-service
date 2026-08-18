@@ -9,7 +9,7 @@ and AI agents, so they are not duplicated here.
 
 ## Getting set up
 
-Requires Node `>=22.12.0`, npm, and Docker.
+Requires Node 24 (pinned in `.mise.toml`), npm, and Docker.
 
 ```bash
 npm ci                    # also installs the git hooks via husky
