@@ -4,7 +4,7 @@ This guide covers local development setup, running the application, and managing
 
 ## Prerequisites
 
-- **Node.js**: v22.12.0 or higher
+- **Node.js**: v24 (pinned in `.mise.toml`; matches the `node:24-alpine` image)
 - **npm**: Latest stable version
 - **Docker** and **Docker Compose**: For database and containerized development
 - **PostgreSQL**: v18.4 (or use Docker)
