@@ -5,7 +5,8 @@ Multi-tenant BC Gov digital trust service. NestJS 11 monorepo: one application
 TypeORM, pg-boss for background jobs, and an in-app `oidc-provider` OIDC server.
 
 Detailed rules load automatically per file type from `.github/instructions/`. Deeper background lives
-in `docs/ARCHITECTURE.md` and `docs/DEVELOPER.md`.
+in `docs/ARCHITECTURE.md` and `docs/DEVELOPER.md`, and the human-facing workflow in
+`CONTRIBUTING.md`.
 
 ## Commands
 
@@ -113,12 +114,15 @@ On your own feature or PR branch, amend, interactive rebase, and squash are enco
 history reviewable. Prefer `git push --force-with-lease` over `--force`, and ask first if the branch
 is shared.
 
-Conventional Commits 1.0.0 — `<type>(<scope>): <subject>`:
+Conventional Commits 1.0.0 — `<type>(<scope>): <subject>`. Enforced by commitlint through the husky
+`commit-msg` hook and the `commits` job in CI, so a malformed message fails the build:
 
 - Types: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`, `build`, `ci`, `perf`, `style`, `revert`.
 - Scopes follow the repo: `auth`, `oidc`, `database`, `credential`, `tenant`, `audit`, `connector`,
-  `oauth-client`, `role-scope`, `jobs`, `swagger`, `helm`, `ci`, `docs`, `deps`.
-- Subject in the imperative, lowercase, no trailing period, 72 characters or fewer.
+  `oauth-client`, `role-scope`, `jobs`, `swagger`, `helm`, `ci`, `docs`, `deps`. Scope is optional,
+  but an unlisted one is rejected — add it to `commitlint.config.mjs` first.
+- Header (type, scope, and subject) in the imperative, lowercase, no trailing period, 72 characters
+  or fewer.
 - Body explains why, not what. Footer carries `BREAKING CHANGE:` for API, schema, or chart breaks,
   the work-item code (`AU-01`, `AG-01`, …), and `Refs #<issue>`.
 - Sign off with `git commit --signoff` (recommended, not enforced). It appends a
