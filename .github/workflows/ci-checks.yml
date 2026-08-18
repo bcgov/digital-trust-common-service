@@ -23,6 +23,30 @@ jobs:
           bash <(curl -sSf https://raw.githubusercontent.com/rhysd/actionlint/v1.7.12/scripts/download-actionlint.bash) 1.7.12
           ./actionlint -color .github/workflows/*.yml
 
+  commits:
+    runs-on: ubuntu-latest
+    # The husky commit-msg hook is bypassable and absent in clones that skip
+    # npm install, so CI is the real gate. cd.yml also calls this workflow,
+    # where no pull_request context exists.
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Lint pull request commit messages
+        run: >-
+          npx commitlint
+          --from ${{ github.event.pull_request.base.sha }}
+          --to ${{ github.event.pull_request.head.sha }}
+          --verbose
+
   build:
     runs-on: ubuntu-latest
     permissions:
