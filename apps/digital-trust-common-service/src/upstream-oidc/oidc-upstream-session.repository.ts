@@ -67,6 +67,7 @@ export class OidcUpstreamSessionRepository {
       .createQueryBuilder('session')
       .where('session.tenantUserId = :tenantUserId', { tenantUserId })
       .andWhere('session.oidcModelId IS NULL')
+      .andWhere('(session.expiresAt IS NULL OR session.expiresAt > NOW())')
       .orderBy('session.createdAt', 'DESC')
       .getOne();
   }
@@ -142,6 +143,31 @@ export class OidcUpstreamSessionRepository {
       .where('session.expiresAt IS NOT NULL')
       .andWhere('session.expiresAt < NOW()')
       .getMany();
+  }
+
+  /**
+   * Deletes expired pending sessions (oidcModelId IS NULL) in a bounded batch.
+   * These records accumulate when finalization fails after callback staging and
+   * cannot be cascade-deleted by oidc_model cleanup.
+   */
+  public async deleteExpiredPendingBatch(limit: number): Promise<number> {
+    const limitedRows = await this.repository
+      .createQueryBuilder('session')
+      .select('session.id')
+      .where('session.oidcModelId IS NULL')
+      .andWhere('session.expiresAt IS NOT NULL')
+      .andWhere('session.expiresAt < NOW()')
+      .orderBy('session.createdAt', 'ASC')
+      .limit(Math.max(1, Math.floor(limit)))
+      .getMany();
+
+    if (limitedRows.length === 0) {
+      return 0;
+    }
+
+    const ids = limitedRows.map((row) => row.id);
+    const result = await this.repository.delete(ids);
+    return result.affected ?? 0;
   }
 
   public async update(

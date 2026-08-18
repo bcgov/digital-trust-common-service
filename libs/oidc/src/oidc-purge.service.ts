@@ -1,7 +1,8 @@
 import { PgBossService } from '@app/pg-boss';
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit, Optional } from '@nestjs/common';
 
 import { OidcPurgeRepository, PurgeModelCount } from './oidc-purge.repository';
+import { OidcUpstreamFederationPort } from './ports/oidc-upstream-federation.port';
 
 export const OIDC_PURGE_QUEUE = 'oidc-purge';
 
@@ -29,6 +30,8 @@ export class OidcPurgeService implements OnModuleInit {
   public constructor(
     private readonly bossService: PgBossService,
     private readonly purgeRepository: OidcPurgeRepository,
+    @Optional()
+    private readonly upstreamFederation?: OidcUpstreamFederationPort | null,
   ) {}
 
   public async onModuleInit(): Promise<void> {
@@ -50,10 +53,15 @@ export class OidcPurgeService implements OnModuleInit {
    * oidc_upstream_interaction records (expires_at < now()), logging the
    * purge count per type, until either the backlog is drained or the
    * per-run batch cap is reached.
+   *
+   * Before deleting expired Session models, schedules upstream logout cleanup
+   * for sessions with upstream federation links.
    */
   public async purgeExpiredModels(): Promise<void> {
     const totalsByModel = new Map<string, number>();
     let upstreamInteractionsTotal = 0;
+    let upstreamLogoutScheduledCount = 0;
+    let expiredPendingSessionsDeletedCount = 0;
     let batches = 0;
     let batchCount = 0;
 
@@ -62,18 +70,59 @@ export class OidcPurgeService implements OnModuleInit {
       let upstreamCount = 0;
 
       try {
+        // Before purging, schedule upstream logout cleanup for Sessions with
+        // upstream sessions. This ensures expired sessions are cleaned up
+        // upstream before cascade deletion.
+        if (this.upstreamFederation) {
+          const sessionsToCleanup =
+            await this.purgeRepository.getExpiredSessionsWithUpstreamCleanup(
+              BATCH_SIZE,
+            );
+
+          for (const session of sessionsToCleanup) {
+            try {
+              await this.upstreamFederation.logoutUpstreamSessionForOidcSession(
+                {
+                  oidcModelId: session.oidcModelId,
+                  oidcSessionUid: session.oidcSessionUid,
+                },
+              );
+              upstreamLogoutScheduledCount += 1;
+            } catch (err) {
+              // Log the error but continue; upstream logout is best-effort.
+              // If it fails, the local session is still cleaned up.
+              const errorMessage =
+                err instanceof Error ? err.message : String(err);
+              this.logger.warn(
+                `Failed to logout upstream session for oidc model ${session.oidcModelId}: ${errorMessage}`,
+              );
+            }
+          }
+
+          // Delete expired pending sessions that accumulated when finalization
+          // failed after callback staging. These cannot be cascade-deleted by
+          // oidc_model cleanup.
+          const deletedPendingCount =
+            await this.upstreamFederation.deleteExpiredPendingSessionBatch(
+              BATCH_SIZE,
+            );
+          expiredPendingSessionsDeletedCount += deletedPendingCount;
+        }
+
         batch = await this.purgeRepository.purgeExpiredBatch(BATCH_SIZE);
         const upstreamResult =
           await this.purgeRepository.purgeExpiredUpstreamInteractionsBatch(
             BATCH_SIZE,
           );
         upstreamCount = upstreamResult.count;
-      } catch (error) {
+      } catch (err) {
+        const errorToThrow =
+          err instanceof Error ? err : new Error(String(err));
         this.logger.error(
-          'Failed to purge a batch of expired OIDC records',
-          error instanceof Error ? error.stack : String(error),
+          `Failed to purge a batch of expired OIDC records: ${errorToThrow.message}`,
+          errorToThrow,
         );
-        throw error;
+        throw errorToThrow;
       }
 
       batchCount = batch.reduce((sum, entry) => sum + entry.count, 0);
@@ -94,7 +143,11 @@ export class OidcPurgeService implements OnModuleInit {
       0,
     );
 
-    if (totalPurged === 0 && upstreamInteractionsTotal === 0) {
+    if (
+      totalPurged === 0 &&
+      upstreamInteractionsTotal === 0 &&
+      expiredPendingSessionsDeletedCount === 0
+    ) {
       this.logger.log('OIDC purge run complete: no expired records');
       return;
     }
@@ -109,8 +162,20 @@ export class OidcPurgeService implements OnModuleInit {
       );
     }
 
+    if (expiredPendingSessionsDeletedCount > 0) {
+      this.logger.log(
+        `Deleted ${expiredPendingSessionsDeletedCount} expired pending upstream session(s)`,
+      );
+    }
+
+    if (upstreamLogoutScheduledCount > 0) {
+      this.logger.log(
+        `Scheduled upstream logout cleanup for ${upstreamLogoutScheduledCount} expired session(s)`,
+      );
+    }
+
     this.logger.log(
-      `OIDC purge run complete: purged ${totalPurged + upstreamInteractionsTotal} total record(s) in ${batches} batch(es)`,
+      `OIDC purge run complete: purged ${totalPurged + upstreamInteractionsTotal + expiredPendingSessionsDeletedCount} total record(s) in ${batches} batch(es)`,
     );
   }
 }

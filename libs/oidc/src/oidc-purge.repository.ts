@@ -13,6 +13,11 @@ export interface PurgeInteractionCount {
   count: number;
 }
 
+export interface ExpiredSessionWithUpstreamCleanup {
+  oidcModelId: string;
+  oidcSessionUid: string | null;
+}
+
 /**
  * Deletes expired `oidc_model` rows and `oidc_upstream_interaction` records
  * in bounded batches, used by `OidcPurgeService`.
@@ -31,6 +36,40 @@ export class OidcPurgeRepository {
     @InjectRepository(OidcModel)
     private readonly oidcModelRepo: Repository<OidcModel>,
   ) {}
+
+  /**
+   * Queries for expired Session models that have associated upstream sessions
+   * requiring cleanup before cascade deletion.
+   *
+   * Returns the oidcModelId and oidcSessionUid needed to call upstream logout.
+   */
+  public async getExpiredSessionsWithUpstreamCleanup(
+    limit: number,
+  ): Promise<ExpiredSessionWithUpstreamCleanup[]> {
+    const safeLimit = Math.max(1, Math.floor(limit));
+
+    const result = await this.oidcModelRepo.manager.query<
+      { oidc_model_id: string; oidc_session_uid: string | null }[]
+    >(
+      `SELECT DISTINCT
+         om.id AS oidc_model_id,
+         ous.oidc_session_uid
+       FROM oidc_model om
+       INNER JOIN oidc_upstream_session ous
+         ON om.id = ous.oidc_model_id
+       WHERE om.model_name = 'Session'
+         AND om.expires_at IS NOT NULL
+         AND om.expires_at < now()
+       ORDER BY om.expires_at
+       LIMIT $1`,
+      [safeLimit],
+    );
+
+    return result.map((row) => ({
+      oidcModelId: row.oidc_model_id,
+      oidcSessionUid: row.oidc_session_uid,
+    }));
+  }
 
   public async purgeExpiredBatch(limit: number): Promise<PurgeModelCount[]> {
     // Clamp to a positive integer: LIMIT must stay bounded to preserve the

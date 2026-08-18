@@ -103,13 +103,21 @@ describe('OIDC authorization_code grant (integration)', () => {
         throw new Error(`Interaction not found for state: ${state}`);
       }
 
+      const upstreamSubject = 'external-test-user';
+      const upstreamIdToken = `mock-upstream-id-token-${randomUUID()}`;
+
       return Promise.resolve({
         claims: {
-          sub: 'external-test-user',
+          sub: upstreamSubject,
           email: 'federated.user@example.com',
           name: 'Federated User',
         },
         interaction,
+        upstreamSession: {
+          upstreamSubject,
+          upstreamIdToken,
+          expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+        },
       });
     }),
 
@@ -124,6 +132,47 @@ describe('OIDC authorization_code grant (integration)', () => {
         interaction.tenantUserId = tenantUserId;
 
         return Promise.resolve(interaction);
+      },
+    ),
+
+    stagePendingUpstreamSession: jest.fn(
+      (data: {
+        tenantUserId: string;
+        upstreamSubject: string;
+        upstreamIdToken: string;
+        expiresAt: Date | null;
+      }) => {
+        return Promise.resolve({
+          id: randomUUID(),
+          ...data,
+        });
+      },
+    ),
+
+    logoutUpstreamSessionForOidcSession: jest.fn((_oidcSessionId: string) => {
+      return Promise.resolve(undefined);
+    }),
+
+    deleteExpiredPendingSessionBatch: jest.fn((_limit: number) => {
+      return Promise.resolve(0);
+    }),
+
+    finalizeUpstreamSessionForOidcSession: jest.fn(
+      (input: {
+        oidcModelId: string;
+        oidcSessionUid: string;
+        tenantUserId: string;
+      }) => {
+        return Promise.resolve({
+          id: randomUUID(),
+          oidcModelId: input.oidcModelId,
+          oidcSessionUid: input.oidcSessionUid,
+          tenantUserId: input.tenantUserId,
+          upstreamSubject: 'external-test-user',
+          upstreamIdToken: `mock-upstream-id-token-${randomUUID()}`,
+          createdAt: new Date(),
+          expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+        });
       },
     ),
 

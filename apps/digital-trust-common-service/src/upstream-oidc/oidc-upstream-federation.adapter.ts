@@ -8,12 +8,14 @@ import { OidcUpstreamSessionRecord } from '@app/oidc/ports/oidc-upstream-federat
 import { Injectable } from '@nestjs/common';
 
 import { OidcUpstreamSession } from './oidc-upstream-session.entity';
+import { OidcUpstreamSessionRepository } from './oidc-upstream-session.repository';
 import { UpstreamOidcService } from './oidc-upstream.service';
 
 @Injectable()
 export class OidcUpstreamFederationAdapter implements OidcUpstreamFederationPort {
   public constructor(
     private readonly upstreamOidcService: UpstreamOidcService,
+    private readonly sessionRepository: OidcUpstreamSessionRepository,
   ) {}
 
   private toUpstreamSessionRecord(
@@ -47,6 +49,12 @@ export class OidcUpstreamFederationAdapter implements OidcUpstreamFederationPort
     oidcSessionUid?: string | null;
   }): Promise<void> {
     await this.upstreamOidcService.logoutUpstreamSessionForOidcSession(input);
+  }
+
+  public async deleteExpiredPendingSessionBatch(
+    limit: number,
+  ): Promise<number> {
+    return await this.sessionRepository.deleteExpiredPendingBatch(limit);
   }
 
   public async finalizeUpstreamSessionForOidcSession(input: {
