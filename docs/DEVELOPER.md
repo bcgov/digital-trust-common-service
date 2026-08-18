@@ -9,6 +9,21 @@ This guide covers local development setup, running the application, and managing
 - **Docker** and **Docker Compose**: For database and containerized development
 - **PostgreSQL**: v18.4 (or use Docker)
 
+### Toolchain with mise (recommended)
+
+[mise](https://mise.jdx.dev) reads `.mise.toml` and gives everyone the same Node version:
+
+```bash
+brew install mise                     # or see the mise install docs
+echo 'eval "$(mise activate zsh)"' >> ~/.zshrc && exec zsh
+mise install                          # installs the pinned Node from .mise.toml
+node -v                               # v24.x
+```
+
+mise is optional — any Node 24 works, and CI uses `actions/setup-node` rather than mise. Without
+shell activation, run one-off commands through `mise exec -- npm ci`. If npm warns `EBADENGINE`, or
+a build behaves differently from CI, your shell is almost certainly on the wrong Node.
+
 ## Environment Setup
 
 ### 1. Clone and Install Dependencies

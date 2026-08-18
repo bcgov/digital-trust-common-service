@@ -11,7 +11,8 @@ in `docs/ARCHITECTURE.md` and `docs/DEVELOPER.md`, and the human-facing workflow
 ## Commands
 
 npm only (`package-lock.json`, `npm ci`). Node 24 — pinned in `.mise.toml`, required by `engines`,
-used by CI and the `node:24-alpine` image.
+used by CI and the `node:24-alpine` image. A shell without mise activated may default to another
+major: if npm reports `EBADENGINE`, rerun through `mise exec -- <command>`.
 
 | Task | Command |
 | --- | --- |
