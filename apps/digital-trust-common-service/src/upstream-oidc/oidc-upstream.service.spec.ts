@@ -788,9 +788,7 @@ describe('UpstreamOidcService', () => {
         expiresAt: null,
       });
 
-      expect(
-        mockSessionRepository.createPending,
-      ).toHaveBeenCalledWith({
+      expect(mockSessionRepository.createPending).toHaveBeenCalledWith({
         tenantUserId: 'tenant-user-123',
         upstreamSubject: 'upstream-user-123',
         upstreamIdToken: 'id-token',
@@ -815,7 +813,9 @@ describe('UpstreamOidcService', () => {
         pendingSession,
       );
       mockSessionRepository.findByOidcSessionUid.mockResolvedValue(null);
-      mockSessionRepository.update.mockImplementation(async (session) => session);
+      mockSessionRepository.update.mockImplementation(
+        async (session) => await new Promise((resolve) => resolve(session)),
+      );
 
       const result = await service.finalizeUpstreamSessionForOidcSession({
         oidcModelId: 'oidc-model-123',
@@ -864,7 +864,9 @@ describe('UpstreamOidcService', () => {
       mockSessionRepository.findByOidcSessionUid.mockResolvedValue(
         existingSession,
       );
-      mockSessionRepository.update.mockImplementation(async (session) => session);
+      mockSessionRepository.update.mockImplementation(
+        async (session) => await new Promise((resolve) => resolve(session)),
+      );
 
       const result = await service.finalizeUpstreamSessionForOidcSession({
         oidcModelId: 'oidc-model-123',
@@ -896,7 +898,7 @@ describe('UpstreamOidcService', () => {
 
   describe('logoutUpstreamSessionForOidcSession', () => {
     it('should log out the finalized upstream session and then delete it locally', async () => {
-      (service as UpstreamOidcService & { config: unknown }).config = {
+      (service as any).config = {
         issuer: 'http://localhost:8080',
       };
 
@@ -947,7 +949,7 @@ describe('UpstreamOidcService', () => {
     });
 
     it('should not delete the local session when upstream logout fails', async () => {
-      (service as UpstreamOidcService & { config: unknown }).config = {
+      (service as any).config = {
         issuer: 'http://localhost:8080',
       };
 
