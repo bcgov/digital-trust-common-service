@@ -7,6 +7,9 @@ import { Repository } from 'typeorm';
 
 import { AppModule } from '../app.module';
 
+const DEFAULT_UPSTREAM_OIDC_CONFIG_PATH =
+  './config/upstream-identity-federation.json';
+
 /**
  * `oidc-model.adapter.spec.ts` fully mocks the TypeORM repository, so it
  * cannot prove the real `INSERT ... ON CONFLICT` upsert actually avoids the
@@ -28,6 +31,9 @@ describe('OidcModelAdapter (integration)', () => {
   };
 
   beforeAll(async () => {
+    process.env.UPSTREAM_IDENTITY_FEDERATION_CONFIG_PATH ??=
+      DEFAULT_UPSTREAM_OIDC_CONFIG_PATH;
+
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     })
@@ -45,11 +51,15 @@ describe('OidcModelAdapter (integration)', () => {
   }, 30000);
 
   afterAll(async () => {
-    await app.close();
+    if (app) {
+      await app.close();
+    }
   });
 
   afterEach(async () => {
-    await oidcModelRepo.query('DELETE FROM oidc_model');
+    if (oidcModelRepo) {
+      await oidcModelRepo.query('DELETE FROM oidc_model');
+    }
   });
 
   it('does not throw a unique-violation when two concurrent upserts target the same id', async () => {

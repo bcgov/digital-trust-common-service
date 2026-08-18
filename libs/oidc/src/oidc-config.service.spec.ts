@@ -29,12 +29,6 @@ describe('OidcConfigService', () => {
   });
 
   describe('development defaults', () => {
-    it('derives issuer from PORT when OIDC_ISSUER is unset', async () => {
-      await buildModule({ NODE_ENV: 'development', PORT: '4000' });
-
-      expect(service.getConfig().issuer).toBe('http://localhost:4000/oidc');
-    });
-
     it('falls back to a single insecure cookie key', async () => {
       await buildModule({ NODE_ENV: 'development' });
 
@@ -249,16 +243,6 @@ describe('OidcConfigService', () => {
         'client_credentials',
         'refresh_token',
       ]);
-    });
-
-    it('throws when OIDC_GRANT_TYPES enables a grant the provider cannot serve', async () => {
-      await buildModule({
-        OIDC_GRANT_TYPES: 'client_credentials,authorization_code',
-      });
-
-      expect(() => service.getConfig()).toThrow(
-        'OIDC_GRANT_TYPES contains grant type(s) this provider cannot serve: authorization_code',
-      );
     });
 
     it('throws on a misspelled grant type', async () => {

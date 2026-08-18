@@ -141,6 +141,14 @@ Name of the Secret holding the OIDC RS256 signing JWKS.
 {{- end }}
 
 {{/*
+Name of the existing Secret holding upstream federation config JSON.
+This Secret is never chart-managed; it must already exist in the namespace.
+*/}}
+{{- define "digital-trust-common-service.upstreamFederationSecretName" -}}
+{{- tpl .Values.upstreamFederation.existingSecret.name . -}}
+{{- end -}}
+
+{{/*
 Name of the ConfigMap holding non-secret application configuration.
 */}}
 {{- define "digital-trust-common-service.configMapName" -}}

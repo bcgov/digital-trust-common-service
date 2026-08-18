@@ -80,6 +80,95 @@ The application uses AES-256-GCM encryption to protect sensitive data. Encryptio
 - **Development**: Use the provided `config/encryption-keys.json` with default test keys
 - **Production**: Generate strong random keys and store securely (e.g., in a secrets manager)
 
+### 4. Upstream OIDC Federation Configuration
+
+The application supports upstream OIDC federation with Keycloak using the `openid-client` library. This library **strictly enforces HTTPS** connections for all OIDC discovery and token endpoints.
+
+For local development, this repo uses **Caddy** with locally trusted TLS for:
+
+- `https://oidc.localhost` -> local app on port `3000`
+- `https://keycloak.localhost` -> Keycloak in Docker on port `8080`
+
+#### Start the local HTTPS stack
+
+Bring up the local services, including Caddy and Keycloak:
+
+```bash
+docker compose --profile dev up
+```
+
+#### Export and trust the Caddy local CA
+
+Caddy issues its own local development certificates. Export its root CA certificate from the running container:
+
+```bash
+docker compose cp \
+  caddy:/data/caddy/pki/authorities/local/root.crt \
+  ./caddy/root.crt
+```
+
+Install that certificate into your system trust store so browsers and other local tooling trust `*.localhost` served by Caddy:
+
+```bash
+sudo cp ./caddy/root.crt /usr/local/share/ca-certificates/caddy-local.crt
+sudo update-ca-certificates
+```
+
+#### Configure Node.js to trust the local CA
+
+Node does not automatically use your OS trust store in every setup, so local OIDC calls should also trust the exported certificate explicitly.
+
+Set this in your `.env` file:
+
+```env
+NODE_EXTRA_CA_CERTS="$PWD/caddy/root.crt"
+```
+
+This matches the default shown in `.env.example` and allows the app to call `https://keycloak.localhost` successfully during upstream federation flows.
+
+#### Configure Keycloak Endpoint
+
+Update **`config/upstream-identity-federation.json`** to point at the local Keycloak issuer exposed by Caddy:
+
+```json
+{
+  "url": "https://keycloak.localhost/realms/vc-common-service",
+  "clientId": "vc-common-service",
+  "clientSecret": "your-client-secret"
+}
+```
+
+#### Configure Docker Compose
+
+The local compose file already sets the Keycloak hostname correctly:
+
+```yaml
+environment:
+  - KC_HOSTNAME=https://keycloak.localhost
+```
+
+The checked-in **`keycloak/config/realm.json`** already uses the local OIDC provider hostname for redirect URIs:
+
+```json
+{
+  "clientId": "dtsc-oidc-provider",
+  "redirectUris": ["https://oidc.localhost/*"],
+  "webOrigins": ["https://oidc.localhost"]
+}
+```
+
+#### Configure OIDC Provider Issuer
+
+Set the **`OIDC_ISSUER`** environment variable to the local Caddy endpoint for the app's OIDC provider:
+
+```env
+OIDC_ISSUER=https://oidc.localhost/oidc
+```
+
+This URL is used by Keycloak clients to discover the OIDC provider configuration and validate tokens.
+
+**Important**: The local CA certificate must be trusted both by your system and by Node via `NODE_EXTRA_CA_CERTS`, or OIDC discovery/token requests will fail with TLS errors.
+
 ## Running the Application
 
 ### Option 1: Docker Compose (Recommended for Development)
@@ -458,6 +547,8 @@ npm run migrate:down
 # Rebuild and try again
 npm run build && npm run migrate:up
 ```
+
+
 
 ## Additional Resources
 

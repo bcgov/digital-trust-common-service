@@ -9,6 +9,7 @@ import {
   buildOidcConfiguration,
   resolveRefreshTokenTtl,
 } from './oidc-provider.service';
+import type { OidcTenantUserPort } from './ports/oidc-tenant-user.port';
 
 jest.mock('argon2', () => ({
   verify: jest.fn(),
@@ -60,18 +61,29 @@ describe('buildOidcConfiguration', () => {
     refreshTokenRotationEnabled: true,
     cookieKeys: ['secret-1'],
     scopes: ['openid', 'credentials:offer'],
+    grantTypes: ['client_credentials', 'refresh_token'],
   };
 
   const jwks: OidcJwks = { keys: [{ kid: 'k1', kty: 'RSA' }] };
 
   let adapterFactory: OidcAdapterFactory;
+  let tenantUserService: OidcTenantUserPort;
 
   beforeEach(() => {
     adapterFactory = { forModel: jest.fn() } as unknown as OidcAdapterFactory;
+    tenantUserService = {
+      forModel: jest.fn(),
+      findById: jest.fn(),
+    } as unknown as OidcTenantUserPort;
   });
 
   it('wires the adapter, jwks and cookie keys through unchanged', () => {
-    const configuration = buildOidcConfiguration(config, jwks, adapterFactory);
+    const configuration = buildOidcConfiguration(
+      config,
+      jwks,
+      adapterFactory,
+      tenantUserService,
+    );
 
     expect(configuration.adapter).toBe(adapterFactory.forModel);
     expect(configuration.jwks).toBe(jwks);
@@ -79,13 +91,23 @@ describe('buildOidcConfiguration', () => {
   });
 
   it('wires the configured server-wide scope allowlist unchanged', () => {
-    const configuration = buildOidcConfiguration(config, jwks, adapterFactory);
+    const configuration = buildOidcConfiguration(
+      config,
+      jwks,
+      adapterFactory,
+      tenantUserService,
+    );
 
     expect(configuration.scopes).toEqual(['openid', 'credentials:offer']);
   });
 
   it('maps TTLs and refresh rotation from OidcConfig', () => {
-    const configuration = buildOidcConfiguration(config, jwks, adapterFactory);
+    const configuration = buildOidcConfiguration(
+      config,
+      jwks,
+      adapterFactory,
+      tenantUserService,
+    );
 
     expect(configuration.ttl).toMatchObject({
       AccessToken: 300,
@@ -104,6 +126,7 @@ describe('buildOidcConfiguration', () => {
         config,
         jwks,
         adapterFactory,
+        tenantUserService,
       );
 
       expect(typeof configuration.ttl?.RefreshToken).toBe('function');
@@ -114,6 +137,7 @@ describe('buildOidcConfiguration', () => {
         config,
         jwks,
         adapterFactory,
+        tenantUserService,
       );
       const ttlFn = configuration.ttl?.RefreshToken as (
         ctx: unknown,
@@ -129,6 +153,7 @@ describe('buildOidcConfiguration', () => {
         config,
         jwks,
         adapterFactory,
+        tenantUserService,
       );
       const ttlFn = configuration.ttl?.RefreshToken as (
         ctx: unknown,
@@ -146,6 +171,7 @@ describe('buildOidcConfiguration', () => {
         config,
         jwks,
         adapterFactory,
+        tenantUserService,
       );
 
       expect(configuration.extraClientMetadata?.properties).toContain(
@@ -175,7 +201,12 @@ describe('buildOidcConfiguration', () => {
   // which would let a session outlive its 8-hour refresh token and make the
   // concurrent-session limit count sessions that are effectively dead.
   it('sets Session and Grant TTLs explicitly rather than inheriting defaults', () => {
-    const configuration = buildOidcConfiguration(config, jwks, adapterFactory);
+    const configuration = buildOidcConfiguration(
+      config,
+      jwks,
+      adapterFactory,
+      tenantUserService,
+    );
 
     expect(configuration.ttl).toMatchObject({
       Session: 28800,
@@ -184,7 +215,12 @@ describe('buildOidcConfiguration', () => {
   });
 
   it('always requires PKCE regardless of client auth method', () => {
-    const configuration = buildOidcConfiguration(config, jwks, adapterFactory);
+    const configuration = buildOidcConfiguration(
+      config,
+      jwks,
+      adapterFactory,
+      tenantUserService,
+    );
 
     expect(
       configuration.pkce?.required?.(
@@ -195,7 +231,12 @@ describe('buildOidcConfiguration', () => {
   });
 
   it('enables client_credentials, introspection and revocation but not dev interactions', () => {
-    const configuration = buildOidcConfiguration(config, jwks, adapterFactory);
+    const configuration = buildOidcConfiguration(
+      config,
+      jwks,
+      adapterFactory,
+      tenantUserService,
+    );
 
     expect(configuration.features?.clientCredentials?.enabled).toBe(true);
     expect(configuration.features?.introspection?.enabled).toBe(true);
@@ -204,7 +245,12 @@ describe('buildOidcConfiguration', () => {
   });
 
   it('resolves a default resource indicator and issues RS256 JWT access tokens for it', async () => {
-    const configuration = buildOidcConfiguration(config, jwks, adapterFactory);
+    const configuration = buildOidcConfiguration(
+      config,
+      jwks,
+      adapterFactory,
+      tenantUserService,
+    );
     const resourceIndicators = configuration.features?.resourceIndicators;
 
     expect(resourceIndicators?.enabled).toBe(true);
@@ -227,7 +273,12 @@ describe('buildOidcConfiguration', () => {
   });
 
   it('registers every extra client metadata property', () => {
-    const configuration = buildOidcConfiguration(config, jwks, adapterFactory);
+    const configuration = buildOidcConfiguration(
+      config,
+      jwks,
+      adapterFactory,
+      tenantUserService,
+    );
 
     expect(configuration.extraClientMetadata?.properties).toEqual([
       'client_secret_hash',
@@ -238,14 +289,15 @@ describe('buildOidcConfiguration', () => {
   });
 
   describe('extraTokenClaims', () => {
-    it('stamps tenant_id and roles claims when present on the token client', () => {
+    it('stamps tenant_id and roles claims when present on the token client', async () => {
       const configuration = buildOidcConfiguration(
         config,
         jwks,
         adapterFactory,
+        tenantUserService,
       );
 
-      const claims = configuration.extraTokenClaims?.(
+      const claims = await configuration.extraTokenClaims?.(
         {} as never,
         {
           client: {
@@ -261,14 +313,15 @@ describe('buildOidcConfiguration', () => {
       });
     });
 
-    it('stamps the tenant_id claim when present on the token client', () => {
+    it('stamps the tenant_id claim when present on the token client', async () => {
       const configuration = buildOidcConfiguration(
         config,
         jwks,
         adapterFactory,
+        tenantUserService,
       );
 
-      const claims = configuration.extraTokenClaims?.(
+      const claims = await configuration.extraTokenClaims?.(
         {} as never,
         {
           client: { tenant_id: 'tenant-1' },
@@ -278,14 +331,15 @@ describe('buildOidcConfiguration', () => {
       expect(claims).toEqual({ tenant_id: 'tenant-1' });
     });
 
-    it('returns undefined when the token has no client tenant_id', () => {
+    it('returns undefined when the token has no client tenant_id', async () => {
       const configuration = buildOidcConfiguration(
         config,
         jwks,
         adapterFactory,
+        tenantUserService,
       );
 
-      const claims = configuration.extraTokenClaims?.(
+      const claims = await configuration.extraTokenClaims?.(
         {} as never,
         {
           client: undefined,
@@ -294,19 +348,122 @@ describe('buildOidcConfiguration', () => {
 
       expect(claims).toBeUndefined();
     });
-  });
 
-  describe('findAccount', () => {
-    it('throws to signal the interactive login stub (AU-02)', () => {
+    it('stamps tenant_id and tenant_role claims for user tokens', async () => {
+      (tenantUserService.findById as jest.Mock).mockResolvedValue({
+        id: 'user-id-123',
+        tenantId: 'tenant-123',
+        externalUserId: 'external-user-123',
+        email: 'user@example.com',
+        displayName: 'Test User',
+        role: 'member',
+        status: 'active',
+      });
       const configuration = buildOidcConfiguration(
         config,
         jwks,
         adapterFactory,
+        tenantUserService,
       );
 
-      expect(() => configuration.findAccount?.({} as never, 'sub')).toThrow(
-        /AU-02/,
+      const claims = await configuration.extraTokenClaims?.(
+        {} as never,
+        {
+          accountId: 'user-id-123',
+          client: undefined,
+        } as never,
       );
+
+      expect(claims).toEqual({
+        tenant_id: 'tenant-123',
+        tenant_role: 'member',
+      });
+    });
+  });
+
+  describe('findAccount', () => {
+    it('returns account with claims when user is found', async () => {
+      const mockUser = {
+        id: 'user-id-123',
+        tenantId: 'tenant-123',
+        externalUserId: 'external-user-123',
+        email: 'user@example.com',
+        displayName: 'Test User',
+        role: 'member',
+        status: 'active',
+      };
+
+      (tenantUserService.findById as jest.Mock).mockResolvedValue(mockUser);
+
+      const configuration = buildOidcConfiguration(
+        config,
+        jwks,
+        adapterFactory,
+        tenantUserService,
+      );
+
+      const account = await configuration.findAccount?.(
+        {} as never,
+        'user-id-123',
+      );
+
+      expect(account).toEqual({
+        accountId: 'user-id-123',
+        claims: expect.any(Function),
+      });
+      expect((account as any).claims()).toEqual({
+        sub: 'user-id-123',
+        email: 'user@example.com',
+        name: 'Test User',
+        tenant_id: 'tenant-123',
+        tenant_role: 'member',
+      });
+    });
+
+    it('returns undefined when user is not found', async () => {
+      (tenantUserService.findById as jest.Mock).mockResolvedValue(undefined);
+
+      const configuration = buildOidcConfiguration(
+        config,
+        jwks,
+        adapterFactory,
+        tenantUserService,
+      );
+
+      const account = await configuration.findAccount?.(
+        {} as never,
+        'unknown-id',
+      );
+
+      // eslint-disable-next-line @typescript-eslint/unbound-method
+      expect(tenantUserService.findById).toHaveBeenCalledWith('unknown-id');
+      expect(account).toBeUndefined();
+    });
+
+    it('returns undefined when user exists but is not active', async () => {
+      (tenantUserService.findById as jest.Mock).mockResolvedValue({
+        id: 'user-id-123',
+        tenantId: 'tenant-123',
+        externalUserId: 'external-user-123',
+        email: 'user@example.com',
+        displayName: 'Test User',
+        role: 'member',
+        status: 'disabled',
+      });
+
+      const configuration = buildOidcConfiguration(
+        config,
+        jwks,
+        adapterFactory,
+        tenantUserService,
+      );
+
+      const account = await configuration.findAccount?.(
+        {} as never,
+        'user-id-123',
+      );
+
+      expect(account).toBeUndefined();
     });
   });
 });
@@ -357,6 +514,7 @@ describe('OidcProviderService', () => {
   let oidcKeysService: { ensureLoaded: jest.Mock };
   let adapterFactory: OidcAdapterFactory;
   let service: OidcProviderService;
+  let tenantUserService: OidcTenantUserPort;
 
   const jwks: OidcJwks = { keys: [{ kid: 'test-key', kty: 'RSA' }] };
 
@@ -367,18 +525,27 @@ describe('OidcProviderService', () => {
         keysPath: '/tmp/keys.json',
         accessTokenTtlSeconds: 300,
         refreshTokenTtlSeconds: 28800,
+        sessionTtlSeconds: 28800,
+        grantTtlSeconds: 1209600,
+        maxConcurrentSessions: 5,
         refreshTokenRotationEnabled: true,
         cookieKeys: ['secret-1'],
         scopes: ['openid'],
+        grantTypes: ['client_credentials', 'refresh_token'],
       } satisfies OidcConfig),
     };
     oidcKeysService = { ensureLoaded: jest.fn().mockResolvedValue(jwks) };
     adapterFactory = { forModel: jest.fn() } as unknown as OidcAdapterFactory;
+    tenantUserService = {
+      forModel: jest.fn(),
+      findById: jest.fn(),
+    } as unknown as OidcTenantUserPort;
 
     service = new OidcProviderService(
       oidcConfigService as never,
       oidcKeysService as never,
       adapterFactory,
+      tenantUserService,
     );
   });
 

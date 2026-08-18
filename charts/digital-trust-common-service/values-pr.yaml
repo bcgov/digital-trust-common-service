@@ -36,6 +36,11 @@ secret:
   # per-PR objects are removed by pr-cleanup.yml's label-based delete.)
   existingSecret: digital-trust-common-service-pr-secret
 
+networkPolicy:
+  enabled: true
+  keycloak:
+    enabled: true
+
 connectorEncryption:
   existingSecret: ""
   create: true
@@ -52,3 +57,8 @@ oidcSigning:
   retainOnUninstall: false
   # oidcSigning.keys is injected by pr-deploy.yml (--set-file) the first time
   # a PR deploys, and omitted afterwards so redeploys reuse the same key.
+
+upstreamFederation:
+  existingSecret:
+    name: dtsc-pr-oidc-client
+    key: upstream-identity-federation.json

@@ -6,20 +6,27 @@ import { OidcAdapterFactory } from './adapters/oidc-adapter.factory';
 import { OidcModel } from './entities/oidc-model.entity';
 import { OidcAccountSessionModule } from './oidc-account-session.module';
 import { OidcConfigModule } from './oidc-config.module';
+import { OidcInteractionController } from './oidc-interaction.controller';
 import { OidcKeysService } from './oidc-keys.service';
-import { OidcModelPurgeRepository } from './oidc-model-purge.repository';
-import { OidcModelPurgeService } from './oidc-model-purge.service';
 import { OidcProviderService } from './oidc-provider.service';
+import { OidcPurgeRepository } from './oidc-purge.repository';
+import { OidcPurgeService } from './oidc-purge.service';
 import { SessionLimitService } from './session-limit.service';
 
 export interface OidcModuleOptions {
-  /** Modules exporting the provider bound to OIDC_CLIENT_LOOKUP_PORT. */
+  /** Modules exporting providers bound to the OIDC port tokens. */
   imports?: DynamicModule['imports'];
   /**
    * Provider binding for OIDC_CLIENT_LOOKUP_PORT, e.g.
    * `{ provide: OIDC_CLIENT_LOOKUP_PORT, useClass: OAuthClientLookupAdapter }`.
    */
   clientLookupProvider: Provider;
+  /** Provider binding for OIDC_TENANT_USER_PORT. */
+  tenantUserProvider: Provider;
+  /** Provider binding for OIDC_ROLE_SCOPE_PORT. */
+  roleScopeProvider: Provider;
+  /** Provider binding for OIDC_UPSTREAM_FEDERATION_PORT. */
+  upstreamFederationProvider: Provider;
 }
 
 @Module({})
@@ -39,14 +46,18 @@ export class OidcModule {
         PgBossModule,
         ...(options.imports ?? []),
       ],
+      controllers: [OidcInteractionController],
       providers: [
         OidcKeysService,
         OidcAdapterFactory,
         OidcProviderService,
         SessionLimitService,
-        OidcModelPurgeRepository,
-        OidcModelPurgeService,
+        OidcPurgeRepository,
+        OidcPurgeService,
         options.clientLookupProvider,
+        options.tenantUserProvider,
+        options.roleScopeProvider,
+        options.upstreamFederationProvider,
       ],
       exports: [
         OidcConfigModule,

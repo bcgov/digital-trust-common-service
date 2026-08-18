@@ -1,0 +1,11 @@
+oidc.localhost {
+    tls internal
+
+    reverse_proxy host.docker.internal:3000
+}
+
+keycloak.localhost {
+    tls internal
+
+    reverse_proxy keycloak:8080
+}

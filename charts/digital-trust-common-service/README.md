@@ -10,6 +10,7 @@ A Helm chart to deploy the Digital Credential Common Service (NestJS) on BC Gov 
 - Helm 3.8.0+
 - An external PostgreSQL database and (optionally) a Keycloak instance
 - A pre-provisioned `Secret` with database credentials (or set `secret.create=true`)
+- A pre-provisioned upstream federation `Secret` for every deployment environment, referenced by `upstreamFederation.existingSecret.name` (the chart does not create this secret)
 
 ## Installing the Chart
 
@@ -43,6 +44,110 @@ OpenShift. Key characteristics:
   explicit egress to PostgreSQL/Keycloak, with a DNS-allow policy so hostname
   resolution keeps working once egress rules are in effect.
 
+## Upstream Federation Secret
+
+The `upstreamFederation` configuration is always consumed from an existing Kubernetes Secret.
+
+- The chart never creates this Secret.
+- You must pre-provision it in every deployment environment (dev, test, prod, pr, ci).
+- Set `upstreamFederation.existingSecret.name` to that Secret, and
+  `upstreamFederation.existingSecret.key` to the JSON key containing the upstream IdP client config.
+
+## Pre-provisioned Secret Examples
+
+Several chart values point at existing Kubernetes Secrets rather than creating them automatically. The examples below show the expected structure and key names with placeholder values.
+
+### Database Credentials Secret
+
+Referenced by `secret.existingSecret`.
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: digital-trust-common-service-secret
+type: Opaque
+stringData:
+  DB_USERNAME: <database-username>
+  DB_PASSWORD: <database-password>
+```
+
+### Upstream Federation Secret
+
+Referenced by `upstreamFederation.existingSecret.name` and `upstreamFederation.existingSecret.key`.
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: dtsc-dev-oidc-client
+type: Opaque
+stringData:
+  upstream-identity-federation.json: |
+    {
+      "url": "https://<keycloak-or-idp-host>/realms/<realm>",
+      "clientId": "<upstream-client-id>",
+      "clientSecret": "<upstream-client-secret>"
+    }
+```
+
+### Connector Encryption Secret
+
+Referenced by `connectorEncryption.existingSecret`.
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: digital-trust-common-service-dev-connector-encryption
+type: Opaque
+stringData:
+  encryption-keys.json: |
+    {
+      "currentVersion": 1,
+      "keys": {
+        "1": "<64-char-hex-aes256-key>"
+      }
+    }
+```
+
+This Secret is mounted at `/etc/connector`, so the JSON key name should match the filename implied by `CONNECTOR_ENCRYPTION_KEYS_PATH` unless you also override that path.
+
+### OIDC Signing Secret
+
+Referenced by `oidcSigning.existingSecret`.
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: digital-trust-common-service-dev-oidc-signing
+type: Opaque
+stringData:
+  oidc-keys.json: |
+    {
+      "keys": [
+        {
+          "kty": "RSA",
+          "kid": "<key-id>",
+          "use": "sig",
+          "alg": "RS256",
+          "n": "<base64url-modulus>",
+          "e": "AQAB",
+          "d": "<base64url-private-exponent>",
+          "p": "<base64url-prime-p>",
+          "q": "<base64url-prime-q>",
+          "dp": "<base64url-dp>",
+          "dq": "<base64url-dq>",
+          "qi": "<base64url-qi>"
+        }
+      ]
+    }
+  OIDC_COOKIE_KEYS: <comma-separated-cookie-signing-secrets>
+```
+
+Generate the JWKS payload with `npm run oidc:generate-keys > oidc-keys.json`, then copy that file content into the `oidc-keys.json` entry above.
+
 ## Maintainers
 
 | Name | Email | Url |
@@ -58,7 +163,7 @@ OpenShift. Key characteristics:
 | autoscaling.maxReplicas | int | `3` | Maximum API replicas |
 | autoscaling.minReplicas | int | `1` | Minimum API replicas |
 | autoscaling.targetCPUUtilizationPercentage | int | `80` | Target average CPU utilization (percentage) |
-| config | object | `{"AUDIT_AUTO_INTERCEPTOR_ENABLED":"false","AUDIT_PARTITION_CRON":"0 3 * * *","AUDIT_PARTITION_MONTHS_AHEAD":"3","CONNECTOR_ENCRYPTION_KEYS_PATH":"/etc/connector/encryption-keys.json","DB_HOST":"","DB_LOGGING":"false","DB_NAME":"dc_common_service","DB_PORT":"5432","DB_SYNCHRONIZE":"false","LOG_LEVEL":"info","NODE_ENV":"production","OIDC_KEYS_PATH":"/etc/oidc/oidc-keys.json","PORT":"3000","SWAGGER_ENABLED":"true","SWAGGER_JSON_ENABLED":"true"}` | Non-secret application configuration, rendered into a ConfigMap and injected as environment variables into all containers. |
+| config | object | `{"AUDIT_AUTO_INTERCEPTOR_ENABLED":"false","AUDIT_PARTITION_CRON":"0 3 * * *","AUDIT_PARTITION_MONTHS_AHEAD":"3","CONNECTOR_ENCRYPTION_KEYS_PATH":"/etc/connector/encryption-keys.json","DB_HOST":"","DB_LOGGING":"false","DB_NAME":"dc_common_service","DB_PORT":"5432","DB_SYNCHRONIZE":"false","LOG_LEVEL":"info","NODE_ENV":"production","OIDC_GRANT_TYPES":"client_credentials,authorization_code,refresh_token","OIDC_KEYS_PATH":"/etc/oidc/oidc-keys.json","PORT":"3000","SWAGGER_ENABLED":"true","SWAGGER_JSON_ENABLED":"true"}` | Non-secret application configuration, rendered into a ConfigMap and injected as environment variables into all containers. |
 | connectorEncryption.create | bool | `false` | Create a chart-managed Secret from the values below |
 | connectorEncryption.currentVersion | int | `1` |  |
 | connectorEncryption.existingSecret | string | `""` | Name of an existing Secret to use for connector encryption keys (takes precedence over chart-managed creation). When set, the secret volume will be mounted even if `create` is false. |
@@ -139,6 +244,9 @@ OpenShift. Key characteristics:
 | serviceAccount.create | bool | `true` | Create a service account |
 | serviceAccount.name | string | `""` | Service account name (generated from the fullname when empty and `create` is true) |
 | tolerations | list | `[]` | Tolerations for API pods |
+| upstreamFederation.existingSecret | object | `{"key":"upstream-identity-federation.json","name":""}` | Existing Secret reference for upstream federation config JSON. The chart never creates this Secret; it must be provisioned manually. |
+| upstreamFederation.fileName | string | `"upstream-identity-federation.json"` | Filename for the upstream federation config JSON. |
+| upstreamFederation.mountPath | string | `"/etc/upstream-identity-federation"` | Mounted directory that contains the upstream federation config file. |
 | volumeMounts | list | `[]` | Extra volume mounts for the API/Worker containers. The connector encryption and OIDC signing mounts are added by the chart alongside their Secrets and do not need to be listed here. |
 | volumes | list | `[]` | Extra volumes for the API/Worker pods |
 | worker.affinity | object | `{}` | Affinity for Worker pods |

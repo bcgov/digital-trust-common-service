@@ -40,8 +40,10 @@
     "argon2": "^0.45.1",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.15.1",
+    "escape-html": "^1.0.3",
     "jose": "^6.2.5",
     "oidc-provider": "^9.11.1",
+    "openid-client": "^6.8.4",
     "pg": "^8.22.0",
     "pg-boss": "^12.26.0",
     "reflect-metadata": "^0.2.2",
@@ -54,6 +56,7 @@
     "@nestjs/cli": "^11.0.23",
     "@nestjs/schematics": "^11.1.0",
     "@nestjs/testing": "^11.1.28",
+    "@types/escape-html": "^1.0.4",
     "@types/express": "^5.0.6",
     "@types/jest": "^30.0.0",
     "@types/node": "^26.1.1",
@@ -95,7 +98,7 @@
       "^.+\\.(t|j)s$": "ts-jest"
     },
     "transformIgnorePatterns": [
-      "node_modules/(?!(jose|oidc-provider|quick-lru|nanoid|eta|jsesc|raw-body)/)"
+      "node_modules/(?!(jose|oidc-provider|openid-client|oauth4webapi|quick-lru|nanoid|eta|jsesc|raw-body)/)"
     ],
     "collectCoverageFrom": [
       "**/*.{ts,js}",
@@ -116,7 +119,10 @@
       "^@app/pg-boss(|/.*)$": "<rootDir>/libs/pg-boss/src/$1"
     },
     "coverageDirectory": "./coverage",
-    "testEnvironment": "node"
+    "testEnvironment": "node",
+    "setupFilesAfterEnv": [
+      "<rootDir>/jest.setup.js"
+    ]
   },
   "allowScripts": {
     "unrs-resolver@1.12.2": true

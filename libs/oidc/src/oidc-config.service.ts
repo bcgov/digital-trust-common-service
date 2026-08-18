@@ -85,11 +85,16 @@ const DEFAULT_GRANT_TYPES = ['client_credentials'];
 // because oidc-provider issues and consumes refresh tokens on its own, with
 // no account lookup involved — but note this only holds because
 // `getScopes()` guarantees `offline_access` is in the scope allowlist, which
-// is what actually causes the library to register the grant. Everything
-// else — authorization_code, device code, and the other interactive flows —
-// needs a working `findAccount`, which is still a stub, so accepting them
-// here would only defer the failure to the authorize endpoint.
-const SERVICEABLE_GRANT_TYPES = ['client_credentials', 'refresh_token'];
+// is what actually causes the library to register the grant.
+// `authorization_code` is serviceable as of AU-02: `findAccount` resolves
+// real tenant users and the interaction controller federates login upstream.
+// Device code and the remaining interactive flows are still unwired, so
+// accepting them here would only defer the failure to the authorize endpoint.
+const SERVICEABLE_GRANT_TYPES = [
+  'client_credentials',
+  'refresh_token',
+  'authorization_code',
+];
 
 @Injectable()
 export class OidcConfigService {
