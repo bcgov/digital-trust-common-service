@@ -4,7 +4,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { OidcPurgeRepository, PurgeModelCount } from './oidc-purge.repository';
 import { OIDC_PURGE_QUEUE, OidcPurgeService } from './oidc-purge.service';
 
-describe('OidcModelPurgeService', () => {
+describe('OidcPurgeService', () => {
   let service: OidcPurgeService;
   let mockPurgeExpiredBatch: jest.Mock;
   let mockPurgeExpiredUpstreamBatch: jest.Mock;

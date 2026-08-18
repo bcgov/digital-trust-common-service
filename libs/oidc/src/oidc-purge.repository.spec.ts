@@ -4,7 +4,7 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { OidcModel } from './entities/oidc-model.entity';
 import { OidcPurgeRepository } from './oidc-purge.repository';
 
-describe('OidcModelPurgeRepository', () => {
+describe('OidcPurgeRepository', () => {
   let repository: OidcPurgeRepository;
   let mockQuery: jest.Mock;
 

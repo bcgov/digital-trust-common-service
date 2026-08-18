@@ -40,9 +40,9 @@ export {
 } from './oidc-provider.service';
 export type { ClientExtraMetadata } from './oidc-provider.service';
 export { OidcMountService } from './oidc-mount.service';
-export { OidcPurgeRepository as OidcModelPurgeRepository } from './oidc-purge.repository';
+export { OidcPurgeRepository } from './oidc-purge.repository';
 export type { PurgeModelCount } from './oidc-purge.repository';
-export { OidcPurgeService as OidcModelPurgeService } from './oidc-purge.service';
+export { OidcPurgeService } from './oidc-purge.service';
 export { OidcAccountSessionModule } from './oidc-account-session.module';
 export {
   OidcAccountSessionRepository,

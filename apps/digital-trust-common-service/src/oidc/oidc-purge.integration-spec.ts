@@ -1,4 +1,4 @@
-import { OidcModel, OidcModelPurgeRepository } from '@app/oidc';
+import { OidcModel, OidcPurgeRepository } from '@app/oidc';
 import { PgBossService } from '@app/pg-boss';
 import { INestApplication } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
@@ -8,17 +8,17 @@ import { Repository } from 'typeorm';
 import { AppModule } from '../app.module';
 
 /**
- * `oidc-model-purge.repository.spec.ts` and `oidc-model-purge.service
- * .spec.ts` both fully mock the TypeORM repository/DataSource, so neither
- * proves the actual raw SQL in `OidcModelPurgeRepository.purgeExpiredBatch`
- * behaves correctly against a real Postgres instance (correct `expires_at`
- * comparison, batching via `LIMIT`, grouping counts by `model_name`, and
- * that non-expired rows are left untouched). This closes that gap by
- * seeding real expired and non-expired `oidc_model` rows and asserting on
- * what's actually left in the table afterward.
+ * `oidc-purge.repository.spec.ts` and `oidc-purge.service.spec.ts` both
+ * fully mock the TypeORM repository/DataSource, so neither proves the actual
+ * raw SQL in `OidcPurgeRepository.purgeExpiredBatch` behaves correctly
+ * against a real Postgres instance (correct `expires_at` comparison,
+ * batching via `LIMIT`, grouping counts by `model_name`, and that
+ * non-expired rows are left untouched). This closes that gap by seeding real
+ * expired and non-expired `oidc_model` rows and asserting on what's actually
+ * left in the table afterward.
  */
-describe('OidcModelPurgeRepository (integration)', () => {
-  let purgeRepository: OidcModelPurgeRepository;
+describe('OidcPurgeRepository (integration)', () => {
+  let purgeRepository: OidcPurgeRepository;
   let oidcModelRepo: Repository<OidcModel>;
   let app: INestApplication;
 
@@ -45,7 +45,7 @@ describe('OidcModelPurgeRepository (integration)', () => {
     app = moduleFixture.createNestApplication();
     await app.init();
 
-    purgeRepository = moduleFixture.get(OidcModelPurgeRepository);
+    purgeRepository = moduleFixture.get(OidcPurgeRepository);
     oidcModelRepo = moduleFixture.get(getRepositoryToken(OidcModel));
   }, 30000);
 
