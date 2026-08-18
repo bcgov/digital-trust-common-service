@@ -11,18 +11,28 @@ This guide covers local development setup, running the application, and managing
 
 ### Toolchain with mise (recommended)
 
-[mise](https://mise.jdx.dev) reads `.mise.toml` and gives everyone the same Node version:
+[mise](https://mise.jdx.dev) reads `.mise.toml` and gives everyone — and CI — the same tool versions:
 
 ```bash
 brew install mise                     # or see the mise install docs
 echo 'eval "$(mise activate zsh)"' >> ~/.zshrc && exec zsh
-mise install                          # installs the pinned Node from .mise.toml
-node -v                               # v24.x
+mise install                          # installs everything pinned in .mise.toml
+mise current                          # shows the resolved versions
 ```
 
-mise is optional — any Node 24 works, and CI uses `actions/setup-node` rather than mise. Without
-shell activation, run one-off commands through `mise exec -- npm ci`. If npm warns `EBADENGINE`, or
-a build behaves differently from CI, your shell is almost certainly on the wrong Node.
+| Tool | Pinned | Used for |
+| --- | --- | --- |
+| node | 24 | the application; matches `engines` and the `node:24-alpine` image |
+| helm | 3.16.2 | chart lint, template, and unit tests |
+| helm-docs | 1.14.2 | regenerating the chart README (CI fails if it is stale) |
+| actionlint | 1.7.12 | linting `.github/workflows/*.yml` |
+| yamllint | latest | `--strict` checks on chart values and `Chart.yaml` |
+
+These versions mirror `.github/workflows/ci-checks.yml`. When you bump one, bump both.
+
+mise itself is optional — CI installs each tool directly rather than through mise — but the Node
+version is not: `.npmrc` sets `engine-strict=true`, so `npm ci` **fails** rather than warns on a
+Node outside the `engines` range. Without shell activation, prefix commands with `mise exec --`.
 
 ## Environment Setup
 

@@ -1,2 +1,7 @@
+# Versions match .github/workflows/ci-checks.yml — keep them in sync.
 [tools]
 node = "24"
+helm = "3.16.2"
+helm-docs = "1.14.2"
+actionlint = "1.7.12"
+yamllint = "latest"

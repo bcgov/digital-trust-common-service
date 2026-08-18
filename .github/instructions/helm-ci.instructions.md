@@ -15,6 +15,9 @@ description: Helm chart, deployment surface, and CI workflow rules.
 
 ## Validate locally, the way CI does
 
+`.mise.toml` pins helm, helm-docs, actionlint, and yamllint at the versions `ci-checks.yml` uses, so
+`mise install` gets you a matching toolchain. Bumping a version means changing both files.
+
 ```bash
 helm lint charts/digital-trust-common-service
 helm template charts/digital-trust-common-service \
