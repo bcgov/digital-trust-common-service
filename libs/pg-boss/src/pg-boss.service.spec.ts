@@ -113,4 +113,42 @@ describe('PgBossService', () => {
       expect(delaySpies).toEqual([1000, 2000]);
     });
   });
+
+  describe('createBoss pool sizing', () => {
+    /**
+     * pg-boss opens a pg.Pool of its own instead of sharing TypeORM's, so its
+     * ceiling adds to a pod's connection count. These assert the bound is
+     * actually passed through — unbounded, pg-boss silently defaults to 10.
+     */
+    const buildOptions = (env: Record<string, string> = {}) => {
+      (config.get as jest.Mock).mockImplementation(
+        (key: string, fallback?: string) => env[key] ?? fallback,
+      );
+      (config.getOrThrow as jest.Mock).mockImplementation(
+        (key: string) => env[key] ?? 'test-value',
+      );
+
+      return service.buildBossOptions();
+    };
+
+    it('defaults the pg-boss pool to PGBOSS_POOL_MAX of 5', () => {
+      expect(buildOptions()?.max).toBe(5);
+    });
+
+    it('honours a PGBOSS_POOL_MAX override', () => {
+      expect(buildOptions({ PGBOSS_POOL_MAX: '3' })?.max).toBe(3);
+    });
+
+    it('rejects a non-numeric PGBOSS_POOL_MAX', () => {
+      expect(() => buildOptions({ PGBOSS_POOL_MAX: '5x' })).toThrow(
+        /PGBOSS_POOL_MAX/,
+      );
+    });
+
+    it('rejects a zero PGBOSS_POOL_MAX', () => {
+      expect(() => buildOptions({ PGBOSS_POOL_MAX: '0' })).toThrow(
+        /PGBOSS_POOL_MAX/,
+      );
+    });
+  });
 });

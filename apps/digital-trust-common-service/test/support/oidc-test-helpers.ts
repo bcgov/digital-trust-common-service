@@ -43,7 +43,7 @@ function resolveJwkFromDocument(
   return jwk;
 }
 
-async function verifyTokenAgainstJwks(
+async function verifyTokenWithJwksDocument(
   token: string,
   jwksBody: JwksDocument,
   issuer?: string,
@@ -63,6 +63,25 @@ async function verifyTokenAgainstJwks(
   });
 
   return payload;
+}
+
+/**
+ * Verifies an already-issued access token against the live `/oidc/jwks`
+ * endpoint, selecting the verification key by the JWT's `kid`. Split out from
+ * `issueTokenAndVerify` so a token minted against one running instance can be
+ * verified against another (see `oidc-key-rotation.e2e-spec.ts`, which mints
+ * before a key rotation and verifies after it).
+ */
+export async function verifyTokenAgainstJwks(
+  httpServer: App,
+  accessToken: string,
+  issuer?: string,
+): Promise<Record<string, unknown>> {
+  const jwksResponse = await request(httpServer).get('/oidc/jwks').expect(200);
+  const jwksBody = jwksResponse.body as JwksDocument;
+  const token = extractBearerToken(`Bearer ${accessToken}`);
+
+  return verifyTokenWithJwksDocument(token, jwksBody, issuer);
 }
 
 /**
@@ -93,10 +112,11 @@ export async function issueTokenAndVerify(
     expires_in: number;
   };
 
-  const jwksResponse = await request(httpServer).get('/oidc/jwks').expect(200);
-  const jwksBody = jwksResponse.body as JwksDocument;
-  const token = extractBearerToken(`Bearer ${tokenBody.access_token}`);
-  const payload = await verifyTokenAgainstJwks(token, jwksBody, issuer);
+  const payload = await verifyTokenAgainstJwks(
+    httpServer,
+    tokenBody.access_token,
+    issuer,
+  );
 
   return {
     token: {

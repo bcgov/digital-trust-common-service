@@ -148,3 +148,8 @@ vite.config.ts.timestamp-*
 # Configuration files
 config/encryption-keys.json
 config/oidc-keys.json
+
+# Signing key material written by scripts/generate-oidc-keys.mjs and the
+# rotation runbook, which both work in the repo root (oidc-keys.json,
+# oidc-keys.json.pre-rotation, and the script's .tmp file).
+oidc-keys.json*

@@ -66,7 +66,7 @@ connectorEncryption:
   create: false
 
 # Signing keys are provisioned by ops, not the chart. Generate the JWKS with
-# `npm run oidc:generate-keys` and load it into the Secret as oidc-keys.json,
+# `node scripts/generate-oidc-keys.mjs oidc-keys.json` and load it into the Secret,
 # alongside an OIDC_COOKIE_KEYS entry.
 oidcSigning:
   existingSecret: digital-trust-common-service-test-oidc-signing

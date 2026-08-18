@@ -303,12 +303,14 @@ oidcSigning:
   # -- Mounted path inside the container
   mountPath: /etc/oidc
   # -- RS256 JWKS document. Helm cannot generate one, so it is supplied by the
-  # caller: `npm run oidc:generate-keys > oidc-keys.json` then
+  # caller: `node scripts/generate-oidc-keys.mjs oidc-keys.json` then
   # `--set-file oidcSigning.keys=oidc-keys.json`. Left empty on upgrade, the
   # keys already in the live Secret are kept.
   keys: ""
   # -- Comma-separated cookie signing secrets (OIDC_COOKIE_KEYS). Generated
-  # once and preserved across upgrades when empty.
+  # once and preserved across upgrades when empty. Preservation needs an
+  # in-cluster `helm upgrade`; a client-side render (template/diff/GitOps)
+  # would rotate them and drop active sessions, so pin them if you use one.
   cookieKeys: ""
 
 

@@ -3,6 +3,13 @@
 # Per-PR values (image.tag, config.DB_NAME, route.host) and config.DB_HOST
 # (from the PR_DB_HOST repository variable) are injected via --set.
 
+# Two replicas so PR deploys run a realistic multi-replica topology: every pod
+# must load the same OIDC signing JWKS from the shared Secret, or a token minted
+# by one pod fails verification against another's /oidc/jwks. Note this does not
+# by itself prove the cross-pod path (the workflow only waits for readiness);
+# a per-pod smoke check and the interactive/session path land with AU-02 (#35).
+replicaCount: 2
+
 image:
   pullPolicy: Always
 
@@ -15,6 +22,13 @@ config:
   LOG_LEVEL: debug
   DB_HOST: digital-trust-common-service-pr-db
   DB_LOGGING: "true"
+  # Two replicas share the PR database, so cap each pod's pools to keep the
+  # total well under the primary's max_connections. A pod opens both, so its
+  # ceiling is DB_POOL_MAX + PGBOSS_POOL_MAX = 8, i.e. 16 across the two
+  # replicas before the worker and migration Job. Applies the sizing guidance
+  # from .env.example.
+  DB_POOL_MAX: "5"
+  PGBOSS_POOL_MAX: "3"
 
 secret:
   # PR databases are owned by the same application user as dev; reuse the dev Secret.
@@ -28,7 +42,7 @@ connectorEncryption:
 
   currentVersion: 1
   keys:
-    "1": <generated-per-deployment-key>"
+    "1": <generated-per-deployment-key>
 
 oidcSigning:
   existingSecret: ""
