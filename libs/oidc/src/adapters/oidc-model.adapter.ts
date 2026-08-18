@@ -3,6 +3,9 @@ import type { Repository } from 'typeorm';
 import type { QueryDeepPartialEntity } from 'typeorm/query-builder/QueryPartialEntity';
 
 import { OidcModel } from '../entities/oidc-model.entity';
+import type { OidcUpstreamFederationPort } from '../ports/oidc-upstream-federation.port';
+
+const SESSION_MODEL_NAME = 'Session';
 
 /**
  * Generic TypeORM-backed adapter for oidc-provider's session/grant model
@@ -13,10 +16,46 @@ import { OidcModel } from '../entities/oidc-model.entity';
  * Client credentials are handled separately by `OidcClientAdapter`.
  */
 export class OidcModelAdapter implements Adapter {
+  private upstreamFederation:
+    | Pick<OidcUpstreamFederationPort, 'logoutUpstreamSessionForOidcSession'>
+    | undefined;
+
   public constructor(
     private readonly modelName: string,
     private readonly repository: Repository<OidcModel>,
   ) {}
+
+  public setUpstreamFederation(
+    upstreamFederation: Pick<
+      OidcUpstreamFederationPort,
+      'logoutUpstreamSessionForOidcSession'
+    >,
+  ): this {
+    this.upstreamFederation = upstreamFederation;
+    return this;
+  }
+
+  private async destroySessionUpstreamLink(id: string): Promise<void> {
+    if (
+      this.modelName !== SESSION_MODEL_NAME ||
+      !this.upstreamFederation?.logoutUpstreamSessionForOidcSession
+    ) {
+      return;
+    }
+
+    const sessionRow = await this.repository.findOne({
+      where: { modelName: this.modelName, oidcId: id },
+    });
+
+    if (!sessionRow) {
+      return;
+    }
+
+    await this.upstreamFederation.logoutUpstreamSessionForOidcSession({
+      oidcModelId: sessionRow.id,
+      oidcSessionUid: sessionRow.uid,
+    });
+  }
 
   public async upsert(
     id: string,
@@ -86,6 +125,7 @@ export class OidcModelAdapter implements Adapter {
   }
 
   public async destroy(id: string): Promise<void> {
+    await this.destroySessionUpstreamLink(id);
     await this.repository.delete({ modelName: this.modelName, oidcId: id });
   }
 

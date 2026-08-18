@@ -1,15 +1,32 @@
 import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
 import { verify } from 'argon2';
 import Provider from 'oidc-provider';
 import type { Configuration } from 'oidc-provider';
+import { Repository } from 'typeorm';
 
 import { OidcAdapterFactory } from './adapters/oidc-adapter.factory';
+import { OidcModel } from './entities/oidc-model.entity';
 import type { OidcConfig } from './oidc-config.service';
 import { OidcConfigService } from './oidc-config.service';
 import type { OidcJwks } from './oidc-keys.service';
 import { OidcKeysService } from './oidc-keys.service';
 import { OIDC_TENANT_USER_PORT } from './ports/oidc-tenant-user.port';
 import type { OidcTenantUserPort } from './ports/oidc-tenant-user.port';
+import { OIDC_UPSTREAM_FEDERATION_PORT } from './ports/oidc-upstream-federation.port';
+
+type SavedOidcSession = {
+  uid?: string;
+  accountId?: string;
+};
+
+type UpstreamSessionFinalizer = {
+  finalizeUpstreamSessionForOidcSession(input: {
+    oidcModelId: string;
+    oidcSessionUid: string;
+    tenantUserId: string;
+  }): Promise<unknown>;
+};
 
 /**
  * Custom metadata `OidcClientAdapter` attaches to each `Client` instance.
@@ -232,9 +249,47 @@ export class OidcProviderService implements OnModuleInit {
     private readonly oidcConfigService: OidcConfigService,
     private readonly oidcKeysService: OidcKeysService,
     private readonly adapterFactory: OidcAdapterFactory,
+    @InjectRepository(OidcModel)
+    private readonly oidcModelRepository: Repository<OidcModel>,
+    @Inject(OIDC_UPSTREAM_FEDERATION_PORT)
+    private readonly upstreamFederation: UpstreamSessionFinalizer,
     @Inject(OIDC_TENANT_USER_PORT)
     private readonly tenantUserService: OidcTenantUserPort,
   ) {}
+
+  private async finalizePendingUpstreamSession(
+    session: SavedOidcSession,
+  ): Promise<void> {
+    if (
+      typeof session.uid !== 'string' ||
+      session.uid.length === 0 ||
+      typeof session.accountId !== 'string' ||
+      session.accountId.length === 0
+    ) {
+      return;
+    }
+
+    const sessionModel = await this.oidcModelRepository.findOne({
+      where: {
+        modelName: 'Session',
+        uid: session.uid,
+      },
+      order: {
+        createdAt: 'DESC',
+      },
+    });
+
+    if (!sessionModel) {
+      this.logger.warn(`OIDC session model not found for uid ${session.uid}`);
+      return;
+    }
+
+    await this.upstreamFederation.finalizeUpstreamSessionForOidcSession({
+      oidcModelId: sessionModel.id,
+      oidcSessionUid: session.uid,
+      tenantUserId: session.accountId,
+    });
+  }
 
   public async onModuleInit(): Promise<void> {
     const config = this.oidcConfigService.getConfig();
@@ -252,6 +307,14 @@ export class OidcProviderService implements OnModuleInit {
         this.tenantUserService,
       ),
     );
+
+    provider.on('session.saved', (session) => {
+      this.logger.debug(
+        `OIDC session saved: ${session?.accountId} / ${session?.uid}`,
+      );
+
+      void this.finalizePendingUpstreamSession(session);
+    });
 
     applyClientSecretHashComparator(provider);
     // Koa-level counterpart to `expressInstance.set('trust proxy', true)`

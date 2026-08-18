@@ -6,6 +6,8 @@ import type { Repository } from 'typeorm';
 import { OidcModel } from '../entities/oidc-model.entity';
 import { OIDC_CLIENT_LOOKUP_PORT } from '../ports/oidc-client-lookup.port';
 import type { OidcClientLookupPort } from '../ports/oidc-client-lookup.port';
+import { OIDC_UPSTREAM_FEDERATION_PORT } from '../ports/oidc-upstream-federation.port';
+import type { OidcUpstreamFederationPort } from '../ports/oidc-upstream-federation.port';
 
 import { OidcClientAdapter } from './oidc-client.adapter';
 import { OidcModelAdapter } from './oidc-model.adapter';
@@ -19,6 +21,8 @@ export class OidcAdapterFactory {
     private readonly oidcModelRepository: Repository<OidcModel>,
     @Inject(OIDC_CLIENT_LOOKUP_PORT)
     private readonly clientLookup: OidcClientLookupPort,
+    @Inject(OIDC_UPSTREAM_FEDERATION_PORT)
+    private readonly upstreamFederation: OidcUpstreamFederationPort,
   ) {}
 
   /**
@@ -31,6 +35,9 @@ export class OidcAdapterFactory {
       return new OidcClientAdapter(this.clientLookup);
     }
 
-    return new OidcModelAdapter(name, this.oidcModelRepository);
+    return new OidcModelAdapter(
+      name,
+      this.oidcModelRepository,
+    ).setUpstreamFederation(this.upstreamFederation);
   };
 }

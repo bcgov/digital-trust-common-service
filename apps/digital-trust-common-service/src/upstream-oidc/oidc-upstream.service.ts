@@ -5,6 +5,7 @@ import { ConfigService } from '@nestjs/config';
 import {
   authorizationCodeGrant,
   buildAuthorizationUrl,
+  buildEndSessionUrl,
   calculatePKCECodeChallenge,
   randomNonce,
   randomPKCECodeVerifier,
@@ -14,6 +15,8 @@ import * as oidc from 'openid-client';
 
 import { OidcUpstreamInteraction } from './oidc-upstream-interaction.entity';
 import { OidcUpstreamInteractionRepository } from './oidc-upstream-interaction.repository';
+import { OidcUpstreamSession } from './oidc-upstream-session.entity';
+import { OidcUpstreamSessionRepository } from './oidc-upstream-session.repository';
 
 interface UpstreamOidcConfig {
   url: string;
@@ -28,6 +31,7 @@ export class UpstreamOidcService implements OnModuleInit {
   public constructor(
     private readonly configService: ConfigService,
     private readonly interactionRepository: OidcUpstreamInteractionRepository,
+    private readonly sessionRepository: OidcUpstreamSessionRepository,
   ) {}
 
   private config!: oidc.Configuration;
@@ -253,6 +257,11 @@ export class UpstreamOidcService implements OnModuleInit {
       name?: string;
     };
     interaction: OidcUpstreamInteraction;
+    upstreamSession: {
+      upstreamSubject: string;
+      upstreamIdToken: string;
+      expiresAt?: Date | null;
+    };
   }> {
     const interaction = await this.validateInteraction(state);
 
@@ -265,6 +274,14 @@ export class UpstreamOidcService implements OnModuleInit {
       idTokenExpected: true,
     });
 
+    const idToken = (tokens as { id_token?: unknown }).id_token;
+
+    if (typeof idToken !== 'string' || idToken.length === 0) {
+      throw new Error(
+        'Missing ID token from upstream authorization code grant',
+      );
+    }
+
     const claims = tokens.claims();
 
     if (
@@ -275,13 +292,116 @@ export class UpstreamOidcService implements OnModuleInit {
       throw new Error('Invalid or missing sub claim in ID token');
     }
 
+    const claimsRecord = claims as Record<string, unknown>;
+    const expiresAt =
+      typeof claimsRecord.exp === 'number'
+        ? new Date(claimsRecord.exp * 1000)
+        : null;
+
     return {
       claims: {
-        sub: (claims as Record<string, unknown>).sub as string,
-        email: (claims as Record<string, unknown>).email as string | undefined,
-        name: (claims as Record<string, unknown>).name as string | undefined,
+        sub: claimsRecord.sub as string,
+        email: claimsRecord.email as string | undefined,
+        name: claimsRecord.name as string | undefined,
       },
       interaction,
+      upstreamSession: {
+        upstreamSubject: claimsRecord.sub as string,
+        upstreamIdToken: idToken,
+        expiresAt,
+      },
     };
+  }
+
+  public async stagePendingUpstreamSession(input: {
+    tenantUserId: string;
+    upstreamSubject: string;
+    upstreamIdToken: string;
+    expiresAt?: Date | null;
+  }): Promise<void> {
+    await this.sessionRepository.createPending({
+      tenantUserId: input.tenantUserId,
+      upstreamSubject: input.upstreamSubject,
+      upstreamIdToken: input.upstreamIdToken,
+      expiresAt: input.expiresAt ?? null,
+    });
+  }
+
+  public async finalizeUpstreamSessionForOidcSession(input: {
+    oidcModelId: string;
+    oidcSessionUid: string;
+    tenantUserId: string;
+  }): Promise<OidcUpstreamSession | null> {
+    const pendingSession =
+      await this.sessionRepository.findLatestPendingByTenantUserId(
+        input.tenantUserId,
+      );
+
+    if (!pendingSession) {
+      return null;
+    }
+
+    const sessionRepository = this.sessionRepository as {
+      findByOidcSessionUid(
+        oidcSessionUid: string,
+      ): Promise<OidcUpstreamSession | null>;
+    };
+
+    const existingSession = await sessionRepository.findByOidcSessionUid(
+      input.oidcSessionUid,
+    );
+
+    if (existingSession && existingSession.id !== pendingSession.id) {
+      existingSession.oidcModelId = input.oidcModelId;
+      existingSession.tenantUserId = pendingSession.tenantUserId;
+      existingSession.upstreamSubject = pendingSession.upstreamSubject;
+      existingSession.upstreamIdToken = pendingSession.upstreamIdToken;
+      existingSession.expiresAt = pendingSession.expiresAt;
+
+      const updatedSession =
+        await this.sessionRepository.update(existingSession);
+
+      await this.sessionRepository.delete(pendingSession.id);
+
+      return updatedSession;
+    }
+
+    pendingSession.oidcModelId = input.oidcModelId;
+    pendingSession.oidcSessionUid = input.oidcSessionUid;
+
+    return await this.sessionRepository.update(pendingSession);
+  }
+
+  public async logoutUpstreamSessionForOidcSession(input: {
+    oidcModelId: string;
+    oidcSessionUid?: string | null;
+  }): Promise<void> {
+    const upstreamSession: OidcUpstreamSession | null =
+      await this.sessionRepository.findByOidcModelId(input.oidcModelId);
+
+    if (!upstreamSession) {
+      return;
+    }
+
+    const logoutUrl = buildEndSessionUrl(this.getConfig(), {
+      id_token_hint: upstreamSession.upstreamIdToken,
+    });
+
+    const response = await fetch(logoutUrl, {
+      method: 'GET',
+      redirect: 'manual',
+    });
+
+    if (response.status >= 400) {
+      throw new Error(
+        `Upstream end-session request failed with status ${response.status}`,
+      );
+    }
+
+    await this.sessionRepository.delete(upstreamSession.id);
+
+    this.logger.debug(
+      `Logged out upstream session for oidc model ${input.oidcModelId}${input.oidcSessionUid ? ` / session uid ${input.oidcSessionUid}` : ''}`,
+    );
   }
 }

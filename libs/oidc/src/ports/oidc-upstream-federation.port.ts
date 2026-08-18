@@ -6,6 +6,25 @@ export interface OidcUpstreamInteractionRecord {
   consumedAt?: Date | null;
 }
 
+export interface OidcPendingUpstreamSessionRecord {
+  id?: string;
+  oidcSessionUid?: string;
+  tenantUserId?: string;
+  upstreamSubject: string;
+  upstreamIdToken: string;
+  expiresAt?: Date | null;
+}
+
+export interface OidcUpstreamSessionRecord {
+  id: string;
+  oidcModelId: string;
+  tenantUserId: string;
+  upstreamSubject: string;
+  upstreamIdToken: string;
+  createdAt: Date;
+  expiresAt?: Date | null;
+}
+
 export interface OidcUpstreamClaims {
   sub: string;
   email?: string;
@@ -15,6 +34,7 @@ export interface OidcUpstreamClaims {
 export interface OidcUpstreamCallbackResult {
   claims: OidcUpstreamClaims;
   interaction: OidcUpstreamInteractionRecord;
+  upstreamSession: OidcPendingUpstreamSessionRecord;
 }
 
 export interface OidcUpstreamLoginResult {
@@ -23,9 +43,24 @@ export interface OidcUpstreamLoginResult {
 }
 
 export interface OidcUpstreamFederationPort {
+  logoutUpstreamSessionForOidcSession(input: {
+    oidcModelId: string;
+    oidcSessionUid?: string | null;
+  }): Promise<void>;
   getInteractionByUid(
     interactionUid: string,
   ): Promise<OidcUpstreamInteractionRecord | null>;
+  finalizeUpstreamSessionForOidcSession(input: {
+    oidcModelId: string;
+    oidcSessionUid: string;
+    tenantUserId: string;
+  }): Promise<OidcUpstreamSessionRecord | null>;
+  stagePendingUpstreamSession(input: {
+    tenantUserId: string;
+    upstreamSubject: string;
+    upstreamIdToken: string;
+    expiresAt?: Date | null;
+  }): Promise<void>;
   initiateUpstreamLogin(
     interactionUid: string,
     tenantId: string,
