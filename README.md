@@ -27,7 +27,7 @@ The Digital Credential Common Service acts as a unified gateway for Digital Cred
 
 ### Prerequisites
 
-- Node.js v24 (pinned in `.mise.toml`)
+- Node.js v24 (pinned in `.mise.toml` — `mise install` gets you the right version)
 - Docker & Docker Compose (recommended)
 - PostgreSQL 18+ (or use Docker)
 

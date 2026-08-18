@@ -11,6 +11,11 @@ and AI agents, so they are not duplicated here.
 
 Requires Node 24 (pinned in `.mise.toml`), npm, and Docker.
 
+[mise](https://mise.jdx.dev) is the recommended way to get the right Node: activate it in your shell
+and run `mise install`. It is not required — any Node 24 works and CI uses `actions/setup-node` —
+but if npm warns `EBADENGINE`, your shell is on the wrong version. Prefix one-off commands with
+`mise exec --` when mise is installed but not shell-activated. See `docs/DEVELOPER.md`.
+
 ```bash
 npm ci                    # also installs the git hooks via husky
 cp .env.example .env
