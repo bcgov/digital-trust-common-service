@@ -4,7 +4,13 @@ import { createServer } from 'http';
 import { tmpdir } from 'os';
 import { join } from 'path';
 
-import { JwtGuard, RequireScopes, ScopeGuard, AuthModule } from '@app/auth';
+import {
+  JwtGuard,
+  RequireScopes,
+  ScopeGuard,
+  TenantGuard,
+  AuthModule,
+} from '@app/auth';
 import { AppDataSource } from '@app/database/data-source';
 import { buildSslConfig } from '@app/database/ssl.util';
 import { OidcMountService } from '@app/oidc';
@@ -14,6 +20,8 @@ import {
   Get,
   INestApplication,
   Module,
+  Param,
+  Req,
   UseGuards,
 } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
@@ -44,11 +52,34 @@ class ScopeCheckIntegrationController {
   }
 }
 
+/**
+ * Registered only here to exercise TenantGuard claim-match (AU-05) without
+ * rolling guards onto product controllers (#165).
+ */
+@Controller({ path: 'integration/tenant-check', version: API_VERSION })
+@UseGuards(JwtGuard, ScopeGuard, TenantGuard)
+class TenantCheckIntegrationController {
+  @Get(':tenantId')
+  public checkTenant(
+    @Param('tenantId') tenantId: string,
+    @Req() req: { tenantId?: string },
+  ): { ok: true; tenantId: string; resolvedTenantId?: string } {
+    return {
+      ok: true,
+      tenantId,
+      resolvedTenantId: req.tenantId,
+    };
+  }
+}
+
 @Module({
   imports: [AuthModule],
-  controllers: [ScopeCheckIntegrationController],
+  controllers: [
+    ScopeCheckIntegrationController,
+    TenantCheckIntegrationController,
+  ],
 })
-class ScopeCheckIntegrationModule {}
+class AuthGuardIntegrationModule {}
 
 async function getFreePort(): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -76,22 +107,27 @@ async function getFreePort(): Promise<number> {
   });
 }
 
-describe('JwtGuard and ScopeGuard (integration)', () => {
+describe('JwtGuard, ScopeGuard, and TenantGuard (integration)', () => {
   let app: INestApplication<App>;
   let dataSource: DataSource;
   let keysDir: string;
   let listenPort: number;
   let tenantId: string;
+  let otherTenantId: string;
   let tenantClientId: string;
+  let otherTenantClientId: string;
   let platformAdminClientId: string;
   let logsReadClientId: string;
   let tenantSuperuserClientId: string;
   const tenantClientSecret = 'jwt-guard-integration-secret';
+  const otherTenantClientSecret = 'jwt-guard-other-tenant-secret';
   const platformAdminClientSecret = 'platform-admin-integration-secret';
   const logsReadClientSecret = 'logs-read-integration-secret';
   const tenantSuperuserClientSecret = 'tenant-superuser-integration-secret';
 
   const scopeCheckPath = `${API_BASE_PATH}/integration/scope-check/offer`;
+  const tenantCheckPath = (id: string): string =>
+    `${API_BASE_PATH}/integration/tenant-check/${id}`;
 
   const mockBoss = {
     start: jest.fn().mockResolvedValue(undefined),
@@ -131,7 +167,16 @@ describe('JwtGuard and ScopeGuard (integration)', () => {
     );
     tenantId = tenants[0].id;
 
+    const otherTenants = await dataSource.query<Array<{ id: string }>>(
+      `INSERT INTO tenant (name, slug, status)
+       VALUES ($1, $2, 'active')
+       RETURNING id`,
+      ['JWT Guard Other Tenant', `jwt-guard-other-${Date.now()}`],
+    );
+    otherTenantId = otherTenants[0].id;
+
     tenantClientId = `jwt-guard-client-${randomUUID()}`;
+    otherTenantClientId = `jwt-guard-other-client-${randomUUID()}`;
     platformAdminClientId = `platform-admin-client-${randomUUID()}`;
     const tenantClientSecretHash = await hash(tenantClientSecret, {
       type: argon2i,
@@ -149,6 +194,25 @@ describe('JwtGuard and ScopeGuard (integration)', () => {
         tenantClientId,
         tenantClientSecretHash,
         'JWT Guard Integration Client',
+        ['credentials:offer'],
+        ['client_credentials'],
+        [],
+      ],
+    );
+
+    const otherTenantClientSecretHash = await hash(otherTenantClientSecret, {
+      type: argon2i,
+    });
+
+    await dataSource.query(
+      `INSERT INTO oauth_client (
+         tenant_id, client_id, client_secret_hash, name, scopes, grant_types, roles
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [
+        otherTenantId,
+        otherTenantClientId,
+        otherTenantClientSecretHash,
+        'JWT Guard Other Tenant Client',
         ['credentials:offer'],
         ['client_credentials'],
         [],
@@ -210,7 +274,7 @@ describe('JwtGuard and ScopeGuard (integration)', () => {
     );
 
     const moduleFixture: TestingModule = await Test.createTestingModule({
-      imports: [AppModule, ScopeCheckIntegrationModule],
+      imports: [AppModule, AuthGuardIntegrationModule],
     })
       .overrideProvider(PgBossService)
       .useValue({
@@ -360,5 +424,93 @@ describe('JwtGuard and ScopeGuard (integration)', () => {
       .set('Authorization', `Bearer ${token.accessToken}`)
       .expect(200)
       .expect({ ok: true });
+  });
+
+  it('allows a client token for its own tenant through TenantGuard', async () => {
+    const { token } = await issueTokenAndVerify(
+      app.getHttpServer(),
+      tenantClientId,
+      tenantClientSecret,
+      'credentials:offer',
+      process.env.OIDC_ISSUER,
+    );
+
+    const response = await request(app.getHttpServer())
+      .get(tenantCheckPath(tenantId))
+      .set('Authorization', `Bearer ${token.accessToken}`)
+      .expect(200);
+
+    expect(response.body).toEqual({
+      ok: true,
+      tenantId,
+      resolvedTenantId: tenantId,
+    });
+  });
+
+  it('returns 403 when a client for tenant A accesses tenant B', async () => {
+    const { token } = await issueTokenAndVerify(
+      app.getHttpServer(),
+      tenantClientId,
+      tenantClientSecret,
+      'credentials:offer',
+      process.env.OIDC_ISSUER,
+    );
+
+    const response = await request(app.getHttpServer())
+      .get(tenantCheckPath(otherTenantId))
+      .set('Authorization', `Bearer ${token.accessToken}`)
+      .expect(403);
+
+    expect(response.body).toMatchObject({
+      error: {
+        code: 'TENANT_ACCESS_DENIED',
+        required_tenant_id: otherTenantId,
+        token_tenant_id: tenantId,
+      },
+    });
+  });
+
+  it('returns 403 when a client for tenant B accesses tenant A', async () => {
+    const { token } = await issueTokenAndVerify(
+      app.getHttpServer(),
+      otherTenantClientId,
+      otherTenantClientSecret,
+      'credentials:offer',
+      process.env.OIDC_ISSUER,
+    );
+
+    const response = await request(app.getHttpServer())
+      .get(tenantCheckPath(tenantId))
+      .set('Authorization', `Bearer ${token.accessToken}`)
+      .expect(403);
+
+    expect(response.body).toMatchObject({
+      error: {
+        code: 'TENANT_ACCESS_DENIED',
+        required_tenant_id: tenantId,
+        token_tenant_id: otherTenantId,
+      },
+    });
+  });
+
+  it('allows platform-admin to access another tenant through TenantGuard', async () => {
+    const { token } = await issueTokenAndVerify(
+      app.getHttpServer(),
+      platformAdminClientId,
+      platformAdminClientSecret,
+      'credentials:offer',
+      process.env.OIDC_ISSUER,
+    );
+
+    const response = await request(app.getHttpServer())
+      .get(tenantCheckPath(otherTenantId))
+      .set('Authorization', `Bearer ${token.accessToken}`)
+      .expect(200);
+
+    expect(response.body).toEqual({
+      ok: true,
+      tenantId: otherTenantId,
+      resolvedTenantId: otherTenantId,
+    });
   });
 });

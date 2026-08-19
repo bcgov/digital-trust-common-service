@@ -329,6 +329,36 @@ AU-04 replaces early placeholder scope names (`read:credentials`, `write:credent
 
 The server-wide allowlist is configured via `OIDC_SCOPES` (see `.env.example`). Every scope granted to an `oauth_client` must appear in that allowlist.
 
+## TenantGuard (AU-05)
+
+`TenantGuard` enforces tenant isolation after `JwtGuard` and `ScopeGuard`:
+
+1. If the route has no `:tenantId` param (or it is blank), the guard is a **no-op** (safe on admin / mixed stacks).
+2. `platform-admin` bypasses the check and may access any `:tenantId`.
+3. Otherwise the JWT `tenant_id` claim must equal the route `:tenantId`.
+4. On success, the resolved id is stamped on `request.tenantId` for downstream handlers (distinct from `request.auth.tenantId`, which is the JWT claim).
+
+Missing `request.auth` (JwtGuard not run) → **401** `AUTHENTICATION_REQUIRED`.
+Mismatch / missing `tenant_id` claim → **403** `{ error: { code: "TENANT_ACCESS_DENIED", required_tenant_id, token_tenant_id } }`.
+
+**v1 is claim-match only.** Live `TenantUser` membership lookup (PE-02) is deferred until interactive user tokens (AU-02) / tenant switching (AU-09). Client-credentials tokens already carry a fixed `tenant_id` from `oauth_client`.
+
+Product controllers are not all wired yet — rollout is tracked in **[AU-followup #165](https://github.com/bcgov/digital-trust-common-service/issues/165)**. Integration coverage uses ephemeral `/api/v1/integration/tenant-check/:tenantId` routes.
+
+### Guard rollout gaps for #165
+
+`TenantGuard` only reads **`params.tenantId`**. When wiring controllers, classify each route:
+
+| Shape | Examples today | TenantGuard behavior | Rollout action |
+|-------|----------------|----------------------|----------------|
+| Path `:tenantId` | `tenants/:tenantId/audit-logs`, `…/tenant/:tenantId` | Enforced | Add `@UseGuards(JwtGuard, ScopeGuard, TenantGuard)` |
+| Tenant UUID as `:id` | `GET/PUT/DELETE /tenants/:id` | **No-op** (param name is `id`) | Rename to `:tenantId`, or teach guard / use a dedicated platform-admin policy |
+| Body-only `tenantId` | create connection / oauth-client / credential-definition / etc. | **No-op** | Prefer nested `/tenants/:tenantId/...` routes, or extend guard to read body (explicit follow-up) |
+| Resource `:id` | `GET /connections/:id`, `PATCH /oauth-clients/:id` | **No-op** (`id` is the resource, not the tenant) | After load, assert `resource.tenantId === auth.tenantId` (service-layer or resource tenant check) — path param alone is insufficient |
+| Admin / no tenant | `/admin/operations/stats` | No-op (correct) | `JwtGuard` + `ScopeGuard` / `@RequireRoles('platform-admin')` only |
+
+Do **not** treat every `:id` as a tenant id — most are resource primary keys.
+
 ## Testing
 
 ### Run Unit Tests

@@ -22,6 +22,8 @@ import {
   ScopeAuthorizationService,
   ScopeGuard,
   TENANT_SUPERUSER_SCOPE,
+  TenantAccessDeniedException,
+  TenantAccessDeniedExceptionFilter,
   TenantGuard,
   extractBearerToken,
   normalizeAuthPayload,
@@ -29,7 +31,7 @@ import {
 } from './index';
 
 describe('auth package index', () => {
-  it('re-exports AU-03 and AU-04 public symbols', () => {
+  it('re-exports AU-03, AU-04, and AU-05 public symbols', () => {
     expect(APP_JWT_BEARER_SCHEME).toBeDefined();
     expect(ALL_TENANT_SCOPES.length).toBeGreaterThan(0);
     expect(LEVEL2_SCOPES.length).toBeGreaterThan(0);
@@ -46,6 +48,8 @@ describe('auth package index', () => {
     expect(AuthenticationRequiredException).toBeDefined();
     expect(InsufficientScopeException).toBeDefined();
     expect(InsufficientScopeExceptionFilter).toBeDefined();
+    expect(TenantAccessDeniedException).toBeDefined();
+    expect(TenantAccessDeniedExceptionFilter).toBeDefined();
     expect(JwtAuthExceptionFilter).toBeDefined();
     expect(JwtGuard).toBeDefined();
     expect(ScopeGuard).toBeDefined();
