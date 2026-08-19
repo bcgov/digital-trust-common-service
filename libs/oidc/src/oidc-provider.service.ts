@@ -23,6 +23,30 @@ export interface ClientExtraMetadata {
   client_secret_hash?: string;
   tenant_id?: string;
   roles?: string[];
+  refresh_token_ttl_seconds?: number;
+}
+
+/**
+ * Resolves the refresh token lifetime for a given client.
+ *
+ * AU-08 (#41) requires the refresh TTL to be configurable per client, so
+ * `ttl.RefreshToken` is a function rather than a scalar. A client without an
+ * explicit `refresh_token_ttl_seconds` inherits the server-wide default.
+ *
+ * Note this deliberately drops oidc-provider's default behaviour of capping
+ * rotated SPA refresh tokens at the previous token's remaining TTL: we issue
+ * no public/SPA clients today (every client is client_secret_basic), and a
+ * fixed per-client window is what the ticket asks for.
+ */
+export function resolveRefreshTokenTtl(
+  defaultTtlSeconds: number,
+  client: ClientExtraMetadata | undefined,
+): number {
+  const configured = client?.refresh_token_ttl_seconds;
+
+  return typeof configured === 'number' && configured > 0
+    ? configured
+    : defaultTtlSeconds;
 }
 
 /**
@@ -56,7 +80,12 @@ export function buildOidcConfiguration(
     },
     scopes: config.scopes,
     extraClientMetadata: {
-      properties: ['client_secret_hash', 'tenant_id', 'roles'],
+      properties: [
+        'client_secret_hash',
+        'tenant_id',
+        'roles',
+        'refresh_token_ttl_seconds',
+      ],
     },
     extraTokenClaims: async (_ctx, token) => {
       const tokenMetadata = token as {
@@ -123,7 +152,17 @@ export function buildOidcConfiguration(
     ttl: {
       AccessToken: config.accessTokenTtlSeconds,
       ClientCredentials: config.accessTokenTtlSeconds,
-      RefreshToken: config.refreshTokenTtlSeconds,
+      RefreshToken: (_ctx, _token, client) =>
+        resolveRefreshTokenTtl(
+          config.refreshTokenTtlSeconds,
+          client as ClientExtraMetadata | undefined,
+        ),
+      // Set explicitly rather than left to oidc-provider's 14-day defaults.
+      // An unset Session TTL would let a login outlive its refresh token by
+      // nearly two weeks, which would make AU-08's concurrent-session limit
+      // count sessions that are effectively dead.
+      Session: config.sessionTtlSeconds,
+      Grant: config.grantTtlSeconds,
     },
     rotateRefreshToken: config.refreshTokenRotationEnabled,
     cookies: {

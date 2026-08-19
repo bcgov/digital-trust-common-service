@@ -123,6 +123,20 @@ export class OAuthClient {
   public createdAt!: Date;
 
   @ApiProperty({
+    description:
+      'Refresh token lifetime in seconds for this client. When null, the server-wide default (OIDC_REFRESH_TOKEN_TTL_SECONDS) applies.',
+    example: 3600,
+    required: false,
+    nullable: true,
+  })
+  @Column({
+    name: 'refresh_token_ttl_seconds',
+    type: 'int',
+    nullable: true,
+  })
+  public refreshTokenTtlSeconds?: number | null;
+
+  @ApiProperty({
     description: 'The date and time when the OAuth client was revoked',
     example: '2024-01-15T00:00:00Z',
     required: false,

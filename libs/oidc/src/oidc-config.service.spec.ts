@@ -47,6 +47,125 @@ describe('OidcConfigService', () => {
       expect(config.refreshTokenRotationEnabled).toBe(true);
       expect(config.keysPath).toBe('./config/oidc-keys.json');
     });
+
+    it('aligns the session TTL with the refresh token TTL by default', async () => {
+      await buildModule({ NODE_ENV: 'development' });
+
+      const config = service.getConfig();
+
+      expect(config.sessionTtlSeconds).toBe(config.refreshTokenTtlSeconds);
+    });
+
+    it('keeps the grant TTL at the 14-day default', async () => {
+      await buildModule({ NODE_ENV: 'development' });
+
+      expect(service.getConfig().grantTtlSeconds).toBe(1209600);
+    });
+
+    it('defaults the concurrent session limit to 5', async () => {
+      await buildModule({ NODE_ENV: 'development' });
+
+      expect(service.getConfig().maxConcurrentSessions).toBe(5);
+    });
+  });
+
+  /**
+   * oidc-provider only registers the `refresh_token` grant when the scope
+   * allowlist contains `offline_access`. If these ever fail, refresh tokens
+   * stop being issued entirely and the token endpoint answers
+   * `unsupported_grant_type`, while the rotation and TTL settings keep
+   * looking correct.
+   */
+  describe('offline_access scope requirement', () => {
+    it('always includes offline_access in the default scopes', async () => {
+      await buildModule({ NODE_ENV: 'development' });
+
+      expect(service.getConfig().scopes).toContain('offline_access');
+    });
+
+    it('adds offline_access even when an operator overrides the scopes', async () => {
+      await buildModule({ OIDC_SCOPES: 'read:credentials,write:credentials' });
+
+      const { scopes } = service.getConfig();
+
+      expect(scopes).toContain('offline_access');
+      expect(scopes).toContain('openid');
+      expect(scopes).toContain('read:credentials');
+    });
+
+    it('does not duplicate offline_access when it is configured explicitly', async () => {
+      await buildModule({ OIDC_SCOPES: 'offline_access,read:credentials' });
+
+      const { scopes } = service.getConfig();
+
+      expect(scopes.filter((scope) => scope === 'offline_access')).toHaveLength(
+        1,
+      );
+    });
+  });
+
+  describe('session lifecycle configuration', () => {
+    it('tracks a custom refresh token TTL when the session TTL is unset', async () => {
+      await buildModule({ OIDC_REFRESH_TOKEN_TTL_SECONDS: '3600' });
+
+      expect(service.getConfig().sessionTtlSeconds).toBe(3600);
+    });
+
+    it('allows the session TTL to be set independently', async () => {
+      await buildModule({
+        OIDC_REFRESH_TOKEN_TTL_SECONDS: '3600',
+        OIDC_SESSION_TTL_SECONDS: '7200',
+      });
+
+      const config = service.getConfig();
+
+      expect(config.refreshTokenTtlSeconds).toBe(3600);
+      expect(config.sessionTtlSeconds).toBe(7200);
+    });
+
+    it('treats a zero concurrent session limit as disabled', async () => {
+      await buildModule({ OIDC_MAX_CONCURRENT_SESSIONS: '0' });
+
+      expect(service.getConfig().maxConcurrentSessions).toBe(0);
+    });
+
+    it('falls back to the default when the concurrent session limit is blank', async () => {
+      // An empty env var reads as '', and Number('') is 0, which would
+      // otherwise pass as an explicit "disabled" and switch the cap off.
+      await buildModule({ OIDC_MAX_CONCURRENT_SESSIONS: '' });
+
+      expect(service.getConfig().maxConcurrentSessions).toBe(5);
+    });
+
+    it('falls back to the default when a TTL is blank', async () => {
+      await buildModule({ OIDC_REFRESH_TOKEN_TTL_SECONDS: '   ' });
+
+      expect(service.getConfig().refreshTokenTtlSeconds).toBe(28800);
+    });
+
+    it('rejects a negative concurrent session limit', async () => {
+      await buildModule({ OIDC_MAX_CONCURRENT_SESSIONS: '-1' });
+
+      expect(() => service.getConfig()).toThrow(
+        'OIDC_MAX_CONCURRENT_SESSIONS must be a non-negative integer',
+      );
+    });
+
+    it('rejects a non-integer concurrent session limit', async () => {
+      await buildModule({ OIDC_MAX_CONCURRENT_SESSIONS: 'many' });
+
+      expect(() => service.getConfig()).toThrow(
+        'OIDC_MAX_CONCURRENT_SESSIONS must be a non-negative integer',
+      );
+    });
+
+    it('rejects a zero session TTL, which would expire logins instantly', async () => {
+      await buildModule({ OIDC_SESSION_TTL_SECONDS: '0' });
+
+      expect(() => service.getConfig()).toThrow(
+        'OIDC_SESSION_TTL_SECONDS must be a positive integer',
+      );
+    });
   });
 
   describe('explicit configuration', () => {
@@ -68,11 +187,12 @@ describe('OidcConfigService', () => {
       expect(service.getConfig().refreshTokenRotationEnabled).toBe(false);
     });
 
-    it('applies the default scope allowlist plus openid', async () => {
+    it('applies the default scope allowlist plus openid and offline_access', async () => {
       await buildModule({ NODE_ENV: 'development' });
 
       expect(service.getConfig().scopes).toEqual([
         'openid',
+        'offline_access',
         'tenants:admin',
         'credentials:offer',
         'credentials:verify',
@@ -92,6 +212,7 @@ describe('OidcConfigService', () => {
 
       expect(service.getConfig().scopes).toEqual([
         'openid',
+        'offline_access',
         'read:foo',
         'write:foo',
       ]);
@@ -100,7 +221,11 @@ describe('OidcConfigService', () => {
     it('does not duplicate openid if explicitly included in OIDC_SCOPES', async () => {
       await buildModule({ OIDC_SCOPES: 'openid,read:foo' });
 
-      expect(service.getConfig().scopes).toEqual(['openid', 'read:foo']);
+      expect(service.getConfig().scopes).toEqual([
+        'offline_access',
+        'openid',
+        'read:foo',
+      ]);
     });
 
     it('allows only client_credentials by default', async () => {

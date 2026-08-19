@@ -56,6 +56,7 @@ export class OAuthClientService {
       roles,
       redirectUris: dto.redirectUris || [],
       grantTypes,
+      refreshTokenTtlSeconds: dto.refreshTokenTtlSeconds ?? null,
       createdBy: dto.createdBy,
     } as OAuthClient);
 
@@ -116,6 +117,10 @@ export class OAuthClientService {
 
     if (dto.grantTypes !== undefined) {
       client.grantTypes = dto.grantTypes;
+    }
+
+    if (dto.refreshTokenTtlSeconds !== undefined) {
+      client.refreshTokenTtlSeconds = dto.refreshTokenTtlSeconds;
     }
 
     return this.oauthClientRepository.update(client);

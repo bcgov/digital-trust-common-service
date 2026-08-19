@@ -14,6 +14,9 @@ import { CreateCredentialRecord1785460000011 } from './migrations/000011_create-
 import { CreateOidcModel1785431598677 } from './migrations/000012_create-oidc-model';
 import { CreateRoleScopes1785560000013 } from './migrations/000013_create-role-scopes';
 import { CreateOidcUpstreamInteraction1786386020201 } from './migrations/000014_create-oidc-upstream-interactions';
+import { AddOidcModelAccountId1786486033339 } from './migrations/000015_add-oidc-model-account-id';
+import { AddOauthClientRefreshTokenTtl1786567439996 } from './migrations/000016_add-oauth-client-refresh-token-ttl';
+import { BackfillOidcModelAccountId1786600000000 } from './migrations/000017_backfill-oidc-model-account-id';
 import { buildSslConfig } from './ssl.util';
 
 export const AppDataSource = new DataSource({
@@ -39,6 +42,9 @@ export const AppDataSource = new DataSource({
     CreateOidcModel1785431598677,
     CreateRoleScopes1785560000013,
     CreateOidcUpstreamInteraction1786386020201,
+    AddOidcModelAccountId1786486033339,
+    AddOauthClientRefreshTokenTtl1786567439996,
+    BackfillOidcModelAccountId1786600000000,
   ],
   ssl: buildSslConfig(
     process.env.DB_SSL,

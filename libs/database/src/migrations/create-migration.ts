@@ -112,7 +112,11 @@ function addMigrationImport(source: string, importStatement: string): string {
 
 function addMigrationToArray(source: string, migrationClass: string): string {
   return source.replace(/migrations:\s*\[([^\]]*)\]/, (_, current: string) => {
-    const migrations = current.trim();
+    // The array in data-source.ts is prettier-formatted, so it is multiline
+    // and carries a trailing comma. Appending directly to that would emit
+    // `[..., Last,, New]`, which is a sparse array (an elision) rather than a
+    // syntax error, silently putting `undefined` into `migrations`.
+    const migrations = current.trim().replace(/,$/, '').trim();
 
     return migrations.length
       ? `migrations: [${migrations}, ${migrationClass}]`

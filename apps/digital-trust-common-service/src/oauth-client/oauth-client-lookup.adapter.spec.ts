@@ -54,7 +54,24 @@ describe('OAuthClientLookupAdapter', () => {
       redirectUris: ['https://example.com/callback'],
       grantTypes: ['client_credentials'],
       roles: [],
+      refreshTokenTtlSeconds: null,
     });
+  });
+
+  /**
+   * A client with no explicit TTL must surface as null, not be omitted, so
+   * the provider's ttl.RefreshToken function falls back to the server-wide
+   * default rather than treating it as a configured value.
+   */
+  it('passes through a per-client refresh token TTL when set', async () => {
+    mockFindByClientId.mockResolvedValue({
+      ...activeClient,
+      refreshTokenTtlSeconds: 3600,
+    });
+
+    await expect(
+      adapter.findActiveClient('client_abc123'),
+    ).resolves.toMatchObject({ refreshTokenTtlSeconds: 3600 });
   });
 
   it('returns undefined for a revoked client', async () => {

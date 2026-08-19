@@ -16,6 +16,11 @@ export interface OidcClientRecord {
   grantTypes: string[];
   /** JWT role claims for machine clients (e.g. platform-admin). */
   roles: string[];
+  /**
+   * Per-client refresh token lifetime in seconds, or null/undefined to
+   * inherit the server-wide default.
+   */
+  refreshTokenTtlSeconds?: number | null;
 }
 
 export interface OidcClientLookupPort {

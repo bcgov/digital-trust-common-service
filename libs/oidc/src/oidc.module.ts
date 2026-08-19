@@ -4,12 +4,14 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { OidcAdapterFactory } from './adapters/oidc-adapter.factory';
 import { OidcModel } from './entities/oidc-model.entity';
+import { OidcAccountSessionModule } from './oidc-account-session.module';
 import { OidcConfigModule } from './oidc-config.module';
 import { OidcInteractionController } from './oidc-interaction.controller';
 import { OidcKeysService } from './oidc-keys.service';
 import { OidcProviderService } from './oidc-provider.service';
 import { OidcPurgeRepository } from './oidc-purge.repository';
 import { OidcPurgeService } from './oidc-purge.service';
+import { SessionLimitService } from './session-limit.service';
 
 export interface OidcModuleOptions {
   /** Modules exporting providers bound to the OIDC port tokens. */
@@ -39,6 +41,7 @@ export class OidcModule {
       module: OidcModule,
       imports: [
         OidcConfigModule,
+        OidcAccountSessionModule,
         TypeOrmModule.forFeature([OidcModel]),
         PgBossModule,
         ...(options.imports ?? []),
@@ -48,6 +51,7 @@ export class OidcModule {
         OidcKeysService,
         OidcAdapterFactory,
         OidcProviderService,
+        SessionLimitService,
         OidcPurgeRepository,
         OidcPurgeService,
         options.clientLookupProvider,
@@ -60,6 +64,8 @@ export class OidcModule {
         OidcKeysService,
         OidcAdapterFactory,
         OidcProviderService,
+        OidcAccountSessionModule,
+        SessionLimitService,
       ],
     };
   }

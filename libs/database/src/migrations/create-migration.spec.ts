@@ -41,7 +41,7 @@ function addMigrationImport(source: string, importStatement: string): string {
 
 function addMigrationToArray(source: string, migrationClass: string): string {
   return source.replace(/migrations:\s*\[([^\]]*)\]/, (_, current: string) => {
-    const migrations = current.trim();
+    const migrations = current.trim().replace(/,$/, '').trim();
 
     return migrations.length
       ? `migrations: [${migrations}, ${migrationClass}]`
@@ -162,6 +162,20 @@ export const AppDataSource = new DataSource({`;
       const source = 'migrations: [ Migration1 , Migration2 ]';
       const result = addMigrationToArray(source, 'Migration3');
       expect(result).toBe('migrations: [Migration1 , Migration2, Migration3]');
+    });
+
+    // data-source.ts is prettier-formatted, so its real migrations array is
+    // multiline with a trailing comma. Without stripping it the output is
+    // `[..., Migration2,, Migration3]`, a sparse array that silently puts an
+    // `undefined` entry into the migrations list rather than failing to parse.
+    it('should not leave a hole when the array has a trailing comma', () => {
+      const source = 'migrations: [\n    Migration1,\n    Migration2,\n  ]';
+      const result = addMigrationToArray(source, 'Migration3');
+
+      expect(result).not.toContain(',,');
+      expect(result).toBe(
+        'migrations: [Migration1,\n    Migration2, Migration3]',
+      );
     });
   });
 });
