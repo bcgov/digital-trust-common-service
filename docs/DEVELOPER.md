@@ -128,13 +128,13 @@ This matches the default shown in `.env.example` and allows the app to call `htt
 
 #### Configure Keycloak Endpoint
 
-Update **`config/upstream-identity-federation.json`** to point at the local Keycloak issuer exposed by Caddy:
+Update **`config/upstream-identity-federation.json`** to point at the local Keycloak issuer exposed by Caddy (realm and client as defined in the checked-in `keycloak/config/realm.json`):
 
 ```json
 {
-  "url": "https://keycloak.localhost/realms/vc-common-service",
-  "clientId": "vc-common-service",
-  "clientSecret": "your-client-secret"
+  "url": "https://keycloak.localhost/realms/digital-trust-common-service",
+  "clientId": "dtsc-oidc-provider",
+  "clientSecret": "my-secret"
 }
 ```
 
