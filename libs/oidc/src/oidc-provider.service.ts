@@ -313,7 +313,14 @@ export class OidcProviderService implements OnModuleInit {
         `OIDC session saved: ${session?.accountId} / ${session?.uid}`,
       );
 
-      void this.finalizePendingUpstreamSession(session);
+      void this.finalizePendingUpstreamSession(session).catch(
+        (error: unknown) => {
+          this.logger.error(
+            'Failed to finalize the pending upstream OIDC session',
+            error instanceof Error ? error.stack : String(error),
+          );
+        },
+      );
     });
 
     applyClientSecretHashComparator(provider);
