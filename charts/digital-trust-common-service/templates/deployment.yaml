@@ -17,6 +17,8 @@ spec:
         checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
         {{- if and .Values.secret.create (not .Values.secret.existingSecret) }}
         checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+        {{- end }}
+        {{- if .Values.connectorEncryption.create }}
         checksum/connector-encryption: {{ include (print $.Template.BasePath "/connector-encryption-secret.yaml") . | sha256sum }}
         {{- end }}
         {{- if .Values.oidcSigning.create }}

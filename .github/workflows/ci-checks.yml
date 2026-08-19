@@ -119,19 +119,21 @@ jobs:
           helm lint digital-trust-common-service -f digital-trust-common-service/ci/ci-values.yaml
           # Glob so new overlays (e.g. values-pr.yaml) are covered automatically
           for f in digital-trust-common-service/values-*.yaml; do
-            helm lint digital-trust-common-service -f "$f"
+            helm lint digital-trust-common-service -f "$f" \
+              --set-file oidcSigning.keys=digital-trust-common-service/ci/placeholder-oidc-keys.json \
+              --set-json connectorEncryption.keys='{"1":"ci-connector-encryption-key"}'
           done
       - name: Helm template (render all values files)
         working-directory: charts
         run: |
           helm template ci digital-trust-common-service -f digital-trust-common-service/ci/ci-values.yaml > /dev/null
-          # Overlays that enable oidcSigning.create expect the JWKS to be
-          # injected at deploy time via `--set-file oidcSigning.keys=...`.
-          # Supply a placeholder here so the smoke render exercises the
-          # Secret template instead of hitting its fail-closed guard.
+          # Overlays that enable oidcSigning.create / connectorEncryption.create
+          # expect keys to be injected at deploy time. Supply placeholders so
+          # smoke renders exercise the Secret templates instead of fail-closed guards.
           for f in digital-trust-common-service/values-*.yaml; do
             helm template rel digital-trust-common-service -f "$f" \
-              --set-file oidcSigning.keys=digital-trust-common-service/ci/placeholder-oidc-keys.json > /dev/null
+              --set-file oidcSigning.keys=digital-trust-common-service/ci/placeholder-oidc-keys.json \
+              --set-json connectorEncryption.keys='{"1":"ci-connector-encryption-key"}' > /dev/null
           done
       - name: Helm unit tests
         run: |

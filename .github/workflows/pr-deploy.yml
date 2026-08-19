@@ -167,6 +167,18 @@ jobs:
             EXTRA_ARGS+=(--set-file "oidcSigning.keys=${RUNNER_TEMP}/oidc-keys.json")
           fi
 
+          # Connector encryption keys must remain stable to decrypt existing data.
+          # Generate random keys on the first deploy; on later deploys the Secret
+          # already exists and Helm leaves it unchanged, so the key stays stable
+          # for the life of the preview.
+          if oc get secret "${RELEASE_NAME}-connector-encryption" >/dev/null 2>&1; then
+            echo "::notice::Reusing the existing connector encryption key for ${RELEASE_NAME}."
+          else
+            # Generate a random hex key (64 chars = 32 bytes in hex)
+            CONNECTOR_KEY=$(openssl rand -hex 32)
+            EXTRA_ARGS+=(--set-json "connectorEncryption.keys={\"1\":\"${CONNECTOR_KEY}\"}")
+          fi
+
           helm upgrade --install "${RELEASE_NAME}" ./charts/digital-trust-common-service \
             -f charts/digital-trust-common-service/values-pr.yaml \
             --set image.tag="${IMAGE_TAG}" \
