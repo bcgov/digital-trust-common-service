@@ -4,4644 +4,4568 @@
  */
 
 export interface paths {
-  '/health/live': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
+    "/health/live": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Liveness probe
+         * @description Returns 200 if the process is running.
+         */
+        get: operations["getLiveness"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    /**
-     * Liveness probe
-     * @description Returns 200 if the process is running.
-     */
-    get: operations['getLiveness'];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/health/ready': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
+    "/health/ready": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Readiness probe
+         * @description Returns 200 if all critical dependencies (DB, pg-boss, OIDC provider) are healthy.
+         */
+        get: operations["getReadiness"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    /**
-     * Readiness probe
-     * @description Returns 200 if all critical dependencies (DB, pg-boss, OIDC provider) are healthy.
-     */
-    get: operations['getReadiness'];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/api/v1/auth/switch-tenant': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
+    "/api/v1/auth/switch-tenant": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Switch active tenant context
+         * @description Exchange the current valid token for a new token scoped to a different tenant.
+         *     The user must have membership in the target tenant.
+         */
+        post: operations["switchTenant"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    get?: never;
-    put?: never;
-    /**
-     * Switch active tenant context
-     * @description Exchange the current valid token for a new token scoped to a different tenant.
-     *     The user must have membership in the target tenant.
-     */
-    post: operations['switchTenant'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/api/v1/tenants': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
+    "/api/v1/tenants": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List tenants
+         * @description Platform admins see all tenants; regular users see only their memberships.
+         */
+        get: operations["listTenants"];
+        put?: never;
+        /** Create a new tenant */
+        post: operations["createTenant"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    /**
-     * List tenants
-     * @description Platform admins see all tenants; regular users see only their memberships.
-     */
-    get: operations['listTenants'];
-    put?: never;
-    /** Create a new tenant */
-    post: operations['createTenant'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/api/v1/tenants/{tenantId}': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-      };
-      cookie?: never;
+    "/api/v1/tenants/{tenantId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
+        };
+        /** Get tenant details */
+        get: operations["getTenant"];
+        put?: never;
+        post?: never;
+        /** Soft-delete tenant (platform-admin only) */
+        delete: operations["deleteTenant"];
+        options?: never;
+        head?: never;
+        /** Update tenant */
+        patch: operations["updateTenant"];
+        trace?: never;
     };
-    /** Get tenant details */
-    get: operations['getTenant'];
-    put?: never;
-    post?: never;
-    /** Soft-delete tenant (platform-admin only) */
-    delete: operations['deleteTenant'];
-    options?: never;
-    head?: never;
-    /** Update tenant */
-    patch: operations['updateTenant'];
-    trace?: never;
-  };
-  '/api/v1/tenants/{tenantId}/status': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-      };
-      cookie?: never;
+    "/api/v1/tenants/{tenantId}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Suspend or reactivate a tenant (platform-admin only) */
+        patch: operations["updateTenantStatus"];
+        trace?: never;
     };
-    get?: never;
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    /** Suspend or reactivate a tenant (platform-admin only) */
-    patch: operations['updateTenantStatus'];
-    trace?: never;
-  };
-  '/api/v1/tenants/{tenantId}/config': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-      };
-      cookie?: never;
+    "/api/v1/tenants/{tenantId}/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update tenant configuration */
+        patch: operations["updateTenantConfig"];
+        trace?: never;
     };
-    get?: never;
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    /** Update tenant configuration */
-    patch: operations['updateTenantConfig'];
-    trace?: never;
-  };
-  '/api/v1/tenants/{tenantId}/onboarding': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-      };
-      cookie?: never;
+    "/api/v1/tenants/{tenantId}/onboarding": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
+        };
+        /** Get tenant onboarding progress */
+        get: operations["getOnboardingStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    /** Get tenant onboarding progress */
-    get: operations['getOnboardingStatus'];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/api/v1/tenants/{tenantId}/onboarding/steps/{stepName}/complete': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-        stepName:
-          | 'configure-connector'
-          | 'register-credential-definition'
-          | 'create-issuance-profile'
-          | 'register-api-client';
-      };
-      cookie?: never;
+    "/api/v1/tenants/{tenantId}/onboarding/steps/{stepName}/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                stepName: "configure-connector" | "register-credential-definition" | "create-issuance-profile" | "register-api-client";
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mark an onboarding step as complete */
+        post: operations["completeOnboardingStep"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    get?: never;
-    put?: never;
-    /** Mark an onboarding step as complete */
-    post: operations['completeOnboardingStep'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/api/v1/tenants/{tenantId}/onboarding/steps/{stepName}/skip': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-        stepName:
-          | 'configure-connector'
-          | 'register-credential-definition'
-          | 'create-issuance-profile'
-          | 'register-api-client';
-      };
-      cookie?: never;
+    "/api/v1/tenants/{tenantId}/onboarding/steps/{stepName}/skip": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                stepName: "configure-connector" | "register-credential-definition" | "create-issuance-profile" | "register-api-client";
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Skip an onboarding step (mark as skipped) */
+        post: operations["skipOnboardingStep"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    get?: never;
-    put?: never;
-    /** Skip an onboarding step (mark as skipped) */
-    post: operations['skipOnboardingStep'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/api/v1/tenants/{tenantId}/onboarding/reset': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-      };
-      cookie?: never;
+    "/api/v1/tenants/{tenantId}/onboarding/reset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reset onboarding progress (testing/demo only)
+         * @description Clears all onboarding step progress and allows restart. Intended for development and testing scenarios.
+         */
+        post: operations["resetOnboarding"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    get?: never;
-    put?: never;
-    /**
-     * Reset onboarding progress (testing/demo only)
-     * @description Clears all onboarding step progress and allows restart. Intended for development and testing scenarios.
-     */
-    post: operations['resetOnboarding'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/api/v1/tenants/{tenantId}/users': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-      };
-      cookie?: never;
+    "/api/v1/tenants/{tenantId}/users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
+        };
+        /** List tenant members */
+        get: operations["listTenantUsers"];
+        put?: never;
+        /** Invite a user to the tenant */
+        post: operations["inviteUser"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    /** List tenant members */
-    get: operations['listTenantUsers'];
-    put?: never;
-    /** Invite a user to the tenant */
-    post: operations['inviteUser'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/api/v1/tenants/{tenantId}/users/{userId}': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-        userId: string;
-      };
-      cookie?: never;
+    "/api/v1/tenants/{tenantId}/users/{userId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                userId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove user from tenant */
+        delete: operations["removeTenantUser"];
+        options?: never;
+        head?: never;
+        /** Update user role */
+        patch: operations["updateTenantUser"];
+        trace?: never;
     };
-    get?: never;
-    put?: never;
-    post?: never;
-    /** Remove user from tenant */
-    delete: operations['removeTenantUser'];
-    options?: never;
-    head?: never;
-    /** Update user role */
-    patch: operations['updateTenantUser'];
-    trace?: never;
-  };
-  '/api/v1/tenants/{tenantId}/connectors': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-      };
-      cookie?: never;
+    "/api/v1/tenants/{tenantId}/connectors": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
+        };
+        /** List tenant connectors */
+        get: operations["listConnectors"];
+        put?: never;
+        /** Register a backend agent connector */
+        post: operations["createConnector"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    /** List tenant connectors */
-    get: operations['listConnectors'];
-    put?: never;
-    /** Register a backend agent connector */
-    post: operations['createConnector'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/api/v1/tenants/{tenantId}/connectors/{connectorId}': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-        connectorId: string;
-      };
-      cookie?: never;
+    "/api/v1/tenants/{tenantId}/connectors/{connectorId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                connectorId: string;
+            };
+            cookie?: never;
+        };
+        /** Get connector details */
+        get: operations["getConnector"];
+        put?: never;
+        post?: never;
+        /**
+         * Remove connector
+         * @description Fails if active credential definitions depend on this connector.
+         */
+        delete: operations["deleteConnector"];
+        options?: never;
+        head?: never;
+        /** Update connector endpoint or rotate credentials */
+        patch: operations["updateConnector"];
+        trace?: never;
     };
-    /** Get connector details */
-    get: operations['getConnector'];
-    put?: never;
-    post?: never;
-    /**
-     * Remove connector
-     * @description Fails if active credential definitions depend on this connector.
-     */
-    delete: operations['deleteConnector'];
-    options?: never;
-    head?: never;
-    /** Update connector endpoint or rotate credentials */
-    patch: operations['updateConnector'];
-    trace?: never;
-  };
-  '/api/v1/tenants/{tenantId}/connectors/{connectorId}/test': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-        connectorId: string;
-      };
-      cookie?: never;
+    "/api/v1/tenants/{tenantId}/connectors/{connectorId}/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                connectorId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Test connector connectivity */
+        post: operations["testConnector"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    get?: never;
-    put?: never;
-    /** Test connector connectivity */
-    post: operations['testConnector'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/api/v1/tenants/{tenantId}/credential-definitions': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-      };
-      cookie?: never;
+    "/api/v1/tenants/{tenantId}/credential-definitions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
+        };
+        /** List credential definitions */
+        get: operations["listCredentialDefinitions"];
+        put?: never;
+        /** Register a credential definition */
+        post: operations["createCredentialDefinition"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    /** List credential definitions */
-    get: operations['listCredentialDefinitions'];
-    put?: never;
-    /** Register a credential definition */
-    post: operations['createCredentialDefinition'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/api/v1/tenants/{tenantId}/credential-definitions/{credDefId}': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-        credDefId: string;
-      };
-      cookie?: never;
+    "/api/v1/tenants/{tenantId}/credential-definitions/{credDefId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                credDefId: string;
+            };
+            cookie?: never;
+        };
+        /** Get credential definition details */
+        get: operations["getCredentialDefinition"];
+        put?: never;
+        post?: never;
+        /** Deactivate a credential definition */
+        delete: operations["deleteCredentialDefinition"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    /** Get credential definition details */
-    get: operations['getCredentialDefinition'];
-    put?: never;
-    post?: never;
-    /** Deactivate a credential definition */
-    delete: operations['deleteCredentialDefinition'];
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/api/v1/tenants/{tenantId}/profiles/issuance': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-      };
-      cookie?: never;
+    "/api/v1/tenants/{tenantId}/profiles/issuance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
+        };
+        /** List issuance profiles */
+        get: operations["listIssuanceProfiles"];
+        put?: never;
+        /** Create an issuance profile */
+        post: operations["createIssuanceProfile"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    /** List issuance profiles */
-    get: operations['listIssuanceProfiles'];
-    put?: never;
-    /** Create an issuance profile */
-    post: operations['createIssuanceProfile'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/api/v1/tenants/{tenantId}/profiles/issuance/{profileId}': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-        profileId: components['parameters']['ProfileId'];
-      };
-      cookie?: never;
+    "/api/v1/tenants/{tenantId}/profiles/issuance/{profileId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                profileId: components["parameters"]["ProfileId"];
+            };
+            cookie?: never;
+        };
+        /** Get issuance profile details */
+        get: operations["getIssuanceProfile"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update issuance profile (draft only) */
+        patch: operations["updateIssuanceProfile"];
+        trace?: never;
     };
-    /** Get issuance profile details */
-    get: operations['getIssuanceProfile'];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    /** Update issuance profile (draft only) */
-    patch: operations['updateIssuanceProfile'];
-    trace?: never;
-  };
-  '/api/v1/tenants/{tenantId}/profiles/issuance/{profileId}/publish': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-        profileId: components['parameters']['ProfileId'];
-      };
-      cookie?: never;
+    "/api/v1/tenants/{tenantId}/profiles/issuance/{profileId}/publish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                profileId: components["parameters"]["ProfileId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Publish an issuance profile (draft → published) */
+        post: operations["publishIssuanceProfile"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    get?: never;
-    put?: never;
-    /** Publish an issuance profile (draft → published) */
-    post: operations['publishIssuanceProfile'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/api/v1/tenants/{tenantId}/profiles/issuance/{profileId}/deprecate': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-        profileId: components['parameters']['ProfileId'];
-      };
-      cookie?: never;
+    "/api/v1/tenants/{tenantId}/profiles/issuance/{profileId}/deprecate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                profileId: components["parameters"]["ProfileId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Deprecate an issuance profile (published → deprecated) */
+        post: operations["deprecateIssuanceProfile"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    get?: never;
-    put?: never;
-    /** Deprecate an issuance profile (published → deprecated) */
-    post: operations['deprecateIssuanceProfile'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/api/v1/tenants/{tenantId}/profiles/verification': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-      };
-      cookie?: never;
+    "/api/v1/tenants/{tenantId}/profiles/verification": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
+        };
+        /** List verification profiles */
+        get: operations["listVerificationProfiles"];
+        put?: never;
+        /** Create a verification profile */
+        post: operations["createVerificationProfile"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    /** List verification profiles */
-    get: operations['listVerificationProfiles'];
-    put?: never;
-    /** Create a verification profile */
-    post: operations['createVerificationProfile'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/api/v1/tenants/{tenantId}/profiles/verification/{profileId}': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-        profileId: components['parameters']['ProfileId'];
-      };
-      cookie?: never;
+    "/api/v1/tenants/{tenantId}/profiles/verification/{profileId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                profileId: components["parameters"]["ProfileId"];
+            };
+            cookie?: never;
+        };
+        /** Get verification profile details */
+        get: operations["getVerificationProfile"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update verification profile (draft only) */
+        patch: operations["updateVerificationProfile"];
+        trace?: never;
     };
-    /** Get verification profile details */
-    get: operations['getVerificationProfile'];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    /** Update verification profile (draft only) */
-    patch: operations['updateVerificationProfile'];
-    trace?: never;
-  };
-  '/api/v1/tenants/{tenantId}/profiles/verification/{profileId}/publish': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-        profileId: components['parameters']['ProfileId'];
-      };
-      cookie?: never;
+    "/api/v1/tenants/{tenantId}/profiles/verification/{profileId}/publish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                profileId: components["parameters"]["ProfileId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Publish a verification profile */
+        post: operations["publishVerificationProfile"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    get?: never;
-    put?: never;
-    /** Publish a verification profile */
-    post: operations['publishVerificationProfile'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/api/v1/tenants/{tenantId}/profiles/verification/{profileId}/deprecate': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-        profileId: components['parameters']['ProfileId'];
-      };
-      cookie?: never;
+    "/api/v1/tenants/{tenantId}/profiles/verification/{profileId}/deprecate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                profileId: components["parameters"]["ProfileId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Deprecate a verification profile */
+        post: operations["deprecateVerificationProfile"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    get?: never;
-    put?: never;
-    /** Deprecate a verification profile */
-    post: operations['deprecateVerificationProfile'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/api/v1/tenants/{tenantId}/credentials/offer': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-      };
-      cookie?: never;
+    "/api/v1/tenants/{tenantId}/credentials/offer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Offer/issue a credential
+         * @description Issue a credential via a published issuance profile.
+         *
+         *     **Delivery mode** is determined by the presence of `connection_id`:
+         *     - **Present** → DIDComm delivery (push offer to connected agent). Returns 202.
+         *     - **Absent** → OID4VCI delivery (generate credential_offer_uri). Returns 200.
+         *
+         *     MVP: Only DIDComm delivery is supported (Traction adapter). Omitting `connection_id` returns 400.
+         */
+        post: operations["offerCredential"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    get?: never;
-    put?: never;
-    /**
-     * Offer/issue a credential
-     * @description Issue a credential via a published issuance profile.
-     *
-     *     **Delivery mode** is determined by the presence of `connection_id`:
-     *     - **Present** → DIDComm delivery (push offer to connected agent). Returns 202.
-     *     - **Absent** → OID4VCI delivery (generate credential_offer_uri). Returns 200.
-     *
-     *     MVP: Only DIDComm delivery is supported (Traction adapter). Omitting `connection_id` returns 400.
-     */
-    post: operations['offerCredential'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/api/v1/tenants/{tenantId}/credentials/offer-batch': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-      };
-      cookie?: never;
+    "/api/v1/tenants/{tenantId}/credentials/offer-batch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Batch credential issuance
+         * @description Issue credentials to multiple holders in a single request. Max 500 items.
+         *     All items use the same profile. DIDComm delivery only (connection_id required per item).
+         */
+        post: operations["offerCredentialBatch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    get?: never;
-    put?: never;
-    /**
-     * Batch credential issuance
-     * @description Issue credentials to multiple holders in a single request. Max 500 items.
-     *     All items use the same profile. DIDComm delivery only (connection_id required per item).
-     */
-    post: operations['offerCredentialBatch'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/api/v1/tenants/{tenantId}/credentials/{exchangeId}/accept': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-        /** @description The `id` (Operation UUID) returned by `POST /credentials/offer`. This is **not** the persisted Credential record UUID—that is used by `GET /credentials/{credentialId}` and `POST /credentials/{credentialId}/revoke`. */
-        exchangeId: string;
-      };
-      cookie?: never;
+    "/api/v1/tenants/{tenantId}/credentials/{exchangeId}/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                /** @description The `id` (Operation UUID) returned by `POST /credentials/offer`. This is **not** the persisted Credential record UUID—that is used by `GET /credentials/{credentialId}` and `POST /credentials/{credentialId}/revoke`. */
+                exchangeId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Accept a credential offer (holder) */
+        post: operations["acceptCredential"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    get?: never;
-    put?: never;
-    /** Accept a credential offer (holder) */
-    post: operations['acceptCredential'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/api/v1/tenants/{tenantId}/credentials/{exchangeId}/reject': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-        /** @description The `id` (Operation UUID) returned by `POST /credentials/offer`. This is **not** the persisted Credential record UUID. */
-        exchangeId: string;
-      };
-      cookie?: never;
+    "/api/v1/tenants/{tenantId}/credentials/{exchangeId}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                /** @description The `id` (Operation UUID) returned by `POST /credentials/offer`. This is **not** the persisted Credential record UUID. */
+                exchangeId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reject a credential offer (holder) */
+        post: operations["rejectCredential"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    get?: never;
-    put?: never;
-    /** Reject a credential offer (holder) */
-    post: operations['rejectCredential'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/api/v1/tenants/{tenantId}/credentials/{credentialId}/revoke': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-        credentialId: string;
-      };
-      cookie?: never;
+    "/api/v1/tenants/{tenantId}/credentials/{credentialId}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                credentialId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Revoke an issued credential */
+        post: operations["revokeCredential"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    get?: never;
-    put?: never;
-    /** Revoke an issued credential */
-    post: operations['revokeCredential'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/api/v1/tenants/{tenantId}/credentials': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-      };
-      cookie?: never;
+    "/api/v1/tenants/{tenantId}/credentials": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List issued credentials
+         * @description List credential records for the tenant. Useful for finding credentials to revoke or tracking issuance history.
+         */
+        get: operations["listCredentials"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    /**
-     * List issued credentials
-     * @description List credential records for the tenant. Useful for finding credentials to revoke or tracking issuance history.
-     */
-    get: operations['listCredentials'];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/api/v1/tenants/{tenantId}/credentials/{credentialId}': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-        credentialId: string;
-      };
-      cookie?: never;
+    "/api/v1/tenants/{tenantId}/credentials/{credentialId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                credentialId: string;
+            };
+            cookie?: never;
+        };
+        /** Get credential details */
+        get: operations["getCredential"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    /** Get credential details */
-    get: operations['getCredential'];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/api/v1/tenants/{tenantId}/credentials/revoke-batch': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-      };
-      cookie?: never;
+    "/api/v1/tenants/{tenantId}/credentials/revoke-batch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Batch credential revocation
+         * @description Revoke multiple credentials in a single request. Max 500 items.
+         */
+        post: operations["revokeCredentialBatch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    get?: never;
-    put?: never;
-    /**
-     * Batch credential revocation
-     * @description Revoke multiple credentials in a single request. Max 500 items.
-     */
-    post: operations['revokeCredentialBatch'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/api/v1/tenants/{tenantId}/presentations/request': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-      };
-      cookie?: never;
+    "/api/v1/tenants/{tenantId}/presentations/request": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Request a presentation/proof
+         * @description Request a verifiable presentation. Supports profile-based or raw presentation definition.
+         *
+         *     **Delivery mode** determined by `connection_id`:
+         *     - **Present** → DIDComm (send proof request to connected agent). Returns 202.
+         *     - **Absent** → OID4VP (generate authorization_request_uri). Returns 200.
+         */
+        post: operations["requestPresentation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    get?: never;
-    put?: never;
-    /**
-     * Request a presentation/proof
-     * @description Request a verifiable presentation. Supports profile-based or raw presentation definition.
-     *
-     *     **Delivery mode** determined by `connection_id`:
-     *     - **Present** → DIDComm (send proof request to connected agent). Returns 202.
-     *     - **Absent** → OID4VP (generate authorization_request_uri). Returns 200.
-     */
-    post: operations['requestPresentation'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/api/v1/tenants/{tenantId}/connections': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-      };
-      cookie?: never;
+    "/api/v1/tenants/{tenantId}/connections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
+        };
+        /** List connections */
+        get: operations["listConnections"];
+        put?: never;
+        /**
+         * Create or accept a connection
+         * @description Two modes based on request body:
+         *     - **Create invitation** (no `invitation_url`): generates a new invitation URL.
+         *     - **Accept invitation** (`invitation_url` provided): accepts an existing invitation from another party.
+         *
+         *     Both modes return an Operation with `type: connection.create`. The `result` object
+         *     indicates the mode: it contains `invitation_url` when creating, or `connection_id` + `state`
+         *     when accepting.
+         */
+        post: operations["createConnection"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    /** List connections */
-    get: operations['listConnections'];
-    put?: never;
-    /**
-     * Create or accept a connection
-     * @description Two modes based on request body:
-     *     - **Create invitation** (no `invitation_url`): generates a new invitation URL.
-     *     - **Accept invitation** (`invitation_url` provided): accepts an existing invitation from another party.
-     *
-     *     Both modes return an Operation with `type: connection.create`. The `result` object
-     *     indicates the mode: it contains `invitation_url` when creating, or `connection_id` + `state`
-     *     when accepting.
-     */
-    post: operations['createConnection'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/api/v1/tenants/{tenantId}/connections/{connectionId}': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-        connectionId: string;
-      };
-      cookie?: never;
+    "/api/v1/tenants/{tenantId}/connections/{connectionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                connectionId: string;
+            };
+            cookie?: never;
+        };
+        /** Get connection details */
+        get: operations["getConnection"];
+        put?: never;
+        post?: never;
+        /** Remove a connection */
+        delete: operations["deleteConnection"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    /** Get connection details */
-    get: operations['getConnection'];
-    put?: never;
-    post?: never;
-    /** Remove a connection */
-    delete: operations['deleteConnection'];
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/api/v1/tenants/{tenantId}/operations': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-      };
-      cookie?: never;
+    "/api/v1/tenants/{tenantId}/operations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
+        };
+        /** List operations */
+        get: operations["listOperations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    /** List operations */
-    get: operations['listOperations'];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/api/v1/tenants/{tenantId}/operations/{operationId}': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-        operationId: components['parameters']['OperationId'];
-      };
-      cookie?: never;
+    "/api/v1/tenants/{tenantId}/operations/{operationId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                operationId: components["parameters"]["OperationId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Get operation status and result
+         * @description Poll an operation's current state and result. Sets `viewed_at` on first retrieval
+         *     of a completed/failed operation (triggers TTL recalculation).
+         *
+         *     Supports long-polling via `Prefer: wait=<seconds>` header.
+         */
+        get: operations["getOperation"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    /**
-     * Get operation status and result
-     * @description Poll an operation's current state and result. Sets `viewed_at` on first retrieval
-     *     of a completed/failed operation (triggers TTL recalculation).
-     *
-     *     Supports long-polling via `Prefer: wait=<seconds>` header.
-     */
-    get: operations['getOperation'];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/api/v1/tenants/{tenantId}/operations/{operationId}/request': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-        operationId: components['parameters']['OperationId'];
-      };
-      cookie?: never;
+    "/api/v1/tenants/{tenantId}/operations/{operationId}/request": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                operationId: components["parameters"]["OperationId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Get the original request that created the operation
+         * @description Returns the HTTP method, path, and body that triggered this operation.
+         *     **Note**: The body may contain PII (credential attributes). Data is purged with the operation on TTL expiry.
+         */
+        get: operations["getOperationRequest"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    /**
-     * Get the original request that created the operation
-     * @description Returns the HTTP method, path, and body that triggered this operation.
-     *     **Note**: The body may contain PII (credential attributes). Data is purged with the operation on TTL expiry.
-     */
-    get: operations['getOperationRequest'];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/api/v1/tenants/{tenantId}/operations/{operationId}/items': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-        operationId: components['parameters']['OperationId'];
-      };
-      cookie?: never;
+    "/api/v1/tenants/{tenantId}/operations/{operationId}/items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                operationId: components["parameters"]["OperationId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List child operations of a batch
+         * @description Returns 404 if the operation is not a batch parent.
+         */
+        get: operations["listBatchOperationItems"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    /**
-     * List child operations of a batch
-     * @description Returns 404 if the operation is not a batch parent.
-     */
-    get: operations['listBatchOperationItems'];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/api/v1/tenants/{tenantId}/webhooks': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-      };
-      cookie?: never;
+    "/api/v1/tenants/{tenantId}/webhooks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
+        };
+        /** List webhook registrations */
+        get: operations["listWebhooks"];
+        put?: never;
+        /** Register a webhook endpoint */
+        post: operations["createWebhook"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    /** List webhook registrations */
-    get: operations['listWebhooks'];
-    put?: never;
-    /** Register a webhook endpoint */
-    post: operations['createWebhook'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/api/v1/tenants/{tenantId}/webhooks/{webhookId}': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-        webhookId: string;
-      };
-      cookie?: never;
+    "/api/v1/tenants/{tenantId}/webhooks/{webhookId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                webhookId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove a webhook registration */
+        delete: operations["deleteWebhook"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    get?: never;
-    put?: never;
-    post?: never;
-    /** Remove a webhook registration */
-    delete: operations['deleteWebhook'];
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/api/v1/tenants/{tenantId}/clients': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-      };
-      cookie?: never;
+    "/api/v1/tenants/{tenantId}/clients": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
+        };
+        /** List API clients */
+        get: operations["listClients"];
+        put?: never;
+        /**
+         * Register an API client (OAuth2 client_credentials)
+         * @description Creates a new OAuth2 client for service-to-service authentication.
+         *     The `client_secret` is returned ONCE in the response and cannot be retrieved again.
+         */
+        post: operations["createClient"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    /** List API clients */
-    get: operations['listClients'];
-    put?: never;
-    /**
-     * Register an API client (OAuth2 client_credentials)
-     * @description Creates a new OAuth2 client for service-to-service authentication.
-     *     The `client_secret` is returned ONCE in the response and cannot be retrieved again.
-     */
-    post: operations['createClient'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/api/v1/tenants/{tenantId}/clients/{clientId}': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-        clientId: string;
-      };
-      cookie?: never;
+    "/api/v1/tenants/{tenantId}/clients/{clientId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                clientId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Revoke an API client */
+        delete: operations["deleteClient"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    get?: never;
-    put?: never;
-    post?: never;
-    /** Revoke an API client */
-    delete: operations['deleteClient'];
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/api/v1/tenants/{tenantId}/clients/{clientId}/rotate-secret': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-        clientId: string;
-      };
-      cookie?: never;
+    "/api/v1/tenants/{tenantId}/clients/{clientId}/rotate-secret": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                clientId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rotate client secret
+         * @description Generates a new secret. The old secret is immediately invalidated.
+         */
+        post: operations["rotateClientSecret"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    get?: never;
-    put?: never;
-    /**
-     * Rotate client secret
-     * @description Generates a new secret. The old secret is immediately invalidated.
-     */
-    post: operations['rotateClientSecret'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/api/v1/issuers/{tenantSlug}/.well-known/openid-credential-issuer': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        tenantSlug: string;
-      };
-      cookie?: never;
+    "/api/v1/issuers/{tenantSlug}/.well-known/openid-credential-issuer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tenantSlug: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * OID4VCI Credential Issuer Metadata
+         * @description Public, unauthenticated endpoint returning OID4VCI-compatible metadata.
+         *     Only includes published issuance profiles.
+         */
+        get: operations["getIssuerMetadata"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    /**
-     * OID4VCI Credential Issuer Metadata
-     * @description Public, unauthenticated endpoint returning OID4VCI-compatible metadata.
-     *     Only includes published issuance profiles.
-     */
-    get: operations['getIssuerMetadata'];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/api/v1/issuers/{tenantSlug}/profiles': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        tenantSlug: string;
-      };
-      cookie?: never;
+    "/api/v1/issuers/{tenantSlug}/profiles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tenantSlug: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * List published profiles (public)
+         * @description Unauthenticated. Returns published issuance and public verification profiles.
+         */
+        get: operations["listPublicProfiles"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    /**
-     * List published profiles (public)
-     * @description Unauthenticated. Returns published issuance and public verification profiles.
-     */
-    get: operations['listPublicProfiles'];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/api/v1/tenants/{tenantId}/audit-logs': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-      };
-      cookie?: never;
+    "/api/v1/tenants/{tenantId}/audit-logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Query audit log entries
+         * @description Retrieve structured audit log records for the tenant.
+         *     Audit logs track business actions (issue, verify, revoke, create, update, delete, login, token_grant)
+         *     and are stored in PostgreSQL (separate from operational Loki logs).
+         */
+        get: operations["listAuditLogs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    /**
-     * Query audit log entries
-     * @description Retrieve structured audit log records for the tenant.
-     *     Audit logs track business actions (issue, verify, revoke, create, update, delete, login, token_grant)
-     *     and are stored in PostgreSQL (separate from operational Loki logs).
-     */
-    get: operations['listAuditLogs'];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/api/v1/tenants/{tenantId}/audit-logs/{auditLogId}': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-        auditLogId: string;
-      };
-      cookie?: never;
+    "/api/v1/tenants/{tenantId}/audit-logs/{auditLogId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                auditLogId: string;
+            };
+            cookie?: never;
+        };
+        /** Get audit log entry detail */
+        get: operations["getAuditLogEntry"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    /** Get audit log entry detail */
-    get: operations['getAuditLogEntry'];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/api/v1/tenants/{tenantId}/audit-logs/export': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-      };
-      cookie?: never;
+    "/api/v1/tenants/{tenantId}/audit-logs/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Export audit logs as CSV
+         * @description Returns audit log entries matching the filters as a downloadable CSV file.
+         */
+        get: operations["exportAuditLogs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    /**
-     * Export audit logs as CSV
-     * @description Returns audit log entries matching the filters as a downloadable CSV file.
-     */
-    get: operations['exportAuditLogs'];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/api/v1/webhooks/traction': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
+    "/api/v1/webhooks/traction": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Receive Traction webhook callbacks
+         * @description Endpoint for Traction/ACA-Py to deliver state change notifications.
+         *     Authenticated via shared secret or IP whitelist.
+         */
+        post: operations["ingestTractionWebhook"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    get?: never;
-    put?: never;
-    /**
-     * Receive Traction webhook callbacks
-     * @description Endpoint for Traction/ACA-Py to deliver state change notifications.
-     *     Authenticated via shared secret or IP whitelist.
-     */
-    post: operations['ingestTractionWebhook'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/api/v1/admin/operations/stats': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
+    "/api/v1/admin/operations/stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Operation statistics (platform-admin) */
+        get: operations["getOperationStats"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    /** Operation statistics (platform-admin) */
-    get: operations['getOperationStats'];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/api/v1/admin/events/dead-letter': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
+    "/api/v1/admin/events/dead-letter": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List dead-letter (failed) jobs (platform-admin, all tenants)
+         * @description Returns all dead-letter jobs across every tenant. Provides cross-tenant visibility
+         *     for platform operators.
+         *     For tenant-scoped self-service recovery, see `GET /tenants/{tenantId}/events/dead-letter`.
+         */
+        get: operations["listDeadLetterJobs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    /**
-     * List dead-letter (failed) jobs (platform-admin, all tenants)
-     * @description Returns all dead-letter jobs across every tenant. Provides cross-tenant visibility
-     *     for platform operators.
-     *     For tenant-scoped self-service recovery, see `GET /tenants/{tenantId}/events/dead-letter`.
-     */
-    get: operations['listDeadLetterJobs'];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/api/v1/admin/events/dead-letter/{jobId}/replay': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        jobId: string;
-      };
-      cookie?: never;
+    "/api/v1/admin/events/dead-letter/{jobId}/replay": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                jobId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Replay a dead-letter job (platform-admin)
+         * @description Re-enqueues any dead-letter job by ID regardless of tenant ownership.
+         *     For tenant-scoped replay with ownership validation, see
+         *     `POST /tenants/{tenantId}/events/dead-letter/{jobId}/replay`.
+         */
+        post: operations["replayDeadLetterJob"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    get?: never;
-    put?: never;
-    /**
-     * Replay a dead-letter job (platform-admin)
-     * @description Re-enqueues any dead-letter job by ID regardless of tenant ownership.
-     *     For tenant-scoped replay with ownership validation, see
-     *     `POST /tenants/{tenantId}/events/dead-letter/{jobId}/replay`.
-     */
-    post: operations['replayDeadLetterJob'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/api/v1/admin/events/dead-letter/replay-bulk': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
+    "/api/v1/admin/events/dead-letter/replay-bulk": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Bulk replay dead-letter jobs by date range */
+        post: operations["replayDeadLetterBulk"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    get?: never;
-    put?: never;
-    /** Bulk replay dead-letter jobs by date range */
-    post: operations['replayDeadLetterBulk'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/api/v1/admin/users/{userId}/revoke-sessions': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        userId: string;
-      };
-      cookie?: never;
+    "/api/v1/admin/users/{userId}/revoke-sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                userId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Revoke all sessions for a user (platform-admin) */
+        post: operations["revokeUserSessions"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    get?: never;
-    put?: never;
-    /** Revoke all sessions for a user (platform-admin) */
-    post: operations['revokeUserSessions'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/api/v1/scopes': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
+    "/api/v1/scopes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List available scopes */
+        get: operations["listScopes"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    /** List available scopes */
-    get: operations['listScopes'];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/api/v1/roles': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
+    "/api/v1/roles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List roles with scope mappings */
+        get: operations["listRoles"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    /** List roles with scope mappings */
-    get: operations['listRoles'];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/api/v1/tenants/{tenantId}/roles/{role}/scopes': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-        role: components['schemas']['TenantRole'];
-      };
-      cookie?: never;
+    "/api/v1/tenants/{tenantId}/roles/{role}/scopes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                role: components["schemas"]["TenantRole"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Customize role scope mappings for a tenant
+         * @description Override default role→scope mappings for a specific tenant.
+         *     Role hierarchy is enforced: cannot assign a scope to a child role that the parent doesn't have.
+         */
+        patch: operations["updateTenantRoleScopes"];
+        trace?: never;
     };
-    get?: never;
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    /**
-     * Customize role scope mappings for a tenant
-     * @description Override default role→scope mappings for a specific tenant.
-     *     Role hierarchy is enforced: cannot assign a scope to a child role that the parent doesn't have.
-     */
-    patch: operations['updateTenantRoleScopes'];
-    trace?: never;
-  };
-  '/api/v1/tenants/{tenantId}/usage': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-      };
-      cookie?: never;
+    "/api/v1/tenants/{tenantId}/usage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
+        };
+        /** Get tenant usage statistics */
+        get: operations["getTenantUsage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    /** Get tenant usage statistics */
-    get: operations['getTenantUsage'];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/api/v1/tenants/{tenantId}/usage/reset-counters': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-      };
-      cookie?: never;
+    "/api/v1/tenants/{tenantId}/usage/reset-counters": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reset usage counters (admin only)
+         * @description Reset rate limit and usage counters for the tenant. Intended for incident response,
+         *     testing, or correcting erroneous rate limit blocks. Requires platform-admin role.
+         */
+        post: operations["resetTenantUsageCounters"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    get?: never;
-    put?: never;
-    /**
-     * Reset usage counters (admin only)
-     * @description Reset rate limit and usage counters for the tenant. Intended for incident response,
-     *     testing, or correcting erroneous rate limit blocks. Requires platform-admin role.
-     */
-    post: operations['resetTenantUsageCounters'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/api/v1/tenants/{tenantId}/usage/limits': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-      };
-      cookie?: never;
+    "/api/v1/tenants/{tenantId}/usage/limits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Override tenant quota limits (admin only)
+         * @description Temporarily override per-tenant rate limits and quotas (API calls/min, credentials/day, storage).
+         *     Intended for SLA management, tier upgrades, or incident mitigation. Requires platform-admin role.
+         */
+        patch: operations["updateTenantUsageLimits"];
+        trace?: never;
     };
-    get?: never;
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    /**
-     * Override tenant quota limits (admin only)
-     * @description Temporarily override per-tenant rate limits and quotas (API calls/min, credentials/day, storage).
-     *     Intended for SLA management, tier upgrades, or incident mitigation. Requires platform-admin role.
-     */
-    patch: operations['updateTenantUsageLimits'];
-    trace?: never;
-  };
 }
 export type webhooks = Record<string, never>;
 export interface components {
-  schemas: {
-    ErrorResponse: {
-      error: {
-        /** @description Machine-readable error code */
-        code: string;
-        /** @description Human-readable error message */
-        message: string;
-        details?: {
-          field?: string;
-          expected?: string;
-          actual?: string;
-          message?: string;
-        }[];
-        /** Format: uuid */
-        request_id?: string;
-      };
-    };
-    PaginatedResponse: {
-      data?: unknown[];
-      pagination?: {
-        next_cursor?: string | null;
-        has_more?: boolean;
-        /** @description Optional total count (may be omitted for performance) */
-        total_count?: number;
-      };
-    };
-    HealthResponse: {
-      /** @enum {string} */
-      status?: 'ok' | 'degraded' | 'unhealthy';
-      checks?: {
-        [key: string]: {
-          /** @enum {string} */
-          status?: 'up' | 'down';
-          message?: string;
+    schemas: {
+        ErrorResponse: {
+            error: {
+                /** @description Machine-readable error code */
+                code: string;
+                /** @description Human-readable error message */
+                message: string;
+                details?: {
+                    field?: string;
+                    expected?: string;
+                    actual?: string;
+                    message?: string;
+                }[];
+                /** Format: uuid */
+                request_id?: string;
+            };
         };
-      };
-    };
-    Tenant: {
-      /** Format: uuid */
-      id?: string;
-      name?: string;
-      slug?: string;
-      description?: string | null;
-      status?: components['schemas']['TenantStatus'];
-      config?: components['schemas']['TenantConfig'];
-      /** Format: date-time */
-      created_at?: string;
-      /** Format: date-time */
-      updated_at?: string;
-    };
-    /** @enum {string} */
-    TenantStatus: 'active' | 'suspended' | 'deactivated';
-    TenantConfig: {
-      allowed_formats?: components['schemas']['CredentialFormat'][];
-      /** Format: uuid */
-      default_connector?: string | null;
-      /** @description Feature flags (key-value) */
-      features?: Record<string, never>;
-      /**
-       * @description Active per-tenant rate limit overrides. Populated when a platform-admin
-       *     has called `PATCH /usage/limits`; absent when platform defaults apply.
-       */
-      readonly rate_limits?: {
-        api_calls_per_minute?: number | null;
-        credentials_per_day?: number | null;
-        storage_mb?: number | null;
-        /**
-         * Format: date-time
-         * @description When this override expires (null = permanent)
-         */
-        expires_at?: string | null;
-      };
-      operation_ttl?: {
-        /** @example 1h */
-        completed_viewed?: string;
-        /** @example 72h */
-        completed_unviewed?: string;
-        /** @example 24h */
-        failed_viewed?: string;
-        /** @example 7d */
-        failed_unviewed?: string;
-        /** @example 24h */
-        pending_stale?: string;
-      };
-    };
-    CreateTenantRequest: {
-      name: string;
-      slug: string;
-      description?: string;
-    };
-    UpdateTenantRequest: {
-      name?: string;
-      description?: string;
-    };
-    TenantUser: {
-      /** Format: uuid */
-      id?: string;
-      /** Format: uuid */
-      tenant_id?: string;
-      /** Format: email */
-      email?: string;
-      display_name?: string | null;
-      role?: components['schemas']['TenantRole'];
-      /** @enum {string} */
-      status?: 'active' | 'invited' | 'disabled';
-      /** Format: date-time */
-      created_at?: string;
-    };
-    /** @enum {string} */
-    TenantRole: 'owner' | 'admin' | 'member' | 'readonly';
-    InviteUserRequest: {
-      /** Format: email */
-      email: string;
-      role: components['schemas']['TenantRole'];
-    };
-    Connector: {
-      /** Format: uuid */
-      id?: string;
-      /** Format: uuid */
-      tenant_id?: string;
-      connector_type?: components['schemas']['ConnectorType'];
-      /** Format: uri */
-      endpoint_url?: string;
-      active?: boolean;
-      /** Format: date-time */
-      created_at?: string;
-      /** Format: date-time */
-      updated_at?: string;
-    };
-    /** @enum {string} */
-    ConnectorType: 'traction' | 'credo';
-    CreateConnectorRequest: {
-      connector_type: components['schemas']['ConnectorType'];
-      /** Format: uri */
-      endpoint_url: string;
-      /** @description Agent-specific credentials (encrypted at rest, never returned) */
-      credentials: {
-        api_key: string;
-        traction_tenant_id?: string;
-      };
-    };
-    UpdateConnectorRequest: {
-      /** Format: uri */
-      endpoint_url?: string;
-      /** @description New credentials (rotates existing) */
-      credentials?: {
-        api_key?: string;
-      };
-    };
-    CredentialDefinition: {
-      /** Format: uuid */
-      id?: string;
-      /** Format: uuid */
-      tenant_id?: string;
-      name?: string;
-      format?: components['schemas']['CredentialFormat'];
-      /** @description Format-specific schema definition */
-      schema_definition?: Record<string, never>;
-      /** @description Ledger/registry reference (e.g., cred_def_id) */
-      external_id?: string | null;
-      connector_type?: components['schemas']['ConnectorType'];
-      metadata?: Record<string, never>;
-      /** Format: date-time */
-      created_at?: string;
-      /** Format: date-time */
-      updated_at?: string;
-    };
-    /** @enum {string} */
-    CredentialFormat: 'anoncreds' | 'sd-jwt' | 'mdl' | 'w3c-vc';
-    CreateCredentialDefinitionRequest: {
-      name: string;
-      format: components['schemas']['CredentialFormat'];
-      /**
-       * @description Format-specific schema.
-       *     - AnonCreds: { attr_names: string[], schema_name, schema_version }
-       *     - SD-JWT: JSON Schema object
-       *     - W3C VC: { @context: [], type: [], credentialSubject: {} }
-       */
-      schema_definition: Record<string, never>;
-      connector_type: components['schemas']['ConnectorType'];
-      metadata?: Record<string, never>;
-    };
-    IssuanceProfile: {
-      /** Format: uuid */
-      id?: string;
-      /** Format: uuid */
-      tenant_id?: string;
-      name?: string;
-      version?: string;
-      description?: string | null;
-      /** Format: uuid */
-      credential_definition_id?: string;
-      /** Format: uuid */
-      connector_id?: string;
-      format?: components['schemas']['CredentialFormat'];
-      /** @description Declares attributes the consumer must supply */
-      attribute_schema?: Record<string, never>;
-      /** @description Pre-filled attribute values */
-      defaults?: Record<string, never> | null;
-      /** @description UI/metadata for rendering */
-      display?: {
-        name?: string;
-        description?: string;
-        locale?: string;
-        background_color?: string;
-        /** Format: uri */
-        logo_url?: string;
-      } | null;
-      /** @description Extensible metadata (OCA bundles, trust framework tags, etc.) */
-      metadata?: Record<string, never> | null;
-      protocol_hint?: components['schemas']['ProtocolHint'];
-      status?: components['schemas']['ProfileStatus'];
-      /** Format: date-time */
-      created_at?: string;
-      /** Format: date-time */
-      updated_at?: string;
-    };
-    CreateIssuanceProfileRequest: {
-      name: string;
-      version: string;
-      description?: string;
-      /** Format: uuid */
-      credential_definition_id: string;
-      /**
-       * Format: uuid
-       * @description If omitted, uses tenant's default_connector
-       */
-      connector_id?: string;
-      /** @description Attribute definitions (names, types, required flags) */
-      attribute_schema: Record<string, never>;
-      defaults?: Record<string, never>;
-      display?: Record<string, never>;
-      metadata?: Record<string, never>;
-      protocol_hint?: components['schemas']['ProtocolHint'];
-    };
-    UpdateIssuanceProfileRequest: {
-      description?: string;
-      defaults?: Record<string, never>;
-      display?: Record<string, never>;
-      metadata?: Record<string, never>;
-      protocol_hint?: components['schemas']['ProtocolHint'];
-    };
-    /** @enum {string} */
-    ProfileStatus: 'draft' | 'published' | 'deprecated';
-    /**
-     * @description Protocol hint for delivery. Valid values depend on context:
-     *     - Issuance profiles: didcomm, oid4vci, auto
-     *     - Verification profiles: didcomm, oid4vp, auto
-     *     Server validates that the value is appropriate for the profile type.
-     * @default auto
-     * @enum {string}
-     */
-    ProtocolHint: 'didcomm' | 'oid4vci' | 'oid4vp' | 'auto';
-    VerificationProfile: {
-      /** Format: uuid */
-      id?: string;
-      /** Format: uuid */
-      tenant_id?: string;
-      /** Format: uuid */
-      issuance_profile_id?: string;
-      name?: string;
-      version?: string;
-      description?: string | null;
-      /** @description DIF Presentation Exchange format */
-      presentation_definition?: Record<string, never>;
-      requested_attributes?: string[];
-      predicates?:
-        | {
-            attribute?: string;
+        PaginatedResponse: {
+            data?: unknown[];
+            pagination?: {
+                next_cursor?: string | null;
+                has_more?: boolean;
+                /** @description Optional total count (may be omitted for performance) */
+                total_count?: number;
+            };
+        };
+        HealthResponse: {
             /** @enum {string} */
-            condition?: '<' | '<=' | '>=' | '>' | '==';
-            value?: string;
-          }[]
-        | null;
-      metadata?: Record<string, never> | null;
-      /** @default false */
-      public: boolean;
-      protocol_hint?: components['schemas']['ProtocolHint'];
-      status?: components['schemas']['ProfileStatus'];
-      /** Format: date-time */
-      created_at?: string;
-      /** Format: date-time */
-      updated_at?: string;
-    };
-    CreateVerificationProfileRequest: {
-      name: string;
-      version: string;
-      description?: string;
-      /** Format: uuid */
-      issuance_profile_id: string;
-      /** @description DIF Presentation Exchange object */
-      presentation_definition: Record<string, never>;
-      predicates?: {
-        attribute?: string;
-        condition?: string;
-        value?: string;
-      }[];
-      metadata?: Record<string, never>;
-      /** @default false */
-      public: boolean;
-      protocol_hint?: components['schemas']['ProtocolHint'];
-    };
-    UpdateVerificationProfileRequest: {
-      description?: string;
-      presentation_definition?: Record<string, never>;
-      predicates?: Record<string, never>[];
-      metadata?: Record<string, never>;
-      public?: boolean;
-      protocol_hint?: components['schemas']['ProtocolHint'];
-    };
-    /**
-     * @description Either `profile_id` or `credential_definition_id` + `format` must be provided (not both).
-     *     `connection_id` determines delivery protocol (DIDComm if present, OID4VCI if absent).
-     */
-    OfferCredentialRequest: {
-      /** @description UUID or "name/version" string (e.g., "drivers-license/1.0") */
-      profile_id?: string;
-      /**
-       * Format: uuid
-       * @description Legacy mode — direct cred def reference (bypasses profile)
-       */
-      credential_definition_id?: string;
-      format?: components['schemas']['CredentialFormat'];
-      /**
-       * Format: uuid
-       * @description Target connection (DIDComm). Omit for OID4VCI (post-MVP).
-       */
-      connection_id?: string;
-      /** @description Credential claim values */
-      attributes?: {
-        [key: string]: unknown;
-      };
-    };
-    OfferCredentialBatchRequest: {
-      /** @description UUID or "name/version" — applied to all items */
-      profile_id?: string;
-      /**
-       * Format: uuid
-       * @description Legacy mode (alternative to profile_id)
-       */
-      credential_definition_id?: string;
-      format?: components['schemas']['CredentialFormat'];
-      items: {
-        /** Format: uuid */
-        connection_id: string;
-        attributes: {
-          [key: string]: unknown;
+            status?: "ok" | "degraded" | "unhealthy";
+            checks?: {
+                [key: string]: {
+                    /** @enum {string} */
+                    status?: "up" | "down";
+                    message?: string;
+                };
+            };
         };
-      }[];
-    };
-    /** @description Either `verification_profile_id` or `presentation_definition` + `format` must be provided. */
-    RequestPresentationRequest: {
-      /** @description UUID or "name/version" string */
-      verification_profile_id?: string;
-      /** @description DIF Presentation Exchange object (raw mode) */
-      presentation_definition?: Record<string, never>;
-      format?: components['schemas']['CredentialFormat'];
-      /**
-       * Format: uuid
-       * @description Target connection (DIDComm). Omit for OID4VP (post-MVP).
-       */
-      connection_id?: string;
-    };
-    Connection: {
-      /** Format: uuid */
-      id?: string;
-      /** Format: uuid */
-      tenant_id?: string;
-      external_connection_id?: string;
-      their_label?: string | null;
-      their_did?: string | null;
-      state?: components['schemas']['ConnectionState'];
-      connector_type?: components['schemas']['ConnectorType'];
-      protocol?: components['schemas']['ConnectionProtocol'];
-      metadata?: Record<string, never>;
-      /** Format: date-time */
-      created_at?: string;
-      /** Format: date-time */
-      updated_at?: string;
-    };
-    /** @enum {string} */
-    ConnectionState:
-      | 'invited'
-      | 'requested'
-      | 'responded'
-      | 'active'
-      | 'completed'
-      | 'abandoned';
-    /** @enum {string} */
-    ConnectionProtocol: 'didcomm-v1' | 'didcomm-v2' | 'openid4vc';
-    /**
-     * @description Creates a new connection. Two modes:
-     *     - **Create invitation**: omit `invitation_url` — generates a new invitation.
-     *     - **Accept invitation**: provide `invitation_url` — accepts an existing invitation from another party.
-     */
-    CreateConnectionRequest: {
-      /**
-       * Format: uri
-       * @description URL of an existing invitation to accept. If provided, creates a connection by accepting this invitation rather than generating a new one.
-       */
-      invitation_url?: string;
-      /** @description Human-readable label for the invitation (used when creating) */
-      label?: string;
-      protocol?: components['schemas']['ConnectionProtocol'];
-      metadata?: Record<string, never>;
-    };
-    /**
-     * @description Uniform envelope for all async and sync operations. The `result` field
-     *     semantics depend on `(type, state)`.
-     */
-    Operation: {
-      /** Format: uuid */
-      id: string;
-      /**
-       * Format: uuid
-       * @description UUID of the parent batch operation. Present only on child operations
-       *     created by a batch issuance or revocation request (`credential.offer-batch`,
-       *     `credential.revoke-batch`). Use this to navigate to the parent via
-       *     `GET /operations/{batch_id}`.
-       */
-      batch_id?: string | null;
-      /**
-       * @description Operation type. Known values:
-       *     `credential.offer`, `credential.offer-batch`,
-       *     `credential.revoke`, `credential.revoke-batch`,
-       *     `presentation.request`, `connection.create`
-       * @example credential.offer
-       * @example credential.offer-batch
-       * @example credential.revoke
-       * @example credential.revoke-batch
-       * @example presentation.request
-       * @example connection.create
-       */
-      type: string;
-      state: components['schemas']['OperationState'];
-      /** Format: date-time */
-      created_at: string;
-      /** Format: date-time */
-      updated_at: string;
-      /**
-       * @description State-dependent result:
-       *     - pending/processing: null
-       *     - completed: operation-type-specific data
-       *     - failed: { code, message }
-       *     - batch processing: { total, completed, failed, pending }
-       *     - batch completed: { total, completed, failed, errors }
-       */
-      result: unknown;
-    };
-    /** @enum {string} */
-    OperationState: 'pending' | 'processing' | 'completed' | 'failed';
-    WebhookRegistration: {
-      /** Format: uuid */
-      id?: string;
-      /** Format: uuid */
-      tenant_id?: string;
-      /** Format: uri */
-      url?: string;
-      events?: (
-        | 'credential.issued'
-        | 'credential.verified'
-        | 'credential.accepted'
-        | 'credential.rejected'
-        | 'credential.revoked'
-        | 'connection.established'
-      )[];
-      active?: boolean;
-      consecutive_failures?: number;
-      /** Format: date-time */
-      created_at?: string;
-    };
-    CreateWebhookRequest: {
-      /**
-       * Format: uri
-       * @description HTTPS endpoint to receive webhook payloads
-       */
-      url: string;
-      events: (
-        | 'credential.issued'
-        | 'credential.verified'
-        | 'credential.accepted'
-        | 'credential.rejected'
-        | 'credential.revoked'
-        | 'connection.established'
-      )[];
-    };
-    Client: {
-      /** Format: uuid */
-      id?: string;
-      /** Format: uuid */
-      tenant_id?: string;
-      client_id?: string;
-      name?: string;
-      scopes?: string[];
-      grant_types?: string[];
-      /** Format: date-time */
-      created_at?: string;
-      /** Format: date-time */
-      revoked_at?: string | null;
-    };
-    ClientWithSecret: components['schemas']['Client'] & {
-      /** @description Shown ONCE at creation/rotation. Cannot be retrieved again. */
-      client_secret?: string;
-    };
-    CreateClientRequest: {
-      name: string;
-      scopes: (
-        | 'credentials:offer'
-        | 'credentials:verify'
-        | 'credentials:hold'
-        | 'credentials:revoke'
-        | 'connections:manage'
-        | 'profiles:manage'
-        | 'users:manage'
-        | 'clients:manage'
-        | 'logs:read'
-        | 'audit:read'
-        | 'tenants:admin'
-      )[];
-    };
-    Credential: {
-      /** Format: uuid */
-      id?: string;
-      /** Format: uuid */
-      tenant_id?: string;
-      /**
-       * Format: uuid
-       * @description NULL when issued via legacy mode (credential_definition_id + format direct)
-       */
-      issuance_profile_id?: string | null;
-      /**
-       * Format: uuid
-       * @description NULL for OID4VCI/connectionless issuance
-       */
-      connection_id?: string | null;
-      /** Format: uuid */
-      connector_id?: string;
-      /** @description Adapter-assigned exchange ID */
-      external_id?: string | null;
-      format?: components['schemas']['CredentialFormat'];
-      /** @enum {string} */
-      state?: 'offered' | 'issued' | 'revoked' | 'expired';
-      /**
-       * Format: uuid
-       * @description The offer operation that created this credential
-       */
-      operation_id?: string;
-      /** @description Adapter-specific data (legacy mode stores credential_definition_id here) */
-      metadata?: Record<string, never> | null;
-      /** Format: date-time */
-      issued_at?: string | null;
-      /** Format: date-time */
-      revoked_at?: string | null;
-      /** Format: date-time */
-      created_at?: string;
-      /** Format: date-time */
-      updated_at?: string;
-    };
-    AuditLogEntry: {
-      /** Format: uuid */
-      id?: string;
-      /** Format: uuid */
-      tenant_id?: string;
-      actor_id?: string;
-      /** @enum {string} */
-      actor_type?: 'user' | 'system' | 'client';
-      /** @enum {string} */
-      action?:
-        | 'issue'
-        | 'verify'
-        | 'hold'
-        | 'revoke'
-        | 'create'
-        | 'update'
-        | 'delete'
-        | 'login'
-        | 'token_grant';
-      resource_type?: string;
-      /** Format: uuid */
-      resource_id?: string;
-      /** Format: uuid */
-      operation_id?: string | null;
-      /** @description Additional context (e.g., changed fields, error details) */
-      metadata?: Record<string, never>;
-      ip_address?: string | null;
-      /** Format: date-time */
-      created_at?: string;
-    };
-    /**
-     * @description A pg-boss dead-letter job scoped to the authenticated tenant.
-     *     The `data` object is redacted of any sensitive fields (connector secrets, raw credentials)
-     *     before being returned — only correlation IDs and error context are exposed.
-     */
-    TenantDeadLetterJob: {
-      /** @description pg-boss job UUID */
-      id: string;
-      /**
-       * @description The queue this job belonged to
-       * @enum {string}
-       */
-      queue:
-        | 'credential.state-update'
-        | 'webhook.dispatch'
-        | 'audit.write'
-        | 'credential.bulk-item';
-      /**
-       * Format: date-time
-       * @description Timestamp of the final failure (after all retries exhausted)
-       */
-      failed_at: string;
-      /** @description Error message from the last failed attempt */
-      error: string;
-      /** @description Number of attempts made before the job entered dead-letter */
-      retry_count?: number;
-      /** @description Safe correlation identifiers extracted from the job payload */
-      correlation?: {
-        /** Format: uuid */
-        operation_id?: string | null;
-        /** @description Agent exchange ID (credential_exchange_id, presentation_exchange_id, etc.) */
-        external_id?: string | null;
-        /**
-         * Format: uuid
-         * @description Webhook registration ID (for webhook.dispatch jobs)
-         */
-        webhook_id?: string | null;
-      };
-    };
-    /** @description OID4VCI Credential Issuer Metadata (§10.2 aligned) */
-    IssuerMetadata: {
-      /** Format: uri */
-      credential_issuer?: string;
-      credential_configurations_supported?: {
-        [key: string]: {
-          format?: string;
-          display?: {
+        Tenant: {
+            /** Format: uuid */
+            id?: string;
+            name?: string;
+            slug?: string;
+            description?: string | null;
+            status?: components["schemas"]["TenantStatus"];
+            config?: components["schemas"]["TenantConfig"];
+            /** Format: date-time */
+            created_at?: string;
+            /** Format: date-time */
+            updated_at?: string;
+        };
+        /** @enum {string} */
+        TenantStatus: "active" | "suspended" | "deactivated";
+        TenantConfig: {
+            allowed_formats?: components["schemas"]["CredentialFormat"][];
+            /** Format: uuid */
+            default_connector?: string | null;
+            /** @description Feature flags (key-value) */
+            features?: Record<string, never>;
+            /**
+             * @description Active per-tenant rate limit overrides. Populated when a platform-admin
+             *     has called `PATCH /usage/limits`; absent when platform defaults apply.
+             */
+            readonly rate_limits?: {
+                api_calls_per_minute?: number | null;
+                credentials_per_day?: number | null;
+                storage_mb?: number | null;
+                /**
+                 * Format: date-time
+                 * @description When this override expires (null = permanent)
+                 */
+                expires_at?: string | null;
+            };
+            operation_ttl?: {
+                /** @example 1h */
+                completed_viewed?: string;
+                /** @example 72h */
+                completed_unviewed?: string;
+                /** @example 24h */
+                failed_viewed?: string;
+                /** @example 7d */
+                failed_unviewed?: string;
+                /** @example 24h */
+                pending_stale?: string;
+            };
+        };
+        CreateTenantRequest: {
+            name: string;
+            slug: string;
+            description?: string;
+        };
+        UpdateTenantRequest: {
             name?: string;
             description?: string;
-            locale?: string;
-          }[];
-          credential_definition?: {
-            schema?: Record<string, never>;
-          };
-          claims?: {
-            [key: string]: {
-              display?: Record<string, never>[];
-            };
-          };
         };
-      };
-    };
-  };
-  responses: {
-    /** @description Invalid request */
-    BadRequest: {
-      headers: {
-        [name: string]: unknown;
-      };
-      content: {
+        TenantUser: {
+            /** Format: uuid */
+            id?: string;
+            /** Format: uuid */
+            tenant_id?: string;
+            /** Format: email */
+            email?: string;
+            display_name?: string | null;
+            role?: components["schemas"]["TenantRole"];
+            /** @enum {string} */
+            status?: "active" | "invited" | "disabled";
+            /** Format: date-time */
+            created_at?: string;
+        };
+        /** @enum {string} */
+        TenantRole: "owner" | "admin" | "member" | "readonly";
+        InviteUserRequest: {
+            /** Format: email */
+            email: string;
+            role: components["schemas"]["TenantRole"];
+        };
+        Connector: {
+            /** Format: uuid */
+            id?: string;
+            /** Format: uuid */
+            tenant_id?: string;
+            connector_type?: components["schemas"]["ConnectorType"];
+            /** Format: uri */
+            endpoint_url?: string;
+            active?: boolean;
+            /** Format: date-time */
+            created_at?: string;
+            /** Format: date-time */
+            updated_at?: string;
+        };
+        /** @enum {string} */
+        ConnectorType: "traction" | "credo";
+        CreateConnectorRequest: {
+            connector_type: components["schemas"]["ConnectorType"];
+            /** Format: uri */
+            endpoint_url: string;
+            /** @description Agent-specific credentials (encrypted at rest, never returned) */
+            credentials: {
+                api_key: string;
+                traction_tenant_id?: string;
+            };
+        };
+        UpdateConnectorRequest: {
+            /** Format: uri */
+            endpoint_url?: string;
+            /** @description New credentials (rotates existing) */
+            credentials?: {
+                api_key?: string;
+            };
+        };
+        CredentialDefinition: {
+            /** Format: uuid */
+            id?: string;
+            /** Format: uuid */
+            tenant_id?: string;
+            name?: string;
+            format?: components["schemas"]["CredentialFormat"];
+            /** @description Format-specific schema definition */
+            schema_definition?: Record<string, never>;
+            /** @description Ledger/registry reference (e.g., cred_def_id) */
+            external_id?: string | null;
+            connector_type?: components["schemas"]["ConnectorType"];
+            metadata?: Record<string, never>;
+            /** Format: date-time */
+            created_at?: string;
+            /** Format: date-time */
+            updated_at?: string;
+        };
+        /** @enum {string} */
+        CredentialFormat: "anoncreds" | "sd-jwt" | "mdl" | "w3c-vc";
+        CreateCredentialDefinitionRequest: {
+            name: string;
+            format: components["schemas"]["CredentialFormat"];
+            /**
+             * @description Format-specific schema.
+             *     - AnonCreds: { attr_names: string[], schema_name, schema_version }
+             *     - SD-JWT: JSON Schema object
+             *     - W3C VC: { @context: [], type: [], credentialSubject: {} }
+             */
+            schema_definition: Record<string, never>;
+            connector_type: components["schemas"]["ConnectorType"];
+            metadata?: Record<string, never>;
+        };
+        IssuanceProfile: {
+            /** Format: uuid */
+            id?: string;
+            /** Format: uuid */
+            tenant_id?: string;
+            name?: string;
+            version?: string;
+            description?: string | null;
+            /** Format: uuid */
+            credential_definition_id?: string;
+            /** Format: uuid */
+            connector_id?: string;
+            format?: components["schemas"]["CredentialFormat"];
+            /** @description Declares attributes the consumer must supply */
+            attribute_schema?: Record<string, never>;
+            /** @description Pre-filled attribute values */
+            defaults?: Record<string, never> | null;
+            /** @description UI/metadata for rendering */
+            display?: {
+                name?: string;
+                description?: string;
+                locale?: string;
+                background_color?: string;
+                /** Format: uri */
+                logo_url?: string;
+            } | null;
+            /** @description Extensible metadata (OCA bundles, trust framework tags, etc.) */
+            metadata?: Record<string, never> | null;
+            protocol_hint?: components["schemas"]["ProtocolHint"];
+            status?: components["schemas"]["ProfileStatus"];
+            /** Format: date-time */
+            created_at?: string;
+            /** Format: date-time */
+            updated_at?: string;
+        };
+        CreateIssuanceProfileRequest: {
+            name: string;
+            version: string;
+            description?: string;
+            /** Format: uuid */
+            credential_definition_id: string;
+            /**
+             * Format: uuid
+             * @description If omitted, uses tenant's default_connector
+             */
+            connector_id?: string;
+            /** @description Attribute definitions (names, types, required flags) */
+            attribute_schema: Record<string, never>;
+            defaults?: Record<string, never>;
+            display?: Record<string, never>;
+            metadata?: Record<string, never>;
+            protocol_hint?: components["schemas"]["ProtocolHint"];
+        };
+        UpdateIssuanceProfileRequest: {
+            description?: string;
+            defaults?: Record<string, never>;
+            display?: Record<string, never>;
+            metadata?: Record<string, never>;
+            protocol_hint?: components["schemas"]["ProtocolHint"];
+        };
+        /** @enum {string} */
+        ProfileStatus: "draft" | "published" | "deprecated";
         /**
-         * @example {
-         *       "error": {
-         *         "code": "PROTOCOL_NOT_SUPPORTED",
-         *         "message": "OID4VCI delivery is not supported in MVP (connection_id is required)",
-         *         "request_id": "req-uuid"
-         *       }
-         *     }
+         * @description Protocol hint for delivery. Valid values depend on context:
+         *     - Issuance profiles: didcomm, oid4vci, auto
+         *     - Verification profiles: didcomm, oid4vp, auto
+         *     Server validates that the value is appropriate for the profile type.
+         * @default auto
+         * @enum {string}
          */
-        'application/json': components['schemas']['ErrorResponse'];
-      };
-    };
-    /** @description Resource not found */
-    NotFound: {
-      headers: {
-        [name: string]: unknown;
-      };
-      content: {
+        ProtocolHint: "didcomm" | "oid4vci" | "oid4vp" | "auto";
+        VerificationProfile: {
+            /** Format: uuid */
+            id?: string;
+            /** Format: uuid */
+            tenant_id?: string;
+            /** Format: uuid */
+            issuance_profile_id?: string;
+            name?: string;
+            version?: string;
+            description?: string | null;
+            /** @description DIF Presentation Exchange format */
+            presentation_definition?: Record<string, never>;
+            requested_attributes?: string[];
+            predicates?: {
+                attribute?: string;
+                /** @enum {string} */
+                condition?: "<" | "<=" | ">=" | ">" | "==";
+                value?: string;
+            }[] | null;
+            metadata?: Record<string, never> | null;
+            /** @default false */
+            public: boolean;
+            protocol_hint?: components["schemas"]["ProtocolHint"];
+            status?: components["schemas"]["ProfileStatus"];
+            /** Format: date-time */
+            created_at?: string;
+            /** Format: date-time */
+            updated_at?: string;
+        };
+        CreateVerificationProfileRequest: {
+            name: string;
+            version: string;
+            description?: string;
+            /** Format: uuid */
+            issuance_profile_id: string;
+            /** @description DIF Presentation Exchange object */
+            presentation_definition: Record<string, never>;
+            predicates?: {
+                attribute?: string;
+                condition?: string;
+                value?: string;
+            }[];
+            metadata?: Record<string, never>;
+            /** @default false */
+            public: boolean;
+            protocol_hint?: components["schemas"]["ProtocolHint"];
+        };
+        UpdateVerificationProfileRequest: {
+            description?: string;
+            presentation_definition?: Record<string, never>;
+            predicates?: Record<string, never>[];
+            metadata?: Record<string, never>;
+            public?: boolean;
+            protocol_hint?: components["schemas"]["ProtocolHint"];
+        };
         /**
-         * @example {
-         *       "error": {
-         *         "code": "RESOURCE_NOT_FOUND",
-         *         "message": "Tenant not found",
-         *         "request_id": "req-uuid"
-         *       }
-         *     }
+         * @description Either `profile_id` or `credential_definition_id` + `format` must be provided (not both).
+         *     `connection_id` determines delivery protocol (DIDComm if present, OID4VCI if absent).
          */
-        'application/json': components['schemas']['ErrorResponse'];
-      };
-    };
-    /** @description Insufficient permissions */
-    Forbidden: {
-      headers: {
-        [name: string]: unknown;
-      };
-      content: {
+        OfferCredentialRequest: {
+            /** @description UUID or "name/version" string (e.g., "drivers-license/1.0") */
+            profile_id?: string;
+            /**
+             * Format: uuid
+             * @description Legacy mode — direct cred def reference (bypasses profile)
+             */
+            credential_definition_id?: string;
+            format?: components["schemas"]["CredentialFormat"];
+            /**
+             * Format: uuid
+             * @description Target connection (DIDComm). Omit for OID4VCI (post-MVP).
+             */
+            connection_id?: string;
+            /** @description Credential claim values */
+            attributes?: {
+                [key: string]: unknown;
+            };
+        };
+        OfferCredentialBatchRequest: {
+            /** @description UUID or "name/version" — applied to all items */
+            profile_id?: string;
+            /**
+             * Format: uuid
+             * @description Legacy mode (alternative to profile_id)
+             */
+            credential_definition_id?: string;
+            format?: components["schemas"]["CredentialFormat"];
+            items: {
+                /** Format: uuid */
+                connection_id: string;
+                attributes: {
+                    [key: string]: unknown;
+                };
+            }[];
+        };
+        /** @description Either `verification_profile_id` or `presentation_definition` + `format` must be provided. */
+        RequestPresentationRequest: {
+            /** @description UUID or "name/version" string */
+            verification_profile_id?: string;
+            /** @description DIF Presentation Exchange object (raw mode) */
+            presentation_definition?: Record<string, never>;
+            format?: components["schemas"]["CredentialFormat"];
+            /**
+             * Format: uuid
+             * @description Target connection (DIDComm). Omit for OID4VP (post-MVP).
+             */
+            connection_id?: string;
+        };
+        Connection: {
+            /** Format: uuid */
+            id?: string;
+            /** Format: uuid */
+            tenant_id?: string;
+            external_connection_id?: string;
+            their_label?: string | null;
+            their_did?: string | null;
+            state?: components["schemas"]["ConnectionState"];
+            connector_type?: components["schemas"]["ConnectorType"];
+            protocol?: components["schemas"]["ConnectionProtocol"];
+            metadata?: Record<string, never>;
+            /** Format: date-time */
+            created_at?: string;
+            /** Format: date-time */
+            updated_at?: string;
+        };
+        /** @enum {string} */
+        ConnectionState: "invited" | "requested" | "responded" | "active" | "completed" | "abandoned";
+        /** @enum {string} */
+        ConnectionProtocol: "didcomm-v1" | "didcomm-v2" | "openid4vc";
         /**
-         * @example {
-         *       "error": {
-         *         "code": "INSUFFICIENT_SCOPE",
-         *         "message": "Token missing required scope: credentials:offer",
-         *         "request_id": "req-uuid"
-         *       }
-         *     }
+         * @description Creates a new connection. Two modes:
+         *     - **Create invitation**: omit `invitation_url` — generates a new invitation.
+         *     - **Accept invitation**: provide `invitation_url` — accepts an existing invitation from another party.
          */
-        'application/json': components['schemas']['ErrorResponse'];
-      };
-    };
-    /** @description Resource conflict */
-    Conflict: {
-      headers: {
-        [name: string]: unknown;
-      };
-      content: {
+        CreateConnectionRequest: {
+            /**
+             * Format: uri
+             * @description URL of an existing invitation to accept. If provided, creates a connection by accepting this invitation rather than generating a new one.
+             */
+            invitation_url?: string;
+            /** @description Human-readable label for the invitation (used when creating) */
+            label?: string;
+            protocol?: components["schemas"]["ConnectionProtocol"];
+            metadata?: Record<string, never>;
+        };
         /**
-         * @example {
-         *       "error": {
-         *         "code": "DUPLICATE_RESOURCE",
-         *         "message": "Tenant with slug 'acme-corp' already exists",
-         *         "request_id": "req-uuid"
-         *       }
-         *     }
+         * @description Uniform envelope for all async and sync operations. The `result` field
+         *     semantics depend on `(type, state)`.
          */
-        'application/json': components['schemas']['ErrorResponse'];
-      };
-    };
-    /** @description Validation failed */
-    ValidationError: {
-      headers: {
-        [name: string]: unknown;
-      };
-      content: {
+        Operation: {
+            /** Format: uuid */
+            id: string;
+            /**
+             * Format: uuid
+             * @description UUID of the parent batch operation. Present only on child operations
+             *     created by a batch issuance or revocation request (`credential.offer-batch`,
+             *     `credential.revoke-batch`). Use this to navigate to the parent via
+             *     `GET /operations/{batch_id}`.
+             */
+            batch_id?: string | null;
+            /**
+             * @description Operation type. Known values:
+             *     `credential.offer`, `credential.offer-batch`,
+             *     `credential.revoke`, `credential.revoke-batch`,
+             *     `presentation.request`, `connection.create`
+             * @example credential.offer
+             * @example credential.offer-batch
+             * @example credential.revoke
+             * @example credential.revoke-batch
+             * @example presentation.request
+             * @example connection.create
+             */
+            type: string;
+            state: components["schemas"]["OperationState"];
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+            /**
+             * @description State-dependent result:
+             *     - pending/processing: null
+             *     - completed: operation-type-specific data
+             *     - failed: { code, message }
+             *     - batch processing: { total, completed, failed, pending }
+             *     - batch completed: { total, completed, failed, errors }
+             */
+            result: unknown;
+        };
+        /** @enum {string} */
+        OperationState: "pending" | "processing" | "completed" | "failed";
+        WebhookRegistration: {
+            /** Format: uuid */
+            id?: string;
+            /** Format: uuid */
+            tenant_id?: string;
+            /** Format: uri */
+            url?: string;
+            events?: ("credential.issued" | "credential.verified" | "credential.accepted" | "credential.rejected" | "credential.revoked" | "connection.established")[];
+            active?: boolean;
+            consecutive_failures?: number;
+            /** Format: date-time */
+            created_at?: string;
+        };
+        CreateWebhookRequest: {
+            /**
+             * Format: uri
+             * @description HTTPS endpoint to receive webhook payloads
+             */
+            url: string;
+            events: ("credential.issued" | "credential.verified" | "credential.accepted" | "credential.rejected" | "credential.revoked" | "connection.established")[];
+        };
+        Client: {
+            /** Format: uuid */
+            id?: string;
+            /** Format: uuid */
+            tenant_id?: string;
+            client_id?: string;
+            name?: string;
+            scopes?: string[];
+            grant_types?: string[];
+            /** Format: date-time */
+            created_at?: string;
+            /** Format: date-time */
+            revoked_at?: string | null;
+        };
+        ClientWithSecret: components["schemas"]["Client"] & {
+            /** @description Shown ONCE at creation/rotation. Cannot be retrieved again. */
+            client_secret?: string;
+        };
+        CreateClientRequest: {
+            name: string;
+            scopes: ("credentials:offer" | "credentials:verify" | "credentials:hold" | "credentials:revoke" | "connections:manage" | "profiles:manage" | "users:manage" | "clients:manage" | "logs:read" | "audit:read" | "tenants:admin")[];
+        };
+        Credential: {
+            /** Format: uuid */
+            id?: string;
+            /** Format: uuid */
+            tenant_id?: string;
+            /**
+             * Format: uuid
+             * @description NULL when issued via legacy mode (credential_definition_id + format direct)
+             */
+            issuance_profile_id?: string | null;
+            /**
+             * Format: uuid
+             * @description NULL for OID4VCI/connectionless issuance
+             */
+            connection_id?: string | null;
+            /** Format: uuid */
+            connector_id?: string;
+            /** @description Adapter-assigned exchange ID */
+            external_id?: string | null;
+            format?: components["schemas"]["CredentialFormat"];
+            /** @enum {string} */
+            state?: "offered" | "issued" | "revoked" | "expired";
+            /**
+             * Format: uuid
+             * @description The offer operation that created this credential
+             */
+            operation_id?: string;
+            /** @description Adapter-specific data (legacy mode stores credential_definition_id here) */
+            metadata?: Record<string, never> | null;
+            /** Format: date-time */
+            issued_at?: string | null;
+            /** Format: date-time */
+            revoked_at?: string | null;
+            /** Format: date-time */
+            created_at?: string;
+            /** Format: date-time */
+            updated_at?: string;
+        };
+        AuditLogEntry: {
+            /** Format: uuid */
+            id?: string;
+            /** Format: uuid */
+            tenant_id?: string;
+            actor_id?: string;
+            /** @enum {string} */
+            actor_type?: "user" | "system" | "client";
+            /** @enum {string} */
+            action?: "issue" | "verify" | "hold" | "revoke" | "create" | "update" | "delete" | "login" | "token_grant";
+            resource_type?: string;
+            /** Format: uuid */
+            resource_id?: string;
+            /** Format: uuid */
+            operation_id?: string | null;
+            /** @description Additional context (e.g., changed fields, error details) */
+            metadata?: Record<string, never>;
+            ip_address?: string | null;
+            /** Format: date-time */
+            created_at?: string;
+        };
         /**
-         * @example {
-         *       "error": {
-         *         "code": "VALIDATION_FAILED",
-         *         "message": "Request body validation failed",
-         *         "details": [
-         *           {
-         *             "field": "attributes.birth_date",
-         *             "expected": "string (ISO date)",
-         *             "actual": "integer",
-         *             "message": "birth_date must be a date string"
-         *           }
-         *         ],
-         *         "request_id": "req-uuid"
-         *       }
-         *     }
+         * @description A pg-boss dead-letter job scoped to the authenticated tenant.
+         *     The `data` object is redacted of any sensitive fields (connector secrets, raw credentials)
+         *     before being returned — only correlation IDs and error context are exposed.
          */
-        'application/json': components['schemas']['ErrorResponse'];
-      };
+        TenantDeadLetterJob: {
+            /** @description pg-boss job UUID */
+            id: string;
+            /**
+             * @description The queue this job belonged to
+             * @enum {string}
+             */
+            queue: "credential.state-update" | "webhook.dispatch" | "audit.write" | "credential.bulk-item";
+            /**
+             * Format: date-time
+             * @description Timestamp of the final failure (after all retries exhausted)
+             */
+            failed_at: string;
+            /** @description Error message from the last failed attempt */
+            error: string;
+            /** @description Number of attempts made before the job entered dead-letter */
+            retry_count?: number;
+            /** @description Safe correlation identifiers extracted from the job payload */
+            correlation?: {
+                /** Format: uuid */
+                operation_id?: string | null;
+                /** @description Agent exchange ID (credential_exchange_id, presentation_exchange_id, etc.) */
+                external_id?: string | null;
+                /**
+                 * Format: uuid
+                 * @description Webhook registration ID (for webhook.dispatch jobs)
+                 */
+                webhook_id?: string | null;
+            };
+        };
+        /** @description OID4VCI Credential Issuer Metadata (§10.2 aligned) */
+        IssuerMetadata: {
+            /** Format: uri */
+            credential_issuer?: string;
+            credential_configurations_supported?: {
+                [key: string]: {
+                    format?: string;
+                    display?: {
+                        name?: string;
+                        description?: string;
+                        locale?: string;
+                    }[];
+                    credential_definition?: {
+                        schema?: Record<string, never>;
+                    };
+                    claims?: {
+                        [key: string]: {
+                            display?: Record<string, never>[];
+                        };
+                    };
+                };
+            };
+        };
     };
-    /** @description Authentication required or token invalid/expired */
-    Unauthorized: {
-      headers: {
-        /** @description RFC-compliant challenge header */
-        'WWW-Authenticate'?: string;
-        [name: string]: unknown;
-      };
-      content: {
-        /**
-         * @example {
-         *       "error": {
-         *         "code": "AUTHENTICATION_REQUIRED",
-         *         "message": "Bearer token is missing, expired, or invalid",
-         *         "request_id": "req-uuid"
-         *       }
-         *     }
-         */
-        'application/json': components['schemas']['ErrorResponse'];
-      };
+    responses: {
+        /** @description Invalid request */
+        BadRequest: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "error": {
+                 *         "code": "PROTOCOL_NOT_SUPPORTED",
+                 *         "message": "OID4VCI delivery is not supported in MVP (connection_id is required)",
+                 *         "request_id": "req-uuid"
+                 *       }
+                 *     }
+                 */
+                "application/json": components["schemas"]["ErrorResponse"];
+            };
+        };
+        /** @description Resource not found */
+        NotFound: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "error": {
+                 *         "code": "RESOURCE_NOT_FOUND",
+                 *         "message": "Tenant not found",
+                 *         "request_id": "req-uuid"
+                 *       }
+                 *     }
+                 */
+                "application/json": components["schemas"]["ErrorResponse"];
+            };
+        };
+        /** @description Insufficient permissions */
+        Forbidden: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "error": {
+                 *         "code": "INSUFFICIENT_SCOPE",
+                 *         "message": "Token missing required scope: credentials:offer",
+                 *         "request_id": "req-uuid"
+                 *       }
+                 *     }
+                 */
+                "application/json": components["schemas"]["ErrorResponse"];
+            };
+        };
+        /** @description Resource conflict */
+        Conflict: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "error": {
+                 *         "code": "DUPLICATE_RESOURCE",
+                 *         "message": "Tenant with slug 'acme-corp' already exists",
+                 *         "request_id": "req-uuid"
+                 *       }
+                 *     }
+                 */
+                "application/json": components["schemas"]["ErrorResponse"];
+            };
+        };
+        /** @description Validation failed */
+        ValidationError: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "error": {
+                 *         "code": "VALIDATION_FAILED",
+                 *         "message": "Request body validation failed",
+                 *         "details": [
+                 *           {
+                 *             "field": "attributes.birth_date",
+                 *             "expected": "string (ISO date)",
+                 *             "actual": "integer",
+                 *             "message": "birth_date must be a date string"
+                 *           }
+                 *         ],
+                 *         "request_id": "req-uuid"
+                 *       }
+                 *     }
+                 */
+                "application/json": components["schemas"]["ErrorResponse"];
+            };
+        };
+        /** @description Authentication required or token invalid/expired */
+        Unauthorized: {
+            headers: {
+                /** @description RFC-compliant challenge header */
+                "WWW-Authenticate"?: string;
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "error": {
+                 *         "code": "AUTHENTICATION_REQUIRED",
+                 *         "message": "Bearer token is missing, expired, or invalid",
+                 *         "request_id": "req-uuid"
+                 *       }
+                 *     }
+                 */
+                "application/json": components["schemas"]["ErrorResponse"];
+            };
+        };
+        /** @description Rate limit exceeded */
+        TooManyRequests: {
+            headers: {
+                /** @description Seconds until rate limit resets */
+                "Retry-After"?: number;
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ErrorResponse"];
+            };
+        };
     };
-    /** @description Rate limit exceeded */
-    TooManyRequests: {
-      headers: {
-        /** @description Seconds until rate limit resets */
-        'Retry-After'?: number;
-        [name: string]: unknown;
-      };
-      content: {
-        'application/json': components['schemas']['ErrorResponse'];
-      };
+    parameters: {
+        /** @description Tenant UUID */
+        TenantId: string;
+        ProfileId: string;
+        OperationId: string;
+        /** @description Opaque pagination cursor from a previous response */
+        Cursor: string;
+        /** @description Number of items per page */
+        Limit: number;
+        /** @description UUIDv4 idempotency key to prevent duplicate creation */
+        IdempotencyKey: string;
     };
-  };
-  parameters: {
-    /** @description Tenant UUID */
-    TenantId: string;
-    ProfileId: string;
-    OperationId: string;
-    /** @description Opaque pagination cursor from a previous response */
-    Cursor: string;
-    /** @description Number of items per page */
-    Limit: number;
-    /** @description UUIDv4 idempotency key to prevent duplicate creation */
-    IdempotencyKey: string;
-  };
-  requestBodies: never;
-  headers: never;
-  pathItems: never;
+    requestBodies: never;
+    headers: never;
+    pathItems: never;
 }
 export type $defs = Record<string, never>;
 export interface operations {
-  getLiveness: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Process is alive */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['HealthResponse'];
-        };
-      };
-    };
-  };
-  getReadiness: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description All dependencies healthy */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['HealthResponse'];
-        };
-      };
-      /** @description One or more critical dependencies unhealthy */
-      503: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['HealthResponse'];
-        };
-      };
-    };
-  };
-  switchTenant: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': {
-          /**
-           * Format: uuid
-           * @description Target tenant to switch to
-           */
-          tenant_id: string;
-        };
-      };
-    };
-    responses: {
-      /** @description New token issued for the target tenant */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            access_token?: string;
-            /** @example Bearer */
-            token_type?: string;
-            /** @example 300 */
-            expires_in?: number;
-          };
-        };
-      };
-      403: components['responses']['Forbidden'];
-    };
-  };
-  listTenants: {
-    parameters: {
-      query?: {
-        /** @description Opaque pagination cursor from a previous response */
-        cursor?: components['parameters']['Cursor'];
-        /** @description Number of items per page */
-        limit?: components['parameters']['Limit'];
-      };
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Paginated tenant list */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['PaginatedResponse'] & {
-            data?: components['schemas']['Tenant'][];
-          };
-        };
-      };
-    };
-  };
-  createTenant: {
-    parameters: {
-      query?: never;
-      header?: {
-        /** @description UUIDv4 idempotency key to prevent duplicate creation */
-        'Idempotency-Key'?: components['parameters']['IdempotencyKey'];
-      };
-      path?: never;
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['CreateTenantRequest'];
-      };
-    };
-    responses: {
-      /** @description Tenant created */
-      201: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['Tenant'];
-        };
-      };
-      409: components['responses']['Conflict'];
-      422: components['responses']['ValidationError'];
-    };
-  };
-  getTenant: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Tenant details */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['Tenant'];
-        };
-      };
-      404: components['responses']['NotFound'];
-    };
-  };
-  deleteTenant: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Tenant deleted */
-      204: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      404: components['responses']['NotFound'];
-    };
-  };
-  updateTenant: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['UpdateTenantRequest'];
-      };
-    };
-    responses: {
-      /** @description Tenant updated */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['Tenant'];
-        };
-      };
-      404: components['responses']['NotFound'];
-    };
-  };
-  updateTenantStatus: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': {
-          status: components['schemas']['TenantStatus'];
-        };
-      };
-    };
-    responses: {
-      /** @description Status updated */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['Tenant'];
-        };
-      };
-    };
-  };
-  updateTenantConfig: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['TenantConfig'];
-      };
-    };
-    responses: {
-      /** @description Configuration updated */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['Tenant'];
-        };
-      };
-    };
-  };
-  getOnboardingStatus: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Onboarding status */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            steps?: {
-              name?: string;
-              completed?: boolean;
-              skipped?: boolean;
-            }[];
-            progress_percent?: number;
-          };
-        };
-      };
-    };
-  };
-  completeOnboardingStep: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-        stepName:
-          | 'configure-connector'
-          | 'register-credential-definition'
-          | 'create-issuance-profile'
-          | 'register-api-client';
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Step marked complete */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            steps?: {
-              name?: string;
-              completed?: boolean;
-              skipped?: boolean;
-            }[];
-            progress_percent?: number;
-          };
-        };
-      };
-      404: components['responses']['NotFound'];
-    };
-  };
-  skipOnboardingStep: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-        stepName:
-          | 'configure-connector'
-          | 'register-credential-definition'
-          | 'create-issuance-profile'
-          | 'register-api-client';
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Step marked skipped */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            steps?: {
-              name?: string;
-              completed?: boolean;
-              skipped?: boolean;
-            }[];
-            progress_percent?: number;
-          };
-        };
-      };
-      404: components['responses']['NotFound'];
-    };
-  };
-  resetOnboarding: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Onboarding progress reset */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            steps?: {
-              name?: string;
-              completed?: boolean;
-              skipped?: boolean;
-            }[];
-            /** @example 0 */
-            progress_percent?: number;
-          };
-        };
-      };
-    };
-  };
-  listTenantUsers: {
-    parameters: {
-      query?: {
-        /** @description Opaque pagination cursor from a previous response */
-        cursor?: components['parameters']['Cursor'];
-        /** @description Number of items per page */
-        limit?: components['parameters']['Limit'];
-      };
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Paginated user list */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['PaginatedResponse'] & {
-            data?: components['schemas']['TenantUser'][];
-          };
-        };
-      };
-    };
-  };
-  inviteUser: {
-    parameters: {
-      query?: never;
-      header?: {
-        /** @description UUIDv4 idempotency key to prevent duplicate creation */
-        'Idempotency-Key'?: components['parameters']['IdempotencyKey'];
-      };
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['InviteUserRequest'];
-      };
-    };
-    responses: {
-      /** @description User invited */
-      201: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['TenantUser'];
-        };
-      };
-      409: components['responses']['Conflict'];
-    };
-  };
-  removeTenantUser: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-        userId: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description User removed */
-      204: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      /** @description Cannot remove last owner */
-      409: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['ErrorResponse'];
-        };
-      };
-    };
-  };
-  updateTenantUser: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-        userId: string;
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': {
-          role?: components['schemas']['TenantRole'];
-        };
-      };
-    };
-    responses: {
-      /** @description User updated */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['TenantUser'];
-        };
-      };
-    };
-  };
-  listConnectors: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Connector list */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data?: components['schemas']['Connector'][];
-          };
-        };
-      };
-    };
-  };
-  createConnector: {
-    parameters: {
-      query?: never;
-      header?: {
-        /** @description UUIDv4 idempotency key to prevent duplicate creation */
-        'Idempotency-Key'?: components['parameters']['IdempotencyKey'];
-      };
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['CreateConnectorRequest'];
-      };
-    };
-    responses: {
-      /** @description Connector registered */
-      201: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['Connector'];
-        };
-      };
-      422: components['responses']['ValidationError'];
-    };
-  };
-  getConnector: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-        connectorId: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Connector details */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['Connector'];
-        };
-      };
-      404: components['responses']['NotFound'];
-    };
-  };
-  deleteConnector: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-        connectorId: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Connector removed */
-      204: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      409: components['responses']['Conflict'];
-    };
-  };
-  updateConnector: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-        connectorId: string;
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['UpdateConnectorRequest'];
-      };
-    };
-    responses: {
-      /** @description Connector updated */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['Connector'];
-        };
-      };
-    };
-  };
-  testConnector: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-        connectorId: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Connectivity test result */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            /** @enum {string} */
-            status?: 'healthy' | 'unhealthy';
-            latency_ms?: number;
-            message?: string;
-          };
-        };
-      };
-    };
-  };
-  listCredentialDefinitions: {
-    parameters: {
-      query?: {
-        /** @description Opaque pagination cursor from a previous response */
-        cursor?: components['parameters']['Cursor'];
-        /** @description Number of items per page */
-        limit?: components['parameters']['Limit'];
-        format?: components['schemas']['CredentialFormat'];
-        connector_type?: components['schemas']['ConnectorType'];
-      };
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Paginated credential definition list */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['PaginatedResponse'] & {
-            data?: components['schemas']['CredentialDefinition'][];
-          };
-        };
-      };
-    };
-  };
-  createCredentialDefinition: {
-    parameters: {
-      query?: never;
-      header?: {
-        /** @description UUIDv4 idempotency key to prevent duplicate creation */
-        'Idempotency-Key'?: components['parameters']['IdempotencyKey'];
-      };
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['CreateCredentialDefinitionRequest'];
-      };
-    };
-    responses: {
-      /** @description Credential definition registered */
-      201: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['CredentialDefinition'];
-        };
-      };
-      422: components['responses']['ValidationError'];
-    };
-  };
-  getCredentialDefinition: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-        credDefId: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Credential definition details */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['CredentialDefinition'];
-        };
-      };
-      404: components['responses']['NotFound'];
-    };
-  };
-  deleteCredentialDefinition: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-        credDefId: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Credential definition deactivated */
-      204: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-    };
-  };
-  listIssuanceProfiles: {
-    parameters: {
-      query?: {
-        /** @description Opaque pagination cursor from a previous response */
-        cursor?: components['parameters']['Cursor'];
-        /** @description Number of items per page */
-        limit?: components['parameters']['Limit'];
-        status?: components['schemas']['ProfileStatus'];
-        format?: components['schemas']['CredentialFormat'];
-        name?: string;
-      };
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Paginated issuance profile list */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['PaginatedResponse'] & {
-            data?: components['schemas']['IssuanceProfile'][];
-          };
-        };
-      };
-    };
-  };
-  createIssuanceProfile: {
-    parameters: {
-      query?: never;
-      header?: {
-        /** @description UUIDv4 idempotency key to prevent duplicate creation */
-        'Idempotency-Key'?: components['parameters']['IdempotencyKey'];
-      };
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['CreateIssuanceProfileRequest'];
-      };
-    };
-    responses: {
-      /** @description Issuance profile created (draft status) */
-      201: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['IssuanceProfile'];
-        };
-      };
-      422: components['responses']['ValidationError'];
-    };
-  };
-  getIssuanceProfile: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-        profileId: components['parameters']['ProfileId'];
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Issuance profile details */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['IssuanceProfile'];
-        };
-      };
-      404: components['responses']['NotFound'];
-    };
-  };
-  updateIssuanceProfile: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-        profileId: components['parameters']['ProfileId'];
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['UpdateIssuanceProfileRequest'];
-      };
-    };
-    responses: {
-      /** @description Profile updated */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['IssuanceProfile'];
-        };
-      };
-      /** @description Cannot update a published or deprecated profile */
-      409: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['ErrorResponse'];
-        };
-      };
-    };
-  };
-  publishIssuanceProfile: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-        profileId: components['parameters']['ProfileId'];
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Profile published */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['IssuanceProfile'];
-        };
-      };
-      /** @description Profile is not in draft status or validation failed */
-      409: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['ErrorResponse'];
-        };
-      };
-    };
-  };
-  deprecateIssuanceProfile: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-        profileId: components['parameters']['ProfileId'];
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Profile deprecated */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['IssuanceProfile'];
-        };
-      };
-    };
-  };
-  listVerificationProfiles: {
-    parameters: {
-      query?: {
-        /** @description Opaque pagination cursor from a previous response */
-        cursor?: components['parameters']['Cursor'];
-        /** @description Number of items per page */
-        limit?: components['parameters']['Limit'];
-        status?: components['schemas']['ProfileStatus'];
-        issuance_profile_id?: string;
-        public?: boolean;
-      };
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Paginated verification profile list */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['PaginatedResponse'] & {
-            data?: components['schemas']['VerificationProfile'][];
-          };
-        };
-      };
-    };
-  };
-  createVerificationProfile: {
-    parameters: {
-      query?: never;
-      header?: {
-        /** @description UUIDv4 idempotency key to prevent duplicate creation */
-        'Idempotency-Key'?: components['parameters']['IdempotencyKey'];
-      };
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['CreateVerificationProfileRequest'];
-      };
-    };
-    responses: {
-      /** @description Verification profile created (draft status) */
-      201: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['VerificationProfile'];
-        };
-      };
-      422: components['responses']['ValidationError'];
-    };
-  };
-  getVerificationProfile: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-        profileId: components['parameters']['ProfileId'];
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Verification profile details */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['VerificationProfile'];
-        };
-      };
-      404: components['responses']['NotFound'];
-    };
-  };
-  updateVerificationProfile: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-        profileId: components['parameters']['ProfileId'];
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['UpdateVerificationProfileRequest'];
-      };
-    };
-    responses: {
-      /** @description Profile updated */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['VerificationProfile'];
-        };
-      };
-      /** @description Cannot update a published or deprecated profile */
-      409: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['ErrorResponse'];
-        };
-      };
-    };
-  };
-  publishVerificationProfile: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-        profileId: components['parameters']['ProfileId'];
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Profile published */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['VerificationProfile'];
-        };
-      };
-    };
-  };
-  deprecateVerificationProfile: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-        profileId: components['parameters']['ProfileId'];
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Profile deprecated */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['VerificationProfile'];
-        };
-      };
-    };
-  };
-  offerCredential: {
-    parameters: {
-      query?: never;
-      header?: {
-        /** @description UUIDv4 idempotency key to prevent duplicate creation */
-        'Idempotency-Key'?: components['parameters']['IdempotencyKey'];
-      };
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['OfferCredentialRequest'];
-      };
-    };
-    responses: {
-      /** @description Credential offer URI generated (OID4VCI, connectionless) */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          /**
-           * @example {
-           *       "id": "op-uuid",
-           *       "type": "credential.offer",
-           *       "state": "completed",
-           *       "created_at": "2025-01-15T10:30:00.000Z",
-           *       "updated_at": "2025-01-15T10:30:00.000Z",
-           *       "result": {
-           *         "credential_offer_uri": "openid-credential-offer://..."
-           *       }
-           *     }
-           */
-          'application/json': components['schemas']['Operation'];
-        };
-      };
-      /** @description Credential offer sent (DIDComm, async) */
-      202: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          /**
-           * @example {
-           *       "id": "op-uuid",
-           *       "type": "credential.offer",
-           *       "state": "pending",
-           *       "created_at": "2025-01-15T10:30:00.000Z",
-           *       "updated_at": "2025-01-15T10:30:00.000Z",
-           *       "result": null
-           *     }
-           */
-          'application/json': components['schemas']['Operation'];
-        };
-      };
-      400: components['responses']['BadRequest'];
-      422: components['responses']['ValidationError'];
-    };
-  };
-  offerCredentialBatch: {
-    parameters: {
-      query?: never;
-      header?: {
-        /** @description UUIDv4 idempotency key to prevent duplicate creation */
-        'Idempotency-Key'?: components['parameters']['IdempotencyKey'];
-      };
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['OfferCredentialBatchRequest'];
-      };
-    };
-    responses: {
-      /** @description Batch accepted for processing */
-      202: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          /**
-           * @example {
-           *       "id": "batch-op-uuid",
-           *       "type": "credential.offer-batch",
-           *       "state": "processing",
-           *       "created_at": "2025-01-15T10:30:00.000Z",
-           *       "updated_at": "2025-01-15T10:30:00.000Z",
-           *       "result": null
-           *     }
-           */
-          'application/json': components['schemas']['Operation'];
-        };
-      };
-      400: components['responses']['BadRequest'];
-      422: components['responses']['ValidationError'];
-    };
-  };
-  acceptCredential: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-        /** @description The `id` (Operation UUID) returned by `POST /credentials/offer`. This is **not** the persisted Credential record UUID—that is used by `GET /credentials/{credentialId}` and `POST /credentials/{credentialId}/revoke`. */
-        exchangeId: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Credential accepted (synchronous confirmation) */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['Operation'];
-        };
-      };
-      /** @description Accept request submitted (async) */
-      202: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['Operation'];
-        };
-      };
-      404: components['responses']['NotFound'];
-    };
-  };
-  rejectCredential: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-        /** @description The `id` (Operation UUID) returned by `POST /credentials/offer`. This is **not** the persisted Credential record UUID. */
-        exchangeId: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Credential rejected */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['Operation'];
-        };
-      };
-      404: components['responses']['NotFound'];
-    };
-  };
-  revokeCredential: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-        credentialId: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Revocation completed synchronously */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['Operation'];
-        };
-      };
-      /** @description Revocation in progress (async ledger write) */
-      202: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['Operation'];
-        };
-      };
-      404: components['responses']['NotFound'];
-    };
-  };
-  listCredentials: {
-    parameters: {
-      query?: {
-        /** @description Opaque pagination cursor from a previous response */
-        cursor?: components['parameters']['Cursor'];
-        /** @description Number of items per page */
-        limit?: components['parameters']['Limit'];
-        state?: 'offered' | 'issued' | 'revoked' | 'expired';
-        issuance_profile_id?: string;
-        connection_id?: string;
-        format?: components['schemas']['CredentialFormat'];
-      };
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Paginated credential list */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['PaginatedResponse'] & {
-            data?: components['schemas']['Credential'][];
-          };
-        };
-      };
-    };
-  };
-  getCredential: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-        credentialId: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Credential details */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['Credential'];
-        };
-      };
-      404: components['responses']['NotFound'];
-    };
-  };
-  revokeCredentialBatch: {
-    parameters: {
-      query?: never;
-      header?: {
-        /** @description UUIDv4 idempotency key to prevent duplicate creation */
-        'Idempotency-Key'?: components['parameters']['IdempotencyKey'];
-      };
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': {
-          /** @description Credential IDs to revoke */
-          ids: string[];
-        };
-      };
-    };
-    responses: {
-      /** @description Batch revocation accepted for processing */
-      202: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['Operation'];
-        };
-      };
-    };
-  };
-  requestPresentation: {
-    parameters: {
-      query?: never;
-      header?: {
-        /** @description UUIDv4 idempotency key to prevent duplicate creation */
-        'Idempotency-Key'?: components['parameters']['IdempotencyKey'];
-      };
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['RequestPresentationRequest'];
-      };
-    };
-    responses: {
-      /** @description Authorization request URI generated (OID4VP) */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['Operation'];
-        };
-      };
-      /** @description Presentation request sent (DIDComm, async) */
-      202: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['Operation'];
-        };
-      };
-      400: components['responses']['BadRequest'];
-    };
-  };
-  listConnections: {
-    parameters: {
-      query?: {
-        /** @description Opaque pagination cursor from a previous response */
-        cursor?: components['parameters']['Cursor'];
-        /** @description Number of items per page */
-        limit?: components['parameters']['Limit'];
-        state?: components['schemas']['ConnectionState'];
-        protocol?: components['schemas']['ConnectionProtocol'];
-      };
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Paginated connection list */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['PaginatedResponse'] & {
-            data?: components['schemas']['Connection'][];
-          };
-        };
-      };
-    };
-  };
-  createConnection: {
-    parameters: {
-      query?: never;
-      header?: {
-        /** @description UUIDv4 idempotency key to prevent duplicate creation */
-        'Idempotency-Key'?: components['parameters']['IdempotencyKey'];
-      };
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-      };
-      cookie?: never;
-    };
-    requestBody?: {
-      content: {
-        'application/json': components['schemas']['CreateConnectionRequest'];
-      };
-    };
-    responses: {
-      /** @description Invitation created (synchronous) */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          /**
-           * @example {
-           *       "id": "op-uuid",
-           *       "type": "connection.create",
-           *       "state": "completed",
-           *       "created_at": "2025-01-15T10:30:00.000Z",
-           *       "updated_at": "2025-01-15T10:30:00.000Z",
-           *       "result": {
-           *         "invitation_url": "https://...",
-           *         "connection_id": "uuid"
-           *       }
-           *     }
-           */
-          'application/json': components['schemas']['Operation'];
-        };
-      };
-    };
-  };
-  getConnection: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-        connectionId: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Connection details */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['Connection'];
-        };
-      };
-      404: components['responses']['NotFound'];
-    };
-  };
-  deleteConnection: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-        connectionId: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Connection removed */
-      204: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-    };
-  };
-  listOperations: {
-    parameters: {
-      query?: {
-        /** @description Opaque pagination cursor from a previous response */
-        cursor?: components['parameters']['Cursor'];
-        /** @description Number of items per page */
-        limit?: components['parameters']['Limit'];
-        state?: components['schemas']['OperationState'];
-        type?: string;
-      };
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Paginated operation list */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['PaginatedResponse'] & {
-            data?: components['schemas']['Operation'][];
-          };
-        };
-      };
-    };
-  };
-  getOperation: {
-    parameters: {
-      query?: never;
-      header?: {
-        /** @description Long-polling: hold connection until state changes or timeout */
-        Prefer?: string;
-      };
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-        operationId: components['parameters']['OperationId'];
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Operation status */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['Operation'];
-        };
-      };
-      404: components['responses']['NotFound'];
-    };
-  };
-  getOperationRequest: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-        operationId: components['parameters']['OperationId'];
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Original request details */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            /** @example POST */
-            method?: string;
-            /** @example /api/v1/tenants/b7e4a1f0-.../credentials/offer */
-            path?: string;
-            /** @description Original request body */
-            body?: Record<string, never>;
-          };
-        };
-      };
-      404: components['responses']['NotFound'];
-    };
-  };
-  listBatchOperationItems: {
-    parameters: {
-      query?: {
-        /** @description Opaque pagination cursor from a previous response */
-        cursor?: components['parameters']['Cursor'];
-        /** @description Number of items per page */
-        limit?: components['parameters']['Limit'];
-        state?: components['schemas']['OperationState'];
-      };
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-        operationId: components['parameters']['OperationId'];
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Paginated list of batch child operations */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['PaginatedResponse'] & {
-            data?: components['schemas']['Operation'][];
-          };
-        };
-      };
-      404: components['responses']['NotFound'];
-    };
-  };
-  listWebhooks: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Webhook list */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data?: components['schemas']['WebhookRegistration'][];
-          };
-        };
-      };
-    };
-  };
-  createWebhook: {
-    parameters: {
-      query?: never;
-      header?: {
-        /** @description UUIDv4 idempotency key to prevent duplicate creation */
-        'Idempotency-Key'?: components['parameters']['IdempotencyKey'];
-      };
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['CreateWebhookRequest'];
-      };
-    };
-    responses: {
-      /** @description Webhook registered */
-      201: {
-        headers: {
-          /** @description HMAC signing secret (returned ONCE, never retrievable again) */
-          'X-Webhook-Secret'?: string;
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['WebhookRegistration'];
-        };
-      };
-    };
-  };
-  deleteWebhook: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-        webhookId: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Webhook removed */
-      204: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-    };
-  };
-  listClients: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Client list (no secrets) */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            data?: components['schemas']['Client'][];
-          };
-        };
-      };
-    };
-  };
-  createClient: {
-    parameters: {
-      query?: never;
-      header?: {
-        /** @description UUIDv4 idempotency key to prevent duplicate creation */
-        'Idempotency-Key'?: components['parameters']['IdempotencyKey'];
-      };
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['CreateClientRequest'];
-      };
-    };
-    responses: {
-      /** @description Client registered */
-      201: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['ClientWithSecret'];
-        };
-      };
-    };
-  };
-  deleteClient: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-        clientId: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Client revoked */
-      204: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-    };
-  };
-  rotateClientSecret: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-        clientId: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description New secret generated */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['ClientWithSecret'];
-        };
-      };
-    };
-  };
-  getIssuerMetadata: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        tenantSlug: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Issuer metadata */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['IssuerMetadata'];
-        };
-      };
-      /** @description Tenant not found by slug */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-    };
-  };
-  listPublicProfiles: {
-    parameters: {
-      query?: {
-        type?: 'issuance' | 'verification' | 'all';
-        name?: string;
-      };
-      header?: never;
-      path: {
-        tenantSlug: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Public profile list */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            issuance_profiles?: components['schemas']['IssuanceProfile'][];
-            verification_profiles?: components['schemas']['VerificationProfile'][];
-          };
-        };
-      };
-    };
-  };
-  listAuditLogs: {
-    parameters: {
-      query?: {
-        /** @description Opaque pagination cursor from a previous response */
-        cursor?: components['parameters']['Cursor'];
-        /** @description Number of items per page */
-        limit?: components['parameters']['Limit'];
-        action?:
-          | 'issue'
-          | 'verify'
-          | 'hold'
-          | 'revoke'
-          | 'create'
-          | 'update'
-          | 'delete'
-          | 'login'
-          | 'token_grant';
-        /** @description Filter by actor (user ID or client ID) */
-        actor_id?: string;
-        /** @description Filter by resource type (e.g., credential, connection, tenant) */
-        resource_type?: string;
-        resource_id?: string;
-        /** @description Filter audit entries linked to a specific operation */
-        operation_id?: string;
-        since?: string;
-        until?: string;
-      };
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Paginated audit log entries */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['PaginatedResponse'] & {
-            data?: components['schemas']['AuditLogEntry'][];
-          };
-        };
-      };
-    };
-  };
-  getAuditLogEntry: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-        auditLogId: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Audit log entry with full metadata */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['AuditLogEntry'];
-        };
-      };
-      404: components['responses']['NotFound'];
-    };
-  };
-  exportAuditLogs: {
-    parameters: {
-      query?: {
-        action?: string;
-        since?: string;
-        until?: string;
-      };
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description CSV file download */
-      200: {
-        headers: {
-          'Content-Disposition'?: string;
-          [name: string]: unknown;
-        };
-        content: {
-          'text/csv': string;
-        };
-      };
-    };
-  };
-  ingestTractionWebhook: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': {
-          /** @enum {string} */
-          topic?:
-            | 'issue_credential'
-            | 'present_proof'
-            | 'connections'
-            | 'revocation_registry';
-          payload?: Record<string, never>;
-        };
-      };
-    };
-    responses: {
-      /** @description Webhook received and enqueued */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-    };
-  };
-  getOperationStats: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Operation stats */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': {
-            by_state?: {
-              [key: string]: number;
+    getLiveness: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Process is alive */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HealthResponse"];
+                };
             };
-            /** Format: date-time */
-            oldest_pending?: string | null;
-          };
         };
-      };
     };
-  };
-  listDeadLetterJobs: {
-    parameters: {
-      query?: {
-        /** @description Opaque pagination cursor from a previous response */
-        cursor?: components['parameters']['Cursor'];
-        /** @description Number of items per page */
-        limit?: components['parameters']['Limit'];
-        /** @description Optional filter by tenant (platform-admin can filter to a specific tenant) */
-        tenant_id?: string;
-      };
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Failed jobs list */
-      200: {
-        headers: {
-          [name: string]: unknown;
+    getReadiness: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
         };
-        content: {
-          'application/json': components['schemas']['PaginatedResponse'] & {
-            data?: {
-              id?: string;
-              queue?: string;
-              data?: Record<string, never>;
-              /** Format: date-time */
-              failed_at?: string;
-              error?: string;
-            }[];
-          };
+        requestBody?: never;
+        responses: {
+            /** @description All dependencies healthy */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HealthResponse"];
+                };
+            };
+            /** @description One or more critical dependencies unhealthy */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HealthResponse"];
+                };
+            };
         };
-      };
     };
-  };
-  replayDeadLetterJob: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        jobId: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Job replayed */
-      202: {
-        headers: {
-          [name: string]: unknown;
+    switchTenant: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
         };
-        content?: never;
-      };
-    };
-  };
-  replayDeadLetterBulk: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': {
-          /**
-           * Format: date-time
-           * @description Replay jobs that failed after this time
-           */
-          since?: string;
-          /**
-           * Format: date-time
-           * @description Replay jobs that failed before this time
-           */
-          until?: string;
-          /** @description Filter by queue name (optional) */
-          queue?: string;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /**
+                     * Format: uuid
+                     * @description Target tenant to switch to
+                     */
+                    tenant_id: string;
+                };
+            };
         };
-      };
+        responses: {
+            /** @description New token issued for the target tenant */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        access_token?: string;
+                        /** @example Bearer */
+                        token_type?: string;
+                        /** @example 300 */
+                        expires_in?: number;
+                    };
+                };
+            };
+            403: components["responses"]["Forbidden"];
+        };
     };
-    responses: {
-      /** @description Bulk replay initiated */
-      202: {
-        headers: {
-          [name: string]: unknown;
+    listTenants: {
+        parameters: {
+            query?: {
+                /** @description Opaque pagination cursor from a previous response */
+                cursor?: components["parameters"]["Cursor"];
+                /** @description Number of items per page */
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
         };
-        content: {
-          'application/json': {
-            replayed_count?: number;
-            message?: string;
-          };
+        requestBody?: never;
+        responses: {
+            /** @description Paginated tenant list */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedResponse"] & {
+                        data?: components["schemas"]["Tenant"][];
+                    };
+                };
+            };
         };
-      };
     };
-  };
-  revokeUserSessions: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        userId: string;
-      };
-      cookie?: never;
+    createTenant: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description UUIDv4 idempotency key to prevent duplicate creation */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateTenantRequest"];
+            };
+        };
+        responses: {
+            /** @description Tenant created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Tenant"];
+                };
+            };
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["ValidationError"];
+        };
     };
-    requestBody?: never;
-    responses: {
-      /** @description All sessions revoked */
-      204: {
-        headers: {
-          [name: string]: unknown;
+    getTenant: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
         };
-        content?: never;
-      };
+        requestBody?: never;
+        responses: {
+            /** @description Tenant details */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Tenant"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
     };
-  };
-  listScopes: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
+    deleteTenant: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Tenant deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["NotFound"];
+        };
     };
-    requestBody?: never;
-    responses: {
-      /** @description Scope list */
-      200: {
-        headers: {
-          [name: string]: unknown;
+    updateTenant: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
         };
-        content: {
-          'application/json': {
-            data?: {
-              name?: string;
-              description?: string;
-              level?: number;
-            }[];
-          };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateTenantRequest"];
+            };
         };
-      };
+        responses: {
+            /** @description Tenant updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Tenant"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
     };
-  };
-  listRoles: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
+    updateTenantStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    status: components["schemas"]["TenantStatus"];
+                };
+            };
+        };
+        responses: {
+            /** @description Status updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Tenant"];
+                };
+            };
+        };
     };
-    requestBody?: never;
-    responses: {
-      /** @description Roles and their scopes */
-      200: {
-        headers: {
-          [name: string]: unknown;
+    updateTenantConfig: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
         };
-        content: {
-          'application/json': {
-            data?: {
-              name?: string;
-              scopes?: string[];
-            }[];
-          };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TenantConfig"];
+            };
         };
-      };
+        responses: {
+            /** @description Configuration updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Tenant"];
+                };
+            };
+        };
     };
-  };
-  updateTenantRoleScopes: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-        role: components['schemas']['TenantRole'];
-      };
-      cookie?: never;
+    getOnboardingStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Onboarding status */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        steps?: {
+                            name?: string;
+                            completed?: boolean;
+                            skipped?: boolean;
+                        }[];
+                        progress_percent?: number;
+                    };
+                };
+            };
+        };
     };
-    requestBody: {
-      content: {
-        'application/json': {
-          /** @description Updated scope list for this role in this tenant */
-          scopes: string[];
+    completeOnboardingStep: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                stepName: "configure-connector" | "register-credential-definition" | "create-issuance-profile" | "register-api-client";
+            };
+            cookie?: never;
         };
-      };
+        requestBody?: never;
+        responses: {
+            /** @description Step marked complete */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        steps?: {
+                            name?: string;
+                            completed?: boolean;
+                            skipped?: boolean;
+                        }[];
+                        progress_percent?: number;
+                    };
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
     };
-    responses: {
-      /** @description Role scopes updated */
-      200: {
-        headers: {
-          [name: string]: unknown;
+    skipOnboardingStep: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                stepName: "configure-connector" | "register-credential-definition" | "create-issuance-profile" | "register-api-client";
+            };
+            cookie?: never;
         };
-        content: {
-          'application/json': {
-            role?: string;
-            scopes?: string[];
-          };
+        requestBody?: never;
+        responses: {
+            /** @description Step marked skipped */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        steps?: {
+                            name?: string;
+                            completed?: boolean;
+                            skipped?: boolean;
+                        }[];
+                        progress_percent?: number;
+                    };
+                };
+            };
+            404: components["responses"]["NotFound"];
         };
-      };
-      /** @description Scope hierarchy violation */
-      400: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['ErrorResponse'];
-        };
-      };
-      403: components['responses']['Forbidden'];
     };
-  };
-  getTenantUsage: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Usage data */
-      200: {
-        headers: {
-          [name: string]: unknown;
+    resetOnboarding: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
         };
-        content: {
-          'application/json': {
-            api_calls_today?: number;
-            credentials_issued_today?: number;
-            connections_active?: number;
-            storage_mb?: number;
-          };
+        requestBody?: never;
+        responses: {
+            /** @description Onboarding progress reset */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        steps?: {
+                            name?: string;
+                            completed?: boolean;
+                            skipped?: boolean;
+                        }[];
+                        /** @example 0 */
+                        progress_percent?: number;
+                    };
+                };
+            };
         };
-      };
     };
-  };
-  resetTenantUsageCounters: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Counters reset */
-      200: {
-        headers: {
-          [name: string]: unknown;
+    listTenantUsers: {
+        parameters: {
+            query?: {
+                /** @description Opaque pagination cursor from a previous response */
+                cursor?: components["parameters"]["Cursor"];
+                /** @description Number of items per page */
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
         };
-        content: {
-          'application/json': {
-            /** @example Usage counters reset successfully */
-            message?: string;
-            /** Format: date-time */
-            reset_at?: string;
-          };
+        requestBody?: never;
+        responses: {
+            /** @description Paginated user list */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedResponse"] & {
+                        data?: components["schemas"]["TenantUser"][];
+                    };
+                };
+            };
         };
-      };
-      403: components['responses']['Forbidden'];
     };
-  };
-  updateTenantUsageLimits: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Tenant UUID */
-        tenantId: components['parameters']['TenantId'];
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': {
-          /** @description Override default API rate limit */
-          api_calls_per_minute?: number;
-          /** @description Override daily credential issuance limit */
-          credentials_per_day?: number;
-          /** @description Override storage quota */
-          storage_mb?: number;
-          /**
-           * Format: date-time
-           * @description When this override expires (null for permanent)
-           */
-          expires_at?: string | null;
+    inviteUser: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description UUIDv4 idempotency key to prevent duplicate creation */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
         };
-      };
-    };
-    responses: {
-      /** @description Limits updated */
-      200: {
-        headers: {
-          [name: string]: unknown;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InviteUserRequest"];
+            };
         };
-        content: {
-          'application/json': {
-            api_calls_per_minute?: number;
-            credentials_per_day?: number;
-            storage_mb?: number;
-            /** Format: date-time */
-            expires_at?: string | null;
-          };
+        responses: {
+            /** @description User invited */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TenantUser"];
+                };
+            };
+            409: components["responses"]["Conflict"];
         };
-      };
-      403: components['responses']['Forbidden'];
     };
-  };
+    removeTenantUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                userId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description User removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Cannot remove last owner */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    updateTenantUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                userId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    role?: components["schemas"]["TenantRole"];
+                };
+            };
+        };
+        responses: {
+            /** @description User updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TenantUser"];
+                };
+            };
+        };
+    };
+    listConnectors: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Connector list */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["Connector"][];
+                    };
+                };
+            };
+        };
+    };
+    createConnector: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description UUIDv4 idempotency key to prevent duplicate creation */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateConnectorRequest"];
+            };
+        };
+        responses: {
+            /** @description Connector registered */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Connector"];
+                };
+            };
+            422: components["responses"]["ValidationError"];
+        };
+    };
+    getConnector: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                connectorId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Connector details */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Connector"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    deleteConnector: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                connectorId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Connector removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            409: components["responses"]["Conflict"];
+        };
+    };
+    updateConnector: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                connectorId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateConnectorRequest"];
+            };
+        };
+        responses: {
+            /** @description Connector updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Connector"];
+                };
+            };
+        };
+    };
+    testConnector: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                connectorId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Connectivity test result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        status?: "healthy" | "unhealthy";
+                        latency_ms?: number;
+                        message?: string;
+                    };
+                };
+            };
+        };
+    };
+    listCredentialDefinitions: {
+        parameters: {
+            query?: {
+                /** @description Opaque pagination cursor from a previous response */
+                cursor?: components["parameters"]["Cursor"];
+                /** @description Number of items per page */
+                limit?: components["parameters"]["Limit"];
+                format?: components["schemas"]["CredentialFormat"];
+                connector_type?: components["schemas"]["ConnectorType"];
+            };
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Paginated credential definition list */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedResponse"] & {
+                        data?: components["schemas"]["CredentialDefinition"][];
+                    };
+                };
+            };
+        };
+    };
+    createCredentialDefinition: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description UUIDv4 idempotency key to prevent duplicate creation */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateCredentialDefinitionRequest"];
+            };
+        };
+        responses: {
+            /** @description Credential definition registered */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CredentialDefinition"];
+                };
+            };
+            422: components["responses"]["ValidationError"];
+        };
+    };
+    getCredentialDefinition: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                credDefId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Credential definition details */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CredentialDefinition"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    deleteCredentialDefinition: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                credDefId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Credential definition deactivated */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    listIssuanceProfiles: {
+        parameters: {
+            query?: {
+                /** @description Opaque pagination cursor from a previous response */
+                cursor?: components["parameters"]["Cursor"];
+                /** @description Number of items per page */
+                limit?: components["parameters"]["Limit"];
+                status?: components["schemas"]["ProfileStatus"];
+                format?: components["schemas"]["CredentialFormat"];
+                name?: string;
+            };
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Paginated issuance profile list */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedResponse"] & {
+                        data?: components["schemas"]["IssuanceProfile"][];
+                    };
+                };
+            };
+        };
+    };
+    createIssuanceProfile: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description UUIDv4 idempotency key to prevent duplicate creation */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateIssuanceProfileRequest"];
+            };
+        };
+        responses: {
+            /** @description Issuance profile created (draft status) */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IssuanceProfile"];
+                };
+            };
+            422: components["responses"]["ValidationError"];
+        };
+    };
+    getIssuanceProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                profileId: components["parameters"]["ProfileId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Issuance profile details */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IssuanceProfile"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    updateIssuanceProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                profileId: components["parameters"]["ProfileId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateIssuanceProfileRequest"];
+            };
+        };
+        responses: {
+            /** @description Profile updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IssuanceProfile"];
+                };
+            };
+            /** @description Cannot update a published or deprecated profile */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    publishIssuanceProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                profileId: components["parameters"]["ProfileId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Profile published */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IssuanceProfile"];
+                };
+            };
+            /** @description Profile is not in draft status or validation failed */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    deprecateIssuanceProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                profileId: components["parameters"]["ProfileId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Profile deprecated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IssuanceProfile"];
+                };
+            };
+        };
+    };
+    listVerificationProfiles: {
+        parameters: {
+            query?: {
+                /** @description Opaque pagination cursor from a previous response */
+                cursor?: components["parameters"]["Cursor"];
+                /** @description Number of items per page */
+                limit?: components["parameters"]["Limit"];
+                status?: components["schemas"]["ProfileStatus"];
+                issuance_profile_id?: string;
+                public?: boolean;
+            };
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Paginated verification profile list */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedResponse"] & {
+                        data?: components["schemas"]["VerificationProfile"][];
+                    };
+                };
+            };
+        };
+    };
+    createVerificationProfile: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description UUIDv4 idempotency key to prevent duplicate creation */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateVerificationProfileRequest"];
+            };
+        };
+        responses: {
+            /** @description Verification profile created (draft status) */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VerificationProfile"];
+                };
+            };
+            422: components["responses"]["ValidationError"];
+        };
+    };
+    getVerificationProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                profileId: components["parameters"]["ProfileId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Verification profile details */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VerificationProfile"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    updateVerificationProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                profileId: components["parameters"]["ProfileId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateVerificationProfileRequest"];
+            };
+        };
+        responses: {
+            /** @description Profile updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VerificationProfile"];
+                };
+            };
+            /** @description Cannot update a published or deprecated profile */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    publishVerificationProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                profileId: components["parameters"]["ProfileId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Profile published */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VerificationProfile"];
+                };
+            };
+        };
+    };
+    deprecateVerificationProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                profileId: components["parameters"]["ProfileId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Profile deprecated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VerificationProfile"];
+                };
+            };
+        };
+    };
+    offerCredential: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description UUIDv4 idempotency key to prevent duplicate creation */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OfferCredentialRequest"];
+            };
+        };
+        responses: {
+            /** @description Credential offer URI generated (OID4VCI, connectionless) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "id": "op-uuid",
+                     *       "type": "credential.offer",
+                     *       "state": "completed",
+                     *       "created_at": "2025-01-15T10:30:00.000Z",
+                     *       "updated_at": "2025-01-15T10:30:00.000Z",
+                     *       "result": {
+                     *         "credential_offer_uri": "openid-credential-offer://..."
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Operation"];
+                };
+            };
+            /** @description Credential offer sent (DIDComm, async) */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "id": "op-uuid",
+                     *       "type": "credential.offer",
+                     *       "state": "pending",
+                     *       "created_at": "2025-01-15T10:30:00.000Z",
+                     *       "updated_at": "2025-01-15T10:30:00.000Z",
+                     *       "result": null
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Operation"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            422: components["responses"]["ValidationError"];
+        };
+    };
+    offerCredentialBatch: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description UUIDv4 idempotency key to prevent duplicate creation */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OfferCredentialBatchRequest"];
+            };
+        };
+        responses: {
+            /** @description Batch accepted for processing */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "id": "batch-op-uuid",
+                     *       "type": "credential.offer-batch",
+                     *       "state": "processing",
+                     *       "created_at": "2025-01-15T10:30:00.000Z",
+                     *       "updated_at": "2025-01-15T10:30:00.000Z",
+                     *       "result": null
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Operation"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            422: components["responses"]["ValidationError"];
+        };
+    };
+    acceptCredential: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                /** @description The `id` (Operation UUID) returned by `POST /credentials/offer`. This is **not** the persisted Credential record UUID—that is used by `GET /credentials/{credentialId}` and `POST /credentials/{credentialId}/revoke`. */
+                exchangeId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Credential accepted (synchronous confirmation) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Operation"];
+                };
+            };
+            /** @description Accept request submitted (async) */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Operation"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    rejectCredential: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                /** @description The `id` (Operation UUID) returned by `POST /credentials/offer`. This is **not** the persisted Credential record UUID. */
+                exchangeId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Credential rejected */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Operation"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    revokeCredential: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                credentialId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Revocation completed synchronously */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Operation"];
+                };
+            };
+            /** @description Revocation in progress (async ledger write) */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Operation"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listCredentials: {
+        parameters: {
+            query?: {
+                /** @description Opaque pagination cursor from a previous response */
+                cursor?: components["parameters"]["Cursor"];
+                /** @description Number of items per page */
+                limit?: components["parameters"]["Limit"];
+                state?: "offered" | "issued" | "revoked" | "expired";
+                issuance_profile_id?: string;
+                connection_id?: string;
+                format?: components["schemas"]["CredentialFormat"];
+            };
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Paginated credential list */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedResponse"] & {
+                        data?: components["schemas"]["Credential"][];
+                    };
+                };
+            };
+        };
+    };
+    getCredential: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                credentialId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Credential details */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Credential"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    revokeCredentialBatch: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description UUIDv4 idempotency key to prevent duplicate creation */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description Credential IDs to revoke */
+                    ids: string[];
+                };
+            };
+        };
+        responses: {
+            /** @description Batch revocation accepted for processing */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Operation"];
+                };
+            };
+        };
+    };
+    requestPresentation: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description UUIDv4 idempotency key to prevent duplicate creation */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RequestPresentationRequest"];
+            };
+        };
+        responses: {
+            /** @description Authorization request URI generated (OID4VP) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Operation"];
+                };
+            };
+            /** @description Presentation request sent (DIDComm, async) */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Operation"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+        };
+    };
+    listConnections: {
+        parameters: {
+            query?: {
+                /** @description Opaque pagination cursor from a previous response */
+                cursor?: components["parameters"]["Cursor"];
+                /** @description Number of items per page */
+                limit?: components["parameters"]["Limit"];
+                state?: components["schemas"]["ConnectionState"];
+                protocol?: components["schemas"]["ConnectionProtocol"];
+            };
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Paginated connection list */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedResponse"] & {
+                        data?: components["schemas"]["Connection"][];
+                    };
+                };
+            };
+        };
+    };
+    createConnection: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description UUIDv4 idempotency key to prevent duplicate creation */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["CreateConnectionRequest"];
+            };
+        };
+        responses: {
+            /** @description Invitation created (synchronous) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "id": "op-uuid",
+                     *       "type": "connection.create",
+                     *       "state": "completed",
+                     *       "created_at": "2025-01-15T10:30:00.000Z",
+                     *       "updated_at": "2025-01-15T10:30:00.000Z",
+                     *       "result": {
+                     *         "invitation_url": "https://...",
+                     *         "connection_id": "uuid"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Operation"];
+                };
+            };
+        };
+    };
+    getConnection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                connectionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Connection details */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Connection"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    deleteConnection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                connectionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Connection removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    listOperations: {
+        parameters: {
+            query?: {
+                /** @description Opaque pagination cursor from a previous response */
+                cursor?: components["parameters"]["Cursor"];
+                /** @description Number of items per page */
+                limit?: components["parameters"]["Limit"];
+                state?: components["schemas"]["OperationState"];
+                type?: string;
+            };
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Paginated operation list */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedResponse"] & {
+                        data?: components["schemas"]["Operation"][];
+                    };
+                };
+            };
+        };
+    };
+    getOperation: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Long-polling: hold connection until state changes or timeout */
+                Prefer?: string;
+            };
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                operationId: components["parameters"]["OperationId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Operation status */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Operation"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getOperationRequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                operationId: components["parameters"]["OperationId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Original request details */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @example POST */
+                        method?: string;
+                        /** @example /api/v1/tenants/b7e4a1f0-.../credentials/offer */
+                        path?: string;
+                        /** @description Original request body */
+                        body?: Record<string, never>;
+                    };
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listBatchOperationItems: {
+        parameters: {
+            query?: {
+                /** @description Opaque pagination cursor from a previous response */
+                cursor?: components["parameters"]["Cursor"];
+                /** @description Number of items per page */
+                limit?: components["parameters"]["Limit"];
+                state?: components["schemas"]["OperationState"];
+            };
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                operationId: components["parameters"]["OperationId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Paginated list of batch child operations */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedResponse"] & {
+                        data?: components["schemas"]["Operation"][];
+                    };
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listWebhooks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Webhook list */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["WebhookRegistration"][];
+                    };
+                };
+            };
+        };
+    };
+    createWebhook: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description UUIDv4 idempotency key to prevent duplicate creation */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateWebhookRequest"];
+            };
+        };
+        responses: {
+            /** @description Webhook registered */
+            201: {
+                headers: {
+                    /** @description HMAC signing secret (returned ONCE, never retrievable again) */
+                    "X-Webhook-Secret"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookRegistration"];
+                };
+            };
+        };
+    };
+    deleteWebhook: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                webhookId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Webhook removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    listClients: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client list (no secrets) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["Client"][];
+                    };
+                };
+            };
+        };
+    };
+    createClient: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description UUIDv4 idempotency key to prevent duplicate creation */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateClientRequest"];
+            };
+        };
+        responses: {
+            /** @description Client registered */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClientWithSecret"];
+                };
+            };
+        };
+    };
+    deleteClient: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                clientId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client revoked */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    rotateClientSecret: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                clientId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description New secret generated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClientWithSecret"];
+                };
+            };
+        };
+    };
+    getIssuerMetadata: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tenantSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Issuer metadata */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IssuerMetadata"];
+                };
+            };
+            /** @description Tenant not found by slug */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    listPublicProfiles: {
+        parameters: {
+            query?: {
+                type?: "issuance" | "verification" | "all";
+                name?: string;
+            };
+            header?: never;
+            path: {
+                tenantSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Public profile list */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        issuance_profiles?: components["schemas"]["IssuanceProfile"][];
+                        verification_profiles?: components["schemas"]["VerificationProfile"][];
+                    };
+                };
+            };
+        };
+    };
+    listAuditLogs: {
+        parameters: {
+            query?: {
+                /** @description Opaque pagination cursor from a previous response */
+                cursor?: components["parameters"]["Cursor"];
+                /** @description Number of items per page */
+                limit?: components["parameters"]["Limit"];
+                action?: "issue" | "verify" | "hold" | "revoke" | "create" | "update" | "delete" | "login" | "token_grant";
+                /** @description Filter by actor (user ID or client ID) */
+                actor_id?: string;
+                /** @description Filter by resource type (e.g., credential, connection, tenant) */
+                resource_type?: string;
+                resource_id?: string;
+                /** @description Filter audit entries linked to a specific operation */
+                operation_id?: string;
+                since?: string;
+                until?: string;
+            };
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Paginated audit log entries */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedResponse"] & {
+                        data?: components["schemas"]["AuditLogEntry"][];
+                    };
+                };
+            };
+        };
+    };
+    getAuditLogEntry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                auditLogId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Audit log entry with full metadata */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditLogEntry"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    exportAuditLogs: {
+        parameters: {
+            query?: {
+                action?: string;
+                since?: string;
+                until?: string;
+            };
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description CSV file download */
+            200: {
+                headers: {
+                    "Content-Disposition"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": string;
+                };
+            };
+        };
+    };
+    ingestTractionWebhook: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    topic?: "issue_credential" | "present_proof" | "connections" | "revocation_registry";
+                    payload?: Record<string, never>;
+                };
+            };
+        };
+        responses: {
+            /** @description Webhook received and enqueued */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getOperationStats: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Operation stats */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        by_state?: {
+                            [key: string]: number;
+                        };
+                        /** Format: date-time */
+                        oldest_pending?: string | null;
+                    };
+                };
+            };
+        };
+    };
+    listDeadLetterJobs: {
+        parameters: {
+            query?: {
+                /** @description Opaque pagination cursor from a previous response */
+                cursor?: components["parameters"]["Cursor"];
+                /** @description Number of items per page */
+                limit?: components["parameters"]["Limit"];
+                /** @description Optional filter by tenant (platform-admin can filter to a specific tenant) */
+                tenant_id?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Failed jobs list */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedResponse"] & {
+                        data?: {
+                            id?: string;
+                            queue?: string;
+                            data?: Record<string, never>;
+                            /** Format: date-time */
+                            failed_at?: string;
+                            error?: string;
+                        }[];
+                    };
+                };
+            };
+        };
+    };
+    replayDeadLetterJob: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                jobId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Job replayed */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    replayDeadLetterBulk: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /**
+                     * Format: date-time
+                     * @description Replay jobs that failed after this time
+                     */
+                    since?: string;
+                    /**
+                     * Format: date-time
+                     * @description Replay jobs that failed before this time
+                     */
+                    until?: string;
+                    /** @description Filter by queue name (optional) */
+                    queue?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Bulk replay initiated */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        replayed_count?: number;
+                        message?: string;
+                    };
+                };
+            };
+        };
+    };
+    revokeUserSessions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                userId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description All sessions revoked */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    listScopes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Scope list */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: {
+                            name?: string;
+                            description?: string;
+                            level?: number;
+                        }[];
+                    };
+                };
+            };
+        };
+    };
+    listRoles: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Roles and their scopes */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: {
+                            name?: string;
+                            scopes?: string[];
+                        }[];
+                    };
+                };
+            };
+        };
+    };
+    updateTenantRoleScopes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                role: components["schemas"]["TenantRole"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description Updated scope list for this role in this tenant */
+                    scopes: string[];
+                };
+            };
+        };
+        responses: {
+            /** @description Role scopes updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        role?: string;
+                        scopes?: string[];
+                    };
+                };
+            };
+            /** @description Scope hierarchy violation */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    getTenantUsage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Usage data */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        api_calls_today?: number;
+                        credentials_issued_today?: number;
+                        connections_active?: number;
+                        storage_mb?: number;
+                    };
+                };
+            };
+        };
+    };
+    resetTenantUsageCounters: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Counters reset */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @example Usage counters reset successfully */
+                        message?: string;
+                        /** Format: date-time */
+                        reset_at?: string;
+                    };
+                };
+            };
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    updateTenantUsageLimits: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description Override default API rate limit */
+                    api_calls_per_minute?: number;
+                    /** @description Override daily credential issuance limit */
+                    credentials_per_day?: number;
+                    /** @description Override storage quota */
+                    storage_mb?: number;
+                    /**
+                     * Format: date-time
+                     * @description When this override expires (null for permanent)
+                     */
+                    expires_at?: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description Limits updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        api_calls_per_minute?: number;
+                        credentials_per_day?: number;
+                        storage_mb?: number;
+                        /** Format: date-time */
+                        expires_at?: string | null;
+                    };
+                };
+            };
+            403: components["responses"]["Forbidden"];
+        };
+    };
 }
