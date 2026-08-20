@@ -13,6 +13,7 @@ import {
 @Index('uq_oidc_upstream_session_model', ['oidcModelId'], { unique: true })
 @Index('uq_oidc_upstream_session_uid', ['oidcSessionUid'], { unique: true })
 @Index('idx_oidc_upstream_session_expires_at', ['expiresAt'])
+@Index('idx_oidc_upstream_session_tenant_user_id', ['tenantUserId'])
 export class OidcUpstreamSession {
   @PrimaryGeneratedColumn('uuid')
   public id!: string;
@@ -21,13 +22,12 @@ export class OidcUpstreamSession {
   @JoinColumn({ name: 'oidc_model_id' })
   public oidcModel?: OidcModel;
 
-  @Column({ name: 'oidc_model_id', type: 'uuid', unique: true, nullable: true })
+  @Column({ name: 'oidc_model_id', type: 'uuid', nullable: true })
   public oidcModelId?: string | null;
 
   @Column({
     name: 'oidc_session_uid',
     type: 'text',
-    unique: true,
     nullable: true,
   })
   public oidcSessionUid?: string | null;
