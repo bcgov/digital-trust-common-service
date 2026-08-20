@@ -44,10 +44,15 @@ networkPolicy:
 connectorEncryption:
   existingSecret: ""
   create: true
-
+  # Preview Secrets are per-PR and disposable; pr-cleanup.yml removes them
+  # with the rest of the release.
+  retainOnUninstall: false
+  # connectorEncryption.keys is injected by pr-deploy.yml (--set) on the first
+  # deploy of this PR with a random value. On redeploys, pr-deploy.yml omits
+  # the keys so the existing Secret is preserved and encryption keys stay stable.
   currentVersion: 1
-  keys:
-    "1": <generated-per-deployment-key>
+  # Set to null so this overlay does not inherit the placeholder from values.yaml.
+  keys: null
 
 oidcSigning:
   existingSecret: ""

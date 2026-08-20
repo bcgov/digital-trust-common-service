@@ -19,6 +19,11 @@ tests:
         keys: |
           {"keys":[{"kty":"RSA","kid":"test-kid"}]}
         cookieKeys: "placeholder-cookie-key"
+      # values-pr.yaml also enables connectorEncryption.create; provide a
+      # placeholder key so this render exercises deployment replica behavior.
+      connectorEncryption:
+        keys:
+          "1": "placeholder-connector-encryption-key"
     asserts:
       - equal:
           path: spec.replicas

@@ -32,6 +32,13 @@ networkPolicy:
   keycloak:
     enabled: true
 
+connectorEncryption:
+  create: true
+  currentVersion: 1
+  # Deterministic fixture for client-side render/lint in CI.
+  keys:
+    "1": ci-connector-encryption-key
+
 upstreamFederation:
   existingSecret:
     name: dtsc-ci-oidc-client
