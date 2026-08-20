@@ -2,7 +2,7 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
 
 export const migrationName = 'AddTenantApprovalStatus';
 
-export class AddTenantApprovalStatus1786601000001 implements MigrationInterface {
+export class AddTenantApprovalStatus1787255721437 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
       ALTER TYPE tenant_status ADD VALUE IF NOT EXISTS 'pending_approval';
