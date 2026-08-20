@@ -22,6 +22,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 
 import { OidcInteractionController } from './oidc-interaction.controller';
 import { OidcProviderService } from './oidc-provider.service';
+import { OidcSessionRepository } from './oidc-session.repository';
 import { OIDC_CLIENT_LOOKUP_PORT } from './ports/oidc-client-lookup.port';
 import { OIDC_ROLE_SCOPE_PORT } from './ports/oidc-role-scope.port';
 import {
@@ -41,10 +42,16 @@ describe('OidcInteractionController', () => {
 
   const mockUpstreamOidcService = {
     getInteractionByUid: jest.fn(),
+    stagePendingUpstreamSession: jest.fn(),
     initiateUpstreamLogin: jest.fn(),
     handleUpstreamCallback: jest.fn(),
     setTenantUserIdForInteraction: jest.fn(),
     consumeInteraction: jest.fn(),
+  };
+
+  const mockOidcSessionRepository = {
+    findInteractionByUid: jest.fn(),
+    getSessionUidFromInteraction: jest.fn(),
   };
 
   const mockTenantUserService = {
@@ -94,6 +101,10 @@ describe('OidcInteractionController', () => {
         {
           provide: ConfigService,
           useValue: mockConfigService,
+        },
+        {
+          provide: OidcSessionRepository,
+          useValue: mockOidcSessionRepository,
         },
       ],
     }).compile();
@@ -562,7 +573,20 @@ describe('OidcInteractionController', () => {
           name: 'Test User',
         },
         interaction: mockInteraction,
+        upstreamSession: {
+          upstreamSubject: 'external-user-123',
+          upstreamIdToken: 'upstream-id-token',
+          expiresAt: null,
+        },
       });
+      mockOidcSessionRepository.findInteractionByUid.mockResolvedValue({
+        id: 'interaction-model-123',
+        uid: 'session-uid-123',
+        payload: {},
+      });
+      mockOidcSessionRepository.getSessionUidFromInteraction.mockReturnValue(
+        'session-uid-123',
+      );
 
       const mockFederatedUser = {
         id: 'local-user-123',
@@ -615,6 +639,14 @@ describe('OidcInteractionController', () => {
         mockTenantUserService.findByTenantAndExternalUserId,
       ).toHaveBeenCalledWith('tenant-123', 'external-user-123');
       expect(
+        mockUpstreamOidcService.stagePendingUpstreamSession,
+      ).toHaveBeenCalledWith({
+        tenantUserId: 'local-user-123',
+        upstreamSubject: 'external-user-123',
+        upstreamIdToken: 'upstream-id-token',
+        expiresAt: null,
+      });
+      expect(
         mockUpstreamOidcService.setTenantUserIdForInteraction,
       ).toHaveBeenCalledWith('state-123', 'local-user-123');
       expect(mockUpstreamOidcService.consumeInteraction).toHaveBeenCalledWith(
@@ -649,7 +681,20 @@ describe('OidcInteractionController', () => {
           name: 'Test User',
         },
         interaction: mockInteraction,
+        upstreamSession: {
+          upstreamSubject: 'external-user-123',
+          upstreamIdToken: 'upstream-id-token',
+          expiresAt: null,
+        },
       });
+      mockOidcSessionRepository.findInteractionByUid.mockResolvedValue({
+        id: 'interaction-model-123',
+        uid: 'session-uid-123',
+        payload: {},
+      });
+      mockOidcSessionRepository.getSessionUidFromInteraction.mockReturnValue(
+        'session-uid-123',
+      );
 
       const mockFederatedUser = {
         id: 'local-user-123',
@@ -721,7 +766,20 @@ describe('OidcInteractionController', () => {
           name: 'New User',
         },
         interaction: mockInteraction,
+        upstreamSession: {
+          upstreamSubject: 'external-user-new',
+          upstreamIdToken: 'upstream-id-token',
+          expiresAt: null,
+        },
       });
+      mockOidcSessionRepository.findInteractionByUid.mockResolvedValue({
+        id: 'interaction-model-123',
+        uid: 'session-uid-123',
+        payload: {},
+      });
+      mockOidcSessionRepository.getSessionUidFromInteraction.mockReturnValue(
+        'session-uid-123',
+      );
 
       mockTenantUserService.findByTenantAndExternalUserId.mockResolvedValue(
         null,
@@ -925,7 +983,20 @@ describe('OidcInteractionController', () => {
           name: 'Test User',
         },
         interaction: mockInteraction,
+        upstreamSession: {
+          upstreamSubject: 'external-user-123',
+          upstreamIdToken: 'upstream-id-token',
+          expiresAt: null,
+        },
       });
+      mockOidcSessionRepository.findInteractionByUid.mockResolvedValue({
+        id: 'interaction-model-123',
+        uid: 'session-uid-123',
+        payload: {},
+      });
+      mockOidcSessionRepository.getSessionUidFromInteraction.mockReturnValue(
+        'session-uid-123',
+      );
 
       const mockFederatedUser = {
         id: 'local-user-123',
@@ -1003,7 +1074,20 @@ describe('OidcInteractionController', () => {
           name: 'Test User',
         },
         interaction: mockInteraction,
+        upstreamSession: {
+          upstreamSubject: 'external-user-123',
+          upstreamIdToken: 'upstream-id-token',
+          expiresAt: null,
+        },
       });
+      mockOidcSessionRepository.findInteractionByUid.mockResolvedValue({
+        id: 'interaction-model-123',
+        uid: 'session-uid-123',
+        payload: {},
+      });
+      mockOidcSessionRepository.getSessionUidFromInteraction.mockReturnValue(
+        'session-uid-123',
+      );
 
       const mockFederatedUser = {
         id: 'local-user-123',

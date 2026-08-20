@@ -9,6 +9,7 @@ describe('OidcModelAdapter', () => {
   let mockUpsert: jest.Mock;
   let mockUpdate: jest.Mock;
   let mockDelete: jest.Mock;
+  let mockLogoutUpstreamSessionForOidcSession: jest.Mock;
   let adapter: OidcModelAdapter;
 
   beforeEach(() => {
@@ -16,6 +17,7 @@ describe('OidcModelAdapter', () => {
     mockUpsert = jest.fn().mockResolvedValue(undefined);
     mockUpdate = jest.fn();
     mockDelete = jest.fn();
+    mockLogoutUpstreamSessionForOidcSession = jest.fn();
 
     const repository = {
       findOne: mockFindOne,
@@ -25,6 +27,10 @@ describe('OidcModelAdapter', () => {
     } as unknown as Repository<OidcModel>;
 
     adapter = new OidcModelAdapter('AccessToken', repository);
+    adapter.setUpstreamFederation({
+      logoutUpstreamSessionForOidcSession:
+        mockLogoutUpstreamSessionForOidcSession,
+    });
   });
 
   describe('upsert', () => {
@@ -179,6 +185,40 @@ describe('OidcModelAdapter', () => {
 
       expect(mockDelete).toHaveBeenCalledWith({
         modelName: 'AccessToken',
+        oidcId: 'oidc-id-1',
+      });
+    });
+
+    it('destroys the linked upstream session before deleting a Session row', async () => {
+      const repository = {
+        findOne: mockFindOne,
+        upsert: mockUpsert,
+        update: mockUpdate,
+        delete: mockDelete,
+      } as unknown as Repository<OidcModel>;
+
+      const sessionAdapter = new OidcModelAdapter('Session', repository);
+      sessionAdapter.setUpstreamFederation({
+        logoutUpstreamSessionForOidcSession:
+          mockLogoutUpstreamSessionForOidcSession,
+      });
+
+      mockFindOne.mockResolvedValue({
+        id: 'oidc-model-123',
+        uid: 'session-uid-123',
+      });
+
+      await sessionAdapter.destroy('oidc-id-1');
+
+      expect(mockFindOne).toHaveBeenCalledWith({
+        where: { modelName: 'Session', oidcId: 'oidc-id-1' },
+      });
+      expect(mockLogoutUpstreamSessionForOidcSession).toHaveBeenCalledWith({
+        oidcModelId: 'oidc-model-123',
+        oidcSessionUid: 'session-uid-123',
+      });
+      expect(mockDelete).toHaveBeenCalledWith({
+        modelName: 'Session',
         oidcId: 'oidc-id-1',
       });
     });

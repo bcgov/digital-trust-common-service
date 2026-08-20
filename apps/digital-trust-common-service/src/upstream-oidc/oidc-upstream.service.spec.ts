@@ -7,6 +7,7 @@ jest.mock('openid-client', () => ({
   randomState: jest.fn(),
   randomNonce: jest.fn(),
   buildAuthorizationUrl: jest.fn(),
+  buildEndSessionUrl: jest.fn(),
   authorizationCodeGrant: jest.fn(),
 }));
 
@@ -15,6 +16,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 
 import { OidcUpstreamInteraction } from './oidc-upstream-interaction.entity';
 import { OidcUpstreamInteractionRepository } from './oidc-upstream-interaction.repository';
+import { OidcUpstreamSessionRepository } from './oidc-upstream-session.repository';
 import { UpstreamOidcService } from './oidc-upstream.service';
 
 const mockConfigService = {
@@ -31,12 +33,24 @@ const mockInteractionRepository = {
   findExpiredInteractions: jest.fn(),
 };
 
+const mockSessionRepository = {
+  createPending: jest.fn(),
+  findLatestPendingByTenantUserId: jest.fn(),
+  findByOidcModelId: jest.fn(),
+  findByOidcSessionUid: jest.fn(),
+  update: jest.fn(),
+  delete: jest.fn(),
+};
+
 describe('UpstreamOidcService', () => {
   let service: UpstreamOidcService;
   let module: TestingModule;
+  let originalFetch: typeof global.fetch | undefined;
 
   beforeEach(async () => {
     jest.clearAllMocks();
+    originalFetch = global.fetch;
+    global.fetch = jest.fn();
 
     module = await Test.createTestingModule({
       providers: [
@@ -49,6 +63,10 @@ describe('UpstreamOidcService', () => {
           provide: OidcUpstreamInteractionRepository,
           useValue: mockInteractionRepository,
         },
+        {
+          provide: OidcUpstreamSessionRepository,
+          useValue: mockSessionRepository,
+        },
       ],
     }).compile();
 
@@ -56,7 +74,8 @@ describe('UpstreamOidcService', () => {
   });
 
   afterEach(async () => {
-    await module.close();
+    global.fetch = originalFetch as typeof global.fetch;
+    await module?.close();
   });
 
   describe('onModuleInit', () => {
@@ -553,6 +572,7 @@ describe('UpstreamOidcService', () => {
       oidc.discovery.mockResolvedValue(mockConfig);
 
       const mockTokens = {
+        id_token: 'upstream-id-token',
         claims: jest.fn().mockReturnValue(mockClaims),
       };
 
@@ -572,6 +592,11 @@ describe('UpstreamOidcService', () => {
       expect(result.claims.email).toBe('user@example.com');
       expect(result.claims.name).toBe('Test User');
       expect(result.interaction).toEqual(mockInteraction);
+      expect(result.upstreamSession).toEqual({
+        upstreamSubject: 'user-123',
+        upstreamIdToken: 'upstream-id-token',
+        expiresAt: null,
+      });
     });
 
     it('should throw error if claims are missing sub', async () => {
@@ -616,6 +641,7 @@ describe('UpstreamOidcService', () => {
       oidc.discovery.mockResolvedValue(mockConfig);
 
       const mockTokens = {
+        id_token: 'upstream-id-token',
         claims: jest.fn().mockReturnValue(invalidClaims),
       };
 
@@ -698,6 +724,254 @@ describe('UpstreamOidcService', () => {
           pkceCodeVerifier: mockInteraction.codeVerifier,
         }),
       );
+    });
+
+    it('should throw error if the upstream provider does not return an ID token', async () => {
+      const futureDate = new Date(Date.now() + 10 * 60 * 1000);
+      const mockInteraction: OidcUpstreamInteraction = {
+        id: '123',
+        state: 'test-state',
+        nonce: 'nonce',
+        interactionUid: 'interaction-uid',
+        codeVerifier: 'verifier',
+        tenantId: 'tenant-123',
+        tenantUserId: undefined,
+        createdAt: new Date(),
+        expiresAt: futureDate,
+        consumedAt: undefined,
+      };
+
+      mockInteractionRepository.findByState.mockResolvedValue(mockInteraction);
+      mockConfigService.get.mockReturnValue(
+        '/path/to/upstream-identity-federation.json',
+      );
+
+      const fs = require('fs');
+      fs.existsSync.mockReturnValue(true);
+      fs.readFileSync.mockReturnValue(
+        JSON.stringify({
+          url: 'http://localhost:8080',
+          clientId: 'test-client',
+        }),
+      );
+
+      const oidc = require('openid-client');
+      oidc.discovery.mockResolvedValue({ issuer: 'http://localhost:8080' });
+      oidc.authorizationCodeGrant.mockResolvedValue({
+        claims: jest.fn().mockReturnValue({ sub: 'user-123' }),
+      });
+
+      await service.onModuleInit();
+
+      await expect(
+        service.handleUpstreamCallback(
+          'test-state',
+          'auth-code',
+          new URL(
+            'http://localhost:3000/oidc/callback?code=auth-code&state=test-state',
+          ),
+        ),
+      ).rejects.toThrow(
+        'Missing ID token from upstream authorization code grant',
+      );
+    });
+  });
+
+  describe('stagePendingUpstreamSession', () => {
+    it('should stage the pending upstream session for the tenant user', async () => {
+      mockSessionRepository.createPending.mockResolvedValue({});
+
+      await service.stagePendingUpstreamSession({
+        tenantUserId: 'tenant-user-123',
+        upstreamSubject: 'upstream-user-123',
+        upstreamIdToken: 'id-token',
+        expiresAt: null,
+      });
+
+      expect(mockSessionRepository.createPending).toHaveBeenCalledWith({
+        tenantUserId: 'tenant-user-123',
+        upstreamSubject: 'upstream-user-123',
+        upstreamIdToken: 'id-token',
+        expiresAt: null,
+      });
+    });
+  });
+
+  describe('finalizeUpstreamSessionForOidcSession', () => {
+    it('should finalize a pending upstream session when tenant user matches', async () => {
+      const pendingSession = {
+        id: 'session-123',
+        oidcModelId: null,
+        oidcSessionUid: 'session-uid',
+        tenantUserId: 'tenant-user-123',
+        upstreamSubject: 'upstream-user-123',
+        upstreamIdToken: 'id-token',
+        expiresAt: null,
+      };
+
+      mockSessionRepository.findLatestPendingByTenantUserId.mockResolvedValue(
+        pendingSession,
+      );
+      mockSessionRepository.findByOidcSessionUid.mockResolvedValue(null);
+      mockSessionRepository.update.mockImplementation(
+        async (session) => await new Promise((resolve) => resolve(session)),
+      );
+
+      const result = await service.finalizeUpstreamSessionForOidcSession({
+        oidcModelId: 'oidc-model-123',
+        oidcSessionUid: 'session-uid',
+        tenantUserId: 'tenant-user-123',
+      });
+
+      expect(
+        mockSessionRepository.findLatestPendingByTenantUserId,
+      ).toHaveBeenCalledWith('tenant-user-123');
+      expect(mockSessionRepository.update).toHaveBeenCalledWith({
+        ...pendingSession,
+        oidcModelId: 'oidc-model-123',
+        oidcSessionUid: 'session-uid',
+      });
+      expect(result).toEqual({
+        ...pendingSession,
+        oidcModelId: 'oidc-model-123',
+        oidcSessionUid: 'session-uid',
+      });
+    });
+
+    it('should merge into an existing finalized session for the same oidc session uid', async () => {
+      const pendingSession = {
+        id: 'pending-session-123',
+        oidcModelId: null,
+        oidcSessionUid: null,
+        tenantUserId: 'tenant-user-123',
+        upstreamSubject: 'new-upstream-user-123',
+        upstreamIdToken: 'new-id-token',
+        expiresAt: new Date('2026-08-19T00:00:00.000Z'),
+      };
+      const existingSession = {
+        id: 'finalized-session-123',
+        oidcModelId: 'old-oidc-model-id',
+        oidcSessionUid: 'session-uid',
+        tenantUserId: 'tenant-user-123',
+        upstreamSubject: 'old-upstream-user-123',
+        upstreamIdToken: 'old-id-token',
+        expiresAt: null,
+      };
+
+      mockSessionRepository.findLatestPendingByTenantUserId.mockResolvedValue(
+        pendingSession,
+      );
+      mockSessionRepository.findByOidcSessionUid.mockResolvedValue(
+        existingSession,
+      );
+      mockSessionRepository.update.mockImplementation(
+        async (session) => await new Promise((resolve) => resolve(session)),
+      );
+
+      const result = await service.finalizeUpstreamSessionForOidcSession({
+        oidcModelId: 'oidc-model-123',
+        oidcSessionUid: 'session-uid',
+        tenantUserId: 'tenant-user-123',
+      });
+
+      expect(mockSessionRepository.update).toHaveBeenCalledWith({
+        ...existingSession,
+        oidcModelId: 'oidc-model-123',
+        tenantUserId: 'tenant-user-123',
+        upstreamSubject: 'new-upstream-user-123',
+        upstreamIdToken: 'new-id-token',
+        expiresAt: new Date('2026-08-19T00:00:00.000Z'),
+      });
+      expect(mockSessionRepository.delete).toHaveBeenCalledWith(
+        'pending-session-123',
+      );
+      expect(result).toEqual({
+        ...existingSession,
+        oidcModelId: 'oidc-model-123',
+        tenantUserId: 'tenant-user-123',
+        upstreamSubject: 'new-upstream-user-123',
+        upstreamIdToken: 'new-id-token',
+        expiresAt: new Date('2026-08-19T00:00:00.000Z'),
+      });
+    });
+  });
+
+  describe('logoutUpstreamSessionForOidcSession', () => {
+    it('should log out the finalized upstream session and then delete it locally', async () => {
+      (service as any).config = {
+        issuer: 'http://localhost:8080',
+      };
+
+      mockSessionRepository.findByOidcModelId.mockResolvedValue({
+        id: 'upstream-session-123',
+        upstreamIdToken: 'stored-id-token',
+      });
+
+      const oidc = require('openid-client');
+      oidc.buildEndSessionUrl.mockReturnValue(
+        new URL('http://localhost:8080/logout?id_token_hint=stored-id-token'),
+      );
+      (global.fetch as jest.Mock).mockResolvedValue({ status: 302 });
+
+      await service.logoutUpstreamSessionForOidcSession({
+        oidcModelId: 'oidc-model-123',
+        oidcSessionUid: 'session-uid-123',
+      });
+
+      expect(mockSessionRepository.findByOidcModelId).toHaveBeenCalledWith(
+        'oidc-model-123',
+      );
+      expect(oidc.buildEndSessionUrl).toHaveBeenCalledWith(
+        service.getConfig(),
+        { id_token_hint: 'stored-id-token' },
+      );
+      expect(global.fetch).toHaveBeenCalledWith(
+        new URL('http://localhost:8080/logout?id_token_hint=stored-id-token'),
+        {
+          method: 'GET',
+          redirect: 'manual',
+        },
+      );
+      expect(mockSessionRepository.delete).toHaveBeenCalledWith(
+        'upstream-session-123',
+      );
+    });
+
+    it('should do nothing when no finalized upstream session exists', async () => {
+      mockSessionRepository.findByOidcModelId.mockResolvedValue(null);
+
+      await service.logoutUpstreamSessionForOidcSession({
+        oidcModelId: 'oidc-model-123',
+      });
+
+      expect(global.fetch).not.toHaveBeenCalled();
+      expect(mockSessionRepository.delete).not.toHaveBeenCalled();
+    });
+
+    it('should not delete the local session when upstream logout fails', async () => {
+      (service as any).config = {
+        issuer: 'http://localhost:8080',
+      };
+
+      mockSessionRepository.findByOidcModelId.mockResolvedValue({
+        id: 'upstream-session-123',
+        upstreamIdToken: 'stored-id-token',
+      });
+
+      const oidc = require('openid-client');
+      oidc.buildEndSessionUrl.mockReturnValue(
+        new URL('http://localhost:8080/logout?id_token_hint=stored-id-token'),
+      );
+      (global.fetch as jest.Mock).mockResolvedValue({ status: 500 });
+
+      await expect(
+        service.logoutUpstreamSessionForOidcSession({
+          oidcModelId: 'oidc-model-123',
+          oidcSessionUid: 'session-uid-123',
+        }),
+      ).rejects.toThrow('Upstream end-session request failed with status 500');
+
+      expect(mockSessionRepository.delete).not.toHaveBeenCalled();
     });
   });
 });

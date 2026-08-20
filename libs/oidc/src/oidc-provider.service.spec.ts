@@ -34,12 +34,21 @@ jest.mock('oidc-provider', () => {
 
     public proxy = false;
 
+    public readonly eventHandlers = new Map<
+      string,
+      (...args: unknown[]) => void
+    >();
+
     public readonly Client = {
       prototype: {} as { compareClientSecret: unknown },
     };
 
     public constructor(issuer: string) {
       this.issuer = issuer;
+    }
+
+    public on(eventName: string, handler: (...args: unknown[]) => void): void {
+      this.eventHandlers.set(eventName, handler);
     }
   }
 
@@ -513,8 +522,10 @@ describe('OidcProviderService', () => {
   let oidcConfigService: { getConfig: jest.Mock };
   let oidcKeysService: { ensureLoaded: jest.Mock };
   let adapterFactory: OidcAdapterFactory;
+  let oidcModelRepository: { findOne: jest.Mock };
   let service: OidcProviderService;
   let tenantUserService: OidcTenantUserPort;
+  let upstreamFederation: { finalizeUpstreamSessionForOidcSession: jest.Mock };
 
   const jwks: OidcJwks = { keys: [{ kid: 'test-key', kty: 'RSA' }] };
 
@@ -536,6 +547,12 @@ describe('OidcProviderService', () => {
     };
     oidcKeysService = { ensureLoaded: jest.fn().mockResolvedValue(jwks) };
     adapterFactory = { forModel: jest.fn() } as unknown as OidcAdapterFactory;
+    oidcModelRepository = {
+      findOne: jest.fn(),
+    };
+    upstreamFederation = {
+      finalizeUpstreamSessionForOidcSession: jest.fn(),
+    };
     tenantUserService = {
       forModel: jest.fn(),
       findById: jest.fn(),
@@ -545,6 +562,8 @@ describe('OidcProviderService', () => {
       oidcConfigService as never,
       oidcKeysService as never,
       adapterFactory,
+      oidcModelRepository as never,
+      upstreamFederation,
       tenantUserService,
     );
   });
@@ -569,5 +588,44 @@ describe('OidcProviderService', () => {
     await service.onModuleInit();
 
     expect(oidcKeysService.ensureLoaded).toHaveBeenCalled();
+  });
+
+  it('finalizes a pending upstream session when oidc-provider emits session.saved', async () => {
+    oidcModelRepository.findOne.mockResolvedValue({
+      id: 'oidc-model-123',
+    });
+
+    await service.onModuleInit();
+
+    const provider = service.getProvider() as unknown as InstanceType<
+      typeof FakeProvider
+    >;
+    const sessionSavedHandler = provider.eventHandlers.get('session.saved');
+
+    expect(sessionSavedHandler).toBeDefined();
+
+    sessionSavedHandler?.({
+      uid: 'session-uid-123',
+      accountId: 'tenant-user-123',
+    });
+
+    await Promise.resolve();
+
+    expect(oidcModelRepository.findOne).toHaveBeenCalledWith({
+      where: {
+        modelName: 'Session',
+        uid: 'session-uid-123',
+      },
+      order: {
+        createdAt: 'DESC',
+      },
+    });
+    expect(
+      upstreamFederation.finalizeUpstreamSessionForOidcSession,
+    ).toHaveBeenCalledWith({
+      oidcModelId: 'oidc-model-123',
+      oidcSessionUid: 'session-uid-123',
+      tenantUserId: 'tenant-user-123',
+    });
   });
 });
