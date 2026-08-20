@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/unbound-method */
 import {
   JwtGuard,
   PLATFORM_ADMIN_ROLE,
@@ -110,12 +111,17 @@ describe('TenantController', () => {
     mockFindById.mockResolvedValue(mockTenant);
 
     await expect(
-      controller.findById(mockTenant.id, { roles: [PLATFORM_ADMIN_ROLE] } as never),
+      controller.findById(mockTenant.id, {
+        roles: [PLATFORM_ADMIN_ROLE],
+      } as never),
     ).resolves.toEqual(mockTenant);
 
     mockFindById.mockResolvedValue(mockTenant);
     await expect(
-      controller.findById(mockTenant.id, { roles: [], tenantId: 'other-tenant' } as never),
+      controller.findById(mockTenant.id, {
+        roles: [],
+        tenantId: 'other-tenant',
+      } as never),
     ).rejects.toMatchObject({
       response: {
         error: {
@@ -140,7 +146,9 @@ describe('TenantController', () => {
         roles: [PLATFORM_ADMIN_ROLE],
       } as never);
 
-      expect(mockCreate).toHaveBeenCalledWith(dto, { roles: [PLATFORM_ADMIN_ROLE] });
+      expect(mockCreate).toHaveBeenCalledWith(dto, {
+        roles: [PLATFORM_ADMIN_ROLE],
+      });
       expect(result).toEqual(mockTenant);
     });
   });
@@ -153,11 +161,10 @@ describe('TenantController', () => {
 
       mockUpdate.mockResolvedValue(updatedTenant);
 
-      const result = await controller.update(
-        dto,
-        id,
-        { roles: [PLATFORM_ADMIN_ROLE], tenantId: mockTenant.id } as never,
-      );
+      const result = await controller.update(dto, id, {
+        roles: [PLATFORM_ADMIN_ROLE],
+        tenantId: mockTenant.id,
+      } as never);
 
       expect(mockUpdate).toHaveBeenCalledWith(id, dto);
       expect(result).toEqual(updatedTenant);
