@@ -19,6 +19,8 @@ import { AddOauthClientRefreshTokenTtl1786567439996 } from './migrations/000016_
 import { BackfillOidcModelAccountId1786600000000 } from './migrations/000017_backfill-oidc-model-account-id';
 import { CreateOidcUpstreamSession1786995277657 } from './migrations/000018_create-oidc-upstream-session';
 import { CreateTenantRoleScope1787614243192 } from './migrations/000019_create-tenant-role-scope';
+import { AddTenantApprovalStatus1787255721437 } from './migrations/000020_add-tenant-approval-status';
+import { AllowInvitedTenantUser1787341200000 } from './migrations/000021_allow-invited-tenant-user';
 import { buildSslConfig } from './ssl.util';
 
 export const AppDataSource = new DataSource({
@@ -49,6 +51,8 @@ export const AppDataSource = new DataSource({
     BackfillOidcModelAccountId1786600000000,
     CreateOidcUpstreamSession1786995277657,
     CreateTenantRoleScope1787614243192,
+    AddTenantApprovalStatus1787255721437,
+    AllowInvitedTenantUser1787341200000,
   ],
   ssl: buildSslConfig(
     process.env.DB_SSL,

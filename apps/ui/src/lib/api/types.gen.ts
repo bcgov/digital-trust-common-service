@@ -78,7 +78,10 @@ export interface paths {
          */
         get: operations["listTenants"];
         put?: never;
-        /** Create a new tenant */
+        /**
+         * Create a new tenant
+         * @description Requires platform-admin privileges. Links the given ownerEmail as the tenant's initial owner. There is no self-service tenant creation path.
+         */
         post: operations["createTenant"];
         delete?: never;
         options?: never;
@@ -106,6 +109,46 @@ export interface paths {
         head?: never;
         /** Update tenant */
         patch: operations["updateTenant"];
+        trace?: never;
+    };
+    "/api/v1/tenants/slug/{slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        /** Get tenant details by slug */
+        get: operations["getTenantBySlug"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tenants/{tenantId}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Restore a soft-deleted tenant (platform-admin only) */
+        post: operations["restoreTenant"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/tenants/{tenantId}/status": {
@@ -1498,7 +1541,7 @@ export interface components {
             updated_at?: string;
         };
         /** @enum {string} */
-        TenantStatus: "active" | "suspended" | "deactivated";
+        TenantStatus: "active" | "pending_approval" | "rejected" | "suspended" | "deactivated";
         TenantConfig: {
             allowed_formats?: components["schemas"]["CredentialFormat"][];
             /** Format: uuid */
@@ -1536,6 +1579,11 @@ export interface components {
             name: string;
             slug: string;
             description?: string;
+            /**
+             * Format: email
+             * @description Email of the user to link as the tenant's initial owner
+             */
+            ownerEmail: string;
         };
         UpdateTenantRequest: {
             name?: string;
@@ -2335,6 +2383,7 @@ export interface operations {
                     };
                 };
             };
+            401: components["responses"]["Unauthorized"];
         };
     };
     createTenant: {
@@ -2362,6 +2411,8 @@ export interface operations {
                     "application/json": components["schemas"]["Tenant"];
                 };
             };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             409: components["responses"]["Conflict"];
             422: components["responses"]["ValidationError"];
         };
@@ -2387,6 +2438,8 @@ export interface operations {
                     "application/json": components["schemas"]["Tenant"];
                 };
             };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
         };
     };
@@ -2409,6 +2462,8 @@ export interface operations {
                 };
                 content?: never;
             };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
         };
     };
@@ -2437,6 +2492,58 @@ export interface operations {
                     "application/json": components["schemas"]["Tenant"];
                 };
             };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getTenantBySlug: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant slug */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Tenant details */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Tenant"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    restoreTenant: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Tenant restored */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
         };
     };
@@ -2649,6 +2756,8 @@ export interface operations {
                     };
                 };
             };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
         };
     };
     inviteUser: {
@@ -2679,6 +2788,8 @@ export interface operations {
                     "application/json": components["schemas"]["TenantUser"];
                 };
             };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             409: components["responses"]["Conflict"];
         };
     };
@@ -2702,6 +2813,9 @@ export interface operations {
                 };
                 content?: never;
             };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
             /** @description Cannot remove last owner */
             409: {
                 headers: {
@@ -2739,6 +2853,18 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TenantUser"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description Cannot change the role of the tenant's last owner */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };

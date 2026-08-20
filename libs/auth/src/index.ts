@@ -10,6 +10,7 @@ export {
   ROLE_HIERARCHY,
   SCOPE_CATALOG,
   TENANT_SUPERUSER_SCOPE,
+  USERS_MANAGE_SCOPE,
 } from './constants/scopes.constants';
 export type {
   ScopeCatalogEntry,

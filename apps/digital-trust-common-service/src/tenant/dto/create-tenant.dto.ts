@@ -1,9 +1,11 @@
 import {
+  IsEmail,
   IsObject,
   IsOptional,
   IsString,
   Length,
   Matches,
+  MaxLength,
 } from 'class-validator';
 
 export class CreateTenantDto {
@@ -22,4 +24,8 @@ export class CreateTenantDto {
   @IsOptional()
   @IsObject()
   public config!: Record<string, unknown>;
+
+  @IsEmail()
+  @MaxLength(255)
+  public ownerEmail!: string;
 }

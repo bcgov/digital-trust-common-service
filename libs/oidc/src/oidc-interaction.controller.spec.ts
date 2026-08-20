@@ -57,6 +57,7 @@ describe('OidcInteractionController', () => {
   const mockTenantUserService = {
     findById: jest.fn(),
     findByTenantAndExternalUserId: jest.fn(),
+    claimInvitedByEmail: jest.fn(),
     create: jest.fn(),
   };
 
@@ -784,6 +785,7 @@ describe('OidcInteractionController', () => {
       mockTenantUserService.findByTenantAndExternalUserId.mockResolvedValue(
         null,
       );
+      mockTenantUserService.claimInvitedByEmail.mockResolvedValue(null);
 
       const mockNewUser = {
         id: 'local-user-new',
@@ -827,6 +829,11 @@ describe('OidcInteractionController', () => {
         mockRes,
       );
 
+      expect(mockTenantUserService.claimInvitedByEmail).toHaveBeenCalledWith(
+        'tenant-123',
+        'newuser@example.com',
+        'external-user-new',
+      );
       expect(mockTenantUserService.create).toHaveBeenCalledWith({
         tenantId: 'tenant-123',
         externalUserId: 'external-user-new',
@@ -834,6 +841,105 @@ describe('OidcInteractionController', () => {
         displayName: 'New User',
         role: 'readonly',
         status: 'active',
+      });
+    });
+
+    it('should claim an invited tenant user by email instead of creating a new one', async () => {
+      const mockInteraction = {
+        id: 'interaction-123',
+        state: 'state-123',
+        interactionUid: 'interaction-uid',
+        codeVerifier: 'verifier',
+        tenantId: 'tenant-123',
+        tenantUserId: null,
+        createdAt: new Date(),
+        expiresAt: new Date(),
+        consumedAt: null,
+      };
+
+      mockUpstreamOidcService.handleUpstreamCallback.mockResolvedValue({
+        claims: {
+          sub: 'external-user-invited',
+          email: 'invited@example.com',
+          name: 'Invited User',
+        },
+        interaction: mockInteraction,
+        upstreamSession: {
+          upstreamSubject: 'external-user-invited',
+          upstreamIdToken: 'upstream-id-token',
+          expiresAt: null,
+        },
+      });
+      mockOidcSessionRepository.findInteractionByUid.mockResolvedValue({
+        id: 'interaction-model-123',
+        uid: 'session-uid-123',
+        payload: {},
+      });
+      mockOidcSessionRepository.getSessionUidFromInteraction.mockReturnValue(
+        'session-uid-123',
+      );
+
+      mockTenantUserService.findByTenantAndExternalUserId.mockResolvedValue(
+        null,
+      );
+
+      const mockClaimedUser = {
+        id: 'local-user-invited',
+        tenantId: 'tenant-123',
+        externalUserId: 'external-user-invited',
+        email: 'invited@example.com',
+        displayName: undefined,
+        role: 'admin' as OidcTenantUserRole,
+        status: 'active' as OidcTenantUserStatus,
+      };
+
+      mockTenantUserService.claimInvitedByEmail.mockResolvedValue(
+        mockClaimedUser,
+      );
+      mockUpstreamOidcService.setTenantUserIdForInteraction.mockResolvedValue(
+        mockInteraction,
+      );
+      mockUpstreamOidcService.consumeInteraction.mockResolvedValue(
+        mockInteraction,
+      );
+
+      mockConfigService.get.mockReturnValue('http://localhost:3000/oidc');
+
+      const mockReq = {
+        headers: { host: 'localhost:3000' },
+        url: '/oidc/callback?code=auth-code&state=state-123',
+      } as IncomingMessage;
+
+      const mockRes = {
+        headersSent: false,
+        statusCode: 200,
+        setHeader: jest.fn(),
+        end: jest.fn(),
+      } as any;
+
+      await controller.callback(
+        'auth-code',
+        'state-123',
+        'nonce-123',
+        undefined,
+        undefined,
+        mockReq,
+        mockRes,
+      );
+
+      expect(mockTenantUserService.claimInvitedByEmail).toHaveBeenCalledWith(
+        'tenant-123',
+        'invited@example.com',
+        'external-user-invited',
+      );
+      expect(mockTenantUserService.create).not.toHaveBeenCalled();
+      expect(
+        mockUpstreamOidcService.stagePendingUpstreamSession,
+      ).toHaveBeenCalledWith({
+        tenantUserId: 'local-user-invited',
+        upstreamSubject: 'external-user-invited',
+        upstreamIdToken: 'upstream-id-token',
+        expiresAt: null,
       });
     });
 

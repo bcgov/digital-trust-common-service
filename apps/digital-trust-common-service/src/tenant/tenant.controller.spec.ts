@@ -1,3 +1,12 @@
+/* eslint-disable @typescript-eslint/unbound-method */
+import {
+  JwtGuard,
+  PLATFORM_ADMIN_ROLE,
+  ScopeGuard,
+  TENANT_SUPERUSER_SCOPE,
+} from '@app/auth';
+import { CanActivate } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
 import { Test, TestingModule } from '@nestjs/testing';
 
 import { CreateTenantDto } from './dto/create-tenant.dto';
@@ -5,12 +14,18 @@ import { TenantController } from './tenant.controller';
 import { Tenant, TenantStatus } from './tenant.entity';
 import { TenantService } from './tenant.service';
 
+class AllowGuard implements CanActivate {
+  public canActivate(): boolean {
+    return true;
+  }
+}
+
 describe('TenantController', () => {
   let controller: TenantController;
 
   let mockCreate: jest.Mock;
   let mockUpdate: jest.Mock;
-  let mockFindAll: jest.Mock;
+  let mockList: jest.Mock;
   let mockFindById: jest.Mock;
   let mockFindBySlug: jest.Mock;
   let mockDelete: jest.Mock;
@@ -31,7 +46,7 @@ describe('TenantController', () => {
   beforeEach(async () => {
     mockCreate = jest.fn();
     mockUpdate = jest.fn();
-    mockFindAll = jest.fn();
+    mockList = jest.fn();
     mockFindById = jest.fn();
     mockFindBySlug = jest.fn();
     mockDelete = jest.fn();
@@ -40,7 +55,7 @@ describe('TenantController', () => {
     const mockService = {
       create: mockCreate,
       update: mockUpdate,
-      findAll: mockFindAll,
+      list: mockList,
       findById: mockFindById,
       findBySlug: mockFindBySlug,
       delete: mockDelete,
@@ -55,13 +70,65 @@ describe('TenantController', () => {
           useValue: mockService,
         },
       ],
-    }).compile();
+    })
+      .overrideGuard(JwtGuard)
+      .useClass(AllowGuard)
+      .overrideGuard(ScopeGuard)
+      .useClass(AllowGuard)
+      .compile();
 
     controller = module.get<TenantController>(TenantController);
   });
 
   it('should be defined', () => {
     expect(controller).toBeDefined();
+  });
+
+  it('requires platform-admin for tenant creation and deletion', () => {
+    const createRoles = new Reflector().get<string[]>(
+      'required_roles',
+      TenantController.prototype.create,
+    );
+    const deleteRoles = new Reflector().get<string[]>(
+      'required_roles',
+      TenantController.prototype.delete,
+    );
+
+    expect(createRoles).toEqual([PLATFORM_ADMIN_ROLE]);
+    expect(deleteRoles).toEqual([PLATFORM_ADMIN_ROLE]);
+  });
+
+  it('requires tenant superuser scope for tenant updates', () => {
+    const updateScopes = new Reflector().get<string[]>(
+      'required_scopes',
+      TenantController.prototype.update,
+    );
+
+    expect(updateScopes).toEqual([TENANT_SUPERUSER_SCOPE]);
+  });
+
+  it('allows platform-admin to read any tenant and restricts tenant member reads to their tenant', async () => {
+    mockFindById.mockResolvedValue(mockTenant);
+
+    await expect(
+      controller.findById(mockTenant.id, {
+        roles: [PLATFORM_ADMIN_ROLE],
+      } as never),
+    ).resolves.toEqual(mockTenant);
+
+    mockFindById.mockResolvedValue(mockTenant);
+    await expect(
+      controller.findById(mockTenant.id, {
+        roles: [],
+        tenantId: 'other-tenant',
+      } as never),
+    ).rejects.toMatchObject({
+      response: {
+        error: {
+          code: 'TENANT_ACCESS_DENIED',
+        },
+      },
+    });
   });
 
   describe('POST /tenants', () => {
@@ -71,18 +138,23 @@ describe('TenantController', () => {
         slug: 'new-tenant',
         description: 'A new tenant',
         config: {},
+        ownerEmail: 'owner@new-tenant.example',
       };
 
       mockCreate.mockResolvedValue(mockTenant);
 
-      const result = await controller.create(dto);
+      const result = await controller.create(dto, {
+        roles: [PLATFORM_ADMIN_ROLE],
+      } as never);
 
-      expect(mockCreate).toHaveBeenCalledWith(dto);
+      expect(mockCreate).toHaveBeenCalledWith(dto, {
+        roles: [PLATFORM_ADMIN_ROLE],
+      });
       expect(result).toEqual(mockTenant);
     });
   });
 
-  describe('PUT /tenants/:id', () => {
+  describe('PATCH /tenants/:id', () => {
     it('should update a tenant', async () => {
       const id = mockTenant.id;
       const dto: Partial<CreateTenantDto> = { name: 'Updated Name' };
@@ -90,7 +162,10 @@ describe('TenantController', () => {
 
       mockUpdate.mockResolvedValue(updatedTenant);
 
-      const result = await controller.update(dto, id);
+      const result = await controller.update(dto, id, {
+        roles: [PLATFORM_ADMIN_ROLE],
+        tenantId: mockTenant.id,
+      } as never);
 
       expect(mockUpdate).toHaveBeenCalledWith(id, dto);
       expect(result).toEqual(updatedTenant);
@@ -98,22 +173,47 @@ describe('TenantController', () => {
   });
 
   describe('GET /tenants', () => {
-    it('should return all tenants', async () => {
-      const tenants = [mockTenant];
-      mockFindAll.mockResolvedValue(tenants);
+    it('should return a paginated list of tenants for platform-admins', async () => {
+      const page = {
+        data: [mockTenant],
+        pagination: { next_cursor: null, has_more: false },
+      };
+      mockList.mockResolvedValue(page);
 
-      const result = await controller.findAll();
+      const result = await controller.list({}, {
+        roles: [PLATFORM_ADMIN_ROLE],
+      } as never);
 
-      expect(mockFindAll).toHaveBeenCalled();
-      expect(result).toEqual(tenants);
+      expect(mockList).toHaveBeenCalledWith({
+        limit: undefined,
+        cursor: undefined,
+      });
+      expect(result).toEqual(page);
     });
 
-    it('should return empty array if no tenants exist', async () => {
-      mockFindAll.mockResolvedValue([]);
+    it('should return the caller tenant for tenant-scoped users', async () => {
+      mockFindById.mockResolvedValue(mockTenant);
 
-      const result = await controller.findAll();
+      const result = await controller.list({}, {
+        roles: [],
+        tenantId: mockTenant.id,
+      } as never);
 
-      expect(result).toEqual([]);
+      expect(mockFindById).toHaveBeenCalledWith(mockTenant.id);
+      expect(mockList).not.toHaveBeenCalled();
+      expect(result).toEqual({
+        data: [mockTenant],
+        pagination: { next_cursor: null, has_more: false },
+      });
+    });
+
+    it('should return an empty page if no auth context is present', async () => {
+      const result = await controller.list({}, undefined);
+
+      expect(result).toEqual({
+        data: [],
+        pagination: { next_cursor: null, has_more: false },
+      });
     });
   });
 
@@ -122,7 +222,10 @@ describe('TenantController', () => {
       const id = mockTenant.id;
       mockFindById.mockResolvedValue(mockTenant);
 
-      const result = await controller.findById(id);
+      const result = await controller.findById(id, {
+        roles: [PLATFORM_ADMIN_ROLE],
+        tenantId: mockTenant.id,
+      } as never);
 
       expect(mockFindById).toHaveBeenCalledWith(id);
       expect(result).toEqual(mockTenant);
@@ -132,7 +235,10 @@ describe('TenantController', () => {
       const id = '999e4567-e89b-12d3-a456-426614174000';
       mockFindById.mockResolvedValue(null);
 
-      const result = await controller.findById(id);
+      const result = await controller.findById(id, {
+        roles: [PLATFORM_ADMIN_ROLE],
+        tenantId: mockTenant.id,
+      } as never);
 
       expect(result).toBeNull();
     });
@@ -143,7 +249,10 @@ describe('TenantController', () => {
       const slug = mockTenant.slug;
       mockFindBySlug.mockResolvedValue(mockTenant);
 
-      const result = await controller.findBySlug(slug);
+      const result = await controller.findBySlug(slug, {
+        roles: [PLATFORM_ADMIN_ROLE],
+        tenantId: mockTenant.id,
+      } as never);
 
       expect(mockFindBySlug).toHaveBeenCalledWith(slug);
       expect(result).toEqual(mockTenant);
@@ -153,7 +262,10 @@ describe('TenantController', () => {
       const slug = 'non-existent-slug';
       mockFindBySlug.mockResolvedValue(null);
 
-      const result = await controller.findBySlug(slug);
+      const result = await controller.findBySlug(slug, {
+        roles: [PLATFORM_ADMIN_ROLE],
+        tenantId: mockTenant.id,
+      } as never);
 
       expect(result).toBeNull();
     });
