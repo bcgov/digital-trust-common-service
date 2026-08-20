@@ -1,8 +1,13 @@
 import { PgBossService } from '@app/pg-boss';
-import { Injectable, Logger, OnModuleInit, Optional } from '@nestjs/common';
+import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 
-import { OidcPurgeRepository, PurgeModelCount } from './oidc-purge.repository';
-import { OidcUpstreamFederationPort } from './ports/oidc-upstream-federation.port';
+import {
+  ExpiredSessionWithUpstreamCleanup,
+  OidcPurgeRepository,
+  PurgeModelCount,
+} from './oidc-purge.repository';
+import { OIDC_UPSTREAM_FEDERATION_PORT } from './ports/oidc-upstream-federation.port';
+import type { OidcUpstreamFederationPort } from './ports/oidc-upstream-federation.port';
 
 export const OIDC_PURGE_QUEUE = 'oidc-purge';
 
@@ -30,8 +35,8 @@ export class OidcPurgeService implements OnModuleInit {
   public constructor(
     private readonly bossService: PgBossService,
     private readonly purgeRepository: OidcPurgeRepository,
-    @Optional()
-    private readonly upstreamFederation?: OidcUpstreamFederationPort | null,
+    @Inject(OIDC_UPSTREAM_FEDERATION_PORT)
+    private readonly upstreamFederation: OidcUpstreamFederationPort,
   ) {}
 
   public async onModuleInit(): Promise<void> {
@@ -73,41 +78,37 @@ export class OidcPurgeService implements OnModuleInit {
         // Before purging, schedule upstream logout cleanup for Sessions with
         // upstream sessions. This ensures expired sessions are cleaned up
         // upstream before cascade deletion.
-        if (this.upstreamFederation) {
-          const sessionsToCleanup =
-            await this.purgeRepository.getExpiredSessionsWithUpstreamCleanup(
-              BATCH_SIZE,
-            );
+        const sessionsToCleanup: ExpiredSessionWithUpstreamCleanup[] =
+          await this.purgeRepository.getExpiredSessionsWithUpstreamCleanup(
+            BATCH_SIZE,
+          );
 
-          for (const session of sessionsToCleanup) {
-            try {
-              await this.upstreamFederation.logoutUpstreamSessionForOidcSession(
-                {
-                  oidcModelId: session.oidcModelId,
-                  oidcSessionUid: session.oidcSessionUid,
-                },
-              );
-              upstreamLogoutScheduledCount += 1;
-            } catch (err) {
-              // Log the error but continue; upstream logout is best-effort.
-              // If it fails, the local session is still cleaned up.
-              const errorMessage =
-                err instanceof Error ? err.message : String(err);
-              this.logger.warn(
-                `Failed to logout upstream session for oidc model ${session.oidcModelId}: ${errorMessage}`,
-              );
-            }
+        for (const session of sessionsToCleanup) {
+          try {
+            await this.upstreamFederation.logoutUpstreamSessionForOidcSession({
+              oidcModelId: session.oidcModelId,
+              oidcSessionUid: session.oidcSessionUid,
+            });
+            upstreamLogoutScheduledCount += 1;
+          } catch (err) {
+            // Log the error but continue; upstream logout is best-effort.
+            // If it fails, the local session is still cleaned up.
+            const errorMessage =
+              err instanceof Error ? err.message : String(err);
+            this.logger.warn(
+              `Failed to logout upstream session for oidc model ${session.oidcModelId}: ${errorMessage}`,
+            );
           }
-
-          // Delete expired pending sessions that accumulated when finalization
-          // failed after callback staging. These cannot be cascade-deleted by
-          // oidc_model cleanup.
-          const deletedPendingCount =
-            await this.upstreamFederation.deleteExpiredPendingSessionBatch(
-              BATCH_SIZE,
-            );
-          expiredPendingSessionsDeletedCount += deletedPendingCount;
         }
+
+        // Delete expired pending sessions that accumulated when finalization
+        // failed after callback staging. These cannot be cascade-deleted by
+        // oidc_model cleanup.
+        const deletedPendingCount =
+          await this.upstreamFederation.deleteExpiredPendingSessionBatch(
+            BATCH_SIZE,
+          );
+        expiredPendingSessionsDeletedCount += deletedPendingCount;
 
         batch = await this.purgeRepository.purgeExpiredBatch(BATCH_SIZE);
         const upstreamResult =
