@@ -170,6 +170,10 @@ jobs:
           cache: npm
           cache-dependency-path: apps/ui/package-lock.json
       - run: npm ci
+      - name: Verify generated API types are current
+        run: |
+          npm run types:spec
+          git diff --exit-code -- src/lib/api/types.gen.ts
       - run: npm run lint
       - run: npm run format:check
       - run: npm test
