@@ -55,7 +55,7 @@ describe('OidcPurgeRepository', () => {
   });
 
   it('deletes expired upstream interaction records in a single batched query', async () => {
-    mockQuery.mockResolvedValue([{ id: 'id-1' }, { id: 'id-2' }]);
+    mockQuery.mockResolvedValue([{ count: '2' }]);
 
     const result = await repository.purgeExpiredUpstreamInteractionsBatch(500);
 
@@ -66,7 +66,7 @@ describe('OidcPurgeRepository', () => {
   });
 
   it('clamps the limit for upstream interaction batch deletion', async () => {
-    mockQuery.mockResolvedValue([]);
+    mockQuery.mockResolvedValue([{ count: '0' }]);
 
     await repository.purgeExpiredUpstreamInteractionsBatch(-10);
     expect(mockQuery).toHaveBeenCalledWith(expect.any(String), [1]);
