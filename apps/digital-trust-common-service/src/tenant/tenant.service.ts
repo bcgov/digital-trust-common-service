@@ -1,3 +1,4 @@
+import { PLATFORM_ADMIN_ROLE } from '@app/auth';
 import {
   Injectable,
   ConflictException,
@@ -9,6 +10,7 @@ import { DomainAuditService } from '../audit-log/domain-audit.service';
 
 import { CreateTenantDto } from './dto/create-tenant.dto';
 import { UpdateTenantDto } from './dto/update-tenant.dto';
+import { Tenant, TenantStatus } from './tenant.entity';
 import { TenantRepository } from './tenant.repository';
 
 @Injectable()
@@ -18,14 +20,20 @@ export class TenantService {
     private readonly domainAudit: DomainAuditService,
   ) {}
 
-  public async create(dto: CreateTenantDto) {
-    const existing = await this.tenants.findBySlug(dto.slug);
+  public async create(
+    dto: CreateTenantDto,
+    actor?: { roles?: string[] },
+  ): Promise<Tenant> {
+    const existing = await this.tenants.findBySlug(dto.slug, true);
 
     if (existing) {
       throw new ConflictException('Tenant slug already exists');
     }
 
-    const tenant = this.tenants.create(dto);
+    const tenant = this.tenants.create({
+      ...dto,
+      status: this.resolveCreateStatus(actor),
+    });
     const saved = await this.tenants.update(tenant);
 
     await this.domainAudit.emit({
@@ -36,6 +44,14 @@ export class TenantService {
     });
 
     return saved;
+  }
+
+  private resolveCreateStatus(actor?: { roles?: string[] }): TenantStatus {
+    if (actor?.roles?.includes(PLATFORM_ADMIN_ROLE)) {
+      return TenantStatus.ACTIVE;
+    }
+
+    return TenantStatus.PENDING_APPROVAL;
   }
 
   public async findAll() {

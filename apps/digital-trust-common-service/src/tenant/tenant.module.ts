@@ -1,3 +1,4 @@
+import { AuthModule } from '@app/auth';
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
@@ -9,7 +10,7 @@ import { TenantRepository } from './tenant.repository';
 import { TenantService } from './tenant.service';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Tenant]), AuditLogModule],
+  imports: [TypeOrmModule.forFeature([Tenant]), AuditLogModule, AuthModule],
   controllers: [TenantController],
   providers: [TenantService, TenantRepository],
   exports: [TenantService],
