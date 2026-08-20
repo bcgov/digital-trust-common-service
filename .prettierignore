@@ -1,0 +1,4 @@
+# apps/ui is its own npm package with its own prettier version and scripts
+# (matching the root eslint/jest exclusions); the root format script must not
+# rewrite it with the root-pinned prettier.
+apps/ui

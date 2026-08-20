@@ -532,6 +532,34 @@ npm run start:prod
 └── .env.example                    # Example environment variables
 ```
 
+## Frontend UI (apps/ui)
+
+The React admin UI is a **standalone npm package** with its own lockfile and
+toolchain — it is not part of the root install, the NestJS build, the root
+ESLint config, or the root Jest run (all of which explicitly ignore it).
+
+```bash
+# Terminal 1: backend (either way)
+docker compose up
+# or: npm run start:dev
+
+# Terminal 2: frontend
+cd apps/ui
+npm install
+npm run dev          # http://localhost:5173
+```
+
+The Vite dev server proxies `/api`, `/oidc` and `/health` to the backend
+(`VITE_PROXY_TARGET` in `apps/ui/.env`, default `http://localhost:3000`),
+mirroring the production Caddy reverse proxy — the SPA uses relative URLs only.
+Sign-in runs in **mock mode** (`VITE_AUTH_MODE=mock`) until the interactive
+OIDC flow lands (AU-02 / UI-02).
+
+Checks (mirrored by the `ui` job in CI): `npm run lint`, `npm run format:check`,
+`npm test`, `npm run build`. API types are generated from the OpenAPI spec via
+`npm run types:spec` (or `types:live` against a running backend). See
+`apps/ui/README.md` for structure and conventions.
+
 ## Useful Development Endpoints
 
 - Health Check: `GET http://localhost:3000/health/live`
