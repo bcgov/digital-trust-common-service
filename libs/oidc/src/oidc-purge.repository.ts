@@ -51,7 +51,12 @@ export class OidcPurgeRepository {
     const result = await this.oidcModelRepo.manager.query<
       { oidc_model_id: string; oidc_session_uid: string | null }[]
     >(
-      `SELECT DISTINCT
+      // No DISTINCT needed: oidc_upstream_session.oidc_model_id is unique
+      // (uq_oidc_upstream_session_model), so each oidc_model row matches at
+      // most one oidc_upstream_session row. Postgres also rejects DISTINCT
+      // here anyway, since expires_at (the ORDER BY column) isn't in the
+      // select list.
+      `SELECT
          om.id AS oidc_model_id,
          ous.oidc_session_uid
        FROM oidc_model om
@@ -103,26 +108,35 @@ export class OidcPurgeRepository {
   /**
    * Deletes expired `oidc_upstream_interaction` records in a bounded batch
    * to avoid long-held locks on the table.
+   *
+   * Uses a `WITH ... SELECT` wrapper (rather than a bare
+   * `DELETE ... RETURNING`) so the outermost statement is a `SELECT`. For a
+   * bare `DELETE ... RETURNING`, node-postgres/TypeORM returns a
+   * `[rows, rowCount]` tuple instead of just `rows`, which silently made
+   * `result.length` always equal 2 regardless of how many rows were deleted.
    */
   public async purgeExpiredUpstreamInteractionsBatch(
     limit: number,
   ): Promise<PurgeInteractionCount> {
     const safeLimit = Math.max(1, Math.floor(limit));
 
-    const result = await this.oidcModelRepo.manager.query<{ count: string }[]>(
-      `DELETE FROM oidc_upstream_interaction
-       WHERE id IN (
-         SELECT id FROM oidc_upstream_interaction
-         WHERE expires_at < now()
-         ORDER BY expires_at
-         LIMIT $1
-       )
-       RETURNING id`,
+    const rows = await this.oidcModelRepo.manager.query<{ count: string }[]>(
+      `WITH deleted AS (
+        DELETE FROM oidc_upstream_interaction
+        WHERE id IN (
+          SELECT id FROM oidc_upstream_interaction
+          WHERE expires_at < now()
+          ORDER BY expires_at
+          LIMIT $1
+        )
+        RETURNING id
+      )
+      SELECT COUNT(*) AS count FROM deleted`,
       [safeLimit],
     );
 
     return {
-      count: result.length,
+      count: Number(rows[0].count),
     };
   }
 }
