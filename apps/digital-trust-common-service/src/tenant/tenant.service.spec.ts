@@ -113,7 +113,10 @@ describe('TenantService', () => {
 
       mockFindBySlug.mockResolvedValue(null);
       mockCreate.mockReturnValue({ ...mockTenant, status: 'pending_approval' });
-      mockUpdate.mockResolvedValue({ ...mockTenant, status: 'pending_approval' });
+      mockUpdate.mockResolvedValue({
+        ...mockTenant,
+        status: 'pending_approval',
+      });
 
       const result = await service.create(dto, { roles: [] });
 
@@ -132,7 +135,10 @@ describe('TenantService', () => {
         config: {},
       };
 
-      mockFindBySlug.mockResolvedValue({ ...mockTenant, deleted_at: new Date() });
+      mockFindBySlug.mockResolvedValue({
+        ...mockTenant,
+        deleted_at: new Date(),
+      });
 
       await expect(service.create(dto)).rejects.toThrow(ConflictException);
       expect(mockFindBySlug).toHaveBeenCalledWith(dto.slug, true);
