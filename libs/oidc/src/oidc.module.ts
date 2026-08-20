@@ -11,6 +11,7 @@ import { OidcKeysService } from './oidc-keys.service';
 import { OidcProviderService } from './oidc-provider.service';
 import { OidcPurgeRepository } from './oidc-purge.repository';
 import { OidcPurgeService } from './oidc-purge.service';
+import { OidcSessionRepository } from './oidc-session.repository';
 import { SessionLimitService } from './session-limit.service';
 
 export interface OidcModuleOptions {
@@ -54,6 +55,7 @@ export class OidcModule {
         SessionLimitService,
         OidcPurgeRepository,
         OidcPurgeService,
+        OidcSessionRepository,
         options.clientLookupProvider,
         options.tenantUserProvider,
         options.roleScopeProvider,

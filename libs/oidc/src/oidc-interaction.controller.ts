@@ -367,7 +367,7 @@ export class OidcInteractionController {
        * Handle the upstream OIDC callback, exchange code for tokens,
        * and extract claims.
        */
-      const { claims, interaction } =
+      const { claims, interaction, upstreamSession } =
         await this.upstreamOidcService.handleUpstreamCallback(
           state,
           code,
@@ -403,6 +403,13 @@ export class OidcInteractionController {
           status: OidcInteractionController.ACTIVE_TENANT_USER_STATUS,
         });
       }
+
+      await this.upstreamOidcService.stagePendingUpstreamSession({
+        tenantUserId: federatedUser.id,
+        upstreamSubject: upstreamSession.upstreamSubject,
+        upstreamIdToken: upstreamSession.upstreamIdToken,
+        expiresAt: upstreamSession.expiresAt ?? null,
+      });
 
       /*
        * Associate the federated user with this interaction.

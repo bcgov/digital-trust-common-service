@@ -7,7 +7,9 @@ import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
   {
-    ignores: ['eslint.config.mjs', 'dist/**'],
+    // apps/ui is a standalone Vite/React package with its own eslint.config.mjs;
+    // this root config is Node/CommonJS-oriented and must not lint it.
+    ignores: ['eslint.config.mjs', 'dist/**', 'apps/ui/**'],
   },
   eslint.configs.recommended,
   ...tseslint.configs.recommendedTypeChecked,

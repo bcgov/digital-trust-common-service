@@ -92,7 +92,8 @@
     "testRegex": ".*\\.spec\\.ts$",
     "testPathIgnorePatterns": [
       "\\.e2e-spec\\.ts$",
-      "\\.integration-spec\\.ts$"
+      "\\.integration-spec\\.ts$",
+      "<rootDir>/apps/ui/"
     ],
     "transform": {
       "^.+\\.(t|j)s$": "ts-jest"
@@ -109,7 +110,8 @@
       "!**/*.module.ts",
       "!**/main.ts",
       "!**/data-source.ts",
-      "!apps/**/test/**"
+      "!apps/**/test/**",
+      "!apps/ui/**"
     ],
     "moduleNameMapper": {
       "^@app/auth(|/.*)$": "<rootDir>/libs/auth/src/$1",

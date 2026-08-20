@@ -28,7 +28,10 @@ export type {
   OidcUpstreamLoginResult,
   OidcUpstreamClaims,
   OidcUpstreamCallbackResult,
+  OidcPendingUpstreamSessionRecord,
+  OidcUpstreamSessionRecord,
 } from './ports/oidc-upstream-federation.port';
+export { OidcSessionRepository } from './oidc-session.repository';
 export { OidcModelAdapter } from './adapters/oidc-model.adapter';
 export { OidcClientAdapter } from './adapters/oidc-client.adapter';
 export { OidcAdapterFactory } from './adapters/oidc-adapter.factory';
