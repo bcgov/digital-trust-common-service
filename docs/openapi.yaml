@@ -2771,7 +2771,8 @@ components:
 
     TenantStatus:
       type: string
-      enum: [active, suspended, deactivated]
+      enum:
+        [active, pending_approval, rejected, suspended, deactivated]
 
     TenantConfig:
       type: object
