@@ -109,12 +109,20 @@ export class OAuthClientService {
     const nextRoles = dto.roles !== undefined ? dto.roles : client.roles;
     const nextGrantTypes =
       dto.grantTypes !== undefined ? dto.grantTypes : client.grantTypes;
-    const nextScopes = dto.scopes !== undefined ? dto.scopes : client.scopes;
 
-    // Validate the post-update combination so roles, grantTypes, and scopes
-    // cannot drift independently into an unsafe pairing.
-    this.assertRoleConstraints(nextRoles, nextGrantTypes, caller);
-    this.assertAssignableScopes(nextScopes, caller);
+    // Pairing is always checked on the resulting state so grantTypes cannot
+    // drift onto a client that already has roles. Caller-privilege checks
+    // (who may assign roles / scopes) apply only to fields present on the
+    // DTO — otherwise a clients:manage caller could not rename a
+    // credentials:offer client, and a tenant-admin could not PATCH a
+    // platform-admin machine client at all.
+    this.assertRoleConstraints(nextRoles, nextGrantTypes, caller, {
+      checkAssignment: dto.roles !== undefined,
+    });
+
+    if (dto.scopes !== undefined) {
+      this.assertAssignableScopes(dto.scopes, caller);
+    }
 
     if (dto.name !== undefined) {
       client.name = dto.name;
@@ -256,15 +264,19 @@ export class OAuthClientService {
 
   /**
    * Roles are security-sensitive JWT claims for machine clients only.
-   * Unknown role strings are rejected, any non-empty role set requires
-   * the client to be restricted to client_credentials alone, and only
-   * platform-admin callers may assign roles.
+   * Unknown role strings are rejected, and any non-empty role set requires
+   * the client to be restricted to client_credentials alone.
+   * `checkAssignment` (default true) additionally requires the caller to be
+   * platform-admin; set it false on PATCH when `roles` was omitted so
+   * existing privileged clients can still be renamed.
    */
   private assertRoleConstraints(
     roles: string[],
     grantTypes: string[],
     caller: AuthContext,
+    options: { checkAssignment?: boolean } = {},
   ): void {
+    const checkAssignment = options.checkAssignment ?? true;
     const allowed = new Set<string>(OAUTH_CLIENT_ALLOWED_ROLES);
     const unknown = roles.filter((role) => !allowed.has(role));
 
@@ -278,7 +290,10 @@ export class OAuthClientService {
       return;
     }
 
-    if (!this.scopeAuthorizationService.isPlatformAdmin(caller.roles)) {
+    if (
+      checkAssignment &&
+      !this.scopeAuthorizationService.isPlatformAdmin(caller.roles)
+    ) {
       throw new ForbiddenException(
         'Only platform-admin callers may assign roles to OAuth clients.',
       );
