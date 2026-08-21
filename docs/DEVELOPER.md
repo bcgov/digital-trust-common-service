@@ -99,7 +99,7 @@ same-origin front door that mirrors the production topology (SPA + `/oidc` +
 > (`docker compose --profile dev down -v` then up) or update the
 > `dtsc-oidc-provider` client's redirect URIs/web origins in the admin
 > console. Also set `OIDC_ISSUER=https://app.localhost/oidc` in your `.env`,
-> and on Windows replace the `oidc.localhost` hosts entry with
+> and on macOS/Windows replace the `oidc.localhost` hosts entry with
 > `app.localhost`.
 
 #### Start the local HTTPS stack
@@ -123,8 +123,37 @@ docker compose cp \
 Install that certificate into your system trust store so browsers and other local tooling trust `*.localhost` served by Caddy:
 
 ```bash
+# Linux
 sudo cp ./caddy/root.crt /usr/local/share/ca-certificates/caddy-local.crt
 sudo update-ca-certificates
+
+# macOS
+sudo security add-trusted-cert -d -r trustRoot \
+  -k /Library/Keychains/System.keychain ./caddy/root.crt
+```
+
+```powershell
+# Windows (admin PowerShell)
+Import-Certificate -FilePath .\caddy\root.crt -CertStoreLocation Cert:\LocalMachine\Root
+```
+
+Note: recreating the `caddy_data` volume (e.g. `docker compose down -v`) generates a new CA — re-export and re-trust the cert afterwards.
+
+#### Hosts entries (macOS and Windows)
+
+Browsers resolve `*.localhost` subdomains themselves, but the OS resolver on
+macOS and Windows does not — Node fails with `getaddrinfo ENOTFOUND
+keycloak.localhost` during upstream federation calls. Add hosts entries
+(most Linux distros resolve `*.localhost` natively and can skip this):
+
+```bash
+# macOS
+echo "127.0.0.1 app.localhost keycloak.localhost" | sudo tee -a /etc/hosts
+```
+
+```powershell
+# Windows (admin PowerShell)
+Add-Content C:\Windows\System32\drivers\etc\hosts "`n127.0.0.1 app.localhost", "127.0.0.1 keycloak.localhost"
 ```
 
 #### Configure Node.js to trust the local CA
@@ -196,7 +225,9 @@ way:
 # Default workflow: on the host
 cd apps/ui && npm run dev
 
-# Or containerized (behind the `ui` profile)
+# Or containerized (behind the `ui` profile) — convenience only: first start
+# runs `npm ci`, and hot reload isn't guaranteed across bind mounts. For
+# actual hot reload UI development, run the dev server on the host.
 docker compose --profile ui up ui
 ```
 
