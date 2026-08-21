@@ -1,6 +1,5 @@
 import { OidcConfigService } from '@app/oidc';
 import { Injectable } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { importJWK, jwtVerify, type JWTPayload } from 'jose';
 
 import { AuthenticationRequiredException } from '../exceptions/authentication-required.exception';
@@ -208,16 +207,13 @@ export class JwtValidationService {
   public constructor(
     private readonly jwksCacheService: JwksCacheService,
     private readonly oidcConfigService: OidcConfigService,
-    private readonly configService: ConfigService,
   ) {}
 
   public async validateAuthorizationHeader(
     authorizationHeader: string | undefined,
   ): Promise<AuthContext> {
     const token = extractBearerToken(authorizationHeader);
-    const { issuer } = this.oidcConfigService.getConfig();
-    const audience =
-      this.configService.get<string>('JWT_AUDIENCE')?.trim() || issuer;
+    const { issuer, audience } = this.oidcConfigService.getConfig();
 
     try {
       const payload = await verifyAccessToken(

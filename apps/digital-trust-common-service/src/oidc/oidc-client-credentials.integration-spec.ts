@@ -131,6 +131,7 @@ describe('OIDC client_credentials grant (integration)', () => {
 
     expect(payload.tenant_id).toBe(tenantId);
     expect(payload.scope).toBe('credentials:offer');
+    expect(payload.aud).toBe('https://digital-trust-common-service');
     expect(payload.iat).toEqual(expect.any(Number));
     expect(payload.exp).toEqual(expect.any(Number));
     expect(

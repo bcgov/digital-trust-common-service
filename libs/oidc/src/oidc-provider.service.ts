@@ -1,7 +1,7 @@
 import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { verify } from 'argon2';
-import Provider from 'oidc-provider';
+import Provider, { errors } from 'oidc-provider';
 import type { Configuration } from 'oidc-provider';
 import { Repository } from 'typeorm';
 
@@ -148,19 +148,31 @@ export function buildOidcConfiguration(
       // means access tokens must be structured (signed) JWTs, not opaque
       // strings. oidc-provider only issues JWT access tokens for a
       // Resource Server resolved via Resource Indicators (RFC 8707).
-      // `defaultResource` resolves this app's own issuer as the (only)
-      // resource so clients never need to pass an explicit `resource`
-      // parameter, and `getResourceServerInfo` declares that resource's
-      // access tokens as RS256-signed JWTs scoped to the configured scope
-      // allowlist.
+      // `defaultResource` is the API audience (`JWT_AUDIENCE`), not the
+      // issuer URL (AU-01 interim). Clients may pass `resource` for a
+      // downstream gateway listed in `JWT_ADDITIONAL_AUDIENCES`; JwtGuard
+      // still accepts only the API audience.
       resourceIndicators: {
         enabled: true,
-        defaultResource: () => config.issuer,
-        getResourceServerInfo: () => ({
-          scope: config.scopes.join(' '),
-          accessTokenFormat: 'jwt',
-          jwt: { sign: { alg: 'RS256' } },
-        }),
+        defaultResource: () => config.audience,
+        getResourceServerInfo: (_ctx, resourceIndicator) => {
+          const allowed = new Set([
+            config.audience,
+            ...config.additionalAudiences,
+          ]);
+
+          if (!allowed.has(resourceIndicator)) {
+            throw new errors.InvalidTarget(
+              `unsupported resource indicator: ${resourceIndicator}`,
+            );
+          }
+
+          return {
+            scope: config.scopes.join(' '),
+            accessTokenFormat: 'jwt',
+            jwt: { sign: { alg: 'RS256' } },
+          };
+        },
       },
       rpInitiatedLogout: {
         enabled: true,

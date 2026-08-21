@@ -225,7 +225,7 @@ Grafana is registered once as an `authorization_code` (interactive, PKCE) client
 **Trade-offs to carry into implementation:**
 
 - The gateway is a custom component in the security path. This is acceptable because its job is narrow (JWT validation + `logs:read` authorization + header mapping — no query parsing), it fails closed, and it is the same pattern Grafana Enterprise LBAC and Mimir/GEM gateways implement commercially. It must be treated as security-critical code: reviewed, tested, minimal.
-- `oauthPassThru` forwards the user's app-issued access token; token lifetime must comfortably exceed dashboard refresh intervals. Because digital-trust-common-service issues and refreshes these tokens (AU-01/AU-08), lifetime is ours to configure — but the access token must be a **JWT carrying `tenant_id`** (configure `oidc-provider` for JWT access tokens) and scoped with an audience the gateway accepts (`aud = loki-gateway`, via resource indicator), so the gateway can validate statelessly.
+- `oauthPassThru` forwards the user's app-issued access token; token lifetime must comfortably exceed dashboard refresh intervals. Because digital-trust-common-service issues and refreshes these tokens (AU-01/AU-08), lifetime is ours to configure — but the access token must be a **JWT carrying `tenant_id`** (configure `oidc-provider` for JWT access tokens) and minted with a **gateway resource indicator** (`resource=https://loki-gateway`, `aud` = that URI). That audience is **not** the API audience (`https://digital-trust-common-service`); `JwtGuard` rejects Loki tokens, and the gateway validates `aud` itself. See [ARCHITECTURE.md — JWT audience](./ARCHITECTURE.md#jwt-audience-aud) and AU-followup [#164](https://github.com/bcgov/digital-trust-common-service/issues/164).
 - Grafana **alerting** evaluates rules server-side with no user identity — per-tenant alerting does not work in this model and is out of scope.
 - Tenant users share one org, so they can see the same *dashboard definitions* (not data). Dashboards must not embed anything tenant-specific.
 
@@ -295,7 +295,7 @@ Tenant end-users authenticate through **digital-trust-common-service's `oidc-pro
 
 1. Grafana redirects to digital-trust-common-service's `/oidc/auth` (authorization_code + PKCE).
 2. digital-trust-common-service has no session → federates upstream to Keycloak; the user authenticates there.
-3. digital-trust-common-service resolves the user → `tenant_id`, scopes, roles, and issues its **own** JWT access token (`tenant_id` claim, `logs:read` scope where granted, `aud = loki-gateway`).
+3. digital-trust-common-service resolves the user → `tenant_id`, scopes, roles, and issues its **own** JWT access token (`tenant_id` claim, `logs:read` scope where granted, `aud` = the Loki resource indicator, e.g. `https://loki-gateway` — not the API audience; see [ARCHITECTURE.md](./ARCHITECTURE.md#jwt-audience-aud)).
 4. A static `org_mapping` rule routes the user to the tenant org as `Viewer`.
 5. On each dashboard query, Grafana forwards the app token (`oauthPassThru`) to the gateway; the gateway validates it against digital-trust-common-service's JWKS, **checks the `logs:read` scope (fail closed)**, resolves `tenant_id → traction_tenant_id`, sets `X-Scope-OrgID: tenant_id|traction_tenant_id`; Loki returns only that tenant's digital-trust-common-service + Traction streams.
 
@@ -333,7 +333,7 @@ Under this model a tenant can hand-craft any LogQL they like — through Explore
 - `oidc-provider` must federate the browser login upstream to Keycloak — AU-02 must cover the **interactive** flow, not just backend token exchange.
 - Access tokens must be **JWTs carrying `tenant_id`** (`oidc-provider` issues opaque tokens by default; enable JWT access tokens). Alternatively the gateway introspects, but JWT is preferred for stateless validation.
 - The gateway must **authorize on `logs:read`** (fail closed), not just authenticate — `logs:read` is a real minted scope, docs-only today; reconcile against the `OWNER/ADMIN/MEMBER/READONLY` role enum when seeded (AU-04).
-- Scope the gateway audience via resource indicator (`aud = loki-gateway`).
+- Scope the gateway audience via RFC 8707 resource indicator (`resource=https://loki-gateway`, listed in `JWT_ADDITIONAL_AUDIENCES`). API tokens keep `aud=https://digital-trust-common-service`; the gateway must not accept API-audience tokens for Loki queries.
 - **Availability coupling**: digital-trust-common-service is now in Grafana's login path — if it's down, tenants can't log into Grafana, but they also can't use the API, so the blast radius is already shared.
 
 ### Dependencies (was "open questions")
@@ -341,7 +341,7 @@ Under this model a tenant can hand-craft any LogQL they like — through Explore
 These are prerequisites the Phase-2 gateway depends on — tracked as blockers, not questions:
 
 - [ ] `oidc-provider` (AU-01) built with interactive authorization_code + PKCE and upstream Keycloak federation (AU-02) for browser login.
-- [ ] JWT access tokens enabled in `oidc-provider` (vs. opaque + introspection); `tenant_id` + `aud` claims present.
+- [ ] JWT access tokens enabled in `oidc-provider` (vs. opaque + introspection); `tenant_id` + `aud` claims present. API vs Loki audiences are split per [ARCHITECTURE.md](./ARCHITECTURE.md#jwt-audience-aud) / [#164](https://github.com/bcgov/digital-trust-common-service/issues/164).
 - [ ] `logs:read` scope seeded (AU-04) and enforced by the gateway (fail closed).
 - [ ] API client registration (AU-06) covers interactive clients, or Grafana registered out-of-band.
 - [ ] Loki NetworkPolicy hardened in dev/test (gitops) so query endpoints are reachable only via the gateway and platform paths.
@@ -522,7 +522,7 @@ Phase 3 (parallel)  → OTel auto-instrumentation for digital-trust-common-servi
 
 **Access layer / Auth (hard dependencies — foundation is spec-only)**
 - [ ] `oidc-provider` (AU-01) built: interactive authorization_code + PKCE with upstream Keycloak federation (AU-02)
-- [ ] JWT access tokens with `tenant_id` + `aud = loki-gateway` (vs. opaque + introspection)
+- [ ] JWT access tokens with `tenant_id` + Loki `aud` via resource indicator (`https://loki-gateway`, not the API audience)
 - [ ] `logs:read` scope seeded (AU-04) and enforced by the gateway (fail closed); reconcile role-enum naming
 - [ ] API client registration (AU-06) covers interactive clients, or Grafana registered out-of-band
 - [ ] `oauthPassThru` + app-token refresh validated on the dedicated tenant Grafana instance
