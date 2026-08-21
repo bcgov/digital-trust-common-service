@@ -309,6 +309,20 @@ describe('OAuthClientService', () => {
       expect(mockCreate).not.toHaveBeenCalled();
     });
 
+    it('should reject an empty scope list', async () => {
+      await expect(
+        service.createClient(
+          mockOAuthClient.tenantId,
+          {
+            name: mockOAuthClient.name,
+            scopes: [],
+          },
+          tenantAdminAuth,
+        ),
+      ).rejects.toThrow(BadRequestException);
+      expect(mockCreate).not.toHaveBeenCalled();
+    });
+
     it('should reject unknown scopes', async () => {
       await expect(
         service.createClient(
@@ -860,6 +874,20 @@ describe('OAuthClientService', () => {
 
       expect(result.name).toBe('Renamed by operator');
       expect(mockUpdate).toHaveBeenCalled();
+    });
+
+    it('should reject clearing scopes to an empty list', async () => {
+      mockFindByTenantAndClientId.mockResolvedValue({ ...mockOAuthClient });
+
+      await expect(
+        service.update(
+          mockOAuthClient.tenantId,
+          mockOAuthClient.clientId,
+          { scopes: [] },
+          tenantAdminAuth,
+        ),
+      ).rejects.toThrow(BadRequestException);
+      expect(mockUpdate).not.toHaveBeenCalled();
     });
 
     it('still rejects a clients:manage caller expanding scopes they do not hold', async () => {
