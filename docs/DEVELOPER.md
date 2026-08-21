@@ -84,10 +84,23 @@ The application uses AES-256-GCM encryption to protect sensitive data. Encryptio
 
 The application supports upstream OIDC federation with Keycloak using the `openid-client` library. This library **strictly enforces HTTPS** connections for all OIDC discovery and token endpoints.
 
-For local development, this repo uses **Caddy** with locally trusted TLS for:
+For local development, this repo uses **Caddy** with locally trusted TLS as a
+same-origin front door that mirrors the production topology (SPA + `/oidc` +
+`/api` on one origin):
 
-- `https://oidc.localhost` -> local app on port `3000`
+- `https://app.localhost` -> the whole app: `/api/*`, `/oidc/*` and `/health/*`
+  go to the local API on port `3000`; everything else goes to the Vite dev
+  server on port `5173` (see [Serving the UI through Caddy](#serving-the-ui-through-caddy))
 - `https://keycloak.localhost` -> Keycloak in Docker on port `8080`
+
+> **Migrating from `oidc.localhost`** (renamed in #181): the checked-in realm
+> only imports on first Keycloak start, so existing local stacks keep the old
+> redirect URIs. Either recreate the Keycloak volumes
+> (`docker compose --profile dev down -v` then up) or update the
+> `dtsc-oidc-provider` client's redirect URIs/web origins in the admin
+> console. Also set `OIDC_ISSUER=https://app.localhost/oidc` in your `.env`,
+> and on Windows replace the `oidc.localhost` hosts entry with
+> `app.localhost`.
 
 #### Start the local HTTPS stack
 
@@ -147,13 +160,13 @@ environment:
   - KC_HOSTNAME=https://keycloak.localhost
 ```
 
-The checked-in **`keycloak/config/realm.json`** already uses the local OIDC provider hostname for redirect URIs:
+The checked-in **`keycloak/config/realm.json`** already uses the local front-door hostname for redirect URIs:
 
 ```json
 {
   "clientId": "dtsc-oidc-provider",
-  "redirectUris": ["https://oidc.localhost/*"],
-  "webOrigins": ["https://oidc.localhost"]
+  "redirectUris": ["https://app.localhost/*"],
+  "webOrigins": ["https://app.localhost"]
 }
 ```
 
@@ -162,12 +175,36 @@ The checked-in **`keycloak/config/realm.json`** already uses the local OIDC prov
 Set the **`OIDC_ISSUER`** environment variable to the local Caddy endpoint for the app's OIDC provider:
 
 ```env
-OIDC_ISSUER=https://oidc.localhost/oidc
+OIDC_ISSUER=https://app.localhost/oidc
 ```
 
 This URL is used by Keycloak clients to discover the OIDC provider configuration and validate tokens.
 
 **Important**: The local CA certificate must be trusted both by your system and by Node via `NODE_EXTRA_CA_CERTS`, or OIDC discovery/token requests will fail with TLS errors.
+
+#### Serving the UI through Caddy
+
+`https://app.localhost` serves the SPA and the API on one HTTPS origin — the
+local twin of the production Caddy config (#160) and a prerequisite for the
+interactive PKCE flow (#83), which needs the SPA, `/oidc` and cookies on the
+same origin.
+
+Caddy proxies non-API paths to a Vite dev server on port `5173`. Run it either
+way:
+
+```bash
+# Default workflow: on the host
+cd apps/ui && npm run dev
+
+# Or containerized (behind the `ui` profile)
+docker compose --profile ui up ui
+```
+
+Both publish port `5173`, so Caddy reaches the dev server at
+`host.docker.internal:5173` in either case. Once the dev stack
+(`docker compose --profile dev up`) and a dev server are running, open
+`https://app.localhost` — HMR works through the proxy, and `/api`, `/oidc` and
+`/health` hit the API without any CORS or cross-site cookie concerns.
 
 ## Running the Application
 

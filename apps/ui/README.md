@@ -30,6 +30,27 @@ origin, so every URL in the app is relative. The one exception to
 in at build time — a production build must set it explicitly (or it moves to
 runtime config when #83 lands).
 
+### Same-origin HTTPS via Caddy (#181)
+
+For flows that need the SPA, `/oidc` and cookies on one HTTPS origin (the
+interactive PKCE flow, #83), the Docker dev stack fronts everything at
+`https://app.localhost`: Caddy sends `/api/*`, `/oidc/*` and `/health/*` to
+the API on `:3000` and everything else to the Vite dev server on `:5173`.
+
+```bash
+# repo root: db + caddy + keycloak (+ app if you want it containerized)
+docker compose --profile dev up
+
+# dev server on the host (default) …
+cd apps/ui && npm run dev
+
+# … or containerized instead
+docker compose --profile ui up ui
+```
+
+Then open `https://app.localhost` (see `docs/DEVELOPER.md` for trusting the
+Caddy local CA). Plain `http://localhost:5173` still works for UI-only work.
+
 Auth defaults to **mock mode** (`VITE_AUTH_MODE=mock`) until the interactive
 OIDC flow exists (backend AU-02, frontend #83): the Sign in button creates a
 fake session; the real `oidc-client-ts` implementation sits behind the same
