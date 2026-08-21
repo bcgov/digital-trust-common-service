@@ -1444,7 +1444,7 @@ export interface components {
             updated_at?: string;
         };
         /** @enum {string} */
-        TenantStatus: "active" | "suspended" | "deactivated";
+        TenantStatus: "active" | "pending_approval" | "rejected" | "suspended" | "deactivated";
         TenantConfig: {
             allowed_formats?: components["schemas"]["CredentialFormat"][];
             /** Format: uuid */

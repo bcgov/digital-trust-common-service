@@ -86,10 +86,13 @@ describe('TenantService', () => {
       mockCreate.mockReturnValue(mockTenant);
       mockUpdate.mockResolvedValue(mockTenant);
 
-      const result = await service.create(dto);
+      const result = await service.create(dto, { roles: ['platform-admin'] });
 
-      expect(mockFindBySlug).toHaveBeenCalledWith(dto.slug);
-      expect(mockCreate).toHaveBeenCalledWith(dto);
+      expect(mockFindBySlug).toHaveBeenCalledWith(dto.slug, true);
+      expect(mockCreate).toHaveBeenCalledWith({
+        ...dto,
+        status: 'active',
+      });
       expect(mockUpdate).toHaveBeenCalledWith(mockTenant);
       expect(mockEmit).toHaveBeenCalledWith({
         tenantId: mockTenant.id,
@@ -100,7 +103,31 @@ describe('TenantService', () => {
       expect(result).toEqual(mockTenant);
     });
 
-    it('should throw ConflictException if slug already exists', async () => {
+    it('should create a pending-approval tenant for self-service requests', async () => {
+      const dto: CreateTenantDto = {
+        name: 'New Tenant',
+        slug: 'new-tenant',
+        description: 'A new tenant',
+        config: {},
+      };
+
+      mockFindBySlug.mockResolvedValue(null);
+      mockCreate.mockReturnValue({ ...mockTenant, status: 'pending_approval' });
+      mockUpdate.mockResolvedValue({
+        ...mockTenant,
+        status: 'pending_approval',
+      });
+
+      const result = await service.create(dto, { roles: [] });
+
+      expect(mockCreate).toHaveBeenCalledWith({
+        ...dto,
+        status: 'pending_approval',
+      });
+      expect(result.status).toBe('pending_approval');
+    });
+
+    it('should throw ConflictException if slug already exists, including soft-deleted rows', async () => {
       const dto: CreateTenantDto = {
         name: 'New Tenant',
         slug: 'test-tenant',
@@ -108,10 +135,13 @@ describe('TenantService', () => {
         config: {},
       };
 
-      mockFindBySlug.mockResolvedValue(mockTenant);
+      mockFindBySlug.mockResolvedValue({
+        ...mockTenant,
+        deleted_at: new Date(),
+      });
 
       await expect(service.create(dto)).rejects.toThrow(ConflictException);
-      expect(mockFindBySlug).toHaveBeenCalledWith(dto.slug);
+      expect(mockFindBySlug).toHaveBeenCalledWith(dto.slug, true);
       expect(mockCreate).not.toHaveBeenCalled();
       expect(mockEmit).not.toHaveBeenCalled();
     });

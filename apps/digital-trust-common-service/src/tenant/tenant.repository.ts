@@ -21,9 +21,13 @@ export class TenantRepository {
     });
   }
 
-  public findBySlug(slug: string): Promise<Tenant | null> {
+  public findBySlug(
+    slug: string,
+    includeDeleted = false,
+  ): Promise<Tenant | null> {
     return this.repo.findOne({
       where: { slug },
+      withDeleted: includeDeleted,
     });
   }
 
