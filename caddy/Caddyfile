@@ -1,7 +1,20 @@
-oidc.localhost {
+# Same-origin front door for local dev: SPA + /oidc + /api on one HTTPS
+# origin, mirroring the production topology (IN-15 / #160).
+app.localhost {
     tls internal
 
-    reverse_proxy host.docker.internal:3000
+    # API paths go to the app (host `npm run start:dev` or the compose `app`
+    # service, which publishes 3000 either way).
+    @api path /api/* /oidc/* /health/*
+    handle @api {
+        reverse_proxy host.docker.internal:3000
+    }
+
+    # Everything else goes to the Vite dev server (host `npm run dev` or the
+    # compose `ui` service, which publishes 5173 either way).
+    handle {
+        reverse_proxy host.docker.internal:5173
+    }
 }
 
 keycloak.localhost {
