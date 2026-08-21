@@ -95,8 +95,15 @@ same-origin front door that mirrors the production topology (SPA + `/oidc` +
 
 > **Migrating from `oidc.localhost`** (renamed in #181): the checked-in realm
 > only imports on first Keycloak start, so existing local stacks keep the old
-> redirect URIs. Either recreate the Keycloak volumes
-> (`docker compose --profile dev down -v` then up) or update the
+> redirect URIs. Either reset just the Keycloak services and volume:
+>
+> ```bash
+> docker compose --profile dev rm -sf keycloak keycloak-db
+> docker volume rm $(docker volume ls -q --filter name=keycloak-db-data)
+> ```
+>
+> (avoid `docker compose down -v` here — it removes *every* project volume,
+> including your Postgres data and the Caddy CA) — or update the
 > `dtsc-oidc-provider` client's redirect URIs/web origins in the admin
 > console. Also set `OIDC_ISSUER=https://app.localhost/oidc` in your `.env`,
 > and on macOS/Windows replace the `oidc.localhost` hosts entry with
@@ -104,9 +111,16 @@ same-origin front door that mirrors the production topology (SPA + `/oidc` +
 
 #### Start the local HTTPS stack
 
-Bring up the local services, including Caddy and Keycloak:
+Bring up the infrastructure services (the `app` service has no profile, so a
+bare `docker compose --profile dev up` starts the containerized API too and
+binds port `3000` — use the targeted list below when running the API on the
+host):
 
 ```bash
+# infra only — API and UI run on the host (default workflow)
+docker compose --profile dev up -d db caddy keycloak
+
+# or everything containerized, including the app on :3000
 docker compose --profile dev up
 ```
 
@@ -233,7 +247,8 @@ docker compose --profile ui up ui
 
 Both publish port `5173`, so Caddy reaches the dev server at
 `host.docker.internal:5173` in either case. Once the dev stack
-(`docker compose --profile dev up`) and a dev server are running, open
+(`docker compose --profile dev up -d db caddy keycloak`) and a dev server are
+running, open
 `https://app.localhost` — HMR works through the proxy, and `/api`, `/oidc` and
 `/health` hit the API without any CORS or cross-site cookie concerns.
 

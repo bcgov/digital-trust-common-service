@@ -38,8 +38,10 @@ interactive PKCE flow, #83), the Docker dev stack fronts everything at
 the API on `:3000` and everything else to the Vite dev server on `:5173`.
 
 ```bash
-# repo root: db + caddy + keycloak (+ app if you want it containerized)
-docker compose --profile dev up
+# repo root: infra (db + caddy + keycloak). `app` has no profile, so a bare
+# `--profile dev up` would also start the containerized API on :3000 — use
+# the targeted list when running the API on the host.
+docker compose --profile dev up -d db caddy keycloak
 
 # dev server on the host (default) …
 cd apps/ui && npm run dev
@@ -47,6 +49,9 @@ cd apps/ui && npm run dev
 # … or containerized instead
 docker compose --profile ui up ui
 ```
+
+The containerized option is a convenience for running the stack without Node
+on the host — first start runs `npm ci` (slow on bind mounts), and hot reload isn't guaranteed there (file events don't cross Windows bind mounts). For actual live-watching UI development, run the dev server on the host.
 
 Then open `https://app.localhost` (see `docs/DEVELOPER.md` for trusting the
 Caddy local CA). Plain `http://localhost:5173` still works for UI-only work.
