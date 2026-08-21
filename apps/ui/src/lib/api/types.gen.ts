@@ -975,7 +975,7 @@ export interface paths {
         /**
          * Register an API client (OAuth2 client_credentials)
          * @description Creates a new OAuth2 client for service-to-service authentication.
-         *     Generated `client_id` values are prefixed `dtcs_`. The `client_secret`
+         *     Generated `client_id` values are prefixed `dtcs_`. The `clientSecret`
          *     is returned ONCE in the response and cannot be retrieved again.
          *     Requested scopes cannot exceed the caller's own grants.
          */
@@ -1877,42 +1877,43 @@ export interface components {
             /** Format: uuid */
             id?: string;
             /** Format: uuid */
-            tenant_id?: string;
+            tenantId?: string;
             /** @description Public OAuth client_id. Newly generated values are prefixed `dtcs_`. */
-            client_id?: string;
+            clientId?: string;
             name?: string;
             scopes?: string[];
             /** @description JWT role claims for machine clients (currently only platform-admin). Assignable by platform-admin callers only. */
             roles?: string[];
-            redirect_uris?: string[];
-            grant_types?: string[];
+            redirectUris?: string[];
+            grantTypes?: string[];
             /** Format: uuid */
-            created_by?: string | null;
-            refresh_token_ttl_seconds?: number | null;
+            createdBy?: string | null;
+            refreshTokenTtlSeconds?: number | null;
             /** Format: date-time */
-            created_at?: string;
+            createdAt?: string;
             /** Format: date-time */
-            revoked_at?: string | null;
+            revokedAt?: string | null;
         };
-        ClientWithSecret: components["schemas"]["Client"] & {
-            /** @description Shown ONCE at creation/rotation. Cannot be retrieved again. */
-            client_secret?: string;
+        ClientWithSecret: {
+            client: components["schemas"]["Client"];
+            /** @description Shown ONCE at creation and rotate-secret. Cannot be retrieved again. */
+            clientSecret: string;
         };
         CreateClientRequest: {
             name: string;
             scopes: ("credentials:offer" | "credentials:verify" | "credentials:hold" | "credentials:revoke" | "connections:manage" | "profiles:manage" | "users:manage" | "clients:manage" | "logs:read" | "audit:read" | "tenants:admin")[];
             roles?: "platform-admin"[];
-            redirect_uris?: string[];
-            grant_types?: string[];
-            refresh_token_ttl_seconds?: number;
+            redirectUris?: string[];
+            grantTypes?: string[];
+            refreshTokenTtlSeconds?: number;
         };
         UpdateClientRequest: {
             name?: string;
             scopes?: ("credentials:offer" | "credentials:verify" | "credentials:hold" | "credentials:revoke" | "connections:manage" | "profiles:manage" | "users:manage" | "clients:manage" | "logs:read" | "audit:read" | "tenants:admin")[];
             roles?: "platform-admin"[];
-            redirect_uris?: string[];
-            grant_types?: string[];
-            refresh_token_ttl_seconds?: number | null;
+            redirectUris?: string[];
+            grantTypes?: string[];
+            refreshTokenTtlSeconds?: number | null;
         };
         Credential: {
             /** Format: uuid */
@@ -4004,9 +4005,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        data?: components["schemas"]["Client"][];
-                    };
+                    "application/json": components["schemas"]["Client"][];
                 };
             };
         };
