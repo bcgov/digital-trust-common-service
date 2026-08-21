@@ -2039,7 +2039,7 @@ paths:
       summary: Register an API client (OAuth2 client_credentials)
       description: |
         Creates a new OAuth2 client for service-to-service authentication.
-        Generated `client_id` values are prefixed `dtcs_`. The `client_secret`
+        Generated `client_id` values are prefixed `dtcs_`. The `clientSecret`
         is returned ONCE in the response and cannot be retrieved again.
         Requested scopes cannot exceed the caller's own grants.
       tags: [Clients]
@@ -2068,12 +2068,9 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  data:
-                    type: array
-                    items:
-                      $ref: "#/components/schemas/Client"
+                type: array
+                items:
+                  $ref: "#/components/schemas/Client"
 
   /api/v1/tenants/{tenantId}/clients/{clientId}:
     parameters:
@@ -3816,10 +3813,10 @@ components:
         id:
           type: string
           format: uuid
-        tenant_id:
+        tenantId:
           type: string
           format: uuid
-        client_id:
+        clientId:
           type: string
           description: "Public OAuth client_id. Newly generated values are prefixed `dtcs_`."
         name:
@@ -3833,37 +3830,38 @@ components:
           items:
             type: string
           description: "JWT role claims for machine clients (currently only platform-admin). Assignable by platform-admin callers only."
-        redirect_uris:
+        redirectUris:
           type: array
           items:
             type: string
-        grant_types:
+        grantTypes:
           type: array
           items:
             type: string
-        created_by:
+        createdBy:
           type: string
           format: uuid
           nullable: true
-        refresh_token_ttl_seconds:
+        refreshTokenTtlSeconds:
           type: integer
           nullable: true
-        created_at:
+        createdAt:
           type: string
           format: date-time
-        revoked_at:
+        revokedAt:
           type: string
           format: date-time
           nullable: true
 
     ClientWithSecret:
-      allOf:
-        - $ref: "#/components/schemas/Client"
-        - type: object
-          properties:
-            client_secret:
-              type: string
-              description: "Shown ONCE at creation/rotation. Cannot be retrieved again."
+      type: object
+      required: [client, clientSecret]
+      properties:
+        client:
+          $ref: "#/components/schemas/Client"
+        clientSecret:
+          type: string
+          description: "Shown ONCE at creation and rotate-secret. Cannot be retrieved again."
 
     CreateClientRequest:
       type: object
@@ -3895,15 +3893,15 @@ components:
           items:
             type: string
             enum: [platform-admin]
-        redirect_uris:
+        redirectUris:
           type: array
           items:
             type: string
-        grant_types:
+        grantTypes:
           type: array
           items:
             type: string
-        refresh_token_ttl_seconds:
+        refreshTokenTtlSeconds:
           type: integer
           minimum: 1
 
@@ -3936,15 +3934,15 @@ components:
           items:
             type: string
             enum: [platform-admin]
-        redirect_uris:
+        redirectUris:
           type: array
           items:
             type: string
-        grant_types:
+        grantTypes:
           type: array
           items:
             type: string
-        refresh_token_ttl_seconds:
+        refreshTokenTtlSeconds:
           type: integer
           minimum: 1
           nullable: true

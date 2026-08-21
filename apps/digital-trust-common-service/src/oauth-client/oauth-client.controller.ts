@@ -53,7 +53,7 @@ export class OAuthClientController {
   @ApiOperation({
     summary: 'Register an API client (OAuth2 client_credentials)',
     description:
-      'Creates a new OAuth2 client for service-to-service authentication. The client_secret is returned ONCE and cannot be retrieved again.',
+      'Creates a new OAuth2 client for service-to-service authentication. The clientSecret is returned ONCE and cannot be retrieved again.',
   })
   @ApiParam({ name: 'tenantId', format: 'uuid' })
   @ApiCreatedResponse({
