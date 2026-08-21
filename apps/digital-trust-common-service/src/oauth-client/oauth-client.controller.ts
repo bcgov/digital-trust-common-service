@@ -1,18 +1,35 @@
 import {
+  ApiJwtAuth,
+  CurrentAuth,
+  JwtGuard,
+  RequireScopes,
+  ScopeGuard,
+  TenantGuard,
+  type AuthContext,
+} from '@app/auth';
+import {
   Body,
   Controller,
   Delete,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
   ParseUUIDPipe,
   Patch,
   Post,
+  UseGuards,
 } from '@nestjs/common';
 import {
   ApiBody,
   ApiCreatedResponse,
+  ApiForbiddenResponse,
+  ApiNoContentResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
+  ApiOperation,
+  ApiParam,
+  ApiTags,
 } from '@nestjs/swagger';
 
 import { API_VERSION } from '../common/constants/api-version.constants';
@@ -24,14 +41,28 @@ import { UpdateOAuthClientDto } from './dto/update-oauth-client.dto';
 import { OAuthClient } from './oauth-client.entity';
 import { OAuthClientService } from './oauth-client.service';
 
-@Controller({ path: 'oauth-clients', version: API_VERSION })
+@ApiTags('Clients')
+@ApiJwtAuth()
+@RequireScopes('clients:manage')
+@UseGuards(JwtGuard, ScopeGuard, TenantGuard)
+@Controller({ path: 'tenants/:tenantId/clients', version: API_VERSION })
 export class OAuthClientController {
   public constructor(private readonly oauthClientService: OAuthClientService) {}
 
   @Post()
+  @ApiOperation({
+    summary: 'Register an API client (OAuth2 client_credentials)',
+    description:
+      'Creates a new OAuth2 client for service-to-service authentication. The client_secret is returned ONCE and cannot be retrieved again.',
+  })
+  @ApiParam({ name: 'tenantId', format: 'uuid' })
   @ApiCreatedResponse({
     description: 'OAuth client created successfully',
     type: CreateOAuthClientResponseDto,
+  })
+  @ApiForbiddenResponse({
+    description:
+      'Token lacks clients:manage, or requested scopes exceed the caller grants',
   })
   @ApiBody({
     description: 'OAuth client creation request',
@@ -40,44 +71,36 @@ export class OAuthClientController {
       example1: {
         summary: 'Create an OAuth client',
         value: {
-          tenantId: '123e4567-e89b-12d3-a456-426614174000',
           name: 'Mobile App',
           scopes: ['credentials:offer', 'credentials:verify'],
-          roles: [],
           redirectUris: ['https://app.example.com/callback'],
           grantTypes: ['client_credentials'],
-          createdBy: '223e4567-e89b-12d3-a456-426614174000',
         },
       },
     },
   })
   public async createClient(
+    @Param('tenantId', ParseUUIDPipe) tenantId: string,
     @Body() dto: CreateOAuthClientDto,
+    @CurrentAuth() auth?: AuthContext,
   ): Promise<CreateOAuthClientResponseDto> {
-    const { client, clientSecret } =
-      await this.oauthClientService.createClient(dto);
+    const { client, clientSecret } = await this.oauthClientService.createClient(
+      tenantId,
+      dto,
+      auth,
+    );
     return {
       client: this.toResponseDto(client),
       clientSecret,
     };
   }
 
-  @Get('client/:clientId')
+  @Get()
+  @ApiOperation({ summary: 'List API clients' })
+  @ApiParam({ name: 'tenantId', format: 'uuid' })
   @ApiOkResponse({
-    description: 'OAuth client found',
-    type: OAuthClientResponseDto,
-  })
-  @ApiNotFoundResponse({ description: 'OAuth client not found' })
-  public async findByClientId(
-    @Param('clientId') clientId: string,
-  ): Promise<OAuthClientResponseDto> {
-    const client = await this.oauthClientService.findByClientId(clientId);
-    return this.toResponseDto(client);
-  }
-
-  @Get('tenant/:tenantId')
-  @ApiOkResponse({
-    description: 'List of OAuth clients for the specified tenant',
+    description:
+      'List of OAuth clients for the specified tenant (secrets are never included)',
     type: [OAuthClientResponseDto],
   })
   public async findByTenant(
@@ -87,7 +110,13 @@ export class OAuthClientController {
     return clients.map((client) => this.toResponseDto(client));
   }
 
-  @Patch(':id')
+  @Patch(':clientId')
+  @ApiOperation({ summary: 'Update an API client' })
+  @ApiParam({ name: 'tenantId', format: 'uuid' })
+  @ApiParam({
+    name: 'clientId',
+    description: 'Public OAuth client_id (not the row UUID)',
+  })
   @ApiOkResponse({
     description: 'OAuth client updated successfully',
     type: OAuthClientResponseDto,
@@ -125,20 +154,66 @@ export class OAuthClientController {
     },
   })
   public async update(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('tenantId', ParseUUIDPipe) tenantId: string,
+    @Param('clientId') clientId: string,
     @Body() dto: UpdateOAuthClientDto,
+    @CurrentAuth() auth?: AuthContext,
   ): Promise<OAuthClientResponseDto> {
-    const client = await this.oauthClientService.update(id, dto);
+    const client = await this.oauthClientService.update(
+      tenantId,
+      clientId,
+      dto,
+      auth,
+    );
     return this.toResponseDto(client);
   }
 
-  @Delete(':id')
-  @ApiOkResponse({ description: 'OAuth client revoked successfully' })
+  @Delete(':clientId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Revoke an API client' })
+  @ApiParam({ name: 'tenantId', format: 'uuid' })
+  @ApiParam({
+    name: 'clientId',
+    description: 'Public OAuth client_id (not the row UUID)',
+  })
+  @ApiNoContentResponse({ description: 'OAuth client revoked successfully' })
   @ApiNotFoundResponse({ description: 'OAuth client not found' })
   public async revokeClient(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('tenantId', ParseUUIDPipe) tenantId: string,
+    @Param('clientId') clientId: string,
   ): Promise<void> {
-    return await this.oauthClientService.revokeClient(id);
+    return await this.oauthClientService.revokeClient(tenantId, clientId);
+  }
+
+  @Post(':clientId/rotate-secret')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Rotate client secret',
+    description:
+      'Generates a new secret. The old secret is immediately invalidated. The new secret is returned ONCE.',
+  })
+  @ApiParam({ name: 'tenantId', format: 'uuid' })
+  @ApiParam({
+    name: 'clientId',
+    description: 'Public OAuth client_id (not the row UUID)',
+  })
+  @ApiOkResponse({
+    description: 'New secret generated',
+    type: CreateOAuthClientResponseDto,
+  })
+  @ApiNotFoundResponse({ description: 'OAuth client not found' })
+  public async rotateSecret(
+    @Param('tenantId', ParseUUIDPipe) tenantId: string,
+    @Param('clientId') clientId: string,
+  ): Promise<CreateOAuthClientResponseDto> {
+    const { client, clientSecret } = await this.oauthClientService.rotateSecret(
+      tenantId,
+      clientId,
+    );
+    return {
+      client: this.toResponseDto(client),
+      clientSecret,
+    };
   }
 
   private toResponseDto(client: OAuthClient): OAuthClientResponseDto {

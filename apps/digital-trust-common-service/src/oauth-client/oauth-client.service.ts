@@ -1,9 +1,16 @@
 import { randomBytes } from 'crypto';
 
-import { OAUTH_CLIENT_ALLOWED_ROLES } from '@app/auth';
+import {
+  ASSIGNABLE_OAUTH_CLIENT_SCOPES,
+  AuthenticationRequiredException,
+  OAUTH_CLIENT_ALLOWED_ROLES,
+  ScopeAuthorizationService,
+  type AuthContext,
+} from '@app/auth';
 import { OidcConfigService } from '@app/oidc/config';
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -11,10 +18,12 @@ import { argon2i, hash, verify } from 'argon2';
 
 import { CreateOAuthClientDto } from './dto/create-oauth-client.dto';
 import { UpdateOAuthClientDto } from './dto/update-oauth-client.dto';
+import { OAUTH_CLIENT_ID_PREFIX } from './oauth-client.constants';
 import { OAuthClient } from './oauth-client.entity';
 import { OAuthClientRepository } from './oauth-client.repository';
 
 const MACHINE_GRANT_TYPE = 'client_credentials';
+const ASSIGNABLE_SCOPE_SET = new Set<string>(ASSIGNABLE_OAUTH_CLIENT_SCOPES);
 
 @Injectable()
 export class OAuthClientService {
@@ -28,36 +37,42 @@ export class OAuthClientService {
   public constructor(
     private readonly oauthClientRepository: OAuthClientRepository,
     private readonly oidcConfigService: OidcConfigService,
+    private readonly scopeAuthorizationService: ScopeAuthorizationService,
   ) {
     this.supportedGrantTypes = this.oidcConfigService.getConfig().grantTypes;
   }
 
   public async createClient(
+    tenantId: string,
     dto: CreateOAuthClientDto,
+    auth?: AuthContext,
   ): Promise<{ client: OAuthClient; clientSecret: string }> {
-    // A client that names no grant type gets the configured allowlist, so
-    // the default can never fall outside it.
-    const grantTypes = dto.grantTypes ?? this.supportedGrantTypes;
+    const caller = this.requireCaller(auth);
+    // Service-to-service clients default to client_credentials. Callers that
+    // need extra grants (authorization_code, refresh_token) must name them
+    // explicitly, and those grants still have to be in OIDC_GRANT_TYPES.
+    const grantTypes = dto.grantTypes ?? [MACHINE_GRANT_TYPE];
     const roles = dto.roles ?? [];
 
     this.assertSupportedGrantTypes(grantTypes);
-    this.assertRoleConstraints(roles, grantTypes);
+    this.assertRoleConstraints(roles, grantTypes, caller);
+    this.assertAssignableScopes(dto.scopes, caller);
 
     const clientSecret = randomBytes(32).toString('hex');
     const clientId = this.generateClientId();
     const clientSecretHash = await this.hashClientSecret(clientSecret);
 
     const client = await this.oauthClientRepository.create({
-      tenantId: dto.tenantId,
+      tenantId,
       clientId,
       clientSecretHash,
       name: dto.name,
-      scopes: dto.scopes || [],
+      scopes: dto.scopes,
       roles,
       redirectUris: dto.redirectUris || [],
       grantTypes,
       refreshTokenTtlSeconds: dto.refreshTokenTtlSeconds ?? null,
-      createdBy: dto.createdBy,
+      createdBy: caller.tokenType === 'user' ? caller.sub : undefined,
     } as OAuthClient);
 
     return { client, clientSecret };
@@ -80,24 +95,26 @@ export class OAuthClientService {
   }
 
   public async update(
-    id: string,
+    tenantId: string,
+    clientId: string,
     dto: UpdateOAuthClientDto,
+    auth?: AuthContext,
   ): Promise<OAuthClient> {
+    const caller = this.requireCaller(auth);
+
     this.assertSupportedGrantTypes(dto.grantTypes);
 
-    const client = await this.oauthClientRepository.findById(id);
-
-    if (!client) {
-      throw new NotFoundException(`OAuth client '${id}' was not found.`);
-    }
+    const client = await this.requireActiveTenantClient(tenantId, clientId);
 
     const nextRoles = dto.roles !== undefined ? dto.roles : client.roles;
     const nextGrantTypes =
       dto.grantTypes !== undefined ? dto.grantTypes : client.grantTypes;
+    const nextScopes = dto.scopes !== undefined ? dto.scopes : client.scopes;
 
-    // Validate the post-update combination so roles and grantTypes cannot
-    // drift independently into an unsafe pairing.
-    this.assertRoleConstraints(nextRoles, nextGrantTypes);
+    // Validate the post-update combination so roles, grantTypes, and scopes
+    // cannot drift independently into an unsafe pairing.
+    this.assertRoleConstraints(nextRoles, nextGrantTypes, caller);
+    this.assertAssignableScopes(nextScopes, caller);
 
     if (dto.name !== undefined) {
       client.name = dto.name;
@@ -126,14 +143,28 @@ export class OAuthClientService {
     return this.oauthClientRepository.update(client);
   }
 
-  public async revokeClient(id: string): Promise<void> {
-    const client = await this.oauthClientRepository.findById(id);
+  public async revokeClient(tenantId: string, clientId: string): Promise<void> {
+    const client = await this.requireTenantClient(tenantId, clientId);
 
-    if (!client) {
-      throw new NotFoundException(`OAuth client '${id}' was not found.`);
+    if (client.revokedAt) {
+      return;
     }
 
-    await this.oauthClientRepository.revoke(id);
+    await this.oauthClientRepository.revoke(client.id);
+  }
+
+  public async rotateSecret(
+    tenantId: string,
+    clientId: string,
+  ): Promise<{ client: OAuthClient; clientSecret: string }> {
+    const client = await this.requireActiveTenantClient(tenantId, clientId);
+    const clientSecret = randomBytes(32).toString('hex');
+
+    client.clientSecretHash = await this.hashClientSecret(clientSecret);
+
+    const updated = await this.oauthClientRepository.update(client);
+
+    return { client: updated, clientSecret };
   }
 
   public async verifyClientSecret(
@@ -150,7 +181,47 @@ export class OAuthClientService {
   }
 
   private generateClientId(): string {
-    return `client_${randomBytes(16).toString('hex')}`;
+    return `${OAUTH_CLIENT_ID_PREFIX}${randomBytes(16).toString('hex')}`;
+  }
+
+  private requireCaller(auth?: AuthContext): AuthContext {
+    if (!auth) {
+      throw new AuthenticationRequiredException(
+        'invalid_token',
+        'Authenticated request context is missing',
+      );
+    }
+
+    return auth;
+  }
+
+  private async requireTenantClient(
+    tenantId: string,
+    clientId: string,
+  ): Promise<OAuthClient> {
+    const client = await this.oauthClientRepository.findByTenantAndClientId(
+      tenantId,
+      clientId,
+    );
+
+    if (!client) {
+      throw new NotFoundException(`OAuth client '${clientId}' was not found.`);
+    }
+
+    return client;
+  }
+
+  private async requireActiveTenantClient(
+    tenantId: string,
+    clientId: string,
+  ): Promise<OAuthClient> {
+    const client = await this.requireTenantClient(tenantId, clientId);
+
+    if (client.revokedAt) {
+      throw new NotFoundException(`OAuth client '${clientId}' was not found.`);
+    }
+
+    return client;
   }
 
   /**
@@ -175,10 +246,15 @@ export class OAuthClientService {
 
   /**
    * Roles are security-sensitive JWT claims for machine clients only.
-   * Unknown role strings are rejected, and any non-empty role set requires
-   * the client to be restricted to client_credentials alone.
+   * Unknown role strings are rejected, any non-empty role set requires
+   * the client to be restricted to client_credentials alone, and only
+   * platform-admin callers may assign roles.
    */
-  private assertRoleConstraints(roles: string[], grantTypes: string[]): void {
+  private assertRoleConstraints(
+    roles: string[],
+    grantTypes: string[],
+    caller: AuthContext,
+  ): void {
     const allowed = new Set<string>(OAUTH_CLIENT_ALLOWED_ROLES);
     const unknown = roles.filter((role) => !allowed.has(role));
 
@@ -192,6 +268,12 @@ export class OAuthClientService {
       return;
     }
 
+    if (!this.scopeAuthorizationService.isPlatformAdmin(caller.roles)) {
+      throw new ForbiddenException(
+        'Only platform-admin callers may assign roles to OAuth clients.',
+      );
+    }
+
     const uniqueGrantTypes = [...new Set(grantTypes)];
     const isMachineOnly =
       uniqueGrantTypes.length === 1 &&
@@ -200,6 +282,49 @@ export class OAuthClientService {
     if (!isMachineOnly) {
       throw new BadRequestException(
         `Roles may only be assigned to clients restricted to the ${MACHINE_GRANT_TYPE} grant.`,
+      );
+    }
+  }
+
+  /**
+   * Requested scopes must be in the AU-04 catalog, enabled on this
+   * deployment (`OIDC_SCOPES`), and a subset of the caller's own effective
+   * scopes. platform-admin bypasses the caller-subset check.
+   */
+  private assertAssignableScopes(scopes: string[], caller: AuthContext): void {
+    if (scopes.length === 0) {
+      throw new BadRequestException('At least one scope is required.');
+    }
+
+    const unknown = scopes.filter((scope) => !ASSIGNABLE_SCOPE_SET.has(scope));
+
+    if (unknown.length > 0) {
+      throw new BadRequestException(
+        `Unsupported scope(s): ${unknown.join(', ')}. Allowed scope(s): ${ASSIGNABLE_OAUTH_CLIENT_SCOPES.join(', ')}.`,
+      );
+    }
+
+    const configured = new Set(this.oidcConfigService.getConfig().scopes);
+    const notConfigured = scopes.filter((scope) => !configured.has(scope));
+
+    if (notConfigured.length > 0) {
+      throw new BadRequestException(
+        `Scope(s) not enabled on this deployment: ${notConfigured.join(', ')}.`,
+      );
+    }
+
+    if (this.scopeAuthorizationService.isPlatformAdmin(caller.roles)) {
+      return;
+    }
+
+    const effective = this.scopeAuthorizationService.expandEffectiveScopes(
+      caller.scopes,
+    );
+    const excess = scopes.filter((scope) => !effective.has(scope));
+
+    if (excess.length > 0) {
+      throw new ForbiddenException(
+        `Cannot assign scope(s) not held by the caller: ${excess.join(', ')}.`,
       );
     }
   }

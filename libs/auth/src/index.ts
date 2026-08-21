@@ -1,6 +1,7 @@
 export { APP_JWT_BEARER_SCHEME } from './constants/app-jwt-bearer.constants';
 export {
   ALL_TENANT_SCOPES,
+  ASSIGNABLE_OAUTH_CLIENT_SCOPES,
   LEVEL2_SCOPES,
   LEVEL3_SCOPES,
   OAUTH_CLIENT_ALLOWED_ROLES,

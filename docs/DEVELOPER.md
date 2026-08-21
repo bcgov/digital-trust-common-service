@@ -314,8 +314,12 @@ The canonical OAuth scope names live in `@app/auth` (`libs/auth/src/constants/sc
 
 **Setting `oauth_client.roles` for platform-admin machine clients:**
 
-1. Prefer the OAuth client API: `POST /api/v1/oauth-clients` with `"roles": ["platform-admin"]`, or `PATCH /api/v1/oauth-clients/:id` with the same field. Responses include `roles`.
+1. Prefer the OAuth client API: `POST /api/v1/tenants/:tenantId/clients` with `"roles": ["platform-admin"]`, or `PATCH /api/v1/tenants/:tenantId/clients/:clientId` with the same field. Only a `platform-admin` caller may assign roles. Responses include `roles`.
 2. Tokens issued via `client_credentials` for that client include a `roles` claim, which `ScopeGuard` uses (e.g. for `GET /admin/operations/stats`).
+
+Generated `client_id` values are prefixed `dtcs_`. The plaintext `clientSecret` is returned once on create and on `POST .../rotate-secret`; list/get responses never include it.
+
+Assigned scopes must be in the AU-04 catalog, present in `OIDC_SCOPES`, and a subset of the caller's effective scopes (`tenants:admin` expands to all Level 2 + Level 3). `platform-admin` bypasses the caller-subset check.
 
 **User-token scope resolution:** the `role_scope` seed is consumed by `ScopeGuard` indirectly (scopes must appear on the JWT). Mapping `tenant_user.role` → `role_scope` → JWT `scope` at issuance is deferred to **[AU-02 #35](https://github.com/bcgov/digital-trust-common-service/issues/35)** (interactive login + `extraTokenClaims`). `RoleScopeRepository` is injectable for that work. Client-credentials tokens continue to take scopes from `oauth_client.scopes` at registration.
 
@@ -343,7 +347,7 @@ Mismatch / missing `tenant_id` claim → **403** `{ error: { code: "TENANT_ACCES
 
 **v1 is claim-match only.** Live `TenantUser` membership lookup (PE-02) is deferred until interactive user tokens (AU-02) / tenant switching (AU-09). Client-credentials tokens already carry a fixed `tenant_id` from `oauth_client`.
 
-Product controllers are not all wired yet — rollout is tracked in **[AU-followup #165](https://github.com/bcgov/digital-trust-common-service/issues/165)**. Integration coverage uses ephemeral `/api/v1/integration/tenant-check/:tenantId` routes.
+Product controllers are not all wired yet — rollout is tracked in **[AU-followup #165](https://github.com/bcgov/digital-trust-common-service/issues/165)**. `OAuthClientController` (AU-06) is nested at `/api/v1/tenants/:tenantId/clients` and uses the full Jwt/Scope/Tenant stack. Integration coverage for the guards themselves uses ephemeral `/api/v1/integration/tenant-check/:tenantId` routes.
 
 ### Guard rollout gaps for #165
 
@@ -351,10 +355,10 @@ Product controllers are not all wired yet — rollout is tracked in **[AU-follow
 
 | Shape | Examples today | TenantGuard behavior | Rollout action |
 |-------|----------------|----------------------|----------------|
-| Path `:tenantId` | `tenants/:tenantId/audit-logs`, `…/tenant/:tenantId` | Enforced | Add `@UseGuards(JwtGuard, ScopeGuard, TenantGuard)` |
+| Path `:tenantId` | `tenants/:tenantId/audit-logs`, `tenants/:tenantId/clients` | Enforced | Add `@UseGuards(JwtGuard, ScopeGuard, TenantGuard)` |
 | Tenant UUID as `:id` | `GET/PUT/DELETE /tenants/:id` | **No-op** (param name is `id`) | Rename to `:tenantId`, or teach guard / use a dedicated platform-admin policy |
-| Body-only `tenantId` | create connection / oauth-client / credential-definition / etc. | **No-op** | Prefer nested `/tenants/:tenantId/...` routes, or extend guard to read body (explicit follow-up) |
-| Resource `:id` | `GET /connections/:id`, `PATCH /oauth-clients/:id` | **No-op** (`id` is the resource, not the tenant) | After load, assert `resource.tenantId === auth.tenantId` (service-layer or resource tenant check) — path param alone is insufficient |
+| Body-only `tenantId` | create connection / credential-definition / etc. | **No-op** | Prefer nested `/tenants/:tenantId/...` routes, or extend guard to read body (explicit follow-up) |
+| Resource `:id` | `GET /connections/:id` | **No-op** (`id` is the resource, not the tenant) | After load, assert `resource.tenantId === auth.tenantId` (service-layer or resource tenant check) — path param alone is insufficient |
 | Admin / no tenant | `/admin/operations/stats` | No-op (correct) | `JwtGuard` + `ScopeGuard` / `@RequireRoles('platform-admin')` only |
 
 Do **not** treat every `:id` as a tenant id — most are resource primary keys.
