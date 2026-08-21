@@ -26,7 +26,7 @@ runs:
   using: composite
   steps:
     - name: Install Helm
-      uses: azure/setup-helm@b9e51907a09c216f16ebe8536097933489208112 # v4.3.0
+      uses: azure/setup-helm@59b1c81c6280f5abebb1fb1bc585696daa7dfb42 # v5.0.1
       with:
         # Same helm version CI validates the chart with (ci-checks.yml)
         version: v3.16.2

@@ -4,10 +4,35 @@ This guide covers local development setup, running the application, and managing
 
 ## Prerequisites
 
-- **Node.js**: v22.12.0 or higher
+- **Node.js**: v24 (pinned in `.mise.toml`; matches the `node:24-alpine` image)
 - **npm**: Latest stable version
 - **Docker** and **Docker Compose**: For database and containerized development
 - **PostgreSQL**: v18.4 (or use Docker)
+
+### Toolchain with mise (recommended)
+
+[mise](https://mise.jdx.dev) reads `.mise.toml` and gives everyone — and CI — the same tool versions:
+
+```bash
+brew install mise                     # or see the mise install docs
+echo 'eval "$(mise activate zsh)"' >> ~/.zshrc && exec zsh
+mise install                          # installs everything pinned in .mise.toml
+mise current                          # shows the resolved versions
+```
+
+| Tool | Pinned | Used for |
+| --- | --- | --- |
+| node | 24 | the application; matches `engines` and the `node:24-alpine` image |
+| helm | 3.16.2 | chart lint, template, and unit tests |
+| helm-docs | 1.14.2 | regenerating the chart README (CI fails if it is stale) |
+| actionlint | 1.7.12 | linting `.github/workflows/*.yml` |
+| yamllint | latest | `--strict` checks on chart values and `Chart.yaml` |
+
+These versions mirror `.github/workflows/ci-checks.yml`. When you bump one, bump both.
+
+mise itself is optional — CI installs each tool directly rather than through mise — but the Node
+version is not: `.npmrc` sets `engine-strict=true`, so `npm ci` **fails** rather than warns on a
+Node outside the `engines` range. Without shell activation, prefix commands with `mise exec --`.
 
 ## Environment Setup
 

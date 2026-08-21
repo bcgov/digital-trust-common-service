@@ -13,7 +13,7 @@ RUN npm run build
 FROM base AS production
 ENV NODE_ENV=production
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev
+RUN npm pkg delete scripts.prepare && npm ci --omit=dev
 COPY --from=build /app/dist ./dist
 EXPOSE 3000
 CMD ["node", "dist/apps/digital-trust-common-service/src/main.js"]
