@@ -1,5 +1,9 @@
-import { OAUTH_CLIENT_ALLOWED_ROLES } from '@app/auth';
 import {
+  ASSIGNABLE_OAUTH_CLIENT_SCOPES,
+  OAUTH_CLIENT_ALLOWED_ROLES,
+} from '@app/auth';
+import {
+  ArrayMinSize,
   IsArray,
   IsIn,
   IsInt,
@@ -17,7 +21,8 @@ export class UpdateOAuthClientDto {
 
   @IsOptional()
   @IsArray()
-  @IsString({ each: true })
+  @ArrayMinSize(1)
+  @IsIn([...ASSIGNABLE_OAUTH_CLIENT_SCOPES], { each: true })
   public scopes?: string[];
 
   @IsOptional()

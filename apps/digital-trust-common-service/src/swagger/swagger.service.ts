@@ -40,6 +40,7 @@ const swaggerApps = [
       TenantUserModule,
       CredentialDefinitionModule,
       AuditLogModule,
+      OAuthClientModule,
     ],
   },
   {
@@ -47,12 +48,7 @@ const swaggerApps = [
     title: 'Digital Credential Operations API',
     description: 'API endpoints for Digital Credential operations',
     version: '1.0',
-    modules: [
-      ConnectionModule,
-      ConnectorCredentialModule,
-      OAuthClientModule,
-      OperationModule,
-    ],
+    modules: [ConnectionModule, ConnectorCredentialModule, OperationModule],
   },
   {
     name: 'admin',
@@ -203,7 +199,7 @@ export class SwaggerService {
     modules: Array<Type<unknown>> = [TenantModule, TenantUserModule],
   ): void {
     const config = buildDocumentConfig(title, description, version, {
-      includeAppJwtBearerAuth: name === 'admin',
+      includeAppJwtBearerAuth: name === 'admin' || name === 'tenant',
     });
 
     const document = SwaggerModule.createDocument(app, config, {
@@ -236,7 +232,7 @@ export class SwaggerService {
     document?: ReturnType<typeof SwaggerModule.createDocument>,
   ): void {
     const config = buildDocumentConfig(title, description, version, {
-      includeAppJwtBearerAuth: name === 'admin',
+      includeAppJwtBearerAuth: name === 'admin' || name === 'tenant',
     });
 
     const docToUse =

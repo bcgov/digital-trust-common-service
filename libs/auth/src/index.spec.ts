@@ -1,5 +1,6 @@
 import {
   ALL_TENANT_SCOPES,
+  ASSIGNABLE_OAUTH_CLIENT_SCOPES,
   APP_JWT_BEARER_SCHEME,
   ApiJwtAuth,
   AuthModule,
@@ -37,6 +38,8 @@ describe('auth package index', () => {
     expect(LEVEL2_SCOPES.length).toBeGreaterThan(0);
     expect(LEVEL3_SCOPES.length).toBeGreaterThan(0);
     expect(OIDC_SCOPE_ALLOWLIST).toContain('openid');
+    expect(ASSIGNABLE_OAUTH_CLIENT_SCOPES).toContain('clients:manage');
+    expect(ASSIGNABLE_OAUTH_CLIENT_SCOPES).not.toContain('openid');
     expect(PLATFORM_ADMIN_ROLE).toBe('platform-admin');
     expect(OAUTH_CLIENT_ALLOWED_ROLES).toContain(PLATFORM_ADMIN_ROLE);
     expect(TENANT_SUPERUSER_SCOPE).toBe('tenants:admin');

@@ -171,7 +171,10 @@ tags:
   - name: Clients
     description: |
       Register and manage OAuth2 API clients for service-to-service (`client_credentials`) access.
-      Secrets are returned once at creation and are never retrievable again.
+      Generated `client_id` values are prefixed `dtcs_`. Secrets are returned once at creation
+      or rotation and are never retrievable again. Assigned scopes must be in the AU-04 catalog,
+      enabled in `OIDC_SCOPES`, and a subset of the caller's own scopes (`platform-admin` bypasses
+      the caller-subset check; only `platform-admin` may assign `roles`).
       **Audience**: Tenant administrators.
       **Auth**: `clients:manage` scope (implied by `tenants:admin`).
   - name: Webhooks
@@ -1881,7 +1884,9 @@ paths:
       summary: Register an API client (OAuth2 client_credentials)
       description: |
         Creates a new OAuth2 client for service-to-service authentication.
-        The `client_secret` is returned ONCE in the response and cannot be retrieved again.
+        Generated `client_id` values are prefixed `dtcs_`. The `clientSecret`
+        is returned ONCE in the response and cannot be retrieved again.
+        Requested scopes cannot exceed the caller's own grants.
       tags: [Clients]
       parameters:
         - $ref: "#/components/parameters/IdempotencyKey"
@@ -1908,12 +1913,9 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  data:
-                    type: array
-                    items:
-                      $ref: "#/components/schemas/Client"
+                type: array
+                items:
+                  $ref: "#/components/schemas/Client"
 
   /api/v1/tenants/{tenantId}/clients/{clientId}:
     parameters:
@@ -1926,10 +1928,40 @@ paths:
     delete:
       operationId: deleteClient
       summary: Revoke an API client
+      description: |
+        Soft-revokes the client. Further token grants fail immediately.
+        Issued access tokens remain valid until their TTL.
       tags: [Clients]
       responses:
         "204":
           description: Client revoked
+
+    patch:
+      operationId: updateClient
+      summary: Update an API client
+      description: |
+        Updates name, scopes, grant types, redirect URIs, roles, or refresh-token TTL.
+        Scope and role privilege checks apply only when those fields are present
+        in the body. Scope assignment follows the same caller-subset rule as create.
+        Role assignment is restricted to platform-admin callers.
+        Issued access tokens remain valid until their TTL after a secret rotation
+        or revoke.
+      tags: [Clients]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateClientRequest"
+      responses:
+        "200":
+          description: Client updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Client"
+        "404":
+          description: Client not found
 
   /api/v1/tenants/{tenantId}/clients/{clientId}/rotate-secret:
     parameters:
@@ -1942,7 +1974,9 @@ paths:
     post:
       operationId: rotateClientSecret
       summary: Rotate client secret
-      description: Generates a new secret. The old secret is immediately invalidated.
+      description: |
+        Generates a new secret. The old secret is immediately invalidated.
+        Issued access tokens remain valid until their TTL.
       tags: [Clients]
       responses:
         "200":
@@ -3499,37 +3533,55 @@ components:
         id:
           type: string
           format: uuid
-        tenant_id:
+        tenantId:
           type: string
           format: uuid
-        client_id:
+        clientId:
           type: string
+          description: "Public OAuth client_id. Newly generated values are prefixed `dtcs_`."
         name:
           type: string
         scopes:
           type: array
           items:
             type: string
-        grant_types:
+        roles:
           type: array
           items:
             type: string
-        created_at:
+          description: "JWT role claims for machine clients (currently only platform-admin). Assignable by platform-admin callers only."
+        redirectUris:
+          type: array
+          items:
+            type: string
+        grantTypes:
+          type: array
+          items:
+            type: string
+        createdBy:
+          type: string
+          format: uuid
+          nullable: true
+        refreshTokenTtlSeconds:
+          type: integer
+          nullable: true
+        createdAt:
           type: string
           format: date-time
-        revoked_at:
+        revokedAt:
           type: string
           format: date-time
           nullable: true
 
     ClientWithSecret:
-      allOf:
-        - $ref: "#/components/schemas/Client"
-        - type: object
-          properties:
-            client_secret:
-              type: string
-              description: "Shown ONCE at creation/rotation. Cannot be retrieved again."
+      type: object
+      required: [client, clientSecret]
+      properties:
+        client:
+          $ref: "#/components/schemas/Client"
+        clientSecret:
+          type: string
+          description: "Shown ONCE at creation and rotate-secret. Cannot be retrieved again."
 
     CreateClientRequest:
       type: object
@@ -3538,7 +3590,7 @@ components:
         name:
           type: string
           minLength: 1
-          maxLength: 100
+          maxLength: 255
         scopes:
           type: array
           minItems: 1
@@ -3556,6 +3608,64 @@ components:
               - logs:read
               - audit:read
               - tenants:admin
+        roles:
+          type: array
+          items:
+            type: string
+            enum: [platform-admin]
+        redirectUris:
+          type: array
+          items:
+            type: string
+        grantTypes:
+          type: array
+          items:
+            type: string
+        refreshTokenTtlSeconds:
+          type: integer
+          minimum: 1
+
+    UpdateClientRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        scopes:
+          type: array
+          minItems: 1
+          items:
+            type: string
+            enum:
+              - credentials:offer
+              - credentials:verify
+              - credentials:hold
+              - credentials:revoke
+              - connections:manage
+              - profiles:manage
+              - users:manage
+              - clients:manage
+              - logs:read
+              - audit:read
+              - tenants:admin
+        roles:
+          type: array
+          items:
+            type: string
+            enum: [platform-admin]
+        redirectUris:
+          type: array
+          items:
+            type: string
+        grantTypes:
+          type: array
+          items:
+            type: string
+        refreshTokenTtlSeconds:
+          type: integer
+          minimum: 1
+          nullable: true
 
     # ─── Credential ─────────────────────────────────────────────────
     Credential:

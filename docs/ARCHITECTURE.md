@@ -974,7 +974,7 @@ sequenceDiagram
     participant App as App OIDC Provider
     participant DB as Permission DB
 
-    Note over Service: Registered via POST /api/v1/clients
+    Note over Service: Registered via POST /api/v1/tenants/:tenantId/clients
 
     Service->>App: POST /oidc/token<br/>grant_type=client_credentials<br/>client_id=xxx&client_secret=yyy
     App->>DB: Verify client_secret hash, load tenant + scopes

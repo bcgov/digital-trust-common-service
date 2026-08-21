@@ -1,27 +1,27 @@
-import { OAUTH_CLIENT_ALLOWED_ROLES } from '@app/auth';
 import {
+  ASSIGNABLE_OAUTH_CLIENT_SCOPES,
+  OAUTH_CLIENT_ALLOWED_ROLES,
+} from '@app/auth';
+import {
+  ArrayMinSize,
   IsArray,
   IsIn,
   IsInt,
   IsOptional,
   IsPositive,
   IsString,
-  IsUUID,
   MaxLength,
 } from 'class-validator';
 
 export class CreateOAuthClientDto {
-  @IsUUID()
-  public tenantId!: string;
-
   @IsString()
   @MaxLength(255)
   public name!: string;
 
-  @IsOptional()
   @IsArray()
-  @IsString({ each: true })
-  public scopes?: string[];
+  @ArrayMinSize(1)
+  @IsIn([...ASSIGNABLE_OAUTH_CLIENT_SCOPES], { each: true })
+  public scopes!: string[];
 
   @IsOptional()
   @IsArray()
@@ -42,8 +42,4 @@ export class CreateOAuthClientDto {
   @IsInt()
   @IsPositive()
   public refreshTokenTtlSeconds?: number;
-
-  @IsOptional()
-  @IsUUID()
-  public createdBy?: string;
 }
