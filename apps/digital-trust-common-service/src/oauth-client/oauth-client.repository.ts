@@ -35,6 +35,16 @@ export class OAuthClientRepository {
     });
   }
 
+  public async findByTenantAndClientId(
+    tenantId: string,
+    clientId: string,
+  ): Promise<OAuthClient | null> {
+    return await this.repository.findOne({
+      where: { tenantId, clientId },
+      relations: { tenant: true },
+    });
+  }
+
   public async create(client: OAuthClient): Promise<OAuthClient> {
     const entity = this.repository.create(client);
     return await this.repository.save(entity);

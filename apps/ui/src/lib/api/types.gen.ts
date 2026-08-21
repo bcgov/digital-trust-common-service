@@ -1048,7 +1048,9 @@ export interface paths {
         /**
          * Register an API client (OAuth2 client_credentials)
          * @description Creates a new OAuth2 client for service-to-service authentication.
-         *     The `client_secret` is returned ONCE in the response and cannot be retrieved again.
+         *     Generated `client_id` values are prefixed `dtcs_`. The `client_secret`
+         *     is returned ONCE in the response and cannot be retrieved again.
+         *     Requested scopes cannot exceed the caller's own grants.
          */
         post: operations["createClient"];
         delete?: never;
@@ -1075,7 +1077,13 @@ export interface paths {
         delete: operations["deleteClient"];
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Update an API client
+         * @description Updates name, scopes, grant types, redirect URIs, roles, or refresh-token TTL.
+         *     Scope assignment follows the same caller-subset rule as create.
+         *     Role assignment is restricted to platform-admin callers.
+         */
+        patch: operations["updateClient"];
         trace?: never;
     };
     "/api/v1/tenants/{tenantId}/clients/{clientId}/rotate-secret": {
@@ -2040,10 +2048,17 @@ export interface components {
             id?: string;
             /** Format: uuid */
             tenant_id?: string;
+            /** @description Public OAuth client_id. Newly generated values are prefixed `dtcs_`. */
             client_id?: string;
             name?: string;
             scopes?: string[];
+            /** @description JWT role claims for machine clients (currently only platform-admin). Assignable by platform-admin callers only. */
+            roles?: string[];
+            redirect_uris?: string[];
             grant_types?: string[];
+            /** Format: uuid */
+            created_by?: string | null;
+            refresh_token_ttl_seconds?: number | null;
             /** Format: date-time */
             created_at?: string;
             /** Format: date-time */
@@ -2056,6 +2071,18 @@ export interface components {
         CreateClientRequest: {
             name: string;
             scopes: ("credentials:offer" | "credentials:verify" | "credentials:hold" | "credentials:revoke" | "connections:manage" | "profiles:manage" | "users:manage" | "clients:manage" | "logs:read" | "audit:read" | "tenants:admin")[];
+            roles?: "platform-admin"[];
+            redirect_uris?: string[];
+            grant_types?: string[];
+            refresh_token_ttl_seconds?: number;
+        };
+        UpdateClientRequest: {
+            name?: string;
+            scopes?: ("credentials:offer" | "credentials:verify" | "credentials:hold" | "credentials:revoke" | "connections:manage" | "profiles:manage" | "users:manage" | "clients:manage" | "logs:read" | "audit:read" | "tenants:admin")[];
+            roles?: "platform-admin"[];
+            redirect_uris?: string[];
+            grant_types?: string[];
+            refresh_token_ttl_seconds?: number | null;
         };
         Credential: {
             /** Format: uuid */
@@ -4302,6 +4329,41 @@ export interface operations {
         responses: {
             /** @description Client revoked */
             204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    updateClient: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                clientId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateClientRequest"];
+            };
+        };
+        responses: {
+            /** @description Client updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Client"];
+                };
+            };
+            /** @description Client not found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -40,6 +40,15 @@ export const LEVEL3_SCOPES = ['logs:read', AUDIT_READ_SCOPE] as const;
 /** All tenant-level scopes (Level 2 + Level 3, excluding tenants:admin). */
 export const ALL_TENANT_SCOPES = [...LEVEL2_SCOPES, ...LEVEL3_SCOPES] as const;
 
+/**
+ * Scopes that may be assigned to an OAuth client at registration/update.
+ * `openid` is an OIDC protocol scope, not an API permission, so it is omitted.
+ */
+export const ASSIGNABLE_OAUTH_CLIENT_SCOPES = [
+  TENANT_SUPERUSER_SCOPE,
+  ...ALL_TENANT_SCOPES,
+] as const;
+
 /** Server-wide oidc-provider scope allowlist (openid is always required). */
 export const OIDC_SCOPE_ALLOWLIST = [
   'openid',

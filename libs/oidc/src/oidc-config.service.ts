@@ -34,9 +34,9 @@ export interface OidcConfig {
    * Server-wide scope allowlist. oidc-provider validates each registered
    * client's own `scope` metadata against this list at Client-instantiation
    * time (see `client_schema.js`'s `scopes()` check); any scope value an
-   * `oauth_client` row is granted (`OAuthClient.scopes`, currently
-   * free-form strings, see `create-oauth-client.dto.ts`) must also appear
-   * here, or the client fails to load with `invalid_client_metadata`.
+   * `oauth_client` row is granted must also appear here, or the client
+   * fails to load with `invalid_client_metadata`. Registration (AU-06)
+   * validates requested scopes against this list and the AU-04 catalog.
    */
   scopes: string[];
   /**
@@ -90,10 +90,6 @@ const DEFAULT_REFRESH_TOKEN_TTL_SECONDS = 8 * 60 * 60;
 const DEFAULT_GRANT_TTL_SECONDS = 14 * 24 * 60 * 60;
 const DEFAULT_MAX_CONCURRENT_SESSIONS = 5;
 const DEV_COOKIE_KEY = 'dev-insecure-cookie-key';
-// Matches the example values used across the OAuthClient DTOs/controller
-// (see oauth-client-response.dto.ts, oauth-client.controller.ts). The app
-// does not yet have a canonical scope registry, so this doubles as the
-// closest thing to one until a dedicated scope-catalog module exists.
 // Canonical scope names — keep in sync with @app/auth OIDC_SCOPE_ALLOWLIST
 // (minus openid, which is injected automatically in getScopes()).
 const DEFAULT_SCOPES = [

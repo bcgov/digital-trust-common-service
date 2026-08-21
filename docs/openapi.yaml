@@ -187,7 +187,10 @@ tags:
   - name: Clients
     description: |
       Register and manage OAuth2 API clients for service-to-service (`client_credentials`) access.
-      Secrets are returned once at creation and are never retrievable again.
+      Generated `client_id` values are prefixed `dtcs_`. Secrets are returned once at creation
+      or rotation and are never retrievable again. Assigned scopes must be in the AU-04 catalog,
+      enabled in `OIDC_SCOPES`, and a subset of the caller's own scopes (`platform-admin` bypasses
+      the caller-subset check; only `platform-admin` may assign `roles`).
       **Audience**: Tenant administrators.
       **Auth**: `clients:manage` scope (implied by `tenants:admin`).
   - name: Webhooks
@@ -2036,7 +2039,9 @@ paths:
       summary: Register an API client (OAuth2 client_credentials)
       description: |
         Creates a new OAuth2 client for service-to-service authentication.
-        The `client_secret` is returned ONCE in the response and cannot be retrieved again.
+        Generated `client_id` values are prefixed `dtcs_`. The `client_secret`
+        is returned ONCE in the response and cannot be retrieved again.
+        Requested scopes cannot exceed the caller's own grants.
       tags: [Clients]
       parameters:
         - $ref: "#/components/parameters/IdempotencyKey"
@@ -2085,6 +2090,30 @@ paths:
       responses:
         "204":
           description: Client revoked
+
+    patch:
+      operationId: updateClient
+      summary: Update an API client
+      description: |
+        Updates name, scopes, grant types, redirect URIs, roles, or refresh-token TTL.
+        Scope assignment follows the same caller-subset rule as create.
+        Role assignment is restricted to platform-admin callers.
+      tags: [Clients]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateClientRequest"
+      responses:
+        "200":
+          description: Client updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Client"
+        "404":
+          description: Client not found
 
   /api/v1/tenants/{tenantId}/clients/{clientId}/rotate-secret:
     parameters:
@@ -3784,9 +3813,19 @@ components:
           format: uuid
         client_id:
           type: string
+          description: "Public OAuth client_id. Newly generated values are prefixed `dtcs_`."
         name:
           type: string
         scopes:
+          type: array
+          items:
+            type: string
+        roles:
+          type: array
+          items:
+            type: string
+          description: "JWT role claims for machine clients (currently only platform-admin). Assignable by platform-admin callers only."
+        redirect_uris:
           type: array
           items:
             type: string
@@ -3794,6 +3833,13 @@ components:
           type: array
           items:
             type: string
+        created_by:
+          type: string
+          format: uuid
+          nullable: true
+        refresh_token_ttl_seconds:
+          type: integer
+          nullable: true
         created_at:
           type: string
           format: date-time
@@ -3818,7 +3864,7 @@ components:
         name:
           type: string
           minLength: 1
-          maxLength: 100
+          maxLength: 255
         scopes:
           type: array
           minItems: 1
@@ -3836,6 +3882,64 @@ components:
               - logs:read
               - audit:read
               - tenants:admin
+        roles:
+          type: array
+          items:
+            type: string
+            enum: [platform-admin]
+        redirect_uris:
+          type: array
+          items:
+            type: string
+        grant_types:
+          type: array
+          items:
+            type: string
+        refresh_token_ttl_seconds:
+          type: integer
+          minimum: 1
+
+    UpdateClientRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        scopes:
+          type: array
+          minItems: 1
+          items:
+            type: string
+            enum:
+              - credentials:offer
+              - credentials:verify
+              - credentials:hold
+              - credentials:revoke
+              - connections:manage
+              - profiles:manage
+              - users:manage
+              - clients:manage
+              - logs:read
+              - audit:read
+              - tenants:admin
+        roles:
+          type: array
+          items:
+            type: string
+            enum: [platform-admin]
+        redirect_uris:
+          type: array
+          items:
+            type: string
+        grant_types:
+          type: array
+          items:
+            type: string
+        refresh_token_ttl_seconds:
+          type: integer
+          minimum: 1
+          nullable: true
 
     # ─── Credential ─────────────────────────────────────────────────
     Credential:
