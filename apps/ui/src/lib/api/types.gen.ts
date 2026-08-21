@@ -1000,15 +1000,22 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** Revoke an API client */
+        /**
+         * Revoke an API client
+         * @description Soft-revokes the client. Further token grants fail immediately.
+         *     Issued access tokens remain valid until their TTL.
+         */
         delete: operations["deleteClient"];
         options?: never;
         head?: never;
         /**
          * Update an API client
          * @description Updates name, scopes, grant types, redirect URIs, roles, or refresh-token TTL.
-         *     Scope assignment follows the same caller-subset rule as create.
+         *     Scope and role privilege checks apply only when those fields are present
+         *     in the body. Scope assignment follows the same caller-subset rule as create.
          *     Role assignment is restricted to platform-admin callers.
+         *     Issued access tokens remain valid until their TTL after a secret rotation
+         *     or revoke.
          */
         patch: operations["updateClient"];
         trace?: never;
@@ -1029,6 +1036,7 @@ export interface paths {
         /**
          * Rotate client secret
          * @description Generates a new secret. The old secret is immediately invalidated.
+         *     Issued access tokens remain valid until their TTL.
          */
         post: operations["rotateClientSecret"];
         delete?: never;

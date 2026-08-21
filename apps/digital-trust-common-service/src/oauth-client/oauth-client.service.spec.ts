@@ -692,6 +692,31 @@ describe('OAuthClientService', () => {
       expect(mockUpdate).not.toHaveBeenCalled();
     });
 
+    it('rejects adding interactive grants to a privileged client even for a tenant-admin', async () => {
+      mockGetConfig.mockReturnValue({
+        grantTypes: ['client_credentials', 'authorization_code'],
+        scopes: CONFIGURED_SCOPES,
+      });
+      service = await createService();
+      mockFindByTenantAndClientId.mockResolvedValue({
+        ...mockOAuthClient,
+        roles: ['platform-admin'],
+        grantTypes: ['client_credentials'],
+      });
+
+      await expect(
+        service.update(
+          mockOAuthClient.tenantId,
+          mockOAuthClient.clientId,
+          {
+            grantTypes: ['client_credentials', 'authorization_code'],
+          },
+          tenantAdminAuth,
+        ),
+      ).rejects.toThrow(BadRequestException);
+      expect(mockUpdate).not.toHaveBeenCalled();
+    });
+
     it('should reject adding roles to a non-machine client', async () => {
       mockGetConfig.mockReturnValue({
         grantTypes: ['client_credentials', 'authorization_code'],
@@ -820,6 +845,70 @@ describe('OAuthClientService', () => {
       expect(result.name).toBe('Updated Name');
       expect(result.scopes).toEqual(mockOAuthClient.scopes);
       expect(result.redirectUris).toEqual(mockOAuthClient.redirectUris);
+    });
+
+    it('lets a clients:manage caller rename a client whose scopes they could not assign', async () => {
+      mockFindByTenantAndClientId.mockResolvedValue({ ...mockOAuthClient });
+      mockUpdate.mockImplementation((client: unknown) => client);
+
+      const result = await service.update(
+        mockOAuthClient.tenantId,
+        mockOAuthClient.clientId,
+        { name: 'Renamed by operator' },
+        clientsManageAuth,
+      );
+
+      expect(result.name).toBe('Renamed by operator');
+      expect(mockUpdate).toHaveBeenCalled();
+    });
+
+    it('still rejects a clients:manage caller expanding scopes they do not hold', async () => {
+      mockFindByTenantAndClientId.mockResolvedValue({
+        ...mockOAuthClient,
+        scopes: ['clients:manage'],
+      });
+
+      await expect(
+        service.update(
+          mockOAuthClient.tenantId,
+          mockOAuthClient.clientId,
+          { scopes: ['credentials:offer'] },
+          clientsManageAuth,
+        ),
+      ).rejects.toThrow(ForbiddenException);
+      expect(mockUpdate).not.toHaveBeenCalled();
+    });
+
+    it('lets a tenant-admin rename a platform-admin machine client', async () => {
+      mockFindByTenantAndClientId.mockResolvedValue({
+        ...mockOAuthClient,
+        roles: ['platform-admin'],
+      });
+      mockUpdate.mockImplementation((client: unknown) => client);
+
+      const result = await service.update(
+        mockOAuthClient.tenantId,
+        mockOAuthClient.clientId,
+        { name: 'Renamed privileged client' },
+        tenantAdminAuth,
+      );
+
+      expect(result.name).toBe('Renamed privileged client');
+      expect(mockUpdate).toHaveBeenCalled();
+    });
+
+    it('still rejects a tenant-admin assigning roles', async () => {
+      mockFindByTenantAndClientId.mockResolvedValue({ ...mockOAuthClient });
+
+      await expect(
+        service.update(
+          mockOAuthClient.tenantId,
+          mockOAuthClient.clientId,
+          { roles: ['platform-admin'] },
+          tenantAdminAuth,
+        ),
+      ).rejects.toThrow(ForbiddenException);
+      expect(mockUpdate).not.toHaveBeenCalled();
     });
 
     it('should throw NotFoundException if client not found', async () => {
