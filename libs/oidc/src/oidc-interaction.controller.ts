@@ -16,6 +16,7 @@ type OidcResponse =
 type RoleScopeLookup = {
   findScopesForRole(
     role: oidcTenantUserPort.OidcTenantUserRole,
+    tenantId?: string,
   ): Promise<string[]>;
 };
 
@@ -207,7 +208,12 @@ export class OidcInteractionController {
       throw new Error(`Active tenant user not found: ${accountId}`);
     }
 
-    const roleScopes = await this.roleScopeService.findScopesForRole(user.role);
+    // Tenant-scoped so a tenant's role override reaches the Grant, and
+    // therefore the `scope` claim (AU-07 #40).
+    const roleScopes = await this.roleScopeService.findScopesForRole(
+      user.role,
+      user.tenantId,
+    );
 
     const grant = new provider.Grant({
       clientId,

@@ -1287,8 +1287,37 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List roles with scope mappings */
+        /**
+         * List roles with their default scope mappings
+         * @description Returns the platform default mapping. A tenant that has customised a
+         *     role sees its own values at `GET /api/v1/tenants/{tenantId}/roles`.
+         */
         get: operations["listRoles"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tenants/{tenantId}/roles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List a tenant's effective role scope mappings
+         * @description Each role reports whether its scopes come from the platform default or
+         *     from a tenant override, so a client can show what has been customised
+         *     and offer a reset.
+         */
+        get: operations["listTenantRoles"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1311,13 +1340,38 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * Reset a role to the platform's default scopes
+         * @description Removes the tenant override so the role inherits the platform default
+         *     again. Idempotent: resetting a role that has no override succeeds and
+         *     returns the default mapping.
+         *
+         *     A reset that narrows the role logs out its active users, for the same
+         *     reason a narrowing `PATCH` does.
+         *
+         *     Requires the `tenants:admin` scope.
+         */
+        delete: operations["resetTenantRoleScopes"];
         options?: never;
         head?: never;
         /**
          * Customize role scope mappings for a tenant
-         * @description Override default role→scope mappings for a specific tenant.
-         *     Role hierarchy is enforced: cannot assign a scope to a child role that the parent doesn't have.
+         * @description Overrides the default role→scope mapping for one role in one tenant.
+         *     The body carries the complete scope list, not a delta.
+         *
+         *     Role hierarchy is enforced across the whole mapping, not just the role
+         *     being edited: no role may hold a scope the role above it lacks. The
+         *     `owner` role cannot be modified, and `tenants:admin` cannot be granted
+         *     to any other role.
+         *
+         *     **Removing a scope logs out every active user holding this role in the
+         *     tenant.** The `scope` claim is fixed by the OIDC grant created at login
+         *     and is not refreshed when a refresh token rotates, so revoking the
+         *     sessions is the only way to make the change take effect before the
+         *     existing tokens expire. Adding scopes has no such effect and applies at
+         *     the affected users' next login.
+         *
+         *     Requires the `tenants:admin` scope.
          */
         patch: operations["updateTenantRoleScopes"];
         trace?: never;
@@ -1503,6 +1557,30 @@ export interface components {
         };
         /** @enum {string} */
         TenantRole: "owner" | "admin" | "member" | "readonly";
+        /**
+         * @description `override` when the tenant has customised this role, `default` when it
+         *     inherits the platform mapping.
+         * @enum {string}
+         */
+        RoleScopeSource: "default" | "override";
+        RoleMapping: {
+            name?: components["schemas"]["TenantRole"];
+            scopes?: string[];
+            source?: components["schemas"]["RoleScopeSource"];
+        };
+        RoleMappingList: {
+            data?: components["schemas"]["RoleMapping"][];
+        };
+        RoleScopesResponse: {
+            role?: components["schemas"]["TenantRole"];
+            scopes?: string[];
+            source?: components["schemas"]["RoleScopeSource"];
+            /**
+             * @description OIDC records deleted because the change removed scopes. Zero when
+             *     the change only widened the role.
+             */
+            revokedRecordCount?: number;
+        };
         InviteUserRequest: {
             /** Format: email */
             email: string;
@@ -4411,14 +4489,67 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        data?: {
-                            name?: string;
-                            scopes?: string[];
-                        }[];
-                    };
+                    "application/json": components["schemas"]["RoleMappingList"];
                 };
             };
+        };
+    };
+    listTenantRoles: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Effective roles and their scopes */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoleMappingList"];
+                };
+            };
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    resetTenantRoleScopes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                role: components["schemas"]["TenantRole"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Override removed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoleScopesResponse"];
+                };
+            };
+            /** @description Immutable role or resulting hierarchy violation */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            403: components["responses"]["Forbidden"];
         };
     };
     updateTenantRoleScopes: {
@@ -4435,7 +4566,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    /** @description Updated scope list for this role in this tenant */
+                    /** @description Complete replacement scope list for this role in this tenant */
                     scopes: string[];
                 };
             };
@@ -4447,13 +4578,10 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        role?: string;
-                        scopes?: string[];
-                    };
+                    "application/json": components["schemas"]["RoleScopesResponse"];
                 };
             };
-            /** @description Scope hierarchy violation */
+            /** @description Unknown scope, hierarchy violation, immutable role, or non-assignable scope */
             400: {
                 headers: {
                     [name: string]: unknown;
