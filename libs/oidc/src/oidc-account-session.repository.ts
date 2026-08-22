@@ -184,6 +184,49 @@ export class OidcAccountSessionRepository {
   }
 
   /**
+   * Removes every record bound to any active user holding `role` in a tenant.
+   *
+   * AU-07 narrows a role's scopes, which must take effect immediately. Doing
+   * it as one statement rather than a loop over `revokeSessions` matters:
+   * that path runs its own lookup, its own audit write, and its own
+   * transaction per user, none of which can join the override's transaction.
+   *
+   * `oidc_model.account_id` is VARCHAR while `tenant_user.id` is UUID, hence
+   * the explicit `id::text` casts.
+   *
+   * Uses the partial index `idx_oidc_model_account_id (model_name,
+   * account_id)`.
+   */
+  public async deleteAllForTenantRole(
+    tenantId: string,
+    role: string,
+    manager?: EntityManager,
+  ): Promise<DeletedModelCount[]> {
+    return this.deleteAndCount(
+      `WITH accounts AS (
+        SELECT id::text AS account_id FROM tenant_user
+         WHERE tenant_id = $2
+           AND role = $3::tenant_user_role
+           AND status = 'active'
+      ), targeted AS (
+        SELECT oidc_id FROM oidc_model
+         WHERE model_name = 'Grant'
+           AND account_id IN (SELECT account_id FROM accounts)
+      ), deleted AS (
+        DELETE FROM oidc_model
+         WHERE (model_name = ANY($1::varchar[])
+                AND account_id IN (SELECT account_id FROM accounts))
+            OR (grant_id IS NOT NULL
+                AND grant_id IN (SELECT oidc_id FROM targeted))
+        RETURNING model_name
+      )
+      SELECT model_name, COUNT(*) AS count FROM deleted GROUP BY model_name`,
+      [[...ACCOUNT_BOUND_MODELS], tenantId, role],
+      manager,
+    );
+  }
+
+  /**
    * Deletes the oldest sessions that put an account over `limit`, and returns
    * them so their grants and tokens can be cleaned up.
    *

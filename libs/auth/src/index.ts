@@ -1,12 +1,19 @@
 export { APP_JWT_BEARER_SCHEME } from './constants/app-jwt-bearer.constants';
 export {
   ALL_TENANT_SCOPES,
+  isKnownScope,
   LEVEL2_SCOPES,
   LEVEL3_SCOPES,
   OAUTH_CLIENT_ALLOWED_ROLES,
   OIDC_SCOPE_ALLOWLIST,
   PLATFORM_ADMIN_ROLE,
+  ROLE_HIERARCHY,
+  SCOPE_CATALOG,
   TENANT_SUPERUSER_SCOPE,
+} from './constants/scopes.constants';
+export type {
+  ScopeCatalogEntry,
+  TenantRole,
 } from './constants/scopes.constants';
 export { AuthModule } from './auth.module';
 export { CurrentAuth } from './decorators/current-auth.decorator';

@@ -412,6 +412,106 @@ AU-04 replaces early placeholder scope names (`read:credentials`, `write:credent
 
 The server-wide allowlist is configured via `OIDC_SCOPES` (see `.env.example`). Every scope granted to an `oauth_client` must appear in that allowlist.
 
+## Role → scope overrides (AU-07)
+
+The `role_scope` seed above is the platform default. A tenant can replace the
+scopes of a role for itself; overrides live in `tenant_role_scope`
+(migration `000020_create-tenant-role-scope`) and are resolved at token
+issuance, so they reach the JWT `scope` claim.
+
+### Endpoints
+
+| Method | Path | Auth |
+|--------|------|------|
+| `GET` | `/api/v1/scopes` | Any valid JWT |
+| `GET` | `/api/v1/roles` | Any valid JWT — platform defaults |
+| `GET` | `/api/v1/tenants/:tenantId/roles` | Any valid JWT for that tenant — effective mapping |
+| `PATCH` | `/api/v1/tenants/:tenantId/roles/:role/scopes` | `tenants:admin` |
+| `DELETE` | `/api/v1/tenants/:tenantId/roles/:role/scopes` | `tenants:admin` |
+
+The two catalog `GET`s require authentication but no scope. "Public
+information" here means non-secret, not anonymous: serving it unauthenticated
+publishes the platform's full capability taxonomy and adds pre-auth surface
+that has no rate limiting in front of it yet (AG-03 #77).
+
+Writes require `tenants:admin` rather than `users:manage`. `admin` holds
+`users:manage`, so guarding with it would let an admin grant themselves any
+scope.
+
+### Absent row vs. empty array
+
+This is the easiest thing to get wrong. In the global `role_scope` table,
+"no rows for a role" means the role has no scopes — that is how `readonly` is
+represented. In `tenant_role_scope` the semantics are deliberately different:
+
+| State | Meaning |
+|-------|---------|
+| No row for `(tenant_id, role)` | Inherit the platform default |
+| Row with `scopes = '{}'` | The role has been deliberately stripped to no scopes |
+
+`readonly` legitimately has zero scopes, so an empty array cannot double as
+"reset". `PATCH` always writes a row; `DELETE` removes it. That is why reset is
+a separate verb rather than `PATCH` with `scopes: []`.
+
+`GET /tenants/:tenantId/roles` reports `source: "default" | "override"` per
+role so a client can show what has been customised.
+
+### Hierarchy validation
+
+`owner > admin > member > readonly`. Every role must be a subset of the one
+above it. Two things about how this is checked:
+
+- It runs on **expanded** scopes. `owner` holds only `tenants:admin`, which
+  `ScopeAuthorizationService.expandEffectiveScopes` turns into every scope, so
+  a raw set comparison reports the seeded defaults as invalid.
+- It runs across the **whole mapping**, not just the edited role. Narrowing
+  `admin` alone would otherwise leave `member` holding scopes its parent lacks.
+
+Violations are rejected with `400` naming the offending role and scopes. They
+are not cascade-pruned: one call quietly revoking privileges from roles the
+caller never named is a surprising side effect, and the audit entry would not
+reflect what the caller asked for. A client that wants the cascade can read the
+400 and issue the second call explicitly.
+
+### Narrowing forces a logout
+
+Removing a scope from a role deletes every OIDC session, grant, and token
+belonging to the tenant's active users in that role.
+
+This is not defensive over-reach. The `scope` claim comes from the
+oidc-provider Grant persisted at login, and oidc-provider does not re-save the
+Grant when a refresh token rotates (see `libs/oidc/src/oidc-config.service.ts`).
+A user's scopes are therefore frozen for the entire refresh chain — days, in
+practice — so without revocation an admin who "removed" a permission would find
+it still live long after the fact.
+
+Widening needs no action and applies at the next login.
+
+The write, the revocation, and the audit entry share one transaction, which
+begins by taking `pg_advisory_xact_lock` on the tenant. The lock is what makes
+this safe at `replicaCount: 3`: validation reads the whole mapping, decides,
+then writes, so two concurrent writes to different roles could otherwise each
+pass against a stale snapshot and commit a combined state that violates the
+hierarchy. Row locks cannot close it, because "inherit the default" is the
+*absence* of a row and `FOR UPDATE` has nothing to lock.
+
+A residual window remains: a login that read the old mapping microseconds
+before the commit can insert its grant just after it. Closing it entirely would
+mean re-resolving scopes from the database on every request, which is the wrong
+trade here.
+
+### Not cached
+
+Override resolution hits the database on each login, and should stay that way.
+There is no cross-replica invalidation bus, so a TTL cache would leave other
+replicas handing out revoked scopes until it expired. If profiling ever demands
+one, it needs explicit invalidation (`LISTEN`/`NOTIFY`), not a bare TTL.
+
+### Client credentials are unaffected
+
+Machine tokens take their scopes from `oauth_client.scopes` at registration
+(AU-06 #39). Tenant role overrides do not touch them.
+
 ## TenantGuard (AU-05)
 
 `TenantGuard` enforces tenant isolation after `JwtGuard` and `ScopeGuard`:
