@@ -1,9 +1,8 @@
 # UI: BC Design System planning
 
 Knowledge base for aligning the admin UI (`apps/ui`, built in #82) with the
-BC (Gov) Design System. Started 2026-08-13; package versions verified against
-npm that day. Not yet scheduled — candidate follow-up issue once the scaffold
-lands.
+BC (Gov) Design System. Started 2026-08-13; **implemented 2026-08-22 in #180**
+— see "Implementation decisions" below for what was actually done.
 
 ## What the BC Design System actually is
 
@@ -74,17 +73,57 @@ this app, tokens + BC Sans + the standard header very likely reaches "aligned"
 for practical purposes — the cheap path the shadcn choice (#82) deliberately
 left open.
 
-## Open questions / to verify when scheduling
+## Implementation decisions (2026-08-22, #180)
 
-- **Dark mode:** does `@bcgov/design-tokens` v5 ship a dark palette? Our shadcn
-  theme has light + dark (`.dark` block in `index.css`); if BCDS is light-only,
-  decide whether to drop dark mode or derive a dark palette ourselves.
-- Exact BCDS token names for the mapping table (inspect the package; names like
-  `--surface-color-*` / `--typography-*` — confirm rather than guess).
-- Whether the standard BC Gov header is expected/required for an internal admin
-  tool behind login.
-- Contrast/a11y check after mapping (BC gold on white is a known contrast trap
-  for text — gold is an accent, not a text color).
+- **Token bridge, not token copies.** `src/index.css` imports
+  `@bcgov/design-tokens/css/variables.css` and maps shadcn's theme variables
+  onto it by `var()` reference (`--primary: var(--surface-color-primary-button-default)`
+  etc.), so a design-tokens upgrade flows through without editing the mapping.
+  New code keeps styling with the shadcn-side tokens (`bg-primary`, …).
+- **Font:** `@bcgov/bc-sans/css/BC_Sans.css` (declares family `'BC Sans'`,
+  the name the BCDS tokens reference; the package's other file `BCSans.css`
+  declares `'BCSans'`, which they don't). Geist removed.
+- **Dark mode dropped.** design-tokens v5 is light-only (only `*-invert`
+  tokens exist, no dark palette). The `.dark` token block was deleted; the
+  `@custom-variant dark` line is kept deliberately so the `dark:` utilities
+  still present in vendored shadcn components stay pinned to a class nothing
+  sets (removing the variant would revert them to `prefers-color-scheme` and
+  half-apply on dark-OS machines).
+- **Focus:** one global `:focus-visible` base rule (solid 2px
+  `--surface-color-border-active`, 2px offset — same treatment as BCDS
+  react-components). Vendored components' per-element soft rings
+  (`focus-visible:ring-3 …`) were removed rather than restyled. The universal
+  `*` rule presets outline color/width so `transition-all`/`transition-colors`
+  elements don't animate the outline in from `currentcolor`.
+- **Radius:** `--radius: var(--layout-border-radius-medium)` (4px) — shadcn's
+  `rounded-lg` (buttons/inputs) lands on BCDS "medium", `rounded-xl` (cards)
+  on ≈"large".
+- **Links:** `--color-link`/`--color-link-hover` theme tokens
+  (BCDS link colour, active-blue hover); the Button `link` variant is
+  underlined by default per BC Gov convention.
+- **Official header adopted** (`@bcgov/design-system-react-components`):
+  `<Header>` in `AppShell` (tenant switcher + account menu as children) and on
+  the login page. Its 1100px container max-width is overridden in `index.css`
+  — the admin shell is full-width. Measured cost: entry chunk 154 → 172 kB
+  gzip (react-aria-components mostly tree-shakes out).
+- **Footer skipped.** The BC Gov footer (land acknowledgement + link blocks)
+  is designed for public content sites; inside a logged-in sidebar admin shell
+  it would sit oddly in scroll content. Revisit if requirements say otherwise
+  (a copyright-only slim variant exists: `hideAcknowledgement` +
+  `hideLogoAndLinks`).
+- **Contrast:** BC gold appears only in the logo (never as text). Checked
+  pairs all clear WCAG AA: body `#2D2D2D` on `#FAF9F8`, muted `#474543` on
+  `#F3F2F1`, white on primary `#013366`, sidebar-active `#013366` on
+  `#F1F8FE`.
+
+## Still open
+
+- shadcn's soft `destructive` button (red-tinted fill, red text) differs from
+  BCDS's filled danger button (`#CE3E39` bg, white text). Nothing renders a
+  destructive button yet; align it via
+  `--surface-color-primary-danger-button-*` when one first ships.
+- Tenant status badges use default/secondary variants; BCDS support tokens
+  (`--support-*`) are available if status colours (warning/danger) are wanted.
 
 ## References
 

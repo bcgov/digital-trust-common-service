@@ -10,8 +10,10 @@ React 19 · Vite 8 (+ React Compiler) · TypeScript 6 · React Router 8 (data mo
 route-level code splitting) · Tailwind CSS 4 · shadcn/ui · TanStack Query ·
 axios · zod · Vitest + Testing Library + MSW.
 
-The current theme is the stock shadcn neutral preset (interim). BC Design
-System alignment is planned — see `docs/ui-bc-design-system-planning.md`.
+Styling follows the BC Design System (#180): `@bcgov/design-tokens` mapped
+onto shadcn's token layer in `src/index.css`, BC Sans as the app font, and
+the official `@bcgov/design-system-react-components` header. Decisions and
+background live in `docs/ui-bc-design-system-planning.md`.
 
 ## Development
 
@@ -100,5 +102,14 @@ Conventions worth knowing:
 - Endpoint paths live only in `lib/api/resources/*` — the implemented API is
   flat while the spec nests under `/tenants/{id}/…`; convergence should touch
   only those modules.
+- Theming is a token bridge: `src/index.css` maps shadcn's theme variables
+  (`--primary`, `--border`, …) onto `@bcgov/design-tokens` by `var()`
+  reference. Style new work with the shadcn-side tokens (`bg-primary`,
+  `text-muted-foreground`, …), not raw BCDS variables or hex values, and it
+  inherits the BC look automatically. There is no dark mode — BCDS v5 is
+  light-only (`dark:` utilities in vendored components are inert).
+- Focus styling is global: a base `:focus-visible` rule in `index.css` applies
+  the BC Gov outline (solid 2px active-blue, 2px offset). Don't add per-element
+  focus rings.
 
 [#82]: https://github.com/bcgov/digital-trust-common-service/issues/82
