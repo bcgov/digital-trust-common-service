@@ -1,0 +1,31 @@
+{{- if .Values.frontend.enabled -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "digital-trust-common-service.frontend.configMapName" . }}
+  labels:
+    {{- include "digital-trust-common-service.frontend.labels" . | nindent 4 }}
+data:
+  Caddyfile: |
+    :{{ .Values.frontend.service.targetPort }} {
+    	encode zstd gzip
+
+    	# The `handle` blocks are load-bearing, not stylistic. Caddy's default
+    	# directive order runs `try_files` before `reverse_proxy`, so with both
+    	# in the same (sub)route the SPA fallback rewrites /api/* to /index.html
+    	# and the @api matcher never fires — every proxied path silently returns
+    	# the SPA. `handle` blocks are mutually exclusive and evaluated in
+    	# written order, which is what keeps the proxy ahead of the fallback.
+    	# Mirrors the local-dev Caddyfile in caddy/Caddyfile.
+    	@api path{{- range .Values.frontend.proxyPaths }} {{ . }}{{- end }}
+    	handle @api {
+    		reverse_proxy http://{{ include "digital-trust-common-service.fullname" . }}:{{ .Values.service.port }}
+    	}
+
+    	handle {
+    		root * /srv
+    		try_files {path} /index.html
+    		file_server
+    	}
+    }
+{{- end }}

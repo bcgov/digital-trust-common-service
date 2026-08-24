@@ -26,8 +26,9 @@ imagePullSecrets: []
 serviceAccount:
   # -- Create a service account
   create: true
-  # -- Automatically mount the service account's API credentials
-  automount: true
+  # -- Automatically mount the service account's API credentials. Off by default:
+  # nothing in the API, Worker or UI talks to the Kubernetes API.
+  automount: false
   # -- Annotations for the service account
   annotations: {}
   # -- Service account name (generated from the fullname when empty and `create` is true)
@@ -95,6 +96,82 @@ ingress:
   # -- Ingress TLS configuration
   tls: []
 
+# UI frontend deployment (React SPA served by Caddy). Disabled until a frontend
+# image is published and promoted with the API release.
+frontend:
+  # -- Deploy the UI frontend
+  enabled: false
+  # -- Frontend replicas (ignored when `frontend.autoscaling.enabled=true`)
+  replicaCount: 1
+  image:
+    # -- Frontend image registry
+    registry: ghcr.io
+    # -- Frontend image repository
+    repository: bcgov/digital-trust-common-service-ui
+    # -- Frontend image pull policy
+    pullPolicy: IfNotPresent
+    # -- Frontend image tag (falls back to `image.tag`, then chart appVersion)
+    tag: ""
+  service:
+    # -- Frontend Service type
+    type: ClusterIP
+    # -- Frontend Service port exposed to the cluster
+    port: 8080
+    # -- Frontend container port (Caddy listener)
+    targetPort: 8080
+  # -- URL paths reverse-proxied from the frontend to the API service
+  proxyPaths:
+    - /api/*
+    - /oidc/*
+    - /health/*
+  # -- Resource requests and limits for the frontend container
+  resources:
+    requests:
+      cpu: 25m
+      memory: 64Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+  # -- Liveness probe for the frontend container
+  livenessProbe:
+    httpGet:
+      path: /
+      port: http
+    initialDelaySeconds: 10
+    periodSeconds: 15
+    timeoutSeconds: 3
+    failureThreshold: 3
+  # -- Readiness probe for the frontend container
+  readinessProbe:
+    httpGet:
+      path: /
+      port: http
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    timeoutSeconds: 3
+    failureThreshold: 3
+  # -- Annotations added to frontend pods
+  podAnnotations: {}
+  # -- Labels added to frontend pods
+  podLabels: {}
+  autoscaling:
+    # -- Enable autoscaling for the frontend Deployment
+    enabled: false
+    # -- Minimum frontend replicas
+    minReplicas: 1
+    # -- Maximum frontend replicas
+    maxReplicas: 3
+    # -- Target average CPU utilization (percentage)
+    targetCPUUtilizationPercentage: 80
+    # -- Target average memory utilization (percentage)
+    # targetMemoryUtilizationPercentage: 80
+  # -- Node selector for frontend pods
+  nodeSelector: {}
+  # -- Tolerations for frontend pods
+  tolerations: []
+  # -- Affinity for frontend pods
+  affinity: {}
+
 # -- Resource requests and limits for the API container
 resources:
   requests:
@@ -105,6 +182,16 @@ resources:
     memory: 256Mi
 
 # -- Liveness probe. IN-01 provides a minimal 200 at `/health/live`.
+# -- Startup probe. Gates the liveness and readiness probes until the app is up,
+# so a slow boot (Nest module init, DB connect) can't be killed by liveness.
+# `failureThreshold` x `periodSeconds` is the boot budget — 30 x 5s = 150s.
+startupProbe:
+  httpGet:
+    path: /health/live
+    port: http
+  periodSeconds: 5
+  timeoutSeconds: 3
+  failureThreshold: 30
 livenessProbe:
   httpGet:
     path: /health/live
@@ -345,7 +432,8 @@ networkPolicy:
       - 53
       - 5353
   ingress:
-    # -- Allow ingress to the API from the OpenShift router
+    # -- Allow ingress from the OpenShift router to the externally exposed
+    # component (frontend when enabled, API otherwise)
     enabled: true
     # -- Namespace selector matching the OpenShift router namespace
     routerNamespaceSelector:
