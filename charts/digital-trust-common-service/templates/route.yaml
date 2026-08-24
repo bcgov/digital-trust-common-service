@@ -18,7 +18,7 @@ spec:
   {{- end }}
   to:
     kind: Service
-    name: {{ include "digital-trust-common-service.fullname" . }}
+    name: {{ include "digital-trust-common-service.exposedServiceName" . }}
     weight: 100
   port:
     targetPort: http

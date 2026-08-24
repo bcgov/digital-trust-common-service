@@ -3,7 +3,7 @@ kind: Service
 metadata:
   name: {{ include "digital-trust-common-service.fullname" . }}
   labels:
-    {{- include "digital-trust-common-service.labels" . | nindent 4 }}
+    {{- include "digital-trust-common-service.api.labels" . | nindent 4 }}
 spec:
   type: {{ .Values.service.type }}
   ports:
@@ -12,4 +12,4 @@ spec:
       protocol: TCP
       name: http
   selector:
-    {{- include "digital-trust-common-service.selectorLabels" . | nindent 4 }}
+    {{- include "digital-trust-common-service.api.selectorLabels" . | nindent 4 }}
