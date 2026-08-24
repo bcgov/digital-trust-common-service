@@ -55,7 +55,11 @@ export class OAuthClientService {
     const roles = dto.roles ?? [];
 
     this.assertSupportedGrantTypes(grantTypes);
-    this.assertRoleConstraints(roles, grantTypes, caller);
+    // Omit `roles` on create → no assignment check (defaults to []). Sending
+    // `roles` (including `[]` to clear) requires platform-admin.
+    this.assertRoleConstraints(roles, grantTypes, caller, {
+      checkAssignment: dto.roles !== undefined,
+    });
     this.assertAssignableScopes(dto.scopes, caller);
 
     const clientSecret = randomBytes(32).toString('hex');
@@ -266,9 +270,10 @@ export class OAuthClientService {
    * Roles are security-sensitive JWT claims for machine clients only.
    * Unknown role strings are rejected, and any non-empty role set requires
    * the client to be restricted to client_credentials alone.
-   * `checkAssignment` (default true) additionally requires the caller to be
-   * platform-admin; set it false on PATCH when `roles` was omitted so
-   * existing privileged clients can still be renamed.
+   * `checkAssignment` (default true) requires the caller to be platform-admin
+   * for any roles field change — including clearing to `[]`. Set it false
+   * when `roles` was omitted so existing privileged clients can still be
+   * renamed.
    */
   private assertRoleConstraints(
     roles: string[],
@@ -286,17 +291,17 @@ export class OAuthClientService {
       );
     }
 
-    if (roles.length === 0) {
-      return;
-    }
-
     if (
       checkAssignment &&
       !this.scopeAuthorizationService.isPlatformAdmin(caller.roles)
     ) {
       throw new ForbiddenException(
-        'Only platform-admin callers may assign roles to OAuth clients.',
+        'Only platform-admin callers may assign or clear roles on OAuth clients.',
       );
+    }
+
+    if (roles.length === 0) {
+      return;
     }
 
     const uniqueGrantTypes = [...new Set(grantTypes)];

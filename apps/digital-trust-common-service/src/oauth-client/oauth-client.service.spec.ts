@@ -271,6 +271,22 @@ describe('OAuthClientService', () => {
       expect(mockCreate).not.toHaveBeenCalled();
     });
 
+    it('should reject an explicit empty roles array from a non-platform-admin', async () => {
+      await expect(
+        service.createClient(
+          mockOAuthClient.tenantId,
+          {
+            name: mockOAuthClient.name,
+            scopes: mockOAuthClient.scopes,
+            roles: [],
+            grantTypes: ['client_credentials'],
+          },
+          tenantAdminAuth,
+        ),
+      ).rejects.toThrow(ForbiddenException);
+      expect(mockCreate).not.toHaveBeenCalled();
+    });
+
     it('should reject unknown roles on create', async () => {
       await expect(
         service.createClient(
@@ -937,6 +953,41 @@ describe('OAuthClientService', () => {
         ),
       ).rejects.toThrow(ForbiddenException);
       expect(mockUpdate).not.toHaveBeenCalled();
+    });
+
+    it('rejects a tenant-admin clearing roles', async () => {
+      mockFindByTenantAndClientId.mockResolvedValue({
+        ...mockOAuthClient,
+        roles: ['platform-admin'],
+      });
+
+      await expect(
+        service.update(
+          mockOAuthClient.tenantId,
+          mockOAuthClient.clientId,
+          { roles: [] },
+          tenantAdminAuth,
+        ),
+      ).rejects.toThrow(ForbiddenException);
+      expect(mockUpdate).not.toHaveBeenCalled();
+    });
+
+    it('lets a platform-admin clear roles', async () => {
+      mockFindByTenantAndClientId.mockResolvedValue({
+        ...mockOAuthClient,
+        roles: ['platform-admin'],
+      });
+      mockUpdate.mockImplementation((client: unknown) => client);
+
+      const result = await service.update(
+        mockOAuthClient.tenantId,
+        mockOAuthClient.clientId,
+        { roles: [] },
+        platformAdminAuth,
+      );
+
+      expect(result.roles).toEqual([]);
+      expect(mockUpdate).toHaveBeenCalled();
     });
 
     it('should throw NotFoundException if client not found', async () => {
