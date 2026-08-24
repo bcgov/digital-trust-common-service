@@ -134,6 +134,7 @@ describe('OIDC client_credentials grant (e2e)', () => {
     expect(token.accessToken).toEqual(expect.any(String));
     expect(payload.tenant_id).toBe(tenantId);
     expect(payload.scope).toBe('credentials:offer');
+    expect(payload.aud).toBe('https://digital-trust-common-service');
   });
 
   it('rejects client_credentials requests with an invalid client secret', async () => {

@@ -8,5 +8,12 @@
  * further than `ConfigModule`.
  */
 export { OidcConfigModule } from '../oidc-config.module';
-export { OidcConfigService } from '../oidc-config.service';
+export {
+  OidcConfigService,
+  parseResourceIndicator,
+} from '../oidc-config.service';
 export type { OidcConfig } from '../oidc-config.service';
+export {
+  DEFAULT_JWT_AUDIENCE,
+  DEFAULT_OIDC_KEYS_PATH,
+} from '../oidc.constants';
