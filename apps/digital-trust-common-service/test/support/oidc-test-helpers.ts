@@ -1,4 +1,5 @@
 import { extractBearerToken, verifyAccessToken } from '@app/auth';
+import { DEFAULT_JWT_AUDIENCE } from '@app/oidc/config';
 import { importJWK, jwtVerify } from 'jose';
 import request from 'supertest';
 import { App } from 'supertest/types';
@@ -47,12 +48,13 @@ async function verifyTokenWithJwksDocument(
   token: string,
   jwksBody: JwksDocument,
   issuer?: string,
+  audience: string = DEFAULT_JWT_AUDIENCE,
 ): Promise<Record<string, unknown>> {
   if (issuer) {
     return verifyAccessToken(
       token,
       (kid) => Promise.resolve(resolveJwkFromDocument(jwksBody.keys, kid)),
-      { issuer, audience: issuer },
+      { issuer, audience },
     );
   }
 
@@ -76,12 +78,13 @@ export async function verifyTokenAgainstJwks(
   httpServer: App,
   accessToken: string,
   issuer?: string,
+  audience: string = DEFAULT_JWT_AUDIENCE,
 ): Promise<Record<string, unknown>> {
   const jwksResponse = await request(httpServer).get('/oidc/jwks').expect(200);
   const jwksBody = jwksResponse.body as JwksDocument;
   const token = extractBearerToken(`Bearer ${accessToken}`);
 
-  return verifyTokenWithJwksDocument(token, jwksBody, issuer);
+  return verifyTokenWithJwksDocument(token, jwksBody, issuer, audience);
 }
 
 /**
@@ -95,6 +98,7 @@ export async function issueTokenAndVerify(
   clientSecret: string,
   scope: string,
   issuer?: string,
+  audience: string = DEFAULT_JWT_AUDIENCE,
 ): Promise<{
   token: IssuedTokenResponse;
   payload: Record<string, unknown>;
@@ -116,6 +120,7 @@ export async function issueTokenAndVerify(
     httpServer,
     tokenBody.access_token,
     issuer,
+    audience,
   );
 
   return {

@@ -52,7 +52,18 @@ jest.mock('oidc-provider', () => {
     }
   }
 
-  return { __esModule: true, default: FakeProvider };
+  class InvalidTarget extends Error {
+    public constructor(message?: string) {
+      super(message);
+      this.name = 'InvalidTarget';
+    }
+  }
+
+  return {
+    __esModule: true,
+    default: FakeProvider,
+    errors: { InvalidTarget },
+  };
 });
 
 const { verify: mockVerify } = jest.requireMock('argon2');
@@ -71,6 +82,8 @@ describe('buildOidcConfiguration', () => {
     cookieKeys: ['secret-1'],
     scopes: ['openid', 'credentials:offer'],
     grantTypes: ['client_credentials', 'refresh_token'],
+    audience: 'https://digital-trust-common-service',
+    additionalAudiences: ['https://loki-gateway'],
   };
 
   const jwks: OidcJwks = { keys: [{ kid: 'k1', kty: 'RSA' }] };
@@ -253,7 +266,7 @@ describe('buildOidcConfiguration', () => {
     expect(configuration.features?.devInteractions?.enabled).toBe(false);
   });
 
-  it('resolves a default resource indicator and issues RS256 JWT access tokens for it', async () => {
+  it('resolves the API audience as the default resource indicator', async () => {
     const configuration = buildOidcConfiguration(
       config,
       jwks,
@@ -265,12 +278,12 @@ describe('buildOidcConfiguration', () => {
     expect(resourceIndicators?.enabled).toBe(true);
     expect(
       resourceIndicators?.defaultResource?.({} as never, {} as never),
-    ).toBe('https://issuer.example.com/oidc');
+    ).toBe('https://digital-trust-common-service');
 
     const resourceServerInfo =
       await resourceIndicators?.getResourceServerInfo?.(
         {} as never,
-        'https://issuer.example.com/oidc',
+        'https://digital-trust-common-service',
         {} as never,
       );
 
@@ -279,6 +292,43 @@ describe('buildOidcConfiguration', () => {
       accessTokenFormat: 'jwt',
       jwt: { sign: { alg: 'RS256' } },
     });
+  });
+
+  it('mints JWT access tokens for allowlisted additional audiences', async () => {
+    const configuration = buildOidcConfiguration(
+      config,
+      jwks,
+      adapterFactory,
+      tenantUserService,
+    );
+    const resourceServerInfo =
+      await configuration.features?.resourceIndicators?.getResourceServerInfo?.(
+        {} as never,
+        'https://loki-gateway',
+        {} as never,
+      );
+
+    expect(resourceServerInfo).toMatchObject({
+      accessTokenFormat: 'jwt',
+      jwt: { sign: { alg: 'RS256' } },
+    });
+  });
+
+  it('rejects resource indicators that are not allowlisted', () => {
+    const configuration = buildOidcConfiguration(
+      config,
+      jwks,
+      adapterFactory,
+      tenantUserService,
+    );
+
+    expect(() =>
+      configuration.features?.resourceIndicators?.getResourceServerInfo?.(
+        {} as never,
+        'https://unknown.example',
+        {} as never,
+      ),
+    ).toThrow(/unsupported resource indicator/);
   });
 
   it('registers every extra client metadata property', () => {
@@ -543,6 +593,8 @@ describe('OidcProviderService', () => {
         cookieKeys: ['secret-1'],
         scopes: ['openid'],
         grantTypes: ['client_credentials', 'refresh_token'],
+        audience: 'https://digital-trust-common-service',
+        additionalAudiences: [],
       } satisfies OidcConfig),
     };
     oidcKeysService = { ensureLoaded: jest.fn().mockResolvedValue(jwks) };
