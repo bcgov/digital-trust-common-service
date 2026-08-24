@@ -40,7 +40,7 @@ Node outside the `engines` range. Without shell activation, prefix commands with
 
 ```bash
 # Install project dependencies
-npm install
+npm ci
 ```
 
 ### 2. Configure Environment Variables
@@ -145,8 +145,8 @@ host):
 # infra only — API and UI run on the host (default workflow)
 docker compose --profile dev up -d db caddy keycloak
 
-# or everything containerized, including the app on :3000
-docker compose --profile dev up
+# or everything containerized, including the app on :3000 and the UI on :5173
+docker compose --profile dev --profile ui up
 ```
 
 #### Export and trust the Caddy local CA
@@ -199,13 +199,17 @@ Add-Content C:\Windows\System32\drivers\etc\hosts "`n127.0.0.1 app.localhost", "
 
 Node does not automatically use your OS trust store in every setup, so local OIDC calls should also trust the exported certificate explicitly.
 
-Set this in your `.env` file:
+For a host-run Node process, export this before starting the process. Node reads
+`NODE_EXTRA_CA_CERTS` before the application loads `.env`:
 
-```env
-NODE_EXTRA_CA_CERTS="$PWD/caddy/root.crt"
+```bash
+export NODE_EXTRA_CA_CERTS="$PWD/caddy/root.crt"
 ```
 
-This matches the default shown in `.env.example` and allows the app to call `https://keycloak.localhost` successfully during upstream federation flows.
+This allows the host-run app to call `https://keycloak.localhost` successfully
+during upstream federation flows. The current Compose `app` service does not
+mount `caddy/root.crt`, so use the host-run app for this local TLS workflow
+unless you add a certificate mount and container path explicitly.
 
 #### Configure Keycloak Endpoint
 
@@ -225,7 +229,7 @@ The local compose file already sets the Keycloak hostname correctly:
 
 ```yaml
 environment:
-  - KC_HOSTNAME=https://keycloak.localhost
+  KC_HOSTNAME: 'https://keycloak.localhost'
 ```
 
 The checked-in **`keycloak/config/realm.json`** already uses the local front-door hostname for redirect URIs:
@@ -664,7 +668,7 @@ docker compose up
 
 # Terminal 2: frontend
 cd apps/ui
-npm install
+npm ci
 npm run dev          # http://localhost:5173
 ```
 

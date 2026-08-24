@@ -27,8 +27,15 @@ actionlint, and yamllint at the versions CI uses.
 | Apply migrations | `npm run build && npm run migrate:up` |
 | Seed | `npm run seed` |
 | Test DB | `docker compose --profile test up -d db-test migrate-test seed-test` |
+| Local dev front door | `docker compose --profile dev --profile ui up -d` |
 
 `migrate:up` runs from `dist/` — build first or it applies stale migrations.
+
+Compose keeps `app`, `migrate`, and `seed` unprofiled and reading `.env`. The `test` profile
+provides the isolated `*-test` database services, `dev` adds Keycloak, and `ui` optionally runs the
+containerized Vite dev server. Caddy is unprofiled and provides the local HTTPS front door; use
+`docker compose --profile dev up -d` with the host UI, or add `--profile ui` for the containerized
+UI.
 
 ## Layout and imports
 
@@ -115,6 +122,10 @@ Adding, renaming, or removing an env var means updating all of these in the same
 7. Regenerate the chart README with helm-docs and add a chart CHANGELOG entry.
 8. `docs/DEVELOPER.md`, and `apps/digital-trust-common-service/test/jest-integration-setup.ts` if
    tests need a default.
+9. For local same-origin routing changes, update the hostname fan-out together: `caddy/Caddyfile`,
+  `docker-compose.yml` Keycloak hostname settings, `keycloak/config/realm.json` redirect URIs and
+  web origins, `.env.example` `OIDC_ISSUER`, `config/upstream-identity-federation.json`, and the
+  hosts entries documented in `docs/DEVELOPER.md`.
 
 Adding or changing a mounted path (`CONNECTOR_ENCRYPTION_KEYS_PATH`, `OIDC_KEYS_PATH`,
 `UPSTREAM_IDENTITY_FEDERATION_CONFIG_PATH`, `NODE_EXTRA_CA_CERTS`) additionally means:
