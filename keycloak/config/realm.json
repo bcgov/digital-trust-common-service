@@ -20,8 +20,8 @@
       "standardFlowEnabled": true,
       "directAccessGrantsEnabled": false,
       "serviceAccountsEnabled": false,
-      "redirectUris": ["https://oidc.localhost/*"],
-      "webOrigins": ["https://oidc.localhost"],
+      "redirectUris": ["https://app.localhost/*"],
+      "webOrigins": ["https://app.localhost"],
       "attributes": {
         "pkce.code.challenge.method": "S256"
       }
