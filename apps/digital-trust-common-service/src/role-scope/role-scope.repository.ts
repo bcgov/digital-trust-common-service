@@ -19,6 +19,29 @@ export interface TenantRoleScopeOverride {
  * AU-04 seeds the default table and implements ScopeGuard enforcement only;
  * client_credentials scopes still come from `oauth_client.scopes` and are
  * deliberately unaffected by tenant role overrides.
+ *
+ * ## Why raw SQL rather than the TypeORM API
+ *
+ * Neither table has a TypeORM entity. Both are created and seeded purely by
+ * migrations and were never mapped, so there is no repository to build a
+ * query on, and the existing `findScopesForRole` has been raw SQL since AU-04.
+ *
+ * Several of these queries also have no clean TypeORM equivalent:
+ *
+ * - `pg_advisory_xact_lock`, which has no API surface at all.
+ * - The `::tenant_user_role` casts. The enum comparison needs them, because
+ *   the driver sends the parameter as text.
+ * - `findScopesForRole`, which resolves override-then-default in one round
+ *   trip and has to fall back on whether the override *row exists* rather
+ *   than whether it is empty — an override of `'{}'` is a real value.
+ * - `upsertTenantRoleScopes`, which is an `ON CONFLICT` upsert on a composite
+ *   primary key.
+ *
+ * The two genuinely simple reads (`findTenantOverride`, `findTenantOverrides`)
+ * are raw for consistency with the rest of the file. Mapping entities purely
+ * to convert those two is a change worth making on its own, not buried in
+ * this one — the SQL here is covered by `role-scope.integration-spec.ts`
+ * against a real database.
  */
 @Injectable()
 export class RoleScopeRepository {

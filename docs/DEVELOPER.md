@@ -416,7 +416,7 @@ The server-wide allowlist is configured via `OIDC_SCOPES` (see `.env.example`). 
 
 The `role_scope` seed above is the platform default. A tenant can replace the
 scopes of a role for itself; overrides live in `tenant_role_scope`
-(migration `000020_create-tenant-role-scope`) and are resolved at token
+(migration `000019_create-tenant-role-scope`) and are resolved at token
 issuance, so they reach the JWT `scope` claim.
 
 ### Endpoints

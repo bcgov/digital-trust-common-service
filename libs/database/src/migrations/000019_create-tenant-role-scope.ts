@@ -19,7 +19,7 @@ export const migrationName = 'CreateTenantRoleScope';
  * Scope names are validated in `RoleScopeService` against the catalog in
  * `@app/auth`, not by a foreign key: scopes are code constants, not rows.
  */
-export class CreateTenantRoleScope1787000000020 implements MigrationInterface {
+export class CreateTenantRoleScope1787614243192 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
       CREATE TABLE tenant_role_scope (
