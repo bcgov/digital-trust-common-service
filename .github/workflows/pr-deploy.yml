@@ -93,6 +93,31 @@ jobs:
           registry_password: ${{ secrets.GITHUB_TOKEN }}
           platforms: linux/amd64
           pr_number: ${{ github.event.number }}
+          cache_scope: api-pr
+
+  build-ui:
+    needs: [preflight]
+    if: needs.preflight.outputs.build == 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ steps.build-image.outputs.image_tag }}
+    steps:
+      # Head SHA for the same reason as the API build job.
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Build and push PR UI image
+        id: build-image
+        uses: ./.github/actions/build-image
+        with:
+          image_name: ${{ github.repository }}-ui
+          context: apps/ui
+          registry_username: ${{ github.actor }}
+          registry_password: ${{ secrets.GITHUB_TOKEN }}
+          platforms: linux/amd64
+          pr_number: ${{ github.event.number }}
+          cache_scope: ui-pr
 
   provision-db:
     needs: [preflight]
@@ -117,7 +142,7 @@ jobs:
           db_owner: ${{ vars.PR_DB_OWNER }}
 
   deploy:
-    needs: [preflight, build, provision-db]
+    needs: [preflight, build, build-ui, provision-db]
     if: needs.preflight.outputs.deploy == 'true'
     runs-on: ubuntu-latest
     environment:
@@ -145,6 +170,7 @@ jobs:
           DB_NAME: ${{ needs.preflight.outputs.db_name }}
           DB_HOST: ${{ vars.PR_DB_HOST }}
           IMAGE_TAG: ${{ needs.build.outputs.image_tag }}
+          UI_IMAGE_TAG: ${{ needs.build-ui.outputs.image_tag }}
           # pr-<N> is a mutable tag; the SHA annotation forces a rollout on each push
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
@@ -182,6 +208,7 @@ jobs:
           helm upgrade --install "${RELEASE_NAME}" ./charts/digital-trust-common-service \
             -f charts/digital-trust-common-service/values-pr.yaml \
             --set image.tag="${IMAGE_TAG}" \
+            --set frontend.image.tag="${UI_IMAGE_TAG}" \
             --set "podAnnotations.deploy/image-sha=${HEAD_SHA}" \
             --set config.DB_NAME="${DB_NAME}" \
             --set route.host="${ROUTE_HOST}" \
@@ -190,7 +217,7 @@ jobs:
             --wait --timeout 10m
 
   comment:
-    needs: [preflight, build, deploy]
+    needs: [preflight, build, build-ui, deploy]
     if: needs.preflight.outputs.deploy == 'true' && needs.deploy.result == 'success'
     runs-on: ubuntu-latest
     steps:
@@ -206,6 +233,7 @@ jobs:
             | **URL** | https://${{ needs.preflight.outputs.route_host }} |
             | **Health** | https://${{ needs.preflight.outputs.route_host }}/health/live |
             | **Image** | `ghcr.io/${{ github.repository }}:${{ needs.build.outputs.image_tag }}` |
+            | **UI image** | `ghcr.io/${{ github.repository }}-ui:${{ needs.build-ui.outputs.image_tag }}` |
             | **Commit** | ${{ github.event.pull_request.head.sha }} |
 
             _Updated on every push. Torn down automatically when this PR closes._

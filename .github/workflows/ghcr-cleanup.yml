@@ -22,7 +22,7 @@ jobs:
         with:
           account: ${{ github.repository_owner }}
           token: ${{ secrets.GITHUB_TOKEN }}
-          image-names: ${{ github.event.repository.name }}
+          image-names: ${{ github.event.repository.name }} ${{ github.event.repository.name }}-ui
           # NOT untagged-only: that input was removed in v3, and unknown inputs
           # are ignored with only a warning — leaving tag-selection at its
           # "both" default, which deleted tagged sha-<short> images (the
@@ -44,7 +44,7 @@ jobs:
         with:
           account: ${{ github.repository_owner }}
           token: ${{ secrets.GITHUB_TOKEN }}
-          image-names: ${{ github.event.repository.name }}
+          image-names: ${{ github.event.repository.name }} ${{ github.event.repository.name }}-ui
           image-tags: "pr-*"
           # PRs rarely stay open for 7+ days without a push; safe cutoff for stale tags
           cut-off: 7d

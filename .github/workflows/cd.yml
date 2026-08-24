@@ -55,10 +55,42 @@ jobs:
           image_name: ${{ github.repository }}
           registry_username: ${{ github.actor }}
           registry_password: ${{ secrets.GITHUB_TOKEN }}
+          cache_scope: api
 
       # Extract the immutable sha-<short> tag from the pushed tag list rather
       # than re-deriving its format here, so the tag rules stay defined in one
       # place (the build-image action).
+      - name: Extract commit-pinned image tag
+        id: sha-tag
+        env:
+          TAGS: ${{ steps.build-image.outputs.tags }}
+        run: |
+          IMAGE_TAG=$(echo "${TAGS}" | grep -m1 -o ':sha-[a-f0-9]*$' | cut -c2- || true)
+          if [ -z "${IMAGE_TAG}" ]; then
+            echo "::error::No sha- tag found in pushed tags: ${TAGS}"
+            exit 1
+          fi
+          echo "image_tag=${IMAGE_TAG}" >> "${GITHUB_OUTPUT}"
+
+  publish-ui-image:
+    needs: [ci-checks]
+    if: github.repository_owner == 'bcgov'
+    runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ steps.sha-tag.outputs.image_tag }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - name: Build and push UI image
+        id: build-image
+        uses: ./.github/actions/build-image
+        with:
+          image_name: ${{ github.repository }}-ui
+          context: apps/ui
+          registry_username: ${{ github.actor }}
+          registry_password: ${{ secrets.GITHUB_TOKEN }}
+          cache_scope: ui
+
       - name: Extract commit-pinned image tag
         id: sha-tag
         env:
@@ -85,7 +117,7 @@ jobs:
           registry_password: ${{ secrets.GITHUB_TOKEN }}
 
   deploy-dev:
-    needs: [publish-image]
+    needs: [publish-image, publish-ui-image]
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment:
@@ -105,15 +137,17 @@ jobs:
       - name: Deploy to dev
         env:
           IMAGE_TAG: ${{ needs.publish-image.outputs.image_tag }}
+          UI_IMAGE_TAG: ${{ needs.publish-ui-image.outputs.image_tag }}
         run: |
           helm upgrade --install digital-trust-common-service ./charts/digital-trust-common-service \
             -f charts/digital-trust-common-service/values-dev.yaml \
             --set image.tag="${IMAGE_TAG}" \
+            --set frontend.image.tag="${UI_IMAGE_TAG}" \
             --set "podAnnotations.deploy/image-sha=${GITHUB_SHA}" \
             --wait --timeout 10m
 
   notify-teams:
-    needs: [ci-checks, publish-image, publish-chart, deploy-dev]
+    needs: [ci-checks, publish-image, publish-ui-image, publish-chart, deploy-dev]
     if: always()
     runs-on: ubuntu-latest
     steps:
