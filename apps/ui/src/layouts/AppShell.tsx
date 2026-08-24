@@ -1,4 +1,3 @@
-import { Header } from '@bcgov/design-system-react-components';
 import {
   Building2,
   ChevronsUpDown,
@@ -6,8 +5,9 @@ import {
   LogOut,
   Settings,
 } from 'lucide-react';
-import { Link, NavLink, Outlet } from 'react-router';
+import { NavLink, Outlet } from 'react-router';
 
+import { BcGovHeader } from '@/components/bc-gov-header';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import {
@@ -42,17 +42,7 @@ export function AppShell() {
 
   return (
     <div className="flex min-h-svh flex-col">
-      <Header
-        title="Digital Trust Common Service"
-        logoLinkElement={
-          <Link to="/dashboard" title="Government of British Columbia" />
-        }
-        skipLinks={[
-          <a key="main-content" href="#main-content">
-            Skip to main content
-          </a>,
-        ]}
-      >
+      <BcGovHeader logoTo="/dashboard">
         {/* Tenant switcher placeholder — real switching arrives with #84 / AU-09. */}
         <Button
           variant="outline"
@@ -94,7 +84,7 @@ export function AppShell() {
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
-      </Header>
+      </BcGovHeader>
 
       <div className="flex flex-1">
         <aside className="w-60 shrink-0 border-r bg-sidebar text-sidebar-foreground">
@@ -119,7 +109,8 @@ export function AppShell() {
           </nav>
         </aside>
 
-        <main id="main-content" className="min-w-0 flex-1 p-6">
+        {/* tabIndex lets the skip link actually move keyboard focus here. */}
+        <main id="main-content" tabIndex={-1} className="min-w-0 flex-1 p-6">
           <Outlet />
         </main>
       </div>

@@ -1,6 +1,7 @@
-import { Header } from '@bcgov/design-system-react-components';
 import { useState } from 'react';
 import { Navigate, useLocation } from 'react-router';
+
+import { BcGovHeader } from '@/components/bc-gov-header';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -11,6 +12,7 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { useAuth } from '@/lib/auth/context';
+import { APP_NAME } from '@/lib/constants';
 import { env } from '@/lib/env';
 
 export function LoginPage() {
@@ -43,11 +45,15 @@ export function LoginPage() {
 
   return (
     <div className="flex min-h-svh flex-col">
-      <Header title="Digital Trust Common Service" />
-      <div className="flex flex-1 items-center justify-center p-4">
+      <BcGovHeader titleAs="h1" />
+      <main
+        id="main-content"
+        tabIndex={-1}
+        className="flex flex-1 items-center justify-center p-4"
+      >
         <Card className="w-full max-w-sm">
           <CardHeader>
-            <CardTitle>Digital Trust Common Service</CardTitle>
+            <CardTitle>{APP_NAME}</CardTitle>
             <CardDescription>
               Sign in to manage tenants and credential operations.
             </CardDescription>
@@ -75,7 +81,7 @@ export function LoginPage() {
             )}
           </CardContent>
         </Card>
-      </div>
+      </main>
     </div>
   );
 }
