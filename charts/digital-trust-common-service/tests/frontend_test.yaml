@@ -1,0 +1,91 @@
+suite: frontend resources
+templates:
+  - templates/frontend/configmap.yaml
+  - templates/frontend/deployment.yaml
+  - templates/frontend/service.yaml
+  - templates/frontend/hpa.yaml
+  - templates/route.yaml
+tests:
+  - it: renders frontend workloads and routes traffic through the frontend service
+    values:
+      - ../ci/ci-values.yaml
+    set:
+      frontend:
+        autoscaling:
+          enabled: true
+      upstreamFederation:
+        existingSecret:
+          name: dtsc-ci-oidc-client
+    asserts:
+      - equal:
+          path: metadata.labels["app.kubernetes.io/component"]
+          value: frontend
+        template: templates/frontend/deployment.yaml
+      - equal:
+          path: spec.selector.matchLabels["app.kubernetes.io/component"]
+          value: frontend
+        template: templates/frontend/deployment.yaml
+      - equal:
+          path: spec.scaleTargetRef.name
+          value: RELEASE-NAME-digital-trust-common-service-ui
+        template: templates/frontend/hpa.yaml
+      - equal:
+          path: spec.to.name
+          value: RELEASE-NAME-digital-trust-common-service-ui
+        template: templates/route.yaml
+
+  # Regression guard. Caddy runs try_files before reverse_proxy in its default
+  # directive order, so if the proxy is not inside its own `handle` block the
+  # SPA fallback rewrites /api/* to /index.html and every proxied path silently
+  # returns the SPA instead of reaching the API.
+  - it: keeps the API proxy in a handle block ahead of the SPA fallback
+    values:
+      - ../ci/ci-values.yaml
+    set:
+      upstreamFederation:
+        existingSecret:
+          name: dtsc-ci-oidc-client
+    asserts:
+      - matchRegex:
+          path: data.Caddyfile
+          pattern: 'handle @api \{\s*reverse_proxy http://RELEASE-NAME-digital-trust-common-service:8080'
+        template: templates/frontend/configmap.yaml
+      - matchRegex:
+          path: data.Caddyfile
+          pattern: '@api path /api/\* /oidc/\* /health/\*'
+        template: templates/frontend/configmap.yaml
+      # try_files must be scoped to the catch-all handle, never a sibling of
+      # the proxy at site level.
+      - matchRegex:
+          path: data.Caddyfile
+          pattern: 'handle \{\s*root \* /srv\s*try_files \{path\} /index.html\s*file_server'
+        template: templates/frontend/configmap.yaml
+
+  - it: derives proxy paths from frontend.proxyPaths
+    values:
+      - ../ci/ci-values.yaml
+    set:
+      frontend:
+        proxyPaths:
+          - /api/*
+      upstreamFederation:
+        existingSecret:
+          name: dtsc-ci-oidc-client
+    asserts:
+      - matchRegex:
+          path: data.Caddyfile
+          pattern: '@api path /api/\*\n'
+        template: templates/frontend/configmap.yaml
+
+  - it: keeps routing to the API service when frontend is disabled
+    set:
+      route:
+        enabled: true
+      upstreamFederation:
+        existingSecret:
+          name: dtsc-ci-oidc-client
+    asserts:
+      - equal:
+          path: spec.to.name
+          value: RELEASE-NAME-digital-trust-common-service
+        template: templates/route.yaml
