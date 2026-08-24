@@ -16,8 +16,7 @@ onto shadcn's token layer in `src/index.css`, BC Sans as the app font
 `@bcgov/design-system-react-components` header behind the app boundary in
 `src/components/bc-gov-header.tsx`. **BCDS-first is the standing direction**:
 where the BCDS package provides a component, prefer it; the vendored shadcn
-primitives fill the gaps it doesn't cover. Decisions and background live in
-`docs/ui-bc-design-system-planning.md`.
+primitives fill the gaps it doesn't cover.
 
 ## Development
 
@@ -121,5 +120,12 @@ Conventions worth knowing:
   `src/test/design-system.test.ts` fails if a per-element focus ring slips
   back in, and also fails if a BCDS token referenced in `index.css` disappears
   from `@bcgov/design-tokens` after an upgrade).
+- `@bcgov/*` packages are exact-pinned and upgraded together: the
+  react-components bundle style-injects its own copy of the design tokens
+  (plus all component CSS) at runtime, which wins the cascade over the
+  `index.css` import — the same test fails if the pinned versions drift.
+  That injection lands after our stylesheet in production builds but before
+  it in dev, so any override of a `.bcds-*` class must out-specify the
+  package rule, never rely on source order.
 
 [#82]: https://github.com/bcgov/digital-trust-common-service/issues/82

@@ -8,7 +8,7 @@ import { APP_NAME } from '@/lib/constants';
  * absorbs prop/class churn from the pre-1.0 package (BCDS-first is the
  * standing direction; shadcn fills the gaps it doesn't cover).
  *
- * Integration notes for the package (see docs/ui-bc-design-system-planning.md):
+ * Integration notes for the package:
  * its bundle style-injects the CSS for every BCDS component at import time,
  * AFTER our stylesheet in production builds — any app override of a
  * `.bcds-*` class must therefore out-specify the package rule, never rely
