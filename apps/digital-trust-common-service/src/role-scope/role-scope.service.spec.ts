@@ -77,7 +77,11 @@ describe('RoleScopeService', () => {
     accountSessions = {
       deleteAllForTenantRole: jest
         .fn()
-        .mockResolvedValue([{ modelName: 'Grant', count: 3 }]),
+        // The in-transaction delete removes the records; the post-commit
+        // sweep then finds nothing, which is the normal case. Returning 3
+        // from both would model a delete that deletes nothing.
+        .mockResolvedValueOnce([{ modelName: 'Grant', count: 3 }])
+        .mockResolvedValue([]),
     };
     auditLog = { write: jest.fn().mockResolvedValue(undefined) };
 
@@ -242,6 +246,24 @@ describe('RoleScopeService', () => {
       ).rejects.toMatchObject({ response: { code: 'scope_escalation' } });
     });
 
+    it('blocks an actor from resetting a role up to a default it cannot grant', async () => {
+      // The reset path applies the platform default, which can be wider than
+      // the override it removes. Validating only the submitted scopes would
+      // leave DELETE as an escalation route around PATCH.
+      overrides = [{ role: 'member', scopes: ['credentials:offer'] }];
+
+      await expect(
+        service.resetRoleScopes({
+          tenantId: TENANT_ID,
+          role: 'member',
+          actorId: ACTOR_ID,
+          actorScopes: ['credentials:offer'],
+          actorRoles: ['member'],
+          actorTokenType: 'user' as const,
+        }),
+      ).rejects.toMatchObject({ response: { code: 'scope_escalation' } });
+    });
+
     it('exempts a platform admin, whose token carries no tenant scopes', async () => {
       // ScopeGuard admits platform admins on role alone, so their scopes are
       // legitimately empty. Applying the escalation check to them would fail
@@ -348,8 +370,92 @@ describe('RoleScopeService', () => {
         ...superuserActor,
       });
 
-      expect(accountSessions.deleteAllForTenantRole).toHaveBeenCalledTimes(1);
+      // Two role-level calls: the in-transaction delete and the post-commit
+      // sweep. The point of the test is that neither loops over users.
+      expect(accountSessions.deleteAllForTenantRole).toHaveBeenCalledTimes(2);
+      expect(
+        accountSessions.deleteAllForTenantRole.mock.calls.every(
+          (call: unknown[]) => call[0] === TENANT_ID && call[1] === 'member',
+        ),
+      ).toBe(true);
       expect(auditLog.write).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not audit a PATCH that changes nothing', async () => {
+      overrides = [{ role: 'member', scopes: ['credentials:offer'] }];
+
+      await service.replaceRoleScopes({
+        tenantId: TENANT_ID,
+        role: 'member',
+        scopes: ['credentials:offer'],
+        ...superuserActor,
+      });
+
+      expect(auditLog.write).not.toHaveBeenCalled();
+    });
+
+    it('does not audit a reset when there is no override to remove', async () => {
+      await service.resetRoleScopes({
+        tenantId: TENANT_ID,
+        role: 'member',
+        ...superuserActor,
+      });
+
+      expect(auditLog.write).not.toHaveBeenCalled();
+    });
+
+    it('audits pinning a role to scopes equal to the current default', async () => {
+      // Nothing changes in the scope list, but the role moves from inheriting
+      // the default to being pinned against future changes to it. That is a
+      // real state change and must be recorded.
+      await service.replaceRoleScopes({
+        tenantId: TENANT_ID,
+        role: 'member',
+        scopes: [...SEEDED_DEFAULTS.member],
+        ...superuserActor,
+      });
+
+      expect(auditLog.write).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: AuditAction.UPDATE,
+          metadata: expect.objectContaining({ source: 'override' }),
+        }),
+        manager,
+      );
+    });
+
+    it('sweeps again after commit and audits anything it catches', async () => {
+      // A login that read the old mapping can save its grant between the
+      // in-transaction delete and COMMIT, so the sweep must still find it.
+      overrides = [{ role: 'member', scopes: ['credentials:offer'] }];
+      accountSessions.deleteAllForTenantRole
+        .mockReset()
+        .mockResolvedValueOnce([{ modelName: 'Grant', count: 3 }])
+        .mockResolvedValueOnce([{ modelName: 'Grant', count: 1 }]);
+
+      const result = await service.replaceRoleScopes({
+        tenantId: TENANT_ID,
+        role: 'member',
+        scopes: [],
+        ...superuserActor,
+      });
+
+      // The sweep runs outside the write transaction, so it passes no manager.
+      expect(accountSessions.deleteAllForTenantRole).toHaveBeenLastCalledWith(
+        TENANT_ID,
+        'member',
+        undefined,
+      );
+      expect(result.revokedRecordCount).toBe(4);
+      expect(auditLog.write).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          action: AuditAction.REVOKE,
+          metadata: expect.objectContaining({
+            reason: 'commit_window_sweep',
+            revokedRecordCount: 1,
+          }),
+        }),
+      );
     });
 
     it('writes the override, revocation, and audit entry in one transaction', async () => {

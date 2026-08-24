@@ -1,3 +1,5 @@
+import { randomUUID } from 'crypto';
+
 import {
   OidcAccountSessionRepository,
   OidcModel,
@@ -319,6 +321,114 @@ describe('OidcAccountSessionRepository (integration)', () => {
       ]);
 
       expect(await accountSessions.countActiveSessions('user-1')).toBe(5);
+    });
+  });
+  describe('deleteAllForTenantRole', () => {
+    let tenantId: string;
+
+    async function writeUser(role: string, status: string): Promise<string> {
+      const rows = await oidcModelRepo.query<Array<{ id: string }>>(
+        `INSERT INTO tenant_user (tenant_id, external_user_id, email, role, status)
+         VALUES ($1, $2, $3, $4::tenant_user_role, $5::tenant_user_status)
+         RETURNING id`,
+        [tenantId, randomUUID(), `${randomUUID()}@example.test`, role, status],
+      );
+
+      return rows[0].id;
+    }
+
+    beforeEach(async () => {
+      const rows = await oidcModelRepo.query<Array<{ id: string }>>(
+        `INSERT INTO tenant (name, slug, config)
+         VALUES ($1, $2, '{}'::jsonb) RETURNING id`,
+        [`Revoke ${randomUUID()}`, `revoke-${randomUUID()}`],
+      );
+
+      tenantId = rows[0].id;
+    });
+
+    afterEach(async () => {
+      await oidcModelRepo.query('DELETE FROM tenant WHERE id = $1', [tenantId]);
+    });
+
+    it('removes sessions and cascades to the grants they authorize', async () => {
+      const userId = await writeUser('member', 'active');
+
+      await writeSession('s1', userId, ['grant-a']);
+      await oidcModelRepo.save({
+        modelName: 'Grant',
+        oidcId: 'grant-a',
+        payload: { accountId: userId },
+        accountId: userId,
+      });
+      await oidcModelRepo.save({
+        modelName: 'AccessToken',
+        oidcId: 'token-a',
+        payload: {},
+        grantId: 'grant-a',
+      });
+
+      const deleted = await accountSessions.deleteAllForTenantRole(
+        tenantId,
+        'member',
+      );
+
+      expect(deleted.reduce((total, row) => total + row.count, 0)).toBe(3);
+      await expect(oidcModelRepo.count()).resolves.toBe(0);
+    });
+
+    it('leaves other roles in the same tenant alone', async () => {
+      const member = await writeUser('member', 'active');
+      const admin = await writeUser('admin', 'active');
+
+      await writeSession('s-member', member);
+      await writeSession('s-admin', admin);
+
+      await accountSessions.deleteAllForTenantRole(tenantId, 'member');
+
+      const remaining = await oidcModelRepo.find();
+
+      expect(remaining.map((row) => row.oidcId)).toEqual(['s-admin']);
+    });
+
+    it('revokes a disabled user, who can still hold a pre-suspension session', async () => {
+      // Filtering on status = 'active' left a suspended user holding a
+      // session minted before the suspension, carrying the wider scopes.
+      const disabled = await writeUser('member', 'disabled');
+
+      await writeSession('s-disabled', disabled);
+
+      await accountSessions.deleteAllForTenantRole(tenantId, 'member');
+
+      await expect(oidcModelRepo.count()).resolves.toBe(0);
+    });
+
+    it('leaves an identical role in another tenant alone', async () => {
+      const mine = await writeUser('member', 'active');
+      const otherRows = await oidcModelRepo.query<Array<{ id: string }>>(
+        `INSERT INTO tenant (name, slug, config)
+         VALUES ($1, $2, '{}'::jsonb) RETURNING id`,
+        [`Other ${randomUUID()}`, `other-${randomUUID()}`],
+      );
+      const otherTenant = otherRows[0].id;
+      const theirs = await oidcModelRepo.query<Array<{ id: string }>>(
+        `INSERT INTO tenant_user (tenant_id, external_user_id, email, role, status)
+         VALUES ($1, $2, $3, 'member', 'active') RETURNING id`,
+        [otherTenant, randomUUID(), `${randomUUID()}@example.test`],
+      );
+
+      await writeSession('s-mine', mine);
+      await writeSession('s-theirs', theirs[0].id);
+
+      await accountSessions.deleteAllForTenantRole(tenantId, 'member');
+
+      const remaining = await oidcModelRepo.find();
+
+      expect(remaining.map((row) => row.oidcId)).toEqual(['s-theirs']);
+
+      await oidcModelRepo.query('DELETE FROM tenant WHERE id = $1', [
+        otherTenant,
+      ]);
     });
   });
 });

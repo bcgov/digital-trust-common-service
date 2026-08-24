@@ -116,7 +116,7 @@ export class RoleScopeService {
   ): Promise<RoleScopeWriteResult> {
     const scopes = [...new Set(request.scopes)].sort();
 
-    this.assertScopesAssignable(request.role, scopes, request);
+    this.assertScopesAssignable(request.role, scopes);
 
     return this.writeMapping(
       request,
@@ -173,24 +173,40 @@ export class RoleScopeService {
     apply: (manager: EntityManager) => Promise<string[]>,
   ): Promise<RoleScopeWriteResult> {
     const { tenantId, role, actorId, actorTokenType } = request;
+    let narrowed = false;
 
-    return this.dataSource.transaction(async (manager) => {
+    const result = await this.dataSource.transaction(async (manager) => {
       await this.repository.lockTenantForRoleScopeWrite(tenantId, manager);
 
       const before = await this.getTenantRoleMapping(tenantId, manager);
-      const previous =
-        before.find((entry) => entry.name === role)?.scopes ?? [];
+      const previousEntry = before.find((entry) => entry.name === role);
+      const previous = previousEntry?.scopes ?? [];
 
       const scopes = await apply(manager);
       const after = await this.getTenantRoleMapping(tenantId, manager);
 
+      this.assertNoEscalation(scopes, request);
       this.assertHierarchy(after);
 
       const removed = this.removedScopes(previous, scopes);
-      const revokedRecordCount =
-        removed.length > 0
-          ? await this.revokeAffectedSessions(tenantId, role, manager)
-          : 0;
+
+      narrowed = removed.length > 0;
+
+      const revokedRecordCount = narrowed
+        ? await this.revokeAffectedSessions(tenantId, role, manager)
+        : 0;
+
+      // An identical PATCH or a reset with no override row changes nothing.
+      // Comparing the source as well as the scopes matters: pinning a role to
+      // scopes equal to the current default still flips it from inherit to
+      // override, which is a real change even though the scope list matches.
+      const changed =
+        (previousEntry?.source ?? 'default') !== source ||
+        previous.join(' ') !== scopes.join(' ');
+
+      if (!changed) {
+        return { role, scopes, source, revokedRecordCount };
+      }
 
       await this.auditLog.write(
         {
@@ -226,6 +242,52 @@ export class RoleScopeService {
 
       return { role, scopes, source, revokedRecordCount };
     });
+
+    if (!narrowed) {
+      return result;
+    }
+
+    // The in-transaction delete only sees grants that exist when it runs. A
+    // login that read the old, wider mapping can save its grant between that
+    // delete and COMMIT, so sweep once more now that the new mapping is
+    // visible to every replica.
+    //
+    // This shrinks the window rather than closing it: a login that read the
+    // old mapping before COMMIT can still save after this sweep. Closing it
+    // fully means holding a shared lock across the grant write, which is not
+    // reachable today because oidc-provider saves grants through its own
+    // adapter connection rather than an EntityManager we can enlist (#193).
+    const late = await this.revokeAffectedSessions(tenantId, role);
+
+    if (late === 0) {
+      return result;
+    }
+
+    this.logger.warn(
+      `Revoked ${late} OIDC record(s) for role ${role} in tenant ${tenantId} created during the override commit window`,
+    );
+
+    await this.auditLog.write({
+      tenantId,
+      actorId,
+      actorType:
+        actorTokenType === 'client'
+          ? AuditActorType.CLIENT
+          : AuditActorType.USER,
+      action: AuditAction.REVOKE,
+      resourceType: 'tenant_role_scope',
+      resourceId: tenantId,
+      metadata: {
+        role,
+        reason: 'commit_window_sweep',
+        revokedRecordCount: late,
+      },
+    });
+
+    return {
+      ...result,
+      revokedRecordCount: result.revokedRecordCount + late,
+    };
   }
 
   /**
@@ -239,7 +301,7 @@ export class RoleScopeService {
   private async revokeAffectedSessions(
     tenantId: string,
     role: string,
-    manager: EntityManager,
+    manager?: EntityManager,
   ): Promise<number> {
     const deleted = await this.accountSessions.deleteAllForTenantRole(
       tenantId,
@@ -258,11 +320,7 @@ export class RoleScopeService {
       .sort();
   }
 
-  private assertScopesAssignable(
-    role: string,
-    scopes: string[],
-    actor: Pick<RoleScopeWriteRequest, 'actorScopes' | 'actorRoles'>,
-  ): void {
+  private assertScopesAssignable(role: string, scopes: string[]): void {
     this.assertRoleMutable(role);
 
     const unknown = scopes.filter((scope) => !isKnownScope(scope));
@@ -283,14 +341,28 @@ export class RoleScopeService {
         message: `${TENANT_SUPERUSER_SCOPE} cannot be assigned to a role other than ${IMMUTABLE_ROLE}`,
       });
     }
+  }
 
-    // No-op while the endpoint requires tenants:admin, which expands to every
-    // scope. Kept because it is the invariant that keeps this safe if TM-02
-    // ever delegates role management to a lesser principal.
-    //
+  /**
+   * Rejects a write whose *resulting* scopes exceed what the actor holds.
+   *
+   * Runs on the post-state, not the request body, so it covers reset as well
+   * as replace. The platform default can be wider than the override it
+   * replaces, so validating only submitted scopes would leave DELETE as an
+   * escalation path: a principal that cannot PATCH a role up to the default
+   * could simply reset it there instead.
+   *
+   * A no-op while the route requires tenants:admin, which expands to every
+   * scope. It is the invariant that keeps this safe if TM-02 delegates role
+   * management to a lesser principal.
+   */
+  private assertNoEscalation(
+    scopes: string[],
+    actor: Pick<RoleScopeWriteRequest, 'actorScopes' | 'actorRoles'>,
+  ): void {
     // Platform admins are exempt: ScopeGuard admits them on role alone, so
     // their token legitimately carries no tenant scopes. Applying the check to
-    // them would reject every non-empty PATCH from a principal the guards
+    // them would reject every non-empty write from a principal the guards
     // already trust above the tenant.
     if (this.scopeAuthorization.isPlatformAdmin([...actor.actorRoles])) {
       return;

@@ -39,20 +39,30 @@ export class RoleScopeRepository {
     tenantId?: string,
     manager?: EntityManager,
   ): Promise<string[]> {
-    if (tenantId) {
-      const override = await this.findTenantOverride(tenantId, role, manager);
+    if (!tenantId) {
+      const rows = await this.runner(manager).query<Array<{ scope: string }>>(
+        `SELECT scope FROM role_scope WHERE role = $1::tenant_user_role ORDER BY scope`,
+        [role],
+      );
 
-      if (override !== null) {
-        return override;
-      }
+      return rows.map((row) => row.scope);
     }
 
-    const rows = await this.runner(manager).query<Array<{ scope: string }>>(
-      `SELECT scope FROM role_scope WHERE role = $1::tenant_user_role ORDER BY scope`,
-      [role],
+    // Login is the hottest caller, so resolve override-then-default in one
+    // round trip. COALESCE cannot do it: an override of '{}' is a real value
+    // meaning "no scopes" and must win over the default, so the fallback is
+    // selected on whether the override row exists, not on whether it is empty.
+    const rows = await this.runner(manager).query<Array<{ scopes: string[] }>>(
+      `SELECT COALESCE(
+                (SELECT trs.scopes FROM tenant_role_scope trs
+                  WHERE trs.tenant_id = $1 AND trs.role = $2::tenant_user_role),
+                (SELECT COALESCE(array_agg(rs.scope ORDER BY rs.scope), '{}')
+                   FROM role_scope rs WHERE rs.role = $2::tenant_user_role)
+              ) AS scopes`,
+      [tenantId, role],
     );
 
-    return rows.map((row) => row.scope);
+    return rows[0]?.scopes ?? [];
   }
 
   /** Global default mapping for every role that has seeded scopes. */

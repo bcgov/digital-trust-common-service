@@ -60,14 +60,34 @@ describe('RoleScopeRepository', () => {
   });
 
   it('falls back to the default when the tenant has no override row', async () => {
-    mockQuery
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([{ scope: 'credentials:offer' }]);
+    // The fallback happens inside the query, so the absent override and the
+    // default arrive together.
+    mockQuery.mockResolvedValueOnce([{ scopes: ['credentials:offer'] }]);
 
     const scopes = await repository.findScopesForRole('member', TENANT_ID);
 
     expect(scopes).toEqual(['credentials:offer']);
-    expect(mockQuery).toHaveBeenCalledTimes(2);
+  });
+
+  it('resolves a tenant role in a single round trip', async () => {
+    // Login is the hottest caller of this path.
+    mockQuery.mockResolvedValueOnce([{ scopes: ['logs:read'] }]);
+
+    await repository.findScopesForRole('member', TENANT_ID);
+
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+    expect(mockQuery).toHaveBeenCalledWith(expect.any(String), [
+      TENANT_ID,
+      'member',
+    ]);
+  });
+
+  it('returns no scopes when neither an override nor a default exists', async () => {
+    mockQuery.mockResolvedValueOnce([{ scopes: [] }]);
+
+    await expect(
+      repository.findScopesForRole('readonly', TENANT_ID),
+    ).resolves.toEqual([]);
   });
 
   it('treats an override row holding an empty array as no scopes, not inherit', async () => {

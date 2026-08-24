@@ -358,10 +358,19 @@ scope.
 A caller may not grant a scope it does not itself hold. This is a no-op while
 the route requires `tenants:admin` — which expands to everything — but it is
 the invariant that keeps the endpoint safe if TM-02 ever delegates role
-management to a lesser principal. `platform-admin` is exempt: `ScopeGuard`
-admits it on the role claim alone, so its token legitimately carries no tenant
-scopes, and applying the check would reject every non-empty `PATCH` from a
-principal the guards already trust above the tenant.
+management to a lesser principal.
+
+Two things about how it is applied:
+
+- It runs on the **resulting** scopes, inside the write transaction, so it
+  covers `DELETE` as well as `PATCH`. The platform default can be wider than
+  the override it replaces, so checking only the submitted body would leave
+  reset as a way around the check: a principal that cannot raise a role to the
+  default could simply reset it there instead.
+- `platform-admin` is exempt. `ScopeGuard` admits it on the role claim alone,
+  so its token legitimately carries no tenant scopes, and applying the check
+  would reject every non-empty write from a principal the guards already trust
+  above the tenant.
 
 ### Absent row vs. empty array
 
@@ -420,10 +429,18 @@ pass against a stale snapshot and commit a combined state that violates the
 hierarchy. Row locks cannot close it, because "inherit the default" is the
 *absence* of a row and `FOR UPDATE` has nothing to lock.
 
-A residual window remains: a login that read the old mapping microseconds
-before the commit can insert its grant just after it. Closing it entirely would
-mean re-resolving scopes from the database on every request, which is the wrong
-trade here.
+The advisory lock serializes writers only — nothing on the login path takes
+it — so a login that read the old, wider mapping can save its grant after the
+in-transaction delete has already passed over it. The write therefore sweeps a
+second time after commit, once the new mapping is visible everywhere, and
+audits anything that sweep catches as a `revoke`.
+
+That shrinks the window rather than closing it: a login that read the old
+mapping before commit can still save after the sweep. Closing it fully means
+holding a shared lock across the grant write, which is not reachable today —
+oidc-provider saves grants through its own adapter connection, not an
+`EntityManager` the write transaction could enlist, so a shared lock taken on
+our connection would not cover the insert that matters.
 
 ### Not cached
 
@@ -448,6 +465,10 @@ Two details worth preserving:
   replacement from its removal.
 - The actor type follows `AuthContext.tokenType`, so a `client_credentials`
   caller is recorded as `AuditActorType.CLIENT` rather than a user.
+- A write that changes nothing writes no entry, so the table stays a change
+  log. "Changes nothing" compares the source as well as the scope list: pinning
+  a role to scopes identical to the current default still flips it from inherit
+  to override, which is a real change and is recorded.
 
 `audit_log.resource_id` is `UUID NOT NULL` and a role name is not a UUID, so
 the entry identifies the tenant and carries `role` in `metadata`.
