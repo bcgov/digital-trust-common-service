@@ -6,6 +6,13 @@ image:
   repository: bcgov/digital-trust-common-service
   tag: ci
 
+frontend:
+  enabled: true
+  image:
+    registry: ghcr.io
+    repository: bcgov/digital-trust-common-service-ui
+    tag: ci
+
 route:
   enabled: true
   host: digital-trust-common-service.example.com
