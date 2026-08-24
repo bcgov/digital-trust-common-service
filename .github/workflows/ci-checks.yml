@@ -40,6 +40,13 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+
+      - name: Lint pull request title
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: >-
+          printf '%s\n' "$PR_TITLE" | npx commitlint --verbose
+
       - name: Lint pull request commit messages
         run: >-
           npx commitlint
