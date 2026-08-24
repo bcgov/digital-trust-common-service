@@ -1,16 +1,24 @@
 {{- if .Values.networkPolicy.enabled -}}
-{{- $commonSelector := dict "app.kubernetes.io/name" (include "digital-trust-common-service.name" .) "app.kubernetes.io/instance" .Release.Name -}}
+{{- $baseSelector := dict "app.kubernetes.io/name" (include "digital-trust-common-service.name" .) "app.kubernetes.io/instance" .Release.Name -}}
 {{- if .Values.networkPolicy.ingress.enabled }}
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: {{ include "digital-trust-common-service.fullname" . }}-allow-router
   labels:
-    {{- include "digital-trust-common-service.labels" . | nindent 4 }}
+    {{- if .Values.frontend.enabled }}
+    {{- include "digital-trust-common-service.frontend.labels" . | nindent 4 }}
+    {{- else }}
+    {{- include "digital-trust-common-service.api.labels" . | nindent 4 }}
+    {{- end }}
 spec:
   podSelector:
     matchLabels:
-      {{- include "digital-trust-common-service.selectorLabels" . | nindent 6 }}
+      {{- if .Values.frontend.enabled }}
+      {{- include "digital-trust-common-service.frontend.selectorLabels" . | nindent 6 }}
+      {{- else }}
+      {{- include "digital-trust-common-service.api.selectorLabels" . | nindent 6 }}
+      {{- end }}
   policyTypes:
     - Ingress
   ingress:
@@ -22,6 +30,29 @@ spec:
         - protocol: TCP
           port: http
 {{- end }}
+{{- if and .Values.networkPolicy.ingress.enabled .Values.frontend.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "digital-trust-common-service.fullname" . }}-allow-frontend-to-api
+  labels:
+    {{- include "digital-trust-common-service.api.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "digital-trust-common-service.api.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "digital-trust-common-service.frontend.selectorLabels" . | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.service.targetPort }}
+{{- end }}
 {{- if .Values.networkPolicy.database.enabled }}
 ---
 apiVersion: networking.k8s.io/v1
@@ -31,10 +62,17 @@ metadata:
   labels:
     {{- include "digital-trust-common-service.labels" . | nindent 4 }}
 spec:
-  # Applies to both API and Worker pods (matched by name + instance).
   podSelector:
+    matchExpressions:
+      - key: app.kubernetes.io/component
+        operator: In
+        values:
+          - api
+          - worker
+    {{- if $baseSelector }}
     matchLabels:
-      {{- toYaml $commonSelector | nindent 6 }}
+      {{- toYaml $baseSelector | nindent 6 }}
+    {{- end }}
   policyTypes:
     - Egress
   egress:
@@ -66,12 +104,12 @@ kind: NetworkPolicy
 metadata:
   name: {{ include "digital-trust-common-service.fullname" . }}-egress-keycloak
   labels:
-    {{- include "digital-trust-common-service.labels" . | nindent 4 }}
+    {{- include "digital-trust-common-service.api.labels" . | nindent 4 }}
 spec:
   # Only the API reaches Keycloak (upstream IdP).
   podSelector:
     matchLabels:
-      {{- include "digital-trust-common-service.selectorLabels" . | nindent 6 }}
+      {{- include "digital-trust-common-service.api.selectorLabels" . | nindent 6 }}
   policyTypes:
     - Egress
   egress:
@@ -105,12 +143,18 @@ metadata:
   labels:
     {{- include "digital-trust-common-service.labels" . | nindent 4 }}
 spec:
-  # Allow DNS resolution for all app pods. Required because declaring any egress
-  # rule otherwise implicitly denies all other egress -- including cluster DNS,
-  # which would break hostname resolution of the database and Keycloak.
+  # Allow DNS resolution for API/Worker pods when egress rules are enabled.
   podSelector:
+    matchExpressions:
+      - key: app.kubernetes.io/component
+        operator: In
+        values:
+          - api
+          - worker
+    {{- if $baseSelector }}
     matchLabels:
-      {{- toYaml $commonSelector | nindent 6 }}
+      {{- toYaml $baseSelector | nindent 6 }}
+    {{- end }}
   policyTypes:
     - Egress
   egress:
@@ -122,5 +166,52 @@ spec:
         - protocol: TCP
           port: {{ . }}
         {{- end }}
+{{- end }}
+{{- if .Values.frontend.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "digital-trust-common-service.frontend.fullname" . }}-egress-api
+  labels:
+    {{- include "digital-trust-common-service.frontend.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "digital-trust-common-service.frontend.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "digital-trust-common-service.api.selectorLabels" . | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.service.targetPort }}
+{{- if .Values.networkPolicy.dnsEgress.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "digital-trust-common-service.frontend.fullname" . }}-egress-dns
+  labels:
+    {{- include "digital-trust-common-service.frontend.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "digital-trust-common-service.frontend.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Egress
+  egress:
+    - to: []
+      ports:
+        {{- range .Values.networkPolicy.dnsEgress.ports }}
+        - protocol: UDP
+          port: {{ . }}
+        - protocol: TCP
+          port: {{ . }}
+        {{- end }}
+{{- end }}
 {{- end }}
 {{- end }}
