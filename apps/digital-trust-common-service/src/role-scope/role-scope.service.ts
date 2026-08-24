@@ -7,6 +7,7 @@ import {
   TENANT_SUPERUSER_SCOPE,
   TenantRole,
 } from '@app/auth';
+import type { AuthTokenType } from '@app/auth';
 import { OidcAccountSessionRepository } from '@app/oidc/sessions';
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { DataSource, EntityManager } from 'typeorm';
@@ -33,6 +34,9 @@ export interface RoleScopeWriteRequest {
   role: string;
   actorId: string;
   actorScopes: readonly string[];
+  actorRoles: readonly string[];
+  /** Distinguishes a human caller from a `client_credentials` one in audit. */
+  actorTokenType: AuthTokenType;
 }
 
 export interface RoleScopeWriteResult {
@@ -112,18 +116,23 @@ export class RoleScopeService {
   ): Promise<RoleScopeWriteResult> {
     const scopes = [...new Set(request.scopes)].sort();
 
-    this.assertScopesAssignable(request.role, scopes, request.actorScopes);
+    this.assertScopesAssignable(request.role, scopes, request);
 
-    return this.writeMapping(request, 'override', async (manager) => {
-      await this.repository.upsertTenantRoleScopes(
-        request.tenantId,
-        request.role,
-        scopes,
-        manager,
-      );
+    return this.writeMapping(
+      request,
+      'override',
+      AuditAction.UPDATE,
+      async (manager) => {
+        await this.repository.upsertTenantRoleScopes(
+          request.tenantId,
+          request.role,
+          scopes,
+          manager,
+        );
 
-      return scopes;
-    });
+        return scopes;
+      },
+    );
   }
 
   /** Drops a tenant's override so the role reverts to the global default. */
@@ -132,16 +141,21 @@ export class RoleScopeService {
   ): Promise<RoleScopeWriteResult> {
     this.assertRoleMutable(request.role);
 
-    return this.writeMapping(request, 'default', async (manager) => {
-      await this.repository.deleteTenantRoleScopes(
-        request.tenantId,
-        request.role,
-        manager,
-      );
-      const defaults = await this.repository.findDefaultRoleScopes(manager);
+    return this.writeMapping(
+      request,
+      'default',
+      AuditAction.DELETE,
+      async (manager) => {
+        await this.repository.deleteTenantRoleScopes(
+          request.tenantId,
+          request.role,
+          manager,
+        );
+        const defaults = await this.repository.findDefaultRoleScopes(manager);
 
-      return defaults[request.role] ?? [];
-    });
+        return defaults[request.role] ?? [];
+      },
+    );
   }
 
   /**
@@ -155,9 +169,10 @@ export class RoleScopeService {
   private async writeMapping(
     request: RoleScopeWriteRequest,
     source: RoleScopeSource,
+    action: AuditAction,
     apply: (manager: EntityManager) => Promise<string[]>,
   ): Promise<RoleScopeWriteResult> {
-    const { tenantId, role, actorId } = request;
+    const { tenantId, role, actorId, actorTokenType } = request;
 
     return this.dataSource.transaction(async (manager) => {
       await this.repository.lockTenantForRoleScopeWrite(tenantId, manager);
@@ -181,8 +196,11 @@ export class RoleScopeService {
         {
           tenantId,
           actorId,
-          actorType: AuditActorType.USER,
-          action: AuditAction.UPDATE,
+          actorType:
+            actorTokenType === 'client'
+              ? AuditActorType.CLIENT
+              : AuditActorType.USER,
+          action,
           resourceType: 'tenant_role_scope',
           // audit_log.resource_id is a UUID column, and a role name is not a
           // UUID. The resource being changed is this tenant's mapping, so the
@@ -243,7 +261,7 @@ export class RoleScopeService {
   private assertScopesAssignable(
     role: string,
     scopes: string[],
-    actorScopes: readonly string[],
+    actor: Pick<RoleScopeWriteRequest, 'actorScopes' | 'actorRoles'>,
   ): void {
     this.assertRoleMutable(role);
 
@@ -269,8 +287,18 @@ export class RoleScopeService {
     // No-op while the endpoint requires tenants:admin, which expands to every
     // scope. Kept because it is the invariant that keeps this safe if TM-02
     // ever delegates role management to a lesser principal.
-    const actorEffective =
-      this.scopeAuthorization.expandEffectiveScopes(actorScopes);
+    //
+    // Platform admins are exempt: ScopeGuard admits them on role alone, so
+    // their token legitimately carries no tenant scopes. Applying the check to
+    // them would reject every non-empty PATCH from a principal the guards
+    // already trust above the tenant.
+    if (this.scopeAuthorization.isPlatformAdmin([...actor.actorRoles])) {
+      return;
+    }
+
+    const actorEffective = this.scopeAuthorization.expandEffectiveScopes(
+      actor.actorScopes,
+    );
     const escalated = scopes.filter((scope) => !actorEffective.has(scope));
 
     if (escalated.length > 0) {

@@ -9,6 +9,7 @@ import { BadRequestException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { DataSource, EntityManager } from 'typeorm';
 
+import { AuditAction, AuditActorType } from '../audit-log/audit-log.entity';
 import { AuditLogService } from '../audit-log/audit-log.service';
 
 import { RoleScopeRepository } from './role-scope.repository';
@@ -37,6 +38,8 @@ describe('RoleScopeService', () => {
   const superuserActor = {
     actorId: ACTOR_ID,
     actorScopes: [TENANT_SUPERUSER_SCOPE],
+    actorRoles: ['admin'],
+    actorTokenType: 'user' as const,
   };
 
   beforeEach(async () => {
@@ -233,8 +236,28 @@ describe('RoleScopeService', () => {
           scopes: ['audit:read'],
           actorId: ACTOR_ID,
           actorScopes: ['credentials:offer'],
+          actorRoles: ['member'],
+          actorTokenType: 'user' as const,
         }),
       ).rejects.toMatchObject({ response: { code: 'scope_escalation' } });
+    });
+
+    it('exempts a platform admin, whose token carries no tenant scopes', async () => {
+      // ScopeGuard admits platform admins on role alone, so their scopes are
+      // legitimately empty. Applying the escalation check to them would fail
+      // every non-empty PATCH from a principal the guards trust above the
+      // tenant.
+      const result = await service.replaceRoleScopes({
+        tenantId: TENANT_ID,
+        role: 'member',
+        scopes: ['audit:read'],
+        actorId: ACTOR_ID,
+        actorScopes: [],
+        actorRoles: ['platform-admin'],
+        actorTokenType: 'user' as const,
+      });
+
+      expect(result.scopes).toEqual(['audit:read']);
     });
 
     it('rejects rather than pruning, leaving no write behind', async () => {
@@ -349,6 +372,8 @@ describe('RoleScopeService', () => {
         expect.objectContaining({
           tenantId: TENANT_ID,
           actorId: ACTOR_ID,
+          actorType: AuditActorType.USER,
+          action: AuditAction.UPDATE,
           resourceType: 'tenant_role_scope',
           resourceId: TENANT_ID,
           metadata: expect.objectContaining({
@@ -357,6 +382,38 @@ describe('RoleScopeService', () => {
             revokedRecordCount: 3,
           }),
         }),
+        manager,
+      );
+    });
+
+    it('audits a reset as a delete, not an update', async () => {
+      // The shared write path must not flatten DELETE into UPDATE, or audit
+      // consumers cannot tell an override replacement from its removal.
+      overrides = [{ role: 'member', scopes: ['audit:read'] }];
+
+      await service.resetRoleScopes({
+        tenantId: TENANT_ID,
+        role: 'member',
+        ...superuserActor,
+      });
+
+      expect(auditLog.write).toHaveBeenCalledWith(
+        expect.objectContaining({ action: AuditAction.DELETE }),
+        manager,
+      );
+    });
+
+    it('attributes a client_credentials caller as a client', async () => {
+      await service.replaceRoleScopes({
+        tenantId: TENANT_ID,
+        role: 'member',
+        scopes: ['credentials:offer'],
+        ...superuserActor,
+        actorTokenType: 'client' as const,
+      });
+
+      expect(auditLog.write).toHaveBeenCalledWith(
+        expect.objectContaining({ actorType: AuditActorType.CLIENT }),
         manager,
       );
     });

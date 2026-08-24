@@ -111,6 +111,8 @@ export class TenantRoleScopeController {
       scopes: body.scopes,
       actorId: auth.sub,
       actorScopes: auth.scopes,
+      actorRoles: auth.roles,
+      actorTokenType: auth.tokenType,
     });
   }
 
@@ -142,6 +144,8 @@ export class TenantRoleScopeController {
       role: params.role,
       actorId: auth.sub,
       actorScopes: auth.scopes,
+      actorRoles: auth.roles,
+      actorTokenType: auth.tokenType,
     });
   }
 }

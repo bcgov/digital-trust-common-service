@@ -69,6 +69,7 @@ class AllowGuard implements CanActivate {
 
     request.auth = {
       sub: ACTOR_SUBJECT,
+      tokenType: 'user',
       roles: [],
       scopes: [TENANT_SUPERUSER_SCOPE],
       tenantId: request.params?.tenantId ?? null,
@@ -83,6 +84,7 @@ class ForeignTenantGuard implements CanActivate {
   public canActivate(context: ExecutionContext): boolean {
     context.switchToHttp().getRequest<{ auth?: unknown }>().auth = {
       sub: ACTOR_SUBJECT,
+      tokenType: 'user',
       roles: [],
       scopes: [TENANT_SUPERUSER_SCOPE],
       tenantId: '11111111-2222-4333-8444-555555555555',

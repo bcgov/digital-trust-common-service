@@ -355,6 +355,14 @@ Writes require `tenants:admin` rather than `users:manage`. `admin` holds
 `users:manage`, so guarding with it would let an admin grant themselves any
 scope.
 
+A caller may not grant a scope it does not itself hold. This is a no-op while
+the route requires `tenants:admin` — which expands to everything — but it is
+the invariant that keeps the endpoint safe if TM-02 ever delegates role
+management to a lesser principal. `platform-admin` is exempt: `ScopeGuard`
+admits it on the role claim alone, so its token legitimately carries no tenant
+scopes, and applying the check would reject every non-empty `PATCH` from a
+principal the guards already trust above the tenant.
+
 ### Absent row vs. empty array
 
 This is the easiest thing to get wrong. In the global `role_scope` table,
@@ -423,6 +431,26 @@ Override resolution hits the database on each login, and should stay that way.
 There is no cross-replica invalidation bus, so a TTL cache would leave other
 replicas handing out revoked scopes until it expired. If profiling ever demands
 one, it needs explicit invalidation (`LISTEN`/`NOTIFY`), not a bare TTL.
+
+### Auditing
+
+The controller carries `@SkipAutoAudit()` and the service writes its own entry
+inside the write transaction. This is not an opt-out:
+`AuditAutoInterceptor.resolveResourceId` reads `params.id` only, so it silently
+drops routes keyed on `:role` (#192). Writing directly also captures the
+revoked-session count, which the interceptor cannot see.
+
+Two details worth preserving:
+
+- `PATCH` records `AuditAction.UPDATE` and `DELETE` records
+  `AuditAction.DELETE`, even though both run through the same write path.
+  Flattening them would leave consumers unable to distinguish an override
+  replacement from its removal.
+- The actor type follows `AuthContext.tokenType`, so a `client_credentials`
+  caller is recorded as `AuditActorType.CLIENT` rather than a user.
+
+`audit_log.resource_id` is `UUID NOT NULL` and a role name is not a UUID, so
+the entry identifies the tenant and carries `role` in `metadata`.
 
 ### Client credentials are unaffected
 
