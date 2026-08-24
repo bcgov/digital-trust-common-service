@@ -84,16 +84,43 @@ The application uses AES-256-GCM encryption to protect sensitive data. Encryptio
 
 The application supports upstream OIDC federation with Keycloak using the `openid-client` library. This library **strictly enforces HTTPS** connections for all OIDC discovery and token endpoints.
 
-For local development, this repo uses **Caddy** with locally trusted TLS for:
+For local development, this repo uses **Caddy** with locally trusted TLS as a
+same-origin front door that mirrors the production topology (SPA + `/oidc` +
+`/api` on one origin):
 
-- `https://oidc.localhost` -> local app on port `3000`
+- `https://app.localhost` -> the whole app: `/api/*`, `/oidc/*` and `/health/*`
+  go to the local API on port `3000`; everything else goes to the Vite dev
+  server on port `5173` (see [Serving the UI through Caddy](#serving-the-ui-through-caddy))
 - `https://keycloak.localhost` -> Keycloak in Docker on port `8080`
+
+> **Migrating from `oidc.localhost`** (renamed in #181): the checked-in realm
+> only imports on first Keycloak start, so existing local stacks keep the old
+> redirect URIs. Either reset just the Keycloak services and volume:
+>
+> ```bash
+> docker compose --profile dev rm -sf keycloak keycloak-db
+> docker volume rm $(docker volume ls -q --filter name=keycloak-db-data)
+> ```
+>
+> (avoid `docker compose down -v` here — it removes *every* project volume,
+> including your Postgres data and the Caddy CA) — or update the
+> `dtsc-oidc-provider` client's redirect URIs/web origins in the admin
+> console. Also set `OIDC_ISSUER=https://app.localhost/oidc` in your `.env`,
+> and on macOS/Windows replace the `oidc.localhost` hosts entry with
+> `app.localhost`.
 
 #### Start the local HTTPS stack
 
-Bring up the local services, including Caddy and Keycloak:
+Bring up the infrastructure services (the `app` service has no profile, so a
+bare `docker compose --profile dev up` starts the containerized API too and
+binds port `3000` — use the targeted list below when running the API on the
+host):
 
 ```bash
+# infra only — API and UI run on the host (default workflow)
+docker compose --profile dev up -d db caddy keycloak
+
+# or everything containerized, including the app on :3000
 docker compose --profile dev up
 ```
 
@@ -110,8 +137,37 @@ docker compose cp \
 Install that certificate into your system trust store so browsers and other local tooling trust `*.localhost` served by Caddy:
 
 ```bash
+# Linux
 sudo cp ./caddy/root.crt /usr/local/share/ca-certificates/caddy-local.crt
 sudo update-ca-certificates
+
+# macOS
+sudo security add-trusted-cert -d -r trustRoot \
+  -k /Library/Keychains/System.keychain ./caddy/root.crt
+```
+
+```powershell
+# Windows (admin PowerShell)
+Import-Certificate -FilePath .\caddy\root.crt -CertStoreLocation Cert:\LocalMachine\Root
+```
+
+Note: recreating the `caddy_data` volume (e.g. `docker compose down -v`) generates a new CA — re-export and re-trust the cert afterwards.
+
+#### Hosts entries (macOS and Windows)
+
+Browsers resolve `*.localhost` subdomains themselves, but the OS resolver on
+macOS and Windows does not — Node fails with `getaddrinfo ENOTFOUND
+keycloak.localhost` during upstream federation calls. Add hosts entries
+(most Linux distros resolve `*.localhost` natively and can skip this):
+
+```bash
+# macOS
+echo "127.0.0.1 app.localhost keycloak.localhost" | sudo tee -a /etc/hosts
+```
+
+```powershell
+# Windows (admin PowerShell)
+Add-Content C:\Windows\System32\drivers\etc\hosts "`n127.0.0.1 app.localhost", "127.0.0.1 keycloak.localhost"
 ```
 
 #### Configure Node.js to trust the local CA
@@ -147,13 +203,13 @@ environment:
   - KC_HOSTNAME=https://keycloak.localhost
 ```
 
-The checked-in **`keycloak/config/realm.json`** already uses the local OIDC provider hostname for redirect URIs:
+The checked-in **`keycloak/config/realm.json`** already uses the local front-door hostname for redirect URIs:
 
 ```json
 {
   "clientId": "dtsc-oidc-provider",
-  "redirectUris": ["https://oidc.localhost/*"],
-  "webOrigins": ["https://oidc.localhost"]
+  "redirectUris": ["https://app.localhost/*"],
+  "webOrigins": ["https://app.localhost"]
 }
 ```
 
@@ -162,12 +218,39 @@ The checked-in **`keycloak/config/realm.json`** already uses the local OIDC prov
 Set the **`OIDC_ISSUER`** environment variable to the local Caddy endpoint for the app's OIDC provider:
 
 ```env
-OIDC_ISSUER=https://oidc.localhost/oidc
+OIDC_ISSUER=https://app.localhost/oidc
 ```
 
 This URL is used by Keycloak clients to discover the OIDC provider configuration and validate tokens.
 
 **Important**: The local CA certificate must be trusted both by your system and by Node via `NODE_EXTRA_CA_CERTS`, or OIDC discovery/token requests will fail with TLS errors.
+
+#### Serving the UI through Caddy
+
+`https://app.localhost` serves the SPA and the API on one HTTPS origin — the
+local twin of the production Caddy config (#160) and a prerequisite for the
+interactive PKCE flow (#83), which needs the SPA, `/oidc` and cookies on the
+same origin.
+
+Caddy proxies non-API paths to a Vite dev server on port `5173`. Run it either
+way:
+
+```bash
+# Default workflow: on the host
+cd apps/ui && npm run dev
+
+# Or containerized (behind the `ui` profile) — convenience only: first start
+# runs `npm ci`, and hot reload isn't guaranteed across bind mounts. For
+# actual hot reload UI development, run the dev server on the host.
+docker compose --profile ui up ui
+```
+
+Both publish port `5173`, so Caddy reaches the dev server at
+`host.docker.internal:5173` in either case. Once the dev stack
+(`docker compose --profile dev up -d db caddy keycloak`) and a dev server are
+running, open
+`https://app.localhost` — HMR works through the proxy, and `/api`, `/oidc` and
+`/health` hit the API without any CORS or cross-site cookie concerns.
 
 ## Running the Application
 

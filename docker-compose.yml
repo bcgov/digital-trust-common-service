@@ -160,6 +160,20 @@ services:
       timeout: 5s
       retries: 5
 
+  # Optional containerized Vite dev server (host-based `npm run dev` in apps/ui
+  # stays the default workflow). Publishes 5173 so Caddy can reach it at
+  # host.docker.internal:5173 whether the UI runs here or on the host.
+  ui:
+    image: node:24-alpine
+    profiles: ['ui']
+    working_dir: /app
+    command: sh -c "npm ci && npm run dev -- --host"
+    ports:
+      - '5173:5173'
+    volumes:
+      - ./apps/ui:/app
+      - /app/node_modules
+
   caddy:
     image: caddy:2
     extra_hosts:
