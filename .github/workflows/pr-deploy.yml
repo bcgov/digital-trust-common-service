@@ -216,6 +216,11 @@ jobs:
             "${EXTRA_ARGS[@]}" \
             --wait --timeout 10m
 
+      - name: Verify OIDC discovery
+        uses: ./.github/actions/verify-oidc-discovery
+        with:
+          base_url: https://${{ needs.preflight.outputs.route_host }}
+
   comment:
     needs: [preflight, build, build-ui, deploy]
     if: needs.preflight.outputs.deploy == 'true' && needs.deploy.result == 'success'
