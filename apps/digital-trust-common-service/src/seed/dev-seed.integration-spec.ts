@@ -1,14 +1,4 @@
-import { InitialExtensions1783630501649 } from '@app/database/migrations/000001_initial-extensions';
-import { CreateTenantEntity1784231917556 } from '@app/database/migrations/000002_create-tenant-entity';
-import { CreateTenantUserEntity1784241747468 } from '@app/database/migrations/000003_create-tenant-user-entity';
-import { CreateCredentialDefinitionRegistry1784316680145 } from '@app/database/migrations/000004_create-credential-definition-registry';
-import { CreateConnectionState1784732194397 } from '@app/database/migrations/000005_create-connection-state';
-import { CreateOperationEntity1784242000000 } from '@app/database/migrations/000006_create-operation-entity';
-import { CreateAuditLogSchema1784901000002 } from '@app/database/migrations/000007_create-audit-log-schema';
-import { CreateOauthClient1785262142662 } from '@app/database/migrations/000008_create-oauth-client';
-import { CreateConnectorCredential1785262250704 } from '@app/database/migrations/000009_create-connector-credential';
-import { CreateIssuanceVerificationProfiles1785360000010 } from '@app/database/migrations/000010_create-issuance-verification-profiles';
-import { CreateCredentialRecord1785460000011 } from '@app/database/migrations/000011_create-credential-record';
+import { AppDataSource } from '@app/database/data-source';
 import { buildSslConfig } from '@app/database/ssl.util';
 import { ConfigModule } from '@nestjs/config';
 import { Test, TestingModule } from '@nestjs/testing';
@@ -17,7 +7,12 @@ import { DataSource } from 'typeorm';
 
 import { EncryptionModule } from '../common/crypto/encryption.module';
 
-import { seedApiClientId } from './dev-seed.data';
+import {
+  UI_SPA_CLIENT_ID,
+  UI_SPA_POST_LOGOUT_REDIRECT_URIS,
+  UI_SPA_REDIRECT_URIS,
+  seedApiClientId,
+} from './dev-seed.data';
 import { DevSeedService } from './dev-seed.service';
 import { SEED_ENTITIES, SEED_REPOSITORY_PROVIDERS } from './seed.constants';
 
@@ -28,33 +23,19 @@ describe('DevSeedService integration', () => {
   let seedService: DevSeedService;
 
   beforeAll(async () => {
+    // The real migration list, not a hand-maintained copy of its first few
+    // entries: the seed writes columns that arrive late in the sequence, so a
+    // partial list here only passes when a sibling integration spec happens to
+    // have migrated the shared test database further first.
     migrationDataSource = new DataSource({
-      type: 'postgres',
-      host: process.env.DB_HOST,
-      port: Number(process.env.DB_PORT),
-      username: process.env.DB_USERNAME,
-      password: process.env.DB_PASSWORD,
-      database: process.env.DB_NAME,
+      ...AppDataSource.options,
       entities: [],
-      migrations: [
-        InitialExtensions1783630501649,
-        CreateTenantEntity1784231917556,
-        CreateTenantUserEntity1784241747468,
-        CreateCredentialDefinitionRegistry1784316680145,
-        CreateConnectionState1784732194397,
-        CreateOperationEntity1784242000000,
-        CreateAuditLogSchema1784901000002,
-        CreateOauthClient1785262142662,
-        CreateConnectorCredential1785262250704,
-        CreateIssuanceVerificationProfiles1785360000010,
-        CreateCredentialRecord1785460000011,
-      ],
       ssl: buildSslConfig(
         process.env.DB_SSL,
         process.env.DB_SSL_REJECT_UNAUTHORIZED,
         process.env.DB_SSL_CA,
       ),
-    });
+    } as DataSource['options']);
 
     await migrationDataSource.initialize();
     await migrationDataSource.runMigrations();
@@ -107,7 +88,9 @@ describe('DevSeedService integration', () => {
     const first = await seedService.run();
 
     expect(first.tenants).toBe(3);
-    expect(first.createdOAuthClients).toHaveLength(3);
+    // Three per-tenant API clients plus the SPA's public client.
+    expect(first.createdOAuthClients).toHaveLength(4);
+    expect(first.createdOAuthClients).toContain(UI_SPA_CLIENT_ID);
 
     const tenantCount = await countRows(
       'tenant',
@@ -140,6 +123,33 @@ describe('DevSeedService integration', () => {
     ).toBe(userCount);
     expect(await countRows('oauth_client', "client_id LIKE 'dev-seed-%'")).toBe(
       oauthClientCount,
+    );
+  });
+
+  it('seeds the SPA client as public, with no secret', async () => {
+    await seedService.run();
+
+    const rows = await queryDataSource.query<
+      Array<{
+        is_public: boolean;
+        client_secret_hash: string | null;
+        redirect_uris: string[];
+        post_logout_redirect_uris: string[];
+      }>
+    >(
+      `SELECT is_public, client_secret_hash, redirect_uris, post_logout_redirect_uris
+         FROM oauth_client WHERE client_id = $1`,
+      [UI_SPA_CLIENT_ID],
+    );
+
+    expect(rows).toHaveLength(1);
+    // The CHECK constraint is the only thing keeping the two kinds of client
+    // from drifting into each other's shape, so pin both halves here.
+    expect(rows[0]?.is_public).toBe(true);
+    expect(rows[0]?.client_secret_hash).toBeNull();
+    expect(rows[0]?.redirect_uris).toEqual(UI_SPA_REDIRECT_URIS);
+    expect(rows[0]?.post_logout_redirect_uris).toEqual(
+      UI_SPA_POST_LOGOUT_REDIRECT_URIS,
     );
   });
 

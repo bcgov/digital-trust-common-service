@@ -5,7 +5,7 @@ import { normalizeApiError } from './errors';
 
 /**
  * Seam between the HTTP layer and whatever auth implementation is active
- * (mock today, oidc-client-ts once #83 lands). Registered by AuthProvider.
+ * (mock or oidc-client-ts, per VITE_AUTH_MODE). Registered by AuthProvider.
  */
 export interface AuthHandlers {
   getAccessToken(): string | null;

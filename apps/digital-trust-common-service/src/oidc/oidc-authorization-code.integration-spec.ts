@@ -5,7 +5,7 @@ import { join } from 'path';
 
 import { AppDataSource } from '@app/database/data-source';
 import { buildSslConfig } from '@app/database/ssl.util';
-import { OidcMountService } from '@app/oidc';
+import { DEFAULT_JWT_AUDIENCE, OidcMountService } from '@app/oidc';
 import { PgBossService } from '@app/pg-boss';
 import { INestApplication } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
@@ -14,7 +14,10 @@ import request from 'supertest';
 import { App } from 'supertest/types';
 import { DataSource } from 'typeorm';
 
-import { buildBasicAuthHeader } from '../../test/support/oidc-test-helpers';
+import {
+  buildBasicAuthHeader,
+  verifyTokenAgainstJwks,
+} from '../../test/support/oidc-test-helpers';
 import { AppModule } from '../app.module';
 import { UpstreamOidcService } from '../upstream-oidc/oidc-upstream.service';
 
@@ -42,9 +45,11 @@ describe('OIDC authorization_code grant (integration)', () => {
   let keysDir: string;
   let tenantId: string;
   let clientId: string;
+  let publicClientId: string;
 
   const clientSecret = 'authorization-code-secret-value';
   const redirectUri = 'https://oidc.localhost/callback';
+  const postLogoutRedirectUri = 'https://oidc.localhost/login';
 
   const mockBoss = {
     start: jest.fn().mockResolvedValue(undefined),
@@ -205,7 +210,12 @@ describe('OIDC authorization_code grant (integration)', () => {
    * because the interaction/upstream flow crosses hosts and the upstream
    * federation endpoint is mocked.
    */
-  const completeAuthorizationCodeFlow = async (state: string) => {
+  const completeAuthorizationCodeFlow = async (
+    state: string,
+    options: { clientId?: string; scope?: string; prompt?: string } = {},
+  ) => {
+    const flowClientId = options.clientId ?? clientId;
+    const scope = options.scope ?? 'openid credentials:verify';
     const codeVerifier = generatePkceVerifier();
     const codeChallenge = toS256CodeChallenge(codeVerifier);
     const issuer = process.env.OIDC_ISSUER as string;
@@ -215,10 +225,11 @@ describe('OIDC authorization_code grant (integration)', () => {
     const authorizeResponse = await browser
       .get('/oidc/auth')
       .query({
-        client_id: clientId,
+        client_id: flowClientId,
         redirect_uri: redirectUri,
         response_type: 'code',
-        scope: 'openid credentials:verify',
+        scope,
+        prompt: options.prompt,
         state,
         nonce: `nonce-${randomUUID()}`,
         code_challenge: codeChallenge,
@@ -330,6 +341,53 @@ describe('OIDC authorization_code grant (integration)', () => {
     };
   };
 
+  /**
+   * Token exchange with no Authorization header — the shape a public client
+   * has to use, since it holds no credential to present. Returns the raw
+   * response so a caller can assert on a rejection as well as a success.
+   */
+  const exchangeCodeWithoutClientAuth = (
+    exchangeClientId: string,
+    code: string,
+    codeVerifier: string,
+  ) => {
+    // Returns the supertest request rather than awaiting it, so a caller can
+    // chain `.expect(200)` or assert on a rejection.
+    return request(app.getHttpServer()).post('/oidc/token').type('form').send({
+      grant_type: 'authorization_code',
+      client_id: exchangeClientId,
+      code,
+      redirect_uri: redirectUri,
+      code_verifier: codeVerifier,
+    });
+  };
+
+  /**
+   * Signs the SPA's public client in and returns its token response. The
+   * scope and `prompt` are the load-bearing part: `offline_access` is what
+   * makes the provider issue a refresh token, `tenant` is what releases
+   * tenant_id/tenant_role, and without `prompt=consent` the provider silently
+   * drops `offline_access` (check_scope.js) and issues no refresh token.
+   */
+  const startPublicClientSession = async () => {
+    const { code, codeVerifier } = await completeAuthorizationCodeFlow(
+      `rp-state-${randomUUID()}`,
+      {
+        clientId: publicClientId,
+        scope: 'openid offline_access tenant credentials:verify',
+        prompt: 'consent',
+      },
+    );
+
+    const response = await exchangeCodeWithoutClientAuth(
+      publicClientId,
+      code,
+      codeVerifier,
+    ).expect(200);
+
+    return response.body as Record<string, unknown>;
+  };
+
   beforeAll(async () => {
     keysDir = mkdtempSync(join(tmpdir(), 'oidc-auth-code-it-'));
 
@@ -409,6 +467,36 @@ describe('OIDC authorization_code grant (integration)', () => {
       ],
     );
 
+    /*
+     * A browser SPA: no secret at all, authenticating with PKCE alone. Seeded
+     * next to the confidential client so one flow can be run through both and
+     * the differences are the client's, not the fixture's.
+     */
+    publicClientId = `oidc-auth-code-public-client-${randomUUID()}`;
+
+    await dataSource.query(
+      `INSERT INTO oauth_client (
+         tenant_id,
+         client_id,
+         client_secret_hash,
+         is_public,
+         name,
+         scopes,
+         redirect_uris,
+         post_logout_redirect_uris,
+         grant_types
+       ) VALUES ($1, $2, NULL, TRUE, $3, $4, $5, $6, $7)`,
+      [
+        tenantId,
+        publicClientId,
+        'OIDC Authorization Code Public Integration Client',
+        ['openid', 'offline_access', 'tenant', 'credentials:verify'],
+        [redirectUri],
+        [postLogoutRedirectUri],
+        ['authorization_code', 'refresh_token'],
+      ],
+    );
+
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     })
@@ -477,31 +565,115 @@ describe('OIDC authorization_code grant (integration)', () => {
     expect(tokenBody.token_type).toBe('Bearer');
     expect(tokenBody.expires_in).toBe(5 * 60);
 
-    const introspectionResponse = await request(app.getHttpServer())
-      .post('/oidc/token/introspection')
-      .set('Authorization', buildBasicAuthHeader(clientId, clientSecret))
-      .type('form')
-      .send({
-        token: tokenBody.access_token as string,
-      })
-      .expect(200);
+    // The access token must be a resource-server JWT for the API audience, not
+    // an opaque userinfo token: JwtValidationService verifies it with jose, so
+    // an opaque string 401s every guarded route. Verified against /oidc/jwks
+    // rather than introspected — the provider refuses to introspect structured
+    // tokens at all (reject_structured_tokens.js), which is precisely why an
+    // introspection-based assertion here could not tell the two apart.
+    const accessTokenClaims = await verifyTokenAgainstJwks(
+      app.getHttpServer(),
+      tokenBody.access_token as string,
+    );
 
-    const introspectionBody = introspectionResponse.body as Record<
-      string,
-      unknown
-    >;
-
-    expect(introspectionBody.active).toBe(true);
-    expect(introspectionBody.client_id).toBe(clientId);
-    expect(introspectionBody.tenant_id).toBe(tenantId);
-    expect(introspectionBody.tenant_role).toBe('member');
+    expect(accessTokenClaims.aud).toBe(DEFAULT_JWT_AUDIENCE);
+    expect(accessTokenClaims.client_id).toBe(clientId);
+    expect(accessTokenClaims.tenant_id).toBe(tenantId);
+    expect(accessTokenClaims.tenant_role).toBe('member');
 
     const grantedScopes =
-      typeof introspectionBody.scope === 'string'
-        ? introspectionBody.scope.split(/\s+/).filter(Boolean)
+      typeof accessTokenClaims.scope === 'string'
+        ? accessTokenClaims.scope.split(/\s+/).filter(Boolean)
         : [];
 
     expect(grantedScopes).toContain('credentials:verify');
+  });
+
+  /**
+   * The SPA's path, which nothing else here covers: a client with no secret,
+   * authenticating with PKCE and a bare `client_id` in the token body. Worth
+   * exercising against the real provider rather than a mocked one because the
+   * three things that can break it are all provider-side — whether the client
+   * metadata we emit for `token_endpoint_auth_method: 'none'` is accepted at
+   * all, whether the token endpoint takes an unauthenticated client, and
+   * whether the resulting grant resolves to an API-audience JWT rather than an
+   * opaque userinfo token.
+   */
+  it('issues an API-audience JWT to a public client authenticating with PKCE alone', async () => {
+    const tokenBody = await startPublicClientSession();
+
+    const claims = await verifyTokenAgainstJwks(
+      app.getHttpServer(),
+      tokenBody.access_token as string,
+    );
+
+    expect(claims.aud).toBe(DEFAULT_JWT_AUDIENCE);
+    expect(claims.client_id).toBe(publicClientId);
+    expect(claims.tenant_id).toBe(tenantId);
+    expect(claims.tenant_role).toBe('member');
+
+    // offline_access is what makes the provider issue a refresh token at all.
+    expect(tokenBody.refresh_token).toEqual(expect.any(String));
+
+    // The id_token must carry the identity claims the SPA renders from. They
+    // are withheld whenever the access token has no `aud`, so this assertion
+    // is the id_token half of the same provider behaviour.
+    const idTokenClaims = await verifyTokenAgainstJwks(
+      app.getHttpServer(),
+      tokenBody.id_token as string,
+    );
+
+    expect(idTokenClaims.tenant_id).toBe(tenantId);
+    expect(idTokenClaims.tenant_role).toBe('member');
+  });
+
+  it('keeps issuing API-audience JWTs to a public client across a refresh', async () => {
+    const tokenBody = await startPublicClientSession();
+
+    const refreshResponse = await request(app.getHttpServer())
+      .post('/oidc/token')
+      .type('form')
+      .send({
+        grant_type: 'refresh_token',
+        client_id: publicClientId,
+        refresh_token: tokenBody.refresh_token as string,
+      })
+      .expect(200);
+
+    const refreshed = refreshResponse.body as Record<string, unknown>;
+
+    // The refresh grant resolves the resource independently of the code
+    // exchange, so a fix that only covers login regresses here five minutes
+    // into a session.
+    const claims = await verifyTokenAgainstJwks(
+      app.getHttpServer(),
+      refreshed.access_token as string,
+    );
+
+    expect(claims.aud).toBe(DEFAULT_JWT_AUDIENCE);
+    expect(claims.tenant_id).toBe(tenantId);
+
+    // Rotation: the replacement must not be the token that was just spent.
+    expect(refreshed.refresh_token).toEqual(expect.any(String));
+    expect(refreshed.refresh_token).not.toBe(tokenBody.refresh_token);
+  });
+
+  it('rejects a confidential client that presents no credential', async () => {
+    const { code, codeVerifier } = await completeAuthorizationCodeFlow(
+      `rp-state-${randomUUID()}`,
+    );
+
+    // The mirror image of the public-client case: the same unauthenticated
+    // request shape must not be a way around client authentication for a
+    // client that has a secret.
+    const response = await exchangeCodeWithoutClientAuth(
+      clientId,
+      code,
+      codeVerifier,
+    );
+
+    expect(response.status).toBeGreaterThanOrEqual(400);
+    expect((response.body as { error?: string }).error).toBe('invalid_client');
   });
 
   it('resolves role scopes through the tenant override, not the global default', async () => {

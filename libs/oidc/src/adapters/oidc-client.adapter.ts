@@ -68,25 +68,35 @@ export class OidcClientAdapter implements Adapter {
 
     const metadata: Record<string, unknown> = {
       client_id: client.clientId,
+      client_name: client.name,
+      tenant_id: client.tenantId,
+      roles: client.roles,
+      redirect_uris: client.redirectUris,
+      post_logout_redirect_uris: client.postLogoutRedirectUris,
+      grant_types: client.grantTypes,
+      response_types: responseTypes,
+      scope: client.scopes.join(' '),
+    };
+
+    if (client.isPublic) {
+      // A public client (the React SPA) has no secret to send, so
+      // it authenticates with PKCE alone. Emitting `client_secret`/
+      // `client_secret_hash` here would be rejected by oidc-provider's
+      // metadata schema, which forbids a secret when auth method is 'none'.
+      metadata.token_endpoint_auth_method = 'none';
+    } else {
       // oidc-provider's client metadata schema requires a `client_secret`
       // for confidential clients (`token_endpoint_auth_method` other than
       // 'none'), even though our custom `compareClientSecret` override
       // (see oidc-provider.service.ts) never reads this value; it verifies
       // against the argon2 `client_secret_hash` instead. This placeholder
       // only exists to satisfy that mandatory-property validation.
-      client_secret: client.clientSecretHash,
-      client_secret_hash: client.clientSecretHash,
-      client_name: client.name,
-      tenant_id: client.tenantId,
-      roles: client.roles,
-      redirect_uris: client.redirectUris,
-      grant_types: client.grantTypes,
-      response_types: responseTypes,
-      scope: client.scopes.join(' '),
+      metadata.client_secret = client.clientSecretHash;
+      metadata.client_secret_hash = client.clientSecretHash;
       // Basic-only is intentional for MVP; no per-client
       // client_secret_post/private_key_jwt support is planned yet.
-      token_endpoint_auth_method: 'client_secret_basic',
-    };
+      metadata.token_endpoint_auth_method = 'client_secret_basic';
+    }
 
     // Only emit the key when set. oidc-provider validates every declared
     // extra metadata property, so leaving an explicit `undefined`/`null` on

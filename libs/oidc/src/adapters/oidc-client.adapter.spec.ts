@@ -16,8 +16,19 @@ describe('OidcClientAdapter', () => {
     tenantId: 'tenant-1',
     scopes: ['read', 'write'],
     redirectUris: ['https://example.com/callback'],
+    postLogoutRedirectUris: ['https://example.com/login'],
     grantTypes: ['client_credentials', 'authorization_code'],
+    isPublic: false,
     roles: ['platform-admin'],
+  };
+
+  const publicRecord: OidcClientRecord = {
+    ...record,
+    clientId: 'dtsc-ui',
+    clientSecretHash: null,
+    isPublic: true,
+    grantTypes: ['authorization_code', 'refresh_token'],
+    roles: [],
   };
 
   beforeEach(() => {
@@ -49,10 +60,35 @@ describe('OidcClientAdapter', () => {
         tenant_id: 'tenant-1',
         roles: ['platform-admin'],
         redirect_uris: ['https://example.com/callback'],
+        post_logout_redirect_uris: ['https://example.com/login'],
         grant_types: ['client_credentials', 'authorization_code'],
         response_types: ['code'],
         scope: 'read write',
         token_endpoint_auth_method: 'client_secret_basic',
+      });
+    });
+
+    /**
+     * A browser app cannot keep a secret, so the SPA client
+     * authenticates with PKCE alone. oidc-provider's metadata schema rejects
+     * a `client_secret` alongside `token_endpoint_auth_method: 'none'`, so
+     * the exact-match assertion here is the point: both secret keys must be
+     * absent, not merely null.
+     */
+    it('maps a public client onto PKCE-only metadata with no secret', async () => {
+      mockFindActiveClient.mockResolvedValue(publicRecord);
+
+      await expect(adapter.find('dtsc-ui')).resolves.toEqual({
+        client_id: 'dtsc-ui',
+        client_name: 'Test Client',
+        tenant_id: 'tenant-1',
+        roles: [],
+        redirect_uris: ['https://example.com/callback'],
+        post_logout_redirect_uris: ['https://example.com/login'],
+        grant_types: ['authorization_code', 'refresh_token'],
+        response_types: ['code'],
+        scope: 'read write',
+        token_endpoint_auth_method: 'none',
       });
     });
 

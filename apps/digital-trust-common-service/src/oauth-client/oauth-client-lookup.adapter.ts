@@ -31,12 +31,14 @@ export class OAuthClientLookupAdapter implements OidcClientLookupPort {
 
     return {
       clientId: client.clientId,
-      clientSecretHash: client.clientSecretHash,
+      clientSecretHash: client.clientSecretHash ?? null,
       name: client.name,
       tenantId: client.tenantId,
       scopes: client.scopes,
       redirectUris: client.redirectUris,
+      postLogoutRedirectUris: client.postLogoutRedirectUris ?? [],
       grantTypes: client.grantTypes,
+      isPublic: client.isPublic ?? false,
       roles: client.roles,
       refreshTokenTtlSeconds: client.refreshTokenTtlSeconds ?? null,
     };

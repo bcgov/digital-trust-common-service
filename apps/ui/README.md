@@ -33,12 +33,12 @@ production Caddy reverse proxy (#160): the SPA only ever talks to its own
 origin, so every URL in the app is relative. The one exception to
 "one build works in every environment" is `VITE_AUTH_MODE`, which is baked
 in at build time — a production build must set it explicitly (or it moves to
-runtime config when #83 lands).
+runtime config).
 
 ### Same-origin HTTPS via Caddy (#181)
 
 For flows that need the SPA, `/oidc` and cookies on one HTTPS origin (the
-interactive PKCE flow, #83), the Docker dev stack fronts everything at
+interactive PKCE flow), the Docker dev stack fronts everything at
 `https://app.localhost`: Caddy sends `/api/*`, `/oidc/*` and `/health/*` to
 the API on `:3000` and everything else to the Vite dev server on `:5173`.
 
@@ -61,10 +61,41 @@ on the host — first start runs `npm ci` (slow on bind mounts), and hot reload 
 Then open `https://app.localhost` (see `docs/DEVELOPER.md` for trusting the
 Caddy local CA). Plain `http://localhost:5173` still works for UI-only work.
 
-Auth defaults to **mock mode** (`VITE_AUTH_MODE=mock`) until the interactive
-OIDC flow exists (backend AU-02, frontend #83): the Sign in button creates a
-fake session; the real `oidc-client-ts` implementation sits behind the same
-`AuthClient` seam in `src/lib/auth/`.
+## Auth
+
+Two implementations sit behind one `AuthClient` seam in `src/lib/auth/`,
+selected by `VITE_AUTH_MODE`:
+
+- **`mock` (default)** — the Sign in button creates a fake session in
+  `sessionStorage`. No backend auth required, and `oidc-client-ts` never
+  reaches the entry chunk (`oidc-auth` is imported on demand).
+- **`oidc`** — real Authorization Code + PKCE against this origin's `/oidc`
+  provider, which federates to Keycloak internally. The SPA never talks to
+  Keycloak and never holds a client secret: it is registered as a public
+  client (`dtsc-ui`).
+
+In `oidc` mode the app **must** be reached at `https://app.localhost`, not
+`http://localhost:5173` — the issuer in the discovery document points at the
+Caddy origin, so the raw Vite origin would put authorize/token cross-origin
+and drop the provider's session cookie.
+
+One setting is load-bearing rather than optional (`.env.example` and
+`docs/DEVELOPER.md` carry the full reasoning): `VITE_OIDC_SCOPES` must stay
+within the set every role holds. The provider rejects, rather than trims, a
+request for scopes the user's role lacks, and `readonly` carries no API scopes
+at all.
+
+The SPA sends no RFC 8707 `resource` parameter. It is the provider's
+`useGrantedResource` that makes the access token an API-audience JWT rather
+than a userinfo-only opaque token; a browser client cannot influence that from
+its side, because oidc-client-ts puts `resource` on the authorize URL only and
+the decision is made at the token endpoint.
+
+Flow: `/login` → `/oidc/auth` → Keycloak → `/auth/callback` (a public route,
+deliberately outside the guard — the redirect arrives before a session
+exists) → the deep link the user was interrupted on, or `/tenants` otherwise.
+Access tokens last 5 minutes; refresh is driven by the API client's 401
+single-flight handler rather than a background timer.
 
 ## Scripts
 
@@ -89,7 +120,7 @@ src/
   pages/         one file per route; placeholders reference their tracking issue
   lib/api/       axios client (Bearer + 401 single-flight refresh), generated
                  types, per-resource modules, TanStack Query hooks
-  lib/auth/      AuthClient seam: mock (default) and oidc (completed by #83)
+  lib/auth/      AuthClient seam: mock (default) and oidc (PKCE, real provider)
   components/ui/ shadcn-managed primitives (add via `npx shadcn add <name>`)
   test/          Vitest setup + MSW handlers
 ```

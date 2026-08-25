@@ -7,13 +7,23 @@
  */
 export interface OidcClientRecord {
   clientId: string;
-  /** argon2 hash, never the plaintext secret. */
-  clientSecretHash: string;
+  /**
+   * argon2 hash, never the plaintext secret. Null for public clients, which
+   * have no secret and authenticate with PKCE alone.
+   */
+  clientSecretHash: string | null;
   name: string;
   tenantId: string;
   scopes: string[];
   redirectUris: string[];
+  /** RP-initiated logout returns; validated separately from redirectUris. */
+  postLogoutRedirectUris: string[];
   grantTypes: string[];
+  /**
+   * A public (PKCE) client — a browser or native app that cannot keep a
+   * secret, registered with `token_endpoint_auth_method=none`.
+   */
+  isPublic: boolean;
   /** JWT role claims for machine clients (e.g. platform-admin). */
   roles: string[];
   /**
