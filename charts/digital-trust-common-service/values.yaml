@@ -124,6 +124,15 @@ frontend:
     - /api/*
     - /oidc/*
     - /health/*
+  # Caddy only preserves an inbound X-Forwarded-Proto when the immediate peer is
+  # trusted; otherwise it rewrites the header with the scheme it saw itself. The
+  # OpenShift router terminates TLS at the edge and forwards plain http, so
+  # without this the API sees `x-forwarded-proto: http` and every OIDC discovery
+  # endpoint is derived as http:// while `issuer` stays https://. Narrow to the
+  # router's own CIDR where you know it.
+  # -- Peers whose `X-Forwarded-*` headers Caddy trusts. An empty list omits the block entirely.
+  trustedProxies:
+    - private_ranges
   # -- Resource requests and limits for the frontend container
   resources:
     requests:
