@@ -25,6 +25,7 @@ describe('TenantController', () => {
 
   let mockCreate: jest.Mock;
   let mockUpdate: jest.Mock;
+  let mockUpdateStatus: jest.Mock;
   let mockList: jest.Mock;
   let mockFindById: jest.Mock;
   let mockFindBySlug: jest.Mock;
@@ -46,6 +47,7 @@ describe('TenantController', () => {
   beforeEach(async () => {
     mockCreate = jest.fn();
     mockUpdate = jest.fn();
+    mockUpdateStatus = jest.fn();
     mockList = jest.fn();
     mockFindById = jest.fn();
     mockFindBySlug = jest.fn();
@@ -55,6 +57,7 @@ describe('TenantController', () => {
     const mockService = {
       create: mockCreate,
       update: mockUpdate,
+      updateStatus: mockUpdateStatus,
       list: mockList,
       findById: mockFindById,
       findBySlug: mockFindBySlug,
@@ -96,6 +99,15 @@ describe('TenantController', () => {
 
     expect(createRoles).toEqual([PLATFORM_ADMIN_ROLE]);
     expect(deleteRoles).toEqual([PLATFORM_ADMIN_ROLE]);
+  });
+
+  it('requires platform-admin for tenant status updates', () => {
+    const updateStatusRoles = new Reflector().get<string[]>(
+      'required_roles',
+      TenantController.prototype.updateStatus,
+    );
+
+    expect(updateStatusRoles).toEqual([PLATFORM_ADMIN_ROLE]);
   });
 
   it('requires tenant superuser scope for tenant updates', () => {
@@ -268,6 +280,22 @@ describe('TenantController', () => {
       } as never);
 
       expect(result).toBeNull();
+    });
+  });
+
+  describe('PATCH /tenants/:id/status', () => {
+    it('should update a tenant status', async () => {
+      const id = mockTenant.id;
+      const updated = { ...mockTenant, status: TenantStatus.SUSPENDED };
+
+      mockUpdateStatus.mockResolvedValue(updated);
+
+      const result = await controller.updateStatus(id, {
+        status: TenantStatus.SUSPENDED,
+      });
+
+      expect(mockUpdateStatus).toHaveBeenCalledWith(id, TenantStatus.SUSPENDED);
+      expect(result).toEqual(updated);
     });
   });
 
