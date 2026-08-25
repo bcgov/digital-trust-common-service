@@ -10,6 +10,7 @@ import { Reflector } from '@nestjs/core';
 import { Test, TestingModule } from '@nestjs/testing';
 
 import { CreateTenantDto } from './dto/create-tenant.dto';
+import { TenantStatusGuard } from './tenant-status.guard';
 import { TenantController } from './tenant.controller';
 import { Tenant, TenantStatus } from './tenant.entity';
 import { TenantService } from './tenant.service';
@@ -77,6 +78,8 @@ describe('TenantController', () => {
       .overrideGuard(JwtGuard)
       .useClass(AllowGuard)
       .overrideGuard(ScopeGuard)
+      .useClass(AllowGuard)
+      .overrideGuard(TenantStatusGuard)
       .useClass(AllowGuard)
       .compile();
 

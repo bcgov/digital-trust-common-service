@@ -41,13 +41,14 @@ import { CreateTenantDto } from './dto/create-tenant.dto';
 import { ListTenantsQueryDto } from './dto/list-tenants-query.dto';
 import { UpdateTenantStatusDto } from './dto/update-tenant-status.dto';
 import { UpdateTenantDto } from './dto/update-tenant.dto';
+import { TenantStatusGuard } from './tenant-status.guard';
 import { Tenant } from './tenant.entity';
 import { PaginatedTenants, TenantService } from './tenant.service';
 
 @SkipAutoAudit()
 @ApiTags('tenant')
 @ApiJwtAuth()
-@UseGuards(JwtGuard, ScopeGuard)
+@UseGuards(JwtGuard, ScopeGuard, TenantStatusGuard)
 @Controller({ path: 'tenants', version: API_VERSION })
 export class TenantController {
   public constructor(private readonly tenantService: TenantService) {}
