@@ -504,6 +504,34 @@ describe('OIDC authorization_code grant (integration)', () => {
     expect(grantedScopes).toContain('credentials:verify');
   });
 
+  it('resolves role scopes through the tenant override, not the global default', async () => {
+    // member's platform default includes credentials:verify, which is what the
+    // first test relies on. Overriding the role for this tenant alone must
+    // take that away, proving overrides reach the grant and therefore the
+    // token — the AU-07 (#40) guarantee that a settings screen actually
+    // enforces something.
+    await dataSource.query(
+      `INSERT INTO tenant_role_scope (tenant_id, role, scopes)
+       VALUES ($1, 'member'::tenant_user_role, $2::text[])
+       ON CONFLICT (tenant_id, role) DO UPDATE SET scopes = EXCLUDED.scopes`,
+      [tenantId, ['credentials:offer']],
+    );
+
+    try {
+      await expect(
+        completeAuthorizationCodeFlow(`rp-state-${randomUUID()}`),
+        // 403 at the interaction endpoint is the scope-denial path. The first
+        // test in this suite runs the identical flow to completion, so the
+        // override is the only difference.
+      ).rejects.toThrow(/403 \/oidc\/interaction/);
+    } finally {
+      await dataSource.query(
+        `DELETE FROM tenant_role_scope WHERE tenant_id = $1`,
+        [tenantId],
+      );
+    }
+  });
+
   it('rejects token exchange with invalid client secret', async () => {
     const { code: authorizationCode, codeVerifier } =
       await completeAuthorizationCodeFlow(`rp-state-${randomUUID()}`);

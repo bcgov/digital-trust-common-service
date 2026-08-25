@@ -2339,7 +2339,10 @@ paths:
   /api/v1/roles:
     get:
       operationId: listRoles
-      summary: List roles with scope mappings
+      summary: List roles with their default scope mappings
+      description: |
+        Returns the platform default mapping. A tenant that has customised a
+        role sees its own values at `GET /api/v1/tenants/{tenantId}/roles`.
       tags: [Admin]
       responses:
         "200":
@@ -2347,19 +2350,28 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  data:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        name:
-                          type: string
-                        scopes:
-                          type: array
-                          items:
-                            type: string
+                $ref: "#/components/schemas/RoleMappingList"
+
+  /api/v1/tenants/{tenantId}/roles:
+    parameters:
+      - $ref: "#/components/parameters/TenantId"
+    get:
+      operationId: listTenantRoles
+      summary: List a tenant's effective role scope mappings
+      description: |
+        Each role reports whether its scopes come from the platform default or
+        from a tenant override, so a client can show what has been customised
+        and offer a reset.
+      tags: [Tenant Settings]
+      responses:
+        "200":
+          description: Effective roles and their scopes
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoleMappingList"
+        "403":
+          $ref: "#/components/responses/Forbidden"
 
   /api/v1/tenants/{tenantId}/roles/{role}/scopes:
     parameters:
@@ -2373,8 +2385,22 @@ paths:
       operationId: updateTenantRoleScopes
       summary: Customize role scope mappings for a tenant
       description: |
-        Override default role→scope mappings for a specific tenant.
-        Role hierarchy is enforced: cannot assign a scope to a child role that the parent doesn't have.
+        Overrides the default role→scope mapping for one role in one tenant.
+        The body carries the complete scope list, not a delta.
+
+        Role hierarchy is enforced across the whole mapping, not just the role
+        being edited: no role may hold a scope the role above it lacks. The
+        `owner` role cannot be modified, and `tenants:admin` cannot be granted
+        to any other role.
+
+        **Removing a scope logs out every active user holding this role in the
+        tenant.** The `scope` claim is fixed by the OIDC grant created at login
+        and is not refreshed when a refresh token rotates, so revoking the
+        sessions is the only way to make the change take effect before the
+        existing tokens expire. Adding scopes has no such effect and applies at
+        the affected users' next login.
+
+        Requires the `tenants:admin` scope.
       tags: [Tenant Settings]
       requestBody:
         required: true
@@ -2388,23 +2414,44 @@ paths:
                   type: array
                   items:
                     type: string
-                  description: Updated scope list for this role in this tenant
+                  description: Complete replacement scope list for this role in this tenant
       responses:
         "200":
           description: Role scopes updated
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  role:
-                    type: string
-                  scopes:
-                    type: array
-                    items:
-                      type: string
+                $ref: "#/components/schemas/RoleScopesResponse"
         "400":
-          description: Scope hierarchy violation
+          description: Unknown scope, hierarchy violation, immutable role, or non-assignable scope
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    delete:
+      operationId: resetTenantRoleScopes
+      summary: Reset a role to the platform's default scopes
+      description: |
+        Removes the tenant override so the role inherits the platform default
+        again. Idempotent: resetting a role that has no override succeeds and
+        returns the default mapping.
+
+        A reset that narrows the role logs out its active users, for the same
+        reason a narrowing `PATCH` does.
+
+        Requires the `tenants:admin` scope.
+      tags: [Tenant Settings]
+      responses:
+        "200":
+          description: Override removed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoleScopesResponse"
+        "400":
+          description: Immutable role or resulting hierarchy violation
           content:
             application/json:
               schema:
@@ -2883,6 +2930,50 @@ components:
     TenantRole:
       type: string
       enum: [owner, admin, member, readonly]
+
+    RoleScopeSource:
+      type: string
+      description: |
+        `override` when the tenant has customised this role, `default` when it
+        inherits the platform mapping.
+      enum: [default, override]
+
+    RoleMapping:
+      type: object
+      properties:
+        name:
+          $ref: "#/components/schemas/TenantRole"
+        scopes:
+          type: array
+          items:
+            type: string
+        source:
+          $ref: "#/components/schemas/RoleScopeSource"
+
+    RoleMappingList:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/RoleMapping"
+
+    RoleScopesResponse:
+      type: object
+      properties:
+        role:
+          $ref: "#/components/schemas/TenantRole"
+        scopes:
+          type: array
+          items:
+            type: string
+        source:
+          $ref: "#/components/schemas/RoleScopeSource"
+        revokedRecordCount:
+          type: integer
+          description: |
+            OIDC records deleted because the change removed scopes. Zero when
+            the change only widened the role.
 
     InviteUserRequest:
       type: object

@@ -1073,7 +1073,23 @@ graph TD
 
 **Role → scope mappings (seed):**
 
-> **Live registry:** canonical scope names, levels, and migration notes are maintained in [DEVELOPER.md](./DEVELOPER.md#authorization-scope-catalog-au-04) until AU-07 (#40) exposes a scope-management API.
+> **Live registry:** canonical scope names, levels, and migration notes are maintained in [DEVELOPER.md](./DEVELOPER.md#authorization-scope-catalog-au-04), and served at runtime by `GET /api/v1/scopes` and `GET /api/v1/roles` (AU-07 #40).
+
+The table below is the platform default. A tenant may override the scopes of
+`admin`, `member`, and `readonly` via `PATCH /api/v1/tenants/{tenantId}/roles/{role}/scopes`
+— see [Role → scope overrides](./DEVELOPER.md#role--scope-overrides-au-07). Two
+authorization invariants constrain that endpoint:
+
+- **`owner` is immutable.** It is the hierarchy root and the tenant's recovery
+  path; a tenant able to strip its own owner can lock itself out and needs a
+  platform admin to get back in.
+- **`tenants:admin` is never assignable to another role.** It expands to every
+  scope, so granting it to `member` silently promotes every member to
+  superuser.
+
+Overrides are written under a tenant-scoped advisory lock, and removing a scope
+revokes the affected users' sessions — the `scope` claim is fixed by the OIDC
+grant at login and is not refreshed when a refresh token rotates.
 
 | Role | Scopes |
 |------|--------|
