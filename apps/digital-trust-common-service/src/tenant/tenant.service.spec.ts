@@ -1,3 +1,4 @@
+import { JOB_QUEUES } from '@app/pg-boss';
 import {
   BadRequestException,
   ConflictException,
@@ -8,6 +9,7 @@ import { DataSource, EntityManager } from 'typeorm';
 
 import { AuditAction } from '../audit-log/audit-log.entity';
 import { DomainAuditService } from '../audit-log/domain-audit.service';
+import { JobsService } from '../jobs/jobs.service';
 import { TenantUserRole } from '../tenant-user/tenant-user.entity';
 import { TenantUserService } from '../tenant-user/tenant-user.service';
 
@@ -28,6 +30,7 @@ describe('TenantService', () => {
   let mockEmit: jest.Mock;
   let mockInvite: jest.Mock;
   let mockTransaction: jest.Mock;
+  let mockPublish: jest.Mock;
   const mockManager = {} as EntityManager;
 
   const mockTenant: Tenant = {
@@ -59,6 +62,7 @@ describe('TenantService', () => {
       async (callback: (manager: EntityManager) => Promise<unknown>) =>
         callback(mockManager),
     );
+    mockPublish = jest.fn().mockResolvedValue('job-id');
 
     const mockRepository = {
       create: mockCreate,
@@ -88,6 +92,10 @@ describe('TenantService', () => {
         {
           provide: DataSource,
           useValue: { transaction: mockTransaction },
+        },
+        {
+          provide: JobsService,
+          useValue: { publish: mockPublish },
         },
       ],
     }).compile();
@@ -444,6 +452,14 @@ describe('TenantService', () => {
           },
         },
       });
+      expect(mockPublish).toHaveBeenCalledWith(
+        JOB_QUEUES.TENANT_STATUS_CHANGE,
+        {
+          tenantId: suspended.id,
+          previousStatus: TenantStatus.ACTIVE,
+          status: TenantStatus.SUSPENDED,
+        },
+      );
       expect(result).toEqual(suspended);
     });
 
@@ -496,6 +512,14 @@ describe('TenantService', () => {
           },
         },
       });
+      expect(mockPublish).toHaveBeenCalledWith(
+        JOB_QUEUES.TENANT_STATUS_CHANGE,
+        {
+          tenantId: reactivated.id,
+          previousStatus: TenantStatus.DEACTIVATED,
+          status: TenantStatus.ACTIVE,
+        },
+      );
       expect(result).toEqual(reactivated);
     });
 
@@ -510,6 +534,21 @@ describe('TenantService', () => {
       ).rejects.toThrow(ConflictException);
       expect(mockUpdate).not.toHaveBeenCalled();
       expect(mockEmit).not.toHaveBeenCalled();
+      expect(mockPublish).not.toHaveBeenCalled();
+    });
+
+    it('should not fail the status update if publishing the job fails', async () => {
+      const id = mockTenant.id;
+      const suspended = { ...mockTenant, status: TenantStatus.SUSPENDED };
+
+      mockFindById.mockResolvedValue({ ...mockTenant });
+      mockUpdate.mockResolvedValue(suspended);
+      mockPublish.mockRejectedValue(new Error('queue unavailable'));
+
+      const result = await service.updateStatus(id, TenantStatus.SUSPENDED);
+
+      expect(mockPublish).toHaveBeenCalled();
+      expect(result).toEqual(suspended);
     });
 
     it('should reject a no-op transition to the same status', async () => {

@@ -1,14 +1,17 @@
 import { PLATFORM_ADMIN_ROLE } from '@app/auth';
+import { JOB_QUEUES } from '@app/pg-boss';
 import {
   BadRequestException,
   Injectable,
   ConflictException,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 
 import { AuditAction } from '../audit-log/audit-log.entity';
 import { DomainAuditService } from '../audit-log/domain-audit.service';
+import { JobsService } from '../jobs/jobs.service';
 import { TenantUserRole } from '../tenant-user/tenant-user.entity';
 import { TenantUserService } from '../tenant-user/tenant-user.service';
 
@@ -38,13 +41,23 @@ const ALLOWED_STATUS_TRANSITIONS: Record<TenantStatus, TenantStatus[]> = {
   [TenantStatus.REJECTED]: [],
 };
 
+/** Payload for the `tenant.status-change` job published by `updateStatus()`. */
+export type TenantStatusChangeJobData = {
+  tenantId: string;
+  previousStatus: TenantStatus;
+  status: TenantStatus;
+};
+
 @Injectable()
 export class TenantService {
+  private readonly logger = new Logger(TenantService.name);
+
   public constructor(
     private readonly tenants: TenantRepository,
     private readonly domainAudit: DomainAuditService,
     private readonly tenantUserService: TenantUserService,
     private readonly dataSource: DataSource,
+    private readonly jobsService: JobsService,
   ) {}
 
   public async create(
@@ -275,6 +288,31 @@ export class TenantService {
       metadata: { status_change: { from: previousStatus, to: status } },
     });
 
+    await this.publishStatusChange({
+      tenantId: saved.id,
+      previousStatus,
+      status,
+    });
+
     return saved;
+  }
+
+  /**
+   * Best-effort: the status transition and its audit event are already
+   * durable at this point, so a publish failure here is logged rather than
+   * surfaced to the caller. The worker consuming `tenant.status-change`
+   * (added separately) drives the actual side effects.
+   */
+  private async publishStatusChange(
+    data: TenantStatusChangeJobData,
+  ): Promise<void> {
+    try {
+      await this.jobsService.publish(JOB_QUEUES.TENANT_STATUS_CHANGE, data);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.warn(
+        `Failed to publish tenant.status-change for tenant ${data.tenantId}: ${message}`,
+      );
+    }
   }
 }
