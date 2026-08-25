@@ -196,6 +196,7 @@ Generate the JWKS payload with `npm run oidc:generate-keys > oidc-keys.json`, th
 | frontend.service.targetPort | int | `8080` | Frontend container port (Caddy listener) |
 | frontend.service.type | string | `"ClusterIP"` | Frontend Service type |
 | frontend.tolerations | list | `[]` | Tolerations for frontend pods |
+| frontend.trustedProxies | list | `["private_ranges"]` | Peers whose `X-Forwarded-*` headers Caddy trusts. An empty list omits the block entirely. |
 | fullnameOverride | string | `""` | Override the fully qualified release name |
 | image.pullPolicy | string | `"IfNotPresent"` | Image pull policy |
 | image.registry | string | `"ghcr.io"` | Container image registry (optional; omitted from the ref when empty) |
