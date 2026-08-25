@@ -37,10 +37,19 @@ info:
     ## Error Responses
     All authenticated endpoints may return:
     - `401 Unauthorized` — token is missing, expired, or invalid
-    - `403 Forbidden` — token is valid but lacks the required scope or role
+    - `403 Forbidden` — token is valid but lacks the required scope or role, or the caller's own
+      tenant is `suspended` or `deactivated` (error code `TENANT_NOT_ACTIVE`)
 
     These are not repeated on each operation for brevity.
     See `components/responses/Unauthorized` and `components/responses/Forbidden` for the schema.
+
+    ## Tenant Lifecycle
+    A platform-admin can suspend, deactivate, or reactivate a tenant via
+    `PATCH /tenants/{tenantId}/status`. While a tenant is `suspended` or `deactivated`, requests
+    from that tenant's own callers to tenant-scoped endpoints return `403 TENANT_NOT_ACTIVE`.
+    Deactivating a tenant also revokes its API keys, closes its active connections, and deactivates
+    its connector credentials; reactivation requires connector credentials to be re-authenticated.
+    Deactivated tenant data is retained for 90 days.
   contact:
     name: BC Gov Digital Trust
   license:
@@ -486,7 +495,16 @@ paths:
       - $ref: "#/components/parameters/TenantId"
     patch:
       operationId: updateTenantStatus
-      summary: Suspend or reactivate a tenant (platform-admin only)
+      summary: Suspend, deactivate, or reactivate a tenant (platform-admin only)
+      description: |
+        Requires the `platform-admin` role. Valid transitions are `active` -> `suspended` or
+        `deactivated`, `suspended` -> `active` or `deactivated`, and `deactivated` -> `active`.
+        Any other transition returns `409`.
+
+        Suspending or deactivating a tenant immediately revokes its API keys, closes its active
+        connections, and deactivates its connector credentials. Deactivated tenant data is retained
+        for 90 days. Reactivating a deactivated tenant does not automatically restore connector
+        credentials — they must be re-authenticated after reactivation.
       tags: [Tenants]
       requestBody:
         required: true
@@ -498,6 +516,8 @@ paths:
               properties:
                 status:
                   $ref: "#/components/schemas/TenantStatus"
+            example:
+              status: suspended
       responses:
         "200":
           description: Status updated
@@ -505,6 +525,14 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Tenant"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
 
   /api/v1/tenants/{tenantId}/config:
     parameters:
@@ -2903,6 +2931,13 @@ components:
         updated_at:
           type: string
           format: date-time
+        deactivated_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: |
+            Set when the tenant is deactivated; cleared on reactivation. Null otherwise. Used to
+            measure the 90-day data retention window.
 
     TenantStatus:
       type: string
