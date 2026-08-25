@@ -25,6 +25,19 @@ export type PaginatedTenants = {
   };
 };
 
+/**
+ * Valid target statuses for `updateStatus()` from each current status.
+ * `PENDING_APPROVAL` and `REJECTED` are excluded: those transitions belong
+ * to the tenant approval flow, not the suspend/deactivate lifecycle.
+ */
+const ALLOWED_STATUS_TRANSITIONS: Record<TenantStatus, TenantStatus[]> = {
+  [TenantStatus.ACTIVE]: [TenantStatus.SUSPENDED, TenantStatus.DEACTIVATED],
+  [TenantStatus.SUSPENDED]: [TenantStatus.ACTIVE, TenantStatus.DEACTIVATED],
+  [TenantStatus.DEACTIVATED]: [TenantStatus.ACTIVE],
+  [TenantStatus.PENDING_APPROVAL]: [],
+  [TenantStatus.REJECTED]: [],
+};
+
 @Injectable()
 export class TenantService {
   public constructor(
@@ -223,5 +236,45 @@ export class TenantService {
       resourceId: tenant.id,
       metadata: { restored: true },
     });
+  }
+
+  /**
+   * Suspends, deactivates, or reactivates a tenant. `deactivatedAt` is set
+   * when moving into `DEACTIVATED` (it anchors the 90-day data retention
+   * window) and cleared for any other target status. Side effects (revoking
+   * API keys, closing connections, deactivating connector credentials) are
+   * handled asynchronously off the `tenant.status-change` job, not here.
+   */
+  public async updateStatus(id: string, status: TenantStatus) {
+    const tenant = await this.tenants.findById(id);
+
+    if (!tenant) {
+      throw new NotFoundException('Tenant not found');
+    }
+
+    const previousStatus = tenant.status;
+    const allowedTargets = ALLOWED_STATUS_TRANSITIONS[previousStatus];
+
+    if (!allowedTargets.includes(status)) {
+      throw new ConflictException(
+        `Cannot transition tenant from '${previousStatus}' to '${status}'`,
+      );
+    }
+
+    tenant.status = status;
+    tenant.deactivatedAt =
+      status === TenantStatus.DEACTIVATED ? new Date() : null;
+
+    const saved = await this.tenants.update(tenant);
+
+    await this.domainAudit.emit({
+      tenantId: saved.id,
+      action: AuditAction.UPDATE,
+      resourceType: 'tenant',
+      resourceId: saved.id,
+      metadata: { status_change: { from: previousStatus, to: status } },
+    });
+
+    return saved;
   }
 }
