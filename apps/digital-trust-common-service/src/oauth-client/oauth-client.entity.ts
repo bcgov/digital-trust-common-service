@@ -11,6 +11,16 @@ import {
 
 import { Tenant } from '../tenant/tenant.entity';
 
+export enum OAuthClientRevokedReason {
+  /**
+   * Set when this client was bulk-revoked as a side effect of its tenant
+   * being deactivated. Reactivating the tenant auto-restores only clients
+   * with this reason — clients revoked individually for cause (reason left
+   * null) are never resurrected by a tenant status change.
+   */
+  TENANT_DEACTIVATION = 'tenant_deactivation',
+}
+
 @Entity({ name: 'oauth_client' })
 @Index('idx_oauth_client_tenant', ['tenantId'])
 export class OAuthClient {
@@ -148,4 +158,20 @@ export class OAuthClient {
     nullable: true,
   })
   public revokedAt?: Date | null;
+
+  @ApiProperty({
+    description:
+      'Reason this client was revoked, when revoked as a side effect of a tenant lifecycle change. Null for manually revoked clients and clients that were never revoked.',
+    enum: OAuthClientRevokedReason,
+    example: OAuthClientRevokedReason.TENANT_DEACTIVATION,
+    required: false,
+    nullable: true,
+  })
+  @Column({
+    name: 'revoked_reason',
+    type: 'enum',
+    enum: OAuthClientRevokedReason,
+    nullable: true,
+  })
+  public revokedReason?: OAuthClientRevokedReason | null;
 }
