@@ -50,6 +50,7 @@ export default {
         'deps-dev',
       ],
     ],
+    'subject-case': [2, 'always', 'lower-case'],
     'header-max-length': [2, 'always', 100],
   },
 };
