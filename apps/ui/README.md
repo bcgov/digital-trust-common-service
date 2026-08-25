@@ -10,8 +10,13 @@ React 19 · Vite 8 (+ React Compiler) · TypeScript 6 · React Router 8 (data mo
 route-level code splitting) · Tailwind CSS 4 · shadcn/ui · TanStack Query ·
 axios · zod · Vitest + Testing Library + MSW.
 
-The current theme is the stock shadcn neutral preset (interim). BC Design
-System alignment is planned — see `docs/ui-bc-design-system-planning.md`.
+Styling follows the BC Design System (#180): `@bcgov/design-tokens` mapped
+onto shadcn's token layer in `src/index.css`, BC Sans as the app font
+(self-hosted `@font-face` from `@bcgov/bc-sans`), and the official
+`@bcgov/design-system-react-components` header behind the app boundary in
+`src/components/bc-gov-header.tsx`. **BCDS-first is the standing direction**:
+where the BCDS package provides a component, prefer it; the vendored shadcn
+primitives fill the gaps it doesn't cover.
 
 ## Development
 
@@ -100,5 +105,27 @@ Conventions worth knowing:
 - Endpoint paths live only in `lib/api/resources/*` — the implemented API is
   flat while the spec nests under `/tenants/{id}/…`; convergence should touch
   only those modules.
+- Theming is a token bridge: `src/index.css` maps shadcn's theme variables
+  (`--primary`, `--border`, …) onto `@bcgov/design-tokens` by `var()`
+  reference. Style new work with the shadcn-side tokens (`bg-primary`,
+  `text-muted-foreground`, …), not raw BCDS variables or hex values, and it
+  inherits the BC look automatically. There is no dark mode — BCDS v5 is
+  light-only (`dark:` utilities in vendored components are inert).
+- Focus styling is global: a base `:focus-visible` rule in `index.css` applies
+  the BC Gov outline (solid 2px active-blue, 2px offset). Don't add per-element
+  focus rings.
+- Updating vendored components: `npx shadcn add <name> --diff` to compare
+  against upstream, then merge by hand — never `--overwrite` on customized
+  files (stock files reintroduce soft focus rings and dark-mode styling;
+  `src/test/design-system.test.ts` fails if a per-element focus ring slips
+  back in, and also fails if a BCDS token referenced in `index.css` disappears
+  from `@bcgov/design-tokens` after an upgrade).
+- `@bcgov/*` packages are exact-pinned and upgraded together: the
+  react-components bundle style-injects its own copy of the design tokens
+  (plus all component CSS) at runtime, which wins the cascade over the
+  `index.css` import — the same test fails if the pinned versions drift.
+  That injection lands after our stylesheet in production builds but before
+  it in dev, so any override of a `.bcds-*` class must out-specify the
+  package rule, never rely on source order.
 
 [#82]: https://github.com/bcgov/digital-trust-common-service/issues/82
