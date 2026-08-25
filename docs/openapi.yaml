@@ -47,9 +47,10 @@ info:
     A platform-admin can suspend, deactivate, or reactivate a tenant via
     `PATCH /tenants/{tenantId}/status`. While a tenant is `suspended` or `deactivated`, requests
     from that tenant's own callers to tenant-scoped endpoints return `403 TENANT_NOT_ACTIVE`.
-    Deactivating a tenant also revokes its API keys, closes its active connections, and deactivates
-    its connector credentials; reactivation requires connector credentials to be re-authenticated.
-    Deactivated tenant data is retained for 90 days.
+    Deactivating a tenant also revokes its OAuth clients, closes its active connections, and
+    deactivates its connector credentials; reactivation restores its OAuth clients but connector
+    credentials must be re-authenticated. Suspension only blocks access — it does not revoke or
+    restore anything. Deactivated tenant data is retained for 90 days.
   contact:
     name: BC Gov Digital Trust
   license:
@@ -501,10 +502,12 @@ paths:
         `deactivated`, `suspended` -> `active` or `deactivated`, and `deactivated` -> `active`.
         Any other transition returns `409`.
 
-        Suspending or deactivating a tenant immediately revokes its API keys, closes its active
-        connections, and deactivates its connector credentials. Deactivated tenant data is retained
-        for 90 days. Reactivating a deactivated tenant does not automatically restore connector
-        credentials — they must be re-authenticated after reactivation.
+        Deactivating a tenant immediately revokes its OAuth clients, deactivates its connector
+        credentials, and abandons its active connections. Deactivated tenant data is retained for
+        90 days. Reactivating a deactivated tenant restores its OAuth clients but does not restore
+        connector credentials — they must be re-authenticated after reactivation. Suspending a
+        tenant only blocks its own callers (`403 TENANT_NOT_ACTIVE`); it does not touch OAuth
+        clients, connector credentials, or connections.
       tags: [Tenants]
       requestBody:
         required: true

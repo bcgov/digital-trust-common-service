@@ -31,6 +31,7 @@ import { RoleScopeModule } from './role-scope/role-scope.module';
 import { RoleScopeRepository } from './role-scope/role-scope.repository';
 import { SeedModule } from './seed/seed.module';
 import { ShutdownModule } from './shutdown/shutdown.module';
+import { TenantStatusChangeModule } from './tenant/tenant-status-change.module';
 import { TenantModule } from './tenant/tenant.module';
 import { OidcTenantUserAdapter } from './tenant-user/oidc-tenant-user.adapter';
 import { TenantUserModule } from './tenant-user/tenant-user.module';
@@ -82,6 +83,7 @@ import { VerificationProfileModule } from './verification-profile/verification-p
     RoleScopeModule,
     ShutdownModule,
     TenantModule,
+    TenantStatusChangeModule,
     TenantUserModule,
     UpstreamOidcModule,
     VerificationProfileModule,

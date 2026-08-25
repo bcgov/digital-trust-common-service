@@ -14,6 +14,6 @@ import { TenantRepository } from './tenant.repository';
 @Module({
   imports: [TypeOrmModule.forFeature([Tenant]), AuthModule],
   providers: [TenantRepository, TenantStatusGuard],
-  exports: [TenantStatusGuard],
+  exports: [TenantRepository, TenantStatusGuard],
 })
 export class TenantStatusModule {}

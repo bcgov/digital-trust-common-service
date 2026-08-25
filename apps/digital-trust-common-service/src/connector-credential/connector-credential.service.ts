@@ -161,6 +161,11 @@ export class ConnectorCredentialService {
     await this.credentialRepository.delete(id);
   }
 
+  /** Used by the tenant status-change cascade when a tenant is deactivated. */
+  public async deactivateAllForTenant(tenantId: string): Promise<number> {
+    return this.credentialRepository.deactivateAllForTenant(tenantId);
+  }
+
   public async decryptCredential(key: string, id: string): Promise<string> {
     // Type guard: ensure key is a string (defense in depth against parameter tampering)
     if (Array.isArray(key)) {
