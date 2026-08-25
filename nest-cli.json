@@ -63,6 +63,15 @@
       "compilerOptions": {
         "tsConfigPath": "libs/oidc/tsconfig.lib.json"
       }
+    },
+    "pg-boss": {
+      "type": "library",
+      "root": "libs/pg-boss",
+      "entryFile": "index",
+      "sourceRoot": "libs/pg-boss/src",
+      "compilerOptions": {
+        "tsConfigPath": "libs/pg-boss/tsconfig.lib.json"
+      }
     }
   }
 }

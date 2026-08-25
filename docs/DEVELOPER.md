@@ -4,10 +4,35 @@ This guide covers local development setup, running the application, and managing
 
 ## Prerequisites
 
-- **Node.js**: v22.12.0 or higher
+- **Node.js**: v24 (pinned in `.mise.toml`; matches the `node:24-alpine` image)
 - **npm**: Latest stable version
 - **Docker** and **Docker Compose**: For database and containerized development
 - **PostgreSQL**: v18.4 (or use Docker)
+
+### Toolchain with mise (recommended)
+
+[mise](https://mise.jdx.dev) reads `.mise.toml` and gives everyone — and CI — the same tool versions:
+
+```bash
+brew install mise                     # or see the mise install docs
+echo 'eval "$(mise activate zsh)"' >> ~/.zshrc && exec zsh
+mise install                          # installs everything pinned in .mise.toml
+mise current                          # shows the resolved versions
+```
+
+| Tool | Pinned | Used for |
+| --- | --- | --- |
+| node | 24 | the application; matches `engines` and the `node:24-alpine` image |
+| helm | 3.16.2 | chart lint, template, and unit tests |
+| helm-docs | 1.14.2 | regenerating the chart README (CI fails if it is stale) |
+| actionlint | 1.7.12 | linting `.github/workflows/*.yml` |
+| yamllint | latest | `--strict` checks on chart values and `Chart.yaml` |
+
+These versions mirror `.github/workflows/ci-checks.yml`. When you bump one, bump both.
+
+mise itself is optional — CI installs each tool directly rather than through mise — but the Node
+version is not: `.npmrc` sets `engine-strict=true`, so `npm ci` **fails** rather than warns on a
+Node outside the `engines` range. Without shell activation, prefix commands with `mise exec --`.
 
 ## Environment Setup
 
@@ -15,7 +40,7 @@ This guide covers local development setup, running the application, and managing
 
 ```bash
 # Install project dependencies
-npm install
+npm ci
 ```
 
 ### 2. Configure Environment Variables
@@ -120,8 +145,8 @@ host):
 # infra only — API and UI run on the host (default workflow)
 docker compose --profile dev up -d db caddy keycloak
 
-# or everything containerized, including the app on :3000
-docker compose --profile dev up
+# or everything containerized, including the app on :3000 and the UI on :5173
+docker compose --profile dev --profile ui up
 ```
 
 #### Export and trust the Caddy local CA
@@ -174,13 +199,17 @@ Add-Content C:\Windows\System32\drivers\etc\hosts "`n127.0.0.1 app.localhost", "
 
 Node does not automatically use your OS trust store in every setup, so local OIDC calls should also trust the exported certificate explicitly.
 
-Set this in your `.env` file:
+For a host-run Node process, export this before starting the process. Node reads
+`NODE_EXTRA_CA_CERTS` before the application loads `.env`:
 
-```env
-NODE_EXTRA_CA_CERTS="$PWD/caddy/root.crt"
+```bash
+export NODE_EXTRA_CA_CERTS="$PWD/caddy/root.crt"
 ```
 
-This matches the default shown in `.env.example` and allows the app to call `https://keycloak.localhost` successfully during upstream federation flows.
+This allows the host-run app to call `https://keycloak.localhost` successfully
+during upstream federation flows. The current Compose `app` service does not
+mount `caddy/root.crt`, so use the host-run app for this local TLS workflow
+unless you add a certificate mount and container path explicitly.
 
 #### Configure Keycloak Endpoint
 
@@ -200,7 +229,7 @@ The local compose file already sets the Keycloak hostname correctly:
 
 ```yaml
 environment:
-  - KC_HOSTNAME=https://keycloak.localhost
+  KC_HOSTNAME: 'https://keycloak.localhost'
 ```
 
 The checked-in **`keycloak/config/realm.json`** already uses the local front-door hostname for redirect URIs:
@@ -788,7 +817,7 @@ docker compose up
 
 # Terminal 2: frontend
 cd apps/ui
-npm install
+npm ci
 npm run dev          # http://localhost:5173
 ```
 

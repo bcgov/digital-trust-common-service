@@ -28,7 +28,7 @@ jobs:
     outputs:
       chart-exists: ${{ steps.check-chart.outputs.chart-exists }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Check chart existence
         id: check-chart
@@ -46,7 +46,7 @@ jobs:
     outputs:
       image_tag: ${{ steps.sha-tag.outputs.image_tag }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Build and push image
         id: build-image
@@ -76,7 +76,7 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v') && needs.preflight.outputs.chart-exists == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Publish Helm chart
         uses: ./.github/actions/publish-chart
@@ -92,7 +92,7 @@ jobs:
       name: dev
       url: https://digital-trust-common-service-dev.apps.silver.devops.gov.bc.ca
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up OpenShift access
         uses: ./.github/actions/oc-setup
@@ -117,7 +117,7 @@ jobs:
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Notify Teams
         uses: ./.github/actions/notify-teams
