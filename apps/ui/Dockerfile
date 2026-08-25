@@ -6,6 +6,14 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .
+
+# Vite inlines VITE_* variables into the bundle at build time, so the auth mode
+# is baked into the image rather than settable at runtime. Defaults to the mock
+# AuthClient; build with --build-arg VITE_AUTH_MODE=oidc once the interactive
+# OIDC flow lands (#83 / AU-02).
+ARG VITE_AUTH_MODE=mock
+ENV VITE_AUTH_MODE=$VITE_AUTH_MODE
+
 RUN npm run build
 
 FROM caddy:2.11-alpine AS production
