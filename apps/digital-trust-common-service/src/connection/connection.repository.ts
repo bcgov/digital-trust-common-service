@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Not, Repository } from 'typeorm';
 
 import { Connection, ConnectionState } from './connection.entity';
 
@@ -61,5 +61,21 @@ export class ConnectionRepository {
 
   public async delete(id: string): Promise<void> {
     await this.repository.delete(id);
+  }
+
+  /**
+   * Abandons every connection for the tenant that has not already reached a
+   * terminal state (completed or already abandoned). Returns the number of
+   * connections abandoned.
+   */
+  public async abandonAllForTenant(tenantId: string): Promise<number> {
+    const result = await this.repository.update(
+      {
+        tenantId,
+        state: Not(In([ConnectionState.COMPLETED, ConnectionState.ABANDONED])),
+      },
+      { state: ConnectionState.ABANDONED },
+    );
+    return result.affected ?? 0;
   }
 }

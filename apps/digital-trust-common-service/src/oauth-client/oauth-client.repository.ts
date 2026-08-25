@@ -1,8 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { IsNull, Repository } from 'typeorm';
 
-import { OAuthClient } from './oauth-client.entity';
+import { OAuthClient, OAuthClientRevokedReason } from './oauth-client.entity';
 
 @Injectable()
 export class OAuthClientRepository {
@@ -48,5 +48,35 @@ export class OAuthClientRepository {
     await this.repository.update(id, {
       revokedAt: new Date(),
     });
+  }
+
+  /**
+   * Revokes every not-yet-revoked client for the tenant, tagging each with
+   * `TENANT_DEACTIVATION` so `restoreAllForTenant` can later tell them apart
+   * from clients revoked individually for cause. Returns the number of
+   * clients revoked.
+   */
+  public async revokeAllForTenant(tenantId: string): Promise<number> {
+    const result = await this.repository.update(
+      { tenantId, revokedAt: IsNull() },
+      {
+        revokedAt: new Date(),
+        revokedReason: OAuthClientRevokedReason.TENANT_DEACTIVATION,
+      },
+    );
+    return result.affected ?? 0;
+  }
+
+  /**
+   * Restores only the clients this repository previously bulk-revoked for a
+   * tenant deactivation, leaving individually-revoked clients (reason null)
+   * untouched. Returns the number of clients restored.
+   */
+  public async restoreAllForTenant(tenantId: string): Promise<number> {
+    const result = await this.repository.update(
+      { tenantId, revokedReason: OAuthClientRevokedReason.TENANT_DEACTIVATION },
+      { revokedAt: null, revokedReason: null },
+    );
+    return result.affected ?? 0;
   }
 }
