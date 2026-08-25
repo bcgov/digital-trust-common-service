@@ -1,6 +1,9 @@
+import { JwtGuard, ScopeGuard, TenantGuard } from '@app/auth';
+import { CanActivate } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 
-import { CreateTenantUserDto } from './dto/create-tenant-user.dto';
+import { InviteTenantUserDto } from './dto/invite-tenant-user.dto';
+import { TenantMembershipGuard } from './tenant-membership.guard';
 import { TenantUserController } from './tenant-user.controller';
 import {
   TenantUser,
@@ -9,13 +12,17 @@ import {
 } from './tenant-user.entity';
 import { TenantUserService } from './tenant-user.service';
 
+class AllowGuard implements CanActivate {
+  public canActivate(): boolean {
+    return true;
+  }
+}
+
 describe('TenantUserController', () => {
   let controller: TenantUserController;
 
-  let mockCreate: jest.Mock;
-  let mockFindById: jest.Mock;
-  let mockFindByTenantId: jest.Mock;
-  let mockFindByExternalUserId: jest.Mock;
+  let mockInvite: jest.Mock;
+  let mockList: jest.Mock;
   let mockUpdate: jest.Mock;
   let mockDelete: jest.Mock;
 
@@ -33,18 +40,14 @@ describe('TenantUserController', () => {
   };
 
   beforeEach(async () => {
-    mockCreate = jest.fn();
-    mockFindById = jest.fn();
-    mockFindByTenantId = jest.fn();
-    mockFindByExternalUserId = jest.fn();
+    mockInvite = jest.fn();
+    mockList = jest.fn();
     mockUpdate = jest.fn();
     mockDelete = jest.fn();
 
     const mockService = {
-      create: mockCreate,
-      findById: mockFindById,
-      findByTenantId: mockFindByTenantId,
-      findByExternalUserId: mockFindByExternalUserId,
+      invite: mockInvite,
+      list: mockList,
       update: mockUpdate,
       delete: mockDelete,
     };
@@ -57,7 +60,16 @@ describe('TenantUserController', () => {
           useValue: mockService,
         },
       ],
-    }).compile();
+    })
+      .overrideGuard(JwtGuard)
+      .useClass(AllowGuard)
+      .overrideGuard(ScopeGuard)
+      .useClass(AllowGuard)
+      .overrideGuard(TenantGuard)
+      .useClass(AllowGuard)
+      .overrideGuard(TenantMembershipGuard)
+      .useClass(AllowGuard)
+      .compile();
 
     controller = module.get<TenantUserController>(TenantUserController);
   });
@@ -66,131 +78,136 @@ describe('TenantUserController', () => {
     expect(controller).toBeDefined();
   });
 
-  describe('POST /tenant-users', () => {
-    it('should create a new tenant user', async () => {
-      const dto: CreateTenantUserDto = {
-        tenantId: mockTenantUser.tenantId,
-        externalUserId: mockTenantUser.externalUserId,
+  describe('POST /tenants/:tenantId/users', () => {
+    it('should invite a new tenant user', async () => {
+      const tenantId = mockTenantUser.tenantId;
+      const dto: InviteTenantUserDto = {
         email: mockTenantUser.email,
-        displayName: mockTenantUser.displayName,
         role: TenantUserRole.MEMBER,
-        status: TenantUserStatus.ACTIVE,
       };
 
-      mockCreate.mockResolvedValue(mockTenantUser);
+      mockInvite.mockResolvedValue(mockTenantUser);
 
-      const result = await controller.create(dto);
+      const result = await controller.create(tenantId, dto);
 
-      expect(mockCreate).toHaveBeenCalledWith(dto);
+      expect(mockInvite).toHaveBeenCalledWith(tenantId, dto);
       expect(result).toEqual(mockTenantUser);
     });
   });
 
-  describe('GET /tenant-users/:id', () => {
-    it('should return a tenant user by id', async () => {
-      const id = mockTenantUser.id;
-      mockFindById.mockResolvedValue(mockTenantUser);
-
-      const result = await controller.findById(id);
-
-      expect(mockFindById).toHaveBeenCalledWith(id);
-      expect(result).toEqual(mockTenantUser);
-    });
-
-    it('should throw NotFoundException if tenant user not found', async () => {
-      const id = '999e4567-e89b-12d3-a456-426614174000';
-      mockFindById.mockRejectedValue(new Error('Tenant user not found'));
-
-      await expect(controller.findById(id)).rejects.toThrow();
-      expect(mockFindById).toHaveBeenCalledWith(id);
-    });
-  });
-
-  describe('GET /tenant-users/tenant/:tenantId', () => {
-    it('should return all tenant users for a tenant', async () => {
+  describe('GET /tenants/:tenantId/users', () => {
+    it('should return a paginated list of tenant users', async () => {
       const tenantId = mockTenantUser.tenantId;
-      const tenantUsers = [mockTenantUser];
-      mockFindByTenantId.mockResolvedValue(tenantUsers);
+      const page = {
+        data: [mockTenantUser],
+        pagination: { next_cursor: null, has_more: false },
+      };
+      mockList.mockResolvedValue(page);
 
-      const result = await controller.findByTenantId(tenantId);
+      const result = await controller.list(tenantId, {});
 
-      expect(mockFindByTenantId).toHaveBeenCalledWith(tenantId);
-      expect(result).toEqual(tenantUsers);
+      expect(mockList).toHaveBeenCalledWith(tenantId, {
+        limit: undefined,
+        cursor: undefined,
+      });
+      expect(result).toEqual(page);
     });
 
-    it('should return empty array if no users found for tenant', async () => {
+    it('should pass cursor and limit query params through to the service', async () => {
       const tenantId = mockTenantUser.tenantId;
-      mockFindByTenantId.mockResolvedValue([]);
+      const page = {
+        data: [],
+        pagination: { next_cursor: null, has_more: false },
+      };
+      mockList.mockResolvedValue(page);
 
-      const result = await controller.findByTenantId(tenantId);
+      const result = await controller.list(tenantId, {
+        cursor: 'some-cursor',
+        limit: 10,
+      });
 
-      expect(result).toEqual([]);
+      expect(mockList).toHaveBeenCalledWith(tenantId, {
+        limit: 10,
+        cursor: 'some-cursor',
+      });
+      expect(result).toEqual(page);
     });
   });
 
-  describe('GET /tenant-users/external/:externalUserId', () => {
-    it('should return all tenant users for an external user', async () => {
-      const externalUserId = mockTenantUser.externalUserId;
-      const tenantUsers = [mockTenantUser];
-      mockFindByExternalUserId.mockResolvedValue(tenantUsers);
-
-      const result = await controller.findByExternalUserId(externalUserId);
-
-      expect(mockFindByExternalUserId).toHaveBeenCalledWith(externalUserId);
-      expect(result).toEqual(tenantUsers);
-    });
-
-    it('should return empty array if user not found in any tenant', async () => {
-      const externalUserId = 'non-existent-user';
-      mockFindByExternalUserId.mockResolvedValue([]);
-
-      const result = await controller.findByExternalUserId(externalUserId);
-
-      expect(result).toEqual([]);
-    });
-  });
-
-  describe('PATCH /tenant-users/:id', () => {
+  describe('PATCH /tenants/:tenantId/users/:userId', () => {
     it('should update a tenant user', async () => {
-      const id = mockTenantUser.id;
+      const tenantId = mockTenantUser.tenantId;
+      const userId = mockTenantUser.id;
       const dto = { displayName: 'Updated Name', role: TenantUserRole.ADMIN };
       const updatedTenantUser = { ...mockTenantUser, ...dto };
 
       mockUpdate.mockResolvedValue(updatedTenantUser);
 
-      const result = await controller.update(id, dto);
+      const result = await controller.update(tenantId, userId, dto);
 
-      expect(mockUpdate).toHaveBeenCalledWith(id, dto);
+      expect(mockUpdate).toHaveBeenCalledWith(tenantId, userId, dto, undefined);
+      expect(result).toEqual(updatedTenantUser);
+    });
+
+    it("forwards the caller's own TenantUser id for the self-role-change check", async () => {
+      const tenantId = mockTenantUser.tenantId;
+      const userId = '999e4567-e89b-12d3-a456-426614174002';
+      const dto = { role: TenantUserRole.MEMBER };
+      const callerTenantUser = {
+        ...mockTenantUser,
+        id: '999e4567-e89b-12d3-a456-426614174003',
+        role: TenantUserRole.ADMIN,
+      };
+      const updatedTenantUser = { ...mockTenantUser, id: userId, ...dto };
+
+      mockUpdate.mockResolvedValue(updatedTenantUser);
+
+      const result = await controller.update(
+        tenantId,
+        userId,
+        dto,
+        callerTenantUser,
+      );
+
+      expect(mockUpdate).toHaveBeenCalledWith(
+        tenantId,
+        userId,
+        dto,
+        callerTenantUser.id,
+      );
       expect(result).toEqual(updatedTenantUser);
     });
 
     it('should throw NotFoundException if tenant user not found', async () => {
-      const id = '999e4567-e89b-12d3-a456-426614174000';
+      const tenantId = mockTenantUser.tenantId;
+      const userId = '999e4567-e89b-12d3-a456-426614174000';
       const dto = { displayName: 'Updated Name' };
 
       mockUpdate.mockRejectedValue(new Error('Tenant user not found'));
 
-      await expect(controller.update(id, dto)).rejects.toThrow();
-      expect(mockUpdate).toHaveBeenCalledWith(id, dto);
+      await expect(controller.update(tenantId, userId, dto)).rejects.toThrow();
+      expect(mockUpdate).toHaveBeenCalledWith(tenantId, userId, dto, undefined);
     });
   });
 
-  describe('DELETE /tenant-users/:id', () => {
+  describe('DELETE /tenants/:tenantId/users/:userId', () => {
     it('should delete a tenant user', async () => {
-      const id = mockTenantUser.id;
+      const tenantId = mockTenantUser.tenantId;
+      const userId = mockTenantUser.id;
       mockDelete.mockResolvedValue(undefined);
 
-      await controller.delete(id);
+      await controller.delete(tenantId, userId);
 
-      expect(mockDelete).toHaveBeenCalledWith(id);
+      expect(mockDelete).toHaveBeenCalledWith(tenantId, userId);
     });
 
     it('should throw NotFoundException if tenant user not found', async () => {
-      const id = '999e4567-e89b-12d3-a456-426614174000';
+      const tenantId = mockTenantUser.tenantId;
+      const userId = '999e4567-e89b-12d3-a456-426614174000';
       mockDelete.mockRejectedValue(new Error('Tenant user not found'));
 
-      await expect(controller.delete(id)).rejects.toThrow();
-      expect(mockDelete).toHaveBeenCalledWith(id);
+      await expect(controller.delete(tenantId, userId)).rejects.toThrow();
+      expect(mockDelete).toHaveBeenCalledWith(tenantId, userId);
     });
   });
 });
