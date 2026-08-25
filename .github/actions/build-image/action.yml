@@ -35,6 +35,10 @@ inputs:
     description: "GitHub Actions cache scope. Set a distinct value per image; without it, two images built from the same workflow share one scope and evict each other's layers."
     required: false
     default: ""
+  build_args:
+    description: "Newline-separated build arguments (KEY=value) passed to the image build."
+    required: false
+    default: ""
 
 outputs:
   image_ref:
@@ -102,6 +106,7 @@ runs:
         push: true
         tags: ${{ steps.meta.outputs.tags }}
         labels: ${{ steps.meta.outputs.labels }}
+        build-args: ${{ inputs.build_args }}
         cache-from: type=gha${{ inputs.cache_scope && format(',scope={0}', inputs.cache_scope) || '' }}
         cache-to: type=gha,mode=max${{ inputs.cache_scope && format(',scope={0}', inputs.cache_scope) || '' }}
         provenance: mode=min
