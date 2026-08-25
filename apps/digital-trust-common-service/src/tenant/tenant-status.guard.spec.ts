@@ -1,12 +1,15 @@
-import { AuthenticationRequiredException, ScopeAuthorizationService } from '@app/auth';
+import {
+  AuthenticationRequiredException,
+  ScopeAuthorizationService,
+} from '@app/auth';
 import type { AuthContext } from '@app/auth/interfaces/auth-context.interface';
 import type { AuthenticatedRequest } from '@app/auth/types/express';
 import { ExecutionContext } from '@nestjs/common';
 
 import { TenantNotActiveException } from './tenant-not-active.exception';
+import { TenantStatusGuard } from './tenant-status.guard';
 import { Tenant, TenantStatus } from './tenant.entity';
 import { TenantRepository } from './tenant.repository';
-import { TenantStatusGuard } from './tenant-status.guard';
 
 describe('TenantStatusGuard', () => {
   let guard: TenantStatusGuard;

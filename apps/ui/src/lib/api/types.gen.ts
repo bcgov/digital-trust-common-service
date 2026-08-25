@@ -167,7 +167,19 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /** Suspend or reactivate a tenant (platform-admin only) */
+        /**
+         * Suspend, deactivate, or reactivate a tenant (platform-admin only)
+         * @description Requires the `platform-admin` role. Valid transitions are `active` -> `suspended` or
+         *     `deactivated`, `suspended` -> `active` or `deactivated`, and `deactivated` -> `active`.
+         *     Any other transition returns `409`.
+         *
+         *     Deactivating a tenant immediately revokes its OAuth clients, deactivates its connector
+         *     credentials, and abandons its active connections. Deactivated tenant data is retained for
+         *     90 days. Reactivating a deactivated tenant restores its OAuth clients but does not restore
+         *     connector credentials — they must be re-authenticated after reactivation. Suspending a
+         *     tenant only blocks its own callers (`403 TENANT_NOT_ACTIVE`); it does not touch OAuth
+         *     clients, connector credentials, or connections.
+         */
         patch: operations["updateTenantStatus"];
         trace?: never;
     };
@@ -1539,6 +1551,12 @@ export interface components {
             created_at?: string;
             /** Format: date-time */
             updated_at?: string;
+            /**
+             * Format: date-time
+             * @description Set when the tenant is deactivated; cleared on reactivation. Null otherwise. Used to
+             *     measure the 90-day data retention window.
+             */
+            deactivated_at?: string | null;
         };
         /** @enum {string} */
         TenantStatus: "active" | "pending_approval" | "rejected" | "suspended" | "deactivated";
@@ -2559,6 +2577,11 @@ export interface operations {
         };
         requestBody: {
             content: {
+                /**
+                 * @example {
+                 *       "status": "suspended"
+                 *     }
+                 */
                 "application/json": {
                     status: components["schemas"]["TenantStatus"];
                 };
@@ -2574,6 +2597,10 @@ export interface operations {
                     "application/json": components["schemas"]["Tenant"];
                 };
             };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
         };
     };
     updateTenantConfig: {
