@@ -100,7 +100,7 @@ ingress:
 # image is published and promoted with the API release.
 frontend:
   # -- Deploy the UI frontend
-  enabled: false
+  enabled: true
   # -- Frontend replicas (ignored when `frontend.autoscaling.enabled=true`)
   replicaCount: 1
   image:

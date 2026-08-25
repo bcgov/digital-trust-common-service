@@ -179,7 +179,7 @@ Generate the JWKS payload with `npm run oidc:generate-keys > oidc-keys.json`, th
 | frontend.autoscaling.maxReplicas | int | `3` | Maximum frontend replicas |
 | frontend.autoscaling.minReplicas | int | `1` | Minimum frontend replicas |
 | frontend.autoscaling.targetCPUUtilizationPercentage | int | `80` | Target average CPU utilization (percentage) |
-| frontend.enabled | bool | `false` | Deploy the UI frontend |
+| frontend.enabled | bool | `true` | Deploy the UI frontend |
 | frontend.image.pullPolicy | string | `"IfNotPresent"` | Frontend image pull policy |
 | frontend.image.registry | string | `"ghcr.io"` | Frontend image registry |
 | frontend.image.repository | string | `"bcgov/digital-trust-common-service-ui"` | Frontend image repository |
