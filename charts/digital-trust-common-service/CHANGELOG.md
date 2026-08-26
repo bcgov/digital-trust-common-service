@@ -25,3 +25,5 @@ and this chart adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.h
 - Per-environment values files (`values-dev.yaml`, `values-test.yaml`,
   `values-prod.yaml`) and `ci/ci-values.yaml`.
 - Generated `README.md` (via helm-docs).
+- `config.ADAPTER_OVERRIDE_ENABLED` (default `"false"`), gating the platform-admin
+  adapter override in the credential adapter registry (CA-02).
