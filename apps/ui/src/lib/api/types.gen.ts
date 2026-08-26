@@ -167,7 +167,24 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /** Suspend or reactivate a tenant (platform-admin only) */
+        /**
+         * Suspend, deactivate, or reactivate a tenant (platform-admin only)
+         * @description Requires the `platform-admin` role. Valid transitions are `active` -> `suspended` or
+         *     `deactivated`, `suspended` -> `active` or `deactivated`, and `deactivated` -> `active`.
+         *     Any other transition returns `409`.
+         *
+         *     Deactivating a tenant immediately revokes its OAuth clients, deactivates its connector
+         *     credentials, and abandons its active connections. Deactivated tenant data is retained for
+         *     90 days. Reactivating a deactivated tenant restores its OAuth clients but does not restore
+         *     connector credentials — they must be re-authenticated after reactivation. Suspending a
+         *     tenant only blocks its own callers (`403 TENANT_NOT_ACTIVE`); it does not touch OAuth
+         *     clients, connector credentials, or connections.
+         *
+         *     **Current limitation**: the `403 TENANT_NOT_ACTIVE` block is only enforced on Tenant
+         *     Settings and Tenant Users endpoints so far. Connections, Credentials, Presentations,
+         *     Clients, and Connectors are not yet guarded, so a suspended or deactivated tenant's own
+         *     callers can still use them.
+         */
         patch: operations["updateTenantStatus"];
         trace?: never;
     };
@@ -187,7 +204,20 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /** Update tenant configuration */
+        /**
+         * Update tenant configuration
+         * @description Requires the tenant superuser scope; the caller must belong to the target tenant unless it
+         *     is a platform admin. Merges the given top-level keys into the tenant's existing `config` —
+         *     any key omitted from the request body (including `operation_ttl`) is left unchanged.
+         *
+         *     `rate_limits` is not accepted here: it is read-only and can only be set via
+         *     `PATCH /usage/limits`. Sending it returns `400`, same as any other undeclared property.
+         *
+         *     When `default_connector` is provided, it must reference a `ConnectorCredential` that
+         *     belongs to this tenant and is currently active, or the request is rejected with `404`
+         *     (does not exist) or `409` (belongs to another tenant, or is inactive). Set it to `null` to
+         *     clear the default connector without validation.
+         */
         patch: operations["updateTenantConfig"];
         trace?: never;
     };
@@ -1539,6 +1569,12 @@ export interface components {
             created_at?: string;
             /** Format: date-time */
             updated_at?: string;
+            /**
+             * Format: date-time
+             * @description Set when the tenant is deactivated; cleared on reactivation. Null otherwise. Used to
+             *     measure the 90-day data retention window.
+             */
+            deactivated_at?: string | null;
         };
         /** @enum {string} */
         TenantStatus: "active" | "pending_approval" | "rejected" | "suspended" | "deactivated";
@@ -1573,6 +1609,22 @@ export interface components {
                 failed_unviewed?: string;
                 /** @example 24h */
                 pending_stale?: string;
+            };
+        };
+        /**
+         * @description Only the fields present are merged into the tenant's config; `rate_limits` and
+         *     `operation_ttl` are not accepted here.
+         */
+        UpdateTenantConfigRequest: {
+            allowed_formats?: components["schemas"]["CredentialFormat"][];
+            /**
+             * Format: uuid
+             * @description Must be an active connector credential belonging to this tenant, or null.
+             */
+            default_connector?: string | null;
+            /** @description Feature flags (key-value) */
+            features?: {
+                [key: string]: boolean;
             };
         };
         CreateTenantRequest: {
@@ -2559,6 +2611,11 @@ export interface operations {
         };
         requestBody: {
             content: {
+                /**
+                 * @example {
+                 *       "status": "suspended"
+                 *     }
+                 */
                 "application/json": {
                     status: components["schemas"]["TenantStatus"];
                 };
@@ -2574,6 +2631,10 @@ export interface operations {
                     "application/json": components["schemas"]["Tenant"];
                 };
             };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
         };
     };
     updateTenantConfig: {
@@ -2588,7 +2649,19 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["TenantConfig"];
+                /**
+                 * @example {
+                 *       "allowed_formats": [
+                 *         "anoncreds",
+                 *         "sd-jwt"
+                 *       ],
+                 *       "default_connector": "123e4567-e89b-12d3-a456-426614174000",
+                 *       "features": {
+                 *         "beta_credentials": true
+                 *       }
+                 *     }
+                 */
+                "application/json": components["schemas"]["UpdateTenantConfigRequest"];
             };
         };
         responses: {
@@ -2601,6 +2674,10 @@ export interface operations {
                     "application/json": components["schemas"]["Tenant"];
                 };
             };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
         };
     };
     getOnboardingStatus: {

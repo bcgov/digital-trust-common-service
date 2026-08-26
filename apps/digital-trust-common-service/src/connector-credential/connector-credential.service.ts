@@ -1,5 +1,7 @@
 import {
   BadRequestException,
+  forwardRef,
+  Inject,
   Injectable,
   Logger,
   NotFoundException,
@@ -20,6 +22,7 @@ export class ConnectorCredentialService {
 
   public constructor(
     private readonly credentialRepository: ConnectorCredentialRepository,
+    @Inject(forwardRef(() => TenantService))
     private readonly tenantService: TenantService,
     private readonly encryptionService: EncryptionService,
   ) {}
@@ -159,6 +162,11 @@ export class ConnectorCredentialService {
   public async delete(id: string): Promise<void> {
     await this.findById(id);
     await this.credentialRepository.delete(id);
+  }
+
+  /** Used by the tenant status-change cascade when a tenant is deactivated. */
+  public async deactivateAllForTenant(tenantId: string): Promise<number> {
+    return this.credentialRepository.deactivateAllForTenant(tenantId);
   }
 
   public async decryptCredential(key: string, id: string): Promise<string> {

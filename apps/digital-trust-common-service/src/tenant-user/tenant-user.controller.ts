@@ -34,6 +34,7 @@ import {
 
 import { SkipAutoAudit } from '../audit-log/skip-auto-audit.decorator';
 import { API_VERSION } from '../common/constants/api-version.constants';
+import { TenantStatusGuard } from '../tenant/tenant-status.guard';
 
 import { CurrentTenantUser } from './current-tenant-user.decorator';
 import { InviteTenantUserDto } from './dto/invite-tenant-user.dto';
@@ -46,7 +47,13 @@ import { PaginatedTenantUsers, TenantUserService } from './tenant-user.service';
 
 @SkipAutoAudit()
 @ApiJwtAuth()
-@UseGuards(JwtGuard, ScopeGuard, TenantGuard, TenantMembershipGuard)
+@UseGuards(
+  JwtGuard,
+  ScopeGuard,
+  TenantGuard,
+  TenantStatusGuard,
+  TenantMembershipGuard,
+)
 @RequireScopes(USERS_MANAGE_SCOPE)
 @RequireTenantRoles(TenantUserRole.OWNER, TenantUserRole.ADMIN)
 @Controller({ path: 'tenants/:tenantId/users', version: API_VERSION })

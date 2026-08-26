@@ -149,6 +149,16 @@ export class OAuthClientService {
     return await verify(client.clientSecretHash, clientSecret);
   }
 
+  /** Used by the tenant status-change cascade when a tenant is deactivated. */
+  public async revokeAllForTenant(tenantId: string): Promise<number> {
+    return this.oauthClientRepository.revokeAllForTenant(tenantId);
+  }
+
+  /** Used by the tenant status-change cascade when a tenant is reactivated. */
+  public async restoreAllForTenant(tenantId: string): Promise<number> {
+    return this.oauthClientRepository.restoreAllForTenant(tenantId);
+  }
+
   private generateClientId(): string {
     return `client_${randomBytes(16).toString('hex')}`;
   }

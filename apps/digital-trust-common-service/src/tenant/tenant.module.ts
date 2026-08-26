@@ -1,10 +1,12 @@
 import { AuthModule } from '@app/auth';
-import { Module } from '@nestjs/common';
+import { forwardRef, Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { AuditLogModule } from '../audit-log/audit-log.module';
+import { ConnectorCredentialModule } from '../connector-credential/connector-credential.module';
 import { TenantUserModule } from '../tenant-user/tenant-user.module';
 
+import { TenantStatusModule } from './tenant-status.module';
 import { TenantController } from './tenant.controller';
 import { Tenant } from './tenant.entity';
 import { TenantRepository } from './tenant.repository';
@@ -16,6 +18,8 @@ import { TenantService } from './tenant.service';
     AuditLogModule,
     AuthModule,
     TenantUserModule,
+    TenantStatusModule,
+    forwardRef(() => ConnectorCredentialModule),
   ],
   controllers: [TenantController],
   providers: [TenantService, TenantRepository],

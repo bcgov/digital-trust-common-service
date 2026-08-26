@@ -2,6 +2,8 @@ import { JwtGuard, ScopeGuard, TenantGuard } from '@app/auth';
 import { CanActivate } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 
+import { TenantStatusGuard } from '../tenant/tenant-status.guard';
+
 import { InviteTenantUserDto } from './dto/invite-tenant-user.dto';
 import { TenantMembershipGuard } from './tenant-membership.guard';
 import { TenantUserController } from './tenant-user.controller';
@@ -66,6 +68,8 @@ describe('TenantUserController', () => {
       .overrideGuard(ScopeGuard)
       .useClass(AllowGuard)
       .overrideGuard(TenantGuard)
+      .useClass(AllowGuard)
+      .overrideGuard(TenantStatusGuard)
       .useClass(AllowGuard)
       .overrideGuard(TenantMembershipGuard)
       .useClass(AllowGuard)

@@ -3,6 +3,7 @@ import { OidcAccountSessionModule } from '@app/oidc/sessions';
 import { Module } from '@nestjs/common';
 
 import { AuditLogModule } from '../audit-log/audit-log.module';
+import { TenantStatusModule } from '../tenant/tenant-status.module';
 
 import { RoleScopeRepository } from './role-scope.repository';
 import { RoleScopeService } from './role-scope.service';
@@ -15,7 +16,12 @@ import { TenantRoleScopeController } from './tenant-role-scope.controller';
  * scope catalog and per-tenant override API.
  */
 @Module({
-  imports: [AuthModule, OidcAccountSessionModule, AuditLogModule],
+  imports: [
+    AuthModule,
+    OidcAccountSessionModule,
+    AuditLogModule,
+    TenantStatusModule,
+  ],
   controllers: [ScopeController, RoleController, TenantRoleScopeController],
   providers: [RoleScopeRepository, RoleScopeService],
   exports: [RoleScopeRepository, RoleScopeService],

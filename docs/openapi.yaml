@@ -37,10 +37,26 @@ info:
     ## Error Responses
     All authenticated endpoints may return:
     - `401 Unauthorized` — token is missing, expired, or invalid
-    - `403 Forbidden` — token is valid but lacks the required scope or role
+    - `403 Forbidden` — token is valid but lacks the required scope or role, or the caller's own
+      tenant is `suspended` or `deactivated` (error code `TENANT_NOT_ACTIVE`) — see the note under
+      **Tenant Lifecycle** on which endpoints currently enforce this
 
     These are not repeated on each operation for brevity.
     See `components/responses/Unauthorized` and `components/responses/Forbidden` for the schema.
+
+    ## Tenant Lifecycle
+    A platform-admin can suspend, deactivate, or reactivate a tenant via
+    `PATCH /tenants/{tenantId}/status`. While a tenant is `suspended` or `deactivated`, requests
+    from that tenant's own callers to tenant-scoped endpoints return `403 TENANT_NOT_ACTIVE`.
+    Deactivating a tenant also revokes its OAuth clients, closes its active connections, and
+    deactivates its connector credentials; reactivation restores its OAuth clients but connector
+    credentials must be re-authenticated. Suspension only blocks access — it does not revoke or
+    restore anything. Deactivated tenant data is retained for 90 days.
+
+    **Current limitation**: the `403 TENANT_NOT_ACTIVE` check (`TenantStatusGuard`) is only wired
+    up on Tenant Settings and Tenant Users endpoints so far. Connections, Credentials,
+    Presentations, Clients, and Connectors have no such guard yet, so a caller from a suspended or
+    deactivated tenant can still use those endpoints until the guard is added there too.
   contact:
     name: BC Gov Digital Trust
   license:
@@ -486,7 +502,23 @@ paths:
       - $ref: "#/components/parameters/TenantId"
     patch:
       operationId: updateTenantStatus
-      summary: Suspend or reactivate a tenant (platform-admin only)
+      summary: Suspend, deactivate, or reactivate a tenant (platform-admin only)
+      description: |
+        Requires the `platform-admin` role. Valid transitions are `active` -> `suspended` or
+        `deactivated`, `suspended` -> `active` or `deactivated`, and `deactivated` -> `active`.
+        Any other transition returns `409`.
+
+        Deactivating a tenant immediately revokes its OAuth clients, deactivates its connector
+        credentials, and abandons its active connections. Deactivated tenant data is retained for
+        90 days. Reactivating a deactivated tenant restores its OAuth clients but does not restore
+        connector credentials — they must be re-authenticated after reactivation. Suspending a
+        tenant only blocks its own callers (`403 TENANT_NOT_ACTIVE`); it does not touch OAuth
+        clients, connector credentials, or connections.
+
+        **Current limitation**: the `403 TENANT_NOT_ACTIVE` block is only enforced on Tenant
+        Settings and Tenant Users endpoints so far. Connections, Credentials, Presentations,
+        Clients, and Connectors are not yet guarded, so a suspended or deactivated tenant's own
+        callers can still use them.
       tags: [Tenants]
       requestBody:
         required: true
@@ -498,6 +530,8 @@ paths:
               properties:
                 status:
                   $ref: "#/components/schemas/TenantStatus"
+            example:
+              status: suspended
       responses:
         "200":
           description: Status updated
@@ -505,6 +539,14 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Tenant"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
 
   /api/v1/tenants/{tenantId}/config:
     parameters:
@@ -512,13 +554,30 @@ paths:
     patch:
       operationId: updateTenantConfig
       summary: Update tenant configuration
+      description: |
+        Requires the tenant superuser scope; the caller must belong to the target tenant unless it
+        is a platform admin. Merges the given top-level keys into the tenant's existing `config` —
+        any key omitted from the request body (including `operation_ttl`) is left unchanged.
+
+        `rate_limits` is not accepted here: it is read-only and can only be set via
+        `PATCH /usage/limits`. Sending it returns `400`, same as any other undeclared property.
+
+        When `default_connector` is provided, it must reference a `ConnectorCredential` that
+        belongs to this tenant and is currently active, or the request is rejected with `404`
+        (does not exist) or `409` (belongs to another tenant, or is inactive). Set it to `null` to
+        clear the default connector without validation.
       tags: [Tenant Settings]
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/TenantConfig"
+              $ref: "#/components/schemas/UpdateTenantConfigRequest"
+            example:
+              allowed_formats: [anoncreds, sd-jwt]
+              default_connector: "123e4567-e89b-12d3-a456-426614174000"
+              features:
+                beta_credentials: true
       responses:
         "200":
           description: Configuration updated
@@ -526,6 +585,14 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Tenant"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
 
   /api/v1/tenants/{tenantId}/onboarding:
     parameters:
@@ -2903,6 +2970,13 @@ components:
         updated_at:
           type: string
           format: date-time
+        deactivated_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: |
+            Set when the tenant is deactivated; cleared on reactivation. Null otherwise. Used to
+            measure the 90-day data retention window.
 
     TenantStatus:
       type: string
@@ -2962,6 +3036,28 @@ components:
             pending_stale:
               type: string
               example: "24h"
+
+    UpdateTenantConfigRequest:
+      type: object
+      additionalProperties: false
+      description: |
+        Only the fields present are merged into the tenant's config; `rate_limits` and
+        `operation_ttl` are not accepted here.
+      properties:
+        allowed_formats:
+          type: array
+          items:
+            $ref: "#/components/schemas/CredentialFormat"
+        default_connector:
+          type: string
+          format: uuid
+          nullable: true
+          description: Must be an active connector credential belonging to this tenant, or null.
+        features:
+          type: object
+          description: Feature flags (key-value)
+          additionalProperties:
+            type: boolean
 
     CreateTenantRequest:
       type: object

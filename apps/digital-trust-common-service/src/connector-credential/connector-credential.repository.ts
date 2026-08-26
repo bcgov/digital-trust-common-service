@@ -69,4 +69,18 @@ export class ConnectorCredentialRepository {
   public async delete(id: string): Promise<void> {
     await this.repository.delete(id);
   }
+
+  /**
+   * Deactivates every currently-active connector credential for the tenant.
+   * Reactivating the tenant does not auto-restore these; connectors must be
+   * re-authenticated per tenant lifecycle policy. Returns the number of
+   * credentials deactivated.
+   */
+  public async deactivateAllForTenant(tenantId: string): Promise<number> {
+    const result = await this.repository.update(
+      { tenantId, active: true },
+      { active: false },
+    );
+    return result.affected ?? 0;
+  }
 }
