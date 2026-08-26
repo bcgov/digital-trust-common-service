@@ -1038,6 +1038,72 @@ describe('OidcInteractionController', () => {
       ).toHaveBeenCalledWith('state-123', 'older-membership');
     });
 
+    it('should reject when the only tenant-scoped membership is not active', async () => {
+      const mockInteraction = {
+        id: 'interaction-123',
+        state: 'state-123',
+        interactionUid: 'interaction-uid',
+        codeVerifier: 'verifier',
+        tenantId: 'tenant-123',
+        tenantUserId: null,
+        createdAt: new Date(),
+        expiresAt: new Date(),
+        consumedAt: null,
+      };
+
+      mockUpstreamOidcService.handleUpstreamCallback.mockResolvedValue({
+        claims: {
+          sub: 'external-user-disabled',
+          email: 'disabled@example.com',
+          name: 'Disabled User',
+        },
+        interaction: mockInteraction,
+        upstreamSession: {
+          upstreamSubject: 'external-user-disabled',
+          upstreamIdToken: 'upstream-id-token',
+          expiresAt: null,
+        },
+      });
+      mockTenantUserService.findActiveByExternalUserId.mockResolvedValue([]);
+      mockTenantUserService.claimInvitedByEmail.mockResolvedValue(null);
+      mockTenantUserService.findByTenantAndExternalUserId.mockResolvedValue({
+        id: 'disabled-membership',
+        tenantId: 'tenant-123',
+        externalUserId: 'external-user-disabled',
+        email: 'disabled@example.com',
+        displayName: 'Disabled User',
+        role: 'member' as OidcTenantUserRole,
+        status: 'disabled' as OidcTenantUserStatus,
+      });
+
+      const mockReq = {
+        headers: { host: 'localhost:3000' },
+        url: '/oidc/callback?code=auth-code&state=state-123',
+      } as IncomingMessage;
+
+      const mockRes = {
+        headersSent: false,
+        statusCode: 200,
+        setHeader: jest.fn(),
+        end: jest.fn(),
+      } as any;
+
+      await controller.callback(
+        'auth-code',
+        'state-123',
+        'nonce-123',
+        undefined,
+        undefined,
+        mockReq,
+        mockRes,
+      );
+
+      expect(mockRes.statusCode).toBe(400);
+      expect(mockRes.end).toHaveBeenCalledWith(
+        expect.stringContaining('Federated user is not active'),
+      );
+    });
+
     it('should return 400 when upstream error occurs', async () => {
       const mockReq = {
         headers: { host: 'localhost:3000' },

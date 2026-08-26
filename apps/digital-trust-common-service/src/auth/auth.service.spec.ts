@@ -195,9 +195,65 @@ describe('AuthService', () => {
     ]);
   });
 
+  it('skips memberships that have no tenant relation loaded', async () => {
+    tenantUsers.findActiveByExternalUserId.mockResolvedValue([
+      { ...currentUser, tenant: undefined },
+      targetUser,
+    ]);
+
+    await expect(service.listTenants(userAuth)).resolves.toEqual([
+      {
+        id: targetUser.tenantId,
+        name: 'Target Org',
+        slug: 'target-org',
+        role: TenantUserRole.ADMIN,
+      },
+    ]);
+  });
+
+  it('rejects listTenants when the subject has no external identity', async () => {
+    tenantUsers.findById.mockResolvedValue({
+      ...currentUser,
+      externalUserId: null,
+    });
+
+    await expect(service.listTenants(userAuth)).rejects.toThrow(
+      ForbiddenException,
+    );
+  });
+
   it('rejects machine clients', async () => {
     await expect(
       service.listTenants({ ...userAuth, tokenType: 'client' }),
+    ).rejects.toThrow(ForbiddenException);
+  });
+
+  it('rejects switch when the token has no client_id', async () => {
+    await expect(
+      service.switchTenant(
+        { ...userAuth, clientId: null },
+        'Bearer old-token',
+        targetUser.tenantId,
+      ),
+    ).rejects.toThrow(ForbiddenException);
+  });
+
+  it('rejects switch when the subject has no external identity', async () => {
+    tenantUsers.findById.mockResolvedValue({
+      ...currentUser,
+      externalUserId: null,
+    });
+
+    await expect(
+      service.switchTenant(userAuth, 'Bearer old-token', targetUser.tenantId),
+    ).rejects.toThrow(ForbiddenException);
+  });
+
+  it('rejects switch when the oauth client is unknown', async () => {
+    clientFind.mockResolvedValue(undefined);
+
+    await expect(
+      service.switchTenant(userAuth, 'Bearer old-token', targetUser.tenantId),
     ).rejects.toThrow(ForbiddenException);
   });
 
