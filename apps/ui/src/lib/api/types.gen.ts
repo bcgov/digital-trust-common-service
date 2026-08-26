@@ -1623,7 +1623,9 @@ export interface components {
              */
             default_connector?: string | null;
             /** @description Feature flags (key-value) */
-            features?: Record<string, never>;
+            features?: {
+                [key: string]: boolean;
+            };
         };
         CreateTenantRequest: {
             name: string;
