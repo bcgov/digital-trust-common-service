@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { forwardRef, Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { EncryptionModule } from '../common/crypto/encryption.module';
@@ -13,7 +13,7 @@ import { ConnectorCredentialService } from './connector-credential.service';
   imports: [
     TypeOrmModule.forFeature([ConnectorCredential]),
     EncryptionModule,
-    TenantModule,
+    forwardRef(() => TenantModule),
   ],
   controllers: [ConnectorCredentialController],
   providers: [ConnectorCredentialService, ConnectorCredentialRepository],

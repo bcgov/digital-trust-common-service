@@ -1,5 +1,7 @@
 import {
   BadRequestException,
+  forwardRef,
+  Inject,
   Injectable,
   Logger,
   NotFoundException,
@@ -20,6 +22,7 @@ export class ConnectorCredentialService {
 
   public constructor(
     private readonly credentialRepository: ConnectorCredentialRepository,
+    @Inject(forwardRef(() => TenantService))
     private readonly tenantService: TenantService,
     private readonly encryptionService: EncryptionService,
   ) {}

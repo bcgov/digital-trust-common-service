@@ -554,13 +554,30 @@ paths:
     patch:
       operationId: updateTenantConfig
       summary: Update tenant configuration
+      description: |
+        Requires the tenant superuser scope; the caller must belong to the target tenant unless it
+        is a platform admin. Merges the given top-level keys into the tenant's existing `config` —
+        any key omitted from the request body (including `operation_ttl`) is left unchanged.
+
+        `rate_limits` is not accepted here: it is read-only and can only be set via
+        `PATCH /usage/limits`. Sending it returns `400`, same as any other undeclared property.
+
+        When `default_connector` is provided, it must reference a `ConnectorCredential` that
+        belongs to this tenant and is currently active, or the request is rejected with `404`
+        (does not exist) or `409` (belongs to another tenant, or is inactive). Set it to `null` to
+        clear the default connector without validation.
       tags: [Tenant Settings]
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/TenantConfig"
+              $ref: "#/components/schemas/UpdateTenantConfigRequest"
+            example:
+              allowed_formats: [anoncreds, sd-jwt]
+              default_connector: "123e4567-e89b-12d3-a456-426614174000"
+              features:
+                beta_credentials: true
       responses:
         "200":
           description: Configuration updated
@@ -568,6 +585,14 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Tenant"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
 
   /api/v1/tenants/{tenantId}/onboarding:
     parameters:
@@ -3011,6 +3036,28 @@ components:
             pending_stale:
               type: string
               example: "24h"
+
+    UpdateTenantConfigRequest:
+      type: object
+      additionalProperties: false
+      description: |
+        Only the fields present are merged into the tenant's config; `rate_limits` and
+        `operation_ttl` are not accepted here.
+      properties:
+        allowed_formats:
+          type: array
+          items:
+            $ref: "#/components/schemas/CredentialFormat"
+        default_connector:
+          type: string
+          format: uuid
+          nullable: true
+          description: Must be an active connector credential belonging to this tenant, or null.
+        features:
+          type: object
+          description: Feature flags (key-value)
+          additionalProperties:
+            type: boolean
 
     CreateTenantRequest:
       type: object
