@@ -42,12 +42,16 @@ function toRoles(profile: Record<string, unknown>): string[] {
 }
 
 function decodeJwtPayload(token: string): Record<string, unknown> {
-  const segment = token.split('.')[1];
-  if (!segment) return {};
+  try {
+    const segment = token.split('.')[1];
+    if (!segment) return {};
 
-  const padded = segment.replace(/-/g, '+').replace(/_/g, '/');
-  const json = atob(padded.padEnd(Math.ceil(padded.length / 4) * 4, '='));
-  return JSON.parse(json) as Record<string, unknown>;
+    const padded = segment.replace(/-/g, '+').replace(/_/g, '/');
+    const json = atob(padded.padEnd(Math.ceil(padded.length / 4) * 4, '='));
+    return JSON.parse(json) as Record<string, unknown>;
+  } catch {
+    return {};
+  }
 }
 
 function toAuthUserFromProfile(

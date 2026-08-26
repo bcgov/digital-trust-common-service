@@ -1,8 +1,4 @@
-import {
-  extractBearerToken,
-  TenantAccessDeniedException,
-  type AuthContext,
-} from '@app/auth';
+import { TenantAccessDeniedException, type AuthContext } from '@app/auth';
 import { OidcConfigService, OidcProviderService } from '@app/oidc';
 import { OidcAccountSessionRepository } from '@app/oidc/sessions';
 import { ForbiddenException, Injectable, Logger } from '@nestjs/common';
@@ -72,7 +68,6 @@ export class AuthService {
 
   public async switchTenant(
     auth: AuthContext,
-    authorizationHeader: string | undefined,
     targetTenantId: string,
   ): Promise<SwitchTenantResponseDto> {
     this.assertUserToken(auth);
@@ -105,9 +100,12 @@ export class AuthService {
       );
     }
 
+    // oidc-provider adapters key AccessToken by model id (`jti`), not the
+    // raw JWT string returned to clients.
     const provider = this.oidcProvider.getProvider();
-    const rawToken = extractBearerToken(authorizationHeader);
-    const existingAccessToken = await provider.AccessToken.find(rawToken);
+    const existingAccessToken = auth.jti
+      ? await provider.AccessToken.find(auth.jti)
+      : undefined;
     const previousGrantId = existingAccessToken?.grantId;
 
     const issued = await this.issueTokensForMembership(auth.clientId, target);

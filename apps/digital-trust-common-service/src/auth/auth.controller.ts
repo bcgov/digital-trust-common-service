@@ -3,7 +3,6 @@ import {
   Body,
   Controller,
   Get,
-  Headers,
   HttpCode,
   HttpStatus,
   Post,
@@ -63,12 +62,7 @@ export class AuthController {
   public async switchTenant(
     @CurrentAuth() auth: AuthContext,
     @Body() dto: SwitchTenantDto,
-    @Headers('authorization') authorization: string | undefined,
   ): Promise<SwitchTenantResponseDto> {
-    return await this.authService.switchTenant(
-      auth,
-      authorization,
-      dto.tenant_id,
-    );
+    return await this.authService.switchTenant(auth, dto.tenant_id);
   }
 }

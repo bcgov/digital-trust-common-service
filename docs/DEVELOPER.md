@@ -761,7 +761,7 @@ bypass). Live `TenantUser` membership lookup is used by
 by TenantGuard. Client-credentials tokens already carry a fixed `tenant_id`
 from `oauth_client` and cannot switch.
 
-## Tenant switching (AU-09)
+## Tenant switching
 
 Users who belong to more than one tenant get a token scoped to their **oldest
 active membership** at login. To change context, the SPA calls

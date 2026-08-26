@@ -232,7 +232,6 @@ describe('AuthService', () => {
     await expect(
       service.switchTenant(
         { ...userAuth, clientId: null },
-        'Bearer old-token',
         targetUser.tenantId,
       ),
     ).rejects.toThrow(ForbiddenException);
@@ -245,7 +244,7 @@ describe('AuthService', () => {
     });
 
     await expect(
-      service.switchTenant(userAuth, 'Bearer old-token', targetUser.tenantId),
+      service.switchTenant(userAuth, targetUser.tenantId),
     ).rejects.toThrow(ForbiddenException);
   });
 
@@ -253,7 +252,7 @@ describe('AuthService', () => {
     clientFind.mockResolvedValue(undefined);
 
     await expect(
-      service.switchTenant(userAuth, 'Bearer old-token', targetUser.tenantId),
+      service.switchTenant(userAuth, targetUser.tenantId),
     ).rejects.toThrow(ForbiddenException);
   });
 
@@ -261,7 +260,7 @@ describe('AuthService', () => {
     tenantUsers.findByTenantAndExternalUserId.mockResolvedValue(null);
 
     await expect(
-      service.switchTenant(userAuth, 'Bearer old-token', targetUser.tenantId),
+      service.switchTenant(userAuth, targetUser.tenantId),
     ).rejects.toThrow(TenantAccessDeniedException);
   });
 
@@ -272,16 +271,12 @@ describe('AuthService', () => {
     });
 
     await expect(
-      service.switchTenant(userAuth, 'Bearer old-token', targetUser.tenantId),
+      service.switchTenant(userAuth, targetUser.tenantId),
     ).rejects.toThrow(TenantAccessDeniedException);
   });
 
   it('issues a new grant, revokes the previous one, and rebinds the session', async () => {
-    const result = await service.switchTenant(
-      userAuth,
-      'Bearer old-token',
-      targetUser.tenantId,
-    );
+    const result = await service.switchTenant(userAuth, targetUser.tenantId);
 
     expect(result).toEqual({
       access_token: 'new-access-token',
@@ -293,6 +288,7 @@ describe('AuthService', () => {
       targetUser.role,
       targetUser.tenantId,
     );
+    expect(accessTokenFind).toHaveBeenCalledWith('old-jti');
     expect(grantSave).toHaveBeenCalled();
     expect(grantDestroy).toHaveBeenCalled();
     expect(revokeAccessByGrantId).toHaveBeenCalledWith('old-grant');
@@ -311,11 +307,7 @@ describe('AuthService', () => {
   it('does not wipe the account when rotating within the same tenant', async () => {
     tenantUsers.findByTenantAndExternalUserId.mockResolvedValue(currentUser);
 
-    await service.switchTenant(
-      userAuth,
-      'Bearer old-token',
-      currentUser.tenantId,
-    );
+    await service.switchTenant(userAuth, currentUser.tenantId);
 
     expect(accountSessions.deleteAllForAccount).not.toHaveBeenCalled();
     expect(accountSessions.rebindSessionsToAccount).toHaveBeenCalledWith(

@@ -10,7 +10,7 @@ import type { AuthenticatedRequest } from '../types/express';
  *
  * - No `:tenantId` (or empty) → no-op allow (safe on mixed/admin stacks).
  * - `platform-admin` → bypass and still stamp `request.tenantId` when present.
- * - Live TenantUser membership is checked at token issuance (login / AU-09).
+ * - Live TenantUser membership is checked at token issuance (login / switch-tenant).
  */
 @Injectable()
 export class TenantGuard implements CanActivate {

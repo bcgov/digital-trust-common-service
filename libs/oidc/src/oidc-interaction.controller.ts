@@ -382,9 +382,9 @@ export class OidcInteractionController {
       const tenantId = interaction.tenantId;
 
       /*
-       * AU-09: if the Keycloak subject already has active memberships,
-       * bind the session to the oldest one. Do not JIT-create a second
-       * row in the SPA client's tenant.
+       * If the Keycloak subject already has active memberships, bind the
+       * session to the oldest one. Do not JIT-create a second row in the
+       * SPA client's tenant.
        */
       const memberships =
         await this.tenantUserService.findActiveByExternalUserId(claims.sub);

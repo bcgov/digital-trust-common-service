@@ -57,16 +57,13 @@ describe('AuthController', () => {
     expect(listTenants).toHaveBeenCalledWith(auth);
   });
 
-  it('passes the bearer header through on switch-tenant', async () => {
-    await controller.switchTenant(
-      auth,
-      { tenant_id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb' },
-      'Bearer old-token',
-    );
+  it('delegates switch-tenant to the service with auth and tenant id', async () => {
+    await controller.switchTenant(auth, {
+      tenant_id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+    });
 
     expect(switchTenant).toHaveBeenCalledWith(
       auth,
-      'Bearer old-token',
       'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
     );
   });
