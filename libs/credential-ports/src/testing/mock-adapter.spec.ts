@@ -1,3 +1,4 @@
+import { ConnectorType } from '../enums/connector-type.enum';
 import { CredentialFormat } from '../enums/credential-format.enum';
 import {
   ConnectionState,
@@ -21,6 +22,24 @@ describe('MockAdapter', () => {
 
   afterEach(() => {
     jest.useRealTimers();
+  });
+
+  it('should default to traction with anoncreds capability metadata', () => {
+    expect(adapter.connectorType).toBe(ConnectorType.Traction);
+    expect(adapter.supportedFormats).toEqual([CredentialFormat.AnonCreds]);
+  });
+
+  it('should take capability metadata from config so tests can register distinct adapters', () => {
+    const credo = new MockAdapter({
+      connectorType: ConnectorType.Credo,
+      supportedFormats: [CredentialFormat.SdJwtVc, CredentialFormat.JsonLd],
+    });
+
+    expect(credo.connectorType).toBe(ConnectorType.Credo);
+    expect(credo.supportedFormats).toEqual([
+      CredentialFormat.SdJwtVc,
+      CredentialFormat.JsonLd,
+    ]);
   });
 
   it('should resolve issuer, holder, and revocation operations with in-memory state by default', async () => {

@@ -11,6 +11,8 @@ import { OfferCredentialRequest } from '../dto/offer-credential-request.dto';
 import { PresentationExchange } from '../dto/presentation-exchange.dto';
 import { PresentationRequest } from '../dto/presentation-request.dto';
 import { RevocationResult } from '../dto/revocation-result.dto';
+import { ConnectorType } from '../enums/connector-type.enum';
+import { CredentialFormat } from '../enums/credential-format.enum';
 import {
   ConnectionState,
   CredentialExchangeState,
@@ -27,6 +29,8 @@ export interface MockAdapterConfig {
   readonly mode?: 'success' | 'delayed' | 'failure';
   readonly delayMs?: number;
   readonly failureError?: AdapterError;
+  readonly connectorType?: ConnectorType;
+  readonly supportedFormats?: readonly CredentialFormat[];
 }
 
 export interface MockAdapterCall {
@@ -59,12 +63,25 @@ export class MockAdapter implements AgentAdapter {
 
   private config: MockAdapterConfig;
 
+  /**
+   * Capabilities are fixed at construction rather than read from `config`,
+   * because the AdapterRegistry keys its map on `connectorType` — letting
+   * `configure()` change it would desync an already-registered adapter.
+   */
+  public readonly connectorType: ConnectorType;
+
+  public readonly supportedFormats: readonly CredentialFormat[];
+
   public constructor(config: MockAdapterConfig = {}) {
     this.config = {
       delayMs: 50,
       mode: 'success',
       ...config,
     };
+    this.connectorType = config.connectorType ?? ConnectorType.Traction;
+    this.supportedFormats = config.supportedFormats ?? [
+      CredentialFormat.AnonCreds,
+    ];
   }
 
   public configure(config: Partial<MockAdapterConfig>): void {

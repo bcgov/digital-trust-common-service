@@ -11,6 +11,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_INTERCEPTOR } from '@nestjs/core';
 
+import { AdapterRegistryModule } from './adapter-registry/adapter-registry.module';
 import { AdminModule } from './admin/admin.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -40,6 +41,7 @@ import { VerificationProfileModule } from './verification-profile/verification-p
 
 @Module({
   imports: [
+    AdapterRegistryModule,
     AdminModule,
     AuditLogModule,
     ConfigModule.forRoot({ isGlobal: true }),

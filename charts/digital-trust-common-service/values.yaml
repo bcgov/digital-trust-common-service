@@ -255,6 +255,8 @@ config:
   AUDIT_AUTO_INTERCEPTOR_ENABLED: "false"
   AUDIT_PARTITION_CRON: "0 3 * * *"
   AUDIT_PARTITION_MONTHS_AHEAD: "3"
+  # Platform-admin adapter override (CA-02). Off outside debugging.
+  ADAPTER_OVERRIDE_ENABLED: "false"
 
 # -- Extra plain environment variables appended to every container (name/value list)
 extraEnv: []

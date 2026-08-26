@@ -11,6 +11,8 @@ import { OfferCredentialRequest } from '../dto/offer-credential-request.dto';
 import { PresentationExchange } from '../dto/presentation-exchange.dto';
 import { PresentationRequest } from '../dto/presentation-request.dto';
 import { RevocationResult } from '../dto/revocation-result.dto';
+import { ConnectorType } from '../enums/connector-type.enum';
+import { CredentialFormat } from '../enums/credential-format.enum';
 import { AgentAdapter } from '../ports/agent-adapter';
 
 /**
@@ -19,6 +21,14 @@ import { AgentAdapter } from '../ports/agent-adapter';
  */
 @Injectable()
 export class StubAdapter implements AgentAdapter {
+  // Placeholder capabilities: the stub never performs work, but must satisfy
+  // the AgentAdapter contract so it stays usable as a fail-closed default.
+  public readonly connectorType: ConnectorType = ConnectorType.Traction;
+
+  public readonly supportedFormats: readonly CredentialFormat[] = [
+    CredentialFormat.AnonCreds,
+  ];
+
   public offerCredential(
     _req: OfferCredentialRequest,
   ): Promise<CredentialExchange> {

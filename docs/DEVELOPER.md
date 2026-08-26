@@ -631,6 +631,69 @@ App-issued access tokens carry a stable API `aud`, not the OIDC issuer URL:
 
 `JWT_AUDIENCE` and extra resources must be absolute URIs without fragments (RFC 8707 / oidc-provider). Override via `.env` if needed; Helm `config.JWT_AUDIENCE` defaults to the same URI in every environment.
 
+## Adapter registry (CA-02)
+
+`AdapterRegistry` (`apps/digital-trust-common-service/src/adapter-registry/`) maps a connector type
+to the adapter that implements the credential ports, and resolves which adapter serves a given
+tenant. Callers never name Traction or Credo directly.
+
+Adapters register themselves at startup and advertise their own capabilities — the registry holds no
+per-connector knowledge:
+
+```ts
+// In an adapter module's onModuleInit (CT-01 onwards)
+this.registry.register(ConnectorType.Traction, this.tractionAdapter);
+```
+
+`AgentAdapter` therefore carries `connectorType` and `supportedFormats` (`AdapterCapabilities` in
+`@app/credential-ports`). The first entry of `supportedFormats` is the connector's **primary**
+format, used when a caller omits one.
+
+### Resolution order
+
+`resolve(tenantId, format?, options?)` returns `{ adapter, connector, format }`:
+
+1. **`options.adapterOverride`** — platform-admin escape hatch (see below).
+2. **`options.connectorId`** — explicit connector, e.g. an issuance profile's `connector_id` (CA-12).
+3. **`tenant.config.default_connector`** — the tenant default (written by TM-04).
+4. **Fallback** — the tenant's single active `ConnectorCredential`.
+
+The fallback exists because TM-04 has not shipped, so nothing populates `default_connector` yet. It
+is deliberately strict: **zero** active connectors and **more than one** are both errors. Guessing
+which connector a tenant meant could issue a credential from the wrong agent.
+
+A connector reached by id — from tenant config or from a caller — is checked to belong to the
+requesting tenant and to be `active`. A `default_connector` that is missing, not a string, or points
+at another tenant's row is refused, never silently followed.
+
+### Errors
+
+| Condition | Error | `code` |
+| --- | --- | --- |
+| No adapter registered for the connector type | `ConnectorUnavailableError` | `CONNECTOR_UNAVAILABLE` |
+| Connector missing, inactive, or owned by another tenant | `ConnectorUnavailableError` | `CONNECTOR_UNAVAILABLE` |
+| No active connector, or an ambiguous fallback | `ConnectorUnavailableError` | `CONNECTOR_UNAVAILABLE` |
+| Requested format not in `supportedFormats` | `FormatNotSupportedError` | `FORMAT_NOT_SUPPORTED` |
+| Override requested but not permitted | `ForbiddenException` | HTTP 403 |
+
+Registering two adapters for the same connector type throws a plain `Error` at startup — a
+misconfiguration should be loud, not silently resolved to whichever registered last.
+
+### `ADAPTER_OVERRIDE_ENABLED`
+
+Defaults to `false`. When on, a **platform-admin** caller may pass `adapterOverride` to route an
+operation through a different connector type than the tenant's configured one. Both conditions must
+hold; either failing raises `ForbiddenException` rather than silently ignoring the override, so a
+privilege failure is never hidden from the caller. The override still requires the tenant to have an
+active connector of the overridden type — it selects an adapter, it does not conjure credentials.
+
+CA-02 ships the service-level parameter only. The `?adapter=` query-param plumbing arrives with the
+credential controllers (CA-03 / CA-04).
+
+> **Note:** `ConnectorType` currently exists twice — `@app/credential-ports` (the port-layer enum)
+> and `connection/connection.entity.ts` (the entity enum). The string values are identical;
+> `toPortConnectorType()` bridges them. Collapsing the two is a tracked follow-up.
+
 ## Testing
 
 ### Run Unit Tests
