@@ -179,6 +179,11 @@ export interface paths {
          *     connector credentials — they must be re-authenticated after reactivation. Suspending a
          *     tenant only blocks its own callers (`403 TENANT_NOT_ACTIVE`); it does not touch OAuth
          *     clients, connector credentials, or connections.
+         *
+         *     **Current limitation**: the `403 TENANT_NOT_ACTIVE` block is only enforced on Tenant
+         *     Settings and Tenant Users endpoints so far. Connections, Credentials, Presentations,
+         *     Clients, and Connectors are not yet guarded, so a suspended or deactivated tenant's own
+         *     callers can still use them.
          */
         patch: operations["updateTenantStatus"];
         trace?: never;
