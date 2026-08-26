@@ -30,7 +30,6 @@ import {
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 
-import { assertTenantAccess } from '../common/assert-tenant-access';
 import { API_VERSION } from '../common/constants/api-version.constants';
 import { ConnectorType } from '../connection/connection.entity';
 
@@ -79,8 +78,7 @@ export class ConnectorCredentialController {
     @Body() dto: CreateConnectorCredentialDto,
     @CurrentAuth() auth: AuthContext,
   ): Promise<ConnectorCredentialResponseDto> {
-    assertTenantAccess(auth, dto.tenantId);
-    const credential = await this.credentialService.create(dto);
+    const credential = await this.credentialService.create(dto, auth);
     return this.toResponseDto(credential);
   }
 
@@ -126,8 +124,7 @@ export class ConnectorCredentialController {
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentAuth() auth: AuthContext,
   ): Promise<ConnectorCredentialResponseDto> {
-    const credential = await this.credentialService.findById(id);
-    assertTenantAccess(auth, credential.tenantId);
+    const credential = await this.credentialService.findById(id, auth);
     return this.toResponseDto(credential);
   }
 
@@ -161,9 +158,7 @@ export class ConnectorCredentialController {
     @Body() dto: UpdateConnectorCredentialDto,
     @CurrentAuth() auth: AuthContext,
   ): Promise<ConnectorCredentialResponseDto> {
-    const existing = await this.credentialService.findById(id);
-    assertTenantAccess(auth, existing.tenantId);
-    const credential = await this.credentialService.update(id, dto);
+    const credential = await this.credentialService.update(id, dto, auth);
     return this.toResponseDto(credential);
   }
 
@@ -174,9 +169,7 @@ export class ConnectorCredentialController {
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentAuth() auth: AuthContext,
   ): Promise<void> {
-    const existing = await this.credentialService.findById(id);
-    assertTenantAccess(auth, existing.tenantId);
-    return await this.credentialService.delete(id);
+    return await this.credentialService.delete(id, auth);
   }
 
   @Post(':id/decrypt')
@@ -205,9 +198,7 @@ export class ConnectorCredentialController {
     @Body() dto: DecryptConnectorCredentialDto,
     @CurrentAuth() auth: AuthContext,
   ): Promise<string> {
-    const existing = await this.credentialService.findById(id);
-    assertTenantAccess(auth, existing.tenantId);
-    return await this.credentialService.decryptCredential(dto.key, id);
+    return await this.credentialService.decryptCredential(dto.key, id, auth);
   }
 
   private toResponseDto(

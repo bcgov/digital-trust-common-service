@@ -41,6 +41,20 @@ describe('OAuthClientService', () => {
     tenant: undefined as any,
   };
 
+  const auth = {
+    sub: 'user-1',
+    tokenType: 'user' as const,
+    clientId: 'spa',
+    tenantId: mockOAuthClient.tenantId,
+    roles: [] as string[],
+    scope: 'clients:manage',
+    scopes: ['clients:manage'],
+    iss: 'http://localhost/oidc',
+    aud: 'http://localhost/oidc',
+    exp: 9_999_999_999,
+    iat: 1,
+  };
+
   beforeEach(async () => {
     mockFindById = jest.fn();
     mockFindByClientId = jest.fn();
@@ -106,7 +120,7 @@ describe('OAuthClientService', () => {
 
       mockCreate.mockResolvedValue(mockOAuthClient);
 
-      const result = await service.createClient(dto);
+      const result = await service.createClient(dto, auth);
 
       expect(result.client).toBeDefined();
       expect(result.clientSecret).toBeDefined();
@@ -121,7 +135,7 @@ describe('OAuthClientService', () => {
         grantTypes: ['authorization_code'],
       };
 
-      await expect(service.createClient(dto)).rejects.toThrow(
+      await expect(service.createClient(dto, auth)).rejects.toThrow(
         BadRequestException,
       );
       expect(mockCreate).not.toHaveBeenCalled();
@@ -140,7 +154,7 @@ describe('OAuthClientService', () => {
         grantTypes: ['refresh_token'],
       };
 
-      await expect(service.createClient(dto)).resolves.toBeDefined();
+      await expect(service.createClient(dto, auth)).resolves.toBeDefined();
       expect(mockCreate).toHaveBeenCalled();
     });
 
@@ -151,10 +165,13 @@ describe('OAuthClientService', () => {
       service = await createService();
       mockCreate.mockResolvedValue(mockOAuthClient);
 
-      await service.createClient({
-        tenantId: mockOAuthClient.tenantId,
-        name: mockOAuthClient.name,
-      });
+      await service.createClient(
+        {
+          tenantId: mockOAuthClient.tenantId,
+          name: mockOAuthClient.name,
+        },
+        auth,
+      );
 
       expect(mockCreate).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -169,12 +186,15 @@ describe('OAuthClientService', () => {
         roles: ['platform-admin'],
       });
 
-      await service.createClient({
-        tenantId: mockOAuthClient.tenantId,
-        name: mockOAuthClient.name,
-        roles: ['platform-admin'],
-        grantTypes: ['client_credentials'],
-      });
+      await service.createClient(
+        {
+          tenantId: mockOAuthClient.tenantId,
+          name: mockOAuthClient.name,
+          roles: ['platform-admin'],
+          grantTypes: ['client_credentials'],
+        },
+        auth,
+      );
 
       expect(mockCreate).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -185,12 +205,15 @@ describe('OAuthClientService', () => {
 
     it('should reject unknown roles on create', async () => {
       await expect(
-        service.createClient({
-          tenantId: mockOAuthClient.tenantId,
-          name: mockOAuthClient.name,
-          roles: ['superuser'],
-          grantTypes: ['client_credentials'],
-        }),
+        service.createClient(
+          {
+            tenantId: mockOAuthClient.tenantId,
+            name: mockOAuthClient.name,
+            roles: ['superuser'],
+            grantTypes: ['client_credentials'],
+          },
+          auth,
+        ),
       ).rejects.toThrow(BadRequestException);
       expect(mockCreate).not.toHaveBeenCalled();
     });
@@ -202,12 +225,15 @@ describe('OAuthClientService', () => {
       service = await createService();
 
       await expect(
-        service.createClient({
-          tenantId: mockOAuthClient.tenantId,
-          name: mockOAuthClient.name,
-          roles: ['platform-admin'],
-          grantTypes: ['client_credentials', 'authorization_code'],
-        }),
+        service.createClient(
+          {
+            tenantId: mockOAuthClient.tenantId,
+            name: mockOAuthClient.name,
+            roles: ['platform-admin'],
+            grantTypes: ['client_credentials', 'authorization_code'],
+          },
+          auth,
+        ),
       ).rejects.toThrow(BadRequestException);
       expect(mockCreate).not.toHaveBeenCalled();
     });
@@ -248,7 +274,7 @@ describe('OAuthClientService', () => {
       mockFindById.mockResolvedValue(mockOAuthClient);
       mockRevoke.mockResolvedValue(undefined);
 
-      await service.revokeClient(mockOAuthClient.id);
+      await service.revokeClient(mockOAuthClient.id, auth);
 
       expect(mockFindById).toHaveBeenCalledWith(mockOAuthClient.id);
       expect(mockRevoke).toHaveBeenCalledWith(mockOAuthClient.id);
@@ -257,7 +283,7 @@ describe('OAuthClientService', () => {
     it('should throw NotFoundException if client not found', async () => {
       mockFindById.mockResolvedValue(null);
 
-      await expect(service.revokeClient('nonexistent')).rejects.toThrow(
+      await expect(service.revokeClient('nonexistent', auth)).rejects.toThrow(
         NotFoundException,
       );
     });
@@ -334,10 +360,14 @@ describe('OAuthClientService', () => {
       };
       mockUpdate.mockResolvedValue(updatedClient);
 
-      const result = await service.update(mockOAuthClient.id, {
-        name: 'Updated Client',
-        scopes: ['credentials:offer', 'credentials:verify'],
-      });
+      const result = await service.update(
+        mockOAuthClient.id,
+        {
+          name: 'Updated Client',
+          scopes: ['credentials:offer', 'credentials:verify'],
+        },
+        auth,
+      );
 
       expect(mockFindById).toHaveBeenCalledWith(mockOAuthClient.id);
       expect(mockUpdate).toHaveBeenCalled();
@@ -356,9 +386,13 @@ describe('OAuthClientService', () => {
       };
       mockUpdate.mockResolvedValue(updatedClient);
 
-      const result = await service.update(mockOAuthClient.id, {
-        roles: ['platform-admin'],
-      });
+      const result = await service.update(
+        mockOAuthClient.id,
+        {
+          roles: ['platform-admin'],
+        },
+        auth,
+      );
 
       expect(mockUpdate).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -372,9 +406,13 @@ describe('OAuthClientService', () => {
       mockFindById.mockResolvedValue(mockOAuthClient);
 
       await expect(
-        service.update(mockOAuthClient.id, {
-          roles: ['superuser'],
-        }),
+        service.update(
+          mockOAuthClient.id,
+          {
+            roles: ['superuser'],
+          },
+          auth,
+        ),
       ).rejects.toThrow(BadRequestException);
       expect(mockUpdate).not.toHaveBeenCalled();
     });
@@ -391,9 +429,13 @@ describe('OAuthClientService', () => {
       });
 
       await expect(
-        service.update(mockOAuthClient.id, {
-          grantTypes: ['client_credentials', 'authorization_code'],
-        }),
+        service.update(
+          mockOAuthClient.id,
+          {
+            grantTypes: ['client_credentials', 'authorization_code'],
+          },
+          auth,
+        ),
       ).rejects.toThrow(BadRequestException);
       expect(mockUpdate).not.toHaveBeenCalled();
     });
@@ -410,9 +452,13 @@ describe('OAuthClientService', () => {
       });
 
       await expect(
-        service.update(mockOAuthClient.id, {
-          roles: ['platform-admin'],
-        }),
+        service.update(
+          mockOAuthClient.id,
+          {
+            roles: ['platform-admin'],
+          },
+          auth,
+        ),
       ).rejects.toThrow(BadRequestException);
       expect(mockUpdate).not.toHaveBeenCalled();
     });
@@ -426,10 +472,14 @@ describe('OAuthClientService', () => {
       };
       mockUpdate.mockResolvedValue(updatedClient);
 
-      const result = await service.update(mockOAuthClient.id, {
-        redirectUris: ['https://updated.example.com/callback'],
-        grantTypes: ['client_credentials'],
-      });
+      const result = await service.update(
+        mockOAuthClient.id,
+        {
+          redirectUris: ['https://updated.example.com/callback'],
+          grantTypes: ['client_credentials'],
+        },
+        auth,
+      );
 
       expect(mockUpdate).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -447,9 +497,13 @@ describe('OAuthClientService', () => {
       mockFindById.mockResolvedValue({ ...mockOAuthClient });
       mockUpdate.mockImplementation((client: unknown) => client);
 
-      await service.update(mockOAuthClient.id, {
-        refreshTokenTtlSeconds: 3600,
-      });
+      await service.update(
+        mockOAuthClient.id,
+        {
+          refreshTokenTtlSeconds: 3600,
+        },
+        auth,
+      );
 
       expect(mockUpdate.mock.calls[0][0].refreshTokenTtlSeconds).toBe(3600);
     });
@@ -461,9 +515,13 @@ describe('OAuthClientService', () => {
       });
       mockUpdate.mockImplementation((client: unknown) => client);
 
-      await service.update(mockOAuthClient.id, {
-        refreshTokenTtlSeconds: null,
-      });
+      await service.update(
+        mockOAuthClient.id,
+        {
+          refreshTokenTtlSeconds: null,
+        },
+        auth,
+      );
 
       expect(mockUpdate.mock.calls[0][0].refreshTokenTtlSeconds).toBeNull();
     });
@@ -475,7 +533,7 @@ describe('OAuthClientService', () => {
       });
       mockUpdate.mockImplementation((client: unknown) => client);
 
-      await service.update(mockOAuthClient.id, { name: 'Renamed' });
+      await service.update(mockOAuthClient.id, { name: 'Renamed' }, auth);
 
       expect(mockUpdate.mock.calls[0][0].refreshTokenTtlSeconds).toBe(3600);
     });
@@ -488,9 +546,13 @@ describe('OAuthClientService', () => {
       };
       mockUpdate.mockResolvedValue(updatedClient);
 
-      const result = await service.update(mockOAuthClient.id, {
-        name: 'Updated Name',
-      });
+      const result = await service.update(
+        mockOAuthClient.id,
+        {
+          name: 'Updated Name',
+        },
+        auth,
+      );
 
       expect(result.name).toBe('Updated Name');
       expect(result.scopes).toEqual(mockOAuthClient.scopes);
@@ -501,15 +563,19 @@ describe('OAuthClientService', () => {
       mockFindById.mockResolvedValue(null);
 
       await expect(
-        service.update('nonexistent', { name: 'Updated Name' }),
+        service.update('nonexistent', { name: 'Updated Name' }, auth),
       ).rejects.toThrow(NotFoundException);
     });
 
     it('should reject an unsupported grant type', async () => {
       await expect(
-        service.update(mockOAuthClient.id, {
-          grantTypes: ['authorization_code'],
-        }),
+        service.update(
+          mockOAuthClient.id,
+          {
+            grantTypes: ['authorization_code'],
+          },
+          auth,
+        ),
       ).rejects.toThrow(BadRequestException);
       expect(mockFindById).not.toHaveBeenCalled();
     });

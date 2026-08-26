@@ -618,10 +618,10 @@ membership-guard territory. Client-credentials tokens already carry a fixed
 | Role/scope catalog | `role`, `scope` | Jwt | Authenticated read |
 | Tenant role overrides | `tenant-role-scope` | Jwt + Scope + Tenant | `tenants:admin` on writes |
 | Audit logs | `audit-log` | Jwt + Scope + Tenant | `audit:read` |
-| Connections | `connection` | Jwt + Scope + Tenant (`:tenantId` lists) | `connections:manage`; body/`/:id` via `assertTenantAccess` |
-| OAuth clients | `oauth-client` | Jwt + Scope + Tenant | `clients:manage`; body/`/:id` via `assertTenantAccess` |
-| Connector credentials | `connector-credential` | Jwt + Scope + Tenant | `tenants:admin`; body/`/:id` via `assertTenantAccess` |
-| Credential definitions | `credential-definition` | Jwt + Scope + Tenant | `tenants:admin`; format/connector lists filtered to caller tenant |
+| Connections | `connection` | Jwt + Scope + Tenant (`:tenantId` lists) | `connections:manage`; body create → `assertTenantAccess` (403); load-by-id → `assertResourceTenantOrNotFound` (404) in the service |
+| OAuth clients | `oauth-client` | Jwt + Scope + Tenant | `clients:manage`; same create/load pattern in the service |
+| Connector credentials | `connector-credential` | Jwt + Scope + Tenant | `tenants:admin`; same create/load pattern in the service |
+| Credential definitions | `credential-definition` | Jwt + Scope + Tenant | `tenants:admin`; format/connector lists are tenant-scoped in SQL (platform-admin sees all) |
 | Health / hello / OIDC | `health`, `app`, `oidc-interaction` | none | Intentionally public |
 
 Integration coverage for the guard stack uses ephemeral
@@ -639,8 +639,8 @@ are covered by `assertTenantAccess` today; nesting under
 |-------|----------------|----------------------|--------|
 | Path `:tenantId` | `tenants/:tenantId/audit-logs`, `…/tenant/:tenantId` | Enforced | Wired |
 | Tenant UUID as `:id` | `GET/PUT/DELETE /tenants/:id` | **No-op** (param name is `id`) | `assertTenantAccess` in `TenantController` |
-| Body-only `tenantId` | create connection / oauth-client / credential-definition / etc. | **No-op** | `assertTenantAccess` on create; nesting still open |
-| Resource `:id` | `GET /connections/:id`, `PATCH /oauth-clients/:id` | **No-op** | `assertTenantAccess` after load |
+| Body-only `tenantId` | create connection / oauth-client / credential-definition / etc. | **No-op** | `assertTenantAccess` in the service on create (403); nesting still open |
+| Resource `:id` | `GET /connections/:id`, `PATCH /oauth-clients/:id` | **No-op** | `assertResourceTenantOrNotFound` in the service after load (404, no cross-tenant oracle) |
 | Admin / no tenant | `/admin/operations/stats` | No-op (correct) | Wired |
 
 Do **not** treat every `:id` as a tenant id — most are resource primary keys.

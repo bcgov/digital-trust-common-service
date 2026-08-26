@@ -1,10 +1,4 @@
-import {
-  JwtGuard,
-  PLATFORM_ADMIN_ROLE,
-  ScopeGuard,
-  TenantGuard,
-  type AuthContext,
-} from '@app/auth';
+import { JwtGuard, ScopeGuard, TenantGuard, type AuthContext } from '@app/auth';
 import { CanActivate } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 
@@ -136,7 +130,7 @@ describe('CredentialDefinitionController', () => {
 
       const result = await controller.create(dto, auth);
 
-      expect(mockCreate).toHaveBeenCalledWith(dto);
+      expect(mockCreate).toHaveBeenCalledWith(dto, auth);
       expect(result).toEqual(mockCredentialDefinition);
     });
   });
@@ -148,7 +142,7 @@ describe('CredentialDefinitionController', () => {
 
       const result = await controller.findById(id, auth);
 
-      expect(mockFindById).toHaveBeenCalledWith(id);
+      expect(mockFindById).toHaveBeenCalledWith(id, auth);
       expect(result).toEqual(mockCredentialDefinition);
     });
 
@@ -159,7 +153,7 @@ describe('CredentialDefinitionController', () => {
       );
 
       await expect(controller.findById(id, auth)).rejects.toThrow();
-      expect(mockFindById).toHaveBeenCalledWith(id);
+      expect(mockFindById).toHaveBeenCalledWith(id, auth);
     });
   });
 
@@ -193,41 +187,8 @@ describe('CredentialDefinitionController', () => {
 
       const result = await controller.findByFormat(format, auth);
 
-      expect(mockFindByFormat).toHaveBeenCalledWith(format);
+      expect(mockFindByFormat).toHaveBeenCalledWith(format, auth);
       expect(result).toEqual(definitions);
-    });
-
-    it('filters out other tenants for non-platform-admin callers', async () => {
-      const format = CredentialDefinitionFormat.ANONCREDS;
-      mockFindByFormat.mockResolvedValue([
-        mockCredentialDefinition,
-        {
-          ...mockCredentialDefinition,
-          id: 'other-id',
-          tenantId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
-        },
-      ]);
-
-      const result = await controller.findByFormat(format, auth);
-
-      expect(result).toEqual([mockCredentialDefinition]);
-    });
-
-    it('returns all tenants for platform-admin', async () => {
-      const format = CredentialDefinitionFormat.ANONCREDS;
-      const other = {
-        ...mockCredentialDefinition,
-        id: 'other-id',
-        tenantId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
-      };
-      mockFindByFormat.mockResolvedValue([mockCredentialDefinition, other]);
-
-      const result = await controller.findByFormat(format, {
-        ...auth,
-        roles: [PLATFORM_ADMIN_ROLE],
-      });
-
-      expect(result).toEqual([mockCredentialDefinition, other]);
     });
 
     it('should return empty array if no definitions found for format', async () => {
@@ -236,6 +197,7 @@ describe('CredentialDefinitionController', () => {
 
       const result = await controller.findByFormat(format, auth);
 
+      expect(mockFindByFormat).toHaveBeenCalledWith(format, auth);
       expect(result).toEqual([]);
     });
   });
@@ -248,7 +210,7 @@ describe('CredentialDefinitionController', () => {
 
       const result = await controller.findByConnector(connectorType, auth);
 
-      expect(mockFindByConnector).toHaveBeenCalledWith(connectorType);
+      expect(mockFindByConnector).toHaveBeenCalledWith(connectorType, auth);
       expect(result).toEqual(definitions);
     });
 
@@ -258,6 +220,7 @@ describe('CredentialDefinitionController', () => {
 
       const result = await controller.findByConnector(connectorType, auth);
 
+      expect(mockFindByConnector).toHaveBeenCalledWith(connectorType, auth);
       expect(result).toEqual([]);
     });
   });
@@ -268,12 +231,11 @@ describe('CredentialDefinitionController', () => {
       const dto = { name: 'Updated Name' };
       const updatedDefinition = { ...mockCredentialDefinition, ...dto };
 
-      mockFindById.mockResolvedValue(mockCredentialDefinition);
       mockUpdate.mockResolvedValue(updatedDefinition);
 
       const result = await controller.update(id, dto, auth);
 
-      expect(mockUpdate).toHaveBeenCalledWith(id, dto);
+      expect(mockUpdate).toHaveBeenCalledWith(id, dto, auth);
       expect(result).toEqual(updatedDefinition);
     });
 
@@ -281,34 +243,33 @@ describe('CredentialDefinitionController', () => {
       const id = '999e4567-e89b-12d3-a456-426614174000';
       const dto = { name: 'Updated Name' };
 
-      mockFindById.mockRejectedValue(
+      mockUpdate.mockRejectedValue(
         new Error('Credential definition not found'),
       );
 
       await expect(controller.update(id, dto, auth)).rejects.toThrow();
-      expect(mockFindById).toHaveBeenCalledWith(id);
+      expect(mockUpdate).toHaveBeenCalledWith(id, dto, auth);
     });
   });
 
   describe('DELETE /credential-definitions/:id', () => {
     it('should delete a credential definition', async () => {
       const id = mockCredentialDefinition.id;
-      mockFindById.mockResolvedValue(mockCredentialDefinition);
       mockDelete.mockResolvedValue(undefined);
 
       await controller.delete(id, auth);
 
-      expect(mockDelete).toHaveBeenCalledWith(id);
+      expect(mockDelete).toHaveBeenCalledWith(id, auth);
     });
 
     it('should throw NotFoundException if credential definition not found', async () => {
       const id = '999e4567-e89b-12d3-a456-426614174000';
-      mockFindById.mockRejectedValue(
+      mockDelete.mockRejectedValue(
         new Error('Credential definition not found'),
       );
 
       await expect(controller.delete(id, auth)).rejects.toThrow();
-      expect(mockFindById).toHaveBeenCalledWith(id);
+      expect(mockDelete).toHaveBeenCalledWith(id, auth);
     });
   });
 });

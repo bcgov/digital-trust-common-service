@@ -1,3 +1,4 @@
+import { TenantAccessDeniedException } from '@app/auth';
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 
@@ -38,6 +39,20 @@ describe('ConnectionService', () => {
     tenant: undefined as any,
     createdAt: new Date(),
     updatedAt: new Date(),
+  };
+
+  const auth = {
+    sub: 'user-1',
+    tokenType: 'user' as const,
+    clientId: 'spa',
+    tenantId: mockConnection.tenantId,
+    roles: [] as string[],
+    scope: 'connections:manage',
+    scopes: ['connections:manage'],
+    iss: 'http://localhost/oidc',
+    aud: 'http://localhost/oidc',
+    exp: 9_999_999_999,
+    iat: 1,
   };
 
   beforeEach(async () => {
@@ -97,7 +112,7 @@ describe('ConnectionService', () => {
       mockFindByExternalConnectionId.mockResolvedValue(null);
       mockCreate.mockResolvedValue(mockConnection);
 
-      const result = await service.create(dto);
+      const result = await service.create(dto, auth);
 
       expect(mockFindByExternalConnectionId).toHaveBeenCalledWith(
         dto.externalConnectionId,
@@ -132,8 +147,25 @@ describe('ConnectionService', () => {
 
       mockFindByExternalConnectionId.mockResolvedValue(mockConnection);
 
-      await expect(service.create(dto)).rejects.toThrow(ConflictException);
+      await expect(service.create(dto, auth)).rejects.toThrow(
+        ConflictException,
+      );
       expect(mockEmit).not.toHaveBeenCalled();
+    });
+
+    it('rejects create when body tenant does not match the token', async () => {
+      const dto: CreateConnectionDto = {
+        tenantId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+        externalConnectionId: mockConnection.externalConnectionId,
+        state: mockConnection.state,
+        connectorType: mockConnection.connectorType,
+        protocol: mockConnection.protocol,
+      };
+
+      await expect(service.create(dto, auth)).rejects.toThrow(
+        TenantAccessDeniedException,
+      );
+      expect(mockCreate).not.toHaveBeenCalled();
     });
   });
 
@@ -141,7 +173,7 @@ describe('ConnectionService', () => {
     it('should find a connection by id', async () => {
       mockFindById.mockResolvedValue(mockConnection);
 
-      const result = await service.findById(mockConnection.id);
+      const result = await service.findById(mockConnection.id, auth);
 
       expect(mockFindById).toHaveBeenCalledWith(mockConnection.id);
       expect(result).toEqual(mockConnection);
@@ -150,9 +182,20 @@ describe('ConnectionService', () => {
     it('should throw NotFoundException if connection not found', async () => {
       mockFindById.mockResolvedValue(null);
 
-      await expect(service.findById(mockConnection.id)).rejects.toThrow(
+      await expect(service.findById(mockConnection.id, auth)).rejects.toThrow(
         NotFoundException,
       );
+    });
+
+    it('returns NotFoundException for cross-tenant resource access', async () => {
+      mockFindById.mockResolvedValue(mockConnection);
+
+      await expect(
+        service.findById(mockConnection.id, {
+          ...auth,
+          tenantId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+        }),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 
@@ -162,6 +205,7 @@ describe('ConnectionService', () => {
 
       const result = await service.findByExternalConnectionId(
         mockConnection.externalConnectionId,
+        auth,
       );
 
       expect(mockFindByExternalConnectionId).toHaveBeenCalledWith(
@@ -174,7 +218,10 @@ describe('ConnectionService', () => {
       mockFindByExternalConnectionId.mockResolvedValue(null);
 
       await expect(
-        service.findByExternalConnectionId(mockConnection.externalConnectionId),
+        service.findByExternalConnectionId(
+          mockConnection.externalConnectionId,
+          auth,
+        ),
       ).rejects.toThrow(NotFoundException);
     });
   });
@@ -216,7 +263,7 @@ describe('ConnectionService', () => {
       mockFindById.mockResolvedValue(mockConnection);
       mockUpdate.mockResolvedValue({ ...mockConnection, ...dto });
 
-      const result = await service.update(mockConnection.id, dto);
+      const result = await service.update(mockConnection.id, dto, auth);
 
       expect(mockFindById).toHaveBeenCalledWith(mockConnection.id);
       expect(mockUpdate).toHaveBeenCalled();
@@ -232,7 +279,7 @@ describe('ConnectionService', () => {
     it('should throw NotFoundException if connection not found on update', async () => {
       mockFindById.mockResolvedValue(null);
 
-      await expect(service.update(mockConnection.id, {})).rejects.toThrow(
+      await expect(service.update(mockConnection.id, {}, auth)).rejects.toThrow(
         NotFoundException,
       );
     });
@@ -242,7 +289,7 @@ describe('ConnectionService', () => {
     it('should delete a connection', async () => {
       mockFindById.mockResolvedValue(mockConnection);
 
-      await service.delete(mockConnection.id);
+      await service.delete(mockConnection.id, auth);
 
       expect(mockFindById).toHaveBeenCalledWith(mockConnection.id);
       expect(mockDelete).toHaveBeenCalledWith(mockConnection.id);
@@ -257,7 +304,7 @@ describe('ConnectionService', () => {
     it('should throw NotFoundException if connection not found on delete', async () => {
       mockFindById.mockResolvedValue(null);
 
-      await expect(service.delete(mockConnection.id)).rejects.toThrow(
+      await expect(service.delete(mockConnection.id, auth)).rejects.toThrow(
         NotFoundException,
       );
       expect(mockEmit).not.toHaveBeenCalled();

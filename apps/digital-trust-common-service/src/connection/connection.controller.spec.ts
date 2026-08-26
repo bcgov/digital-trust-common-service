@@ -1,10 +1,4 @@
-import {
-  JwtGuard,
-  ScopeGuard,
-  TenantAccessDeniedException,
-  TenantGuard,
-  type AuthContext,
-} from '@app/auth';
+import { JwtGuard, ScopeGuard, TenantGuard, type AuthContext } from '@app/auth';
 import { CanActivate } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 
@@ -124,26 +118,8 @@ describe('ConnectionController', () => {
 
       const result = await controller.create(dto, auth);
 
-      expect(mockCreate).toHaveBeenCalledWith(dto);
+      expect(mockCreate).toHaveBeenCalledWith(dto, auth);
       expect(result).toEqual(mockConnection);
-    });
-
-    it('rejects create when the body tenant does not match the token', async () => {
-      const dto: CreateConnectionDto = {
-        tenantId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
-        externalConnectionId: mockConnection.externalConnectionId,
-        theirLabel: mockConnection.theirLabel,
-        theirDid: mockConnection.theirDid,
-        state: mockConnection.state,
-        connectorType: mockConnection.connectorType,
-        protocol: mockConnection.protocol,
-        metadata: mockConnection.metadata,
-      };
-
-      await expect(controller.create(dto, auth)).rejects.toThrow(
-        TenantAccessDeniedException,
-      );
-      expect(mockCreate).not.toHaveBeenCalled();
     });
   });
 
@@ -153,7 +129,7 @@ describe('ConnectionController', () => {
 
       const result = await controller.findById(mockConnection.id, auth);
 
-      expect(mockFindById).toHaveBeenCalledWith(mockConnection.id);
+      expect(mockFindById).toHaveBeenCalledWith(mockConnection.id, auth);
       expect(result).toEqual(mockConnection);
     });
   });
@@ -169,6 +145,7 @@ describe('ConnectionController', () => {
 
       expect(mockFindByExternalConnectionId).toHaveBeenCalledWith(
         mockConnection.externalConnectionId,
+        auth,
       );
       expect(result).toEqual(mockConnection);
     });
@@ -206,24 +183,22 @@ describe('ConnectionController', () => {
         state: ConnectionState.COMPLETED,
       };
 
-      mockFindById.mockResolvedValue(mockConnection);
       mockUpdate.mockResolvedValue({ ...mockConnection, ...dto });
 
       const result = await controller.update(mockConnection.id, dto, auth);
 
-      expect(mockUpdate).toHaveBeenCalledWith(mockConnection.id, dto);
+      expect(mockUpdate).toHaveBeenCalledWith(mockConnection.id, dto, auth);
       expect(result.state).toEqual(ConnectionState.COMPLETED);
     });
   });
 
   describe('DELETE /connections/:id', () => {
     it('should delete a connection', async () => {
-      mockFindById.mockResolvedValue(mockConnection);
       mockDelete.mockResolvedValue(undefined);
 
       await controller.delete(mockConnection.id, auth);
 
-      expect(mockDelete).toHaveBeenCalledWith(mockConnection.id);
+      expect(mockDelete).toHaveBeenCalledWith(mockConnection.id, auth);
     });
   });
 });

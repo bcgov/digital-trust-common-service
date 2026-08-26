@@ -28,7 +28,6 @@ import {
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 
-import { assertTenantAccess } from '../common/assert-tenant-access';
 import { API_VERSION } from '../common/constants/api-version.constants';
 
 import { CreateOAuthClientResponseDto } from './dto/create-oauth-client-response.dto';
@@ -76,9 +75,10 @@ export class OAuthClientController {
     @Body() dto: CreateOAuthClientDto,
     @CurrentAuth() auth: AuthContext,
   ): Promise<CreateOAuthClientResponseDto> {
-    assertTenantAccess(auth, dto.tenantId);
-    const { client, clientSecret } =
-      await this.oauthClientService.createClient(dto);
+    const { client, clientSecret } = await this.oauthClientService.createClient(
+      dto,
+      auth,
+    );
     return {
       client: this.toResponseDto(client),
       clientSecret,
@@ -107,8 +107,7 @@ export class OAuthClientController {
     @Param('clientId') clientId: string,
     @CurrentAuth() auth: AuthContext,
   ): Promise<OAuthClientResponseDto> {
-    const client = await this.oauthClientService.findByClientId(clientId);
-    assertTenantAccess(auth, client.tenantId);
+    const client = await this.oauthClientService.findByClientId(clientId, auth);
     return this.toResponseDto(client);
   }
 
@@ -154,9 +153,7 @@ export class OAuthClientController {
     @Body() dto: UpdateOAuthClientDto,
     @CurrentAuth() auth: AuthContext,
   ): Promise<OAuthClientResponseDto> {
-    const existing = await this.oauthClientService.findById(id);
-    assertTenantAccess(auth, existing.tenantId);
-    const client = await this.oauthClientService.update(id, dto);
+    const client = await this.oauthClientService.update(id, dto, auth);
     return this.toResponseDto(client);
   }
 
@@ -167,9 +164,7 @@ export class OAuthClientController {
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentAuth() auth: AuthContext,
   ): Promise<void> {
-    const existing = await this.oauthClientService.findById(id);
-    assertTenantAccess(auth, existing.tenantId);
-    return await this.oauthClientService.revokeClient(id);
+    return await this.oauthClientService.revokeClient(id, auth);
   }
 
   private toResponseDto(client: OAuthClient): OAuthClientResponseDto {

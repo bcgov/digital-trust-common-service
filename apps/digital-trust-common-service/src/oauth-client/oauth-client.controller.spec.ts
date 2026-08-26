@@ -130,7 +130,7 @@ describe('OAuthClientController', () => {
 
       const response = await controller.createClient(dto, auth);
 
-      expect(mockCreateClient).toHaveBeenCalledWith(dto);
+      expect(mockCreateClient).toHaveBeenCalledWith(dto, auth);
       expect(response).toEqual({
         client: mockResponseDto,
         clientSecret: 'secret_abc123',
@@ -147,7 +147,10 @@ describe('OAuthClientController', () => {
         auth,
       );
 
-      expect(mockFindByClientId).toHaveBeenCalledWith(mockOAuthClient.clientId);
+      expect(mockFindByClientId).toHaveBeenCalledWith(
+        mockOAuthClient.clientId,
+        auth,
+      );
       expect(result).toEqual(mockResponseDto);
     });
   });
@@ -165,12 +168,11 @@ describe('OAuthClientController', () => {
 
   describe('DELETE /oauth-clients/:id/revoke', () => {
     it('should revoke an OAuth client', async () => {
-      mockFindById.mockResolvedValue(mockOAuthClient);
       mockRevokeClient.mockResolvedValue(undefined);
 
       await controller.revokeClient(mockOAuthClient.id, auth);
 
-      expect(mockRevokeClient).toHaveBeenCalledWith(mockOAuthClient.id);
+      expect(mockRevokeClient).toHaveBeenCalledWith(mockOAuthClient.id, auth);
     });
   });
 
@@ -186,12 +188,11 @@ describe('OAuthClientController', () => {
         ...dto,
       };
 
-      mockFindById.mockResolvedValue(mockOAuthClient);
       mockUpdate.mockResolvedValue(updatedClient);
 
       const result = await controller.update(mockOAuthClient.id, dto, auth);
 
-      expect(mockUpdate).toHaveBeenCalledWith(mockOAuthClient.id, dto);
+      expect(mockUpdate).toHaveBeenCalledWith(mockOAuthClient.id, dto, auth);
       expect(result.name).toBe('Updated Client');
       expect(result.scopes).toEqual([
         'credentials:offer',
@@ -209,12 +210,11 @@ describe('OAuthClientController', () => {
         name: 'New Name',
       };
 
-      mockFindById.mockResolvedValue(mockOAuthClient);
       mockUpdate.mockResolvedValue(updatedClient);
 
       const result = await controller.update(mockOAuthClient.id, dto, auth);
 
-      expect(mockUpdate).toHaveBeenCalledWith(mockOAuthClient.id, dto);
+      expect(mockUpdate).toHaveBeenCalledWith(mockOAuthClient.id, dto, auth);
       expect(result.name).toBe('New Name');
       expect(result.scopes).toEqual(mockOAuthClient.scopes);
     });

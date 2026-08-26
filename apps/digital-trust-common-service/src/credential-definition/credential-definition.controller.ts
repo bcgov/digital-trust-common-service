@@ -30,10 +30,6 @@ import {
 } from '@nestjs/swagger';
 
 import { SkipAutoAudit } from '../audit-log/skip-auto-audit.decorator';
-import {
-  assertTenantAccess,
-  isPlatformAdmin,
-} from '../common/assert-tenant-access';
 import { API_VERSION } from '../common/constants/api-version.constants';
 
 import {
@@ -86,8 +82,7 @@ export class CredentialDefinitionController {
     @Body() dto: CreateCredentialDefinitionDto,
     @CurrentAuth() auth: AuthContext,
   ): Promise<CredentialDefinition> {
-    assertTenantAccess(auth, dto.tenantId);
-    return await this.credentialDefinitionService.create(dto);
+    return await this.credentialDefinitionService.create(dto, auth);
   }
 
   @Get('tenant/:tenantId')
@@ -112,9 +107,7 @@ export class CredentialDefinitionController {
     format: CredentialDefinitionFormat,
     @CurrentAuth() auth: AuthContext,
   ): Promise<CredentialDefinition[]> {
-    const definitions =
-      await this.credentialDefinitionService.findByFormat(format);
-    return this.filterToCallerTenant(auth, definitions);
+    return await this.credentialDefinitionService.findByFormat(format, auth);
   }
 
   @Get('connector/:connectorType')
@@ -131,9 +124,10 @@ export class CredentialDefinitionController {
     connectorType: CredentialDefinitionConnectorType,
     @CurrentAuth() auth: AuthContext,
   ): Promise<CredentialDefinition[]> {
-    const definitions =
-      await this.credentialDefinitionService.findByConnector(connectorType);
-    return this.filterToCallerTenant(auth, definitions);
+    return await this.credentialDefinitionService.findByConnector(
+      connectorType,
+      auth,
+    );
   }
 
   @Get(':id')
@@ -146,9 +140,7 @@ export class CredentialDefinitionController {
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentAuth() auth: AuthContext,
   ): Promise<CredentialDefinition> {
-    const definition = await this.credentialDefinitionService.findById(id);
-    assertTenantAccess(auth, definition.tenantId);
-    return definition;
+    return await this.credentialDefinitionService.findById(id, auth);
   }
 
   @Patch(':id')
@@ -174,9 +166,7 @@ export class CredentialDefinitionController {
     @Body() dto: UpdateCredentialDefinitionDto,
     @CurrentAuth() auth: AuthContext,
   ): Promise<CredentialDefinition> {
-    const existing = await this.credentialDefinitionService.findById(id);
-    assertTenantAccess(auth, existing.tenantId);
-    return await this.credentialDefinitionService.update(id, dto);
+    return await this.credentialDefinitionService.update(id, dto, auth);
   }
 
   @Delete(':id')
@@ -186,25 +176,6 @@ export class CredentialDefinitionController {
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentAuth() auth: AuthContext,
   ): Promise<void> {
-    const existing = await this.credentialDefinitionService.findById(id);
-    assertTenantAccess(auth, existing.tenantId);
-    return await this.credentialDefinitionService.delete(id);
-  }
-
-  private filterToCallerTenant(
-    auth: AuthContext,
-    definitions: CredentialDefinition[],
-  ): CredentialDefinition[] {
-    if (isPlatformAdmin(auth)) {
-      return definitions;
-    }
-
-    if (!auth.tenantId) {
-      return [];
-    }
-
-    return definitions.filter(
-      (definition) => definition.tenantId === auth.tenantId,
-    );
+    return await this.credentialDefinitionService.delete(id, auth);
   }
 }

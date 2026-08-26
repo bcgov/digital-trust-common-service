@@ -32,7 +32,6 @@ import {
 } from '@nestjs/swagger';
 
 import { SkipAutoAudit } from '../audit-log/skip-auto-audit.decorator';
-import { assertTenantAccess } from '../common/assert-tenant-access';
 import { API_VERSION } from '../common/constants/api-version.constants';
 
 import { Connection, ConnectionState } from './connection.entity';
@@ -80,8 +79,7 @@ export class ConnectionController {
     @Body() dto: CreateConnectionDto,
     @CurrentAuth() auth: AuthContext,
   ): Promise<Connection> {
-    assertTenantAccess(auth, dto.tenantId);
-    return await this.connectionService.create(dto);
+    return await this.connectionService.create(dto, auth);
   }
 
   @Get('tenant/:tenantId')
@@ -119,12 +117,10 @@ export class ConnectionController {
     @Param('externalConnectionId') externalConnectionId: string,
     @CurrentAuth() auth: AuthContext,
   ): Promise<Connection> {
-    const connection =
-      await this.connectionService.findByExternalConnectionId(
-        externalConnectionId,
-      );
-    assertTenantAccess(auth, connection.tenantId);
-    return connection;
+    return await this.connectionService.findByExternalConnectionId(
+      externalConnectionId,
+      auth,
+    );
   }
 
   @Get(':id')
@@ -137,9 +133,7 @@ export class ConnectionController {
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentAuth() auth: AuthContext,
   ): Promise<Connection> {
-    const connection = await this.connectionService.findById(id);
-    assertTenantAccess(auth, connection.tenantId);
-    return connection;
+    return await this.connectionService.findById(id, auth);
   }
 
   @Patch(':id')
@@ -172,9 +166,7 @@ export class ConnectionController {
     @Body() dto: UpdateConnectionDto,
     @CurrentAuth() auth: AuthContext,
   ): Promise<Connection> {
-    const existing = await this.connectionService.findById(id);
-    assertTenantAccess(auth, existing.tenantId);
-    return await this.connectionService.update(id, dto);
+    return await this.connectionService.update(id, dto, auth);
   }
 
   @Delete(':id')
@@ -184,8 +176,6 @@ export class ConnectionController {
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentAuth() auth: AuthContext,
   ): Promise<void> {
-    const existing = await this.connectionService.findById(id);
-    assertTenantAccess(auth, existing.tenantId);
-    return await this.connectionService.delete(id);
+    return await this.connectionService.delete(id, auth);
   }
 }

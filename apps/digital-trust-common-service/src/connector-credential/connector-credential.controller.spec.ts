@@ -128,7 +128,7 @@ describe('ConnectorCredentialController', () => {
 
       const result = await controller.create(dto, auth);
 
-      expect(mockCreate).toHaveBeenCalledWith(dto);
+      expect(mockCreate).toHaveBeenCalledWith(dto, auth);
       expect(result).toEqual(mockResponseDto);
     });
   });
@@ -139,7 +139,7 @@ describe('ConnectorCredentialController', () => {
 
       const result = await controller.findById(mockCredential.id, auth);
 
-      expect(mockFindById).toHaveBeenCalledWith(mockCredential.id);
+      expect(mockFindById).toHaveBeenCalledWith(mockCredential.id, auth);
       expect(result).toEqual(mockResponseDto);
     });
   });
@@ -195,7 +195,6 @@ describe('ConnectorCredentialController', () => {
       const updatedCredential = { ...mockCredential, active: false };
       const updatedResponseDto = { ...mockResponseDto, active: false };
 
-      mockFindById.mockResolvedValue(mockCredential);
       mockUpdate.mockResolvedValue(updatedCredential);
 
       const result = await controller.update(
@@ -204,19 +203,22 @@ describe('ConnectorCredentialController', () => {
         auth,
       );
 
-      expect(mockUpdate).toHaveBeenCalledWith(mockCredential.id, updateDto);
+      expect(mockUpdate).toHaveBeenCalledWith(
+        mockCredential.id,
+        updateDto,
+        auth,
+      );
       expect(result).toEqual(updatedResponseDto);
     });
   });
 
   describe('DELETE /connector-credentials/:id', () => {
     it('should delete a connector credential', async () => {
-      mockFindById.mockResolvedValue(mockCredential);
       mockDelete.mockResolvedValue(undefined);
 
       await controller.delete(mockCredential.id, auth);
 
-      expect(mockDelete).toHaveBeenCalledWith(mockCredential.id);
+      expect(mockDelete).toHaveBeenCalledWith(mockCredential.id, auth);
     });
   });
 
@@ -228,7 +230,6 @@ describe('ConnectorCredentialController', () => {
       const decryptedValue = 'decrypted_credentials_content';
       const dto = { key: validHexKey };
 
-      mockFindById.mockResolvedValue(mockCredential);
       mockDecryptCredential.mockResolvedValue(decryptedValue);
 
       const result = await controller.decrypt(mockCredential.id, dto, auth);
@@ -236,6 +237,7 @@ describe('ConnectorCredentialController', () => {
       expect(mockDecryptCredential).toHaveBeenCalledWith(
         validHexKey,
         mockCredential.id,
+        auth,
       );
       expect(result).toEqual(decryptedValue);
     });
@@ -250,7 +252,6 @@ describe('ConnectorCredentialController', () => {
         ),
       );
 
-      mockFindById.mockResolvedValue(mockCredential);
       await expect(
         controller.decrypt(mockCredential.id, dto, auth),
       ).rejects.toThrow();
@@ -265,7 +266,6 @@ describe('ConnectorCredentialController', () => {
         new Error(`Key must be a valid hexadecimal string.`),
       );
 
-      mockFindById.mockResolvedValue(mockCredential);
       await expect(
         controller.decrypt(mockCredential.id, dto, auth),
       ).rejects.toThrow();
@@ -274,7 +274,7 @@ describe('ConnectorCredentialController', () => {
     it('should throw NotFoundException when credential not found', async () => {
       const dto = { key: validHexKey };
 
-      mockFindById.mockRejectedValue(
+      mockDecryptCredential.mockRejectedValue(
         new Error(
           `Connector credential with ID '${mockCredential.id}' was not found.`,
         ),
@@ -294,7 +294,6 @@ describe('ConnectorCredentialController', () => {
         ),
       );
 
-      mockFindById.mockResolvedValue(mockCredential);
       await expect(
         controller.decrypt(mockCredential.id, dto, auth),
       ).rejects.toThrow();

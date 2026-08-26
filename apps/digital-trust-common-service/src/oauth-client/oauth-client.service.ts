@@ -1,6 +1,6 @@
 import { randomBytes } from 'crypto';
 
-import { OAUTH_CLIENT_ALLOWED_ROLES } from '@app/auth';
+import { OAUTH_CLIENT_ALLOWED_ROLES, type AuthContext } from '@app/auth';
 import { OidcConfigService } from '@app/oidc/config';
 import {
   BadRequestException,
@@ -8,6 +8,11 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { argon2i, hash, verify } from 'argon2';
+
+import {
+  assertResourceTenantOrNotFound,
+  assertTenantAccess,
+} from '../common/assert-tenant-access';
 
 import { CreateOAuthClientDto } from './dto/create-oauth-client.dto';
 import { UpdateOAuthClientDto } from './dto/update-oauth-client.dto';
@@ -34,7 +39,10 @@ export class OAuthClientService {
 
   public async createClient(
     dto: CreateOAuthClientDto,
+    auth: AuthContext,
   ): Promise<{ client: OAuthClient; clientSecret: string }> {
+    assertTenantAccess(auth, dto.tenantId);
+
     // A client that names no grant type gets the configured allowlist, so
     // the default can never fall outside it.
     const grantTypes = dto.grantTypes ?? this.supportedGrantTypes;
@@ -63,25 +71,33 @@ export class OAuthClientService {
     return { client, clientSecret };
   }
 
-  public async findByClientId(clientId: string): Promise<OAuthClient> {
+  public async findByClientId(
+    clientId: string,
+    auth?: AuthContext,
+  ): Promise<OAuthClient> {
     const client = await this.oauthClientRepository.findByClientId(clientId);
+    const notFound = `OAuth client with ID '${clientId}' was not found.`;
 
     if (!client) {
-      throw new NotFoundException(
-        `OAuth client with ID '${clientId}' was not found.`,
-      );
+      throw new NotFoundException(notFound);
+    }
+
+    if (auth) {
+      assertResourceTenantOrNotFound(auth, client.tenantId, notFound);
     }
 
     return client;
   }
 
-  public async findById(id: string): Promise<OAuthClient> {
+  public async findById(id: string, auth: AuthContext): Promise<OAuthClient> {
     const client = await this.oauthClientRepository.findById(id);
+    const notFound = `OAuth client '${id}' was not found.`;
 
     if (!client) {
-      throw new NotFoundException(`OAuth client '${id}' was not found.`);
+      throw new NotFoundException(notFound);
     }
 
+    assertResourceTenantOrNotFound(auth, client.tenantId, notFound);
     return client;
   }
 
@@ -92,14 +108,11 @@ export class OAuthClientService {
   public async update(
     id: string,
     dto: UpdateOAuthClientDto,
+    auth: AuthContext,
   ): Promise<OAuthClient> {
     this.assertSupportedGrantTypes(dto.grantTypes);
 
-    const client = await this.oauthClientRepository.findById(id);
-
-    if (!client) {
-      throw new NotFoundException(`OAuth client '${id}' was not found.`);
-    }
+    const client = await this.findById(id, auth);
 
     const nextRoles = dto.roles !== undefined ? dto.roles : client.roles;
     const nextGrantTypes =
@@ -136,13 +149,8 @@ export class OAuthClientService {
     return this.oauthClientRepository.update(client);
   }
 
-  public async revokeClient(id: string): Promise<void> {
-    const client = await this.oauthClientRepository.findById(id);
-
-    if (!client) {
-      throw new NotFoundException(`OAuth client '${id}' was not found.`);
-    }
-
+  public async revokeClient(id: string, auth: AuthContext): Promise<void> {
+    await this.findById(id, auth);
     await this.oauthClientRepository.revoke(id);
   }
 

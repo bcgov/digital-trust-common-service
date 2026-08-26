@@ -3,10 +3,11 @@ import {
   TenantAccessDeniedException,
   type AuthContext,
 } from '@app/auth';
+import { NotFoundException } from '@nestjs/common';
 
 /**
- * Claim-match helper for routes where TenantGuard cannot see the tenant
- * (body `tenantId`, or resource loaded by `:id`). Platform-admin bypasses.
+ * Claim-match for create/body routes where the caller explicitly names a
+ * tenant. Mismatch → 403 TENANT_ACCESS_DENIED. Platform-admin bypasses.
  */
 export function assertTenantAccess(
   auth: AuthContext | undefined,
@@ -44,6 +45,29 @@ export function assertTenantAccess(
         tokenTenantId: auth.tenantId,
       },
     );
+  }
+}
+
+/**
+ * Claim-match after loading a resource by id. Cross-tenant (or missing
+ * tenant claim) → 404 with the same message as a missing row, so callers
+ * cannot probe other tenants' resource ids. Platform-admin bypasses.
+ */
+export function assertResourceTenantOrNotFound(
+  auth: AuthContext | undefined,
+  resourceTenantId: string,
+  notFoundMessage: string,
+): void {
+  if (!auth) {
+    throw new NotFoundException(notFoundMessage);
+  }
+
+  if (auth.roles.includes(PLATFORM_ADMIN_ROLE)) {
+    return;
+  }
+
+  if (!auth.tenantId || auth.tenantId !== resourceTenantId) {
+    throw new NotFoundException(notFoundMessage);
   }
 }
 
