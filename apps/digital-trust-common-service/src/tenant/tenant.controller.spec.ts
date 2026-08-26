@@ -9,7 +9,10 @@ import { CanActivate } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { Test, TestingModule } from '@nestjs/testing';
 
+import { CredentialDefinitionFormat } from '../credential-definition/credential-definition.entity';
+
 import { CreateTenantDto } from './dto/create-tenant.dto';
+import { UpdateTenantConfigDto } from './dto/update-tenant-config.dto';
 import { TenantStatusGuard } from './tenant-status.guard';
 import { TenantController } from './tenant.controller';
 import { Tenant, TenantStatus } from './tenant.entity';
@@ -26,6 +29,7 @@ describe('TenantController', () => {
 
   let mockCreate: jest.Mock;
   let mockUpdate: jest.Mock;
+  let mockUpdateConfig: jest.Mock;
   let mockUpdateStatus: jest.Mock;
   let mockList: jest.Mock;
   let mockFindById: jest.Mock;
@@ -48,6 +52,7 @@ describe('TenantController', () => {
   beforeEach(async () => {
     mockCreate = jest.fn();
     mockUpdate = jest.fn();
+    mockUpdateConfig = jest.fn();
     mockUpdateStatus = jest.fn();
     mockList = jest.fn();
     mockFindById = jest.fn();
@@ -58,6 +63,7 @@ describe('TenantController', () => {
     const mockService = {
       create: mockCreate,
       update: mockUpdate,
+      updateConfig: mockUpdateConfig,
       updateStatus: mockUpdateStatus,
       list: mockList,
       findById: mockFindById,
@@ -122,6 +128,15 @@ describe('TenantController', () => {
     expect(updateScopes).toEqual([TENANT_SUPERUSER_SCOPE]);
   });
 
+  it('requires tenant superuser scope for tenant config updates', () => {
+    const updateConfigScopes = new Reflector().get<string[]>(
+      'required_scopes',
+      TenantController.prototype.updateConfig,
+    );
+
+    expect(updateConfigScopes).toEqual([TENANT_SUPERUSER_SCOPE]);
+  });
+
   it('allows platform-admin to read any tenant and restricts tenant member reads to their tenant', async () => {
     mockFindById.mockResolvedValue(mockTenant);
 
@@ -184,6 +199,59 @@ describe('TenantController', () => {
 
       expect(mockUpdate).toHaveBeenCalledWith(id, dto);
       expect(result).toEqual(updatedTenant);
+    });
+  });
+
+  describe('PATCH /tenants/:id/config', () => {
+    it('should update tenant config for the caller own tenant', async () => {
+      const id = mockTenant.id;
+      const dto: UpdateTenantConfigDto = {
+        allowed_formats: [CredentialDefinitionFormat.ANONCREDS],
+      };
+      const updatedTenant = {
+        ...mockTenant,
+        config: { allowed_formats: ['anoncreds'] },
+      };
+
+      mockUpdateConfig.mockResolvedValue(updatedTenant);
+
+      const result = await controller.updateConfig(dto, id, {
+        roles: [],
+        tenantId: mockTenant.id,
+        sub: '',
+        tokenType: 'user',
+        clientId: null,
+        scope: '',
+        scopes: [],
+        iss: '',
+        aud: '',
+        exp: 0,
+        iat: 0,
+      });
+
+      expect(mockUpdateConfig).toHaveBeenCalledWith(id, dto);
+      expect(result).toEqual(updatedTenant);
+    });
+
+    it('should reject a caller from a different tenant', async () => {
+      const id = mockTenant.id;
+      const dto: UpdateTenantConfigDto = {
+        allowed_formats: [CredentialDefinitionFormat.ANONCREDS],
+      };
+
+      await expect(
+        controller.updateConfig(dto, id, {
+          roles: [],
+          tenantId: 'other-tenant',
+        } as never),
+      ).rejects.toMatchObject({
+        response: {
+          error: {
+            code: 'TENANT_ACCESS_DENIED',
+          },
+        },
+      });
+      expect(mockUpdateConfig).not.toHaveBeenCalled();
     });
   });
 

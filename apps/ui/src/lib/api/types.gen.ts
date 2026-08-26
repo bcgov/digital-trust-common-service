@@ -204,7 +204,20 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /** Update tenant configuration */
+        /**
+         * Update tenant configuration
+         * @description Requires the tenant superuser scope; the caller must belong to the target tenant unless it
+         *     is a platform admin. Merges the given top-level keys into the tenant's existing `config` —
+         *     any key omitted from the request body (including `operation_ttl`) is left unchanged.
+         *
+         *     `rate_limits` is not accepted here: it is read-only and can only be set via
+         *     `PATCH /usage/limits`. Sending it returns `400`, same as any other undeclared property.
+         *
+         *     When `default_connector` is provided, it must reference a `ConnectorCredential` that
+         *     belongs to this tenant and is currently active, or the request is rejected with `404`
+         *     (does not exist) or `409` (belongs to another tenant, or is inactive). Set it to `null` to
+         *     clear the default connector without validation.
+         */
         patch: operations["updateTenantConfig"];
         trace?: never;
     };
@@ -1598,6 +1611,20 @@ export interface components {
                 pending_stale?: string;
             };
         };
+        /**
+         * @description Only the fields present are merged into the tenant's config; `rate_limits` and
+         *     `operation_ttl` are not accepted here.
+         */
+        UpdateTenantConfigRequest: {
+            allowed_formats?: components["schemas"]["CredentialFormat"][];
+            /**
+             * Format: uuid
+             * @description Must be an active connector credential belonging to this tenant, or null.
+             */
+            default_connector?: string | null;
+            /** @description Feature flags (key-value) */
+            features?: Record<string, never>;
+        };
         CreateTenantRequest: {
             name: string;
             slug: string;
@@ -2620,7 +2647,19 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["TenantConfig"];
+                /**
+                 * @example {
+                 *       "allowed_formats": [
+                 *         "anoncreds",
+                 *         "sd-jwt"
+                 *       ],
+                 *       "default_connector": "123e4567-e89b-12d3-a456-426614174000",
+                 *       "features": {
+                 *         "beta_credentials": true
+                 *       }
+                 *     }
+                 */
+                "application/json": components["schemas"]["UpdateTenantConfigRequest"];
             };
         };
         responses: {
@@ -2633,6 +2672,10 @@ export interface operations {
                     "application/json": components["schemas"]["Tenant"];
                 };
             };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
         };
     };
     getOnboardingStatus: {

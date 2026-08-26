@@ -40,6 +40,7 @@ import { API_VERSION } from '../common/constants/api-version.constants';
 
 import { CreateTenantDto } from './dto/create-tenant.dto';
 import { ListTenantsQueryDto } from './dto/list-tenants-query.dto';
+import { UpdateTenantConfigDto } from './dto/update-tenant-config.dto';
 import { UpdateTenantStatusDto } from './dto/update-tenant-status.dto';
 import { UpdateTenantDto } from './dto/update-tenant.dto';
 import { TenantStatusGuard } from './tenant-status.guard';
@@ -132,6 +133,55 @@ export class TenantController {
   ): Promise<Tenant> {
     this.assertTenantAccess(auth, id);
     return this.tenantService.update(id, dto);
+  }
+
+  @Patch(':id/config')
+  @RequireScopes(TENANT_SUPERUSER_SCOPE)
+  @ApiOperation({
+    summary: 'Update tenant configuration',
+    description:
+      'Merges the given keys into the tenant configuration (credential formats, default connector, feature flags). Keys omitted from the request body are left unchanged; `rate_limits` and `operation_ttl` are not writable through this endpoint. Requires the tenant superuser scope, and the caller must match the tenant being modified unless the caller is a platform admin.',
+  })
+  @ApiParam({
+    name: 'id',
+    description: 'Tenant identifier',
+    format: 'uuid',
+  })
+  @ApiOkResponse({
+    description: 'Tenant configuration updated successfully',
+    type: Tenant,
+  })
+  @ApiNotFoundResponse({
+    description: 'Tenant not found, or default_connector does not exist',
+  })
+  @ApiConflictResponse({
+    description:
+      'default_connector belongs to a different tenant or is not active',
+  })
+  @ApiForbiddenResponse({
+    description: 'Caller is not allowed to access or modify the target tenant',
+  })
+  @ApiUnauthorizedResponse({ description: 'Authentication is required' })
+  @ApiBody({
+    description: 'Tenant configuration update request',
+    type: UpdateTenantConfigDto,
+    examples: {
+      example1: {
+        summary: 'Set allowed credential formats and default connector',
+        value: {
+          allowed_formats: ['anoncreds', 'sd-jwt'],
+          default_connector: '123e4567-e89b-12d3-a456-426614174000',
+        },
+      },
+    },
+  })
+  public async updateConfig(
+    @Body() dto: UpdateTenantConfigDto,
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentAuth() auth?: AuthContext,
+  ): Promise<Tenant> {
+    this.assertTenantAccess(auth, id);
+    return this.tenantService.updateConfig(id, dto);
   }
 
   @Patch(':id/status')

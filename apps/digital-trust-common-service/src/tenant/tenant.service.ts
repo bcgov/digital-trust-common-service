@@ -4,17 +4,22 @@ import {
   BadRequestException,
   Injectable,
   ConflictException,
+  forwardRef,
+  Inject,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 
 import { AuditAction } from '../audit-log/audit-log.entity';
 import { DomainAuditService } from '../audit-log/domain-audit.service';
+import { ConnectorCredentialService } from '../connector-credential/connector-credential.service';
 import { JobsService } from '../jobs/jobs.service';
 import { TenantUserRole } from '../tenant-user/tenant-user.entity';
 import { TenantUserService } from '../tenant-user/tenant-user.service';
 
 import { CreateTenantDto } from './dto/create-tenant.dto';
+import { UpdateTenantConfigDto } from './dto/update-tenant-config.dto';
 import { UpdateTenantDto } from './dto/update-tenant.dto';
 import { Tenant, TenantStatus } from './tenant.entity';
 import { TenantCursor, TenantRepository } from './tenant.repository';
@@ -47,14 +52,24 @@ export type TenantStatusChangeJobData = {
   status: TenantStatus;
 };
 
+/** Payload for the `tenant.config-change` job published by `updateConfig()`. */
+export type TenantConfigChangeJobData = {
+  tenantId: string;
+  config: Record<string, unknown>;
+};
+
 @Injectable()
 export class TenantService {
+  private readonly logger = new Logger(TenantService.name);
+
   public constructor(
     private readonly tenants: TenantRepository,
     private readonly domainAudit: DomainAuditService,
     private readonly tenantUserService: TenantUserService,
     private readonly dataSource: DataSource,
     private readonly jobsService: JobsService,
+    @Inject(forwardRef(() => ConnectorCredentialService))
+    private readonly connectorCredentialService: ConnectorCredentialService,
   ) {}
 
   public async create(
@@ -211,6 +226,71 @@ export class TenantService {
     return saved;
   }
 
+  /**
+   * Merges the provided keys into the tenant's existing `config`; keys the
+   * DTO omits (e.g. `operation_ttl`, `rate_limits`) are left untouched.
+   * `rate_limits` is intentionally not accepted by `UpdateTenantConfigDto` —
+   * it stays read-only here and is only writable via `PATCH /usage/limits`.
+   * No worker currently consumes `tenant.config-change`; it is published for
+   * future dependent services (e.g. an adapter registry cache).
+   */
+  public async updateConfig(id: string, dto: UpdateTenantConfigDto) {
+    const tenant = await this.tenants.findById(id);
+
+    if (!tenant) {
+      throw new NotFoundException('Tenant not found');
+    }
+
+    if (dto.default_connector !== undefined && dto.default_connector !== null) {
+      const credential = await this.connectorCredentialService.findById(
+        dto.default_connector,
+      );
+
+      if (credential.tenantId !== tenant.id) {
+        throw new ConflictException(
+          'default_connector does not belong to this tenant',
+        );
+      }
+
+      if (!credential.active) {
+        throw new ConflictException('default_connector is not active');
+      }
+    }
+
+    const config: Record<string, unknown> = { ...tenant.config };
+
+    if (dto.allowed_formats !== undefined) {
+      config.allowed_formats = dto.allowed_formats;
+    }
+
+    if (dto.default_connector !== undefined) {
+      config.default_connector = dto.default_connector;
+    }
+
+    if (dto.features !== undefined) {
+      config.features = dto.features;
+    }
+
+    tenant.config = config;
+
+    const saved = await this.tenants.update(tenant);
+
+    await this.domainAudit.emit({
+      tenantId: saved.id,
+      action: AuditAction.UPDATE,
+      resourceType: 'tenant',
+      resourceId: saved.id,
+      metadata: { config_change: true },
+    });
+
+    await this.publishConfigChange({
+      tenantId: saved.id,
+      config: saved.config,
+    });
+
+    return saved;
+  }
+
   public async delete(id: string) {
     const tenant = await this.tenants.findById(id);
 
@@ -305,5 +385,21 @@ export class TenantService {
     });
 
     return saved;
+  }
+
+  /**
+   * No worker currently consumes `tenant.config-change`.
+   */
+  private async publishConfigChange(
+    data: TenantConfigChangeJobData,
+  ): Promise<void> {
+    try {
+      await this.jobsService.publish(JOB_QUEUES.TENANT_CONFIG_CHANGE, data);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.warn(
+        `Failed to publish tenant.config-change for tenant ${data.tenantId}: ${message}`,
+      );
+    }
   }
 }

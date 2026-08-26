@@ -9,6 +9,7 @@ export const JOB_QUEUES = {
   AUDIT_WRITE: 'audit.write',
   AUDIT_PARTITION_MAINTAIN: 'audit.partition-maintain',
   TENANT_STATUS_CHANGE: 'tenant.status-change',
+  TENANT_CONFIG_CHANGE: 'tenant.config-change',
 } as const;
 
 export type JobQueueName = (typeof JOB_QUEUES)[keyof typeof JOB_QUEUES];
@@ -21,6 +22,7 @@ export const JOB_DEAD_LETTER_QUEUES = {
   AUDIT_WRITE: 'audit.write.dlq',
   AUDIT_PARTITION_MAINTAIN: 'audit.partition-maintain.dlq',
   TENANT_STATUS_CHANGE: 'tenant.status-change.dlq',
+  TENANT_CONFIG_CHANGE: 'tenant.config-change.dlq',
 } as const;
 
 export type QueueDefinition = {
@@ -77,6 +79,13 @@ export const QUEUE_DEFINITIONS: QueueDefinition[] = [
   {
     name: JOB_QUEUES.TENANT_STATUS_CHANGE,
     deadLetter: JOB_DEAD_LETTER_QUEUES.TENANT_STATUS_CHANGE,
+    retryLimit: 5,
+    retryDelay: 30,
+    retryBackoff: true,
+  },
+  {
+    name: JOB_QUEUES.TENANT_CONFIG_CHANGE,
+    deadLetter: JOB_DEAD_LETTER_QUEUES.TENANT_CONFIG_CHANGE,
     retryLimit: 5,
     retryDelay: 30,
     retryBackoff: true,
