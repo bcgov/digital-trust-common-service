@@ -1,9 +1,11 @@
+import type { AuthTenant } from '@/lib/api/resources/auth';
+
 /** Claims the UI reads from the app-issued JWT (ARCHITECTURE.md, token claims). */
 export interface AuthUser {
   sub: string;
   name?: string;
   email?: string;
-  /** Active tenant (switchable via POST /api/v1/auth/switch-tenant — spec only today). */
+  /** Active tenant (switchable via POST /api/v1/auth/switch-tenant). */
   tenantId?: string;
   roles: string[];
 }
@@ -51,6 +53,8 @@ export interface AuthClient {
   completeLogin(): Promise<string | null>;
   /** refresh_token grant; resolves the new access token, or null if it can't. */
   refresh(): Promise<string | null>;
+  listAuthTenants(): Promise<AuthTenant[]>;
+  switchTenant(tenantId: string): Promise<void>;
   /** Subscribe to auth state changes; returns an unsubscribe function. */
   subscribe(listener: () => void): () => void;
 }

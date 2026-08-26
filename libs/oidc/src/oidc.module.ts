@@ -40,6 +40,7 @@ export class OidcModule {
   public static forRoot(options: OidcModuleOptions): DynamicModule {
     return {
       module: OidcModule,
+      global: true,
       imports: [
         OidcConfigModule,
         OidcAccountSessionModule,

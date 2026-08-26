@@ -572,7 +572,16 @@ Generated `client_id` values are prefixed `dtcs_`. The plaintext `clientSecret` 
 
 Assigned scopes must be in the published catalog, present in `OIDC_SCOPES`, and a subset of the caller's effective scopes (`tenants:admin` expands to all Level 2 + Level 3). `platform-admin` bypasses the caller-subset check.
 
-**User-token scope resolution:** the `role_scope` seed is consumed by `ScopeGuard` indirectly (scopes must appear on the JWT). Mapping `tenant_user.role` → `role_scope` → JWT `scope` at issuance is deferred to **[AU-02 #35](https://github.com/bcgov/digital-trust-common-service/issues/35)** (interactive login + `extraTokenClaims`). `RoleScopeRepository` is injectable for that work. Client-credentials tokens continue to take scopes from `oauth_client.scopes` at registration.
+Generated `client_id` values are prefixed `dtcs_`. The plaintext `clientSecret` is returned once on create and on `POST .../rotate-secret`; list/get responses never include it.
+
+Assigned scopes must be in the AU-04 catalog, present in `OIDC_SCOPES`, and a subset of the caller's effective scopes (`tenants:admin` expands to all Level 2 + Level 3). `platform-admin` bypasses the caller-subset check.
+
+**User-token scope resolution:** the `role_scope` seed is consumed at grant
+creation (`OidcInteractionController` and `POST /api/v1/auth/switch-tenant`)
+so user JWTs carry the scopes for the active tenant role. `extraTokenClaims`
+stamps `tenant_id`, `tenant_role`, and `roles: [<tenant_user.role>]`.
+Client-credentials tokens continue to take scopes from `oauth_client.scopes`
+at registration.
 
 ### Migration from placeholder scopes
 
@@ -747,9 +756,23 @@ Mismatch / missing `tenant_id` claim → **403** `{ error: { code: "TENANT_ACCES
 
 **v1 is claim-match only for `:tenantId` route params.** Body/`/:id` routes
 use the shared `assertTenantAccess` helper (same claim-match + platform-admin
-bypass). Live `TenantUser` membership lookup beyond that remains AU-09 /
-membership-guard territory. Client-credentials tokens already carry a fixed
-`tenant_id` from `oauth_client`.
+bypass). Live `TenantUser` membership lookup is used by
+`POST /api/v1/auth/switch-tenant` (and `GET /api/v1/auth/tenants`) rather than
+by TenantGuard. Client-credentials tokens already carry a fixed `tenant_id`
+from `oauth_client` and cannot switch.
+
+## Tenant switching (AU-09)
+
+Users who belong to more than one tenant get a token scoped to their **oldest
+active membership** at login. To change context, the SPA calls
+`POST /api/v1/auth/switch-tenant` with a valid user Bearer token. The API:
+
+1. Rejects machine (`client_credentials`) tokens with 403.
+2. Requires an active `tenant_user` row for the same Keycloak subject in the target tenant.
+3. Issues a new access token and refresh token whose `tenant_id`, `roles`, and `scope` come from the target membership.
+4. Revokes the previous grant so both tokens cannot be used at once (the old JWT may still verify until `exp`, at most 5 minutes).
+
+`GET /api/v1/auth/tenants` lists the caller's active memberships for the UI selector. `GET /api/v1/tenants` is not membership-filtered.
 
 ### Controller auth inventory
 

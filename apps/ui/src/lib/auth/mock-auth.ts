@@ -1,12 +1,29 @@
+import type { AuthTenant } from '@/lib/api/resources/auth';
+
 import type { AuthClient, AuthState, AuthUser } from './types';
 
 const STORAGE_KEY = 'dtsc-ui:mock-auth';
+
+export const MOCK_AUTH_TENANTS: AuthTenant[] = [
+  {
+    id: '11111111-1111-4111-8111-111111111111',
+    name: 'Acme Ministry',
+    slug: 'acme-ministry',
+    role: 'owner',
+  },
+  {
+    id: '22222222-2222-4222-8222-222222222222',
+    name: 'Example Agency',
+    slug: 'example-agency',
+    role: 'admin',
+  },
+];
 
 const MOCK_USER: AuthUser = {
   sub: 'mock-user',
   name: 'Mock User',
   email: 'mock.user@example.com',
-  tenantId: undefined,
+  tenantId: MOCK_AUTH_TENANTS[0]?.id,
   roles: ['owner'],
 };
 
@@ -74,6 +91,22 @@ export function createMockAuthClient(): AuthClient {
       const accessToken = `mock-token-${crypto.randomUUID()}`;
       setSession({ ...session, accessToken });
       return Promise.resolve(accessToken);
+    },
+    listAuthTenants: () => Promise.resolve(MOCK_AUTH_TENANTS),
+    switchTenant: (tenantId: string) => {
+      if (!session) return Promise.resolve();
+      const membership = MOCK_AUTH_TENANTS.find(
+        (tenant) => tenant.id === tenantId,
+      );
+      setSession({
+        user: {
+          ...session.user,
+          tenantId,
+          roles: membership ? [membership.role] : session.user.roles,
+        },
+        accessToken: `mock-token-${crypto.randomUUID()}`,
+      });
+      return Promise.resolve();
     },
     subscribe: (listener) => {
       listeners.add(listener);

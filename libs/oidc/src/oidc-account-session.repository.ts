@@ -71,6 +71,45 @@ export class OidcAccountSessionRepository {
   ) {}
 
   /**
+   * Points existing browser sessions at a different tenant-user account and
+   * grant so silent renew after switch-tenant does not snap back to the
+   * previous tenant.
+   */
+  public async rebindSessionsToAccount(
+    fromAccountId: string,
+    toAccountId: string,
+    clientId: string,
+    grantId: string,
+  ): Promise<void> {
+    const sessions = await this.repo.find({
+      where: { modelName: SESSION_MODEL, accountId: fromAccountId },
+    });
+
+    for (const session of sessions) {
+      const payload: Record<string, unknown> = {
+        ...session.payload,
+        accountId: toAccountId,
+      };
+      const authorizations = payload.authorizations;
+
+      if (authorizations && typeof authorizations === 'object') {
+        const current = (authorizations as Record<string, unknown>)[clientId];
+
+        if (current && typeof current === 'object') {
+          (authorizations as Record<string, unknown>)[clientId] = {
+            ...(current as Record<string, unknown>),
+            grantId,
+          };
+        }
+      }
+
+      session.accountId = toAccountId;
+      session.payload = payload;
+      await this.repo.save(session);
+    }
+  }
+
+  /**
    * Counts the account's sessions that have not expired. Expired-but-not-yet-
    * purged rows are excluded so a user is never blocked (or evicted) on the
    * strength of sessions that are already dead but still awaiting the hourly

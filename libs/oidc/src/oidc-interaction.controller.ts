@@ -382,21 +382,16 @@ export class OidcInteractionController {
       const tenantId = interaction.tenantId;
 
       /*
-       * Find or create the local user.
+       * AU-09: if the Keycloak subject already has active memberships,
+       * bind the session to the oldest one. Do not JIT-create a second
+       * row in the SPA client's tenant.
        */
-      let federatedUser =
-        await this.tenantUserService.findByTenantAndExternalUserId(
-          tenantId,
-          claims.sub,
-        );
+      const memberships =
+        await this.tenantUserService.findActiveByExternalUserId(claims.sub);
 
-      if (
-        federatedUser &&
-        federatedUser.status !==
-          OidcInteractionController.ACTIVE_TENANT_USER_STATUS
-      ) {
-        throw new Error('Federated user is not active');
-      }
+      let federatedUser:
+        oidcTenantUserPort.OidcTenantUserRecord | null | undefined =
+        memberships[0];
 
       // A previously-invited user has no externalUserId yet, so the lookup
       // above misses; claim the invited row by email before falling back to
@@ -411,14 +406,30 @@ export class OidcInteractionController {
       }
 
       if (!federatedUser) {
-        federatedUser = await this.tenantUserService.create({
-          tenantId,
-          externalUserId: claims.sub,
-          email: claims.email ?? '',
-          displayName: claims.name ?? claims.email ?? claims.sub,
-          role: OidcInteractionController.DEFAULT_TENANT_USER_ROLE,
-          status: OidcInteractionController.ACTIVE_TENANT_USER_STATUS,
-        });
+        federatedUser =
+          await this.tenantUserService.findByTenantAndExternalUserId(
+            tenantId,
+            claims.sub,
+          );
+
+        if (
+          federatedUser &&
+          federatedUser.status !==
+            OidcInteractionController.ACTIVE_TENANT_USER_STATUS
+        ) {
+          throw new Error('Federated user is not active');
+        }
+
+        if (!federatedUser) {
+          federatedUser = await this.tenantUserService.create({
+            tenantId,
+            externalUserId: claims.sub,
+            email: claims.email ?? '',
+            displayName: claims.name ?? claims.email ?? claims.sub,
+            role: OidcInteractionController.DEFAULT_TENANT_USER_ROLE,
+            status: OidcInteractionController.ACTIVE_TENANT_USER_STATUS,
+          });
+        }
       }
 
       await this.upstreamOidcService.stagePendingUpstreamSession({

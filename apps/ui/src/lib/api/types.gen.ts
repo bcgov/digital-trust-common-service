@@ -55,10 +55,33 @@ export interface paths {
         put?: never;
         /**
          * Switch active tenant context
-         * @description Exchange the current valid token for a new token scoped to a different tenant.
-         *     The user must have membership in the target tenant.
+         * @description Exchange the current valid **user** token for a new token scoped to a different tenant.
+         *     The caller must have an active membership in the target tenant.
+         *     Machine (`client_credentials`) tokens cannot switch; each client is bound to one tenant.
+         *     The previous grant is revoked so the old refresh token cannot be used alongside the new one.
          */
         post: operations["switchTenant"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/tenants": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List tenants the current user can switch to
+         * @description Returns the caller's active tenant memberships (id, name, slug, role).
+         *     Machine clients receive 403.
+         */
+        get: operations["listAuthTenants"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -2438,14 +2461,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        access_token?: string;
+                        access_token: string;
+                        /** @description Refresh token bound to the new tenant grant */
+                        refresh_token: string;
                         /** @example Bearer */
-                        token_type?: string;
+                        token_type: string;
                         /** @example 300 */
-                        expires_in?: number;
+                        expires_in: number;
                     };
                 };
             };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    listAuthTenants: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Active memberships */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        name: string;
+                        slug: string;
+                        /** @enum {string} */
+                        role: "owner" | "admin" | "member" | "readonly";
+                    }[];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
         };
     };

@@ -6,6 +6,7 @@ import { Response } from 'express';
 
 import { AdminModule } from '../admin/admin.module';
 import { AuditLogModule } from '../audit-log/audit-log.module';
+import { AuthApiModule } from '../auth/auth-api.module';
 import { API_BASE_PATH } from '../common/constants/api-version.constants';
 import { ConnectionModule } from '../connection/connection.module';
 import { ConnectorCredentialModule } from '../connector-credential/connector-credential.module';
@@ -38,6 +39,7 @@ const swaggerApps = [
     modules: [
       TenantModule,
       TenantUserModule,
+      AuthApiModule,
       CredentialDefinitionModule,
       AuditLogModule,
       OAuthClientModule,

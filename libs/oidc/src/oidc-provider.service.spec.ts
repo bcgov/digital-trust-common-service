@@ -331,6 +331,9 @@ describe('buildOidcConfiguration', () => {
     expect(
       resourceIndicators?.defaultResource?.({} as never, {} as never),
     ).toBe('https://digital-trust-common-service');
+    expect(
+      resourceIndicators?.useGrantedResource?.({} as never, {} as never),
+    ).toBe(true);
 
     const resourceServerInfo =
       await resourceIndicators?.getResourceServerInfo?.(
@@ -536,6 +539,7 @@ describe('buildOidcConfiguration', () => {
       expect(claims).toEqual({
         tenant_id: 'tenant-123',
         tenant_role: 'member',
+        roles: ['member'],
       });
     });
   });
