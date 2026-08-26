@@ -96,8 +96,9 @@ ingress:
   # -- Ingress TLS configuration
   tls: []
 
-# UI frontend deployment (React SPA served by Caddy). Disabled until a frontend
-# image is published and promoted with the API release.
+# UI frontend deployment (React SPA served by Caddy).
+# Turning it off leaves the Route and Ingress pointing straight at
+# the API service.
 frontend:
   # -- Deploy the UI frontend
   enabled: true
