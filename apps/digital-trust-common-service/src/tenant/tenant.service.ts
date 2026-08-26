@@ -252,7 +252,7 @@ export class TenantService {
   }
 
   /**
-   * Suspends, deactivates, or reactivates a tenant. `deactivatedAt` is set
+   * Suspends, deactivates, or reactivates a tenant. `deactivated_at` is set
    * when moving into `DEACTIVATED` (it anchors the 90-day data retention
    * window) and cleared for any other target status. Side effects (revoking
    * API keys, closing connections, deactivating connector credentials) are
@@ -275,7 +275,7 @@ export class TenantService {
     }
 
     tenant.status = status;
-    tenant.deactivatedAt =
+    tenant.deactivated_at =
       status === TenantStatus.DEACTIVATED ? new Date() : null;
 
     const saved = await this.tenants.update(tenant);

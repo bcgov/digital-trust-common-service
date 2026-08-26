@@ -139,7 +139,7 @@ export class Tenant {
     type: 'timestamptz',
     nullable: true,
   })
-  public deactivatedAt?: Date | null;
+  public deactivated_at?: Date | null;
 
   @OneToMany(() => TenantUser, (tenantUser) => tenantUser.tenant)
   public users!: TenantUser[];

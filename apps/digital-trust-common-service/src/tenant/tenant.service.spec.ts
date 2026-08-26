@@ -437,7 +437,7 @@ describe('TenantService', () => {
       expect(mockUpdate).toHaveBeenCalledWith(
         expect.objectContaining({
           status: TenantStatus.SUSPENDED,
-          deactivatedAt: null,
+          deactivated_at: null,
         }),
       );
       expect(mockEmit).toHaveBeenCalledWith({
@@ -463,7 +463,7 @@ describe('TenantService', () => {
       expect(result).toEqual(suspended);
     });
 
-    it('should deactivate an active tenant and stamp deactivatedAt', async () => {
+    it('should deactivate an active tenant and stamp deactivated_at', async () => {
       const id = mockTenant.id;
       const deactivated = { ...mockTenant, status: TenantStatus.DEACTIVATED };
 
@@ -475,17 +475,17 @@ describe('TenantService', () => {
       expect(mockUpdate).toHaveBeenCalledWith(
         expect.objectContaining({
           status: TenantStatus.DEACTIVATED,
-          deactivatedAt: expect.any(Date),
+          deactivated_at: expect.any(Date),
         }),
       );
     });
 
-    it('should reactivate a deactivated tenant and clear deactivatedAt', async () => {
+    it('should reactivate a deactivated tenant and clear deactivated_at', async () => {
       const id = mockTenant.id;
       const deactivatedTenant = {
         ...mockTenant,
         status: TenantStatus.DEACTIVATED,
-        deactivatedAt: new Date(),
+        deactivated_at: new Date(),
       };
       const reactivated = { ...mockTenant, status: TenantStatus.ACTIVE };
 
@@ -497,7 +497,7 @@ describe('TenantService', () => {
       expect(mockUpdate).toHaveBeenCalledWith(
         expect.objectContaining({
           status: TenantStatus.ACTIVE,
-          deactivatedAt: null,
+          deactivated_at: null,
         }),
       );
       expect(mockEmit).toHaveBeenCalledWith({

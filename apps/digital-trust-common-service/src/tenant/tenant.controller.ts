@@ -17,6 +17,7 @@ import {
   Get,
   Patch,
   Param,
+  ParseUUIDPipe,
   Post,
   Query,
   UseGuards,
@@ -126,7 +127,7 @@ export class TenantController {
   })
   public async update(
     @Body() dto: UpdateTenantDto,
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @CurrentAuth() auth?: AuthContext,
   ): Promise<Tenant> {
     this.assertTenantAccess(auth, id);
@@ -166,7 +167,7 @@ export class TenantController {
     },
   })
   public async updateStatus(
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateTenantStatusDto,
   ): Promise<Tenant> {
     return this.tenantService.updateStatus(id, dto.status);
@@ -233,7 +234,7 @@ export class TenantController {
   })
   @ApiUnauthorizedResponse({ description: 'Authentication is required' })
   public async findById(
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @CurrentAuth() auth?: AuthContext,
   ): Promise<Tenant | null> {
     const tenant = await this.tenantService.findById(id);
@@ -295,7 +296,7 @@ export class TenantController {
   @ApiNotFoundResponse({ description: 'Tenant not found' })
   @ApiForbiddenResponse({ description: 'Caller is not a platform admin' })
   @ApiUnauthorizedResponse({ description: 'Authentication is required' })
-  public async delete(@Param('id') id: string): Promise<void> {
+  public async delete(@Param('id', ParseUUIDPipe) id: string): Promise<void> {
     return this.tenantService.delete(id);
   }
 
@@ -315,7 +316,7 @@ export class TenantController {
   @ApiNotFoundResponse({ description: 'Tenant not found' })
   @ApiForbiddenResponse({ description: 'Caller is not a platform admin' })
   @ApiUnauthorizedResponse({ description: 'Authentication is required' })
-  public async restore(@Param('id') id: string): Promise<void> {
+  public async restore(@Param('id', ParseUUIDPipe) id: string): Promise<void> {
     return this.tenantService.restore(id);
   }
 
