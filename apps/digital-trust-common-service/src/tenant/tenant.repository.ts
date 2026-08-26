@@ -1,8 +1,19 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { EntityManager, Repository } from 'typeorm';
 
 import { Tenant } from './tenant.entity';
+
+export type TenantCursor = {
+  createdAt: string;
+  id: string;
+};
+
+export type TenantPage = {
+  items: Tenant[];
+  nextCursor: TenantCursor | null;
+  hasMore: boolean;
+};
 
 @Injectable()
 export class TenantRepository {
@@ -11,8 +22,41 @@ export class TenantRepository {
     private readonly repo: Repository<Tenant>,
   ) {}
 
-  public findAll(): Promise<Tenant[]> {
-    return this.repo.find();
+  public async findPage(options: {
+    limit: number;
+    cursor?: TenantCursor | null;
+  }): Promise<TenantPage> {
+    const qb = this.repo
+      .createQueryBuilder('tenant')
+      .orderBy('tenant.created_at', 'ASC')
+      .addOrderBy('tenant.id', 'ASC');
+
+    if (options.cursor) {
+      // Use CAST(...) — TypeORM mishandles `:param::type` binding.
+      qb.andWhere(
+        '(tenant.created_at, tenant.id) > (CAST(:cursorCreatedAt AS timestamptz), CAST(:cursorId AS uuid))',
+        {
+          cursorCreatedAt: options.cursor.createdAt,
+          cursorId: options.cursor.id,
+        },
+      );
+    }
+
+    qb.take(options.limit + 1);
+
+    const rows = await qb.getMany();
+    const hasMore = rows.length > options.limit;
+    const items = hasMore ? rows.slice(0, options.limit) : rows;
+    const last = items[items.length - 1];
+    const nextCursor =
+      hasMore && last
+        ? {
+            createdAt: last.created_at.toISOString(),
+            id: last.id,
+          }
+        : null;
+
+    return { items, nextCursor, hasMore };
   }
 
   public findById(id: string): Promise<Tenant | null> {
@@ -21,9 +65,13 @@ export class TenantRepository {
     });
   }
 
-  public findBySlug(slug: string): Promise<Tenant | null> {
+  public findBySlug(
+    slug: string,
+    includeDeleted = false,
+  ): Promise<Tenant | null> {
     return this.repo.findOne({
       where: { slug },
+      withDeleted: includeDeleted,
     });
   }
 
@@ -31,8 +79,8 @@ export class TenantRepository {
     return this.repo.create(data);
   }
 
-  public update(entity: Tenant): Promise<Tenant> {
-    return this.repo.save(entity);
+  public update(entity: Tenant, manager?: EntityManager): Promise<Tenant> {
+    return (manager ?? this.repo.manager).save(entity);
   }
 
   public async delete(id: string): Promise<void> {

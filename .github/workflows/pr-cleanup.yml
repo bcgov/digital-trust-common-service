@@ -28,7 +28,7 @@ jobs:
       deploy: ${{ steps.gate.outputs.deploy }}
       release_name: ${{ steps.names.outputs.release_name }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # A deploy still running for this PR would race the teardown (or
       # re-create the release after it); stop queued and running ones first.
@@ -92,7 +92,7 @@ jobs:
     if: needs.preflight.outputs.deploy == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up OpenShift access
         uses: ./.github/actions/oc-setup

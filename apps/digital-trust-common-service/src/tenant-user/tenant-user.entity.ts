@@ -28,6 +28,7 @@ export enum TenantUserStatus {
 
 @Entity({ name: 'tenant_user' })
 @Unique('uq_tenant_user_external_user', ['tenantId', 'externalUserId'])
+@Unique('uq_tenant_user_tenant_email', ['tenantId', 'email'])
 @Index('idx_tenant_user_tenant_id', ['tenantId'])
 @Index('idx_tenant_user_external_user_id', ['externalUserId'])
 export class TenantUser {
@@ -52,11 +53,18 @@ export class TenantUser {
   public tenant!: Tenant;
 
   @ApiProperty({
-    description: 'The external user ID (Keycloak subject)',
+    description:
+      'The external user ID (Keycloak subject). Absent until an invited user completes their first login.',
     example: 'keycloak-user-123',
+    required: false,
   })
-  @Column({ name: 'external_user_id', type: 'varchar', length: 255 })
-  public externalUserId!: string;
+  @Column({
+    name: 'external_user_id',
+    type: 'varchar',
+    length: 255,
+    nullable: true,
+  })
+  public externalUserId?: string;
 
   @ApiProperty({
     description: 'The email address of the user',

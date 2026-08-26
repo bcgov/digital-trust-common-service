@@ -1,13 +1,40 @@
 @import 'tailwindcss';
 @import 'tw-animate-css';
 @import 'shadcn/tailwind.css';
-@import '@fontsource-variable/geist';
+@import '@bcgov/design-tokens/css/variables.css';
 
+/* BC Sans, self-hosted from @bcgov/bc-sans. Declared here instead of
+   importing the package's BC_Sans.css so we control font-display (the
+   package omits it → invisible text while loading) and ship only the two
+   faces the app uses. BC Sans has no 500/600, so font-medium renders as 400
+   and font-semibold as 700; italics are synthesized. The family name must
+   stay 'BC Sans' — it's what the BCDS typography tokens reference. */
+@font-face {
+  font-family: 'BC Sans';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('@bcgov/bc-sans/fonts/BCSans-Regular.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'BC Sans';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('@bcgov/bc-sans/fonts/BCSans-Bold.woff2') format('woff2');
+}
+
+/* BCDS v5 is light-only (no dark palette), so the app has no dark theme.
+   Vendored shadcn components still carry `dark:` utilities; keeping this
+   variant pinned to a `.dark` class we never set keeps them inert (removing
+   it would revert `dark:` to prefers-color-scheme and half-apply). */
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
   --font-heading: var(--font-sans);
-  --font-sans: 'Geist Variable', sans-serif;
+  --font-sans: 'BC Sans', 'Noto Sans', Verdana, Arial, sans-serif;
+  --color-link: var(--link);
+  --color-link-hover: var(--link-hover);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -24,6 +51,7 @@
   --color-ring: var(--ring);
   --color-input: var(--input);
   --color-border: var(--border);
+  --color-destructive-hover: var(--destructive-hover);
   --color-destructive: var(--destructive);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
@@ -39,87 +67,76 @@
   --color-card: var(--card);
   --color-foreground: var(--foreground);
   --color-background: var(--background);
-  --radius-sm: calc(var(--radius) * 0.6);
-  --radius-md: calc(var(--radius) * 0.8);
+  /* The steps the components actually use map to BCDS's discrete radii
+     (small 2px / medium 4px / large 6px); the pill-ish steps beyond stay
+     derived — they only round things past fully-rounded anyway. */
+  --radius-sm: var(--layout-border-radius-small);
+  --radius-md: var(--layout-border-radius-medium);
   --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-xl: var(--layout-border-radius-large);
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
+/* shadcn theme tokens mapped onto @bcgov/design-tokens v5 (imported above).
+   Values reference the BCDS variables rather than copying them, so a
+   design-tokens upgrade flows through without edits here. Caveat: the BCDS
+   react-components bundle injects its own inlined copy of these tokens at
+   runtime, which wins the cascade — the @bcgov packages are exact-pinned in
+   lockstep so both copies are always identical, and
+   src/test/design-system.test.ts fails if they drift or a referenced token
+   is renamed. */
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
-}
-
-.dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --background: var(--surface-color-background-light-gray);
+  --foreground: var(--typography-color-primary);
+  --card: var(--surface-color-background-white);
+  --card-foreground: var(--typography-color-primary);
+  --popover: var(--surface-color-menus-default);
+  --popover-foreground: var(--typography-color-primary);
+  --primary: var(--surface-color-primary-button-default);
+  --primary-foreground: var(--typography-color-primary-invert);
+  --secondary: var(--theme-gray-20);
+  --secondary-foreground: var(--typography-color-primary);
+  --muted: var(--theme-gray-20);
+  --muted-foreground: var(--typography-color-secondary);
+  --accent: var(--surface-color-tertiary-hover);
+  --accent-foreground: var(--typography-color-primary);
+  --destructive: var(--surface-color-primary-danger-button-default);
+  --destructive-hover: var(--surface-color-primary-danger-button-hover);
+  --border: var(--surface-color-border-default);
+  --input: var(--surface-color-border-default);
+  --ring: var(--surface-color-border-active);
+  --link: var(--typography-color-link);
+  --link-hover: var(--surface-color-border-active);
+  /* Categorical chart series from the BCDS blue/gold scales (nothing charts
+     yet — revisit ordering against real data). */
+  --chart-1: var(--theme-blue-100);
+  --chart-2: var(--theme-gold-100);
+  --chart-3: var(--theme-blue-70);
+  --chart-4: var(--theme-gray-70);
+  --chart-5: var(--theme-blue-40);
+  /* 4px base: buttons/inputs (rounded-lg) get BCDS "medium", cards
+     (rounded-xl) land at 5.6px ≈ BCDS "large". */
+  --radius: var(--layout-border-radius-medium);
+  --sidebar: var(--surface-color-background-white);
+  --sidebar-foreground: var(--typography-color-primary);
+  --sidebar-primary: var(--surface-color-primary-default);
+  --sidebar-primary-foreground: var(--typography-color-primary-invert);
+  --sidebar-accent: var(--surface-color-background-light-blue);
+  --sidebar-accent-foreground: var(--theme-blue-100);
+  --sidebar-border: var(--surface-color-border-default);
+  --sidebar-ring: var(--surface-color-border-active);
 }
 
 @layer base {
   * {
-    @apply border-border outline-ring/50;
+    /* Outline color/width/offset are preset in the resting state so elements
+       with transition-all/-colors don't animate the focus outline in from
+       currentcolor (same trick as stock shadcn's `outline-ring/50`). */
+    @apply border-border outline-ring;
+    outline-width: var(--layout-border-width-medium);
+    outline-offset: var(--layout-margin-hair);
   }
   body {
     @apply bg-background text-foreground;
@@ -127,4 +144,22 @@
   html {
     @apply font-sans;
   }
+  /* BC Gov focus convention: solid 2px active-blue outline, 2px offset
+     (matches BCDS react-components). Default for everything focusable;
+     vendored components that opt out via `outline-none` restyle themselves. */
+  :focus-visible {
+    outline: var(--layout-border-width-medium) solid var(--ring);
+    outline-offset: var(--layout-margin-hair);
+  }
+}
+
+/* The BCDS Header centres its content at 1100px, sized for public content
+   sites; this admin shell is full-width. RULE for all overrides of `.bcds-*`
+   classes: out-specify the package rule (here 0,2,1 vs its 0,2,0) — never
+   rely on source order. The package style-injects its CSS at runtime, which
+   lands AFTER this stylesheet in production builds but before it in dev, so
+   an equal-specificity override wins in dev and silently loses in prod
+   (PR #194 review). */
+header.bcds-header > .bcds-header--container {
+  max-width: none;
 }

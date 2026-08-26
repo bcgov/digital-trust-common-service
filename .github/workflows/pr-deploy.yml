@@ -28,7 +28,7 @@ jobs:
       route_host: ${{ steps.names.outputs.route_host }}
       db_name: ${{ steps.names.outputs.db_name }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # Single source of truth for per-PR names, shared with pr-cleanup.yml
       # and the pr-database action.
@@ -80,7 +80,7 @@ jobs:
       # Pin to the head SHA: the default merge-ref checkout drifts as main
       # advances, so the pr-<N>-<short-sha> tag would name content that isn't
       # that commit.
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.pull_request.head.sha }}
 
@@ -124,7 +124,7 @@ jobs:
     if: needs.preflight.outputs.deploy == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up OpenShift access
         uses: ./.github/actions/oc-setup
@@ -151,7 +151,7 @@ jobs:
     steps:
       # Head SHA for the same reason as the build job: the deployed chart
       # must match the commit the sticky comment reports.
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.pull_request.head.sha }}
 

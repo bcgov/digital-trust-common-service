@@ -399,6 +399,18 @@ export class OidcInteractionController {
         throw new Error('Federated user is not active');
       }
 
+      // A previously-invited user has no externalUserId yet, so the lookup
+      // above misses; claim the invited row by email before falling back to
+      // creating a brand-new one (which would otherwise collide with the
+      // per-tenant email uniqueness constraint or create a duplicate).
+      if (!federatedUser && claims.email) {
+        federatedUser = await this.tenantUserService.claimInvitedByEmail(
+          tenantId,
+          claims.email,
+          claims.sub,
+        );
+      }
+
       if (!federatedUser) {
         federatedUser = await this.tenantUserService.create({
           tenantId,

@@ -21,6 +21,8 @@ import { TenantUser } from '../tenant-user/tenant-user.entity';
 
 export enum TenantStatus {
   ACTIVE = 'active',
+  PENDING_APPROVAL = 'pending_approval',
+  REJECTED = 'rejected',
   SUSPENDED = 'suspended',
   DEACTIVATED = 'deactivated',
 }

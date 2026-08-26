@@ -10,6 +10,9 @@ export const PLATFORM_ADMIN_ROLE = 'platform-admin';
  */
 export const OAUTH_CLIENT_ALLOWED_ROLES = [PLATFORM_ADMIN_ROLE] as const;
 
+/** Level 2 scope for managing tenant users (invite, list, update, remove). */
+export const USERS_MANAGE_SCOPE = 'users:manage';
+
 /** Level 2 domain-operation scopes. */
 export const LEVEL2_SCOPES = [
   'credentials:offer',
@@ -18,7 +21,7 @@ export const LEVEL2_SCOPES = [
   'credentials:revoke',
   'connections:manage',
   'profiles:manage',
-  'users:manage',
+  USERS_MANAGE_SCOPE,
   'clients:manage',
 ] as const;
 

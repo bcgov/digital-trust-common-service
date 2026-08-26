@@ -331,6 +331,7 @@ paths:
     post:
       operationId: createTenant
       summary: Create a new tenant
+      description: Requires platform-admin privileges. Links the given ownerEmail as the tenant's initial owner. There is no self-service tenant creation path.
       tags: [Tenants]
       parameters:
         - $ref: "#/components/parameters/IdempotencyKey"
@@ -347,6 +348,10 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Tenant"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "409":
           $ref: "#/components/responses/Conflict"
         "422":
@@ -373,6 +378,8 @@ paths:
                         type: array
                         items:
                           $ref: "#/components/schemas/Tenant"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
 
   /api/v1/tenants/{tenantId}:
     parameters:
@@ -388,6 +395,10 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Tenant"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
     patch:
@@ -407,6 +418,10 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Tenant"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
     delete:
@@ -416,6 +431,53 @@ paths:
       responses:
         "204":
           description: Tenant deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/tenants/slug/{slug}:
+    parameters:
+      - name: slug
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Tenant slug
+    get:
+      operationId: getTenantBySlug
+      summary: Get tenant details by slug
+      tags: [Tenants]
+      responses:
+        "200":
+          description: Tenant details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Tenant"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/tenants/{tenantId}/restore:
+    parameters:
+      - $ref: "#/components/parameters/TenantId"
+    post:
+      operationId: restoreTenant
+      summary: Restore a soft-deleted tenant (platform-admin only)
+      tags: [Tenants]
+      responses:
+        "200":
+          description: Tenant restored
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
 
@@ -624,6 +686,10 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/TenantUser"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "409":
           $ref: "#/components/responses/Conflict"
     get:
@@ -647,6 +713,10 @@ paths:
                         type: array
                         items:
                           $ref: "#/components/schemas/TenantUser"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
 
   /api/v1/tenants/{tenantId}/users/{userId}:
     parameters:
@@ -677,6 +747,18 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/TenantUser"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Cannot change the role of the tenant's last owner
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
     delete:
       operationId: removeTenantUser
       summary: Remove user from tenant
@@ -684,6 +766,12 @@ paths:
       responses:
         "204":
           description: User removed
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
         "409":
           description: Cannot remove last owner
           content:
@@ -2818,7 +2906,8 @@ components:
 
     TenantStatus:
       type: string
-      enum: [active, suspended, deactivated]
+      enum:
+        [active, pending_approval, rejected, suspended, deactivated]
 
     TenantConfig:
       type: object
@@ -2876,7 +2965,7 @@ components:
 
     CreateTenantRequest:
       type: object
-      required: [name, slug]
+      required: [name, slug, ownerEmail]
       properties:
         name:
           type: string
@@ -2890,6 +2979,10 @@ components:
         description:
           type: string
           maxLength: 500
+        ownerEmail:
+          type: string
+          format: email
+          description: Email of the user to link as the tenant's initial owner
 
     UpdateTenantRequest:
       type: object
