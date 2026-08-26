@@ -1,4 +1,5 @@
 import { PLATFORM_ADMIN_ROLE } from '@app/auth';
+import { JOB_QUEUES } from '@app/pg-boss';
 import {
   BadRequestException,
   Injectable,
@@ -9,6 +10,7 @@ import { DataSource } from 'typeorm';
 
 import { AuditAction } from '../audit-log/audit-log.entity';
 import { DomainAuditService } from '../audit-log/domain-audit.service';
+import { JobsService } from '../jobs/jobs.service';
 import { TenantUserRole } from '../tenant-user/tenant-user.entity';
 import { TenantUserService } from '../tenant-user/tenant-user.service';
 
@@ -25,6 +27,26 @@ export type PaginatedTenants = {
   };
 };
 
+/**
+ * Valid target statuses for `updateStatus()` from each current status.
+ * `PENDING_APPROVAL` and `REJECTED` are excluded: those transitions belong
+ * to the tenant approval flow, not the suspend/deactivate lifecycle.
+ */
+const ALLOWED_STATUS_TRANSITIONS: Record<TenantStatus, TenantStatus[]> = {
+  [TenantStatus.ACTIVE]: [TenantStatus.SUSPENDED, TenantStatus.DEACTIVATED],
+  [TenantStatus.SUSPENDED]: [TenantStatus.ACTIVE, TenantStatus.DEACTIVATED],
+  [TenantStatus.DEACTIVATED]: [TenantStatus.ACTIVE],
+  [TenantStatus.PENDING_APPROVAL]: [],
+  [TenantStatus.REJECTED]: [],
+};
+
+/** Payload for the `tenant.status-change` job published by `updateStatus()`. */
+export type TenantStatusChangeJobData = {
+  tenantId: string;
+  previousStatus: TenantStatus;
+  status: TenantStatus;
+};
+
 @Injectable()
 export class TenantService {
   public constructor(
@@ -32,6 +54,7 @@ export class TenantService {
     private readonly domainAudit: DomainAuditService,
     private readonly tenantUserService: TenantUserService,
     private readonly dataSource: DataSource,
+    private readonly jobsService: JobsService,
   ) {}
 
   public async create(
@@ -223,5 +246,64 @@ export class TenantService {
       resourceId: tenant.id,
       metadata: { restored: true },
     });
+  }
+
+  /**
+   * Suspends, deactivates, or reactivates a tenant. `deactivated_at` is set
+   * when moving into `DEACTIVATED` (it anchors the 90-day data retention
+   * window) and cleared for any other target status. Side effects (revoking
+   * API keys, closing connections, deactivating connector credentials) are
+   * handled asynchronously off the `tenant.status-change` job, not here.
+   *
+   * The status write and the job enqueue happen in one transaction — pg-boss
+   * shares this service's Postgres database, so a failure to enqueue the job
+   * rolls back the status change instead of silently dropping the downstream
+   * revocation side effects.
+   */
+  public async updateStatus(id: string, status: TenantStatus) {
+    const tenant = await this.tenants.findById(id);
+
+    if (!tenant) {
+      throw new NotFoundException('Tenant not found');
+    }
+
+    const previousStatus = tenant.status;
+    const allowedTargets = ALLOWED_STATUS_TRANSITIONS[previousStatus];
+
+    if (!allowedTargets.includes(status)) {
+      throw new ConflictException(
+        `Cannot transition tenant from '${previousStatus}' to '${status}'`,
+      );
+    }
+
+    tenant.status = status;
+    tenant.deactivated_at =
+      status === TenantStatus.DEACTIVATED ? new Date() : null;
+
+    const saved = await this.dataSource.transaction(async (manager) => {
+      const updatedTenant = await this.tenants.update(tenant, manager);
+
+      await this.jobsService.sendInTransaction(
+        manager,
+        JOB_QUEUES.TENANT_STATUS_CHANGE,
+        {
+          tenantId: updatedTenant.id,
+          previousStatus,
+          status,
+        } satisfies TenantStatusChangeJobData,
+      );
+
+      return updatedTenant;
+    });
+
+    await this.domainAudit.emit({
+      tenantId: saved.id,
+      action: AuditAction.UPDATE,
+      resourceType: 'tenant',
+      resourceId: saved.id,
+      metadata: { status_change: { from: previousStatus, to: status } },
+    });
+
+    return saved;
   }
 }

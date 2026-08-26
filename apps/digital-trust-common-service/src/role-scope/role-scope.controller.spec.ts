@@ -7,6 +7,8 @@ import {
 import type { AuthContext } from '@app/auth';
 import { Test, TestingModule } from '@nestjs/testing';
 
+import { TenantStatusGuard } from '../tenant/tenant-status.guard';
+
 import { RoleScopeService } from './role-scope.service';
 import { RoleController } from './role.controller';
 import { ScopeController } from './scope.controller';
@@ -71,6 +73,8 @@ describe('role-scope controllers', () => {
       .overrideGuard(ScopeGuard)
       .useValue({ canActivate: (): boolean => true })
       .overrideGuard(TenantGuard)
+      .useValue({ canActivate: (): boolean => true })
+      .overrideGuard(TenantStatusGuard)
       .useValue({ canActivate: (): boolean => true })
       .compile();
 

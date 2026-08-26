@@ -142,4 +142,9 @@ export class ConnectionService {
       resourceId: id,
     });
   }
+
+  /** Used by the tenant status-change cascade when a tenant is deactivated. */
+  public async abandonAllForTenant(tenantId: string): Promise<number> {
+    return this.connectionRepository.abandonAllForTenant(tenantId);
+  }
 }

@@ -1,3 +1,4 @@
+import { JOB_QUEUES } from '@app/pg-boss';
 import {
   BadRequestException,
   ConflictException,
@@ -8,6 +9,7 @@ import { DataSource, EntityManager } from 'typeorm';
 
 import { AuditAction } from '../audit-log/audit-log.entity';
 import { DomainAuditService } from '../audit-log/domain-audit.service';
+import { JobsService } from '../jobs/jobs.service';
 import { TenantUserRole } from '../tenant-user/tenant-user.entity';
 import { TenantUserService } from '../tenant-user/tenant-user.service';
 
@@ -28,6 +30,7 @@ describe('TenantService', () => {
   let mockEmit: jest.Mock;
   let mockInvite: jest.Mock;
   let mockTransaction: jest.Mock;
+  let mockSendInTransaction: jest.Mock;
   const mockManager = {} as EntityManager;
 
   const mockTenant: Tenant = {
@@ -59,6 +62,7 @@ describe('TenantService', () => {
       async (callback: (manager: EntityManager) => Promise<unknown>) =>
         callback(mockManager),
     );
+    mockSendInTransaction = jest.fn().mockResolvedValue('job-id');
 
     const mockRepository = {
       create: mockCreate,
@@ -88,6 +92,10 @@ describe('TenantService', () => {
         {
           provide: DataSource,
           useValue: { transaction: mockTransaction },
+        },
+        {
+          provide: JobsService,
+          useValue: { sendInTransaction: mockSendInTransaction },
         },
       ],
     }).compile();
@@ -412,6 +420,159 @@ describe('TenantService', () => {
 
       await expect(service.restore(id)).rejects.toThrow(NotFoundException);
       expect(mockRestore).toHaveBeenCalled();
+    });
+  });
+
+  describe('updateStatus', () => {
+    it('should suspend an active tenant', async () => {
+      const id = mockTenant.id;
+      const suspended = { ...mockTenant, status: TenantStatus.SUSPENDED };
+
+      mockFindById.mockResolvedValue({ ...mockTenant });
+      mockUpdate.mockResolvedValue(suspended);
+
+      const result = await service.updateStatus(id, TenantStatus.SUSPENDED);
+
+      expect(mockFindById).toHaveBeenCalledWith(id);
+      expect(mockUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: TenantStatus.SUSPENDED,
+          deactivated_at: null,
+        }),
+        mockManager,
+      );
+      expect(mockEmit).toHaveBeenCalledWith({
+        tenantId: suspended.id,
+        action: AuditAction.UPDATE,
+        resourceType: 'tenant',
+        resourceId: suspended.id,
+        metadata: {
+          status_change: {
+            from: TenantStatus.ACTIVE,
+            to: TenantStatus.SUSPENDED,
+          },
+        },
+      });
+      expect(mockSendInTransaction).toHaveBeenCalledWith(
+        mockManager,
+        JOB_QUEUES.TENANT_STATUS_CHANGE,
+        {
+          tenantId: suspended.id,
+          previousStatus: TenantStatus.ACTIVE,
+          status: TenantStatus.SUSPENDED,
+        },
+      );
+      expect(result).toEqual(suspended);
+    });
+
+    it('should deactivate an active tenant and stamp deactivated_at', async () => {
+      const id = mockTenant.id;
+      const deactivated = { ...mockTenant, status: TenantStatus.DEACTIVATED };
+
+      mockFindById.mockResolvedValue({ ...mockTenant });
+      mockUpdate.mockResolvedValue(deactivated);
+
+      await service.updateStatus(id, TenantStatus.DEACTIVATED);
+
+      expect(mockUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: TenantStatus.DEACTIVATED,
+          deactivated_at: expect.any(Date),
+        }),
+        mockManager,
+      );
+    });
+
+    it('should reactivate a deactivated tenant and clear deactivated_at', async () => {
+      const id = mockTenant.id;
+      const deactivatedTenant = {
+        ...mockTenant,
+        status: TenantStatus.DEACTIVATED,
+        deactivated_at: new Date(),
+      };
+      const reactivated = { ...mockTenant, status: TenantStatus.ACTIVE };
+
+      mockFindById.mockResolvedValue(deactivatedTenant);
+      mockUpdate.mockResolvedValue(reactivated);
+
+      const result = await service.updateStatus(id, TenantStatus.ACTIVE);
+
+      expect(mockUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: TenantStatus.ACTIVE,
+          deactivated_at: null,
+        }),
+        mockManager,
+      );
+      expect(mockEmit).toHaveBeenCalledWith({
+        tenantId: reactivated.id,
+        action: AuditAction.UPDATE,
+        resourceType: 'tenant',
+        resourceId: reactivated.id,
+        metadata: {
+          status_change: {
+            from: TenantStatus.DEACTIVATED,
+            to: TenantStatus.ACTIVE,
+          },
+        },
+      });
+      expect(mockSendInTransaction).toHaveBeenCalledWith(
+        mockManager,
+        JOB_QUEUES.TENANT_STATUS_CHANGE,
+        {
+          tenantId: reactivated.id,
+          previousStatus: TenantStatus.DEACTIVATED,
+          status: TenantStatus.ACTIVE,
+        },
+      );
+      expect(result).toEqual(reactivated);
+    });
+
+    it('should reject an invalid transition', async () => {
+      mockFindById.mockResolvedValue({
+        ...mockTenant,
+        status: TenantStatus.PENDING_APPROVAL,
+      });
+
+      await expect(
+        service.updateStatus(mockTenant.id, TenantStatus.ACTIVE),
+      ).rejects.toThrow(ConflictException);
+      expect(mockUpdate).not.toHaveBeenCalled();
+      expect(mockEmit).not.toHaveBeenCalled();
+      expect(mockSendInTransaction).not.toHaveBeenCalled();
+    });
+
+    it('rolls back the status change if the job fails to enqueue', async () => {
+      const id = mockTenant.id;
+      const suspended = { ...mockTenant, status: TenantStatus.SUSPENDED };
+
+      mockFindById.mockResolvedValue({ ...mockTenant });
+      mockUpdate.mockResolvedValue(suspended);
+      mockSendInTransaction.mockRejectedValue(new Error('queue unavailable'));
+
+      await expect(
+        service.updateStatus(id, TenantStatus.SUSPENDED),
+      ).rejects.toThrow('queue unavailable');
+      expect(mockEmit).not.toHaveBeenCalled();
+    });
+
+    it('should reject a no-op transition to the same status', async () => {
+      mockFindById.mockResolvedValue({ ...mockTenant });
+
+      await expect(
+        service.updateStatus(mockTenant.id, TenantStatus.ACTIVE),
+      ).rejects.toThrow(ConflictException);
+      expect(mockUpdate).not.toHaveBeenCalled();
+    });
+
+    it('should throw NotFoundException if tenant not found', async () => {
+      const id = '999e4567-e89b-12d3-a456-426614174000';
+      mockFindById.mockResolvedValue(null);
+
+      await expect(
+        service.updateStatus(id, TenantStatus.SUSPENDED),
+      ).rejects.toThrow(NotFoundException);
+      expect(mockUpdate).not.toHaveBeenCalled();
     });
   });
 });
