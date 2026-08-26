@@ -3,14 +3,14 @@ kind: Deployment
 metadata:
   name: {{ include "digital-trust-common-service.fullname" . }}
   labels:
-    {{- include "digital-trust-common-service.labels" . | nindent 4 }}
+    {{- include "digital-trust-common-service.api.labels" . | nindent 4 }}
 spec:
   {{- if not .Values.autoscaling.enabled }}
   replicas: {{ .Values.replicaCount }}
   {{- end }}
   selector:
     matchLabels:
-      {{- include "digital-trust-common-service.selectorLabels" . | nindent 6 }}
+      {{- include "digital-trust-common-service.api.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       annotations:
@@ -28,7 +28,7 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
       labels:
-        {{- include "digital-trust-common-service.selectorLabels" . | nindent 8 }}
+        {{- include "digital-trust-common-service.api.selectorLabels" . | nindent 8 }}
         {{- with .Values.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -77,6 +77,10 @@ spec:
                   key: OIDC_COOKIE_KEYS
                   optional: true
             {{- end }}
+          {{- with .Values.startupProbe }}
+          startupProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           {{- with .Values.livenessProbe }}
           livenessProbe:
             {{- toYaml . | nindent 12 }}

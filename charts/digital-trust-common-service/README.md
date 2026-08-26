@@ -29,6 +29,8 @@ OpenShift. Key characteristics:
 
 - **API Deployment** — HTTP service on container port `3000`; liveness and
   readiness probes on `/health/live`.
+- **Frontend Deployment** — React SPA served by Caddy, reverse-proxying `/api`,
+  `/oidc`, and `/health` to the API service for same-origin browser traffic.
 - **Migrations** — run as a `pre-install`/`pre-upgrade` Helm hook Job (same image,
   overridden command), gated by `migrations.enabled`. Running once per release
   (rather than as a per-pod init container) avoids concurrent migration runs
@@ -172,6 +174,29 @@ Generate the JWKS payload with `npm run oidc:generate-keys > oidc-keys.json`, th
 | connectorEncryption.retainOnUninstall | bool | `true` | Keep the chart-managed Secret when the release is uninstalled |
 | extraEnv | list | `[]` | Extra plain environment variables appended to every container (name/value list) |
 | extraEnvFrom | list | `[]` | Extra envFrom sources (configMapRef/secretRef) for every container |
+| frontend.affinity | object | `{}` | Affinity for frontend pods |
+| frontend.autoscaling.enabled | bool | `false` | Enable autoscaling for the frontend Deployment |
+| frontend.autoscaling.maxReplicas | int | `3` | Maximum frontend replicas |
+| frontend.autoscaling.minReplicas | int | `1` | Minimum frontend replicas |
+| frontend.autoscaling.targetCPUUtilizationPercentage | int | `80` | Target average CPU utilization (percentage) |
+| frontend.enabled | bool | `true` | Deploy the UI frontend |
+| frontend.image.pullPolicy | string | `"IfNotPresent"` | Frontend image pull policy |
+| frontend.image.registry | string | `"ghcr.io"` | Frontend image registry |
+| frontend.image.repository | string | `"bcgov/digital-trust-common-service-ui"` | Frontend image repository |
+| frontend.image.tag | string | `""` | Frontend image tag (falls back to `image.tag`, then chart appVersion) |
+| frontend.livenessProbe | object | `{"failureThreshold":3,"httpGet":{"path":"/","port":"http"},"initialDelaySeconds":10,"periodSeconds":15,"timeoutSeconds":3}` | Liveness probe for the frontend container |
+| frontend.nodeSelector | object | `{}` | Node selector for frontend pods |
+| frontend.podAnnotations | object | `{}` | Annotations added to frontend pods |
+| frontend.podLabels | object | `{}` | Labels added to frontend pods |
+| frontend.proxyPaths | list | `["/api/*","/oidc/*","/health/*"]` | URL paths reverse-proxied from the frontend to the API service |
+| frontend.readinessProbe | object | `{"failureThreshold":3,"httpGet":{"path":"/","port":"http"},"initialDelaySeconds":5,"periodSeconds":10,"timeoutSeconds":3}` | Readiness probe for the frontend container |
+| frontend.replicaCount | int | `1` | Frontend replicas (ignored when `frontend.autoscaling.enabled=true`) |
+| frontend.resources | object | `{"limits":{"cpu":"250m","memory":"256Mi"},"requests":{"cpu":"25m","memory":"64Mi"}}` | Resource requests and limits for the frontend container |
+| frontend.service.port | int | `8080` | Frontend Service port exposed to the cluster |
+| frontend.service.targetPort | int | `8080` | Frontend container port (Caddy listener) |
+| frontend.service.type | string | `"ClusterIP"` | Frontend Service type |
+| frontend.tolerations | list | `[]` | Tolerations for frontend pods |
+| frontend.trustedProxies | list | `["private_ranges"]` | Peers whose `X-Forwarded-*` headers Caddy trusts. An empty list omits the block entirely. |
 | fullnameOverride | string | `""` | Override the fully qualified release name |
 | image.pullPolicy | string | `"IfNotPresent"` | Image pull policy |
 | image.registry | string | `"ghcr.io"` | Container image registry (optional; omitted from the ref when empty) |
@@ -183,7 +208,12 @@ Generate the JWKS payload with `npm run oidc:generate-keys > oidc-keys.json`, th
 | ingress.enabled | bool | `false` | Expose the service via a Kubernetes Ingress |
 | ingress.hosts | list | `[{"host":"chart-example.local","paths":[{"path":"/","pathType":"Prefix"}]}]` | Ingress hosts and paths |
 | ingress.tls | list | `[]` | Ingress TLS configuration |
-| livenessProbe | object | `{"failureThreshold":3,"httpGet":{"path":"/health/live","port":"http"},"initialDelaySeconds":15,"periodSeconds":15,"timeoutSeconds":3}` | Liveness probe. IN-01 provides a minimal 200 at `/health/live`. |
+| livenessProbe.failureThreshold | int | `3` |  |
+| livenessProbe.httpGet.path | string | `"/health/live"` |  |
+| livenessProbe.httpGet.port | string | `"http"` |  |
+| livenessProbe.initialDelaySeconds | int | `15` |  |
+| livenessProbe.periodSeconds | int | `15` |  |
+| livenessProbe.timeoutSeconds | int | `3` |  |
 | migrations.activeDeadlineSeconds | int | `300` | Maximum seconds the migration Job may run before Kubernetes marks it failed. Prevents hung migrations (e.g. waiting on a lock) from blocking a release indefinitely. |
 | migrations.argocd | object | `{"enabled":false}` | Emit an ArgoCD PreSync hook annotation so migrations also run under GitOps (ArgoCD does not execute Helm hooks natively) |
 | migrations.args | list | `["dist/apps/digital-trust-common-service/src/migrate.js"]` | Migration entrypoint args |
@@ -205,7 +235,7 @@ Generate the JWKS payload with `npm run oidc:generate-keys > oidc-keys.json`, th
 | networkPolicy.dnsEgress.enabled | bool | `true` | Allow DNS egress (required whenever any egress rule is enabled) |
 | networkPolicy.dnsEgress.ports | list | `[53,5353]` | DNS ports to allow. Both are required on OpenShift: pods query the dns-default Service on 53, but CoreDNS actually listens on 5353, and OVN-Kubernetes evaluates egress policy AFTER the service DNAT rewrites the port — allowing only 53 silently drops every DNS packet. |
 | networkPolicy.enabled | bool | `true` | Enable NetworkPolicies |
-| networkPolicy.ingress.enabled | bool | `true` | Allow ingress to the API from the OpenShift router |
+| networkPolicy.ingress.enabled | bool | `true` | Allow ingress from the OpenShift router to the externally exposed component (frontend when enabled, API otherwise) |
 | networkPolicy.ingress.routerNamespaceSelector | object | `{"policy-group.network.openshift.io/ingress":""}` | Namespace selector matching the OpenShift router namespace |
 | networkPolicy.keycloak.enabled | bool | `false` | Allow API egress to Keycloak (upstream IdP) |
 | networkPolicy.keycloak.namespaceSelector | object | `{}` | Namespace selector matching the Keycloak namespace |
@@ -240,9 +270,10 @@ Generate the JWKS payload with `npm run oidc:generate-keys > oidc-keys.json`, th
 | service.targetPort | int | `3000` | Container port the NestJS app binds to (the `PORT` env) |
 | service.type | string | `"ClusterIP"` | Service type |
 | serviceAccount.annotations | object | `{}` | Annotations for the service account |
-| serviceAccount.automount | bool | `true` | Automatically mount the service account's API credentials |
+| serviceAccount.automount | bool | `false` | Automatically mount the service account's API credentials. Off by default: nothing in the API, Worker or UI talks to the Kubernetes API. |
 | serviceAccount.create | bool | `true` | Create a service account |
 | serviceAccount.name | string | `""` | Service account name (generated from the fullname when empty and `create` is true) |
+| startupProbe | object | `{"failureThreshold":30,"httpGet":{"path":"/health/live","port":"http"},"periodSeconds":5,"timeoutSeconds":3}` | Startup probe. Gates the liveness and readiness probes until the app is up, so a slow boot (Nest module init, DB connect) can't be killed by liveness. `failureThreshold` x `periodSeconds` is the boot budget — 30 x 5s = 150s. |
 | tolerations | list | `[]` | Tolerations for API pods |
 | upstreamFederation.existingSecret | object | `{"key":"upstream-identity-federation.json","name":""}` | Existing Secret reference for upstream federation config JSON. The chart never creates this Secret; it must be provisioned manually. |
 | upstreamFederation.fileName | string | `"upstream-identity-federation.json"` | Filename for the upstream federation config JSON. |

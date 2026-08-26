@@ -1,0 +1,155 @@
+suite: frontend resources
+templates:
+  - templates/frontend/configmap.yaml
+  - templates/frontend/deployment.yaml
+  - templates/frontend/service.yaml
+  - templates/frontend/hpa.yaml
+  - templates/route.yaml
+tests:
+  - it: renders frontend workloads and routes traffic through the frontend service
+    values:
+      - ../ci/ci-values.yaml
+    set:
+      frontend:
+        autoscaling:
+          enabled: true
+      upstreamFederation:
+        existingSecret:
+          name: dtsc-ci-oidc-client
+    asserts:
+      - equal:
+          path: metadata.labels["app.kubernetes.io/component"]
+          value: frontend
+        template: templates/frontend/deployment.yaml
+      - equal:
+          path: spec.selector.matchLabels["app.kubernetes.io/component"]
+          value: frontend
+        template: templates/frontend/deployment.yaml
+      - equal:
+          path: spec.scaleTargetRef.name
+          value: RELEASE-NAME-digital-trust-common-service-ui
+        template: templates/frontend/hpa.yaml
+      - equal:
+          path: spec.to.name
+          value: RELEASE-NAME-digital-trust-common-service-ui
+        template: templates/route.yaml
+
+  # Regression guard. Caddy runs try_files before reverse_proxy in its default
+  # directive order, so if the proxy is not inside its own `handle` block the
+  # SPA fallback rewrites /api/* to /index.html and every proxied path silently
+  # returns the SPA instead of reaching the API.
+  - it: keeps the API proxy in a handle block ahead of the SPA fallback
+    values:
+      - ../ci/ci-values.yaml
+    set:
+      upstreamFederation:
+        existingSecret:
+          name: dtsc-ci-oidc-client
+    asserts:
+      - matchRegex:
+          path: data.Caddyfile
+          pattern: 'handle @api \{\s*reverse_proxy http://RELEASE-NAME-digital-trust-common-service:8080'
+        template: templates/frontend/configmap.yaml
+      - matchRegex:
+          path: data.Caddyfile
+          pattern: '@api path /api/\* /oidc/\* /health/\*'
+        template: templates/frontend/configmap.yaml
+      # try_files must be scoped to the catch-all handle, never a sibling of
+      # the proxy at site level.
+      - matchRegex:
+          path: data.Caddyfile
+          pattern: 'handle \{\s*root \* /srv\s*try_files \{path\} /index.html\s*file_server'
+        template: templates/frontend/configmap.yaml
+
+  - it: derives proxy paths from frontend.proxyPaths
+    values:
+      - ../ci/ci-values.yaml
+    set:
+      frontend:
+        proxyPaths:
+          - /api/*
+      upstreamFederation:
+        existingSecret:
+          name: dtsc-ci-oidc-client
+    asserts:
+      - matchRegex:
+          path: data.Caddyfile
+          pattern: '@api path /api/\*\n'
+        template: templates/frontend/configmap.yaml
+
+  - it: keeps routing to the API service when frontend is disabled
+    set:
+      frontend:
+        enabled: false
+      route:
+        enabled: true
+      upstreamFederation:
+        existingSecret:
+          name: dtsc-ci-oidc-client
+    asserts:
+      - equal:
+          path: spec.to.name
+          value: RELEASE-NAME-digital-trust-common-service
+        template: templates/route.yaml
+
+  # Regression guard. Caddy only preserves an inbound X-Forwarded-Proto when the
+  # immediate peer is trusted; otherwise it rewrites the header with the scheme
+  # it saw itself. The OpenShift router terminates TLS and forwards plain http,
+  # so without the global block the API derives every OIDC discovery endpoint as
+  # http:// and the login redirect / Keycloak token exchange break.
+  - it: trusts the router's forwarded headers via a global options block
+    values:
+      - ../ci/ci-values.yaml
+    set:
+      upstreamFederation:
+        existingSecret:
+          name: dtsc-ci-oidc-client
+    asserts:
+      - matchRegex:
+          path: data.Caddyfile
+          pattern: '\{\s*servers \{\s*trusted_proxies static private_ranges\s*\}\s*\}'
+        template: templates/frontend/configmap.yaml
+      # Global options are only valid as the FIRST block in a Caddyfile, so the
+      # site block must come after them.
+      - matchRegex:
+          path: data.Caddyfile
+          pattern: '(?s)^\s*#.*?trusted_proxies static private_ranges.*?:8080 \{'
+        template: templates/frontend/configmap.yaml
+
+  - it: renders proxies from frontend.trustedProxies
+    values:
+      - ../ci/ci-values.yaml
+    set:
+      frontend:
+        trustedProxies:
+          - 10.0.0.0/8
+          - 172.16.0.0/12
+      upstreamFederation:
+        existingSecret:
+          name: dtsc-ci-oidc-client
+    asserts:
+      - matchRegex:
+          path: data.Caddyfile
+          pattern: 'trusted_proxies static 10\.0\.0\.0/8 172\.16\.0\.0/12'
+        template: templates/frontend/configmap.yaml
+
+  # An empty list must drop the whole block: `trusted_proxies static` with no
+  # arguments is a Caddy config error, not a no-op.
+  - it: omits the global options block when no proxies are trusted
+    values:
+      - ../ci/ci-values.yaml
+    set:
+      frontend:
+        trustedProxies: []
+      upstreamFederation:
+        existingSecret:
+          name: dtsc-ci-oidc-client
+    asserts:
+      - notMatchRegex:
+          path: data.Caddyfile
+          pattern: 'trusted_proxies'
+        template: templates/frontend/configmap.yaml
+      - matchRegex:
+          path: data.Caddyfile
+          pattern: '\A:8080 \{'
+        template: templates/frontend/configmap.yaml

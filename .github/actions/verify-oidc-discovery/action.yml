@@ -1,0 +1,35 @@
+name: "Verify OIDC discovery"
+description: "Fails the deploy if the OIDC discovery document advertises any http:// endpoint."
+
+inputs:
+  base_url:
+    description: "Public base URL of the deployed release, without a trailing slash."
+    required: true
+
+runs:
+  using: composite
+  steps:
+    # `helm template` cannot catch this class of problem: it depends on what the
+    # router and the frontend Caddy do to X-Forwarded-Proto at request time. If
+    # Caddy does not trust the router (frontend.trustedProxies), the API sees
+    # plain http and node-oidc-provider derives every endpoint as http:// while
+    # `issuer` stays https:// — the UI login redirect breaks and Keycloak
+    # rejects the token exchange with invalid_grant.
+    - name: Check discovery endpoints are HTTPS
+      shell: bash
+      env:
+        BASE_URL: ${{ inputs.base_url }}
+      run: |
+        set -euo pipefail
+
+        DISCOVERY=$(curl -fsS --retry 6 --retry-delay 10 --retry-all-errors \
+          "${BASE_URL}/oidc/.well-known/openid-configuration")
+
+        INSECURE=$(printf '%s' "${DISCOVERY}" | grep -o '"[a-z_]*": *"http://[^"]*"' || true)
+        if [ -n "${INSECURE}" ]; then
+          echo "::error::OIDC discovery advertises http:// endpoints — the proxy chain is dropping X-Forwarded-Proto. Check frontend.trustedProxies."
+          printf '%s\n' "${INSECURE}"
+          exit 1
+        fi
+
+        echo "OIDC discovery endpoints are all https://"

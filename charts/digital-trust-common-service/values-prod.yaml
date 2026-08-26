@@ -8,6 +8,9 @@ image:
 
 replicaCount: 3
 
+frontend:
+  enabled: true
+
 route:
   enabled: true
   # TODO: confirm production hostname.

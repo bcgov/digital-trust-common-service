@@ -2,7 +2,10 @@ digital-trust-common-service has been deployed.
 
 Release:   {{ .Release.Name }}
 Namespace: {{ .Release.Namespace }}
-Image:     {{ include "digital-trust-common-service.image" . }}
+API Image: {{ include "digital-trust-common-service.image" . }}
+{{- if .Values.frontend.enabled }}
+UI Image:  {{ include "digital-trust-common-service.frontend.image" . }}
+{{- end }}
 
 Access the API:
 {{- if .Values.route.enabled }}
@@ -15,12 +18,13 @@ Access the API:
   {{- end }}
 {{- end }}
 {{- else }}
-  export POD_NAME=$(oc get pods -n {{ .Release.Namespace }} -l "app.kubernetes.io/name={{ include "digital-trust-common-service.name" . }},app.kubernetes.io/instance={{ .Release.Name }},app.kubernetes.io/component=api" -o jsonpath='{.items[0].metadata.name}')
-  oc port-forward -n {{ .Release.Namespace }} $POD_NAME 8080:{{ .Values.service.targetPort }}
-  echo "Visit http://127.0.0.1:8080/health/live"
+  export POD_NAME=$(oc get pods -n {{ .Release.Namespace }} -l "app.kubernetes.io/name={{ include "digital-trust-common-service.name" . }},app.kubernetes.io/instance={{ .Release.Name }},app.kubernetes.io/component={{ if .Values.frontend.enabled }}frontend{{ else }}api{{ end }}" -o jsonpath='{.items[0].metadata.name}')
+  oc port-forward -n {{ .Release.Namespace }} $POD_NAME 8080:{{ if .Values.frontend.enabled }}{{ .Values.frontend.service.targetPort }}{{ else }}{{ .Values.service.targetPort }}{{ end }}
+  echo "Visit http://127.0.0.1:8080{{ if .Values.frontend.enabled }}/{{ else }}/health/live{{ end }}"
 {{- end }}
 
 Components enabled:
+  Frontend Deployment: {{ if .Values.frontend.enabled }}yes (replicas: {{ if .Values.frontend.autoscaling.enabled }}HPA {{ .Values.frontend.autoscaling.minReplicas }}-{{ .Values.frontend.autoscaling.maxReplicas }}{{ else }}{{ .Values.frontend.replicaCount }}{{ end }}){{ else }}no{{ end }}
   API Deployment:     yes (replicas: {{ if .Values.autoscaling.enabled }}HPA {{ .Values.autoscaling.minReplicas }}-{{ .Values.autoscaling.maxReplicas }}{{ else }}{{ .Values.replicaCount }}{{ end }})
   Worker Deployment:  {{ if .Values.worker.enabled }}yes (replicas: {{ if .Values.worker.autoscaling.enabled }}HPA {{ .Values.worker.autoscaling.minReplicas }}-{{ .Values.worker.autoscaling.maxReplicas }}{{ else }}{{ .Values.worker.replicaCount }}{{ end }}){{ else }}no{{ end }}
   Migration hook Job: {{ if .Values.migrations.enabled }}yes ({{ .Values.migrations.hook.types }}){{ else }}no{{ end }}

@@ -1,0 +1,14 @@
+# Default configuration baked into the UI image.
+#
+# Serves the built SPA only. Deployments that also need to front the API
+# (the Helm chart, docker compose prod-parity) mount their own Caddyfile over
+# /etc/caddy/Caddyfile — see charts/digital-trust-common-service/templates/frontend/configmap.yaml.
+#
+# Port 8080, not 80: the container runs unprivileged and cannot bind < 1024.
+:8080 {
+	encode zstd gzip
+
+	root * /srv
+	try_files {path} /index.html
+	file_server
+}

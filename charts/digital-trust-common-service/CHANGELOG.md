@@ -12,15 +12,20 @@ and this chart adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.h
 - Initial Helm chart for deploying digital-trust-common-service to BC Gov OpenShift.
 - API Deployment with templated resources and liveness/readiness probes on
   `/health/live`.
+- Optional Frontend Deployment (React SPA + Caddy) with its own Service and
+  HPA, reverse-proxying `/api`, `/oidc`, and `/health` to the API service.
 - Database migrations as a `pre-install`/`pre-upgrade` Helm hook Job (gated by
   `migrations.enabled`).
 - Worker Deployment sharing the same image with entrypoint `node dist/worker.js`
   and an independent HPA (gated by `worker.enabled`).
-- Service and OpenShift Route (default) with an optional Kubernetes Ingress.
+- API Service plus optional frontend Service; OpenShift Route/Ingress now target
+  the frontend service when enabled (API service otherwise).
 - ConfigMap for non-secret configuration and a Secret that references a
   pre-provisioned Secret by default.
 - NetworkPolicies: router ingress to the API, explicit egress to PostgreSQL and
   Keycloak, plus a DNS-allow policy.
+- Frontend-aware NetworkPolicies: router ingress to frontend and frontend->API
+  ingress/egress rules when the UI is enabled.
 - Independent HPAs for the API and Worker.
 - Per-environment values files (`values-dev.yaml`, `values-test.yaml`,
   `values-prod.yaml`) and `ci/ci-values.yaml`.

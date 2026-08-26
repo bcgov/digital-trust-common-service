@@ -32,11 +32,10 @@ Create chart name and version as used by the chart label.
 {{- end }}
 
 {{/*
-Common labels
+Labels common to all chart resources
 */}}
-{{- define "digital-trust-common-service.labels" -}}
+{{- define "digital-trust-common-service.commonLabels" -}}
 helm.sh/chart: {{ include "digital-trust-common-service.chart" . }}
-{{ include "digital-trust-common-service.selectorLabels" . }}
 {{- if .Chart.AppVersion }}
 app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
 {{- end }}
@@ -45,16 +44,46 @@ app.kubernetes.io/part-of: {{ include "digital-trust-common-service.name" . }}
 {{- end }}
 
 {{/*
-Selector labels (API / web component)
+Base selector labels shared across workloads
 */}}
-{{- define "digital-trust-common-service.selectorLabels" -}}
+{{- define "digital-trust-common-service.selectorBaseLabels" -}}
 app.kubernetes.io/name: {{ include "digital-trust-common-service.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
+{{- end }}
+
+{{/*
+Shared labels for non-workload resources (ConfigMaps, Secrets, etc.)
+*/}}
+{{- define "digital-trust-common-service.labels" -}}
+{{ include "digital-trust-common-service.commonLabels" . }}
+{{ include "digital-trust-common-service.selectorBaseLabels" . }}
+{{- end }}
+
+{{/*
+API selector labels
+*/}}
+{{- define "digital-trust-common-service.api.selectorLabels" -}}
+{{ include "digital-trust-common-service.selectorBaseLabels" . }}
 app.kubernetes.io/component: api
 {{- end }}
 
 {{/*
-Worker fully qualified name
+API labels
+*/}}
+{{- define "digital-trust-common-service.api.labels" -}}
+{{ include "digital-trust-common-service.commonLabels" . }}
+{{ include "digital-trust-common-service.api.selectorLabels" . }}
+{{- end }}
+
+{{/*
+Backward-compatible alias for existing API selector references.
+*/}}
+{{- define "digital-trust-common-service.selectorLabels" -}}
+{{ include "digital-trust-common-service.api.selectorLabels" . }}
+{{- end }}
+
+{{/*
+Worker fully-qualified name
 */}}
 {{- define "digital-trust-common-service.worker.fullname" -}}
 {{- printf "%s-worker" (include "digital-trust-common-service.fullname" .) | trunc 63 | trimSuffix "-" }}
@@ -77,9 +106,38 @@ app.kubernetes.io/part-of: {{ include "digital-trust-common-service.name" . }}
 Worker selector labels
 */}}
 {{- define "digital-trust-common-service.worker.selectorLabels" -}}
-app.kubernetes.io/name: {{ include "digital-trust-common-service.name" . }}
-app.kubernetes.io/instance: {{ .Release.Name }}
+{{ include "digital-trust-common-service.selectorBaseLabels" . }}
 app.kubernetes.io/component: worker
+{{- end }}
+
+{{/*
+Frontend fully-qualified name
+*/}}
+{{- define "digital-trust-common-service.frontend.fullname" -}}
+{{- printf "%s-ui" (include "digital-trust-common-service.fullname" .) | trunc 63 | trimSuffix "-" }}
+{{- end }}
+
+{{/*
+Frontend Caddy config ConfigMap name
+*/}}
+{{- define "digital-trust-common-service.frontend.configMapName" -}}
+{{- printf "%s-ui-caddy" (include "digital-trust-common-service.fullname" .) | trunc 63 | trimSuffix "-" }}
+{{- end }}
+
+{{/*
+Frontend selector labels
+*/}}
+{{- define "digital-trust-common-service.frontend.selectorLabels" -}}
+{{ include "digital-trust-common-service.selectorBaseLabels" . }}
+app.kubernetes.io/component: frontend
+{{- end }}
+
+{{/*
+Frontend labels
+*/}}
+{{- define "digital-trust-common-service.frontend.labels" -}}
+{{ include "digital-trust-common-service.commonLabels" . }}
+{{ include "digital-trust-common-service.frontend.selectorLabels" . }}
 {{- end }}
 
 {{/*
@@ -103,6 +161,41 @@ Uses image.tag, falling back to the chart appVersion. Registry is optional.
 {{- printf "%s/%s:%s" .Values.image.registry .Values.image.repository $tag -}}
 {{- else -}}
 {{- printf "%s:%s" .Values.image.repository $tag -}}
+{{- end -}}
+{{- end }}
+
+{{/*
+Fully-qualified frontend container image reference.
+Falls back to the API image tag when frontend.image.tag is empty.
+*/}}
+{{- define "digital-trust-common-service.frontend.image" -}}
+{{- $tag := .Values.frontend.image.tag | default .Values.image.tag | default .Chart.AppVersion -}}
+{{- if .Values.frontend.image.registry -}}
+{{- printf "%s/%s:%s" .Values.frontend.image.registry .Values.frontend.image.repository $tag -}}
+{{- else -}}
+{{- printf "%s:%s" .Values.frontend.image.repository $tag -}}
+{{- end -}}
+{{- end }}
+
+{{/*
+Service exposed by Route/Ingress (frontend when enabled, API otherwise).
+*/}}
+{{- define "digital-trust-common-service.exposedServiceName" -}}
+{{- if .Values.frontend.enabled -}}
+{{- include "digital-trust-common-service.frontend.fullname" . -}}
+{{- else -}}
+{{- include "digital-trust-common-service.fullname" . -}}
+{{- end -}}
+{{- end }}
+
+{{/*
+Service port exposed by Route/Ingress.
+*/}}
+{{- define "digital-trust-common-service.exposedServicePort" -}}
+{{- if .Values.frontend.enabled -}}
+{{- .Values.frontend.service.port -}}
+{{- else -}}
+{{- .Values.service.port -}}
 {{- end -}}
 {{- end }}
 

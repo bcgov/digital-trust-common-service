@@ -10,6 +10,9 @@
 # a per-pod smoke check and the interactive/session path land with AU-02 (#35).
 replicaCount: 2
 
+frontend:
+  enabled: true
+
 image:
   pullPolicy: Always
 
