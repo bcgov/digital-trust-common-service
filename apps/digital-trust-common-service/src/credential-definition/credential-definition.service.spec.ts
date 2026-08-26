@@ -241,6 +241,30 @@ describe('CredentialDefinitionService', () => {
 
       expect(result).toEqual([]);
     });
+
+    it('lists all tenants for platform-admin without a tenant filter', async () => {
+      const format = CredentialDefinitionFormat.ANONCREDS;
+      const definitions = [mockCredentialDefinition];
+      mockFindByFormat.mockResolvedValue(definitions);
+
+      const result = await service.findByFormat(format, {
+        ...auth,
+        roles: ['platform-admin'],
+      });
+
+      expect(mockFindByFormat).toHaveBeenCalledWith(format);
+      expect(result).toEqual(definitions);
+    });
+
+    it('returns an empty list when the token has no tenant_id', async () => {
+      await expect(
+        service.findByFormat(CredentialDefinitionFormat.ANONCREDS, {
+          ...auth,
+          tenantId: null,
+        }),
+      ).resolves.toEqual([]);
+      expect(mockFindByFormat).not.toHaveBeenCalled();
+    });
   });
 
   describe('findByConnector', () => {
@@ -266,6 +290,29 @@ describe('CredentialDefinitionService', () => {
 
       expect(result).toEqual([]);
     });
+
+    it('lists all tenants for platform-admin without a tenant filter', async () => {
+      const connectorType = CredentialDefinitionConnectorType.TRACTION;
+      mockFindByConnector.mockResolvedValue([mockCredentialDefinition]);
+
+      const result = await service.findByConnector(connectorType, {
+        ...auth,
+        roles: ['platform-admin'],
+      });
+
+      expect(mockFindByConnector).toHaveBeenCalledWith(connectorType);
+      expect(result).toEqual([mockCredentialDefinition]);
+    });
+
+    it('returns an empty list when the token has no tenant_id', async () => {
+      await expect(
+        service.findByConnector(CredentialDefinitionConnectorType.TRACTION, {
+          ...auth,
+          tenantId: null,
+        }),
+      ).resolves.toEqual([]);
+      expect(mockFindByConnector).not.toHaveBeenCalled();
+    });
   });
 
   describe('update', () => {
@@ -288,6 +335,19 @@ describe('CredentialDefinitionService', () => {
         resourceId: updatedDefinition.id,
       });
       expect(result).toEqual(updatedDefinition);
+    });
+
+    it('should update metadata when provided', async () => {
+      const id = mockCredentialDefinition.id;
+      const dto = { metadata: { issuer: 'DMV', version: '2.0' } };
+      const updatedDefinition = { ...mockCredentialDefinition, ...dto };
+
+      mockFindById.mockResolvedValue({ ...mockCredentialDefinition });
+      mockUpdate.mockResolvedValue(updatedDefinition);
+
+      const result = await service.update(id, dto, auth);
+
+      expect(result.metadata).toEqual(dto.metadata);
     });
 
     it('should throw NotFoundException if credential definition not found', async () => {

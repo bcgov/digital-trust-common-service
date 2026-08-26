@@ -249,6 +249,28 @@ describe('OAuthClientService', () => {
       expect(result).toEqual(mockOAuthClient);
     });
 
+    it('should find an OAuth client when auth matches the tenant', async () => {
+      mockFindByClientId.mockResolvedValue(mockOAuthClient);
+
+      const result = await service.findByClientId(
+        mockOAuthClient.clientId,
+        auth,
+      );
+
+      expect(result).toEqual(mockOAuthClient);
+    });
+
+    it('returns NotFoundException for cross-tenant clientId lookups', async () => {
+      mockFindByClientId.mockResolvedValue(mockOAuthClient);
+
+      await expect(
+        service.findByClientId(mockOAuthClient.clientId, {
+          ...auth,
+          tenantId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+        }),
+      ).rejects.toThrow(NotFoundException);
+    });
+
     it('should throw NotFoundException if client not found', async () => {
       mockFindByClientId.mockResolvedValue(null);
 
