@@ -30,7 +30,7 @@ describe('TenantService', () => {
   let mockEmit: jest.Mock;
   let mockInvite: jest.Mock;
   let mockTransaction: jest.Mock;
-  let mockPublish: jest.Mock;
+  let mockSendInTransaction: jest.Mock;
   const mockManager = {} as EntityManager;
 
   const mockTenant: Tenant = {
@@ -62,7 +62,7 @@ describe('TenantService', () => {
       async (callback: (manager: EntityManager) => Promise<unknown>) =>
         callback(mockManager),
     );
-    mockPublish = jest.fn().mockResolvedValue('job-id');
+    mockSendInTransaction = jest.fn().mockResolvedValue('job-id');
 
     const mockRepository = {
       create: mockCreate,
@@ -95,7 +95,7 @@ describe('TenantService', () => {
         },
         {
           provide: JobsService,
-          useValue: { publish: mockPublish },
+          useValue: { sendInTransaction: mockSendInTransaction },
         },
       ],
     }).compile();
@@ -439,6 +439,7 @@ describe('TenantService', () => {
           status: TenantStatus.SUSPENDED,
           deactivated_at: null,
         }),
+        mockManager,
       );
       expect(mockEmit).toHaveBeenCalledWith({
         tenantId: suspended.id,
@@ -452,7 +453,8 @@ describe('TenantService', () => {
           },
         },
       });
-      expect(mockPublish).toHaveBeenCalledWith(
+      expect(mockSendInTransaction).toHaveBeenCalledWith(
+        mockManager,
         JOB_QUEUES.TENANT_STATUS_CHANGE,
         {
           tenantId: suspended.id,
@@ -477,6 +479,7 @@ describe('TenantService', () => {
           status: TenantStatus.DEACTIVATED,
           deactivated_at: expect.any(Date),
         }),
+        mockManager,
       );
     });
 
@@ -499,6 +502,7 @@ describe('TenantService', () => {
           status: TenantStatus.ACTIVE,
           deactivated_at: null,
         }),
+        mockManager,
       );
       expect(mockEmit).toHaveBeenCalledWith({
         tenantId: reactivated.id,
@@ -512,7 +516,8 @@ describe('TenantService', () => {
           },
         },
       });
-      expect(mockPublish).toHaveBeenCalledWith(
+      expect(mockSendInTransaction).toHaveBeenCalledWith(
+        mockManager,
         JOB_QUEUES.TENANT_STATUS_CHANGE,
         {
           tenantId: reactivated.id,
@@ -534,21 +539,21 @@ describe('TenantService', () => {
       ).rejects.toThrow(ConflictException);
       expect(mockUpdate).not.toHaveBeenCalled();
       expect(mockEmit).not.toHaveBeenCalled();
-      expect(mockPublish).not.toHaveBeenCalled();
+      expect(mockSendInTransaction).not.toHaveBeenCalled();
     });
 
-    it('should not fail the status update if publishing the job fails', async () => {
+    it('rolls back the status change if the job fails to enqueue', async () => {
       const id = mockTenant.id;
       const suspended = { ...mockTenant, status: TenantStatus.SUSPENDED };
 
       mockFindById.mockResolvedValue({ ...mockTenant });
       mockUpdate.mockResolvedValue(suspended);
-      mockPublish.mockRejectedValue(new Error('queue unavailable'));
+      mockSendInTransaction.mockRejectedValue(new Error('queue unavailable'));
 
-      const result = await service.updateStatus(id, TenantStatus.SUSPENDED);
-
-      expect(mockPublish).toHaveBeenCalled();
-      expect(result).toEqual(suspended);
+      await expect(
+        service.updateStatus(id, TenantStatus.SUSPENDED),
+      ).rejects.toThrow('queue unavailable');
+      expect(mockEmit).not.toHaveBeenCalled();
     });
 
     it('should reject a no-op transition to the same status', async () => {

@@ -44,9 +44,17 @@ export class OAuthClientRepository {
     return await this.repository.save(client);
   }
 
+  /**
+   * Revokes a single client for cause. Always clears `revokedReason` so the
+   * "null reason = revoked for cause" invariant holds even if this client
+   * was previously bulk-revoked for a tenant deactivation — otherwise a
+   * for-cause revocation after deactivation would still carry the
+   * `TENANT_DEACTIVATION` tag and get resurrected by `restoreAllForTenant`.
+   */
   public async revoke(id: string): Promise<void> {
     await this.repository.update(id, {
       revokedAt: new Date(),
+      revokedReason: null,
     });
   }
 

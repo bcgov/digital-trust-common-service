@@ -133,4 +133,28 @@ describe('TenantStatusGuard', () => {
       TenantNotActiveException,
     );
   });
+
+  it('throws TenantNotActiveException when the tenant is pending approval', async () => {
+    mockFindById.mockResolvedValue({
+      ...mockTenant,
+      status: TenantStatus.PENDING_APPROVAL,
+    });
+    const { context } = createContext(baseAuth);
+
+    await expect(guard.canActivate(context)).rejects.toThrow(
+      TenantNotActiveException,
+    );
+  });
+
+  it('throws TenantNotActiveException when the tenant is rejected', async () => {
+    mockFindById.mockResolvedValue({
+      ...mockTenant,
+      status: TenantStatus.REJECTED,
+    });
+    const { context } = createContext(baseAuth);
+
+    await expect(guard.canActivate(context)).rejects.toThrow(
+      TenantNotActiveException,
+    );
+  });
 });

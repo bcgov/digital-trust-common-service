@@ -9,15 +9,10 @@ import { TenantNotActiveException } from './tenant-not-active.exception';
 import { TenantStatus } from './tenant.entity';
 import { TenantRepository } from './tenant.repository';
 
-const BLOCKED_STATUSES: ReadonlySet<TenantStatus> = new Set([
-  TenantStatus.SUSPENDED,
-  TenantStatus.DEACTIVATED,
-]);
-
 /**
- * Enforces the tenant suspend/deactivate lifecycle: a caller whose own
- * tenant is suspended or deactivated gets 403 on every request scoped to
- * that tenant.
+ * Enforces the tenant lifecycle: a caller whose own tenant is not `ACTIVE`
+ * (suspended, deactivated, pending approval, or rejected) gets 403 on every
+ * request scoped to that tenant.
  *
  * `TenantGuard` (`@app/auth`) only validates the JWT `tenant_id` claim
  * against a route param; it has no notion of whether that tenant is
@@ -28,8 +23,8 @@ const BLOCKED_STATUSES: ReadonlySet<TenantStatus> = new Set([
  *   reactivate, a suspended/deactivated tenant).
  * - No `auth.tenantId` -> allow; there is nothing to check.
  * - Tenant record not found (soft-deleted or unknown) -> block. `findById`
- *   excludes soft-deleted rows, so this is the same lifecycle gap as
- *   suspended/deactivated and should fail closed, not open.
+ *   excludes soft-deleted rows, so this is the same lifecycle gap as any
+ *   other non-active status and should fail closed, not open.
  */
 @Injectable()
 export class TenantStatusGuard implements CanActivate {
@@ -69,7 +64,7 @@ export class TenantStatusGuard implements CanActivate {
       );
     }
 
-    if (BLOCKED_STATUSES.has(tenant.status)) {
+    if (tenant.status !== TenantStatus.ACTIVE) {
       throw new TenantNotActiveException(
         `Tenant is ${tenant.status} and cannot perform this action`,
         tenant.status,

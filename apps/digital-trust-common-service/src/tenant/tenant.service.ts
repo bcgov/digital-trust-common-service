@@ -4,7 +4,6 @@ import {
   BadRequestException,
   Injectable,
   ConflictException,
-  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { DataSource } from 'typeorm';
@@ -50,8 +49,6 @@ export type TenantStatusChangeJobData = {
 
 @Injectable()
 export class TenantService {
-  private readonly logger = new Logger(TenantService.name);
-
   public constructor(
     private readonly tenants: TenantRepository,
     private readonly domainAudit: DomainAuditService,
@@ -257,6 +254,11 @@ export class TenantService {
    * window) and cleared for any other target status. Side effects (revoking
    * API keys, closing connections, deactivating connector credentials) are
    * handled asynchronously off the `tenant.status-change` job, not here.
+   *
+   * The status write and the job enqueue happen in one transaction — pg-boss
+   * shares this service's Postgres database, so a failure to enqueue the job
+   * rolls back the status change instead of silently dropping the downstream
+   * revocation side effects.
    */
   public async updateStatus(id: string, status: TenantStatus) {
     const tenant = await this.tenants.findById(id);
@@ -278,7 +280,21 @@ export class TenantService {
     tenant.deactivated_at =
       status === TenantStatus.DEACTIVATED ? new Date() : null;
 
-    const saved = await this.tenants.update(tenant);
+    const saved = await this.dataSource.transaction(async (manager) => {
+      const updatedTenant = await this.tenants.update(tenant, manager);
+
+      await this.jobsService.sendInTransaction(
+        manager,
+        JOB_QUEUES.TENANT_STATUS_CHANGE,
+        {
+          tenantId: updatedTenant.id,
+          previousStatus,
+          status,
+        } satisfies TenantStatusChangeJobData,
+      );
+
+      return updatedTenant;
+    });
 
     await this.domainAudit.emit({
       tenantId: saved.id,
@@ -288,31 +304,6 @@ export class TenantService {
       metadata: { status_change: { from: previousStatus, to: status } },
     });
 
-    await this.publishStatusChange({
-      tenantId: saved.id,
-      previousStatus,
-      status,
-    });
-
     return saved;
-  }
-
-  /**
-   * Best-effort: the status transition and its audit event are already
-   * durable at this point, so a publish failure here is logged rather than
-   * surfaced to the caller. The worker consuming `tenant.status-change`
-   * (added separately) drives the actual side effects.
-   */
-  private async publishStatusChange(
-    data: TenantStatusChangeJobData,
-  ): Promise<void> {
-    try {
-      await this.jobsService.publish(JOB_QUEUES.TENANT_STATUS_CHANGE, data);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      this.logger.warn(
-        `Failed to publish tenant.status-change for tenant ${data.tenantId}: ${message}`,
-      );
-    }
   }
 }

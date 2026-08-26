@@ -27,6 +27,17 @@ describe('OAuthClientRepository', () => {
     repository = module.get(OAuthClientRepository);
   });
 
+  describe('revoke', () => {
+    it('clears revokedReason so the client is not later treated as bulk-revoked', async () => {
+      await repository.revoke('client-1');
+
+      expect(mockRepo.update).toHaveBeenCalledWith('client-1', {
+        revokedAt: expect.any(Date),
+        revokedReason: null,
+      });
+    });
+  });
+
   describe('revokeAllForTenant', () => {
     it('revokes only clients not already revoked, tagging the reason', async () => {
       (mockRepo.update as jest.Mock).mockResolvedValue({
