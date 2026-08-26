@@ -224,6 +224,10 @@ export function createOidcAuthClient(): AuthClient {
         ...payload,
       } as UserProfile;
 
+      // switch-tenant mints AT/RT only — keep the pre-switch id_token so
+      // oidc-client-ts still has a hint for RP-logout / silent renew. profile
+      // and access_token reflect the new tenant; id_token may still describe
+      // the login-time membership until the next full OIDC redirect.
       const next = new User({
         access_token: tokens.access_token,
         refresh_token: tokens.refresh_token,

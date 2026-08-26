@@ -170,7 +170,11 @@ export class AuthService {
       throw new ForbiddenException(`OAuth client not found: ${clientId}`);
     }
 
-    const roleScopes = await this.roleScopes.findScopesForRole(membership.role);
+    // Pass tenantId so tenant_role_scope overrides (AU-07) apply on switch.
+    const roleScopes = await this.roleScopes.findScopesForRole(
+      membership.role,
+      membership.tenantId,
+    );
     const resourceScope = roleScopes.join(' ');
     const oidcScope = [...STANDARD_OIDC_SCOPES, ...roleScopes].join(' ');
 

@@ -233,6 +233,10 @@ describe('AuthService', () => {
       token_type: 'Bearer',
       expires_in: 300,
     });
+    expect(roleScopes.findScopesForRole).toHaveBeenCalledWith(
+      targetUser.role,
+      targetUser.tenantId,
+    );
     expect(grantSave).toHaveBeenCalled();
     expect(grantDestroy).toHaveBeenCalled();
     expect(revokeAccessByGrantId).toHaveBeenCalledWith('old-grant');
