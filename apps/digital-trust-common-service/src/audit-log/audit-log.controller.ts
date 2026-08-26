@@ -1,4 +1,12 @@
 import {
+  ApiJwtAuth,
+  AUDIT_READ_SCOPE,
+  JwtGuard,
+  RequireScopes,
+  ScopeGuard,
+  TenantGuard,
+} from '@app/auth';
+import {
   Controller,
   Get,
   Header,
@@ -6,12 +14,15 @@ import {
   ParseUUIDPipe,
   Query,
   StreamableFile,
+  UseGuards,
 } from '@nestjs/common';
 import {
+  ApiForbiddenResponse,
   ApiOkResponse,
   ApiNotFoundResponse,
   ApiProduces,
   ApiTags,
+  ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 
 import { API_VERSION } from '../common/constants/api-version.constants';
@@ -22,6 +33,13 @@ import { ExportAuditLogsQueryDto } from './dto/export-audit-logs-query.dto';
 import { ListAuditLogsQueryDto } from './dto/list-audit-logs-query.dto';
 
 @ApiTags('Audit Logs')
+@ApiJwtAuth()
+@UseGuards(JwtGuard, ScopeGuard, TenantGuard)
+@RequireScopes(AUDIT_READ_SCOPE)
+@ApiUnauthorizedResponse({ description: 'Authentication is required' })
+@ApiForbiddenResponse({
+  description: 'Token lacks audit:read, or tenant claim does not match',
+})
 @Controller({ path: 'tenants/:tenantId/audit-logs', version: API_VERSION })
 export class AuditLogController {
   public constructor(private readonly auditLogService: AuditLogService) {}
@@ -54,7 +72,6 @@ export class AuditLogController {
     @Param('tenantId', ParseUUIDPipe) tenantId: string,
     @Query() query: ListAuditLogsQueryDto,
   ): Promise<PaginatedAuditLogs> {
-    // Scope logs:read is documented in OpenAPI; enforcement deferred to AU-04.
     return await this.auditLogService.list(
       tenantId,
       {

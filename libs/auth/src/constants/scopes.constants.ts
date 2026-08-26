@@ -13,20 +13,29 @@ export const OAUTH_CLIENT_ALLOWED_ROLES = [PLATFORM_ADMIN_ROLE] as const;
 /** Level 2 scope for managing tenant users (invite, list, update, remove). */
 export const USERS_MANAGE_SCOPE = 'users:manage';
 
+/** Level 2 scope for connection CRUD. */
+export const CONNECTIONS_MANAGE_SCOPE = 'connections:manage';
+
+/** Level 2 scope for OAuth / API client registration. */
+export const CLIENTS_MANAGE_SCOPE = 'clients:manage';
+
+/** Level 3 scope for the tenant audit-log API. */
+export const AUDIT_READ_SCOPE = 'audit:read';
+
 /** Level 2 domain-operation scopes. */
 export const LEVEL2_SCOPES = [
   'credentials:offer',
   'credentials:verify',
   'credentials:hold',
   'credentials:revoke',
-  'connections:manage',
+  CONNECTIONS_MANAGE_SCOPE,
   'profiles:manage',
   USERS_MANAGE_SCOPE,
-  'clients:manage',
+  CLIENTS_MANAGE_SCOPE,
 ] as const;
 
 /** Level 3 read-only scopes. */
-export const LEVEL3_SCOPES = ['logs:read', 'audit:read'] as const;
+export const LEVEL3_SCOPES = ['logs:read', AUDIT_READ_SCOPE] as const;
 
 /** All tenant-level scopes (Level 2 + Level 3, excluding tenants:admin). */
 export const ALL_TENANT_SCOPES = [...LEVEL2_SCOPES, ...LEVEL3_SCOPES] as const;
@@ -83,7 +92,7 @@ export const SCOPE_CATALOG: readonly ScopeCatalogEntry[] = [
     level: 2,
   },
   {
-    name: 'connections:manage',
+    name: CONNECTIONS_MANAGE_SCOPE,
     description: 'Create, list, and delete connections.',
     level: 2,
   },
@@ -98,7 +107,7 @@ export const SCOPE_CATALOG: readonly ScopeCatalogEntry[] = [
     level: 2,
   },
   {
-    name: 'clients:manage',
+    name: CLIENTS_MANAGE_SCOPE,
     description: 'Register and revoke API clients.',
     level: 2,
   },
@@ -108,7 +117,7 @@ export const SCOPE_CATALOG: readonly ScopeCatalogEntry[] = [
     level: 3,
   },
   {
-    name: 'audit:read',
+    name: AUDIT_READ_SCOPE,
     description: 'Read the tenant audit log API.',
     level: 3,
   },

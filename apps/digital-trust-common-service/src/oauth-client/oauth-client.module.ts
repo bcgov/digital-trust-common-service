@@ -1,3 +1,4 @@
+import { AuthModule } from '@app/auth';
 import { OidcConfigModule } from '@app/oidc/config';
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
@@ -9,7 +10,11 @@ import { OAuthClientRepository } from './oauth-client.repository';
 import { OAuthClientService } from './oauth-client.service';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([OAuthClient]), OidcConfigModule],
+  imports: [
+    TypeOrmModule.forFeature([OAuthClient]),
+    OidcConfigModule,
+    AuthModule,
+  ],
   controllers: [OAuthClientController],
   providers: [
     OAuthClientService,

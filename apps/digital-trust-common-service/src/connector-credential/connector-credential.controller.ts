@@ -1,4 +1,14 @@
 import {
+  ApiJwtAuth,
+  CurrentAuth,
+  JwtGuard,
+  RequireScopes,
+  ScopeGuard,
+  TENANT_SUPERUSER_SCOPE,
+  TenantGuard,
+  type AuthContext,
+} from '@app/auth';
+import {
   Body,
   Controller,
   Delete,
@@ -9,14 +19,18 @@ import {
   Patch,
   Post,
   Query,
+  UseGuards,
 } from '@nestjs/common';
 import {
   ApiBody,
   ApiCreatedResponse,
+  ApiForbiddenResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
+  ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 
+import { assertTenantAccess } from '../common/assert-tenant-access';
 import { API_VERSION } from '../common/constants/api-version.constants';
 import { ConnectorType } from '../connection/connection.entity';
 
@@ -27,6 +41,13 @@ import { CreateConnectorCredentialDto } from './dto/create-connector-credential.
 import { DecryptConnectorCredentialDto } from './dto/decrypt-connector-credential.dto';
 import { UpdateConnectorCredentialDto } from './dto/update-connector-credential.dto';
 
+@ApiJwtAuth()
+@UseGuards(JwtGuard, ScopeGuard, TenantGuard)
+@RequireScopes(TENANT_SUPERUSER_SCOPE)
+@ApiUnauthorizedResponse({ description: 'Authentication is required' })
+@ApiForbiddenResponse({
+  description: 'Token lacks tenants:admin, or tenant claim does not match',
+})
 @Controller({ path: 'connector-credentials', version: API_VERSION })
 export class ConnectorCredentialController {
   public constructor(
@@ -56,7 +77,9 @@ export class ConnectorCredentialController {
   })
   public async create(
     @Body() dto: CreateConnectorCredentialDto,
+    @CurrentAuth() auth: AuthContext,
   ): Promise<ConnectorCredentialResponseDto> {
+    assertTenantAccess(auth, dto.tenantId);
     const credential = await this.credentialService.create(dto);
     return this.toResponseDto(credential);
   }
@@ -101,8 +124,10 @@ export class ConnectorCredentialController {
   @ApiNotFoundResponse({ description: 'Connector credential not found' })
   public async findById(
     @Param('id', ParseUUIDPipe) id: string,
+    @CurrentAuth() auth: AuthContext,
   ): Promise<ConnectorCredentialResponseDto> {
     const credential = await this.credentialService.findById(id);
+    assertTenantAccess(auth, credential.tenantId);
     return this.toResponseDto(credential);
   }
 
@@ -134,7 +159,10 @@ export class ConnectorCredentialController {
   public async update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateConnectorCredentialDto,
+    @CurrentAuth() auth: AuthContext,
   ): Promise<ConnectorCredentialResponseDto> {
+    const existing = await this.credentialService.findById(id);
+    assertTenantAccess(auth, existing.tenantId);
     const credential = await this.credentialService.update(id, dto);
     return this.toResponseDto(credential);
   }
@@ -142,7 +170,12 @@ export class ConnectorCredentialController {
   @Delete(':id')
   @ApiOkResponse({ description: 'Connector credential deleted successfully' })
   @ApiNotFoundResponse({ description: 'Connector credential not found' })
-  public async delete(@Param('id', ParseUUIDPipe) id: string): Promise<void> {
+  public async delete(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentAuth() auth: AuthContext,
+  ): Promise<void> {
+    const existing = await this.credentialService.findById(id);
+    assertTenantAccess(auth, existing.tenantId);
     return await this.credentialService.delete(id);
   }
 
@@ -170,7 +203,10 @@ export class ConnectorCredentialController {
   public async decrypt(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: DecryptConnectorCredentialDto,
+    @CurrentAuth() auth: AuthContext,
   ): Promise<string> {
+    const existing = await this.credentialService.findById(id);
+    assertTenantAccess(auth, existing.tenantId);
     return await this.credentialService.decryptCredential(dto.key, id);
   }
 

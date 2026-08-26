@@ -9,7 +9,6 @@ import {
   TENANT_SUPERUSER_SCOPE,
 } from '@app/auth';
 import type { AuthContext } from '@app/auth';
-import { TenantAccessDeniedException } from '@app/auth/exceptions/tenant-access-denied.exception';
 import {
   Body,
   Controller,
@@ -36,6 +35,7 @@ import {
 } from '@nestjs/swagger';
 
 import { SkipAutoAudit } from '../audit-log/skip-auto-audit.decorator';
+import { assertTenantAccess } from '../common/assert-tenant-access';
 import { API_VERSION } from '../common/constants/api-version.constants';
 
 import { CreateTenantDto } from './dto/create-tenant.dto';
@@ -374,38 +374,6 @@ export class TenantController {
     auth: AuthContext | undefined,
     tenantId: string,
   ): void {
-    if (!auth) {
-      throw new TenantAccessDeniedException(
-        'Authenticated request context is missing',
-        {
-          requiredTenantId: tenantId,
-          tokenTenantId: null,
-        },
-      );
-    }
-
-    if (auth.roles.includes(PLATFORM_ADMIN_ROLE)) {
-      return;
-    }
-
-    if (!auth.tenantId) {
-      throw new TenantAccessDeniedException(
-        'Token is missing a tenant_id claim',
-        {
-          requiredTenantId: tenantId,
-          tokenTenantId: null,
-        },
-      );
-    }
-
-    if (auth.tenantId !== tenantId) {
-      throw new TenantAccessDeniedException(
-        'Token tenant_id does not match the requested tenant',
-        {
-          requiredTenantId: tenantId,
-          tokenTenantId: auth.tenantId,
-        },
-      );
-    }
+    assertTenantAccess(auth, tenantId);
   }
 }

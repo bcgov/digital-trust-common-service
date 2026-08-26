@@ -75,6 +75,16 @@ export class OAuthClientService {
     return client;
   }
 
+  public async findById(id: string): Promise<OAuthClient> {
+    const client = await this.oauthClientRepository.findById(id);
+
+    if (!client) {
+      throw new NotFoundException(`OAuth client '${id}' was not found.`);
+    }
+
+    return client;
+  }
+
   public async findByTenant(tenantId: string): Promise<OAuthClient[]> {
     return await this.oauthClientRepository.findByTenant(tenantId);
   }

@@ -1,4 +1,14 @@
 import {
+  ApiJwtAuth,
+  CurrentAuth,
+  JwtGuard,
+  RequireScopes,
+  ScopeGuard,
+  TENANT_SUPERUSER_SCOPE,
+  TenantGuard,
+  type AuthContext,
+} from '@app/auth';
+import {
   Body,
   Controller,
   Delete,
@@ -8,15 +18,22 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  UseGuards,
 } from '@nestjs/common';
 import {
   ApiBody,
   ApiCreatedResponse,
+  ApiForbiddenResponse,
   ApiOkResponse,
   ApiNotFoundResponse,
+  ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 
 import { SkipAutoAudit } from '../audit-log/skip-auto-audit.decorator';
+import {
+  assertTenantAccess,
+  isPlatformAdmin,
+} from '../common/assert-tenant-access';
 import { API_VERSION } from '../common/constants/api-version.constants';
 
 import {
@@ -29,6 +46,13 @@ import { CreateCredentialDefinitionDto } from './dto/create-credential-definitio
 import { UpdateCredentialDefinitionDto } from './dto/update-credential-definition.dto';
 
 @SkipAutoAudit()
+@ApiJwtAuth()
+@UseGuards(JwtGuard, ScopeGuard, TenantGuard)
+@RequireScopes(TENANT_SUPERUSER_SCOPE)
+@ApiUnauthorizedResponse({ description: 'Authentication is required' })
+@ApiForbiddenResponse({
+  description: 'Token lacks tenants:admin, or tenant claim does not match',
+})
 @Controller({ path: 'credential-definitions', version: API_VERSION })
 export class CredentialDefinitionController {
   public constructor(
@@ -60,20 +84,10 @@ export class CredentialDefinitionController {
   })
   public async create(
     @Body() dto: CreateCredentialDefinitionDto,
+    @CurrentAuth() auth: AuthContext,
   ): Promise<CredentialDefinition> {
+    assertTenantAccess(auth, dto.tenantId);
     return await this.credentialDefinitionService.create(dto);
-  }
-
-  @Get(':id')
-  @ApiOkResponse({
-    description: 'Credential definition found',
-    type: CredentialDefinition,
-  })
-  @ApiNotFoundResponse({ description: 'Credential definition not found' })
-  public async findById(
-    @Param('id', ParseUUIDPipe) id: string,
-  ): Promise<CredentialDefinition> {
-    return await this.credentialDefinitionService.findById(id);
   }
 
   @Get('tenant/:tenantId')
@@ -96,8 +110,11 @@ export class CredentialDefinitionController {
   public async findByFormat(
     @Param('format', new ParseEnumPipe(CredentialDefinitionFormat))
     format: CredentialDefinitionFormat,
+    @CurrentAuth() auth: AuthContext,
   ): Promise<CredentialDefinition[]> {
-    return await this.credentialDefinitionService.findByFormat(format);
+    const definitions =
+      await this.credentialDefinitionService.findByFormat(format);
+    return this.filterToCallerTenant(auth, definitions);
   }
 
   @Get('connector/:connectorType')
@@ -112,10 +129,26 @@ export class CredentialDefinitionController {
       new ParseEnumPipe(CredentialDefinitionConnectorType),
     )
     connectorType: CredentialDefinitionConnectorType,
+    @CurrentAuth() auth: AuthContext,
   ): Promise<CredentialDefinition[]> {
-    return await this.credentialDefinitionService.findByConnector(
-      connectorType,
-    );
+    const definitions =
+      await this.credentialDefinitionService.findByConnector(connectorType);
+    return this.filterToCallerTenant(auth, definitions);
+  }
+
+  @Get(':id')
+  @ApiOkResponse({
+    description: 'Credential definition found',
+    type: CredentialDefinition,
+  })
+  @ApiNotFoundResponse({ description: 'Credential definition not found' })
+  public async findById(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentAuth() auth: AuthContext,
+  ): Promise<CredentialDefinition> {
+    const definition = await this.credentialDefinitionService.findById(id);
+    assertTenantAccess(auth, definition.tenantId);
+    return definition;
   }
 
   @Patch(':id')
@@ -139,14 +172,39 @@ export class CredentialDefinitionController {
   public async update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateCredentialDefinitionDto,
+    @CurrentAuth() auth: AuthContext,
   ): Promise<CredentialDefinition> {
+    const existing = await this.credentialDefinitionService.findById(id);
+    assertTenantAccess(auth, existing.tenantId);
     return await this.credentialDefinitionService.update(id, dto);
   }
 
   @Delete(':id')
   @ApiOkResponse({ description: 'Credential definition deleted successfully' })
   @ApiNotFoundResponse({ description: 'Credential definition not found' })
-  public async delete(@Param('id', ParseUUIDPipe) id: string): Promise<void> {
+  public async delete(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentAuth() auth: AuthContext,
+  ): Promise<void> {
+    const existing = await this.credentialDefinitionService.findById(id);
+    assertTenantAccess(auth, existing.tenantId);
     return await this.credentialDefinitionService.delete(id);
+  }
+
+  private filterToCallerTenant(
+    auth: AuthContext,
+    definitions: CredentialDefinition[],
+  ): CredentialDefinition[] {
+    if (isPlatformAdmin(auth)) {
+      return definitions;
+    }
+
+    if (!auth.tenantId) {
+      return [];
+    }
+
+    return definitions.filter(
+      (definition) => definition.tenantId === auth.tenantId,
+    );
   }
 }
