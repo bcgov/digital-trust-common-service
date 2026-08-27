@@ -602,21 +602,45 @@ Machine tokens take their scopes from `oauth_client.scopes` at registration
 Missing `request.auth` (JwtGuard not run) → **401** `AUTHENTICATION_REQUIRED`.
 Mismatch / missing `tenant_id` claim → **403** `{ error: { code: "TENANT_ACCESS_DENIED", required_tenant_id, token_tenant_id } }`.
 
-**v1 is claim-match only.** Live `TenantUser` membership lookup (PE-02) is deferred until interactive user tokens (AU-02) / tenant switching (AU-09). Client-credentials tokens already carry a fixed `tenant_id` from `oauth_client`.
+**v1 is claim-match only for `:tenantId` route params.** Body/`/:id` routes
+use the shared `assertTenantAccess` helper (same claim-match + platform-admin
+bypass). Live `TenantUser` membership lookup beyond that remains AU-09 /
+membership-guard territory. Client-credentials tokens already carry a fixed
+`tenant_id` from `oauth_client`.
 
-Product controllers are not all wired yet — rollout is tracked in **[AU-followup #165](https://github.com/bcgov/digital-trust-common-service/issues/165)**. Integration coverage uses ephemeral `/api/v1/integration/tenant-check/:tenantId` routes.
+### Controller auth inventory
 
-### Guard rollout gaps for #165
+| Surface | Controller | Guards | Scope / notes |
+|---------|------------|--------|---------------|
+| Platform admin | `admin-operations`, `admin-sessions` | Jwt + Scope (+ `@RequireRoles(platform-admin)`) | Role, not scope |
+| Tenant CRUD | `tenant` | Jwt + Scope | `tenants:admin` on mutating routes; list filtered by claim |
+| Tenant users | `tenant-user` | Jwt + Scope + Tenant + membership | `users:manage` |
+| Role/scope catalog | `role`, `scope` | Jwt | Authenticated read |
+| Tenant role overrides | `tenant-role-scope` | Jwt + Scope + Tenant | `tenants:admin` on writes |
+| Audit logs | `audit-log` | Jwt + Scope + Tenant | `audit:read` |
+| Connections | `connection` | Jwt + Scope + Tenant (`:tenantId` lists) | `connections:manage`; body create → `assertTenantAccess` (403); load-by-id → `assertResourceTenantOrNotFound` (404) in the service |
+| OAuth clients | `oauth-client` | Jwt + Scope + Tenant | `clients:manage`; same create/load pattern in the service |
+| Connector credentials | `connector-credential` | Jwt + Scope + Tenant | `tenants:admin`; same create/load pattern in the service |
+| Credential definitions | `credential-definition` | Jwt + Scope + Tenant | `tenants:admin`; format/connector lists are tenant-scoped in SQL (platform-admin sees all) |
+| Health / hello / OIDC | `health`, `app`, `oidc-interaction` | none | Intentionally public |
 
-`TenantGuard` only reads **`params.tenantId`**. When wiring controllers, classify each route:
+Integration coverage for the guard stack uses ephemeral
+`/api/v1/integration/tenant-check/:tenantId` routes. Product-controller 401
+smoke lives in `test/product-controller-auth.e2e-spec.ts`.
 
-| Shape | Examples today | TenantGuard behavior | Rollout action |
-|-------|----------------|----------------------|----------------|
-| Path `:tenantId` | `tenants/:tenantId/audit-logs`, `…/tenant/:tenantId` | Enforced | Add `@UseGuards(JwtGuard, ScopeGuard, TenantGuard)` |
-| Tenant UUID as `:id` | `GET/PUT/DELETE /tenants/:id` | **No-op** (param name is `id`) | Rename to `:tenantId`, or teach guard / use a dedicated platform-admin policy |
-| Body-only `tenantId` | create connection / oauth-client / credential-definition / etc. | **No-op** | Prefer nested `/tenants/:tenantId/...` routes, or extend guard to read body (explicit follow-up) |
-| Resource `:id` | `GET /connections/:id`, `PATCH /oauth-clients/:id` | **No-op** (`id` is the resource, not the tenant) | After load, assert `resource.tenantId === auth.tenantId` (service-layer or resource tenant check) — path param alone is insufficient |
-| Admin / no tenant | `/admin/operations/stats` | No-op (correct) | `JwtGuard` + `ScopeGuard` / `@RequireRoles('platform-admin')` only |
+### Guard rollout gaps (remaining)
+
+`TenantGuard` only reads **`params.tenantId`**. Body and resource-`:id` routes
+are covered by `assertTenantAccess` today; nesting under
+`/tenants/:tenantId/...` (as OpenAPI documents) is still a follow-up:
+
+| Shape | Examples today | TenantGuard behavior | Status |
+|-------|----------------|----------------------|--------|
+| Path `:tenantId` | `tenants/:tenantId/audit-logs`, `…/tenant/:tenantId` | Enforced | Wired |
+| Tenant UUID as `:id` | `GET/PUT/DELETE /tenants/:id` | **No-op** (param name is `id`) | `assertTenantAccess` in `TenantController` |
+| Body-only `tenantId` | create connection / oauth-client / credential-definition / etc. | **No-op** | `assertTenantAccess` in the service on create (403); nesting still open |
+| Resource `:id` | `GET /connections/:id`, `PATCH /oauth-clients/:id` | **No-op** | `assertResourceTenantOrNotFound` in the service after load (404, no cross-tenant oracle) |
+| Admin / no tenant | `/admin/operations/stats` | No-op (correct) | Wired |
 
 Do **not** treat every `:id` as a tenant id — most are resource primary keys.
 

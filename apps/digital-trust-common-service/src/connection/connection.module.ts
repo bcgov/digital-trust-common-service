@@ -1,3 +1,4 @@
+import { AuthModule } from '@app/auth';
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
@@ -9,7 +10,7 @@ import { ConnectionRepository } from './connection.repository';
 import { ConnectionService } from './connection.service';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Connection]), AuditLogModule],
+  imports: [TypeOrmModule.forFeature([Connection]), AuditLogModule, AuthModule],
   controllers: [ConnectionController],
   providers: [ConnectionService, ConnectionRepository],
   exports: [ConnectionService],

@@ -215,11 +215,11 @@ describe('TenantController', () => {
 
       mockUpdateConfig.mockResolvedValue(updatedTenant);
 
-      const result = await controller.updateConfig(dto, id, {
+      const auth = {
         roles: [],
         tenantId: mockTenant.id,
         sub: '',
-        tokenType: 'user',
+        tokenType: 'user' as const,
         clientId: null,
         scope: '',
         scopes: [],
@@ -227,9 +227,11 @@ describe('TenantController', () => {
         aud: '',
         exp: 0,
         iat: 0,
-      });
+      };
 
-      expect(mockUpdateConfig).toHaveBeenCalledWith(id, dto);
+      const result = await controller.updateConfig(dto, id, auth);
+
+      expect(mockUpdateConfig).toHaveBeenCalledWith(id, dto, auth);
       expect(result).toEqual(updatedTenant);
     });
 

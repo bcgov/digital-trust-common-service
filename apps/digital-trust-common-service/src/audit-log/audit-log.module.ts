@@ -1,3 +1,4 @@
+import { AuthModule } from '@app/auth';
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
@@ -10,7 +11,7 @@ import { AuditWriteWorker } from './audit-write.worker';
 import { DomainAuditService } from './domain-audit.service';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([AuditLog])],
+  imports: [TypeOrmModule.forFeature([AuditLog]), AuthModule],
   controllers: [AuditLogController],
   providers: [
     AuditLogService,

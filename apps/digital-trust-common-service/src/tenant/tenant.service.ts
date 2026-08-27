@@ -1,4 +1,4 @@
-import { PLATFORM_ADMIN_ROLE } from '@app/auth';
+import { PLATFORM_ADMIN_ROLE, type AuthContext } from '@app/auth';
 import { JOB_QUEUES } from '@app/pg-boss';
 import {
   BadRequestException,
@@ -234,7 +234,11 @@ export class TenantService {
    * No worker currently consumes `tenant.config-change`; it is published for
    * future dependent services (e.g. an adapter registry cache).
    */
-  public async updateConfig(id: string, dto: UpdateTenantConfigDto) {
+  public async updateConfig(
+    id: string,
+    dto: UpdateTenantConfigDto,
+    auth?: AuthContext,
+  ) {
     const tenant = await this.tenants.findById(id);
 
     if (!tenant) {
@@ -244,6 +248,7 @@ export class TenantService {
     if (dto.default_connector !== undefined && dto.default_connector !== null) {
       const credential = await this.connectorCredentialService.findById(
         dto.default_connector,
+        auth,
       );
 
       if (credential.tenantId !== tenant.id) {

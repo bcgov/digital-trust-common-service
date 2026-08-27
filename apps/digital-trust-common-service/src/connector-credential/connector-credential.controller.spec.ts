@@ -1,3 +1,5 @@
+import { JwtGuard, ScopeGuard, TenantGuard, type AuthContext } from '@app/auth';
+import { CanActivate } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 
 import { ConnectorType } from '../connection/connection.entity';
@@ -7,6 +9,12 @@ import { ConnectorCredential } from './connector-credential.entity';
 import { ConnectorCredentialService } from './connector-credential.service';
 import { ConnectorCredentialResponseDto } from './dto/connector-credential-response.dto';
 import { CreateConnectorCredentialDto } from './dto/create-connector-credential.dto';
+
+class AllowGuard implements CanActivate {
+  public canActivate(): boolean {
+    return true;
+  }
+}
 
 describe('ConnectorCredentialController', () => {
   let controller: ConnectorCredentialController;
@@ -31,6 +39,20 @@ describe('ConnectorCredentialController', () => {
     createdAt: new Date(),
     updatedAt: new Date(),
     tenant: undefined as any,
+  };
+
+  const auth: AuthContext = {
+    sub: 'user-1',
+    tokenType: 'user',
+    clientId: 'spa',
+    tenantId: '123e4567-e89b-12d3-a456-426614174001',
+    roles: [],
+    scope: 'tenants:admin',
+    scopes: ['tenants:admin'],
+    iss: 'http://localhost/oidc',
+    aud: 'http://localhost/oidc',
+    exp: 9_999_999_999,
+    iat: 1,
   };
 
   const mockResponseDto: ConnectorCredentialResponseDto = {
@@ -74,7 +96,14 @@ describe('ConnectorCredentialController', () => {
           useValue: mockService,
         },
       ],
-    }).compile();
+    })
+      .overrideGuard(JwtGuard)
+      .useClass(AllowGuard)
+      .overrideGuard(ScopeGuard)
+      .useClass(AllowGuard)
+      .overrideGuard(TenantGuard)
+      .useClass(AllowGuard)
+      .compile();
 
     controller = module.get<ConnectorCredentialController>(
       ConnectorCredentialController,
@@ -97,9 +126,9 @@ describe('ConnectorCredentialController', () => {
 
       mockCreate.mockResolvedValue(mockCredential);
 
-      const result = await controller.create(dto);
+      const result = await controller.create(dto, auth);
 
-      expect(mockCreate).toHaveBeenCalledWith(dto);
+      expect(mockCreate).toHaveBeenCalledWith(dto, auth);
       expect(result).toEqual(mockResponseDto);
     });
   });
@@ -108,9 +137,9 @@ describe('ConnectorCredentialController', () => {
     it('should find a credential by ID', async () => {
       mockFindById.mockResolvedValue(mockCredential);
 
-      const result = await controller.findById(mockCredential.id);
+      const result = await controller.findById(mockCredential.id, auth);
 
-      expect(mockFindById).toHaveBeenCalledWith(mockCredential.id);
+      expect(mockFindById).toHaveBeenCalledWith(mockCredential.id, auth);
       expect(result).toEqual(mockResponseDto);
     });
   });
@@ -168,9 +197,17 @@ describe('ConnectorCredentialController', () => {
 
       mockUpdate.mockResolvedValue(updatedCredential);
 
-      const result = await controller.update(mockCredential.id, updateDto);
+      const result = await controller.update(
+        mockCredential.id,
+        updateDto,
+        auth,
+      );
 
-      expect(mockUpdate).toHaveBeenCalledWith(mockCredential.id, updateDto);
+      expect(mockUpdate).toHaveBeenCalledWith(
+        mockCredential.id,
+        updateDto,
+        auth,
+      );
       expect(result).toEqual(updatedResponseDto);
     });
   });
@@ -179,9 +216,9 @@ describe('ConnectorCredentialController', () => {
     it('should delete a connector credential', async () => {
       mockDelete.mockResolvedValue(undefined);
 
-      await controller.delete(mockCredential.id);
+      await controller.delete(mockCredential.id, auth);
 
-      expect(mockDelete).toHaveBeenCalledWith(mockCredential.id);
+      expect(mockDelete).toHaveBeenCalledWith(mockCredential.id, auth);
     });
   });
 
@@ -195,11 +232,12 @@ describe('ConnectorCredentialController', () => {
 
       mockDecryptCredential.mockResolvedValue(decryptedValue);
 
-      const result = await controller.decrypt(mockCredential.id, dto);
+      const result = await controller.decrypt(mockCredential.id, dto, auth);
 
       expect(mockDecryptCredential).toHaveBeenCalledWith(
         validHexKey,
         mockCredential.id,
+        auth,
       );
       expect(result).toEqual(decryptedValue);
     });
@@ -215,7 +253,7 @@ describe('ConnectorCredentialController', () => {
       );
 
       await expect(
-        controller.decrypt(mockCredential.id, dto),
+        controller.decrypt(mockCredential.id, dto, auth),
       ).rejects.toThrow();
     });
 
@@ -229,7 +267,7 @@ describe('ConnectorCredentialController', () => {
       );
 
       await expect(
-        controller.decrypt(mockCredential.id, dto),
+        controller.decrypt(mockCredential.id, dto, auth),
       ).rejects.toThrow();
     });
 
@@ -243,7 +281,7 @@ describe('ConnectorCredentialController', () => {
       );
 
       await expect(
-        controller.decrypt(mockCredential.id, dto),
+        controller.decrypt(mockCredential.id, dto, auth),
       ).rejects.toThrow();
     });
 
@@ -257,7 +295,7 @@ describe('ConnectorCredentialController', () => {
       );
 
       await expect(
-        controller.decrypt(mockCredential.id, dto),
+        controller.decrypt(mockCredential.id, dto, auth),
       ).rejects.toThrow();
     });
   });

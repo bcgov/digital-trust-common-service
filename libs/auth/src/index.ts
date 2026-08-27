@@ -1,6 +1,9 @@
 export { APP_JWT_BEARER_SCHEME } from './constants/app-jwt-bearer.constants';
 export {
   ALL_TENANT_SCOPES,
+  AUDIT_READ_SCOPE,
+  CLIENTS_MANAGE_SCOPE,
+  CONNECTIONS_MANAGE_SCOPE,
   isKnownScope,
   LEVEL2_SCOPES,
   LEVEL3_SCOPES,

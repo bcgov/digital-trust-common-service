@@ -1,9 +1,16 @@
-import { StreamableFile } from '@nestjs/common';
+import { JwtGuard, ScopeGuard, TenantGuard } from '@app/auth';
+import { StreamableFile, CanActivate } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 
 import { AuditLogController } from './audit-log.controller';
 import { AuditAction, AuditActorType, AuditLog } from './audit-log.entity';
 import { AuditLogService } from './audit-log.service';
+
+class AllowGuard implements CanActivate {
+  public canActivate(): boolean {
+    return true;
+  }
+}
 
 describe('AuditLogController', () => {
   let controller: AuditLogController;
@@ -44,7 +51,14 @@ describe('AuditLogController', () => {
           },
         },
       ],
-    }).compile();
+    })
+      .overrideGuard(JwtGuard)
+      .useClass(AllowGuard)
+      .overrideGuard(ScopeGuard)
+      .useClass(AllowGuard)
+      .overrideGuard(TenantGuard)
+      .useClass(AllowGuard)
+      .compile();
 
     controller = module.get(AuditLogController);
   });

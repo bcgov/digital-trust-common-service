@@ -1,3 +1,4 @@
+import { AuthModule } from '@app/auth';
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
@@ -9,7 +10,11 @@ import { CredentialDefinitionRepository } from './credential-definition.reposito
 import { CredentialDefinitionService } from './credential-definition.service';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([CredentialDefinition]), AuditLogModule],
+  imports: [
+    TypeOrmModule.forFeature([CredentialDefinition]),
+    AuditLogModule,
+    AuthModule,
+  ],
   controllers: [CredentialDefinitionController],
   providers: [CredentialDefinitionService, CredentialDefinitionRepository],
   exports: [CredentialDefinitionService],

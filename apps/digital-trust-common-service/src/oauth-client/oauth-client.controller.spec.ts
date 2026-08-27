@@ -1,3 +1,5 @@
+import { JwtGuard, ScopeGuard, TenantGuard, type AuthContext } from '@app/auth';
+import { CanActivate } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 
 import { CreateOAuthClientDto } from './dto/create-oauth-client.dto';
@@ -7,6 +9,12 @@ import { OAuthClientController } from './oauth-client.controller';
 import { OAuthClient } from './oauth-client.entity';
 import { OAuthClientService } from './oauth-client.service';
 
+class AllowGuard implements CanActivate {
+  public canActivate(): boolean {
+    return true;
+  }
+}
+
 describe('OAuthClientController', () => {
   let controller: OAuthClientController;
 
@@ -15,6 +23,7 @@ describe('OAuthClientController', () => {
   let mockFindByTenant: jest.Mock;
   let mockRevokeClient: jest.Mock;
   let mockUpdate: jest.Mock;
+  let mockFindById: jest.Mock;
 
   const mockOAuthClient: OAuthClient = {
     id: '123e4567-e89b-12d3-a456-426614174000',
@@ -30,6 +39,20 @@ describe('OAuthClientController', () => {
     createdAt: new Date(),
     revokedAt: undefined,
     tenant: undefined as any,
+  };
+
+  const auth: AuthContext = {
+    sub: 'user-1',
+    tokenType: 'user',
+    clientId: 'spa',
+    tenantId: '123e4567-e89b-12d3-a456-426614174001',
+    roles: [],
+    scope: 'clients:manage',
+    scopes: ['clients:manage'],
+    iss: 'http://localhost/oidc',
+    aud: 'http://localhost/oidc',
+    exp: 9_999_999_999,
+    iat: 1,
   };
 
   const mockResponseDto: OAuthClientResponseDto = {
@@ -53,10 +76,12 @@ describe('OAuthClientController', () => {
     mockFindByTenant = jest.fn();
     mockRevokeClient = jest.fn();
     mockUpdate = jest.fn();
+    mockFindById = jest.fn();
 
     const mockService = {
       createClient: mockCreateClient,
       findByClientId: mockFindByClientId,
+      findById: mockFindById,
       findByTenant: mockFindByTenant,
       revokeClient: mockRevokeClient,
       update: mockUpdate,
@@ -70,7 +95,14 @@ describe('OAuthClientController', () => {
           useValue: mockService,
         },
       ],
-    }).compile();
+    })
+      .overrideGuard(JwtGuard)
+      .useClass(AllowGuard)
+      .overrideGuard(ScopeGuard)
+      .useClass(AllowGuard)
+      .overrideGuard(TenantGuard)
+      .useClass(AllowGuard)
+      .compile();
 
     controller = module.get<OAuthClientController>(OAuthClientController);
   });
@@ -96,9 +128,9 @@ describe('OAuthClientController', () => {
 
       mockCreateClient.mockResolvedValue(result);
 
-      const response = await controller.createClient(dto);
+      const response = await controller.createClient(dto, auth);
 
-      expect(mockCreateClient).toHaveBeenCalledWith(dto);
+      expect(mockCreateClient).toHaveBeenCalledWith(dto, auth);
       expect(response).toEqual({
         client: mockResponseDto,
         clientSecret: 'secret_abc123',
@@ -110,9 +142,15 @@ describe('OAuthClientController', () => {
     it('should find an OAuth client by client ID', async () => {
       mockFindByClientId.mockResolvedValue(mockOAuthClient);
 
-      const result = await controller.findByClientId(mockOAuthClient.clientId);
+      const result = await controller.findByClientId(
+        mockOAuthClient.clientId,
+        auth,
+      );
 
-      expect(mockFindByClientId).toHaveBeenCalledWith(mockOAuthClient.clientId);
+      expect(mockFindByClientId).toHaveBeenCalledWith(
+        mockOAuthClient.clientId,
+        auth,
+      );
       expect(result).toEqual(mockResponseDto);
     });
   });
@@ -132,9 +170,9 @@ describe('OAuthClientController', () => {
     it('should revoke an OAuth client', async () => {
       mockRevokeClient.mockResolvedValue(undefined);
 
-      await controller.revokeClient(mockOAuthClient.id);
+      await controller.revokeClient(mockOAuthClient.id, auth);
 
-      expect(mockRevokeClient).toHaveBeenCalledWith(mockOAuthClient.id);
+      expect(mockRevokeClient).toHaveBeenCalledWith(mockOAuthClient.id, auth);
     });
   });
 
@@ -152,9 +190,9 @@ describe('OAuthClientController', () => {
 
       mockUpdate.mockResolvedValue(updatedClient);
 
-      const result = await controller.update(mockOAuthClient.id, dto);
+      const result = await controller.update(mockOAuthClient.id, dto, auth);
 
-      expect(mockUpdate).toHaveBeenCalledWith(mockOAuthClient.id, dto);
+      expect(mockUpdate).toHaveBeenCalledWith(mockOAuthClient.id, dto, auth);
       expect(result.name).toBe('Updated Client');
       expect(result.scopes).toEqual([
         'credentials:offer',
@@ -174,9 +212,9 @@ describe('OAuthClientController', () => {
 
       mockUpdate.mockResolvedValue(updatedClient);
 
-      const result = await controller.update(mockOAuthClient.id, dto);
+      const result = await controller.update(mockOAuthClient.id, dto, auth);
 
-      expect(mockUpdate).toHaveBeenCalledWith(mockOAuthClient.id, dto);
+      expect(mockUpdate).toHaveBeenCalledWith(mockOAuthClient.id, dto, auth);
       expect(result.name).toBe('New Name');
       expect(result.scopes).toEqual(mockOAuthClient.scopes);
     });

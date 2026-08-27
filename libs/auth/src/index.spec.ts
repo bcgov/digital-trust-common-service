@@ -22,6 +22,10 @@ import {
   ScopeAuthorizationService,
   ScopeGuard,
   TENANT_SUPERUSER_SCOPE,
+  USERS_MANAGE_SCOPE,
+  CONNECTIONS_MANAGE_SCOPE,
+  CLIENTS_MANAGE_SCOPE,
+  AUDIT_READ_SCOPE,
   TenantAccessDeniedException,
   TenantAccessDeniedExceptionFilter,
   TenantGuard,
@@ -40,6 +44,10 @@ describe('auth package index', () => {
     expect(PLATFORM_ADMIN_ROLE).toBe('platform-admin');
     expect(OAUTH_CLIENT_ALLOWED_ROLES).toContain(PLATFORM_ADMIN_ROLE);
     expect(TENANT_SUPERUSER_SCOPE).toBe('tenants:admin');
+    expect(USERS_MANAGE_SCOPE).toBe('users:manage');
+    expect(CONNECTIONS_MANAGE_SCOPE).toBe('connections:manage');
+    expect(CLIENTS_MANAGE_SCOPE).toBe('clients:manage');
+    expect(AUDIT_READ_SCOPE).toBe('audit:read');
     expect(AuthModule).toBeDefined();
     expect(CurrentAuth).toBeDefined();
     expect(ApiJwtAuth).toBeDefined();

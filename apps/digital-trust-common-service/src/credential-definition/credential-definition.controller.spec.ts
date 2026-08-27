@@ -1,3 +1,5 @@
+import { JwtGuard, ScopeGuard, TenantGuard, type AuthContext } from '@app/auth';
+import { CanActivate } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 
 import { TenantStatus } from '../tenant/tenant.entity';
@@ -11,6 +13,12 @@ import {
 import { CredentialDefinitionService } from './credential-definition.service';
 import { CreateCredentialDefinitionDto } from './dto/create-credential-definition.dto';
 
+class AllowGuard implements CanActivate {
+  public canActivate(): boolean {
+    return true;
+  }
+}
+
 describe('CredentialDefinitionController', () => {
   let controller: CredentialDefinitionController;
 
@@ -21,6 +29,20 @@ describe('CredentialDefinitionController', () => {
   let mockFindByConnector: jest.Mock;
   let mockUpdate: jest.Mock;
   let mockDelete: jest.Mock;
+
+  const auth: AuthContext = {
+    sub: 'user-1',
+    tokenType: 'user',
+    clientId: 'spa',
+    tenantId: '123e4567-e89b-12d3-a456-426614174001',
+    roles: [],
+    scope: 'tenants:admin',
+    scopes: ['tenants:admin'],
+    iss: 'http://localhost/oidc',
+    aud: 'http://localhost/oidc',
+    exp: 9_999_999_999,
+    iat: 1,
+  };
 
   const mockCredentialDefinition: CredentialDefinition = {
     id: '123e4567-e89b-12d3-a456-426614174000',
@@ -74,7 +96,14 @@ describe('CredentialDefinitionController', () => {
           useValue: mockService,
         },
       ],
-    }).compile();
+    })
+      .overrideGuard(JwtGuard)
+      .useClass(AllowGuard)
+      .overrideGuard(ScopeGuard)
+      .useClass(AllowGuard)
+      .overrideGuard(TenantGuard)
+      .useClass(AllowGuard)
+      .compile();
 
     controller = module.get<CredentialDefinitionController>(
       CredentialDefinitionController,
@@ -99,9 +128,9 @@ describe('CredentialDefinitionController', () => {
 
       mockCreate.mockResolvedValue(mockCredentialDefinition);
 
-      const result = await controller.create(dto);
+      const result = await controller.create(dto, auth);
 
-      expect(mockCreate).toHaveBeenCalledWith(dto);
+      expect(mockCreate).toHaveBeenCalledWith(dto, auth);
       expect(result).toEqual(mockCredentialDefinition);
     });
   });
@@ -111,9 +140,9 @@ describe('CredentialDefinitionController', () => {
       const id = mockCredentialDefinition.id;
       mockFindById.mockResolvedValue(mockCredentialDefinition);
 
-      const result = await controller.findById(id);
+      const result = await controller.findById(id, auth);
 
-      expect(mockFindById).toHaveBeenCalledWith(id);
+      expect(mockFindById).toHaveBeenCalledWith(id, auth);
       expect(result).toEqual(mockCredentialDefinition);
     });
 
@@ -123,8 +152,8 @@ describe('CredentialDefinitionController', () => {
         new Error('Credential definition not found'),
       );
 
-      await expect(controller.findById(id)).rejects.toThrow();
-      expect(mockFindById).toHaveBeenCalledWith(id);
+      await expect(controller.findById(id, auth)).rejects.toThrow();
+      expect(mockFindById).toHaveBeenCalledWith(id, auth);
     });
   });
 
@@ -156,9 +185,9 @@ describe('CredentialDefinitionController', () => {
       const definitions = [mockCredentialDefinition];
       mockFindByFormat.mockResolvedValue(definitions);
 
-      const result = await controller.findByFormat(format);
+      const result = await controller.findByFormat(format, auth);
 
-      expect(mockFindByFormat).toHaveBeenCalledWith(format);
+      expect(mockFindByFormat).toHaveBeenCalledWith(format, auth);
       expect(result).toEqual(definitions);
     });
 
@@ -166,8 +195,9 @@ describe('CredentialDefinitionController', () => {
       const format = CredentialDefinitionFormat.SD_JWT;
       mockFindByFormat.mockResolvedValue([]);
 
-      const result = await controller.findByFormat(format);
+      const result = await controller.findByFormat(format, auth);
 
+      expect(mockFindByFormat).toHaveBeenCalledWith(format, auth);
       expect(result).toEqual([]);
     });
   });
@@ -178,9 +208,9 @@ describe('CredentialDefinitionController', () => {
       const definitions = [mockCredentialDefinition];
       mockFindByConnector.mockResolvedValue(definitions);
 
-      const result = await controller.findByConnector(connectorType);
+      const result = await controller.findByConnector(connectorType, auth);
 
-      expect(mockFindByConnector).toHaveBeenCalledWith(connectorType);
+      expect(mockFindByConnector).toHaveBeenCalledWith(connectorType, auth);
       expect(result).toEqual(definitions);
     });
 
@@ -188,8 +218,9 @@ describe('CredentialDefinitionController', () => {
       const connectorType = CredentialDefinitionConnectorType.CREDO;
       mockFindByConnector.mockResolvedValue([]);
 
-      const result = await controller.findByConnector(connectorType);
+      const result = await controller.findByConnector(connectorType, auth);
 
+      expect(mockFindByConnector).toHaveBeenCalledWith(connectorType, auth);
       expect(result).toEqual([]);
     });
   });
@@ -202,9 +233,9 @@ describe('CredentialDefinitionController', () => {
 
       mockUpdate.mockResolvedValue(updatedDefinition);
 
-      const result = await controller.update(id, dto);
+      const result = await controller.update(id, dto, auth);
 
-      expect(mockUpdate).toHaveBeenCalledWith(id, dto);
+      expect(mockUpdate).toHaveBeenCalledWith(id, dto, auth);
       expect(result).toEqual(updatedDefinition);
     });
 
@@ -216,8 +247,8 @@ describe('CredentialDefinitionController', () => {
         new Error('Credential definition not found'),
       );
 
-      await expect(controller.update(id, dto)).rejects.toThrow();
-      expect(mockUpdate).toHaveBeenCalledWith(id, dto);
+      await expect(controller.update(id, dto, auth)).rejects.toThrow();
+      expect(mockUpdate).toHaveBeenCalledWith(id, dto, auth);
     });
   });
 
@@ -226,9 +257,9 @@ describe('CredentialDefinitionController', () => {
       const id = mockCredentialDefinition.id;
       mockDelete.mockResolvedValue(undefined);
 
-      await controller.delete(id);
+      await controller.delete(id, auth);
 
-      expect(mockDelete).toHaveBeenCalledWith(id);
+      expect(mockDelete).toHaveBeenCalledWith(id, auth);
     });
 
     it('should throw NotFoundException if credential definition not found', async () => {
@@ -237,8 +268,8 @@ describe('CredentialDefinitionController', () => {
         new Error('Credential definition not found'),
       );
 
-      await expect(controller.delete(id)).rejects.toThrow();
-      expect(mockDelete).toHaveBeenCalledWith(id);
+      await expect(controller.delete(id, auth)).rejects.toThrow();
+      expect(mockDelete).toHaveBeenCalledWith(id, auth);
     });
   });
 });

@@ -1,3 +1,4 @@
+import type { AuthContext } from '@app/auth';
 import {
   ConflictException,
   Injectable,
@@ -6,6 +7,11 @@ import {
 
 import { AuditAction } from '../audit-log/audit-log.entity';
 import { DomainAuditService } from '../audit-log/domain-audit.service';
+import {
+  assertResourceTenantOrNotFound,
+  assertTenantAccess,
+  isPlatformAdmin,
+} from '../common/assert-tenant-access';
 
 import {
   CredentialDefinition,
@@ -25,7 +31,10 @@ export class CredentialDefinitionService {
 
   public async create(
     dto: CreateCredentialDefinitionDto,
+    auth: AuthContext,
   ): Promise<CredentialDefinition> {
+    assertTenantAccess(auth, dto.tenantId);
+
     const existing =
       await this.credentialDefinitionRepository.findByTenantAndNameAndFormat(
         dto.tenantId,
@@ -59,16 +68,23 @@ export class CredentialDefinitionService {
     return created;
   }
 
-  public async findById(id: string): Promise<CredentialDefinition> {
+  public async findById(
+    id: string,
+    auth: AuthContext,
+  ): Promise<CredentialDefinition> {
     const credentialDefinition =
       await this.credentialDefinitionRepository.findById(id);
+    const notFound = `Credential definition '${id}' was not found.`;
 
     if (!credentialDefinition) {
-      throw new NotFoundException(
-        `Credential definition '${id}' was not found.`,
-      );
+      throw new NotFoundException(notFound);
     }
 
+    assertResourceTenantOrNotFound(
+      auth,
+      credentialDefinition.tenantId,
+      notFound,
+    );
     return credentialDefinition;
   }
 
@@ -80,23 +96,48 @@ export class CredentialDefinitionService {
 
   public async findByFormat(
     format: CredentialDefinitionFormat,
+    auth: AuthContext,
   ): Promise<CredentialDefinition[]> {
-    return await this.credentialDefinitionRepository.findByFormat(format);
+    if (isPlatformAdmin(auth)) {
+      return await this.credentialDefinitionRepository.findByFormat(format);
+    }
+
+    if (!auth.tenantId) {
+      return [];
+    }
+
+    return await this.credentialDefinitionRepository.findByFormat(
+      format,
+      auth.tenantId,
+    );
   }
 
   public async findByConnector(
     connectorType: CredentialDefinitionConnectorType,
+    auth: AuthContext,
   ): Promise<CredentialDefinition[]> {
+    if (isPlatformAdmin(auth)) {
+      return await this.credentialDefinitionRepository.findByConnector(
+        connectorType,
+      );
+    }
+
+    if (!auth.tenantId) {
+      return [];
+    }
+
     return await this.credentialDefinitionRepository.findByConnector(
       connectorType,
+      auth.tenantId,
     );
   }
 
   public async update(
     id: string,
     dto: UpdateCredentialDefinitionDto,
+    auth: AuthContext,
   ): Promise<CredentialDefinition> {
-    const credentialDefinition = await this.findById(id);
+    const credentialDefinition = await this.findById(id, auth);
 
     if (dto.name !== undefined) {
       credentialDefinition.name = dto.name;
@@ -119,8 +160,8 @@ export class CredentialDefinitionService {
     return updated;
   }
 
-  public async delete(id: string): Promise<void> {
-    const credentialDefinition = await this.findById(id);
+  public async delete(id: string, auth: AuthContext): Promise<void> {
+    const credentialDefinition = await this.findById(id, auth);
 
     await this.credentialDefinitionRepository.delete(id);
 

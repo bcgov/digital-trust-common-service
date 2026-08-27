@@ -1,4 +1,14 @@
 import {
+  ApiJwtAuth,
+  CLIENTS_MANAGE_SCOPE,
+  CurrentAuth,
+  JwtGuard,
+  RequireScopes,
+  ScopeGuard,
+  TenantGuard,
+  type AuthContext,
+} from '@app/auth';
+import {
   Body,
   Controller,
   Delete,
@@ -7,12 +17,15 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  UseGuards,
 } from '@nestjs/common';
 import {
   ApiBody,
   ApiCreatedResponse,
+  ApiForbiddenResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
+  ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 
 import { API_VERSION } from '../common/constants/api-version.constants';
@@ -24,6 +37,13 @@ import { UpdateOAuthClientDto } from './dto/update-oauth-client.dto';
 import { OAuthClient } from './oauth-client.entity';
 import { OAuthClientService } from './oauth-client.service';
 
+@ApiJwtAuth()
+@UseGuards(JwtGuard, ScopeGuard, TenantGuard)
+@RequireScopes(CLIENTS_MANAGE_SCOPE)
+@ApiUnauthorizedResponse({ description: 'Authentication is required' })
+@ApiForbiddenResponse({
+  description: 'Token lacks clients:manage, or tenant claim does not match',
+})
 @Controller({ path: 'oauth-clients', version: API_VERSION })
 export class OAuthClientController {
   public constructor(private readonly oauthClientService: OAuthClientService) {}
@@ -53,26 +73,16 @@ export class OAuthClientController {
   })
   public async createClient(
     @Body() dto: CreateOAuthClientDto,
+    @CurrentAuth() auth: AuthContext,
   ): Promise<CreateOAuthClientResponseDto> {
-    const { client, clientSecret } =
-      await this.oauthClientService.createClient(dto);
+    const { client, clientSecret } = await this.oauthClientService.createClient(
+      dto,
+      auth,
+    );
     return {
       client: this.toResponseDto(client),
       clientSecret,
     };
-  }
-
-  @Get('client/:clientId')
-  @ApiOkResponse({
-    description: 'OAuth client found',
-    type: OAuthClientResponseDto,
-  })
-  @ApiNotFoundResponse({ description: 'OAuth client not found' })
-  public async findByClientId(
-    @Param('clientId') clientId: string,
-  ): Promise<OAuthClientResponseDto> {
-    const client = await this.oauthClientService.findByClientId(clientId);
-    return this.toResponseDto(client);
   }
 
   @Get('tenant/:tenantId')
@@ -85,6 +95,20 @@ export class OAuthClientController {
   ): Promise<OAuthClientResponseDto[]> {
     const clients = await this.oauthClientService.findByTenant(tenantId);
     return clients.map((client) => this.toResponseDto(client));
+  }
+
+  @Get('client/:clientId')
+  @ApiOkResponse({
+    description: 'OAuth client found',
+    type: OAuthClientResponseDto,
+  })
+  @ApiNotFoundResponse({ description: 'OAuth client not found' })
+  public async findByClientId(
+    @Param('clientId') clientId: string,
+    @CurrentAuth() auth: AuthContext,
+  ): Promise<OAuthClientResponseDto> {
+    const client = await this.oauthClientService.findByClientId(clientId, auth);
+    return this.toResponseDto(client);
   }
 
   @Patch(':id')
@@ -127,8 +151,9 @@ export class OAuthClientController {
   public async update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateOAuthClientDto,
+    @CurrentAuth() auth: AuthContext,
   ): Promise<OAuthClientResponseDto> {
-    const client = await this.oauthClientService.update(id, dto);
+    const client = await this.oauthClientService.update(id, dto, auth);
     return this.toResponseDto(client);
   }
 
@@ -137,8 +162,9 @@ export class OAuthClientController {
   @ApiNotFoundResponse({ description: 'OAuth client not found' })
   public async revokeClient(
     @Param('id', ParseUUIDPipe) id: string,
+    @CurrentAuth() auth: AuthContext,
   ): Promise<void> {
-    return await this.oauthClientService.revokeClient(id);
+    return await this.oauthClientService.revokeClient(id, auth);
   }
 
   private toResponseDto(client: OAuthClient): OAuthClientResponseDto {
