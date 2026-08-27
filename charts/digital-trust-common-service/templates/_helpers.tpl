@@ -264,3 +264,33 @@ stays in sync.
 {{ toYaml . }}
 {{ end }}
 {{- end }}
+
+{{/*
+Environment for the migration hook Job. A pre-install hook runs before any of
+the release's own resources exist, so the Job cannot read the ConfigMap the API
+and Worker use — `envFrom` on it leaves the pod in CreateContainerConfigError
+and the install times out. The non-secret settings are rendered in place
+instead, which also means an upgrade migrates against the new values rather
+than the previous release's ConfigMap. The Secret stays a reference: it is
+pre-provisioned in every deployed environment (`secret.existingSecret`), so it
+exists before the hook runs.
+*/}}
+{{- define "digital-trust-common-service.hookEnv" -}}
+{{- range $key, $value := .Values.config }}
+- name: {{ $key }}
+  value: {{ $value | quote }}
+{{- end }}
+{{- with .Values.extraEnv }}
+{{ toYaml . }}
+{{- end }}
+{{- end }}
+
+{{- define "digital-trust-common-service.hookEnvFrom" -}}
+{{- if or .Values.secret.existingSecret .Values.secret.create }}
+- secretRef:
+    name: {{ include "digital-trust-common-service.secretName" . }}
+{{- end }}
+{{- with .Values.extraEnvFrom }}
+{{ toYaml . }}
+{{- end }}
+{{- end }}

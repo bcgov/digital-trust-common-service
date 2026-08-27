@@ -239,7 +239,9 @@ migrations:
   # -- Run database migrations as a pre-install/pre-upgrade Helm hook Job.
   # Runs exactly once per release before the app pods roll, avoiding the
   # concurrent/every-boot execution that an init container would cause across
-  # replicas and HPA scale-ups.
+  # replicas and HPA scale-ups. A hook runs before the release's own resources
+  # exist, so the Job carries the non-secret `config.*` inline and the Secret
+  # must be pre-provisioned (`secret.existingSecret`) for a first install.
   enabled: false
   # -- Migration entrypoint command
   command:

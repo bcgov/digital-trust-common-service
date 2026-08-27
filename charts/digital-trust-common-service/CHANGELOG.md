@@ -38,3 +38,8 @@ and this chart adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.h
 - The migration Job's default command pointed at a `migrate.js` that does not
   exist; it now runs the TypeORM CLI against the compiled DataSource, the
   same thing `npm run migrate:up` does.
+- The migration Job read its environment from the release ConfigMap, which a
+  `pre-install` hook runs before Helm has created, so a first install stalled
+  in `CreateContainerConfigError`. Non-secret settings are now rendered into
+  the Job (an upgrade therefore migrates against the new values too) and only
+  the pre-provisioned Secret is referenced.

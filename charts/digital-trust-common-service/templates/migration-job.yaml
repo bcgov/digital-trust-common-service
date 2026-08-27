@@ -66,8 +66,9 @@ spec:
               timeout {{ .Values.migrations.waitForDB.timeoutSeconds }}s sh -c \
                 'until nc -z "$DB_HOST" "$DB_PORT"; do echo "waiting for database $DB_HOST:$DB_PORT"; sleep 2; done' \
               || { echo "timed out after {{ .Values.migrations.waitForDB.timeoutSeconds }}s waiting for database $DB_HOST:$DB_PORT"; exit 1; }
-          envFrom:
-            {{- include "digital-trust-common-service.envFrom" . | nindent 12 }}
+          # Inline rather than the release ConfigMap — see hookEnv in _helpers.tpl.
+          env:
+            {{- include "digital-trust-common-service.hookEnv" . | trim | nindent 12 }}
       {{- end }}
       containers:
         - name: migrate
@@ -83,11 +84,13 @@ spec:
           args:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          envFrom:
-            {{- include "digital-trust-common-service.envFrom" . | nindent 12 }}
-          {{- with .Values.extraEnv }}
+          # Inline rather than the release ConfigMap, which does not exist yet
+          # when a pre-install hook runs — see hookEnv in _helpers.tpl.
           env:
-            {{- toYaml . | nindent 12 }}
+            {{- include "digital-trust-common-service.hookEnv" . | trim | nindent 12 }}
+          {{- with include "digital-trust-common-service.hookEnvFrom" . | trim }}
+          envFrom:
+            {{- . | nindent 12 }}
           {{- end }}
           {{- with .Values.migrations.resources }}
           resources:
