@@ -36,6 +36,10 @@ and this chart adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.h
   preview's empty database reaches the current schema before the pods roll.
 - The dev, test and prod overlays run it too, so every hosted deploy migrates
   its database before the pods roll.
+- Frontend runtime configuration: `frontend.config.*` is rendered into the
+  frontend ConfigMap as `config.json` and mounted over the image's copy at
+  `/srv/config.json`, where the SPA reads it at startup; Caddy serves it with
+  `Cache-Control: no-cache` so a change reaches the next page load.
 
 ### Fixed
 

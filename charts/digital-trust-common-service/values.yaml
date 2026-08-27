@@ -125,6 +125,17 @@ frontend:
     - /api/*
     - /oidc/*
     - /health/*
+  # Runtime configuration for the SPA. Rendered into the frontend ConfigMap as
+  # `config.json` and mounted over the copy the image ships at
+  # /srv/config.json; the SPA fetches it once, before it mounts. This is what
+  # lets one UI image serve every environment: Vite inlines VITE_* values at
+  # build time, so anything that differs between deployments has to arrive
+  # this way instead.
+  config:
+    # -- client_id the SPA presents to the OIDC provider. Each environment registers a public (PKCE) client under this id on the provider side; the development seed registers `dtsc-ui`.
+    oidcClientId: dtsc-ui
+    # -- Scopes the SPA requests at sign-in. Keep to the set every role holds: the provider rejects, rather than trims, a request for scopes the user's role lacks, and `readonly` carries no API scopes at all.
+    oidcScopes: openid profile email tenant offline_access
   # Caddy only preserves an inbound X-Forwarded-Proto when the immediate peer is
   # trusted; otherwise it rewrites the header with the scheme it saw itself. The
   # OpenShift router terminates TLS at the edge and forwards plain http, so
