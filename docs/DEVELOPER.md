@@ -608,7 +608,7 @@ bypass). Live `TenantUser` membership lookup beyond that remains AU-09 /
 membership-guard territory. Client-credentials tokens already carry a fixed
 `tenant_id` from `oauth_client`.
 
-### Controller auth inventory (AU-165)
+### Controller auth inventory
 
 | Surface | Controller | Guards | Scope / notes |
 |---------|------------|--------|---------------|
@@ -625,9 +625,8 @@ membership-guard territory. Client-credentials tokens already carry a fixed
 | Health / hello / OIDC | `health`, `app`, `oidc-interaction` | none | Intentionally public |
 
 Integration coverage for the guard stack uses ephemeral
-`/api/v1/integration/tenant-check/:tenantId` routes; product 401 smoke is in
-`test/au-165-guard-rollout.e2e-spec.ts`. Mock UI + live API token loops remain
-[#184](https://github.com/bcgov/digital-trust-common-service/issues/184).
+`/api/v1/integration/tenant-check/:tenantId` routes. Product-controller 401
+smoke lives in `test/product-controller-auth.e2e-spec.ts`.
 
 ### Guard rollout gaps (remaining)
 

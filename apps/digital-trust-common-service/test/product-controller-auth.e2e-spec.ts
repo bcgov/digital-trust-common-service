@@ -9,11 +9,11 @@ import { AppModule } from '../src/app.module';
 import { API_BASE_PATH } from '../src/common/constants/api-version.constants';
 
 /**
- * Thin auth-enforcement smoke for AU-165 product controllers.
+ * Thin auth-enforcement smoke for product controllers now behind JwtGuard.
  * Happy-path business e2e continues to override guards; wrong-scope /
  * wrong-tenant coverage lives in jwt-guard.integration-spec.ts.
  */
-describe('AU-165 product controllers (e2e) — auth enforcement', () => {
+describe('product controllers (e2e) — auth enforcement', () => {
   let app: INestApplication<App>;
 
   const mockBoss = {
