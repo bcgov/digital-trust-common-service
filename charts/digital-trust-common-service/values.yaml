@@ -234,7 +234,7 @@ autoscaling:
   # targetMemoryUtilizationPercentage: 80
 
 # Database migrations run as a Helm hook Job (pre-install/pre-upgrade).
-# Disabled until the migration runner command exists.
+# Off by default; each environment overlay decides.
 migrations:
   # -- Run database migrations as a pre-install/pre-upgrade Helm hook Job.
   # Runs exactly once per release before the app pods roll, avoiding the
@@ -244,12 +244,15 @@ migrations:
   # -- Migration entrypoint command
   command:
     - node
-  # -- Migration entrypoint args
+  # -- Migration entrypoint args: the TypeORM CLI against the compiled DataSource — what `npm run migrate:up` runs, invoked directly so the Job needs neither npm nor a writable home directory.
   args:
-    - dist/apps/digital-trust-common-service/src/migrate.js
+    - node_modules/typeorm/cli.js
+    - migration:run
+    - -d
+    - dist/libs/database/src/data-source.js
   # -- Helm hook configuration for the migration Job. `pre-install,pre-upgrade`
   # is fail-closed: a failed migration aborts the release and the old version
-  # keeps serving. NOTE: the migration runner (migrate.js) should still wrap its
+  # keeps serving. NOTE: the migration runner should still wrap its
   # run in a Postgres advisory lock (pg_advisory_lock/unlock) as defence in
   # depth, since TypeORM does not lock migrations by default.
   hook:

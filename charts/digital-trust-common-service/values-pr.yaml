@@ -16,6 +16,11 @@ frontend:
 image:
   pullPolicy: Always
 
+# pr-deploy.yml creates the PR database empty; the hook Job brings it to the
+# current schema before the pods roll.
+migrations:
+  enabled: true
+
 resources:
   requests:
     cpu: 25m

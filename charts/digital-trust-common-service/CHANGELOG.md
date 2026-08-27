@@ -30,3 +30,11 @@ and this chart adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.h
 - Per-environment values files (`values-dev.yaml`, `values-test.yaml`,
   `values-prod.yaml`) and `ci/ci-values.yaml`.
 - Generated `README.md` (via helm-docs).
+- PR environments (`values-pr.yaml`) run the migration hook Job, so a
+  preview's empty database reaches the current schema before the pods roll.
+
+### Fixed
+
+- The migration Job's default command pointed at a `migrate.js` that does not
+  exist; it now runs the TypeORM CLI against the compiled DataSource, the
+  same thing `npm run migrate:up` does.
