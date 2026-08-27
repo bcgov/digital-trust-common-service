@@ -40,6 +40,9 @@ and this chart adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.h
   frontend ConfigMap as `config.json` and mounted over the image's copy at
   `/srv/config.json`, where the SPA reads it at startup; Caddy serves it with
   `Cache-Control: no-cache` so a change reaches the next page load.
+- PR environments (`values-pr.yaml`) run the migration hook Job and the
+  development seed on start, so a preview signs in for real against its own
+  `/oidc` provider.
 
 ### Fixed
 

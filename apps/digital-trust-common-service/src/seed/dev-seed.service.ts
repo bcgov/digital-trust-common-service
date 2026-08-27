@@ -1,5 +1,8 @@
+import { OidcConfigService } from '@app/oidc';
 import { Injectable, Logger } from '@nestjs/common';
+import { InjectDataSource } from '@nestjs/typeorm';
 import { argon2i, hash } from 'argon2';
+import { DataSource } from 'typeorm';
 
 import { API_BASE_PATH } from '../common/constants/api-version.constants';
 import { EncryptionService } from '../common/crypto/encryption.service';
@@ -40,13 +43,21 @@ import {
   SEED_VERIFICATION_PROFILE,
   SeedTenantDefinition,
   UI_SPA_CLIENT_ID,
-  UI_SPA_POST_LOGOUT_REDIRECT_URIS,
-  UI_SPA_REDIRECT_URIS,
   UI_SPA_SCOPES,
   UI_SPA_TENANT_SLUG,
   seedApiClientId,
   seedUsersForTenant,
+  uiSpaOrigin,
+  uiSpaPostLogoutRedirectUris,
+  uiSpaRedirectUris,
 } from './dev-seed.data';
+
+/**
+ * Advisory-lock class id for the seed, distinct from the other advisory
+ * locks in this codebase (see ROLE_SCOPE_LOCK_CLASS).
+ */
+export const DEV_SEED_LOCK_CLASS = 4208;
+const DEV_SEED_LOCK_KEY = 'dev-seed';
 
 export interface DevSeedSummary {
   tenants: number;
@@ -76,9 +87,29 @@ export class DevSeedService {
     private readonly connections: ConnectionRepository,
     private readonly operations: OperationRepository,
     private readonly encryptionService: EncryptionService,
+    private readonly oidcConfig: OidcConfigService,
+    @InjectDataSource() private readonly dataSource: DataSource,
   ) {}
 
+  /**
+   * Every replica of a Deployment with `SEED_ON_START` runs this at boot, and
+   * two pods creating `acme-corp` at the same instant would race on the
+   * unique slug. The transaction exists only to hold the advisory lock (the
+   * same pattern as role-scope.repository.ts); the seed's own writes commit
+   * through the repositories as they go, and the lock goes with the
+   * transaction, failure included.
+   */
   public async run(): Promise<DevSeedSummary> {
+    return this.dataSource.transaction(async (manager) => {
+      await manager.query('SELECT pg_advisory_xact_lock($1, hashtext($2))', [
+        DEV_SEED_LOCK_CLASS,
+        DEV_SEED_LOCK_KEY,
+      ]);
+      return this.seed();
+    });
+  }
+
+  private async seed(): Promise<DevSeedSummary> {
     this.logger.log('Starting development seed (idempotent upsert)...');
 
     const summary: DevSeedSummary = {
@@ -289,8 +320,12 @@ export class DevSeedService {
     createdClients: string[],
   ): Promise<number> {
     const scopes = [...UI_SPA_SCOPES];
-    const redirectUris = [...UI_SPA_REDIRECT_URIS];
-    const postLogoutRedirectUris = [...UI_SPA_POST_LOGOUT_REDIRECT_URIS];
+    // The one per-environment fact about this client. The provider matches
+    // redirect URIs exactly, so a PR environment seeded with the local
+    // origin would refuse every sign-in with invalid_redirect_uri.
+    const origin = uiSpaOrigin(this.oidcConfig.getConfig().issuer);
+    const redirectUris = uiSpaRedirectUris(origin);
+    const postLogoutRedirectUris = uiSpaPostLogoutRedirectUris(origin);
     // refresh_token is what keeps the SPA signed in past the 5-minute access
     // token; oidc-provider only issues one when offline_access is granted.
     const grantTypes = ['authorization_code', 'refresh_token'];
