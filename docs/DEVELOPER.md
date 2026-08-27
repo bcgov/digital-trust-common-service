@@ -187,12 +187,12 @@ keycloak.localhost` during upstream federation calls. Add hosts entries
 
 ```bash
 # macOS
-echo "127.0.0.1 app.localhost keycloak.localhost" | sudo tee -a /etc/hosts
+echo "127.0.0.1 app.localhost keycloak.localhost grafana.localhost" | sudo tee -a /etc/hosts
 ```
 
 ```powershell
 # Windows (admin PowerShell)
-Add-Content C:\Windows\System32\drivers\etc\hosts "`n127.0.0.1 app.localhost", "127.0.0.1 keycloak.localhost"
+Add-Content C:\Windows\System32\drivers\etc\hosts "`n127.0.0.1 app.localhost", "127.0.0.1 keycloak.localhost", "127.0.0.1 grafana.localhost"
 ```
 
 #### Configure Node.js to trust the local CA
@@ -385,6 +385,93 @@ npm run start:prod
 ```
 
 The application will be available at http://localhost:3000
+
+## Local Observability Stack
+
+`grafana/otel-lgtm` packages Grafana, Loki, Tempo, Mimir, Pyroscope and an
+OpenTelemetry Collector into one container — the same backends the deployed
+stack runs. It exists so instrumentation can be proven on a laptop before it
+reaches OpenShift. That matters more here than it might elsewhere: this is the
+first service in the platform's OpenTelemetry rollout, so when a trace fails to
+turn up in a cluster, having already watched it work locally is what separates
+"our instrumentation is wrong" from "the cluster path is wrong".
+
+The application is not instrumented yet — that is
+[#94](https://github.com/bcgov/digital-trust-common-service/issues/94). Until it
+lands, this stack starts and Grafana loads, but nothing is sending it data.
+
+### Start the stack
+
+It sits behind the `obs` profile rather than starting with everything else,
+because it runs five backends and is only needed when you are working on
+telemetry:
+
+```bash
+docker compose --profile obs up -d lgtm
+```
+
+Grafana is then reachable two ways, whichever you prefer:
+
+- <http://localhost:3001> — no certificate or hosts entry needed
+- <https://grafana.localhost> — through Caddy, alongside `app.localhost` and
+  `keycloak.localhost` (needs the [hosts entry](#hosts-entries-macos-and-windows)
+  and the [Caddy CA](#export-and-trust-the-caddy-local-ca))
+
+Grafana is published on 3001 because the `app` service already holds 3000.
+Anonymous access is enabled locally, so there is no login screen.
+
+Storage lives inside the container: `docker compose down` discards collected
+telemetry and any dashboards you saved.
+
+### Point the application at it
+
+Copy the OpenTelemetry block from `.env.example` into your `.env` and set:
+
+```bash
+OTEL_ENABLED=true
+```
+
+The remaining values work as shipped. `OTEL_EXPORTER_OTLP_ENDPOINT` defaults to
+`http://localhost:4318` for the standard workflow (the API on the host); the
+compose `app` service overrides it to `http://lgtm:4318`, so running the API in
+a container needs no edit either.
+
+`OTEL_ENABLED` is off by default so that test runs and CI do not open exporter
+connections to a collector that is not there.
+
+### Confirm it works
+
+With the stack up, the app running and `OTEL_ENABLED=true`, make a few requests
+(`curl http://localhost:3000/health/live`), then open Grafana and use
+**Explore**:
+
+- **Tempo** — traces for incoming HTTP requests, with NestJS handler and `pg`
+  query spans nested underneath. A visible trace is the go/no-go signal that the
+  SDK, the collector and the exporter are all wired correctly.
+- **Mimir** — HTTP request duration metrics.
+- **Loki** — log lines carrying a `trace_id` field, once structured logging
+  lands ([#102](https://github.com/bcgov/digital-trust-common-service/issues/102)).
+  If `trace_id` is missing locally, it will be missing in production too.
+
+### How this differs from OpenShift
+
+The instrumentation code is identical in both places. What differs is where
+telemetry goes, and how logs get there:
+
+| | Local | OpenShift |
+|---|---|---|
+| Collector | the `lgtm` container | Alloy, at `monitoring-collector-alloy:4318` |
+| Log transport | OTLP push to the collector | stdout, scraped by Alloy |
+| `OTEL_LOGS_EXPORTER` | `otlp` | not set |
+| Trace correlation in logs | yes | yes |
+
+Logs are the only real difference, and only in how they travel. The SDK attaches
+trace context to log records either way, so the end result in Grafana — logs in
+Loki linking to spans in Tempo — is the same.
+
+Protocol is `http/protobuf` on port 4318 rather than gRPC on 4317. Alloy accepts
+both; this is the platform standard. The two must agree: an HTTP client posting
+to the gRPC port fails silently.
 
 ## Database Migrations
 
