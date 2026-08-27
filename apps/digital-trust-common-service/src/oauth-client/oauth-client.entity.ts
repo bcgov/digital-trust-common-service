@@ -74,7 +74,7 @@ export class OAuthClient {
 
   @ApiProperty({
     description:
-      'JWT role claims stamped on tokens issued to this client (machine / client_credentials clients only; currently platform-admin)',
+      'JWT role claims stamped on tokens issued to this client (machine / client_credentials clients only). Tenant-scoped roles may be assigned by tenant admins; platform-admin requires a platform-admin caller.',
     example: [],
     required: false,
   })

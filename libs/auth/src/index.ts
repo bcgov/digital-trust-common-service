@@ -1,6 +1,7 @@
 export { APP_JWT_BEARER_SCHEME } from './constants/app-jwt-bearer.constants';
 export {
   ALL_TENANT_SCOPES,
+  ASSIGNABLE_OAUTH_CLIENT_SCOPES,
   AUDIT_READ_SCOPE,
   CLIENTS_MANAGE_SCOPE,
   CONNECTIONS_MANAGE_SCOPE,
@@ -8,6 +9,8 @@ export {
   LEVEL2_SCOPES,
   LEVEL3_SCOPES,
   OAUTH_CLIENT_ALLOWED_ROLES,
+  OAUTH_CLIENT_PLATFORM_ROLES,
+  OAUTH_CLIENT_TENANT_ROLES,
   OIDC_SCOPE_ALLOWLIST,
   PLATFORM_ADMIN_ROLE,
   ROLE_HIERARCHY,
@@ -46,3 +49,8 @@ export {
   verifyAccessToken,
 } from './services/jwt-validation.service';
 export { ScopeAuthorizationService } from './services/scope-authorization.service';
+export {
+  partitionRequestedScopes,
+  type PartitionRequestedScopesInput,
+  type PartitionRequestedScopesResult,
+} from './utils/partition-requested-scopes';

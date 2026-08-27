@@ -5,10 +5,10 @@ export const TENANT_SUPERUSER_SCOPE = 'tenants:admin';
 export const PLATFORM_ADMIN_ROLE = 'platform-admin';
 
 /**
- * Roles that may be persisted on OAuth clients and stamped into machine tokens.
- * Keep this tight: roles are privilege escalations, not free-form labels.
+ * JWT roles that are platform-wide privilege escalations. Assigning or
+ * clearing these on an OAuth client requires a platform-admin caller.
  */
-export const OAUTH_CLIENT_ALLOWED_ROLES = [PLATFORM_ADMIN_ROLE] as const;
+export const OAUTH_CLIENT_PLATFORM_ROLES = [PLATFORM_ADMIN_ROLE] as const;
 
 /** Level 2 scope for managing tenant users (invite, list, update, remove). */
 export const USERS_MANAGE_SCOPE = 'users:manage';
@@ -39,6 +39,15 @@ export const LEVEL3_SCOPES = ['logs:read', AUDIT_READ_SCOPE] as const;
 
 /** All tenant-level scopes (Level 2 + Level 3, excluding tenants:admin). */
 export const ALL_TENANT_SCOPES = [...LEVEL2_SCOPES, ...LEVEL3_SCOPES] as const;
+
+/**
+ * Scopes that may be assigned to an OAuth client at registration/update.
+ * `openid` is an OIDC protocol scope, not an API permission, so it is omitted.
+ */
+export const ASSIGNABLE_OAUTH_CLIENT_SCOPES = [
+  TENANT_SUPERUSER_SCOPE,
+  ...ALL_TENANT_SCOPES,
+] as const;
 
 /** Server-wide oidc-provider scope allowlist (openid is always required). */
 export const OIDC_SCOPE_ALLOWLIST = [
@@ -141,3 +150,18 @@ export function isKnownScope(scope: string): boolean {
 export const ROLE_HIERARCHY = ['owner', 'admin', 'member', 'readonly'] as const;
 
 export type TenantRole = (typeof ROLE_HIERARCHY)[number];
+
+/**
+ * Tenant-scoped JWT roles a tenant admin may stamp on their own machine
+ * clients. Distinct from {@link OAUTH_CLIENT_PLATFORM_ROLES}.
+ */
+export const OAUTH_CLIENT_TENANT_ROLES = ROLE_HIERARCHY;
+
+/**
+ * Roles that may be persisted on OAuth clients and stamped into machine tokens.
+ * Keep this tight: roles are privilege escalations, not free-form labels.
+ */
+export const OAUTH_CLIENT_ALLOWED_ROLES = [
+  ...OAUTH_CLIENT_TENANT_ROLES,
+  ...OAUTH_CLIENT_PLATFORM_ROLES,
+] as const;

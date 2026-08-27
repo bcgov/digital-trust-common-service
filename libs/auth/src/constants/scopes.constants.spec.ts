@@ -1,5 +1,6 @@
 import {
   ALL_TENANT_SCOPES,
+  OAUTH_CLIENT_ALLOWED_ROLES,
   OIDC_SCOPE_ALLOWLIST,
   ROLE_HIERARCHY,
   SCOPE_CATALOG,
@@ -73,6 +74,15 @@ describe('scope constants', () => {
     it('runs from most to least privileged without duplicates', () => {
       expect(ROLE_HIERARCHY).toEqual(['owner', 'admin', 'member', 'readonly']);
       expect(new Set(ROLE_HIERARCHY).size).toBe(ROLE_HIERARCHY.length);
+    });
+  });
+
+  describe('OAUTH_CLIENT_ALLOWED_ROLES', () => {
+    it('includes tenant-scoped roles and platform-admin', () => {
+      expect(OAUTH_CLIENT_ALLOWED_ROLES).toEqual([
+        ...ROLE_HIERARCHY,
+        'platform-admin',
+      ]);
     });
   });
 });
