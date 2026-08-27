@@ -47,6 +47,28 @@ tests:
           content:
             secretRef:
               name: digital-trust-common-service-pr-secret
+      # The chart's ServiceAccount is a release resource too: naming it here
+      # gets the pod refused with "serviceaccount not found".
+      - notExists:
+          path: spec.template.spec.serviceAccountName
+      - equal:
+          path: spec.template.spec.automountServiceAccountToken
+          value: false
+
+  - it: names a pre-existing ServiceAccount when the chart does not create one
+    values:
+      - ../ci/ci-values.yaml
+    set:
+      serviceAccount:
+        create: false
+        name: pre-existing-sa
+      upstreamFederation:
+        existingSecret:
+          name: dtsc-ci-oidc-client
+    asserts:
+      - equal:
+          path: spec.template.spec.serviceAccountName
+          value: pre-existing-sa
 
   # A pre-install hook runs before the release ConfigMap exists; reading env
   # from it leaves the pod in CreateContainerConfigError and the install

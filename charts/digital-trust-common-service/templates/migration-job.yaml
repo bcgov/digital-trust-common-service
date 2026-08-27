@@ -44,7 +44,15 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      # A chart-created ServiceAccount is a release resource, which does not
+      # exist yet when a pre-install hook runs — the pod is refused with
+      # "serviceaccount not found". Only a pre-existing one can be named here;
+      # otherwise the namespace default serves, with the token kept out of the
+      # pod the same way the chart's own ServiceAccount does.
+      {{- if not .Values.serviceAccount.create }}
       serviceAccountName: {{ include "digital-trust-common-service.serviceAccountName" . }}
+      {{- end }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automount }}
       {{- with .Values.podSecurityContext }}
       securityContext:
         {{- toYaml . | nindent 8 }}
