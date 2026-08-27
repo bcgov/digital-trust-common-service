@@ -1,10 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 
-import {
-  FullPageError,
-  FullPageStatus,
-} from '@/components/full-page-status';
+import { FullPageError, FullPageStatus } from '@/components/full-page-status';
 import { Button } from '@/components/ui/button';
 import { POST_LOGIN_PATH, POST_LOGOUT_PATH } from '@/lib/auth/constants';
 import { useAuth } from '@/lib/auth/context';

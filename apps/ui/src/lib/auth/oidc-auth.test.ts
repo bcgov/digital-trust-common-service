@@ -1,8 +1,4 @@
-import {
-  ErrorResponse,
-  WebStorageStateStore,
-  type User,
-} from 'oidc-client-ts';
+import { ErrorResponse, WebStorageStateStore, type User } from 'oidc-client-ts';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AuthProviderError } from './errors';
@@ -68,9 +64,7 @@ describe('oidc auth client', () => {
       expect(mocks.manager.signoutRedirect).toHaveBeenCalledTimes(1);
       expect(
         mocks.manager.revokeTokens.mock.invocationCallOrder[0],
-      ).toBeLessThan(
-        mocks.manager.signoutRedirect.mock.invocationCallOrder[0],
-      );
+      ).toBeLessThan(mocks.manager.signoutRedirect.mock.invocationCallOrder[0]);
     });
 
     // The provider or network being down must not leave the user signed in:
