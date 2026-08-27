@@ -44,4 +44,6 @@ and this chart adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.h
   pod. Non-secret settings are now rendered into the Job (an upgrade
   therefore migrates against the new values too), only the pre-provisioned
   Secret is referenced, and the hook names a ServiceAccount only when it is
-  pre-existing (`serviceAccount.create: false`).
+  pre-existing (`serviceAccount.create: false`). A chart-managed Secret
+  (`secret.create` without `secret.existingSecret`) is refused alongside a
+  `pre-install` hook rather than left to time out.

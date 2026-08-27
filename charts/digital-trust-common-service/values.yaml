@@ -242,8 +242,9 @@ migrations:
   # replicas and HPA scale-ups. A hook runs before the release's own resources
   # exist, so the Job carries the non-secret `config.*` inline, runs under the
   # namespace default ServiceAccount unless `serviceAccount.create` is false,
-  # and needs the Secret pre-provisioned (`secret.existingSecret`) for a first
-  # install.
+  # and requires `secret.existingSecret` (a chart-managed Secret would not
+  # exist yet on a first install, so that combination is refused at render
+  # time).
   enabled: false
   # -- Migration entrypoint command
   command:

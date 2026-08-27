@@ -91,3 +91,39 @@ tests:
           content:
             configMapRef:
               name: RELEASE-NAME-digital-trust-common-service-config
+
+  # The chart-managed Secret is a release resource too; on a first install the
+  # hook would wait for it until the deadline. Refused at render time instead.
+  - it: refuses a chart-managed Secret alongside a pre-install hook
+    values:
+      - ../ci/ci-values.yaml
+    set:
+      secret:
+        existingSecret: ""
+        create: true
+      upstreamFederation:
+        existingSecret:
+          name: dtsc-ci-oidc-client
+    asserts:
+      - failedTemplate:
+          errorPattern: requires secret.existingSecret
+
+  - it: accepts a chart-managed Secret when the hook does not run pre-install
+    values:
+      - ../ci/ci-values.yaml
+    set:
+      secret:
+        existingSecret: ""
+        create: true
+      migrations:
+        hook:
+          types: post-install,pre-upgrade
+      upstreamFederation:
+        existingSecret:
+          name: dtsc-ci-oidc-client
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].envFrom
+          content:
+            secretRef:
+              name: RELEASE-NAME-digital-trust-common-service-secret

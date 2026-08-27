@@ -1,4 +1,12 @@
 {{- if .Values.migrations.enabled -}}
+{{- /*
+A chart-managed Secret is a release resource, so it does not exist yet when a
+pre-install hook runs; a Job that reads it only waits in
+CreateContainerConfigError until the deadline. Refuse that up front.
+*/ -}}
+{{- if and .Values.secret.create (not .Values.secret.existingSecret) (contains "pre-install" .Values.migrations.hook.types) }}
+{{- fail "migrations.enabled with a pre-install hook requires secret.existingSecret: the chart-managed Secret (secret.create) does not exist yet when the hook Job runs. Pre-provision the Secret and set secret.existingSecret to its name." }}
+{{- end -}}
 apiVersion: batch/v1
 kind: Job
 metadata:
