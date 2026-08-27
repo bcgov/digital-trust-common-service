@@ -1,4 +1,12 @@
 {{- if .Values.migrations.enabled -}}
+{{- /*
+A chart-managed Secret is a release resource, so it does not exist yet when a
+pre-install hook runs; a Job that reads it only waits in
+CreateContainerConfigError until the deadline. Refuse that up front.
+*/ -}}
+{{- if and .Values.secret.create (not .Values.secret.existingSecret) (contains "pre-install" .Values.migrations.hook.types) }}
+{{- fail "migrations.enabled with a pre-install hook requires secret.existingSecret: the chart-managed Secret (secret.create) does not exist yet when the hook Job runs. Pre-provision the Secret and set secret.existingSecret to its name." }}
+{{- end -}}
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -44,7 +52,15 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      # A chart-created ServiceAccount is a release resource, which does not
+      # exist yet when a pre-install hook runs — the pod is refused with
+      # "serviceaccount not found". Only a pre-existing one can be named here;
+      # otherwise the namespace default serves, with the token kept out of the
+      # pod the same way the chart's own ServiceAccount does.
+      {{- if not .Values.serviceAccount.create }}
       serviceAccountName: {{ include "digital-trust-common-service.serviceAccountName" . }}
+      {{- end }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automount }}
       {{- with .Values.podSecurityContext }}
       securityContext:
         {{- toYaml . | nindent 8 }}
@@ -66,8 +82,9 @@ spec:
               timeout {{ .Values.migrations.waitForDB.timeoutSeconds }}s sh -c \
                 'until nc -z "$DB_HOST" "$DB_PORT"; do echo "waiting for database $DB_HOST:$DB_PORT"; sleep 2; done' \
               || { echo "timed out after {{ .Values.migrations.waitForDB.timeoutSeconds }}s waiting for database $DB_HOST:$DB_PORT"; exit 1; }
-          envFrom:
-            {{- include "digital-trust-common-service.envFrom" . | nindent 12 }}
+          # Inline rather than the release ConfigMap — see hookEnv in _helpers.tpl.
+          env:
+            {{- include "digital-trust-common-service.hookEnv" . | trim | nindent 12 }}
       {{- end }}
       containers:
         - name: migrate
@@ -83,11 +100,13 @@ spec:
           args:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          envFrom:
-            {{- include "digital-trust-common-service.envFrom" . | nindent 12 }}
-          {{- with .Values.extraEnv }}
+          # Inline rather than the release ConfigMap, which does not exist yet
+          # when a pre-install hook runs — see hookEnv in _helpers.tpl.
           env:
-            {{- toYaml . | nindent 12 }}
+            {{- include "digital-trust-common-service.hookEnv" . | trim | nindent 12 }}
+          {{- with include "digital-trust-common-service.hookEnvFrom" . | trim }}
+          envFrom:
+            {{- . | nindent 12 }}
           {{- end }}
           {{- with .Values.migrations.resources }}
           resources:

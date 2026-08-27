@@ -9,7 +9,8 @@ A Helm chart to deploy the Digital Credential Common Service (NestJS) on BC Gov 
 - Kubernetes 1.25+ / OpenShift 4.12+
 - Helm 3.8.0+
 - An external PostgreSQL database and (optionally) a Keycloak instance
-- A pre-provisioned `Secret` with database credentials (or set `secret.create=true`)
+- A pre-provisioned `Secret` with database credentials (or set `secret.create=true`;
+  `migrations.enabled` needs the pre-provisioned one)
 - A pre-provisioned upstream federation `Secret` for every deployment environment, referenced by `upstreamFederation.existingSecret.name` (the chart does not create this secret)
 
 ## Installing the Chart
@@ -216,11 +217,11 @@ Generate the JWKS payload with `npm run oidc:generate-keys > oidc-keys.json`, th
 | livenessProbe.timeoutSeconds | int | `3` |  |
 | migrations.activeDeadlineSeconds | int | `300` | Maximum seconds the migration Job may run before Kubernetes marks it failed. Prevents hung migrations (e.g. waiting on a lock) from blocking a release indefinitely. |
 | migrations.argocd | object | `{"enabled":false}` | Emit an ArgoCD PreSync hook annotation so migrations also run under GitOps (ArgoCD does not execute Helm hooks natively) |
-| migrations.args | list | `["dist/apps/digital-trust-common-service/src/migrate.js"]` | Migration entrypoint args |
+| migrations.args | list | `["node_modules/typeorm/cli.js","migration:run","-d","dist/libs/database/src/data-source.js"]` | Migration entrypoint args: the TypeORM CLI against the compiled DataSource — what `npm run migrate:up` runs, invoked directly so the Job needs neither npm nor a writable home directory. |
 | migrations.backoffLimit | int | `2` | Number of retries before the migration Job is marked failed (2 retries = 3 total attempts) |
 | migrations.command | list | `["node"]` | Migration entrypoint command |
-| migrations.enabled | bool | `false` | Run database migrations as a pre-install/pre-upgrade Helm hook Job. Runs exactly once per release before the app pods roll, avoiding the concurrent/every-boot execution that an init container would cause across replicas and HPA scale-ups. |
-| migrations.hook | object | `{"deletePolicy":"before-hook-creation,hook-succeeded","types":"pre-install,pre-upgrade","weight":"-5"}` | Helm hook configuration for the migration Job. `pre-install,pre-upgrade` is fail-closed: a failed migration aborts the release and the old version keeps serving. NOTE: the migration runner (migrate.js) should still wrap its run in a Postgres advisory lock (pg_advisory_lock/unlock) as defence in depth, since TypeORM does not lock migrations by default. |
+| migrations.enabled | bool | `false` | Run database migrations as a pre-install/pre-upgrade Helm hook Job. Runs exactly once per release before the app pods roll, avoiding the concurrent/every-boot execution that an init container would cause across replicas and HPA scale-ups. A hook runs before the release's own resources exist, so the Job carries the non-secret `config.*` inline, runs under the namespace default ServiceAccount unless `serviceAccount.create` is false, and requires `secret.existingSecret` (a chart-managed Secret would not exist yet on a first install, so that combination is refused at render time). |
+| migrations.hook | object | `{"deletePolicy":"before-hook-creation,hook-succeeded","types":"pre-install,pre-upgrade","weight":"-5"}` | Helm hook configuration for the migration Job. `pre-install,pre-upgrade` is fail-closed: a failed migration aborts the release and the old version keeps serving. NOTE: the migration runner should still wrap its run in a Postgres advisory lock (pg_advisory_lock/unlock) as defence in depth, since TypeORM does not lock migrations by default. |
 | migrations.hook.deletePolicy | string | `"before-hook-creation,hook-succeeded"` | Hook resource delete policy |
 | migrations.hook.types | string | `"pre-install,pre-upgrade"` | Helm hook types that trigger the migration Job |
 | migrations.hook.weight | string | `"-5"` | Hook execution order (lower weights run earlier) |
