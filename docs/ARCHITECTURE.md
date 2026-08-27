@@ -53,7 +53,7 @@ C4Context
 | **API** | NestJS (TypeScript) | Modular architecture, dependency injection, first-class TypeScript, OpenAPI generation, guards/interceptors for cross-cutting concerns |
 | **Frontend** | React + Vite + Tailwind + shadcn/ui (standalone app in `apps/ui`) | Fast DX, typed components, accessible UI primitives, BC Gov design alignment; the UI is a separate package from the root NestJS build |
 | **Ingress / local front door** | Caddy | Provides the same-origin local dev front door (`https://app.localhost`) for the SPA, `/api`, `/oidc`, and `/health`; also serves the built SPA in the UI container |
-| **Database** | PostgreSQL 16 + TypeORM | Relational integrity for multi-tenant data, JSONB for flexible config, mature migration tooling |
+| **Database** | PostgreSQL 18 + TypeORM | Relational integrity for multi-tenant data, JSONB for flexible config, mature migration tooling |
 | **Cache** | In-memory (per-pod) | Traction token cache, config lookups. No shared cache needed at MVP scale. |
 | **Job Queue** | pg-boss (PostgreSQL-backed) | Async credential state updates, webhook dispatch, dead-letter handling. Reuses existing PostgreSQL — no additional infrastructure. Transactional enqueue ensures atomic Operation creation + job dispatch. |
 | **Auth** | `oidc-provider` (in-app OIDC server) + Keycloak (upstream identity federation) | App owns token issuance, permissions, and client lifecycle. Keycloak is upstream IdP for user login only. OpenID Certified library handles JWT signing, JWKS, `.well-known`, `client_credentials` grant. |
