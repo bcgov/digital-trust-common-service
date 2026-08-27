@@ -80,6 +80,22 @@ See [DEVELOPER.md](docs/DEVELOPER.md#testing) for details on this and the
 other test tiers (unit/integration/e2e), plus `MockAdapter` and test data
 factory usage.
 
+### Local Observability Stack
+
+Grafana, Loki, Tempo, Mimir and an OpenTelemetry Collector run locally in a
+single container, mirroring the backends the deployed stack uses:
+
+```bash
+docker compose --profile obs up -d lgtm
+```
+
+Grafana is then at <http://localhost:3001> (or <https://grafana.localhost>
+through Caddy). Set `OTEL_ENABLED=true` in your `.env` to send it data.
+
+See [DEVELOPER.md](docs/DEVELOPER.md#local-observability-stack) for the full
+walkthrough, including what to look for in Grafana and how the local setup
+differs from OpenShift.
+
 ## Documentation
 
 - **[DEVELOPER.md](docs/DEVELOPER.md)** - Detailed setup, running, testing, and troubleshooting guide

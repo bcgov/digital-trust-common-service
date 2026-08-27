@@ -18,6 +18,12 @@ services:
       - ./config:/app/config:ro
     env_file:
       - .env
+    environment:
+      # .env carries http://localhost:4318 so the default workflow (the API on
+      # the host) works unedited. In compose the collector is a sibling
+      # container, so point at it by service name. An inline `environment`
+      # value wins over `env_file`.
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://lgtm:4318
     depends_on:
       db:
         condition: service_healthy
@@ -185,6 +191,31 @@ services:
       - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
+
+  # Local observability backend: Grafana, Loki, Tempo, Mimir, Pyroscope and an
+  # OTel Collector in a single container — the same backends the deployed
+  # stack uses, so instrumentation can be validated before it reaches
+  # OpenShift. Opt-in behind the `obs` profile because it runs five backends
+  # and is only needed when working on telemetry:
+  #   docker compose --profile obs up -d lgtm
+  # Storage is in-container, so `docker compose down` discards dashboards and
+  # collected telemetry.
+  lgtm:
+    image: grafana/otel-lgtm:0.31.0
+    profiles: ['obs']
+    ports:
+      # Grafana on 3001: the `app` service already publishes 3000. Also
+      # reachable at https://grafana.localhost through Caddy.
+      - '3001:3000'
+      - '4317:4317'
+      # OTLP/HTTP. The platform standard is http/protobuf on 4318; 4317 above
+      # is gRPC, published only so an experiment does not need a compose edit.
+      - '4318:4318'
+    environment:
+      # Skip the login screen locally. Remove both to get the default
+      # admin/admin sign-in instead.
+      GF_AUTH_ANONYMOUS_ENABLED: 'true'
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
 
 
 volumes:

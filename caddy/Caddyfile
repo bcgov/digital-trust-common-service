@@ -22,3 +22,13 @@ keycloak.localhost {
 
     reverse_proxy keycloak:8080
 }
+
+# Grafana from the local observability stack (`docker compose --profile obs up
+# -d lgtm`). Also published directly on http://localhost:3001, so this block is
+# a convenience, not the only way in. Returns 502 while the `obs` profile is
+# down.
+grafana.localhost {
+    tls internal
+
+    reverse_proxy lgtm:3000
+}
