@@ -148,7 +148,7 @@ Documentation-only changes (`docs/**`, `**/*.md`) skip the deploy workflow. The 
 
 ### Lifecycle
 
-1. **PR opened / updated** — the deploy workflow builds an amd64-only image tagged `pr-<N>-<short-sha>`, creates the database `dc_pr_<N>` idempotently on the shared dev PostgreSQL, and runs `helm upgrade --install` with the in-repo chart and `values-pr.yaml` overlay. A sticky PR comment is posted (or updated) with the environment URL, health endpoint, image tag, and commit SHA.
+1. **PR opened / updated** — the deploy workflow builds amd64-only API and UI images tagged `pr-<N>-<short-sha>` (the UI with `VITE_AUTH_MODE=oidc`, so the preview signs in for real), creates the database `dc_pr_<N>` idempotently on the shared dev PostgreSQL, and runs `helm upgrade --install` with the in-repo chart and `values-pr.yaml` overlay. That overlay enables the migration hook Job, which brings the empty PR database to the current schema before the pods roll, and `SEED_ON_START`, so the API seeds the demo tenants and registers the UI's OIDC client with redirect URIs on the PR's own route (derived from `OIDC_ISSUER`). A sticky PR comment is posted (or updated) with the environment URL, health endpoint, image tag, and commit SHA.
 2. **Subsequent pushes** — the same workflow re-runs. The immutable image tag changes (new commit SHA), so Kubernetes rolls the pods naturally. The sticky comment is updated in place.
 3. **PR converted to draft** — triggers the cleanup workflow, tearing everything down.
 4. **PR marked ready** — triggers `ready_for_review`, re-deploying the environment.
@@ -183,6 +183,7 @@ These are **not** provisioned by the pipeline and must exist before PR environme
 2. **Application Secret** — a pre-provisioned Secret named `digital-trust-common-service-pr-secret` in the dev namespace containing `DB_USERNAME` and `DB_PASSWORD` for the shared application role. PR releases reference it via `secret.existingSecret` in `values-pr.yaml`; the role itself must exist on the PR PostgreSQL instance (the pipeline creates databases, never roles).
 3. **Pipeline ServiceAccount** — an OpenShift ServiceAccount in the dev namespace with permissions to manage Helm release objects and `oc exec` into the database pod. Its token is stored in `OPENSHIFT_TOKEN`.
 4. **GHCR package Admin role** — deleting versions of the org-owned `digital-trust-common-service` package with `GITHUB_TOKEN` requires this repository to have the Admin role in the package's *Manage Actions access* settings; without it the `clean-ghcr` job fails with a 403 and PR tags accumulate.
+5. **Upstream federation Secret** — `dtsc-pr-oidc-client` in the dev namespace (referenced by `upstreamFederation.existingSecret` in `values-pr.yaml`), whose Keycloak client must accept the PR routes' `/oidc` callback as a valid redirect URI. The chart never creates this Secret.
 
 ### Design Decisions
 
