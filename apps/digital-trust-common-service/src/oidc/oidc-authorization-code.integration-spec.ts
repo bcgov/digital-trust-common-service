@@ -750,8 +750,7 @@ describe('OIDC authorization_code grant (integration)', () => {
     // member's platform default includes credentials:verify, which is what the
     // first test relies on. Overriding the role for this tenant alone must
     // take that away, proving overrides reach the grant and therefore the
-    // token — the AU-07 (#40) guarantee that a settings screen actually
-    // enforces something.
+    // token — so a tenant settings screen actually enforces something.
     await dataSource.query(
       `INSERT INTO tenant_role_scope (tenant_id, role, scopes)
        VALUES ($1, 'member'::tenant_user_role, $2::text[])

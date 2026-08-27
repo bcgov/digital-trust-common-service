@@ -572,10 +572,6 @@ Generated `client_id` values are prefixed `dtcs_`. The plaintext `clientSecret` 
 
 Assigned scopes must be in the published catalog, present in `OIDC_SCOPES`, and a subset of the caller's effective scopes (`tenants:admin` expands to all Level 2 + Level 3). `platform-admin` bypasses the caller-subset check.
 
-Generated `client_id` values are prefixed `dtcs_`. The plaintext `clientSecret` is returned once on create and on `POST .../rotate-secret`; list/get responses never include it.
-
-Assigned scopes must be in the AU-04 catalog, present in `OIDC_SCOPES`, and a subset of the caller's effective scopes (`tenants:admin` expands to all Level 2 + Level 3). `platform-admin` bypasses the caller-subset check.
-
 **User-token scope resolution:** the `role_scope` seed is consumed at grant
 creation (`OidcInteractionController` and `POST /api/v1/auth/switch-tenant`)
 so user JWTs carry the scopes for the active tenant role. `extraTokenClaims`
