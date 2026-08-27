@@ -29,11 +29,12 @@ npm run dev          # http://localhost:5173
 The dev server proxies `/api`, `/oidc` and `/health` to the API
 (`VITE_PROXY_TARGET`, default `http://localhost:3000` — run the backend via
 `docker compose up` or `npm run start:dev` at the repo root). This mirrors the
-production Caddy reverse proxy (#160): the SPA only ever talks to its own
-origin, so every URL in the app is relative. The one exception to
-"one build works in every environment" is `VITE_AUTH_MODE`, which is baked
-in at build time — a production build must set it explicitly (or it moves to
-runtime config).
+production Caddy reverse proxy: the SPA only ever talks to its own origin, so
+every URL in the app is relative and one build works in every environment.
+The one baked-in value is `VITE_AUTH_MODE`, a build variant rather than
+configuration (it decides which auth client ships); hosted images are built
+with `oidc`. Everything that differs between deployments is
+[runtime configuration](#runtime-configuration).
 
 ### Same-origin HTTPS via Caddy (#181)
 
@@ -61,6 +62,28 @@ on the host — first start runs `npm ci` (slow on bind mounts), and hot reload 
 Then open `https://app.localhost` (see `docs/DEVELOPER.md` for trusting the
 Caddy local CA). Plain `http://localhost:5173` still works for UI-only work.
 
+## Runtime configuration
+
+Settings that differ between deployments are read at startup from
+`/config.json`, not from `VITE_*` variables — Vite inlines those into the
+bundle, which is exactly what one-image-everywhere forbids.
+`src/lib/config.ts` fetches and validates the file before anything renders; a
+missing or invalid file is a full-page error rather than a silent fallback, so
+a broken deployment says so instead of failing later on the provider's page.
+
+| Key | Default | Purpose |
+|---|---|---|
+| `oidcClientId` | `dtsc-ui` | client_id the SPA presents to `/oidc`. Each environment registers a public client under this id on the provider side (the dev seed does it locally). |
+| `oidcScopes` | `openid profile email tenant offline_access` | Scopes requested at sign-in — see the caveat under [Auth](#auth). |
+
+Locally the file is `public/config.json`: the dev server serves it and the
+build copies it into `dist/`, so the image ships the same defaults. The Helm
+chart renders `frontend.config.*` into a ConfigMap and mounts it over that
+copy (`/srv/config.json`), served with `Cache-Control: no-cache` so a change
+reaches the next page load. To add a per-environment value: extend the schema
+in `src/lib/config.ts`, add the default to `public/config.json` and to the
+chart's `frontend.config`, then read it through `getAppConfig()`.
+
 ## Auth
 
 Two implementations sit behind one `AuthClient` seam in `src/lib/auth/`,
@@ -79,11 +102,10 @@ In `oidc` mode the app **must** be reached at `https://app.localhost`, not
 Caddy origin, so the raw Vite origin would put authorize/token cross-origin
 and drop the provider's session cookie.
 
-One setting is load-bearing rather than optional (`.env.example` and
-`docs/DEVELOPER.md` carry the full reasoning): `VITE_OIDC_SCOPES` must stay
-within the set every role holds. The provider rejects, rather than trims, a
-request for scopes the user's role lacks, and `readonly` carries no API scopes
-at all.
+One setting is load-bearing rather than optional (`docs/DEVELOPER.md` carries
+the full reasoning): `oidcScopes` in the runtime config must stay within the
+set every role holds. The provider rejects, rather than trims, a request for
+scopes the user's role lacks, and `readonly` carries no API scopes at all.
 
 The SPA sends no RFC 8707 `resource` parameter. It is the provider's
 `useGrantedResource` that makes the access token an API-audience JWT rather
@@ -121,8 +143,11 @@ src/
   lib/api/       axios client (Bearer + 401 single-flight refresh), generated
                  types, per-resource modules, TanStack Query hooks
   lib/auth/      AuthClient seam: mock (default) and oidc (PKCE, real provider)
+  lib/config.ts  runtime config: fetches and validates /config.json before mount
   components/ui/ shadcn-managed primitives (add via `npx shadcn add <name>`)
   test/          Vitest setup + MSW handlers
+public/
+  config.json    runtime config defaults (served by Vite in dev, copied into dist/)
 ```
 
 Conventions worth knowing:

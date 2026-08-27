@@ -8,6 +8,11 @@
 :8080 {
 	encode zstd gzip
 
+	# The SPA reads /config.json once, at startup. Make the browser revalidate
+	# it rather than trust its heuristic cache, so a changed file reaches the
+	# next page load without a hard reload.
+	header /config.json Cache-Control no-cache
+
 	root * /srv
 	try_files {path} /index.html
 	file_server
