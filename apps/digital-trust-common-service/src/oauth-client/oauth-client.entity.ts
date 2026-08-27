@@ -51,8 +51,25 @@ export class OAuthClient {
   @Column({ name: 'client_id', type: 'varchar', length: 255, unique: true })
   public clientId!: string;
 
-  @Column({ name: 'client_secret_hash', type: 'text' })
-  public clientSecretHash!: string;
+  /**
+   * NULL for public (PKCE) clients, which have no secret to hash. The
+   * `chk_oauth_client_secret_matches_kind` constraint keeps this in lockstep
+   * with `isPublic`.
+   */
+  @Column({ name: 'client_secret_hash', type: 'text', nullable: true })
+  public clientSecretHash?: string | null;
+
+  @ApiProperty({
+    description:
+      'Whether this is a public (PKCE) client — a browser or native app that cannot hold a secret. Public clients authenticate with PKCE alone (token_endpoint_auth_method=none) and are never issued a client secret.',
+    example: false,
+  })
+  @Column({
+    name: 'is_public',
+    type: 'boolean',
+    default: false,
+  })
+  public isPublic!: boolean;
 
   @ApiProperty({
     description: 'The human-readable name of the OAuth client',
@@ -96,6 +113,19 @@ export class OAuthClient {
     default: [],
   })
   public redirectUris!: string[];
+
+  @ApiProperty({
+    description:
+      'Array of allowed RP-initiated logout return URIs. Kept separate from redirectUris so a sign-out cannot be redirected onto the login callback route.',
+    example: ['https://app.example.com/login'],
+  })
+  @Column({
+    name: 'post_logout_redirect_uris',
+    type: 'text',
+    array: true,
+    default: [],
+  })
+  public postLogoutRedirectUris!: string[];
 
   @ApiProperty({
     description: 'Array of allowed grant types',

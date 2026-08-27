@@ -3,6 +3,7 @@ import { Navigate, type RouteObject } from 'react-router';
 
 import { AppShell } from '@/layouts/AppShell';
 import { RootLayout } from '@/layouts/RootLayout';
+import { AUTH_CALLBACK_PATH, POST_LOGOUT_PATH } from '@/lib/auth/constants';
 import { PlaceholderPage } from '@/pages/PlaceholderPage';
 import { RouteErrorPage } from '@/pages/RouteErrorPage';
 
@@ -24,8 +25,16 @@ export const routes: RouteObject[] = [
     errorElement: <RouteErrorPage />,
     children: [
       {
-        path: '/login',
+        path: POST_LOGOUT_PATH,
         lazy: lazyPage(() => import('@/pages/LoginPage'), 'LoginPage'),
+      },
+      {
+        // Outside RequireAuth: the redirect arrives before a session exists.
+        path: AUTH_CALLBACK_PATH,
+        lazy: lazyPage(
+          () => import('@/pages/AuthCallbackPage'),
+          'AuthCallbackPage',
+        ),
       },
       {
         element: <RequireAuth />,

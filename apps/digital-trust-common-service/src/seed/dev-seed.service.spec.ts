@@ -26,6 +26,7 @@ import { VerificationProfileRepository } from '../verification-profile/verificat
 import {
   DEV_SEED_CLIENT_SECRET,
   MOCK_TRACTION_ENDPOINT,
+  UI_SPA_CLIENT_ID,
   seedApiClientId,
 } from './dev-seed.data';
 import { DevSeedService } from './dev-seed.service';
@@ -246,11 +247,55 @@ describe('DevSeedService', () => {
 
     const summary = await service.run();
 
-    expect(summary.createdOAuthClients).toHaveLength(2);
+    // Every client but acme-corp's is newly created; that one is updated in
+    // place so its existing secret hash survives the re-seed.
+    expect(summary.createdOAuthClients).not.toContain(
+      seedApiClientId('acme-corp'),
+    );
+    expect(summary.createdOAuthClients).toEqual(
+      expect.arrayContaining([
+        seedApiClientId('test-org'),
+        seedApiClientId('suspended-co'),
+        UI_SPA_CLIENT_ID,
+      ]),
+    );
     expect(oauthClientRepo.update).toHaveBeenCalled();
     expect(oauthClientRepo.create).not.toHaveBeenCalledWith(
       expect.objectContaining({ clientId: seedApiClientId('acme-corp') }),
     );
+  });
+
+  /**
+   * The SPA the admin UI signs in with. Public rather than
+   * confidential — a browser cannot keep a secret, and the
+   * `chk_oauth_client_secret_matches_kind` constraint rejects a public row
+   * that carries a hash.
+   */
+  it('seeds the UI SPA client as a public PKCE client with no secret', async () => {
+    oauthClientRepo.findByClientId.mockResolvedValue(null);
+
+    await service.run();
+
+    expect(oauthClientRepo.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        clientId: UI_SPA_CLIENT_ID,
+        isPublic: true,
+        clientSecretHash: null,
+        grantTypes: ['authorization_code', 'refresh_token'],
+      }),
+    );
+  });
+
+  // One client, one tenant: interactive login resolves the tenant through
+  // the client, so a second copy would mean a second tenant's login.
+  it('seeds exactly one UI SPA client across all tenants', async () => {
+    oauthClientRepo.findByClientId.mockResolvedValue(null);
+
+    const summary = await service.run();
+
+    expect(
+      summary.createdOAuthClients.filter((id) => id === UI_SPA_CLIENT_ID),
+    ).toHaveLength(1);
   });
 
   it('clears revokedAt when updating an existing OAuth client', async () => {

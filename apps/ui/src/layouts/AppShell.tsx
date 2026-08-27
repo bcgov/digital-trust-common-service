@@ -9,6 +9,7 @@ import { NavLink, Outlet } from 'react-router';
 
 import { BcGovHeader } from '@/components/bc-gov-header';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -70,12 +71,23 @@ export function AppShell() {
             <DropdownMenuLabel className="font-normal">
               <p className="text-sm font-medium">{user?.name}</p>
               <p className="text-xs text-muted-foreground">{user?.email}</p>
+              {user?.roles.length ? (
+                <p className="mt-1 flex flex-wrap gap-1">
+                  {user.roles.map((role) => (
+                    <Badge key={role} variant="secondary">
+                      {role}
+                    </Badge>
+                  ))}
+                </p>
+              ) : null}
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuItem
               onSelect={() => {
-                // RequireAuth redirects to /login (replace) as soon as
-                // logout clears the user — no manual navigation needed.
+                // No manual navigation either way: mock logout clears the
+                // user and RequireAuth redirects to /login, while OIDC
+                // logout leaves the SPA entirely for the provider's
+                // end-session endpoint and returns to /login from there.
                 void logout();
               }}
             >

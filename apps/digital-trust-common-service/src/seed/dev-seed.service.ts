@@ -39,6 +39,11 @@ import {
   SEED_TENANTS,
   SEED_VERIFICATION_PROFILE,
   SeedTenantDefinition,
+  UI_SPA_CLIENT_ID,
+  UI_SPA_POST_LOGOUT_REDIRECT_URIS,
+  UI_SPA_REDIRECT_URIS,
+  UI_SPA_SCOPES,
+  UI_SPA_TENANT_SLUG,
   seedApiClientId,
   seedUsersForTenant,
 } from './dev-seed.data';
@@ -100,6 +105,13 @@ export class DevSeedService {
         tenantDef.slug,
         summary.createdOAuthClients,
       );
+
+      if (tenantDef.slug === UI_SPA_TENANT_SLUG) {
+        summary.oauthClients += await this.upsertUiSpaClient(
+          tenant,
+          summary.createdOAuthClients,
+        );
+      }
 
       if (!tenantDef.seedDemoData) {
         continue;
@@ -259,6 +271,59 @@ export class DevSeedService {
     } as unknown as OAuthClient);
 
     createdClients.push(clientId);
+    return 1;
+  }
+
+  /**
+   * The admin UI's public (PKCE) client — the one the React SPA signs in
+   * with. Unlike the integration client above it holds no
+   * secret: `isPublic` clients authenticate with PKCE alone, and the
+   * `chk_oauth_client_secret_matches_kind` constraint requires
+   * `clientSecretHash` to stay NULL.
+   *
+   * Seeded for one tenant only — see `UI_SPA_TENANT_SLUG` for why
+   * interactive login is tenant-scoped through the client today.
+   */
+  private async upsertUiSpaClient(
+    tenant: Tenant,
+    createdClients: string[],
+  ): Promise<number> {
+    const scopes = [...UI_SPA_SCOPES];
+    const redirectUris = [...UI_SPA_REDIRECT_URIS];
+    const postLogoutRedirectUris = [...UI_SPA_POST_LOGOUT_REDIRECT_URIS];
+    // refresh_token is what keeps the SPA signed in past the 5-minute access
+    // token; oidc-provider only issues one when offline_access is granted.
+    const grantTypes = ['authorization_code', 'refresh_token'];
+
+    const existing = await this.oauthClients.findByClientId(UI_SPA_CLIENT_ID);
+
+    if (existing) {
+      existing.name = 'Digital Trust Common Service UI';
+      existing.tenantId = tenant.id;
+      existing.scopes = scopes;
+      existing.redirectUris = redirectUris;
+      existing.postLogoutRedirectUris = postLogoutRedirectUris;
+      existing.grantTypes = grantTypes;
+      existing.isPublic = true;
+      existing.clientSecretHash = null;
+      existing.revokedAt = null;
+      await this.oauthClients.update(existing);
+      return 1;
+    }
+
+    await this.oauthClients.create({
+      tenantId: tenant.id,
+      clientId: UI_SPA_CLIENT_ID,
+      clientSecretHash: null,
+      isPublic: true,
+      name: 'Digital Trust Common Service UI',
+      scopes,
+      redirectUris,
+      postLogoutRedirectUris,
+      grantTypes,
+    } as unknown as OAuthClient);
+
+    createdClients.push(UI_SPA_CLIENT_ID);
     return 1;
   }
 

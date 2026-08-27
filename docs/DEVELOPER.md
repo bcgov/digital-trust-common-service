@@ -281,6 +281,59 @@ running, open
 `https://app.localhost` — HMR works through the proxy, and `/api`, `/oidc` and
 `/health` hit the API without any CORS or cross-site cookie concerns.
 
+#### Signing in for real
+
+The SPA ships in **mock** auth mode by default: a fake local session, no
+backend auth required. To exercise the real Authorization Code + PKCE flow,
+set in `apps/ui/.env`:
+
+```env
+VITE_AUTH_MODE=oidc
+```
+
+and reach the app at `https://app.localhost` — **not** `http://localhost:5173`.
+`OIDC_ISSUER` is `https://app.localhost/oidc`, and every endpoint in the
+discovery document points there, so the raw Vite origin would put
+authorize/token cross-origin and drop the provider's session cookie.
+
+Prerequisites, all covered above: Keycloak running with the realm imported,
+`config/upstream-identity-federation.json` pointing at it, migrations applied,
+and the seed loaded (it registers the SPA's OIDC client). Sign in as one of
+the seeded `acme-corp` users.
+
+The client the SPA uses:
+
+| Property | Value | Why |
+|----------|-------|-----|
+| `client_id` | `dtsc-ui` | Well-known, so one SPA build works in any environment. Override with `VITE_OIDC_CLIENT_ID`. |
+| Kind | Public (PKCE, no secret) | A browser cannot keep a secret. Registered with `token_endpoint_auth_method=none`. |
+| Grants | `authorization_code`, `refresh_token` | `refresh_token` is what keeps the session past the 5-minute access token. |
+| Redirect URI | `https://app.localhost/auth/callback` | |
+| Post-logout URI | `https://app.localhost/login` | Validated separately from the login redirect. |
+| Scopes | `openid profile email tenant offline_access` | The set **every** role holds — see the caveat below. |
+| Tenant | `acme-corp` | Interactive login is tenant-scoped through the client (see below). |
+
+Two constraints worth knowing before changing any of that:
+
+- **Scopes are all-or-nothing per role.** The interaction handler *rejects*
+  a sign-in that requests scopes the user's role lacks rather than trimming
+  them, and `readonly` carries no API scopes at all. So adding e.g.
+  `tenants:admin` to `VITE_OIDC_SCOPES` locks out every user below that role.
+- **The API-JWT decision is the provider's, not the SPA's.** A browser client
+  cannot send an RFC 8707 `resource` on the token request — oidc-client-ts
+  appends it to the authorize URL only, and that is not where oidc-provider
+  reads it. What makes the access token an API-audience JWT is
+  `features.resourceIndicators.useGrantedResource` in the provider config.
+  Without it, any grant carrying `openid` gets an access token scoped to the
+  *userinfo* endpoint instead, and — because that token has no `aud` —
+  oidc-provider also withholds the identity claims from the id_token. Both
+  failures are silent: sign-in appears to work, then every API call 401s and
+  the profile has only `sub`.
+
+Non-dev environments register their own `dtsc-ui` client. The tenant-facing
+`POST /api/v1/clients` API deliberately creates confidential clients only, so
+provisioning a public one is a platform/deployment step today.
+
 ## Running the Application
 
 ### Option 1: Docker Compose (Recommended for Development)
@@ -395,7 +448,7 @@ SEED_ON_START=true
 | Credential defs | Person credential, Employee badge (active tenants) |
 | Issuance profiles | Published `person-credential/1.0`, draft `employee-badge/1.0` |
 | Verification profile | Published `identity-check/1.0` with age predicate |
-| OAuth clients | One per tenant; new clients use secret `dev-seed-client-secret` |
+| OAuth clients | One confidential client per tenant (new ones use secret `dev-seed-client-secret`), plus the public UI client `dtsc-ui` |
 | Connections | Five states per active tenant |
 | Operations | pending, completed, failed per active tenant |
 
@@ -852,8 +905,9 @@ npm run dev          # http://localhost:5173
 The Vite dev server proxies `/api`, `/oidc` and `/health` to the backend
 (`VITE_PROXY_TARGET` in `apps/ui/.env`, default `http://localhost:3000`),
 mirroring the production Caddy reverse proxy — the SPA uses relative URLs only.
-Sign-in runs in **mock mode** (`VITE_AUTH_MODE=mock`) until the interactive
-OIDC flow lands (AU-02 / UI-02).
+Sign-in defaults to **mock mode** (`VITE_AUTH_MODE=mock`); the real
+Authorization Code + PKCE flow needs `VITE_AUTH_MODE=oidc` and the Caddy
+front door — see [Signing in for real](#signing-in-for-real).
 
 Checks (mirrored by the `ui` job in CI): `npm run lint`, `npm run format:check`,
 `npm test`, `npm run build`. API types are generated from the OpenAPI spec via

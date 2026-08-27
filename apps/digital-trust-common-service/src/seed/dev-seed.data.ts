@@ -118,6 +118,50 @@ export function seedApiClientId(slug: string): string {
   return `dev-seed-${slug}-api`;
 }
 
+/**
+ * The admin UI's OIDC client. Public rather than confidential:
+ * a browser app cannot keep a secret, so it authenticates with PKCE alone.
+ *
+ * The id is well-known rather than generated because the SPA is built once
+ * and deployed everywhere — it reads the id from `VITE_OIDC_CLIENT_ID`,
+ * which defaults to this value. Non-dev environments register their own
+ * client with the same id.
+ */
+export const UI_SPA_CLIENT_ID = 'dtsc-ui';
+
+/**
+ * Interactive login is tenant-scoped through the client: the OIDC
+ * interaction controller reads `client.tenantId` to pick the upstream
+ * federation and to resolve the `tenant_user` row on callback. So the SPA
+ * client belongs to one tenant, and a dev login always lands in this one.
+ */
+export const UI_SPA_TENANT_SLUG = 'acme-corp';
+
+/**
+ * The Caddy front door (see caddy/Caddyfile), not the raw Vite origin.
+ * `OIDC_ISSUER` is `https://app.localhost/oidc`, and every endpoint in the
+ * discovery document points there — reaching the SPA on
+ * `http://localhost:5173` would put the authorize/token calls cross-origin
+ * and drop the provider's session cookie.
+ */
+export const UI_SPA_REDIRECT_URIS = ['https://app.localhost/auth/callback'];
+
+export const UI_SPA_POST_LOGOUT_REDIRECT_URIS = ['https://app.localhost/login'];
+
+/**
+ * Only the claim-releasing scopes every role holds. `readonly` ships with no
+ * API scopes at all, and the interaction controller rejects (rather than
+ * trims) a request for scopes the user's role lacks — so asking for e.g.
+ * `tenants:admin` here would break sign-in for lower-privileged users.
+ */
+export const UI_SPA_SCOPES = [
+  'openid',
+  'profile',
+  'email',
+  'tenant',
+  'offline_access',
+] as const;
+
 export const SEED_CREDENTIAL_DEFINITIONS = [
   {
     name: 'Person credential',

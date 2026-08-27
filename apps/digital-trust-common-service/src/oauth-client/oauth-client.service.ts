@@ -199,6 +199,12 @@ export class OAuthClientService {
       return false;
     }
 
+    // A public (PKCE) client has no secret to verify against. Anything
+    // presenting one for such a client is not authenticating as it.
+    if (!client.clientSecretHash) {
+      return false;
+    }
+
     return await verify(client.clientSecretHash, clientSecret);
   }
 
