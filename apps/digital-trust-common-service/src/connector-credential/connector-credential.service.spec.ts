@@ -151,6 +151,14 @@ describe('ConnectorCredentialService', () => {
         NotFoundException,
       );
     });
+
+    it('should throw NotFoundException when auth is omitted', async () => {
+      mockFindById.mockResolvedValue(mockCredential);
+
+      await expect(service.findById(mockCredential.id)).rejects.toThrow(
+        NotFoundException,
+      );
+    });
   });
 
   describe('findByTenant', () => {

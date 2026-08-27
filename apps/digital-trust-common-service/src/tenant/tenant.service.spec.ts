@@ -1,3 +1,4 @@
+import type { AuthContext } from '@app/auth';
 import { JOB_QUEUES } from '@app/pg-boss';
 import {
   BadRequestException,
@@ -587,6 +588,19 @@ describe('TenantService', () => {
 
   describe('updateConfig', () => {
     const connectorId = '223e4567-e89b-12d3-a456-426614174000';
+    const auth: AuthContext = {
+      roles: [],
+      tenantId: mockTenant.id,
+      sub: '',
+      tokenType: 'user',
+      clientId: null,
+      scope: '',
+      scopes: [],
+      iss: '',
+      aud: '',
+      exp: 0,
+      iat: 0,
+    };
 
     it('should merge provided keys into the existing config', async () => {
       const id = mockTenant.id;
@@ -642,11 +656,18 @@ describe('TenantService', () => {
       });
       mockUpdate.mockResolvedValue(updated);
 
-      const result = await service.updateConfig(id, {
-        default_connector: connectorId,
-      });
+      const result = await service.updateConfig(
+        id,
+        {
+          default_connector: connectorId,
+        },
+        auth,
+      );
 
-      expect(mockFindConnectorCredentialById).toHaveBeenCalledWith(connectorId);
+      expect(mockFindConnectorCredentialById).toHaveBeenCalledWith(
+        connectorId,
+        auth,
+      );
       expect(mockUpdate).toHaveBeenCalledWith(
         expect.objectContaining({
           config: { default_connector: connectorId },
@@ -665,7 +686,7 @@ describe('TenantService', () => {
       });
 
       await expect(
-        service.updateConfig(id, { default_connector: connectorId }),
+        service.updateConfig(id, { default_connector: connectorId }, auth),
       ).rejects.toThrow(ConflictException);
       expect(mockUpdate).not.toHaveBeenCalled();
       expect(mockPublish).not.toHaveBeenCalled();
@@ -681,7 +702,7 @@ describe('TenantService', () => {
       });
 
       await expect(
-        service.updateConfig(id, { default_connector: connectorId }),
+        service.updateConfig(id, { default_connector: connectorId }, auth),
       ).rejects.toThrow(ConflictException);
       expect(mockUpdate).not.toHaveBeenCalled();
     });
@@ -694,7 +715,7 @@ describe('TenantService', () => {
       );
 
       await expect(
-        service.updateConfig(id, { default_connector: connectorId }),
+        service.updateConfig(id, { default_connector: connectorId }, auth),
       ).rejects.toThrow(NotFoundException);
       expect(mockUpdate).not.toHaveBeenCalled();
     });

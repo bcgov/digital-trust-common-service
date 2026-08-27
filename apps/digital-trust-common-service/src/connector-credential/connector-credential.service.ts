@@ -78,7 +78,7 @@ export class ConnectorCredentialService {
 
   public async findById(
     id: string,
-    auth: AuthContext,
+    auth?: AuthContext,
   ): Promise<ConnectorCredential> {
     const credential = await this.credentialRepository.findById(id);
     const notFound = `Connector credential with ID '${id}' was not found.`;

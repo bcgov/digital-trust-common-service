@@ -181,7 +181,7 @@ export class TenantController {
     @CurrentAuth() auth?: AuthContext,
   ): Promise<Tenant> {
     this.assertTenantAccess(auth, id);
-    return this.tenantService.updateConfig(id, dto);
+    return this.tenantService.updateConfig(id, dto, auth);
   }
 
   @Patch(':id/status')
