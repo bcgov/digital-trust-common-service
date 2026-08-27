@@ -379,7 +379,8 @@ describe('buildOidcConfiguration', () => {
       adapterFactory,
       tenantUserService,
     );
-    const { defaultResource } = configuration.features?.resourceIndicators ?? {};
+    const { defaultResource } =
+      configuration.features?.resourceIndicators ?? {};
 
     expect(
       defaultResource?.({} as never, {} as never, [
