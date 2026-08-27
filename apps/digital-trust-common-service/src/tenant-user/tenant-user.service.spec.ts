@@ -28,6 +28,7 @@ describe('TenantUserService', () => {
   let mockCountByTenantAndRole: jest.Mock;
   let mockFindPageForTenant: jest.Mock;
   let mockFindByExternalUserId: jest.Mock;
+  let mockFindActiveByExternalUserId: jest.Mock;
   let mockFindByTenantAndExternalUserId: jest.Mock;
   let mockFindByTenantAndEmail: jest.Mock;
   let mockClaimInvitedByEmail: jest.Mock;
@@ -55,6 +56,7 @@ describe('TenantUserService', () => {
     mockCountByTenantAndRole = jest.fn();
     mockFindPageForTenant = jest.fn();
     mockFindByExternalUserId = jest.fn();
+    mockFindActiveByExternalUserId = jest.fn();
     mockFindByTenantAndExternalUserId = jest.fn();
     mockFindByTenantAndEmail = jest.fn();
     mockClaimInvitedByEmail = jest.fn();
@@ -69,6 +71,7 @@ describe('TenantUserService', () => {
       countByTenantAndRole: mockCountByTenantAndRole,
       findPageForTenant: mockFindPageForTenant,
       findByExternalUserId: mockFindByExternalUserId,
+      findActiveByExternalUserId: mockFindActiveByExternalUserId,
       findByTenantAndExternalUserId: mockFindByTenantAndExternalUserId,
       findByTenantAndEmail: mockFindByTenantAndEmail,
       claimInvitedByEmail: mockClaimInvitedByEmail,
@@ -407,6 +410,20 @@ describe('TenantUserService', () => {
 
       expect(result).toBeNull();
       expect(mockEmit).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('findActiveByExternalUserId', () => {
+    it('should return active memberships for an external user', async () => {
+      const externalUserId = mockTenantUser.externalUserId;
+      mockFindActiveByExternalUserId.mockResolvedValue([mockTenantUser]);
+
+      const result = await service.findActiveByExternalUserId(externalUserId);
+
+      expect(mockFindActiveByExternalUserId).toHaveBeenCalledWith(
+        externalUserId,
+      );
+      expect(result).toEqual([mockTenantUser]);
     });
   });
 

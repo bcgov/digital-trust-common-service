@@ -194,6 +194,7 @@ export function buildOidcConfiguration(
         return {
           tenant_id: user.tenantId,
           tenant_role: user.role,
+          roles: [user.role],
         };
       }
 
@@ -226,12 +227,6 @@ export function buildOidcConfiguration(
       // still accepts only the API audience.
       resourceIndicators: {
         enabled: true,
-        // `oneOf` is passed when a grant carries several resources and one has
-        // to be picked; returning the API audience regardless would throw
-        // `invalid_target` for a grant that never asked for it (see the
-        // `model.resourceIndicators.has(resource)` check in
-        // resolve_resource.js). Prefer the API audience when it is on offer,
-        // otherwise take what the grant actually holds.
         defaultResource: (_ctx, _client, oneOf) => {
           if (!oneOf) {
             return config.audience;

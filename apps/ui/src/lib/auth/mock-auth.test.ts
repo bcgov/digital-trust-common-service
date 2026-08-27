@@ -82,4 +82,22 @@ describe('mock auth client', () => {
     await client.login();
     expect(calls).toBe(2);
   });
+
+  it('switchTenant updates the active tenant and rotates the token', async () => {
+    const client = createMockAuthClient();
+    await client.login();
+    const before = client.getAccessToken();
+    const tenants = await client.listAuthTenants();
+    const target = tenants[1];
+    expect(target).toBeDefined();
+    if (!target) {
+      throw new Error('expected a second mock auth tenant');
+    }
+
+    await client.switchTenant(target.id);
+
+    expect(client.getState().user?.tenantId).toBe(target.id);
+    expect(client.getState().user?.roles).toEqual([target.role]);
+    expect(client.getAccessToken()).not.toBe(before);
+  });
 });

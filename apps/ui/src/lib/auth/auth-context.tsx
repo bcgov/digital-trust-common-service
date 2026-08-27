@@ -90,6 +90,8 @@ function AuthProviderInner({
       login: (returnTo?: string) => client.login(returnTo),
       logout: () => client.logout(),
       completeLogin: () => client.completeLogin(),
+      listAuthTenants: () => client.listAuthTenants(),
+      switchTenant: (tenantId: string) => client.switchTenant(tenantId),
     }),
     [client, state],
   );

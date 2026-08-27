@@ -1,9 +1,15 @@
 import {
   ErrorResponse,
+  User,
   UserManager,
   WebStorageStateStore,
-  type User,
+  type UserProfile,
 } from 'oidc-client-ts';
+
+import {
+  listAuthTenants,
+  switchTenant as postSwitchTenant,
+} from '@/lib/api/resources/auth';
 
 import { env } from '@/lib/env';
 
@@ -35,16 +41,34 @@ function toRoles(profile: Record<string, unknown>): string[] {
   return typeof profile.tenant_role === 'string' ? [profile.tenant_role] : [];
 }
 
-function toAuthUser(user: User): AuthUser {
-  const profile = user.profile as Record<string, unknown>;
+function decodeJwtPayload(token: string): Record<string, unknown> {
+  try {
+    const segment = token.split('.')[1];
+    if (!segment) return {};
+
+    const padded = segment.replace(/-/g, '+').replace(/_/g, '/');
+    const json = atob(padded.padEnd(Math.ceil(padded.length / 4) * 4, '='));
+    return JSON.parse(json) as Record<string, unknown>;
+  } catch {
+    return {};
+  }
+}
+
+function toAuthUserFromProfile(
+  profile: UserProfile | Record<string, unknown>,
+): AuthUser {
   return {
-    sub: user.profile.sub,
+    sub: typeof profile.sub === 'string' ? profile.sub : '',
     name: typeof profile.name === 'string' ? profile.name : undefined,
     email: typeof profile.email === 'string' ? profile.email : undefined,
     tenantId:
       typeof profile.tenant_id === 'string' ? profile.tenant_id : undefined,
     roles: toRoles(profile),
   };
+}
+
+function toAuthUser(user: User): AuthUser {
+  return toAuthUserFromProfile(user.profile);
 }
 
 export function createOidcAuthClient(): AuthClient {
@@ -194,6 +218,32 @@ export function createOidcAuthClient(): AuthClient {
       } catch {
         return null;
       }
+    },
+    listAuthTenants: () => listAuthTenants(),
+    switchTenant: async (tenantId: string) => {
+      const tokens = await postSwitchTenant(tenantId);
+      const payload = decodeJwtPayload(tokens.access_token);
+      const profile = {
+        ...(currentUser?.profile ?? {}),
+        ...payload,
+      } as UserProfile;
+
+      // switch-tenant mints a new access and refresh token only. Keep the
+      // login id_token so RP-initiated logout still has an id_token_hint for
+      // the same provider session (tenant lives on the access token; the
+      // id_token claims may lag until the next full OIDC redirect).
+      const next = new User({
+        access_token: tokens.access_token,
+        refresh_token: tokens.refresh_token,
+        token_type: tokens.token_type,
+        expires_at: Math.floor(Date.now() / 1000) + tokens.expires_in,
+        profile,
+        id_token: currentUser?.id_token,
+        session_state: currentUser?.session_state ?? undefined,
+        scope: currentUser?.scope,
+      });
+      await manager.storeUser(next);
+      setCurrentUser(next);
     },
     subscribe: (listener) => {
       listeners.add(listener);
