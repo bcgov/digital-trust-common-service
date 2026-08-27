@@ -396,8 +396,7 @@ first service in the platform's OpenTelemetry rollout, so when a trace fails to
 turn up in a cluster, having already watched it work locally is what separates
 "our instrumentation is wrong" from "the cluster path is wrong".
 
-The application is not instrumented yet — that is
-[#94](https://github.com/bcgov/digital-trust-common-service/issues/94). Until it
+The application is not instrumented yet; that work will land in a follow-up change. Until it
 lands, this stack starts and Grafana loads, but nothing is sending it data.
 
 ### Start the stack
