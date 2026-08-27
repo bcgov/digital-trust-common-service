@@ -17,7 +17,11 @@ import {
   LEVEL3_SCOPES,
   OIDC_SCOPE_ALLOWLIST,
   OAUTH_CLIENT_ALLOWED_ROLES,
+  OAUTH_CLIENT_PLATFORM_ROLES,
+  OAUTH_CLIENT_TENANT_ROLES,
   PLATFORM_ADMIN_ROLE,
+  ROLE_HIERARCHY,
+  partitionRequestedScopes,
   RequireRoles,
   RequireScopes,
   ScopeAuthorizationService,
@@ -45,7 +49,13 @@ describe('auth package index', () => {
     expect(ASSIGNABLE_OAUTH_CLIENT_SCOPES).toContain('clients:manage');
     expect(ASSIGNABLE_OAUTH_CLIENT_SCOPES).not.toContain('openid');
     expect(PLATFORM_ADMIN_ROLE).toBe('platform-admin');
+    expect(OAUTH_CLIENT_PLATFORM_ROLES).toEqual([PLATFORM_ADMIN_ROLE]);
+    expect(OAUTH_CLIENT_TENANT_ROLES).toEqual([...ROLE_HIERARCHY]);
     expect(OAUTH_CLIENT_ALLOWED_ROLES).toContain(PLATFORM_ADMIN_ROLE);
+    expect(OAUTH_CLIENT_ALLOWED_ROLES).toEqual(
+      expect.arrayContaining([...ROLE_HIERARCHY]),
+    );
+    expect(partitionRequestedScopes).toBeDefined();
     expect(TENANT_SUPERUSER_SCOPE).toBe('tenants:admin');
     expect(USERS_MANAGE_SCOPE).toBe('users:manage');
     expect(CONNECTIONS_MANAGE_SCOPE).toBe('connections:manage');

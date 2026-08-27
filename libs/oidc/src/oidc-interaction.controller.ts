@@ -1,6 +1,7 @@
 import { IncomingMessage, ServerResponse } from 'http';
 import { Http2ServerRequest, Http2ServerResponse } from 'http2';
 
+import { partitionRequestedScopes } from '@app/auth/utils/partition-requested-scopes';
 import { Controller, Get, Inject, Query, Req, Res } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import escapeHtml from 'escape-html';
@@ -222,21 +223,19 @@ export class OidcInteractionController {
 
     if (prompt.details.missingOIDCScope) {
       const requestedScopes = prompt.details.missingOIDCScope as string[];
-      const deniedScopes = requestedScopes.filter(
-        (scope) =>
-          !OidcInteractionController.STANDARD_OIDC_SCOPES.has(scope) &&
-          !roleScopes.includes(scope),
-      );
+      const allowedScopes = [
+        ...OidcInteractionController.STANDARD_OIDC_SCOPES,
+        ...roleScopes,
+      ];
+      const { grantedScopes, deniedScopes } = partitionRequestedScopes({
+        requestedScopes,
+        allowedScopes,
+        actorScopes: allowedScopes,
+      });
 
       if (deniedScopes.length > 0) {
         throw new UnauthorizedOidcScopeRequestError(user.role, deniedScopes);
       }
-
-      const grantedScopes = requestedScopes.filter(
-        (scope) =>
-          OidcInteractionController.STANDARD_OIDC_SCOPES.has(scope) ||
-          roleScopes.includes(scope),
-      );
 
       if (grantedScopes.length > 0) {
         grant.addOIDCScope(grantedScopes.join(' '));

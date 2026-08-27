@@ -231,6 +231,30 @@ describe('OAuthClientService', () => {
       );
     });
 
+    it('should persist tenant-scoped roles when a tenant-admin assigns them', async () => {
+      mockCreate.mockResolvedValue({
+        ...mockOAuthClient,
+        roles: ['admin'],
+      });
+
+      await service.createClient(
+        mockOAuthClient.tenantId,
+        {
+          name: mockOAuthClient.name,
+          scopes: mockOAuthClient.scopes,
+          roles: ['admin'],
+          grantTypes: ['client_credentials'],
+        },
+        tenantAdminAuth,
+      );
+
+      expect(mockCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          roles: ['admin'],
+        }),
+      );
+    });
+
     it('should persist roles when a platform-admin assigns them', async () => {
       mockCreate.mockResolvedValue({
         ...mockOAuthClient,
@@ -255,7 +279,7 @@ describe('OAuthClientService', () => {
       );
     });
 
-    it('should reject role assignment from a non-platform-admin caller', async () => {
+    it('should reject platform-admin assignment from a non-platform-admin caller', async () => {
       await expect(
         service.createClient(
           mockOAuthClient.tenantId,
@@ -271,20 +295,25 @@ describe('OAuthClientService', () => {
       expect(mockCreate).not.toHaveBeenCalled();
     });
 
-    it('should reject an explicit empty roles array from a non-platform-admin', async () => {
-      await expect(
-        service.createClient(
-          mockOAuthClient.tenantId,
-          {
-            name: mockOAuthClient.name,
-            scopes: mockOAuthClient.scopes,
-            roles: [],
-            grantTypes: ['client_credentials'],
-          },
-          tenantAdminAuth,
-        ),
-      ).rejects.toThrow(ForbiddenException);
-      expect(mockCreate).not.toHaveBeenCalled();
+    it('should accept an explicit empty roles array from a tenant-admin on create', async () => {
+      mockCreate.mockResolvedValue(mockOAuthClient);
+
+      await service.createClient(
+        mockOAuthClient.tenantId,
+        {
+          name: mockOAuthClient.name,
+          scopes: mockOAuthClient.scopes,
+          roles: [],
+          grantTypes: ['client_credentials'],
+        },
+        tenantAdminAuth,
+      );
+
+      expect(mockCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          roles: [],
+        }),
+      );
     });
 
     it('should reject unknown roles on create', async () => {
@@ -941,7 +970,40 @@ describe('OAuthClientService', () => {
       expect(mockUpdate).toHaveBeenCalled();
     });
 
-    it('still rejects a tenant-admin assigning roles', async () => {
+    it('lets a tenant-admin assign a tenant-scoped role', async () => {
+      mockFindByTenantAndClientId.mockResolvedValue({ ...mockOAuthClient });
+      mockUpdate.mockImplementation((client: unknown) => client);
+
+      const result = await service.update(
+        mockOAuthClient.tenantId,
+        mockOAuthClient.clientId,
+        { roles: ['admin'] },
+        tenantAdminAuth,
+      );
+
+      expect(result.roles).toEqual(['admin']);
+      expect(mockUpdate).toHaveBeenCalled();
+    });
+
+    it('lets a tenant-admin clear tenant-scoped roles', async () => {
+      mockFindByTenantAndClientId.mockResolvedValue({
+        ...mockOAuthClient,
+        roles: ['admin'],
+      });
+      mockUpdate.mockImplementation((client: unknown) => client);
+
+      const result = await service.update(
+        mockOAuthClient.tenantId,
+        mockOAuthClient.clientId,
+        { roles: [] },
+        tenantAdminAuth,
+      );
+
+      expect(result.roles).toEqual([]);
+      expect(mockUpdate).toHaveBeenCalled();
+    });
+
+    it('still rejects a tenant-admin assigning platform-admin', async () => {
       mockFindByTenantAndClientId.mockResolvedValue({ ...mockOAuthClient });
 
       await expect(
@@ -955,7 +1017,7 @@ describe('OAuthClientService', () => {
       expect(mockUpdate).not.toHaveBeenCalled();
     });
 
-    it('rejects a tenant-admin clearing roles', async () => {
+    it('rejects a tenant-admin clearing platform-admin', async () => {
       mockFindByTenantAndClientId.mockResolvedValue({
         ...mockOAuthClient,
         roles: ['platform-admin'],
@@ -966,6 +1028,23 @@ describe('OAuthClientService', () => {
           mockOAuthClient.tenantId,
           mockOAuthClient.clientId,
           { roles: [] },
+          tenantAdminAuth,
+        ),
+      ).rejects.toThrow(ForbiddenException);
+      expect(mockUpdate).not.toHaveBeenCalled();
+    });
+
+    it('rejects a tenant-admin replacing platform-admin with a tenant role', async () => {
+      mockFindByTenantAndClientId.mockResolvedValue({
+        ...mockOAuthClient,
+        roles: ['platform-admin'],
+      });
+
+      await expect(
+        service.update(
+          mockOAuthClient.tenantId,
+          mockOAuthClient.clientId,
+          { roles: ['admin'] },
           tenantAdminAuth,
         ),
       ).rejects.toThrow(ForbiddenException);

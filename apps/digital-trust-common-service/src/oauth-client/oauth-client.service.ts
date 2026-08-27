@@ -4,7 +4,9 @@ import {
   ASSIGNABLE_OAUTH_CLIENT_SCOPES,
   AuthenticationRequiredException,
   OAUTH_CLIENT_ALLOWED_ROLES,
+  OAUTH_CLIENT_PLATFORM_ROLES,
   ScopeAuthorizationService,
+  partitionRequestedScopes,
   type AuthContext,
 } from '@app/auth';
 import { OidcConfigService } from '@app/oidc/config';
@@ -56,9 +58,11 @@ export class OAuthClientService {
 
     this.assertSupportedGrantTypes(grantTypes);
     // Omit `roles` on create → no assignment check (defaults to []). Sending
-    // `roles` (including `[]` to clear) requires platform-admin.
+    // `roles` (including `[]`) is checked: tenant-scoped roles are allowed
+    // for tenant admins; platform-level roles still need platform-admin.
     this.assertRoleConstraints(roles, grantTypes, caller, {
       checkAssignment: dto.roles !== undefined,
+      previousRoles: [],
     });
     this.assertAssignableScopes(dto.scopes, caller);
 
@@ -76,6 +80,7 @@ export class OAuthClientService {
       redirectUris: dto.redirectUris || [],
       grantTypes,
       refreshTokenTtlSeconds: dto.refreshTokenTtlSeconds ?? null,
+      // Audit actor comes from the authenticated caller, not the request body.
       createdBy: caller.tokenType === 'user' ? caller.sub : undefined,
     } as OAuthClient);
 
@@ -108,7 +113,9 @@ export class OAuthClientService {
 
     this.assertSupportedGrantTypes(dto.grantTypes);
 
-    const client = await this.requireActiveTenantClient(tenantId, clientId);
+    const client = await this.requireTenantClient(tenantId, clientId, {
+      active: true,
+    });
 
     const nextRoles = dto.roles !== undefined ? dto.roles : client.roles;
     const nextGrantTypes =
@@ -122,6 +129,7 @@ export class OAuthClientService {
     // platform-admin machine client at all.
     this.assertRoleConstraints(nextRoles, nextGrantTypes, caller, {
       checkAssignment: dto.roles !== undefined,
+      previousRoles: client.roles,
     });
 
     if (dto.scopes !== undefined) {
@@ -169,7 +177,9 @@ export class OAuthClientService {
     tenantId: string,
     clientId: string,
   ): Promise<{ client: OAuthClient; clientSecret: string }> {
-    const client = await this.requireActiveTenantClient(tenantId, clientId);
+    const client = await this.requireTenantClient(tenantId, clientId, {
+      active: true,
+    });
     const clientSecret = randomBytes(32).toString('hex');
 
     client.clientSecretHash = await this.hashClientSecret(clientSecret);
@@ -220,26 +230,14 @@ export class OAuthClientService {
   private async requireTenantClient(
     tenantId: string,
     clientId: string,
+    options: { active?: boolean } = {},
   ): Promise<OAuthClient> {
     const client = await this.oauthClientRepository.findByTenantAndClientId(
       tenantId,
       clientId,
     );
 
-    if (!client) {
-      throw new NotFoundException(`OAuth client '${clientId}' was not found.`);
-    }
-
-    return client;
-  }
-
-  private async requireActiveTenantClient(
-    tenantId: string,
-    clientId: string,
-  ): Promise<OAuthClient> {
-    const client = await this.requireTenantClient(tenantId, clientId);
-
-    if (client.revokedAt) {
+    if (!client || (options.active && client.revokedAt)) {
       throw new NotFoundException(`OAuth client '${clientId}' was not found.`);
     }
 
@@ -270,18 +268,22 @@ export class OAuthClientService {
    * Roles are security-sensitive JWT claims for machine clients only.
    * Unknown role strings are rejected, and any non-empty role set requires
    * the client to be restricted to client_credentials alone.
-   * `checkAssignment` (default true) requires the caller to be platform-admin
-   * for any roles field change — including clearing to `[]`. Set it false
-   * when `roles` was omitted so existing privileged clients can still be
-   * renamed.
+   * Tenant admins may assign or clear tenant-scoped roles. Changing whether
+   * a platform-level role is present still requires a platform-admin caller.
+   * Set `checkAssignment` false when `roles` was omitted so existing
+   * privileged clients can still be renamed.
    */
   private assertRoleConstraints(
     roles: string[],
     grantTypes: string[],
     caller: AuthContext,
-    options: { checkAssignment?: boolean } = {},
+    options: {
+      checkAssignment?: boolean;
+      previousRoles?: readonly string[];
+    } = {},
   ): void {
     const checkAssignment = options.checkAssignment ?? true;
+    const previousRoles = options.previousRoles ?? [];
     const allowed = new Set<string>(OAUTH_CLIENT_ALLOWED_ROLES);
     const unknown = roles.filter((role) => !allowed.has(role));
 
@@ -293,10 +295,11 @@ export class OAuthClientService {
 
     if (
       checkAssignment &&
+      this.hasPlatformRole(previousRoles) !== this.hasPlatformRole(roles) &&
       !this.scopeAuthorizationService.isPlatformAdmin(caller.roles)
     ) {
       throw new ForbiddenException(
-        'Only platform-admin callers may assign or clear roles on OAuth clients.',
+        'Only platform-admin callers may assign or clear platform-level roles on OAuth clients.',
       );
     }
 
@@ -317,7 +320,7 @@ export class OAuthClientService {
   }
 
   /**
-   * Requested scopes must be in the AU-04 catalog, enabled on this
+   * Requested scopes must be in the published catalog, enabled on this
    * deployment (`OIDC_SCOPES`), and a subset of the caller's own effective
    * scopes. platform-admin bypasses the caller-subset check.
    */
@@ -326,7 +329,28 @@ export class OAuthClientService {
       throw new BadRequestException('At least one scope is required.');
     }
 
-    const unknown = scopes.filter((scope) => !ASSIGNABLE_SCOPE_SET.has(scope));
+    const configured = new Set(this.oidcConfigService.getConfig().scopes);
+    const allowedScopes = ASSIGNABLE_OAUTH_CLIENT_SCOPES.filter((scope) =>
+      configured.has(scope),
+    );
+    const { deniedScopes } = partitionRequestedScopes({
+      requestedScopes: scopes,
+      allowedScopes,
+      actorScopes: this.scopeAuthorizationService.expandEffectiveScopes(
+        caller.scopes,
+      ),
+      isPlatformAdmin: this.scopeAuthorizationService.isPlatformAdmin(
+        caller.roles,
+      ),
+    });
+
+    if (deniedScopes.length === 0) {
+      return;
+    }
+
+    const unknown = deniedScopes.filter(
+      (scope) => !ASSIGNABLE_SCOPE_SET.has(scope),
+    );
 
     if (unknown.length > 0) {
       throw new BadRequestException(
@@ -334,8 +358,9 @@ export class OAuthClientService {
       );
     }
 
-    const configured = new Set(this.oidcConfigService.getConfig().scopes);
-    const notConfigured = scopes.filter((scope) => !configured.has(scope));
+    const notConfigured = deniedScopes.filter(
+      (scope) => !configured.has(scope),
+    );
 
     if (notConfigured.length > 0) {
       throw new BadRequestException(
@@ -343,20 +368,15 @@ export class OAuthClientService {
       );
     }
 
-    if (this.scopeAuthorizationService.isPlatformAdmin(caller.roles)) {
-      return;
-    }
-
-    const effective = this.scopeAuthorizationService.expandEffectiveScopes(
-      caller.scopes,
+    throw new ForbiddenException(
+      `Cannot assign scope(s) not held by the caller: ${deniedScopes.join(', ')}.`,
     );
-    const excess = scopes.filter((scope) => !effective.has(scope));
+  }
 
-    if (excess.length > 0) {
-      throw new ForbiddenException(
-        `Cannot assign scope(s) not held by the caller: ${excess.join(', ')}.`,
-      );
-    }
+  private hasPlatformRole(roles: readonly string[]): boolean {
+    const platform = new Set<string>(OAUTH_CLIENT_PLATFORM_ROLES);
+
+    return roles.some((role) => platform.has(role));
   }
 
   private async hashClientSecret(secret: string): Promise<string> {

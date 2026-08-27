@@ -35,8 +35,8 @@ export interface OidcConfig {
    * client's own `scope` metadata against this list at Client-instantiation
    * time (see `client_schema.js`'s `scopes()` check); any scope value an
    * `oauth_client` row is granted must also appear here, or the client
-   * fails to load with `invalid_client_metadata`. Registration (AU-06)
-   * validates requested scopes against this list and the AU-04 catalog.
+   * fails to load with `invalid_client_metadata`. Client registration
+   * validates requested scopes against this list and the published catalog.
    */
   scopes: string[];
   /**

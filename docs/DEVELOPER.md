@@ -422,16 +422,16 @@ The canonical OAuth scope names live in `@app/auth` (`libs/auth/src/constants/sc
 | `member` | `credentials:offer`, `credentials:verify` |
 | `readonly` | _(none — GET endpoints that require no specific scope)_ |
 
-`platform-admin` is **not** a scope. It is a JWT **role** claim that bypasses `ScopeGuard` and `TenantGuard`. Until interactive user login lands (AU-02), machine clients may carry `platform-admin` via the `oauth_client.roles` column.
+`platform-admin` is **not** a scope. It is a JWT **role** claim that bypasses `ScopeGuard` and `TenantGuard`. Machine clients may carry `platform-admin` or a tenant-scoped role (`owner`, `admin`, `member`, `readonly`) via the `oauth_client.roles` column.
 
-**Setting `oauth_client.roles` for platform-admin machine clients:**
+**Setting `oauth_client.roles`:**
 
-1. Prefer the OAuth client API: `POST /api/v1/tenants/:tenantId/clients` with `"roles": ["platform-admin"]`, or `PATCH /api/v1/tenants/:tenantId/clients/:clientId` with the same field. Only a `platform-admin` caller may assign roles. Responses include `roles`.
-2. Tokens issued via `client_credentials` for that client include a `roles` claim, which `ScopeGuard` uses (e.g. for `GET /admin/operations/stats`).
+1. Prefer the OAuth client API: `POST /api/v1/tenants/:tenantId/clients` with a `roles` array, or `PATCH /api/v1/tenants/:tenantId/clients/:clientId` with the same field. Tenant admins may assign tenant-scoped roles to their own clients. Only a `platform-admin` caller may assign or clear `platform-admin`. Responses include `roles`. `tenantId` comes from the path (not the body); `createdBy` is recorded from the authenticated user `sub`.
+2. Tokens issued via `client_credentials` for that client include a `roles` claim, which `ScopeGuard` uses (e.g. for `GET /admin/operations/stats` when the claim is `platform-admin`).
 
 Generated `client_id` values are prefixed `dtcs_`. The plaintext `clientSecret` is returned once on create and on `POST .../rotate-secret`; list/get responses never include it.
 
-Assigned scopes must be in the AU-04 catalog, present in `OIDC_SCOPES`, and a subset of the caller's effective scopes (`tenants:admin` expands to all Level 2 + Level 3). `platform-admin` bypasses the caller-subset check.
+Assigned scopes must be in the published catalog, present in `OIDC_SCOPES`, and a subset of the caller's effective scopes (`tenants:admin` expands to all Level 2 + Level 3). `platform-admin` bypasses the caller-subset check.
 
 **User-token scope resolution:** the `role_scope` seed is consumed by `ScopeGuard` indirectly (scopes must appear on the JWT). Mapping `tenant_user.role` → `role_scope` → JWT `scope` at issuance is deferred to **[AU-02 #35](https://github.com/bcgov/digital-trust-common-service/issues/35)** (interactive login + `extraTokenClaims`). `RoleScopeRepository` is injectable for that work. Client-credentials tokens continue to take scopes from `oauth_client.scopes` at registration.
 

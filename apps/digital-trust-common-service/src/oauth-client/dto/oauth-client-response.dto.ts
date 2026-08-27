@@ -33,7 +33,7 @@ export class OAuthClientResponseDto {
 
   @ApiProperty({
     description:
-      'JWT role claims stamped on tokens for this client (machine clients only; currently platform-admin)',
+      'JWT role claims stamped on tokens for this client (machine clients only). Tenant-scoped roles (owner, admin, member, readonly) may be assigned by tenant admins; platform-admin requires a platform-admin caller.',
     example: [],
   })
   public roles!: string[];

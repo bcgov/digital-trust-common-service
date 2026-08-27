@@ -13,6 +13,14 @@ import {
   MaxLength,
 } from 'class-validator';
 
+/**
+ * Body for `POST /tenants/:tenantId/clients`.
+ *
+ * Tenant association is the path `tenantId` (TenantGuard), not a body field,
+ * so the body cannot disagree with the route the caller is authorized for.
+ * `createdBy` is taken from the authenticated user `sub` in the service —
+ * callers cannot spoof the audit actor.
+ */
 export class CreateOAuthClientDto {
   @IsString()
   @MaxLength(255)

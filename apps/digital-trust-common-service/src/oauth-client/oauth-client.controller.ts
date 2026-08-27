@@ -53,7 +53,7 @@ export class OAuthClientController {
   @ApiOperation({
     summary: 'Register an API client (OAuth2 client_credentials)',
     description:
-      'Creates a new OAuth2 client for service-to-service authentication. The clientSecret is returned ONCE and cannot be retrieved again.',
+      'Creates a new OAuth2 client for service-to-service authentication. Tenant is taken from the path; createdBy is recorded from the authenticated user. The clientSecret is returned ONCE and cannot be retrieved again.',
   })
   @ApiParam({ name: 'tenantId', format: 'uuid' })
   @ApiCreatedResponse({
@@ -139,13 +139,20 @@ export class OAuthClientController {
       },
       example2: {
         summary:
-          'Grant platform-admin on a client_credentials-only machine client',
+          'Grant platform-admin on a client_credentials-only machine client (platform-admin caller)',
         value: {
           roles: ['platform-admin'],
           grantTypes: ['client_credentials'],
         },
       },
       example3: {
+        summary: 'Grant a tenant-scoped role (tenant admin)',
+        value: {
+          roles: ['admin'],
+          grantTypes: ['client_credentials'],
+        },
+      },
+      example4: {
         summary: 'Update redirect URIs',
         value: {
           redirectUris: ['https://app.updated.com/callback'],

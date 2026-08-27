@@ -1048,6 +1048,8 @@ export interface paths {
         /**
          * Register an API client (OAuth2 client_credentials)
          * @description Creates a new OAuth2 client for service-to-service authentication.
+         *     Tenant association is taken from the path (`tenantId`); `createdBy` is
+         *     recorded from the authenticated user and is not accepted on the body.
          *     Generated `client_id` values are prefixed `dtcs_`. The `clientSecret`
          *     is returned ONCE in the response and cannot be retrieved again.
          *     Requested scopes cannot exceed the caller's own grants.
@@ -2060,7 +2062,7 @@ export interface components {
             clientId?: string;
             name?: string;
             scopes?: string[];
-            /** @description JWT role claims for machine clients (currently only platform-admin). Assignable by platform-admin callers only. */
+            /** @description JWT role claims for machine clients. Tenant-scoped roles (owner, admin, member, readonly) may be assigned by tenant admins; platform-admin requires a platform-admin caller. */
             roles?: string[];
             redirectUris?: string[];
             grantTypes?: string[];
@@ -2077,10 +2079,11 @@ export interface components {
             /** @description Shown ONCE at creation and rotate-secret. Cannot be retrieved again. */
             clientSecret: string;
         };
+        /** @description Tenant is taken from the path, not this body. createdBy is recorded from the authenticated user sub. */
         CreateClientRequest: {
             name: string;
             scopes: ("credentials:offer" | "credentials:verify" | "credentials:hold" | "credentials:revoke" | "connections:manage" | "profiles:manage" | "users:manage" | "clients:manage" | "logs:read" | "audit:read" | "tenants:admin")[];
-            roles?: "platform-admin"[];
+            roles?: ("owner" | "admin" | "member" | "readonly" | "platform-admin")[];
             redirectUris?: string[];
             grantTypes?: string[];
             refreshTokenTtlSeconds?: number;
@@ -2088,7 +2091,7 @@ export interface components {
         UpdateClientRequest: {
             name?: string;
             scopes?: ("credentials:offer" | "credentials:verify" | "credentials:hold" | "credentials:revoke" | "connections:manage" | "profiles:manage" | "users:manage" | "clients:manage" | "logs:read" | "audit:read" | "tenants:admin")[];
-            roles?: "platform-admin"[];
+            roles?: ("owner" | "admin" | "member" | "readonly" | "platform-admin")[];
             redirectUris?: string[];
             grantTypes?: string[];
             refreshTokenTtlSeconds?: number | null;
