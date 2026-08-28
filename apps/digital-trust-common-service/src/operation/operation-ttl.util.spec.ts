@@ -2,10 +2,22 @@ import {
   DEFAULT_CREATED_TTL_MS,
   DEFAULT_OPERATION_TTL_MS,
   computeOperationExpiresAt,
+  isTerminalOperationState,
   parseDurationMs,
   resolveOperationTtlMs,
 } from './operation-ttl.util';
 import { OperationState } from './operation.entity';
+
+describe('isTerminalOperationState', () => {
+  it.each([
+    [OperationState.COMPLETED, true],
+    [OperationState.FAILED, true],
+    [OperationState.PENDING, false],
+    [OperationState.PROCESSING, false],
+  ])('%s → %s', (state, expected) => {
+    expect(isTerminalOperationState(state)).toBe(expected);
+  });
+});
 
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;

@@ -20,6 +20,7 @@ describe('OperationService', () => {
   let mockSave: jest.Mock;
   let mockFindById: jest.Mock;
   let mockFindByIdForTenant: jest.Mock;
+  let mockMarkFirstView: jest.Mock;
   let mockTenantFindById: jest.Mock;
 
   const createdAt = new Date('2024-01-01T00:00:00.000Z');
@@ -53,6 +54,7 @@ describe('OperationService', () => {
     mockSave = jest.fn();
     mockFindById = jest.fn();
     mockFindByIdForTenant = jest.fn();
+    mockMarkFirstView = jest.fn();
     mockTenantFindById = jest.fn();
     mockTenantFindById.mockResolvedValue({ id: 't1', config: {} });
 
@@ -61,6 +63,7 @@ describe('OperationService', () => {
       save: mockSave,
       findById: mockFindById,
       findByIdForTenant: mockFindByIdForTenant,
+      markFirstView: mockMarkFirstView,
     };
 
     const mockTenantService = {
@@ -337,20 +340,29 @@ describe('OperationService', () => {
       jest.useFakeTimers().setSystemTime(viewedAt);
       const operation = buildOperation({ state: OperationState.COMPLETED });
       mockFindByIdForTenant.mockResolvedValue(operation);
-      mockSave.mockImplementation((op: Operation) => Promise.resolve(op));
+      mockMarkFirstView.mockImplementation(
+        (_id: string, seenAt: Date, expiresAt: Date) =>
+          Promise.resolve({ viewedAt: seenAt, expiresAt }),
+      );
 
       const result = await service.getForTenant('t1', 'op-1');
 
       expect(result.viewedAt).toEqual(viewedAt);
       expect(result.expiresAt.getTime()).toBe(viewedAt.getTime() + 1 * HOUR_MS);
-      expect(mockSave).toHaveBeenCalledTimes(1);
+      expect(mockMarkFirstView).toHaveBeenCalledTimes(1);
+      // The write must not go through save()/update(), which would move
+      // updated_at and fake a state change for a client polling that field.
+      expect(mockSave).not.toHaveBeenCalled();
     });
 
     it('marks a failed operation viewed on first read', async () => {
       jest.useFakeTimers().setSystemTime(viewedAt);
       const operation = buildOperation({ state: OperationState.FAILED });
       mockFindByIdForTenant.mockResolvedValue(operation);
-      mockSave.mockImplementation((op: Operation) => Promise.resolve(op));
+      mockMarkFirstView.mockImplementation(
+        (_id: string, seenAt: Date, expiresAt: Date) =>
+          Promise.resolve({ viewedAt: seenAt, expiresAt }),
+      );
 
       const result = await service.getForTenant('t1', 'op-1');
 
@@ -370,7 +382,30 @@ describe('OperationService', () => {
       const result = await service.getForTenant('t1', 'op-1');
 
       expect(result.viewedAt).toBe(viewedAt);
-      expect(mockSave).not.toHaveBeenCalled();
+      expect(mockMarkFirstView).not.toHaveBeenCalled();
+    });
+
+    it('returns the winner values when a concurrent poll stamped the view first', async () => {
+      // markFirstView is conditional on viewed_at IS NULL, so the loser writes
+      // nothing and must not report an expiry the database never stored.
+      const operation = buildOperation({ state: OperationState.COMPLETED });
+      const winnerViewedAt = new Date(viewedAt.getTime() - 5000);
+      mockFindByIdForTenant.mockResolvedValue(operation);
+      mockMarkFirstView.mockResolvedValue(null);
+      mockFindById.mockResolvedValue(
+        buildOperation({
+          state: OperationState.COMPLETED,
+          viewedAt: winnerViewedAt,
+          expiresAt: new Date(winnerViewedAt.getTime() + 1 * HOUR_MS),
+        }),
+      );
+
+      const result = await service.getForTenant('t1', 'op-1');
+
+      expect(result.viewedAt).toEqual(winnerViewedAt);
+      expect(result.expiresAt.getTime()).toBe(
+        winnerViewedAt.getTime() + 1 * HOUR_MS,
+      );
     });
 
     it.each([OperationState.PENDING, OperationState.PROCESSING])(
@@ -382,7 +417,7 @@ describe('OperationService', () => {
         const result = await service.getForTenant('t1', 'op-1');
 
         expect(result.viewedAt).toBeNull();
-        expect(mockSave).not.toHaveBeenCalled();
+        expect(mockMarkFirstView).not.toHaveBeenCalled();
       },
     );
   });
@@ -400,14 +435,17 @@ describe('OperationService', () => {
       jest.useFakeTimers().setSystemTime(viewedAt);
       const operation = buildOperation({ state: OperationState.COMPLETED });
       mockFindById.mockResolvedValue(operation);
-      mockSave.mockImplementation((op: Operation) => Promise.resolve(op));
+      mockMarkFirstView.mockImplementation(
+        (_id: string, seenAt: Date, expiresAt: Date) =>
+          Promise.resolve({ viewedAt: seenAt, expiresAt }),
+      );
 
       const result = await service.markViewed('op-1');
 
       expect(mockTenantFindById).toHaveBeenCalledWith('t1');
       expect(result.viewedAt).toEqual(viewedAt);
       expect(result.expiresAt.getTime()).toBe(viewedAt.getTime() + 1 * HOUR_MS);
-      expect(mockSave).toHaveBeenCalledTimes(1);
+      expect(mockMarkFirstView).toHaveBeenCalledTimes(1);
     });
 
     it('applies the tenant completed_viewed TTL override', async () => {
@@ -418,7 +456,10 @@ describe('OperationService', () => {
       });
       const operation = buildOperation({ state: OperationState.COMPLETED });
       mockFindById.mockResolvedValue(operation);
-      mockSave.mockImplementation((op: Operation) => Promise.resolve(op));
+      mockMarkFirstView.mockImplementation(
+        (_id: string, seenAt: Date, expiresAt: Date) =>
+          Promise.resolve({ viewedAt: seenAt, expiresAt }),
+      );
 
       const result = await service.markViewed('op-1');
 
@@ -437,7 +478,7 @@ describe('OperationService', () => {
       const result = await service.markViewed('op-1');
 
       expect(result).toBe(operation);
-      expect(mockSave).not.toHaveBeenCalled();
+      expect(mockMarkFirstView).not.toHaveBeenCalled();
     });
   });
 

@@ -60,6 +60,39 @@ export class OperationRepository {
     return this.repo.findOne({ where: { id, tenantId } });
   }
 
+  /**
+   * Stamps the first view and its recomputed expiry, once. Raw SQL on purpose:
+   *
+   * - `WHERE viewed_at IS NULL` makes it single-shot, so two concurrent first
+   *   polls cannot both write and leave the later expiry to win.
+   * - it leaves `updated_at` alone. Both `save()` and `update()` touch the
+   *   @UpdateDateColumn, which would move `updated_at` on a read and make
+   *   pollers diffing that field see a state change that never happened.
+   *
+   * Returns the stored row on success, or null when another caller won the race.
+   */
+  public async markFirstView(
+    id: string,
+    viewedAt: Date,
+    expiresAt: Date,
+  ): Promise<{ viewedAt: Date; expiresAt: Date } | null> {
+    const rows = await this.repo.manager.query<
+      { viewed_at: Date; expires_at: Date }[]
+    >(
+      `UPDATE operation
+       SET viewed_at = $2, expires_at = $3
+       WHERE id = $1 AND viewed_at IS NULL
+       RETURNING viewed_at, expires_at`,
+      [id, viewedAt, expiresAt],
+    );
+
+    if (rows.length === 0) {
+      return null;
+    }
+
+    return { viewedAt: rows[0].viewed_at, expiresAt: rows[0].expires_at };
+  }
+
   public async updateState(
     id: string,
     state: OperationState,

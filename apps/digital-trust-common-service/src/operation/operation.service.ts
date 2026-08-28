@@ -2,7 +2,10 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 
 import { TenantService } from '../tenant/tenant.service';
 
-import { computeOperationExpiresAt } from './operation-ttl.util';
+import {
+  computeOperationExpiresAt,
+  isTerminalOperationState,
+} from './operation-ttl.util';
 import {
   Operation,
   OperationRequest,
@@ -10,11 +13,6 @@ import {
   OperationState,
 } from './operation.entity';
 import { OperationRepository } from './operation.repository';
-
-const TERMINAL_STATES = new Set<OperationState>([
-  OperationState.COMPLETED,
-  OperationState.FAILED,
-]);
 
 export interface CreateOperationInput {
   tenantId: string;
@@ -98,13 +96,20 @@ export class OperationService {
       throw new NotFoundException('Operation not found');
     }
 
-    if (!TERMINAL_STATES.has(operation.state) || operation.viewedAt) {
+    if (!isTerminalOperationState(operation.state) || operation.viewedAt) {
       return operation;
     }
 
     return this.applyViewed(operation);
   }
 
+  /**
+   * Stamps viewedAt in any state, unlike getForTenant. This is the writer-side
+   * call for CT-06 (#70) and ME-02 (#91), where "viewed" records that a consumer
+   * took delivery of the record rather than that someone polled the route; the
+   * e2e pins that a still-PENDING operation can be marked viewed without its TTL
+   * moving. Read paths should use getForTenant.
+   */
   public async markViewed(id: string): Promise<Operation> {
     const operation = await this.operations.findById(id);
 
@@ -121,16 +126,30 @@ export class OperationService {
 
   private async applyViewed(operation: Operation): Promise<Operation> {
     const tenant = await this.tenants.findById(operation.tenantId);
-
-    operation.viewedAt = new Date();
-    operation.expiresAt = this.computeExpiresAt(
+    const viewedAt = new Date();
+    const expiresAt = this.computeExpiresAt(
       operation.state,
       operation.createdAt,
-      operation.viewedAt,
+      viewedAt,
       tenant.config,
     );
 
-    return this.operations.save(operation);
+    const stored = await this.operations.markFirstView(
+      operation.id,
+      viewedAt,
+      expiresAt,
+    );
+
+    // No row updated means a concurrent poll stamped it first. Its values are
+    // authoritative; re-read rather than returning the ones we did not write.
+    if (!stored) {
+      return (await this.operations.findById(operation.id)) ?? operation;
+    }
+
+    operation.viewedAt = stored.viewedAt;
+    operation.expiresAt = stored.expiresAt;
+
+    return operation;
   }
 
   public async transitionState(

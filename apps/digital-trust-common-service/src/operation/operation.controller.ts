@@ -7,9 +7,11 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import {
+  ApiBadRequestResponse,
   ApiForbiddenResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
+  ApiParam,
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
@@ -36,11 +38,19 @@ export class OperationController {
   public constructor(private readonly operations: OperationService) {}
 
   @Get(':operationId')
+  @ApiParam({ name: 'tenantId', format: 'uuid' })
+  @ApiParam({ name: 'operationId', format: 'uuid' })
   @ApiOkResponse({
     description: 'Operation status and result',
     type: OperationResponseDto,
   })
-  @ApiNotFoundResponse({ description: 'Operation not found' })
+  @ApiBadRequestResponse({
+    description: 'A path parameter is not a valid UUID',
+  })
+  @ApiNotFoundResponse({
+    description:
+      'Operation not found, or it belongs to another tenant — the two are not distinguished',
+  })
   public async findById(
     @Param('tenantId', ParseUUIDPipe) tenantId: string,
     @Param('operationId', ParseUUIDPipe) operationId: string,

@@ -90,6 +90,38 @@ describe('OperationRepository', () => {
     });
   });
 
+  describe('markFirstView', () => {
+    const viewedAt = new Date('2024-01-02T00:00:00.000Z');
+    const expiresAt = new Date('2024-01-02T01:00:00.000Z');
+
+    it('writes only while viewed_at is null and leaves updated_at alone', async () => {
+      mockManagerQuery.mockResolvedValue([
+        { viewed_at: viewedAt, expires_at: expiresAt },
+      ]);
+
+      await expect(
+        repository.markFirstView('op-1', viewedAt, expiresAt),
+      ).resolves.toEqual({ viewedAt, expiresAt });
+
+      const [sql, params] = mockManagerQuery.mock.calls[0] as [
+        string,
+        unknown[],
+      ];
+
+      expect(sql).toContain('viewed_at IS NULL');
+      expect(sql).not.toContain('updated_at');
+      expect(params).toEqual(['op-1', viewedAt, expiresAt]);
+    });
+
+    it('returns null when another caller already stamped the view', async () => {
+      mockManagerQuery.mockResolvedValue([]);
+
+      await expect(
+        repository.markFirstView('op-1', viewedAt, expiresAt),
+      ).resolves.toBeNull();
+    });
+  });
+
   it('findByExternalId queries by externalId', async () => {
     await repository.findByExternalId('ext-1');
     expect(mockRepo.findOne).toHaveBeenCalledWith({

@@ -54,6 +54,8 @@ export class OperationResponseDto {
   @ApiProperty({
     description:
       'State-dependent result. Null while pending or processing; type-specific data when completed; { code, message } when failed.',
+    type: 'object',
+    additionalProperties: true,
     example: null,
     nullable: true,
   })

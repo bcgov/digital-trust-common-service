@@ -113,6 +113,15 @@ export function resolveOperationTtlMs(
 }
 
 /**
+ * Terminal states are the ones whose TTL responds to being viewed. Kept next to
+ * the switch below so a new state is classified in one place rather than here and
+ * again at every call site that asks "is this operation still in flight?".
+ */
+export function isTerminalOperationState(state: OperationState): boolean {
+  return state === OperationState.COMPLETED || state === OperationState.FAILED;
+}
+
+/**
  * Compute the expiry timestamp for an operation based on its state and view status.
  * Shared by OperationService, seed scripts, and ME-02 (#91).
  */

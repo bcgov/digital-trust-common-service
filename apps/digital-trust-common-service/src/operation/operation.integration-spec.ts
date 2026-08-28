@@ -71,6 +71,16 @@ describe('operation tenant isolation integration', () => {
 
   afterAll(async () => {
     if (dataSource?.isInitialized) {
+      // Operation first: its tenant FK is onDelete RESTRICT, and the rows would
+      // otherwise accumulate in the shared test database on every run.
+      await dataSource.query(
+        `DELETE FROM operation WHERE tenant_id = ANY($1)`,
+        [[tenantAId, tenantBId]],
+      );
+      await dataSource.query(`DELETE FROM tenant WHERE id = ANY($1)`, [
+        [tenantAId, tenantBId],
+      ]);
+
       await dataSource.destroy();
     }
   });
