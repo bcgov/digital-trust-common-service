@@ -40,9 +40,10 @@ async function bootstrap(): Promise<TestingModule> {
 }
 
 /**
- * CA-02 exposes no HTTP route, so this is a service-level e2e in the same shape
- * as operation-lifecycle.e2e-spec.ts: the whole AppModule is booted so the real
- * DI graph, the real ConfigService, and real database rows are exercised.
+ * The registry exposes no HTTP route, so this is a service-level e2e in the
+ * same shape as operation-lifecycle.e2e-spec.ts: the whole AppModule is booted
+ * so the real DI graph, the real ConfigService, and real database rows are
+ * exercised.
  *
  * Scope is deliberately what the cheaper tiers cannot prove. The full
  * resolution matrix lives in adapter-registry.integration-spec.ts.
@@ -116,8 +117,8 @@ describe('AdapterRegistry (e2e)', () => {
       );
     });
 
-    it('should start with no adapters registered in MVP', () => {
-      // CT-01 will make this assertion change to expect ['traction'].
+    it('should start with no adapters registered', () => {
+      // Changes once a real adapter module self-registers at startup.
       expect(registry.list()).toEqual([]);
     });
 
@@ -137,7 +138,7 @@ describe('AdapterRegistry (e2e)', () => {
   describe('resolution over real rows', () => {
     it('should resolve a tenant default connector written through the encryption envelope', async () => {
       const adapter = tractionAdapter();
-      registry.register(PortConnectorType.Traction, adapter);
+      registry.register(adapter);
 
       const tenantId = await createTenant();
       const connector = await connectors.create({
@@ -164,7 +165,7 @@ describe('AdapterRegistry (e2e)', () => {
     });
 
     it('should never resolve another tenant connector', async () => {
-      registry.register(PortConnectorType.Traction, tractionAdapter());
+      registry.register(tractionAdapter());
 
       const tenantA = await createTenant();
       const tenantB = await createTenant();
@@ -186,7 +187,7 @@ describe('AdapterRegistry (e2e)', () => {
     it('should fail closed when the flag is unset', async () => {
       expect(process.env.ADAPTER_OVERRIDE_ENABLED).toBeUndefined();
 
-      registry.register(PortConnectorType.Traction, tractionAdapter());
+      registry.register(tractionAdapter());
       const tenantId = await createTenant();
 
       await expect(
@@ -225,7 +226,7 @@ describe('AdapterRegistry (e2e)', () => {
       it('should honour the override for a platform-admin caller', async () => {
         const adapter = tractionAdapter();
         enabledRegistry.reset();
-        enabledRegistry.register(PortConnectorType.Traction, adapter);
+        enabledRegistry.register(adapter);
 
         const rows = await enabledDataSource.query<Array<{ id: string }>>(
           `INSERT INTO tenant (name, slug, config)
@@ -259,7 +260,7 @@ describe('AdapterRegistry (e2e)', () => {
 
       it('should still reject the override for a non-platform-admin caller', async () => {
         enabledRegistry.reset();
-        enabledRegistry.register(PortConnectorType.Traction, tractionAdapter());
+        enabledRegistry.register(tractionAdapter());
 
         await expect(
           enabledRegistry.resolve(randomUUID(), undefined, {

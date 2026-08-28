@@ -67,7 +67,7 @@ describe('AdapterRegistry (integration)', () => {
       connectorType: PortConnectorType.Traction,
       supportedFormats: [CredentialFormat.AnonCreds],
     });
-    registry.register(PortConnectorType.Traction, adapter);
+    registry.register(adapter);
   });
 
   afterEach(async () => {

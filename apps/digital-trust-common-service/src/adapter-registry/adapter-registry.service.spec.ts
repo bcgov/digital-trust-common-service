@@ -5,7 +5,7 @@ import {
   MockAdapter,
   ConnectorType as PortConnectorType,
 } from '@app/credential-ports';
-import { ForbiddenException } from '@nestjs/common';
+import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Test, TestingModule } from '@nestjs/testing';
 
@@ -66,7 +66,7 @@ describe('AdapterRegistry', () => {
 
   describe('register', () => {
     it('should return a registered adapter by connector type', () => {
-      registry.register(PortConnectorType.Traction, adapter);
+      registry.register(adapter);
 
       expect(registry.getByConnectorType(PortConnectorType.Traction)).toBe(
         adapter,
@@ -74,11 +74,9 @@ describe('AdapterRegistry', () => {
     });
 
     it('should throw when the same connector type is registered twice', () => {
-      registry.register(PortConnectorType.Traction, adapter);
+      registry.register(adapter);
 
-      expect(() =>
-        registry.register(PortConnectorType.Traction, adapter),
-      ).toThrow(/already registered/i);
+      expect(() => registry.register(adapter)).toThrow(/already registered/i);
     });
 
     it('should throw ConnectorUnavailableError for an unregistered connector type', () => {
@@ -88,15 +86,46 @@ describe('AdapterRegistry', () => {
     });
 
     it('should list registered connector types', () => {
-      registry.register(PortConnectorType.Traction, adapter);
+      registry.register(adapter);
 
       expect(registry.list()).toEqual([PortConnectorType.Traction]);
+    });
+
+    it('should key the map on the adapter own connector type', () => {
+      const credo = new MockAdapter({
+        connectorType: PortConnectorType.Credo,
+        supportedFormats: [CredentialFormat.SdJwtVc],
+      });
+
+      registry.register(credo);
+
+      // The key cannot disagree with the adapter, because there is no second
+      // argument to disagree with.
+      expect(registry.getByConnectorType(PortConnectorType.Credo)).toBe(credo);
+      expect(() =>
+        registry.getByConnectorType(PortConnectorType.Traction),
+      ).toThrow(ConnectorUnavailableError);
+    });
+
+    it('should reject an adapter declaring no supported formats', () => {
+      // Only reachable from untyped callers; the tuple type blocks it at
+      // compile time. Rejecting at startup beats an undefined primary format
+      // surfacing on the first request.
+      const formatless = {
+        connectorType: PortConnectorType.Credo,
+        supportedFormats: [],
+      } as unknown as MockAdapter;
+
+      expect(() => registry.register(formatless)).toThrow(
+        /no supported formats/i,
+      );
+      expect(registry.list()).toEqual([]);
     });
   });
 
   describe('format resolution', () => {
     beforeEach(() => {
-      registry.register(PortConnectorType.Traction, adapter);
+      registry.register(adapter);
       tenantService.findById.mockResolvedValue(
         buildTenant({ default_connector: CONNECTOR_A }),
       );
@@ -135,7 +164,7 @@ describe('AdapterRegistry', () => {
 
   describe('tenant connector resolution', () => {
     beforeEach(() => {
-      registry.register(PortConnectorType.Traction, adapter);
+      registry.register(adapter);
     });
 
     it('should resolve via tenant.config.default_connector', async () => {
@@ -182,11 +211,25 @@ describe('AdapterRegistry', () => {
       tenantService.findById.mockResolvedValue(
         buildTenant({ default_connector: CONNECTOR_A }),
       );
-      connectorService.findById.mockRejectedValue(new Error('not found'));
+      connectorService.findById.mockRejectedValue(
+        new NotFoundException('Connector credential was not found.'),
+      );
 
       await expect(registry.resolve(TENANT_A)).rejects.toBeInstanceOf(
         ConnectorUnavailableError,
       );
+    });
+
+    it('should propagate an infrastructure failure instead of reporting it as unavailable', async () => {
+      tenantService.findById.mockResolvedValue(
+        buildTenant({ default_connector: CONNECTOR_A }),
+      );
+      const outage = new Error('read ECONNRESET');
+      connectorService.findById.mockRejectedValue(outage);
+
+      // Reporting a database outage as "connector not found" sends whoever is
+      // on call after a config problem that does not exist.
+      await expect(registry.resolve(TENANT_A)).rejects.toBe(outage);
     });
 
     it('should fall back to the single active connector when no default is set', async () => {
@@ -220,6 +263,9 @@ describe('AdapterRegistry', () => {
 
       await expect(registry.resolve(TENANT_A)).rejects.toBeInstanceOf(
         ConnectorUnavailableError,
+      );
+      await expect(registry.resolve(TENANT_A)).rejects.toThrow(
+        /no default_connector configured/,
       );
     });
 
@@ -273,8 +319,8 @@ describe('AdapterRegistry', () => {
         connectorType: PortConnectorType.Credo,
         supportedFormats: [CredentialFormat.SdJwtVc],
       });
-      registry.register(PortConnectorType.Traction, adapter);
-      registry.register(PortConnectorType.Credo, credoAdapter);
+      registry.register(adapter);
+      registry.register(credoAdapter);
       tenantService.findById.mockResolvedValue(
         buildTenant({ default_connector: CONNECTOR_A }),
       );
@@ -296,6 +342,21 @@ describe('AdapterRegistry', () => {
       expect(resolved.adapter).toBe(credoAdapter);
       expect(resolved.connector).toBe(credoConnector);
       expect(resolved.format).toBe(CredentialFormat.SdJwtVc);
+    });
+
+    it('should blame the connector type, not tenant config, when the override is ambiguous', async () => {
+      configService.get.mockReturnValue(true);
+      connectorService.findByTenant.mockResolvedValue([
+        buildConnector({ id: 'credo-1', connectorType: ConnectorType.CREDO }),
+        buildConnector({ id: 'credo-2', connectorType: ConnectorType.CREDO }),
+      ]);
+
+      await expect(
+        registry.resolve(TENANT_A, undefined, {
+          adapterOverride: PortConnectorType.Credo,
+          isPlatformAdmin: true,
+        }),
+      ).rejects.toThrow(/2 active connectors of type 'credo'/);
     });
 
     it('should reject the override when the feature flag is off', async () => {
@@ -323,7 +384,7 @@ describe('AdapterRegistry', () => {
     it('should throw ConnectorUnavailableError when the override names an unregistered connector', async () => {
       configService.get.mockReturnValue(true);
       registry.reset();
-      registry.register(PortConnectorType.Traction, adapter);
+      registry.register(adapter);
 
       await expect(
         registry.resolve(TENANT_A, undefined, {

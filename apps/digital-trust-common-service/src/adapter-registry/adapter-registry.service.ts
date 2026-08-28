@@ -5,7 +5,12 @@ import {
   FormatNotSupportedError,
   ConnectorType as PortConnectorType,
 } from '@app/credential-ports';
-import { ForbiddenException, Injectable, Logger } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
 import { ConnectorType } from '../connection/connection.entity';
@@ -17,8 +22,8 @@ import { ResolveOptions, ResolvedAdapter } from './adapter-registry.types';
 
 /**
  * Maps the `connector_type` stored on entities onto the port-layer enum. The
- * two enums carry identical string values but are distinct TypeScript types;
- * consolidating them is tracked as a follow-up.
+ * two enums carry identical string values but are distinct TypeScript types.
+ * Returns undefined for a value the port layer does not know.
  */
 export function toPortConnectorType(
   connectorType: ConnectorType,
@@ -53,16 +58,27 @@ export class AdapterRegistry {
   ) {}
 
   /**
-   * Called by adapter modules at startup. Duplicate registration is a startup
-   * misconfiguration and throws rather than silently replacing the adapter.
+   * Called by adapter modules at startup. The key comes from the adapter's own
+   * `connectorType` rather than a separate argument, so an adapter cannot be
+   * filed under a type it does not implement.
+   *
+   * Both failures here are startup misconfiguration and throw rather than
+   * degrade: a duplicate would silently replace a working adapter, and an
+   * adapter with no formats would resolve to an undefined primary format on
+   * the first request instead of at boot.
    */
-  public register(
-    connectorType: PortConnectorType,
-    adapter: AgentAdapter,
-  ): void {
+  public register(adapter: AgentAdapter): void {
+    const connectorType = adapter.connectorType;
+
     if (this.adapters.has(connectorType)) {
       throw new Error(
         `An adapter is already registered for connector type '${connectorType}'`,
+      );
+    }
+
+    if (adapter.supportedFormats.length === 0) {
+      throw new Error(
+        `Adapter for connector type '${connectorType}' declares no supported formats`,
       );
     }
 
@@ -142,13 +158,7 @@ export class AdapterRegistry {
       return undefined;
     }
 
-    const enabled =
-      this.configService.get<boolean | string>('ADAPTER_OVERRIDE_ENABLED') ===
-        true ||
-      this.configService.get<boolean | string>('ADAPTER_OVERRIDE_ENABLED') ===
-        'true';
-
-    if (!enabled) {
+    if (!this.overrideEnabled()) {
       throw new ForbiddenException('Adapter override is disabled');
     }
 
@@ -159,6 +169,19 @@ export class AdapterRegistry {
     }
 
     return options.adapterOverride;
+  }
+
+  /**
+   * Read and coerce the gate once. ConfigService yields the raw string from the
+   * environment but a boolean when set programmatically, so both are accepted;
+   * anything else is off.
+   */
+  private overrideEnabled(): boolean {
+    const configured = this.configService.get<boolean | string>(
+      'ADAPTER_OVERRIDE_ENABLED',
+    );
+
+    return configured === true || configured === 'true';
   }
 
   private async findConnector(
@@ -176,7 +199,14 @@ export class AdapterRegistry {
 
     try {
       connector = await this.connectorCredentialService.findById(explicitId);
-    } catch {
+    } catch (error) {
+      // Only a genuine miss becomes ConnectorUnavailableError. Swallowing
+      // everything here would report a database outage as a missing connector
+      // and hide the failure from whoever is on call.
+      if (!(error instanceof NotFoundException)) {
+        throw error;
+      }
+
       throw new ConnectorUnavailableError(
         `Connector '${explicitId}' was not found`,
         { tenantId, connectorId: explicitId },
@@ -214,9 +244,10 @@ export class AdapterRegistry {
   }
 
   /**
-   * Fallback for tenants with no `default_connector` (TM-04 has not shipped, so
-   * nothing populates it yet). Ambiguity is an error: guessing which connector
-   * a tenant meant could issue a credential from the wrong agent.
+   * Picks the tenant's only active connector, optionally narrowed to one
+   * connector type. Ambiguity is an error rather than a pick: guessing which
+   * connector a tenant meant could issue a credential from the wrong agent,
+   * and nothing about that failure is visible afterwards.
    */
   private async findSoleActiveConnector(
     tenantId: string,
@@ -241,8 +272,12 @@ export class AdapterRegistry {
     }
 
     if (connectors.length > 1) {
+      // The cause differs by path: filtered means several connectors share the
+      // requested type, unfiltered means the tenant has no default configured.
       throw new ConnectorUnavailableError(
-        `Tenant '${tenantId}' has ${connectors.length} active connectors and no default_connector configured`,
+        connectorType
+          ? `Tenant '${tenantId}' has ${connectors.length} active connectors of type '${connectorType}'`
+          : `Tenant '${tenantId}' has ${connectors.length} active connectors and no default_connector configured`,
         { tenantId, connectorType },
       );
     }

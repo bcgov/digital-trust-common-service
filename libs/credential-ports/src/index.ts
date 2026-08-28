@@ -49,7 +49,11 @@ export { HolderPort } from './ports/holder.port';
 export { IssuerPort } from './ports/issuer.port';
 export { RevocationPort } from './ports/revocation.port';
 export { VerifierPort } from './ports/verifier.port';
-export type { AdapterCapabilities, AgentAdapter } from './ports/agent-adapter';
+export type {
+  AdapterCapabilities,
+  AgentAdapter,
+  SupportedFormats,
+} from './ports/agent-adapter';
 
 // Testing helpers
 export {

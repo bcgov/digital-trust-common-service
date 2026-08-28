@@ -234,8 +234,9 @@ Adapters advertise their own capabilities (`connectorType`, `supportedFormats`) 
 export class AdapterRegistry {
   private adapters = new Map<ConnectorType, AgentAdapter>();
 
-  // Duplicate registration throws — a startup misconfiguration must be loud.
-  register(type: ConnectorType, adapter: AgentAdapter): void;
+  // Keyed on adapter.connectorType. A duplicate, or an adapter declaring no
+  // formats, throws — a startup misconfiguration must be loud.
+  register(adapter: AgentAdapter): void;
 
   resolve(
     tenantId: string,

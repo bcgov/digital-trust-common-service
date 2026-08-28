@@ -641,13 +641,16 @@ Adapters register themselves at startup and advertise their own capabilities —
 per-connector knowledge:
 
 ```ts
-// In an adapter module's onModuleInit (CT-01 onwards)
-this.registry.register(ConnectorType.Traction, this.tractionAdapter);
+// In an adapter module's onModuleInit
+this.registry.register(this.tractionAdapter);
 ```
 
 `AgentAdapter` therefore carries `connectorType` and `supportedFormats` (`AdapterCapabilities` in
-`@app/credential-ports`). The first entry of `supportedFormats` is the connector's **primary**
-format, used when a caller omits one.
+`@app/credential-ports`). The registry keys its map on the adapter's own `connectorType`, so an
+adapter cannot be filed under a type it does not implement. The first entry of `supportedFormats` is
+the connector's **primary** format, used when a caller omits one; the type is a non-empty tuple
+(`SupportedFormats`), so an adapter with no formats is a compile error, and `register()` rejects one
+at startup for callers that reach it untyped.
 
 ### Resolution order
 

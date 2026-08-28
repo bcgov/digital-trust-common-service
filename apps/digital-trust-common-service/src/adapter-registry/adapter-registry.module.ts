@@ -7,9 +7,9 @@ import { TenantModule } from '../tenant/tenant.module';
 import { AdapterRegistry } from './adapter-registry.service';
 
 /**
- * Hosts the AdapterRegistry. Adapter modules (CT-01 onwards) import this module
- * and call `register()` at startup; consumers inject `AdapterRegistry` to
- * resolve the adapter for a tenant.
+ * Hosts the AdapterRegistry. Adapter modules import this module and call
+ * `register()` at startup; consumers inject `AdapterRegistry` to resolve the
+ * adapter for a tenant.
  */
 @Module({
   imports: [CredentialPortsModule, TenantModule, ConnectorCredentialModule],

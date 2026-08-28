@@ -29,6 +29,15 @@ describe('MockAdapter', () => {
     expect(adapter.supportedFormats).toEqual([CredentialFormat.AnonCreds]);
   });
 
+  it('should keep capabilities fixed after construction', () => {
+    // configure() takes MockAdapterBehaviour, so passing a capability key is a
+    // compile error rather than a silently ignored no-op.
+    adapter.configure({ mode: 'failure' });
+
+    expect(adapter.connectorType).toBe(ConnectorType.Traction);
+    expect(adapter.supportedFormats).toEqual([CredentialFormat.AnonCreds]);
+  });
+
   it('should take capability metadata from config so tests can register distinct adapters', () => {
     const credo = new MockAdapter({
       connectorType: ConnectorType.Credo,

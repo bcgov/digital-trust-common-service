@@ -13,7 +13,7 @@ import { PresentationRequest } from '../dto/presentation-request.dto';
 import { RevocationResult } from '../dto/revocation-result.dto';
 import { ConnectorType } from '../enums/connector-type.enum';
 import { CredentialFormat } from '../enums/credential-format.enum';
-import { AgentAdapter } from '../ports/agent-adapter';
+import { AgentAdapter, SupportedFormats } from '../ports/agent-adapter';
 
 /**
  * Reference AgentAdapter for tests and default wiring; every method rejects with
@@ -25,7 +25,7 @@ export class StubAdapter implements AgentAdapter {
   // the AgentAdapter contract so it stays usable as a fail-closed default.
   public readonly connectorType: ConnectorType = ConnectorType.Traction;
 
-  public readonly supportedFormats: readonly CredentialFormat[] = [
+  public readonly supportedFormats: SupportedFormats = [
     CredentialFormat.AnonCreds,
   ];
 
