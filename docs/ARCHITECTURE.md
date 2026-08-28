@@ -258,24 +258,50 @@ classDiagram
 
 At startup, adapters register themselves in an `AdapterRegistry`. The registry resolves which adapter to use based on the tenant's configured connector and the requested credential format.
 
+Adapters advertise their own capabilities (`connectorType`, `supportedFormats`) via the
+`AdapterCapabilities` half of `AgentAdapter`, so the registry holds no per-connector knowledge.
+
 ```typescript
-// Pseudocode — NestJS provider
+// apps/digital-trust-common-service/src/adapter-registry/ (CA-02)
 @Injectable()
 export class AdapterRegistry {
   private adapters = new Map<ConnectorType, AgentAdapter>();
 
-  register(type: ConnectorType, adapter: AgentAdapter): void;
+  // Keyed on adapter.connectorType. A duplicate, or an adapter declaring no
+  // formats, throws — a startup misconfiguration must be loud.
+  register(adapter: AgentAdapter): void;
 
-  resolve(tenant: Tenant, format?: CredentialFormat): AgentAdapter {
-    // 1. Look up tenant.config.default_connector (UUID)
-    // 2. Load ConnectorCredential by UUID → get connector_type
-    // 3. Resolve adapter by connector_type from registry
-    // 4. If format omitted, derive from connector's primary supported format
-    // 5. Validate format is supported by that adapter
-    // 6. Return adapter instance (or throw UnsupportedFormatError)
-  }
+  resolve(
+    tenantId: string,
+    format?: CredentialFormat,
+    options?: ResolveOptions,
+  ): Promise<ResolvedAdapter>; // { adapter, connector, format }
 }
 ```
+
+Resolution picks the connector in this order, then resolves the adapter from its type:
+
+1. `options.adapterOverride` — platform-admin escape hatch, gated by `ADAPTER_OVERRIDE_ENABLED`
+2. `options.connectorId` — explicit connector (an issuance profile's `connector_id`)
+3. `tenant.config.default_connector` — the tenant default, set via the tenant config endpoint
+4. Fallback — the tenant's single active `ConnectorCredential`
+
+The result carries the `ConnectorCredential` alongside the adapter, because callers need the
+connector's endpoint and credentials to perform the operation.
+
+Invariants:
+
+- A connector reached by id is selected from the tenant's own connectors and must be `active`, so a
+  `default_connector` pointing at another tenant's row is simply not a candidate. The tenant config
+  endpoint validates the same things on write, but `config` is JSONB with no foreign key and a
+  connector can be deactivated afterwards, so resolution re-checks rather than trusting it.
+- The step-4 fallback is strict — zero active connectors **and** more than one are both
+  `ConnectorUnavailableError`. Guessing risks issuing from the wrong agent. It serves tenants that
+  have never set a default, which is optional.
+- Format omitted → the adapter's primary format (`supportedFormats[0]`); an unsupported format →
+  `FormatNotSupportedError`.
+- A disallowed override raises `ForbiddenException` rather than being ignored, so a privilege
+  failure is never hidden from the caller.
 
 ### API Routing Strategy (Recommendation: Hybrid)
 
