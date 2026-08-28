@@ -1,3 +1,5 @@
+// eslint-disable-next-line import/order -- must patch dependencies before Nest loads.
+import '@app/common/telemetry/tracing';
 import { OidcMountService } from '@app/oidc';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
