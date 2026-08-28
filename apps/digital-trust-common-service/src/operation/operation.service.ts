@@ -11,6 +11,11 @@ import {
 } from './operation.entity';
 import { OperationRepository } from './operation.repository';
 
+const TERMINAL_STATES = new Set<OperationState>([
+  OperationState.COMPLETED,
+  OperationState.FAILED,
+]);
+
 export interface CreateOperationInput {
   tenantId: string;
   type: string;
@@ -79,6 +84,27 @@ export class OperationService {
     return this.operations.save(operation);
   }
 
+  /**
+   * Tenant-scoped read backing GET /tenants/:tenantId/operations/:operationId (AG-02).
+   *
+   * Only terminal states (completed/failed) are marked viewed: the TTL rules ignore
+   * viewedAt for pending/processing, so stamping it on every poll of an in-flight
+   * operation would be a write with no effect on expiry.
+   */
+  public async getForTenant(tenantId: string, id: string): Promise<Operation> {
+    const operation = await this.operations.findByIdForTenant(id, tenantId);
+
+    if (!operation) {
+      throw new NotFoundException('Operation not found');
+    }
+
+    if (!TERMINAL_STATES.has(operation.state) || operation.viewedAt) {
+      return operation;
+    }
+
+    return this.applyViewed(operation);
+  }
+
   public async markViewed(id: string): Promise<Operation> {
     const operation = await this.operations.findById(id);
 
@@ -90,6 +116,10 @@ export class OperationService {
       return operation;
     }
 
+    return this.applyViewed(operation);
+  }
+
+  private async applyViewed(operation: Operation): Promise<Operation> {
     const tenant = await this.tenants.findById(operation.tenantId);
 
     operation.viewedAt = new Date();

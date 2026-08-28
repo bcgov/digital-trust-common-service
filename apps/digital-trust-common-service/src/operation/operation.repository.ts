@@ -47,6 +47,19 @@ export class OperationRepository {
     return this.repo.findOne({ where: { id } });
   }
 
+  /**
+   * Tenant-scoped lookup backing the polling endpoint (AG-02). The tenant filter
+   * lives in the WHERE clause rather than a post-load comparison so that another
+   * tenant's operation id is indistinguishable from a missing row — callers get a
+   * 404 either way and cannot probe for ids they do not own.
+   */
+  public findByIdForTenant(
+    id: string,
+    tenantId: string,
+  ): Promise<Operation | null> {
+    return this.repo.findOne({ where: { id, tenantId } });
+  }
+
   public async updateState(
     id: string,
     state: OperationState,

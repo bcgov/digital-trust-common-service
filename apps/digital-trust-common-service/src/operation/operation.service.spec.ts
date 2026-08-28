@@ -19,6 +19,7 @@ describe('OperationService', () => {
   let mockCreate: jest.Mock;
   let mockSave: jest.Mock;
   let mockFindById: jest.Mock;
+  let mockFindByIdForTenant: jest.Mock;
   let mockTenantFindById: jest.Mock;
 
   const createdAt = new Date('2024-01-01T00:00:00.000Z');
@@ -51,6 +52,7 @@ describe('OperationService', () => {
     mockCreate = jest.fn();
     mockSave = jest.fn();
     mockFindById = jest.fn();
+    mockFindByIdForTenant = jest.fn();
     mockTenantFindById = jest.fn();
     mockTenantFindById.mockResolvedValue({ id: 't1', config: {} });
 
@@ -58,6 +60,7 @@ describe('OperationService', () => {
       create: mockCreate,
       save: mockSave,
       findById: mockFindById,
+      findByIdForTenant: mockFindByIdForTenant,
     };
 
     const mockTenantService = {
@@ -308,6 +311,80 @@ describe('OperationService', () => {
         }),
       );
     });
+  });
+
+  describe('getForTenant', () => {
+    it('scopes the lookup to the tenant', async () => {
+      const operation = buildOperation();
+      mockFindByIdForTenant.mockResolvedValue(operation);
+
+      await expect(service.getForTenant('t1', 'op-1')).resolves.toBe(operation);
+      expect(mockFindByIdForTenant).toHaveBeenCalledWith('op-1', 't1');
+      expect(mockFindById).not.toHaveBeenCalled();
+    });
+
+    it('throws NotFoundException for an operation owned by another tenant', async () => {
+      // The repository filters on tenant_id, so a foreign id looks identical to a
+      // missing row — 404, never 403, so ids cannot be probed across tenants.
+      mockFindByIdForTenant.mockResolvedValue(null);
+
+      await expect(service.getForTenant('t2', 'op-1')).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+    });
+
+    it('marks a completed operation viewed and shortens expiry on first read', async () => {
+      jest.useFakeTimers().setSystemTime(viewedAt);
+      const operation = buildOperation({ state: OperationState.COMPLETED });
+      mockFindByIdForTenant.mockResolvedValue(operation);
+      mockSave.mockImplementation((op: Operation) => Promise.resolve(op));
+
+      const result = await service.getForTenant('t1', 'op-1');
+
+      expect(result.viewedAt).toEqual(viewedAt);
+      expect(result.expiresAt.getTime()).toBe(viewedAt.getTime() + 1 * HOUR_MS);
+      expect(mockSave).toHaveBeenCalledTimes(1);
+    });
+
+    it('marks a failed operation viewed on first read', async () => {
+      jest.useFakeTimers().setSystemTime(viewedAt);
+      const operation = buildOperation({ state: OperationState.FAILED });
+      mockFindByIdForTenant.mockResolvedValue(operation);
+      mockSave.mockImplementation((op: Operation) => Promise.resolve(op));
+
+      const result = await service.getForTenant('t1', 'op-1');
+
+      expect(result.viewedAt).toEqual(viewedAt);
+      expect(result.expiresAt.getTime()).toBe(
+        viewedAt.getTime() + 24 * HOUR_MS,
+      );
+    });
+
+    it('does not re-stamp viewedAt on a subsequent read', async () => {
+      const operation = buildOperation({
+        state: OperationState.COMPLETED,
+        viewedAt,
+      });
+      mockFindByIdForTenant.mockResolvedValue(operation);
+
+      const result = await service.getForTenant('t1', 'op-1');
+
+      expect(result.viewedAt).toBe(viewedAt);
+      expect(mockSave).not.toHaveBeenCalled();
+    });
+
+    it.each([OperationState.PENDING, OperationState.PROCESSING])(
+      'leaves %s operations unviewed (TTL ignores viewedAt for in-flight states)',
+      async (state) => {
+        const operation = buildOperation({ state });
+        mockFindByIdForTenant.mockResolvedValue(operation);
+
+        const result = await service.getForTenant('t1', 'op-1');
+
+        expect(result.viewedAt).toBeNull();
+        expect(mockSave).not.toHaveBeenCalled();
+      },
+    );
   });
 
   describe('markViewed', () => {

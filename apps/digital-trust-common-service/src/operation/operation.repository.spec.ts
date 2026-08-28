@@ -83,6 +83,13 @@ describe('OperationRepository', () => {
     expect(mockRepo.findOne).toHaveBeenCalledWith({ where: { id: 'op-1' } });
   });
 
+  it('findByIdForTenant queries by id and tenantId together', async () => {
+    await repository.findByIdForTenant('op-1', 't1');
+    expect(mockRepo.findOne).toHaveBeenCalledWith({
+      where: { id: 'op-1', tenantId: 't1' },
+    });
+  });
+
   it('findByExternalId queries by externalId', async () => {
     await repository.findByExternalId('ext-1');
     expect(mockRepo.findOne).toHaveBeenCalledWith({
