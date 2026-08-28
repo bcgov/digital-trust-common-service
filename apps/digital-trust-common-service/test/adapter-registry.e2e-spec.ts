@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto';
 
+import { AuthContext } from '@app/auth';
 import {
   ConnectorUnavailableError,
   CredentialFormat,
@@ -110,6 +111,26 @@ describe('AdapterRegistry (e2e)', () => {
     });
   }
 
+  /**
+   * Scoped to the tenant being written rather than platform-admin, so these
+   * writes go through the same tenant check a real caller would.
+   */
+  function authFor(tenantId: string): AuthContext {
+    return {
+      sub: 'adapter-registry-e2e',
+      tokenType: 'user',
+      clientId: 'spa',
+      tenantId,
+      roles: [],
+      scope: 'tenants:admin',
+      scopes: ['tenants:admin'],
+      iss: 'http://localhost/oidc',
+      aud: 'http://localhost/oidc',
+      exp: 9_999_999_999,
+      iat: 1,
+    };
+  }
+
   describe('dependency injection', () => {
     it('should resolve AdapterRegistry from the full application graph', () => {
       expect(moduleFixture.get(AdapterRegistry)).toBeInstanceOf(
@@ -141,13 +162,16 @@ describe('AdapterRegistry (e2e)', () => {
       registry.register(adapter);
 
       const tenantId = await createTenant();
-      const connector = await connectors.create({
-        tenantId,
-        connectorType: ConnectorType.TRACTION,
-        credentialsPlainText: JSON.stringify({ apiKey: 'e2e-secret' }),
-        endpointUrl: 'https://traction-e2e.example.com',
-        active: true,
-      });
+      const connector = await connectors.create(
+        {
+          tenantId,
+          connectorType: ConnectorType.TRACTION,
+          credentialsPlainText: JSON.stringify({ apiKey: 'e2e-secret' }),
+          endpointUrl: 'https://traction-e2e.example.com',
+          active: true,
+        },
+        authFor(tenantId),
+      );
       await dataSource.query(
         `UPDATE tenant SET config = jsonb_set(config, '{default_connector}', to_jsonb($2::text)) WHERE id = $1`,
         [tenantId, connector.id],
@@ -169,13 +193,16 @@ describe('AdapterRegistry (e2e)', () => {
 
       const tenantA = await createTenant();
       const tenantB = await createTenant();
-      const connectorA = await connectors.create({
-        tenantId: tenantA,
-        connectorType: ConnectorType.TRACTION,
-        credentialsPlainText: JSON.stringify({ apiKey: 'tenant-a' }),
-        endpointUrl: 'https://tenant-a.example.com',
-        active: true,
-      });
+      const connectorA = await connectors.create(
+        {
+          tenantId: tenantA,
+          connectorType: ConnectorType.TRACTION,
+          credentialsPlainText: JSON.stringify({ apiKey: 'tenant-a' }),
+          endpointUrl: 'https://tenant-a.example.com',
+          active: true,
+        },
+        authFor(tenantA),
+      );
 
       await expect(
         registry.resolve(tenantB, undefined, { connectorId: connectorA.id }),
@@ -239,13 +266,16 @@ describe('AdapterRegistry (e2e)', () => {
         const tenantId = rows[0].id;
         createdTenantIds.push(tenantId);
 
-        await enabledConnectors.create({
-          tenantId,
-          connectorType: ConnectorType.TRACTION,
-          credentialsPlainText: JSON.stringify({ apiKey: 'override' }),
-          endpointUrl: 'https://override.example.com',
-          active: true,
-        });
+        await enabledConnectors.create(
+          {
+            tenantId,
+            connectorType: ConnectorType.TRACTION,
+            credentialsPlainText: JSON.stringify({ apiKey: 'override' }),
+            endpointUrl: 'https://override.example.com',
+            active: true,
+          },
+          authFor(tenantId),
+        );
 
         const resolved = await enabledRegistry.resolve(tenantId, undefined, {
           adapterOverride: PortConnectorType.Traction,

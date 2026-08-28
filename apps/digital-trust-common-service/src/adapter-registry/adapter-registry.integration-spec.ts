@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto';
 
+import { AuthContext } from '@app/auth';
 import {
   ConnectorUnavailableError,
   CredentialFormat,
@@ -97,6 +98,26 @@ describe('AdapterRegistry (integration)', () => {
     return rows[0].id;
   }
 
+  /**
+   * Scoped to the tenant being written rather than platform-admin, so these
+   * writes go through the same tenant check a real caller would.
+   */
+  function authFor(tenantId: string): AuthContext {
+    return {
+      sub: 'adapter-registry-integration',
+      tokenType: 'user',
+      clientId: 'spa',
+      tenantId,
+      roles: [],
+      scope: 'tenants:admin',
+      scopes: ['tenants:admin'],
+      iss: 'http://localhost/oidc',
+      aud: 'http://localhost/oidc',
+      exp: 9_999_999_999,
+      iat: 1,
+    };
+  }
+
   async function createConnector(
     tenantId: string,
     overrides: {
@@ -105,13 +126,16 @@ describe('AdapterRegistry (integration)', () => {
       endpointUrl?: string;
     } = {},
   ): Promise<ConnectorCredential> {
-    return await connectors.create({
-      tenantId,
-      connectorType: overrides.connectorType ?? ConnectorType.TRACTION,
-      credentialsPlainText: JSON.stringify({ apiKey: 'integration-secret' }),
-      endpointUrl: overrides.endpointUrl ?? 'https://traction.example.com',
-      active: overrides.active ?? true,
-    });
+    return await connectors.create(
+      {
+        tenantId,
+        connectorType: overrides.connectorType ?? ConnectorType.TRACTION,
+        credentialsPlainText: JSON.stringify({ apiKey: 'integration-secret' }),
+        endpointUrl: overrides.endpointUrl ?? 'https://traction.example.com',
+        active: overrides.active ?? true,
+      },
+      authFor(tenantId),
+    );
   }
 
   async function setDefaultConnector(
