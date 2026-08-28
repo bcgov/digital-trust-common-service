@@ -70,6 +70,11 @@ export class OperationRepository {
    *   pollers diffing that field see a state change that never happened.
    *
    * Returns the stored row on success, or null when another caller won the race.
+   *
+   * The UPDATE is wrapped in a CTE and selected from, like purgeExpiredBatch
+   * above: query() returns `[rows, rowCount]` for an UPDATE command and the bare
+   * row array only for a SELECT, so an unwrapped `UPDATE ... RETURNING` reads
+   * back as a two-element array whose first entry is the rows.
    */
   public async markFirstView(
     id: string,
@@ -79,10 +84,13 @@ export class OperationRepository {
     const rows = await this.repo.manager.query<
       { viewed_at: Date; expires_at: Date }[]
     >(
-      `UPDATE operation
-       SET viewed_at = $2, expires_at = $3
-       WHERE id = $1 AND viewed_at IS NULL
-       RETURNING viewed_at, expires_at`,
+      `WITH updated AS (
+        UPDATE operation
+        SET viewed_at = $2, expires_at = $3
+        WHERE id = $1 AND viewed_at IS NULL
+        RETURNING viewed_at, expires_at
+      )
+      SELECT viewed_at, expires_at FROM updated`,
       [id, viewedAt, expiresAt],
     );
 

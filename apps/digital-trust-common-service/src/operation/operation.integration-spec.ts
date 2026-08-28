@@ -95,6 +95,41 @@ describe('operation tenant isolation integration', () => {
     expect(operation?.state).toBe(OperationState.COMPLETED);
   });
 
+  it('stamps the first view once, without moving updated_at', async () => {
+    // Against the real driver: query() returns [rows, rowCount] for a bare
+    // UPDATE, so the CTE shape is load-bearing and a mocked row array cannot
+    // prove it. Also pins the single-shot guard and the untouched updated_at.
+    const [before] = await dataSource.query<Array<{ updated_at: Date }>>(
+      `SELECT updated_at FROM operation WHERE id = $1`,
+      [tenantAOperationId],
+    );
+
+    const viewedAt = new Date();
+    const expiresAt = new Date(viewedAt.getTime() + 60 * 60 * 1000);
+
+    const first = await repository.markFirstView(
+      tenantAOperationId,
+      viewedAt,
+      expiresAt,
+    );
+    const second = await repository.markFirstView(
+      tenantAOperationId,
+      new Date(viewedAt.getTime() + 60_000),
+      new Date(expiresAt.getTime() + 60_000),
+    );
+
+    expect(first?.viewedAt).toBeInstanceOf(Date);
+    expect(first?.expiresAt.getTime()).toBe(expiresAt.getTime());
+    expect(second).toBeNull();
+
+    const [after] = await dataSource.query<Array<{ updated_at: Date }>>(
+      `SELECT updated_at FROM operation WHERE id = $1`,
+      [tenantAOperationId],
+    );
+
+    expect(after.updated_at.getTime()).toBe(before.updated_at.getTime());
+  });
+
   it('returns null for another tenant, indistinguishable from a missing row', async () => {
     const foreign = await repository.findByIdForTenant(
       tenantAOperationId,
