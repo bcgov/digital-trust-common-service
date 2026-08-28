@@ -152,12 +152,13 @@ export class SwaggerService {
    * Setup the full API documentation
    */
   private static setupFullDocumentation(app: INestApplication): void {
-    const config = new DocumentBuilder()
-      .setTitle(FULL_DOC_TITLE)
-      .setDescription(FULL_DOC_DESCRIPTION)
-      .setVersion(FULL_DOC_VERSION)
-      .addTag('digital-trust-common-service')
-      .build();
+    const config = addAppJwtBearerAuth(
+      new DocumentBuilder()
+        .setTitle(FULL_DOC_TITLE)
+        .setDescription(FULL_DOC_DESCRIPTION)
+        .setVersion(FULL_DOC_VERSION)
+        .addTag('digital-trust-common-service'),
+    ).build();
 
     const document = SwaggerModule.createDocument(app, config);
     SwaggerModule.setup('api/docs', app, document);
@@ -172,12 +173,13 @@ export class SwaggerService {
     app: INestApplication,
     document?: ReturnType<typeof SwaggerModule.createDocument>,
   ): void {
-    const config = new DocumentBuilder()
-      .setTitle(FULL_DOC_TITLE)
-      .setDescription(FULL_DOC_DESCRIPTION)
-      .setVersion(FULL_DOC_VERSION)
-      .addTag('digital-trust-common-service')
-      .build();
+    const config = addAppJwtBearerAuth(
+      new DocumentBuilder()
+        .setTitle(FULL_DOC_TITLE)
+        .setDescription(FULL_DOC_DESCRIPTION)
+        .setVersion(FULL_DOC_VERSION)
+        .addTag('digital-trust-common-service'),
+    ).build();
 
     const docToUse = document || SwaggerModule.createDocument(app, config);
 
@@ -201,7 +203,8 @@ export class SwaggerService {
     modules: Array<Type<unknown>> = [TenantModule, TenantUserModule],
   ): void {
     const config = buildDocumentConfig(title, description, version, {
-      includeAppJwtBearerAuth: name === 'admin' || name === 'tenant',
+      includeAppJwtBearerAuth:
+        name === 'admin' || name === 'tenant' || name === 'dc',
     });
 
     const document = SwaggerModule.createDocument(app, config, {
@@ -234,7 +237,8 @@ export class SwaggerService {
     document?: ReturnType<typeof SwaggerModule.createDocument>,
   ): void {
     const config = buildDocumentConfig(title, description, version, {
-      includeAppJwtBearerAuth: name === 'admin' || name === 'tenant',
+      includeAppJwtBearerAuth:
+        name === 'admin' || name === 'tenant' || name === 'dc',
     });
 
     const docToUse =
