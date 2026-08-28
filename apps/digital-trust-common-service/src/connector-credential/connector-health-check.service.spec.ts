@@ -2,6 +2,15 @@ import { ConnectorType } from '../connection/connection.entity';
 
 import { ConnectorHealthCheckService } from './connector-health-check.service';
 
+jest.mock('node:dns/promises', () => ({
+  lookup: jest.fn(),
+}));
+
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { lookup } = require('node:dns/promises') as {
+  lookup: jest.Mock;
+};
+
 describe('ConnectorHealthCheckService', () => {
   let service: ConnectorHealthCheckService;
   let originalFetch: typeof global.fetch | undefined;
@@ -10,11 +19,25 @@ describe('ConnectorHealthCheckService', () => {
     service = new ConnectorHealthCheckService();
     originalFetch = global.fetch;
     global.fetch = jest.fn();
+    lookup.mockResolvedValue([{ address: '93.184.216.34', family: 4 }]);
   });
 
   afterEach(() => {
     global.fetch = originalFetch as typeof global.fetch;
     jest.restoreAllMocks();
+  });
+
+  it('rejects an endpoint that resolves to a private address before fetching', async () => {
+    lookup.mockResolvedValue([{ address: '10.0.0.5', family: 4 }]);
+
+    await expect(
+      service.check(ConnectorType.TRACTION, 'https://internal.example.com', {
+        apiKey: 'key-1',
+      }),
+    ).rejects.toThrow(
+      'Connector endpoint resolves to a private, loopback, or reserved network address.',
+    );
+    expect(global.fetch).not.toHaveBeenCalled();
   });
 
   describe('traction', () => {

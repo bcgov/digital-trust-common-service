@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 
+import { assertSafeConnectorUrl } from '../common/assert-safe-connector-url';
 import { ConnectorType } from '../connection/connection.entity';
 
 import { ConnectorCredentialsDto } from './dto/create-connector-credential.dto';
@@ -32,6 +33,8 @@ export class ConnectorHealthCheckService {
     endpointUrl: string,
     credentials: ConnectorCredentialsDto,
   ): Promise<ConnectorHealthCheckResult> {
+    await assertSafeConnectorUrl(endpointUrl);
+
     switch (connectorType) {
       case ConnectorType.TRACTION:
         return await this.checkTraction(endpointUrl, credentials);
