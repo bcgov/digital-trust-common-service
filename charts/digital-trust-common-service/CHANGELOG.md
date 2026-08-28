@@ -32,6 +32,8 @@ and this chart adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.h
 - Generated `README.md` (via helm-docs).
 - PR environments (`values-pr.yaml`) run the migration hook Job, so a
   preview's empty database reaches the current schema before the pods roll.
+- The dev overlay (`values-dev.yaml`) runs it too, so a push to `main`
+  migrates dev before its pods roll.
 
 ### Fixed
 
