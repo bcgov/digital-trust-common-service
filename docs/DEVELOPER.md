@@ -187,12 +187,12 @@ keycloak.localhost` during upstream federation calls. Add hosts entries
 
 ```bash
 # macOS
-echo "127.0.0.1 app.localhost keycloak.localhost" | sudo tee -a /etc/hosts
+echo "127.0.0.1 app.localhost keycloak.localhost grafana.localhost" | sudo tee -a /etc/hosts
 ```
 
 ```powershell
 # Windows (admin PowerShell)
-Add-Content C:\Windows\System32\drivers\etc\hosts "`n127.0.0.1 app.localhost", "127.0.0.1 keycloak.localhost"
+Add-Content C:\Windows\System32\drivers\etc\hosts "`n127.0.0.1 app.localhost", "127.0.0.1 keycloak.localhost", "127.0.0.1 grafana.localhost"
 ```
 
 #### Configure Node.js to trust the local CA
@@ -281,6 +281,59 @@ running, open
 `https://app.localhost` — HMR works through the proxy, and `/api`, `/oidc` and
 `/health` hit the API without any CORS or cross-site cookie concerns.
 
+#### Signing in for real
+
+The SPA ships in **mock** auth mode by default: a fake local session, no
+backend auth required. To exercise the real Authorization Code + PKCE flow,
+set in `apps/ui/.env`:
+
+```env
+VITE_AUTH_MODE=oidc
+```
+
+and reach the app at `https://app.localhost` — **not** `http://localhost:5173`.
+`OIDC_ISSUER` is `https://app.localhost/oidc`, and every endpoint in the
+discovery document points there, so the raw Vite origin would put
+authorize/token cross-origin and drop the provider's session cookie.
+
+Prerequisites, all covered above: Keycloak running with the realm imported,
+`config/upstream-identity-federation.json` pointing at it, migrations applied,
+and the seed loaded (it registers the SPA's OIDC client). Sign in as one of
+the seeded `acme-corp` users.
+
+The client the SPA uses:
+
+| Property | Value | Why |
+|----------|-------|-----|
+| `client_id` | `dtsc-ui` | Well-known, so one SPA build works in any environment. Override with `VITE_OIDC_CLIENT_ID`. |
+| Kind | Public (PKCE, no secret) | A browser cannot keep a secret. Registered with `token_endpoint_auth_method=none`. |
+| Grants | `authorization_code`, `refresh_token` | `refresh_token` is what keeps the session past the 5-minute access token. |
+| Redirect URI | `https://app.localhost/auth/callback` | |
+| Post-logout URI | `https://app.localhost/login` | Validated separately from the login redirect. |
+| Scopes | `openid profile email tenant offline_access` | The set **every** role holds — see the caveat below. |
+| Tenant | `acme-corp` | Interactive login is tenant-scoped through the client (see below). |
+
+Two constraints worth knowing before changing any of that:
+
+- **Scopes are all-or-nothing per role.** The interaction handler *rejects*
+  a sign-in that requests scopes the user's role lacks rather than trimming
+  them, and `readonly` carries no API scopes at all. So adding e.g.
+  `tenants:admin` to `VITE_OIDC_SCOPES` locks out every user below that role.
+- **The API-JWT decision is the provider's, not the SPA's.** A browser client
+  cannot send an RFC 8707 `resource` on the token request — oidc-client-ts
+  appends it to the authorize URL only, and that is not where oidc-provider
+  reads it. What makes the access token an API-audience JWT is
+  `features.resourceIndicators.useGrantedResource` in the provider config.
+  Without it, any grant carrying `openid` gets an access token scoped to the
+  *userinfo* endpoint instead, and — because that token has no `aud` —
+  oidc-provider also withholds the identity claims from the id_token. Both
+  failures are silent: sign-in appears to work, then every API call 401s and
+  the profile has only `sub`.
+
+Non-dev environments register their own `dtsc-ui` client. The tenant-facing
+`POST /api/v1/clients` API deliberately creates confidential clients only, so
+provisioning a public one is a platform/deployment step today.
+
 ## Running the Application
 
 ### Option 1: Docker Compose (Recommended for Development)
@@ -332,6 +385,92 @@ npm run start:prod
 ```
 
 The application will be available at http://localhost:3000
+
+## Local Observability Stack
+
+`grafana/otel-lgtm` packages Grafana, Loki, Tempo, Mimir, Pyroscope and an
+OpenTelemetry Collector into one container — the same backends the deployed
+stack runs. It exists so instrumentation can be proven on a laptop before it
+reaches OpenShift. That matters more here than it might elsewhere: this is the
+first service in the platform's OpenTelemetry rollout, so when a trace fails to
+turn up in a cluster, having already watched it work locally is what separates
+"our instrumentation is wrong" from "the cluster path is wrong".
+
+The application is not instrumented yet; that work will land in a follow-up change. Until it
+lands, this stack starts and Grafana loads, but nothing is sending it data.
+
+### Start the stack
+
+It sits behind the `obs` profile rather than starting with everything else,
+because it runs five backends and is only needed when you are working on
+telemetry:
+
+```bash
+docker compose --profile obs up -d lgtm
+```
+
+Grafana is then reachable two ways, whichever you prefer:
+
+- <http://localhost:3001> — no certificate or hosts entry needed
+- <https://grafana.localhost> — through Caddy, alongside `app.localhost` and
+  `keycloak.localhost` (needs the [hosts entry](#hosts-entries-macos-and-windows)
+  and the [Caddy CA](#export-and-trust-the-caddy-local-ca))
+
+Grafana is published on 3001 because the `app` service already holds 3000.
+Anonymous access is enabled locally, so there is no login screen.
+
+Storage lives inside the container: `docker compose down` discards collected
+telemetry and any dashboards you saved.
+
+### Point the application at it
+
+Copy the OpenTelemetry block from `.env.example` into your `.env` and set:
+
+```bash
+OTEL_ENABLED=true
+```
+
+The remaining values work as shipped. `OTEL_EXPORTER_OTLP_ENDPOINT` defaults to
+`http://localhost:4318` for the standard workflow (the API on the host); the
+compose `app` service overrides it to `http://lgtm:4318`, so running the API in
+a container needs no edit either.
+
+`OTEL_ENABLED` is off by default so that test runs and CI do not open exporter
+connections to a collector that is not there.
+
+### Confirm it works
+
+With the stack up, the app running and `OTEL_ENABLED=true`, make a few requests
+(`curl http://localhost:3000/health/live`), then open Grafana and use
+**Explore**:
+
+- **Tempo** — traces for incoming HTTP requests, with NestJS handler and `pg`
+  query spans nested underneath. A visible trace is the go/no-go signal that the
+  SDK, the collector and the exporter are all wired correctly.
+- **Mimir** — HTTP request duration metrics.
+- **Loki** — log lines carrying a `trace_id` field, once structured logging
+  lands ([#102](https://github.com/bcgov/digital-trust-common-service/issues/102)).
+  If `trace_id` is missing locally, it will be missing in production too.
+
+### How this differs from OpenShift
+
+The instrumentation code is identical in both places. What differs is where
+telemetry goes, and how logs get there:
+
+| | Local | OpenShift |
+|---|---|---|
+| Collector | the `lgtm` container | Alloy, at `monitoring-collector-alloy:4318` |
+| Log transport | OTLP push to the collector | stdout, scraped by Alloy |
+| `OTEL_LOGS_EXPORTER` | `otlp` | not set |
+| Trace correlation in logs | yes | yes |
+
+Logs are the only real difference, and only in how they travel. The SDK attaches
+trace context to log records either way, so the end result in Grafana — logs in
+Loki linking to spans in Tempo — is the same.
+
+Protocol is `http/protobuf` on port 4318 rather than gRPC on 4317. Alloy accepts
+both; this is the platform standard. The two must agree: an HTTP client posting
+to the gRPC port fails silently.
 
 ## Database Migrations
 
@@ -395,7 +534,7 @@ SEED_ON_START=true
 | Credential defs | Person credential, Employee badge (active tenants) |
 | Issuance profiles | Published `person-credential/1.0`, draft `employee-badge/1.0` |
 | Verification profile | Published `identity-check/1.0` with age predicate |
-| OAuth clients | One per tenant; new clients use secret `dev-seed-client-secret` |
+| OAuth clients | One confidential client per tenant (new ones use secret `dev-seed-client-secret`), plus the public UI client `dtsc-ui` |
 | Connections | Five states per active tenant |
 | Operations | pending, completed, failed per active tenant |
 
@@ -422,14 +561,23 @@ The canonical OAuth scope names live in `@app/auth` (`libs/auth/src/constants/sc
 | `member` | `credentials:offer`, `credentials:verify` |
 | `readonly` | _(none — GET endpoints that require no specific scope)_ |
 
-`platform-admin` is **not** a scope. It is a JWT **role** claim that bypasses `ScopeGuard` and `TenantGuard`. Until interactive user login lands (AU-02), machine clients may carry `platform-admin` via the `oauth_client.roles` column.
+`platform-admin` is **not** a scope. It is a JWT **role** claim that bypasses `ScopeGuard` and `TenantGuard`. Machine clients may carry `platform-admin` or a tenant-scoped role (`owner`, `admin`, `member`, `readonly`) via the `oauth_client.roles` column.
 
-**Setting `oauth_client.roles` for platform-admin machine clients:**
+**Setting `oauth_client.roles`:**
 
-1. Prefer the OAuth client API: `POST /api/v1/oauth-clients` with `"roles": ["platform-admin"]`, or `PATCH /api/v1/oauth-clients/:id` with the same field. Responses include `roles`.
-2. Tokens issued via `client_credentials` for that client include a `roles` claim, which `ScopeGuard` uses (e.g. for `GET /admin/operations/stats`).
+1. Prefer the OAuth client API: `POST /api/v1/tenants/:tenantId/clients` with a `roles` array, or `PATCH /api/v1/tenants/:tenantId/clients/:clientId` with the same field. Tenant admins may assign tenant-scoped roles to their own clients. Only a `platform-admin` caller may assign or clear `platform-admin`. Responses include `roles`. `tenantId` comes from the path (not the body); `createdBy` is recorded from the authenticated user `sub`.
+2. Tokens issued via `client_credentials` for that client include a `roles` claim, which `ScopeGuard` uses (e.g. for `GET /admin/operations/stats` when the claim is `platform-admin`).
 
-**User-token scope resolution:** the `role_scope` seed is consumed by `ScopeGuard` indirectly (scopes must appear on the JWT). Mapping `tenant_user.role` → `role_scope` → JWT `scope` at issuance is deferred to **[AU-02 #35](https://github.com/bcgov/digital-trust-common-service/issues/35)** (interactive login + `extraTokenClaims`). `RoleScopeRepository` is injectable for that work. Client-credentials tokens continue to take scopes from `oauth_client.scopes` at registration.
+Generated `client_id` values are prefixed `dtcs_`. The plaintext `clientSecret` is returned once on create and on `POST .../rotate-secret`; list/get responses never include it.
+
+Assigned scopes must be in the published catalog, present in `OIDC_SCOPES`, and a subset of the caller's effective scopes (`tenants:admin` expands to all Level 2 + Level 3). `platform-admin` bypasses the caller-subset check.
+
+**User-token scope resolution:** the `role_scope` seed is consumed at grant
+creation (`OidcInteractionController` and `POST /api/v1/auth/switch-tenant`)
+so user JWTs carry the scopes for the active tenant role. `extraTokenClaims`
+stamps `tenant_id`, `tenant_role`, and `roles: [<tenant_user.role>]`.
+Client-credentials tokens continue to take scopes from `oauth_client.scopes`
+at registration.
 
 ### Migration from placeholder scopes
 
@@ -602,21 +750,59 @@ Machine tokens take their scopes from `oauth_client.scopes` at registration
 Missing `request.auth` (JwtGuard not run) → **401** `AUTHENTICATION_REQUIRED`.
 Mismatch / missing `tenant_id` claim → **403** `{ error: { code: "TENANT_ACCESS_DENIED", required_tenant_id, token_tenant_id } }`.
 
-**v1 is claim-match only.** Live `TenantUser` membership lookup (PE-02) is deferred until interactive user tokens (AU-02) / tenant switching (AU-09). Client-credentials tokens already carry a fixed `tenant_id` from `oauth_client`.
+**v1 is claim-match only for `:tenantId` route params.** Body/`/:id` routes
+use the shared `assertTenantAccess` helper (same claim-match + platform-admin
+bypass). Live `TenantUser` membership lookup is used by
+`POST /api/v1/auth/switch-tenant` (and `GET /api/v1/auth/tenants`) rather than
+by TenantGuard. Client-credentials tokens already carry a fixed `tenant_id`
+from `oauth_client` and cannot switch.
 
-Product controllers are not all wired yet — rollout is tracked in **[AU-followup #165](https://github.com/bcgov/digital-trust-common-service/issues/165)**. Integration coverage uses ephemeral `/api/v1/integration/tenant-check/:tenantId` routes.
+## Tenant switching
 
-### Guard rollout gaps for #165
+Users who belong to more than one tenant get a token scoped to their **oldest
+active membership** at login. To change context, the SPA calls
+`POST /api/v1/auth/switch-tenant` with a valid user Bearer token. The API:
 
-`TenantGuard` only reads **`params.tenantId`**. When wiring controllers, classify each route:
+1. Rejects machine (`client_credentials`) tokens with 403.
+2. Requires an active `tenant_user` row for the same Keycloak subject in the target tenant.
+3. Issues a new access token and refresh token whose `tenant_id`, `roles`, and `scope` come from the target membership.
+4. Revokes the previous grant so both tokens cannot be used at once (the old JWT may still verify until `exp`, at most 5 minutes).
 
-| Shape | Examples today | TenantGuard behavior | Rollout action |
-|-------|----------------|----------------------|----------------|
-| Path `:tenantId` | `tenants/:tenantId/audit-logs`, `…/tenant/:tenantId` | Enforced | Add `@UseGuards(JwtGuard, ScopeGuard, TenantGuard)` |
-| Tenant UUID as `:id` | `GET/PUT/DELETE /tenants/:id` | **No-op** (param name is `id`) | Rename to `:tenantId`, or teach guard / use a dedicated platform-admin policy |
-| Body-only `tenantId` | create connection / oauth-client / credential-definition / etc. | **No-op** | Prefer nested `/tenants/:tenantId/...` routes, or extend guard to read body (explicit follow-up) |
-| Resource `:id` | `GET /connections/:id`, `PATCH /oauth-clients/:id` | **No-op** (`id` is the resource, not the tenant) | After load, assert `resource.tenantId === auth.tenantId` (service-layer or resource tenant check) — path param alone is insufficient |
-| Admin / no tenant | `/admin/operations/stats` | No-op (correct) | `JwtGuard` + `ScopeGuard` / `@RequireRoles('platform-admin')` only |
+`GET /api/v1/auth/tenants` lists the caller's active memberships for the UI selector. `GET /api/v1/tenants` is not membership-filtered.
+
+### Controller auth inventory
+
+| Surface | Controller | Guards | Scope / notes |
+|---------|------------|--------|---------------|
+| Platform admin | `admin-operations`, `admin-sessions` | Jwt + Scope (+ `@RequireRoles(platform-admin)`) | Role, not scope |
+| Tenant CRUD | `tenant` | Jwt + Scope | `tenants:admin` on mutating routes; list filtered by claim |
+| Tenant users | `tenant-user` | Jwt + Scope + Tenant + membership | `users:manage` |
+| Role/scope catalog | `role`, `scope` | Jwt | Authenticated read |
+| Tenant role overrides | `tenant-role-scope` | Jwt + Scope + Tenant | `tenants:admin` on writes |
+| Audit logs | `audit-log` | Jwt + Scope + Tenant | `audit:read` |
+| Connections | `connection` | Jwt + Scope + Tenant (`:tenantId` lists) | `connections:manage`; body create → `assertTenantAccess` (403); load-by-id → `assertResourceTenantOrNotFound` (404) in the service |
+| OAuth clients | `oauth-client` | Jwt + Scope + Tenant | `clients:manage`; nested at `tenants/:tenantId/clients` so TenantGuard enforces the path |
+| Connector credentials | `connector-credential` | Jwt + Scope + Tenant | `tenants:admin`; same create/load pattern in the service |
+| Credential definitions | `credential-definition` | Jwt + Scope + Tenant | `tenants:admin`; format/connector lists are tenant-scoped in SQL (platform-admin sees all) |
+| Health / hello / OIDC | `health`, `app`, `oidc-interaction` | none | Intentionally public |
+
+Integration coverage for the guard stack uses ephemeral
+`/api/v1/integration/tenant-check/:tenantId` routes. Product-controller 401
+smoke lives in `test/product-controller-auth.e2e-spec.ts`.
+
+### Guard rollout gaps (remaining)
+
+`TenantGuard` only reads **`params.tenantId`**. Body and resource-`:id` routes
+are covered by `assertTenantAccess` today; nesting under
+`/tenants/:tenantId/...` (as OpenAPI documents) is still a follow-up:
+
+| Shape | Examples today | TenantGuard behavior | Status |
+|-------|----------------|----------------------|--------|
+| Path `:tenantId` | `tenants/:tenantId/audit-logs`, `tenants/:tenantId/clients` | Enforced | Wired |
+| Tenant UUID as `:id` | `GET/PUT/DELETE /tenants/:id` | **No-op** (param name is `id`) | `assertTenantAccess` in `TenantController` |
+| Body-only `tenantId` | create connection / credential-definition / etc. | **No-op** | `assertTenantAccess` in the service on create (403); nesting still open |
+| Resource `:id` | `GET /connections/:id` | **No-op** | `assertResourceTenantOrNotFound` in the service after load (404, no cross-tenant oracle) |
+| Admin / no tenant | `/admin/operations/stats` | No-op (correct) | Wired |
 
 Do **not** treat every `:id` as a tenant id — most are resource primary keys.
 
@@ -657,17 +843,21 @@ at startup for callers that reach it untyped.
 `resolve(tenantId, format?, options?)` returns `{ adapter, connector, format }`:
 
 1. **`options.adapterOverride`** — platform-admin escape hatch (see below).
-2. **`options.connectorId`** — explicit connector, e.g. an issuance profile's `connector_id` (CA-12).
-3. **`tenant.config.default_connector`** — the tenant default (written by TM-04).
+2. **`options.connectorId`** — explicit connector, e.g. an issuance profile's `connector_id`.
+3. **`tenant.config.default_connector`** — the tenant default, set via
+   `PATCH /api/v1/tenants/:id/config`.
 4. **Fallback** — the tenant's single active `ConnectorCredential`.
 
-The fallback exists because TM-04 has not shipped, so nothing populates `default_connector` yet. It
-is deliberately strict: **zero** active connectors and **more than one** are both errors. Guessing
-which connector a tenant meant could issue a credential from the wrong agent.
+Setting a default is optional, so step 4 serves tenants that have never configured one. It is
+deliberately strict: **zero** active connectors and **more than one** are both errors. Guessing
+which connector a tenant meant could issue a credential from the wrong agent, and nothing about
+that failure is visible afterwards.
 
 A connector reached by id — from tenant config or from a caller — is checked to belong to the
 requesting tenant and to be `active`. A `default_connector` that is missing, not a string, or points
-at another tenant's row is refused, never silently followed.
+at another tenant's row is refused, never silently followed. The config endpoint validates
+ownership and `active` on write, but this check is not redundant: `config` is JSONB with no foreign
+key, and a connector can be deactivated or deleted after the default was set.
 
 ### Errors
 
@@ -890,8 +1080,9 @@ npm run dev          # http://localhost:5173
 The Vite dev server proxies `/api`, `/oidc` and `/health` to the backend
 (`VITE_PROXY_TARGET` in `apps/ui/.env`, default `http://localhost:3000`),
 mirroring the production Caddy reverse proxy — the SPA uses relative URLs only.
-Sign-in runs in **mock mode** (`VITE_AUTH_MODE=mock`) until the interactive
-OIDC flow lands (AU-02 / UI-02).
+Sign-in defaults to **mock mode** (`VITE_AUTH_MODE=mock`); the real
+Authorization Code + PKCE flow needs `VITE_AUTH_MODE=oidc` and the Caddy
+front door — see [Signing in for real](#signing-in-for-real).
 
 Checks (mirrored by the `ui` job in CI): `npm run lint`, `npm run format:check`,
 `npm test`, `npm run build`. API types are generated from the OpenAPI spec via

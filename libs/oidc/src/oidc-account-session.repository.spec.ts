@@ -10,16 +10,26 @@ import {
 describe('OidcAccountSessionRepository', () => {
   let repository: OidcAccountSessionRepository;
   let mockQuery: jest.Mock;
+  let mockFind: jest.Mock;
+  let mockSave: jest.Mock;
 
   beforeEach(async () => {
     mockQuery = jest.fn().mockResolvedValue([]);
+    mockFind = jest.fn().mockResolvedValue([]);
+    mockSave = jest
+      .fn()
+      .mockImplementation((row: unknown) => Promise.resolve(row));
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         OidcAccountSessionRepository,
         {
           provide: getRepositoryToken(OidcModel),
-          useValue: { manager: { query: mockQuery } },
+          useValue: {
+            manager: { query: mockQuery },
+            find: mockFind,
+            save: mockSave,
+          },
         },
       ],
     }).compile();
@@ -260,6 +270,40 @@ describe('OidcAccountSessionRepository', () => {
       expect(mockQuery.mock.calls[0][0]).toContain(
         'grant_id IN (SELECT oidc_id FROM targeted)',
       );
+    });
+  });
+
+  describe('rebindSessionsToAccount', () => {
+    it('rewrites session accountId and the client grantId', async () => {
+      const session = {
+        accountId: 'old-user',
+        payload: {
+          accountId: 'old-user',
+          authorizations: {
+            'spa-client': { grantId: 'old-grant' },
+          },
+        },
+      };
+      mockFind.mockResolvedValue([session]);
+
+      await repository.rebindSessionsToAccount(
+        'old-user',
+        'new-user',
+        'spa-client',
+        'new-grant',
+      );
+
+      expect(mockFind).toHaveBeenCalledWith({
+        where: { modelName: 'Session', accountId: 'old-user' },
+      });
+      expect(session.accountId).toBe('new-user');
+      expect(session.payload).toEqual({
+        accountId: 'new-user',
+        authorizations: {
+          'spa-client': { grantId: 'new-grant' },
+        },
+      });
+      expect(mockSave).toHaveBeenCalledWith(session);
     });
   });
 });

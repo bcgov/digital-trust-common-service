@@ -55,10 +55,33 @@ export interface paths {
         put?: never;
         /**
          * Switch active tenant context
-         * @description Exchange the current valid token for a new token scoped to a different tenant.
-         *     The user must have membership in the target tenant.
+         * @description Exchange the current valid **user** token for a new token scoped to a different tenant.
+         *     The caller must have an active membership in the target tenant.
+         *     Machine (`client_credentials`) tokens cannot switch; each client is bound to one tenant.
+         *     The previous grant is revoked so the old refresh token cannot be used alongside the new one.
          */
         post: operations["switchTenant"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/tenants": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List tenants the current user can switch to
+         * @description Returns the caller's active tenant memberships (id, name, slug, role).
+         *     Machine clients receive 403.
+         */
+        get: operations["listAuthTenants"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -167,7 +190,24 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /** Suspend or reactivate a tenant (platform-admin only) */
+        /**
+         * Suspend, deactivate, or reactivate a tenant (platform-admin only)
+         * @description Requires the `platform-admin` role. Valid transitions are `active` -> `suspended` or
+         *     `deactivated`, `suspended` -> `active` or `deactivated`, and `deactivated` -> `active`.
+         *     Any other transition returns `409`.
+         *
+         *     Deactivating a tenant immediately revokes its OAuth clients, deactivates its connector
+         *     credentials, and abandons its active connections. Deactivated tenant data is retained for
+         *     90 days. Reactivating a deactivated tenant restores its OAuth clients but does not restore
+         *     connector credentials — they must be re-authenticated after reactivation. Suspending a
+         *     tenant only blocks its own callers (`403 TENANT_NOT_ACTIVE`); it does not touch OAuth
+         *     clients, connector credentials, or connections.
+         *
+         *     **Current limitation**: the `403 TENANT_NOT_ACTIVE` block is only enforced on Tenant
+         *     Settings and Tenant Users endpoints so far. Connections, Credentials, Presentations,
+         *     Clients, and Connectors are not yet guarded, so a suspended or deactivated tenant's own
+         *     callers can still use them.
+         */
         patch: operations["updateTenantStatus"];
         trace?: never;
     };
@@ -187,7 +227,20 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /** Update tenant configuration */
+        /**
+         * Update tenant configuration
+         * @description Requires the tenant superuser scope; the caller must belong to the target tenant unless it
+         *     is a platform admin. Merges the given top-level keys into the tenant's existing `config` —
+         *     any key omitted from the request body (including `operation_ttl`) is left unchanged.
+         *
+         *     `rate_limits` is not accepted here: it is read-only and can only be set via
+         *     `PATCH /usage/limits`. Sending it returns `400`, same as any other undeclared property.
+         *
+         *     When `default_connector` is provided, it must reference a `ConnectorCredential` that
+         *     belongs to this tenant and is currently active, or the request is rejected with `404`
+         *     (does not exist) or `409` (belongs to another tenant, or is inactive). Set it to `null` to
+         *     clear the default connector without validation.
+         */
         patch: operations["updateTenantConfig"];
         trace?: never;
     };
@@ -1018,7 +1071,11 @@ export interface paths {
         /**
          * Register an API client (OAuth2 client_credentials)
          * @description Creates a new OAuth2 client for service-to-service authentication.
-         *     The `client_secret` is returned ONCE in the response and cannot be retrieved again.
+         *     Tenant association is taken from the path (`tenantId`); `createdBy` is
+         *     recorded from the authenticated user and is not accepted on the body.
+         *     Generated `client_id` values are prefixed `dtcs_`. The `clientSecret`
+         *     is returned ONCE in the response and cannot be retrieved again.
+         *     Requested scopes cannot exceed the caller's own grants.
          */
         post: operations["createClient"];
         delete?: never;
@@ -1041,11 +1098,24 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** Revoke an API client */
+        /**
+         * Revoke an API client
+         * @description Soft-revokes the client. Further token grants fail immediately.
+         *     Issued access tokens remain valid until their TTL.
+         */
         delete: operations["deleteClient"];
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Update an API client
+         * @description Updates name, scopes, grant types, redirect URIs, roles, or refresh-token TTL.
+         *     Scope and role privilege checks apply only when those fields are present
+         *     in the body. Scope assignment follows the same caller-subset rule as create.
+         *     Role assignment is restricted to platform-admin callers.
+         *     Issued access tokens remain valid until their TTL after a secret rotation
+         *     or revoke.
+         */
+        patch: operations["updateClient"];
         trace?: never;
     };
     "/api/v1/tenants/{tenantId}/clients/{clientId}/rotate-secret": {
@@ -1064,6 +1134,7 @@ export interface paths {
         /**
          * Rotate client secret
          * @description Generates a new secret. The old secret is immediately invalidated.
+         *     Issued access tokens remain valid until their TTL.
          */
         post: operations["rotateClientSecret"];
         delete?: never;
@@ -1539,6 +1610,12 @@ export interface components {
             created_at?: string;
             /** Format: date-time */
             updated_at?: string;
+            /**
+             * Format: date-time
+             * @description Set when the tenant is deactivated; cleared on reactivation. Null otherwise. Used to
+             *     measure the 90-day data retention window.
+             */
+            deactivated_at?: string | null;
         };
         /** @enum {string} */
         TenantStatus: "active" | "pending_approval" | "rejected" | "suspended" | "deactivated";
@@ -1573,6 +1650,22 @@ export interface components {
                 failed_unviewed?: string;
                 /** @example 24h */
                 pending_stale?: string;
+            };
+        };
+        /**
+         * @description Only the fields present are merged into the tenant's config; `rate_limits` and
+         *     `operation_ttl` are not accepted here.
+         */
+        UpdateTenantConfigRequest: {
+            allowed_formats?: components["schemas"]["CredentialFormat"][];
+            /**
+             * Format: uuid
+             * @description Must be an active connector credential belonging to this tenant, or null.
+             */
+            default_connector?: string | null;
+            /** @description Feature flags (key-value) */
+            features?: {
+                [key: string]: boolean;
             };
         };
         CreateTenantRequest: {
@@ -1987,23 +2080,44 @@ export interface components {
             /** Format: uuid */
             id?: string;
             /** Format: uuid */
-            tenant_id?: string;
-            client_id?: string;
+            tenantId?: string;
+            /** @description Public OAuth client_id. Newly generated values are prefixed `dtcs_`. */
+            clientId?: string;
             name?: string;
             scopes?: string[];
-            grant_types?: string[];
+            /** @description JWT role claims for machine clients. Tenant-scoped roles (owner, admin, member, readonly) may be assigned by tenant admins; platform-admin requires a platform-admin caller. */
+            roles?: string[];
+            redirectUris?: string[];
+            grantTypes?: string[];
+            /** Format: uuid */
+            createdBy?: string | null;
+            refreshTokenTtlSeconds?: number | null;
             /** Format: date-time */
-            created_at?: string;
+            createdAt?: string;
             /** Format: date-time */
-            revoked_at?: string | null;
+            revokedAt?: string | null;
         };
-        ClientWithSecret: components["schemas"]["Client"] & {
-            /** @description Shown ONCE at creation/rotation. Cannot be retrieved again. */
-            client_secret?: string;
+        ClientWithSecret: {
+            client: components["schemas"]["Client"];
+            /** @description Shown ONCE at creation and rotate-secret. Cannot be retrieved again. */
+            clientSecret: string;
         };
+        /** @description Tenant is taken from the path, not this body. createdBy is recorded from the authenticated user sub. */
         CreateClientRequest: {
             name: string;
             scopes: ("credentials:offer" | "credentials:verify" | "credentials:hold" | "credentials:revoke" | "connections:manage" | "profiles:manage" | "users:manage" | "clients:manage" | "logs:read" | "audit:read" | "tenants:admin")[];
+            roles?: ("owner" | "admin" | "member" | "readonly" | "platform-admin")[];
+            redirectUris?: string[];
+            grantTypes?: string[];
+            refreshTokenTtlSeconds?: number;
+        };
+        UpdateClientRequest: {
+            name?: string;
+            scopes?: ("credentials:offer" | "credentials:verify" | "credentials:hold" | "credentials:revoke" | "connections:manage" | "profiles:manage" | "users:manage" | "clients:manage" | "logs:read" | "audit:read" | "tenants:admin")[];
+            roles?: ("owner" | "admin" | "member" | "readonly" | "platform-admin")[];
+            redirectUris?: string[];
+            grantTypes?: string[];
+            refreshTokenTtlSeconds?: number | null;
         };
         Credential: {
             /** Format: uuid */
@@ -2347,14 +2461,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        access_token?: string;
+                        access_token: string;
+                        /** @description Refresh token bound to the new tenant grant */
+                        refresh_token: string;
                         /** @example Bearer */
-                        token_type?: string;
+                        token_type: string;
                         /** @example 300 */
-                        expires_in?: number;
+                        expires_in: number;
                     };
                 };
             };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    listAuthTenants: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Active memberships */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        name: string;
+                        slug: string;
+                        /** @enum {string} */
+                        role: "owner" | "admin" | "member" | "readonly";
+                    }[];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
         };
     };
@@ -2559,6 +2705,11 @@ export interface operations {
         };
         requestBody: {
             content: {
+                /**
+                 * @example {
+                 *       "status": "suspended"
+                 *     }
+                 */
                 "application/json": {
                     status: components["schemas"]["TenantStatus"];
                 };
@@ -2574,6 +2725,10 @@ export interface operations {
                     "application/json": components["schemas"]["Tenant"];
                 };
             };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
         };
     };
     updateTenantConfig: {
@@ -2588,7 +2743,19 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["TenantConfig"];
+                /**
+                 * @example {
+                 *       "allowed_formats": [
+                 *         "anoncreds",
+                 *         "sd-jwt"
+                 *       ],
+                 *       "default_connector": "123e4567-e89b-12d3-a456-426614174000",
+                 *       "features": {
+                 *         "beta_credentials": true
+                 *       }
+                 *     }
+                 */
+                "application/json": components["schemas"]["UpdateTenantConfigRequest"];
             };
         };
         responses: {
@@ -2601,6 +2768,10 @@ export interface operations {
                     "application/json": components["schemas"]["Tenant"];
                 };
             };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
         };
     };
     getOnboardingStatus: {
@@ -4173,9 +4344,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        data?: components["schemas"]["Client"][];
-                    };
+                    "application/json": components["schemas"]["Client"][];
                 };
             };
         };
@@ -4225,6 +4394,41 @@ export interface operations {
         responses: {
             /** @description Client revoked */
             204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    updateClient: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                clientId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateClientRequest"];
+            };
+        };
+        responses: {
+            /** @description Client updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Client"];
+                };
+            };
+            /** @description Client not found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

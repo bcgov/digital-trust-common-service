@@ -31,6 +31,13 @@ export interface OidcTenantUserPort {
     externalUserId: string,
   ): Promise<OidcTenantUserRecord | null>;
   /**
+   * Active memberships for a Keycloak subject, oldest first (`created_at ASC`).
+   * Used at login to pick the first tenant when a user belongs to more than one.
+   */
+  findActiveByExternalUserId(
+    externalUserId: string,
+  ): Promise<OidcTenantUserRecord[]>;
+  /**
    * Atomically claims a previously-invited tenant user (matched by
    * case-insensitive email, with no `externalUserId` yet) by linking it to
    * the given external identity and activating it, while preserving the

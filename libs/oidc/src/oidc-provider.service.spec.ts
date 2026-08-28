@@ -6,6 +6,7 @@ import type { OidcJwks } from './oidc-keys.service';
 import {
   OidcProviderService,
   applyClientSecretHashComparator,
+  buildLogoutSource,
   buildOidcConfiguration,
   resolveRefreshTokenTtl,
 } from './oidc-provider.service';
@@ -217,6 +218,57 @@ describe('buildOidcConfiguration', () => {
         ).toBe(28800);
       },
     );
+
+    /**
+     * The SPA's refresh token lives in browser storage and
+     * cannot be sender-constrained, so rotation must not be able to extend
+     * the chain past the original token's window — otherwise a stolen token
+     * survives for the Grant TTL (14 days) rather than the advertised 8
+     * hours. Confidential clients keep AU-08's flat per-client window.
+     */
+    it('caps a rotated public-client token at the previous token`s remaining TTL', () => {
+      expect(
+        resolveRefreshTokenTtl(
+          28800,
+          { clientAuthMethod: 'none' },
+          {
+            oidc: { entities: { RotatedRefreshToken: { remainingTTL: 600 } } },
+          },
+        ),
+      ).toBe(600);
+    });
+
+    it('does not cap a confidential client on rotation', () => {
+      expect(
+        resolveRefreshTokenTtl(
+          28800,
+          { clientAuthMethod: 'client_secret_basic' },
+          {
+            oidc: { entities: { RotatedRefreshToken: { remainingTTL: 600 } } },
+          },
+        ),
+      ).toBe(28800);
+    });
+
+    it('leaves a public client`s first (unrotated) token at the full TTL', () => {
+      expect(
+        resolveRefreshTokenTtl(28800, { clientAuthMethod: 'none' }, {}),
+      ).toBe(28800);
+    });
+
+    // The cap is a ceiling, not an override: a client configured shorter
+    // than the remaining window keeps its own shorter window.
+    it('keeps the shorter of the per-client TTL and the rotation cap', () => {
+      expect(
+        resolveRefreshTokenTtl(
+          28800,
+          { clientAuthMethod: 'none', refresh_token_ttl_seconds: 300 },
+          {
+            oidc: { entities: { RotatedRefreshToken: { remainingTTL: 600 } } },
+          },
+        ),
+      ).toBe(300);
+    });
   });
 
   // Left unset, oidc-provider silently applies a 14-day default to both,
@@ -279,6 +331,9 @@ describe('buildOidcConfiguration', () => {
     expect(
       resourceIndicators?.defaultResource?.({} as never, {} as never),
     ).toBe('https://digital-trust-common-service');
+    expect(
+      resourceIndicators?.useGrantedResource?.({} as never, {} as never),
+    ).toBe(true);
 
     const resourceServerInfo =
       await resourceIndicators?.getResourceServerInfo?.(
@@ -292,6 +347,54 @@ describe('buildOidcConfiguration', () => {
       accessTokenFormat: 'jwt',
       jwt: { sign: { alg: 'RS256' } },
     });
+  });
+
+  /**
+   * Without this, a grant carrying `openid` resolves to no resource at the
+   * token endpoint and receives a userinfo-scoped opaque token instead of an
+   * API JWT — and, having no `aud`, an id_token masked down to `sub`. Browser
+   * clients cannot compensate: oidc-client-ts only ever puts `resource` on the
+   * authorize URL, never on the token request.
+   */
+  it('uses the granted resource when the token request carries none', () => {
+    const configuration = buildOidcConfiguration(
+      config,
+      jwks,
+      adapterFactory,
+      tenantUserService,
+    );
+
+    expect(
+      configuration.features?.resourceIndicators?.useGrantedResource?.(
+        {} as never,
+        {} as never,
+      ),
+    ).toBe(true);
+  });
+
+  // `oneOf` is only passed when a grant holds several resources. Returning the
+  // API audience regardless would throw `invalid_target` for a grant that
+  // never asked for it.
+  it('picks from the offered resources when the grant holds several', () => {
+    const configuration = buildOidcConfiguration(
+      config,
+      jwks,
+      adapterFactory,
+      tenantUserService,
+    );
+    const { defaultResource } =
+      configuration.features?.resourceIndicators ?? {};
+
+    expect(
+      defaultResource?.({} as never, {} as never, [
+        'https://loki-gateway',
+        'https://digital-trust-common-service',
+      ]),
+    ).toBe('https://digital-trust-common-service');
+
+    expect(
+      defaultResource?.({} as never, {} as never, ['https://loki-gateway']),
+    ).toBe('https://loki-gateway');
   });
 
   it('mints JWT access tokens for allowlisted additional audiences', async () => {
@@ -436,6 +539,7 @@ describe('buildOidcConfiguration', () => {
       expect(claims).toEqual({
         tenant_id: 'tenant-123',
         tenant_role: 'member',
+        roles: ['member'],
       });
     });
   });
@@ -524,6 +628,44 @@ describe('buildOidcConfiguration', () => {
 
       expect(account).toBeUndefined();
     });
+  });
+});
+
+describe('buildLogoutSource', () => {
+  const form =
+    '<form id="op.logoutForm" method="post" action="/oidc/session/end/confirm">' +
+    '<input type="hidden" name="xsrf" value="secret"/></form>';
+
+  it('embeds the provider form untouched', () => {
+    expect(buildLogoutSource(form)).toContain(form);
+  });
+
+  /**
+   * `end_session_confirm` only destroys the session and revokes the grant when
+   * `logout=yes` is submitted; without it the provider drops this client's
+   * authorization and leaves the session standing.
+   */
+  it('carries logout=yes, associated with the provider form', () => {
+    const html = buildLogoutSource(form);
+
+    expect(html).toContain(
+      '<input type="hidden" name="logout" value="yes" form="op.logoutForm">',
+    );
+  });
+
+  /**
+   * The submit is what makes sign-out unabandonable — the stock page waits for
+   * a click, so closing the tab there leaves the user signed in. The button is
+   * the fallback for when the script does not run (a CSP blocking it, or
+   * scripting switched off), so both have to be present.
+   */
+  it('submits on load and still offers a button when the script cannot run', () => {
+    const html = buildLogoutSource(form);
+
+    expect(html).toContain("document.getElementById('op.logoutForm').submit()");
+    expect(html).toContain(
+      '<button autofocus type="submit" form="op.logoutForm">',
+    );
   });
 });
 

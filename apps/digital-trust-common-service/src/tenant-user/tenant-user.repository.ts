@@ -105,6 +105,27 @@ export class TenantUserRepository {
   ): Promise<TenantUser[]> {
     return await this.repository.find({
       where: { externalUserId },
+      order: {
+        createdAt: 'ASC',
+      },
+    });
+  }
+
+  public async findActiveByExternalUserId(
+    externalUserId: string,
+  ): Promise<TenantUser[]> {
+    return await this.repository.find({
+      where: {
+        externalUserId,
+        status: TenantUserStatus.ACTIVE,
+      },
+      order: {
+        createdAt: 'ASC',
+        id: 'ASC',
+      },
+      relations: {
+        tenant: true,
+      },
     });
   }
 

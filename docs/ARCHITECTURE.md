@@ -4,6 +4,13 @@
 
 digital-trust-common-service is a multi-tenant API and management UI that provides a **format-agnostic abstraction layer** for Digital Credential operations. It normalizes issue/verify/hold patterns across credential formats (AnonCreds, SD-JWT, mDL, W3C VC) and back-end agents (ACA-Py/Traction, Credo-TS), exposing a single homogeneous REST API to consumers.
 
+The implementation is split across two runtime surfaces:
+
+- the **NestJS API** remains the core backend, with the tenant model, auth, OpenAPI docs, schema management, and adapter orchestration
+- the **standalone React/Vite admin UI** lives under `apps/ui` and is served independently, but it is designed to share the same origin and authentication boundary as the API during local development
+
+This separation is intentional: the backend remains a monolithic service with clear module boundaries, while the frontend is a separate application with route-based layouts, lazy-loaded pages, and a tenant-scoped navigation model.
+
 ---
 
 ## System Context
@@ -16,16 +23,21 @@ C4Context
     Person(platformAdmin, "Platform Admin", "Manages tenants, monitors system health")
     System_Ext(apiConsumer, "API Consumer", "External service issuing/verifying credentials via API")
 
+    System(uiApp, "Vite Management UI", "React admin app in apps/ui; browser-based management console")
     System(vcService, "digital-trust-common-service", "Multi-tenant Digital Credential abstraction layer")
 
     System_Ext(keycloak, "Keycloak", "Upstream IdP for user identity federation")
+    System_Ext(caddy, "Caddy", "Local same-origin front door for SPA + API + OIDC")
     System_Ext(traction, "Traction (ACA-Py)", "BC Gov managed agent service")
     System_Ext(credo, "Credo Agent Service", "Separate Credo-TS microservice with REST API")
     System_Ext(ledger, "Hyperledger Indy / cheqd", "Credential registries and revocation")
 
-    Rel(tenantAdmin, vcService, "Manages via UI")
-    Rel(platformAdmin, vcService, "Administers via UI/API")
+    Rel(tenantAdmin, uiApp, "Uses dashboard and tenant screens in browser")
+    Rel(platformAdmin, uiApp, "Administers via UI/API")
     Rel(apiConsumer, vcService, "REST API calls")
+    Rel(uiApp, caddy, "Requests app + API + OIDC on one origin")
+    Rel(caddy, vcService, "Forwards /api, /oidc, and /health requests")
+    Rel(caddy, uiApp, "Forwards non-API requests to the Vite SPA")
     Rel(vcService, keycloak, "User identity federation (login only)")
     Rel(vcService, traction, "Credential ops via REST")
     Rel(vcService, credo, "Credential ops via REST")
@@ -39,8 +51,9 @@ C4Context
 | Layer | Technology | Rationale |
 |-------|-----------|-----------|
 | **API** | NestJS (TypeScript) | Modular architecture, dependency injection, first-class TypeScript, OpenAPI generation, guards/interceptors for cross-cutting concerns |
-| **Frontend** | React + Vite + Tailwind + shadcn/ui | Fast DX, typed components, accessible UI primitives, BC Gov design alignment |
-| **Database** | PostgreSQL 16 + TypeORM | Relational integrity for multi-tenant data, JSONB for flexible config, mature migration tooling |
+| **Frontend** | React + Vite + Tailwind + shadcn/ui (standalone app in `apps/ui`) | Fast DX, typed components, accessible UI primitives, BC Gov design alignment; the UI is a separate package from the root NestJS build |
+| **Ingress / local front door** | Caddy | Provides the same-origin local dev front door (`https://app.localhost`) for the SPA, `/api`, `/oidc`, and `/health`; also serves the built SPA in the UI container |
+| **Database** | PostgreSQL 18 + TypeORM | Relational integrity for multi-tenant data, JSONB for flexible config, mature migration tooling |
 | **Cache** | In-memory (per-pod) | Traction token cache, config lookups. No shared cache needed at MVP scale. |
 | **Job Queue** | pg-boss (PostgreSQL-backed) | Async credential state updates, webhook dispatch, dead-letter handling. Reuses existing PostgreSQL — no additional infrastructure. Transactional enqueue ensures atomic Operation creation + job dispatch. |
 | **Auth** | `oidc-provider` (in-app OIDC server) + Keycloak (upstream identity federation) | App owns token issuance, permissions, and client lifecycle. Keycloak is upstream IdP for user login only. OpenID Certified library handles JWT signing, JWKS, `.well-known`, `client_credentials` grant. |
@@ -53,9 +66,14 @@ C4Context
 
 ```mermaid
 graph TB
-    subgraph "Clients"
-        UI[React SPA]
+    subgraph "Browser / client edge"
+        BROWSER[Browser]
+        UI[React SPA<br/>apps/ui]
         EXT[External API Consumers]
+    end
+
+    subgraph "Ingress"
+        CADDY[Caddy same-origin front door<br/>https://app.localhost]
     end
 
     subgraph "API Layer"
@@ -81,7 +99,10 @@ graph TB
         KC[Keycloak]
     end
 
-    UI -->|"HTTPS + PKCE"| GW
+    BROWSER --> CADDY
+    CADDY -->|"/api, /oidc, /health"| GW
+    CADDY -->|"everything else"| UI
+    UI -->|"relative API URLs"| GW
     EXT -->|"HTTPS + Bearer (client_credentials)"| GW
     GW --> OIDC
     GW --> AUTH
@@ -99,6 +120,18 @@ graph TB
     CREDO -.-> PG
     GW --> PG
 ```
+
+### Local development ingress and same-origin routing
+
+The local dev topology intentionally exposes a single HTTPS origin for the browser, rather than requiring separate hosts for the UI and API. In the checked-in setup, `https://app.localhost` fronts both the SPA and the API:
+
+- `/api/*`, `/oidc/*`, and `/health/*` are reverse-proxied to the NestJS app on `host.docker.internal:3000`
+- all other paths are reverse-proxied to the Vite dev server on `host.docker.internal:5173`
+- `https://keycloak.localhost` is a separate front door for the upstream Keycloak service on port `8080`
+
+This mirrors the production goal of same-origin execution for the app, OIDC endpoints, and browser cookies. The same-origin pattern is a dependency of the interactive PKCE flow and avoids cross-site cookie and CORS issues in local browser-based auth.
+
+The UI image itself also ships with a static Caddy configuration. In `apps/ui/Caddyfile`, the built SPA is served on port `:8080` with a fallback to `index.html`, which is appropriate for static frontend deployment. That container Caddy is distinct from the local dev ingress in `caddy/Caddyfile`: the latter is the routing layer for the API + Vite pair, while the former is the static frontend asset server.
 
 ---
 
@@ -249,8 +282,8 @@ export class AdapterRegistry {
 Resolution picks the connector in this order, then resolves the adapter from its type:
 
 1. `options.adapterOverride` — platform-admin escape hatch, gated by `ADAPTER_OVERRIDE_ENABLED`
-2. `options.connectorId` — explicit connector (an issuance profile's `connector_id`, CA-12)
-3. `tenant.config.default_connector` — the tenant default (written by TM-04)
+2. `options.connectorId` — explicit connector (an issuance profile's `connector_id`)
+3. `tenant.config.default_connector` — the tenant default, set via the tenant config endpoint
 4. Fallback — the tenant's single active `ConnectorCredential`
 
 The result carries the `ConnectorCredential` alongside the adapter, because callers need the
@@ -259,10 +292,12 @@ connector's endpoint and credentials to perform the operation.
 Invariants:
 
 - A connector reached by id is verified to belong to the requesting tenant and to be `active`; a
-  `default_connector` pointing at another tenant's row is refused, not followed.
+  `default_connector` pointing at another tenant's row is refused, not followed. The tenant config
+  endpoint validates the same things on write, but `config` is JSONB with no foreign key and a
+  connector can be deactivated afterwards, so resolution re-checks rather than trusting it.
 - The step-4 fallback is strict — zero active connectors **and** more than one are both
-  `ConnectorUnavailableError`. Guessing risks issuing from the wrong agent. It exists only because
-  TM-04 has not shipped and nothing populates `default_connector` yet.
+  `ConnectorUnavailableError`. Guessing risks issuing from the wrong agent. It serves tenants that
+  have never set a default, which is optional.
 - Format omitted → the adapter's primary format (`supportedFormats[0]`); an unsupported format →
   `FormatNotSupportedError`.
 - A disallowed override raises `ForbiddenException` rather than being ignored, so a privilege
@@ -998,7 +1033,7 @@ sequenceDiagram
     participant App as App OIDC Provider
     participant DB as Permission DB
 
-    Note over Service: Registered via POST /api/v1/clients
+    Note over Service: Registered via POST /api/v1/tenants/:tenantId/clients
 
     Service->>App: POST /oidc/token<br/>grant_type=client_credentials<br/>client_id=xxx&client_secret=yyy
     App->>DB: Verify client_secret hash, load tenant + scopes
@@ -1091,8 +1126,8 @@ graph TD
 - Users get scopes derived from their role (role→scope mapping in DB)
 - API clients get explicitly assigned scopes at registration time
 - Tenant isolation enforced separately — valid token + correct scope + wrong tenant = 403
-  (`TenantGuard` claim-matches JWT `tenant_id` to route `:tenantId`; live membership
-  lookup deferred to AU-02 / AU-09 — see [DEVELOPER.md](./DEVELOPER.md#tenantguard-au-05))
+  (`TenantGuard` claim-matches JWT `tenant_id` to route `:tenantId`; membership is
+  checked at token issuance — login and switch-tenant — see [DEVELOPER.md](./DEVELOPER.md#tenantguard-au-05))
 - `platform-admin` role bypasses ScopeGuard and TenantGuard entirely (not a scope — checked by role)
 
 **Role → scope mappings (seed):**

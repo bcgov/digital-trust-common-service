@@ -44,26 +44,98 @@ export interface ClientExtraMetadata {
 }
 
 /**
+ * The slice of an oidc-provider `Client` the refresh TTL depends on: our own
+ * extra metadata plus `clientAuthMethod`, the accessor oidc-provider itself
+ * reads to tell a public client apart from a confidential one.
+ */
+export type RefreshTokenTtlClient = ClientExtraMetadata & {
+  clientAuthMethod?: string;
+};
+
+/**
+ * Context oidc-provider hands `ttl.RefreshToken` on a rotation. Only the one
+ * entity this function reads is modelled; the real `ctx` is far larger.
+ */
+export interface RefreshTokenTtlContext {
+  oidc?: {
+    entities?: {
+      RotatedRefreshToken?: { remainingTTL: number };
+    };
+  };
+}
+
+/**
  * Resolves the refresh token lifetime for a given client.
  *
  * AU-08 (#41) requires the refresh TTL to be configurable per client, so
  * `ttl.RefreshToken` is a function rather than a scalar. A client without an
  * explicit `refresh_token_ttl_seconds` inherits the server-wide default.
  *
- * Note this deliberately drops oidc-provider's default behaviour of capping
- * rotated SPA refresh tokens at the previous token's remaining TTL: we issue
- * no public/SPA clients today (every client is client_secret_basic), and a
- * fixed per-client window is what the ticket asks for.
+ * Public clients keep the cap oidc-provider applies by default: a rotated
+ * refresh token expires no later than the token it replaced. The SPA
+ * holds its refresh token in browser storage where it cannot be
+ * sender-constrained, so without the cap rotation would roll a stolen token
+ * forward indefinitely — up to the Grant TTL (14 days) rather than the 8
+ * hours the refresh TTL advertises. Confidential clients are unaffected and
+ * still get the flat per-client window AU-08 asked for.
  */
 export function resolveRefreshTokenTtl(
   defaultTtlSeconds: number,
-  client: ClientExtraMetadata | undefined,
+  client: RefreshTokenTtlClient | undefined,
+  ctx?: RefreshTokenTtlContext,
 ): number {
   const configured = client?.refresh_token_ttl_seconds;
+  const ttlSeconds =
+    typeof configured === 'number' && configured > 0
+      ? configured
+      : defaultTtlSeconds;
 
-  return typeof configured === 'number' && configured > 0
-    ? configured
-    : defaultTtlSeconds;
+  const rotated = ctx?.oidc?.entities?.RotatedRefreshToken;
+
+  if (rotated && client?.clientAuthMethod === 'none') {
+    return Math.min(ttlSeconds, rotated.remainingTTL);
+  }
+
+  return ttlSeconds;
+}
+
+/**
+ * The interstitial oidc-provider renders mid-logout, replacing a default that
+ * is neither ours nor safe to leave in place.
+ *
+ * Everything an RP-initiated logout actually does — destroying the session,
+ * clearing the cookie, revoking grants — happens at `end_session_confirm`,
+ * which is reached only by submitting this form. The stock page asks
+ * "Do you want to sign-out from <host>?" and waits, so a user who closes the
+ * tab or goes Back stays signed in at the provider while the SPA believes it
+ * signed them out. Submitting on load removes that gap.
+ *
+ * `logout=yes` is what tells `end_session_confirm` to end the whole session
+ * rather than only this client's authorization; it rides along on the form
+ * through the `form` attribute rather than by splicing provider-built HTML.
+ *
+ * The button is rendered unconditionally and the script is pure enhancement,
+ * so the page still works when the script does not run. `<noscript>` would not
+ * cover that: the case worth surviving is a Content-Security-Policy blocking
+ * the inline script, and `<noscript>` does not render when scripting is
+ * enabled — only when it is switched off. An always-present button covers both.
+ */
+export function buildLogoutSource(form: string): string {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Signing you out…</title>
+</head>
+<body>
+${form}
+<input type="hidden" name="logout" value="yes" form="op.logoutForm">
+<p>Signing you out.</p>
+<button autofocus type="submit" form="op.logoutForm">Continue</button>
+<script>document.getElementById('op.logoutForm').submit();</script>
+</body>
+</html>`;
 }
 
 /**
@@ -122,6 +194,7 @@ export function buildOidcConfiguration(
         return {
           tenant_id: user.tenantId,
           tenant_role: user.role,
+          roles: [user.role],
         };
       }
 
@@ -154,7 +227,22 @@ export function buildOidcConfiguration(
       // still accepts only the API audience.
       resourceIndicators: {
         enabled: true,
-        defaultResource: () => config.audience,
+        defaultResource: (_ctx, _client, oneOf) => {
+          if (!oneOf) {
+            return config.audience;
+          }
+
+          return oneOf.includes(config.audience) ? config.audience : oneOf[0];
+        },
+        // Without this, any grant carrying `openid` resolves to no resource at
+        // the token endpoint and gets a userinfo-scoped opaque token instead of
+        // an API JWT — and, having no `aud`, an id_token masked down to `sub`
+        // (see conformIdTokenClaims). Browser clients cannot avoid it by
+        // sending `resource` on the token request: oidc-client-ts only ever
+        // appends it to the authorize URL. The resolved value is still checked
+        // against the grant's own resource indicators, and
+        // `getResourceServerInfo` below still rejects anything unlisted.
+        useGrantedResource: () => true,
         getResourceServerInfo: (_ctx, resourceIndicator) => {
           const allowed = new Set([
             config.audience,
@@ -176,16 +264,17 @@ export function buildOidcConfiguration(
       },
       rpInitiatedLogout: {
         enabled: true,
+        logoutSource: (ctx, form) => {
+          ctx.type = 'html';
+          ctx.body = buildLogoutSource(form);
+        },
       },
     },
     ttl: {
       AccessToken: config.accessTokenTtlSeconds,
       ClientCredentials: config.accessTokenTtlSeconds,
-      RefreshToken: (_ctx, _token, client) =>
-        resolveRefreshTokenTtl(
-          config.refreshTokenTtlSeconds,
-          client as ClientExtraMetadata | undefined,
-        ),
+      RefreshToken: (ctx, _token, client) =>
+        resolveRefreshTokenTtl(config.refreshTokenTtlSeconds, client, ctx),
       // Set explicitly rather than left to oidc-provider's 14-day defaults.
       // An unset Session TTL would let a login outlive its refresh token by
       // nearly two weeks, which would make AU-08's concurrent-session limit

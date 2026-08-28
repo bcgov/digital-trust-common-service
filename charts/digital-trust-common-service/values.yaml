@@ -26,8 +26,9 @@ imagePullSecrets: []
 serviceAccount:
   # -- Create a service account
   create: true
-  # -- Automatically mount the service account's API credentials
-  automount: true
+  # -- Automatically mount the service account's API credentials. Off by default:
+  # nothing in the API, Worker or UI talks to the Kubernetes API.
+  automount: false
   # -- Annotations for the service account
   annotations: {}
   # -- Service account name (generated from the fullname when empty and `create` is true)
@@ -95,6 +96,92 @@ ingress:
   # -- Ingress TLS configuration
   tls: []
 
+# UI frontend deployment (React SPA served by Caddy).
+# Turning it off leaves the Route and Ingress pointing straight at
+# the API service.
+frontend:
+  # -- Deploy the UI frontend
+  enabled: true
+  # -- Frontend replicas (ignored when `frontend.autoscaling.enabled=true`)
+  replicaCount: 1
+  image:
+    # -- Frontend image registry
+    registry: ghcr.io
+    # -- Frontend image repository
+    repository: bcgov/digital-trust-common-service-ui
+    # -- Frontend image pull policy
+    pullPolicy: IfNotPresent
+    # -- Frontend image tag (falls back to `image.tag`, then chart appVersion)
+    tag: ""
+  service:
+    # -- Frontend Service type
+    type: ClusterIP
+    # -- Frontend Service port exposed to the cluster
+    port: 8080
+    # -- Frontend container port (Caddy listener)
+    targetPort: 8080
+  # -- URL paths reverse-proxied from the frontend to the API service
+  proxyPaths:
+    - /api/*
+    - /oidc/*
+    - /health/*
+  # Caddy only preserves an inbound X-Forwarded-Proto when the immediate peer is
+  # trusted; otherwise it rewrites the header with the scheme it saw itself. The
+  # OpenShift router terminates TLS at the edge and forwards plain http, so
+  # without this the API sees `x-forwarded-proto: http` and every OIDC discovery
+  # endpoint is derived as http:// while `issuer` stays https://. Narrow to the
+  # router's own CIDR where you know it.
+  # -- Peers whose `X-Forwarded-*` headers Caddy trusts. An empty list omits the block entirely.
+  trustedProxies:
+    - private_ranges
+  # -- Resource requests and limits for the frontend container
+  resources:
+    requests:
+      cpu: 25m
+      memory: 64Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+  # -- Liveness probe for the frontend container
+  livenessProbe:
+    httpGet:
+      path: /
+      port: http
+    initialDelaySeconds: 10
+    periodSeconds: 15
+    timeoutSeconds: 3
+    failureThreshold: 3
+  # -- Readiness probe for the frontend container
+  readinessProbe:
+    httpGet:
+      path: /
+      port: http
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    timeoutSeconds: 3
+    failureThreshold: 3
+  # -- Annotations added to frontend pods
+  podAnnotations: {}
+  # -- Labels added to frontend pods
+  podLabels: {}
+  autoscaling:
+    # -- Enable autoscaling for the frontend Deployment
+    enabled: false
+    # -- Minimum frontend replicas
+    minReplicas: 1
+    # -- Maximum frontend replicas
+    maxReplicas: 3
+    # -- Target average CPU utilization (percentage)
+    targetCPUUtilizationPercentage: 80
+    # -- Target average memory utilization (percentage)
+    # targetMemoryUtilizationPercentage: 80
+  # -- Node selector for frontend pods
+  nodeSelector: {}
+  # -- Tolerations for frontend pods
+  tolerations: []
+  # -- Affinity for frontend pods
+  affinity: {}
+
 # -- Resource requests and limits for the API container
 resources:
   requests:
@@ -105,6 +192,16 @@ resources:
     memory: 256Mi
 
 # -- Liveness probe. IN-01 provides a minimal 200 at `/health/live`.
+# -- Startup probe. Gates the liveness and readiness probes until the app is up,
+# so a slow boot (Nest module init, DB connect) can't be killed by liveness.
+# `failureThreshold` x `periodSeconds` is the boot budget — 30 x 5s = 150s.
+startupProbe:
+  httpGet:
+    path: /health/live
+    port: http
+  periodSeconds: 5
+  timeoutSeconds: 3
+  failureThreshold: 30
 livenessProbe:
   httpGet:
     path: /health/live
@@ -137,22 +234,30 @@ autoscaling:
   # targetMemoryUtilizationPercentage: 80
 
 # Database migrations run as a Helm hook Job (pre-install/pre-upgrade).
-# Disabled until the migration runner command exists.
+# Off by default; each environment overlay decides.
 migrations:
   # -- Run database migrations as a pre-install/pre-upgrade Helm hook Job.
   # Runs exactly once per release before the app pods roll, avoiding the
   # concurrent/every-boot execution that an init container would cause across
-  # replicas and HPA scale-ups.
+  # replicas and HPA scale-ups. A hook runs before the release's own resources
+  # exist, so the Job carries the non-secret `config.*` inline, runs under the
+  # namespace default ServiceAccount unless `serviceAccount.create` is false,
+  # and requires `secret.existingSecret` (a chart-managed Secret would not
+  # exist yet on a first install, so that combination is refused at render
+  # time).
   enabled: false
   # -- Migration entrypoint command
   command:
     - node
-  # -- Migration entrypoint args
+  # -- Migration entrypoint args: the TypeORM CLI against the compiled DataSource — what `npm run migrate:up` runs, invoked directly so the Job needs neither npm nor a writable home directory.
   args:
-    - dist/apps/digital-trust-common-service/src/migrate.js
+    - node_modules/typeorm/cli.js
+    - migration:run
+    - -d
+    - dist/libs/database/src/data-source.js
   # -- Helm hook configuration for the migration Job. `pre-install,pre-upgrade`
   # is fail-closed: a failed migration aborts the release and the old version
-  # keeps serving. NOTE: the migration runner (migrate.js) should still wrap its
+  # keeps serving. NOTE: the migration runner should still wrap its
   # run in a Postgres advisory lock (pg_advisory_lock/unlock) as defence in
   # depth, since TypeORM does not lock migrations by default.
   hook:
@@ -347,7 +452,8 @@ networkPolicy:
       - 53
       - 5353
   ingress:
-    # -- Allow ingress to the API from the OpenShift router
+    # -- Allow ingress from the OpenShift router to the externally exposed
+    # component (frontend when enabled, API otherwise)
     enabled: true
     # -- Namespace selector matching the OpenShift router namespace
     routerNamespaceSelector:

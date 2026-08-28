@@ -38,6 +38,20 @@ describe('ConnectorCredentialService', () => {
     tenant: undefined as any,
   };
 
+  const auth = {
+    sub: 'user-1',
+    tokenType: 'user' as const,
+    clientId: 'spa',
+    tenantId: mockCredential.tenantId,
+    roles: [] as string[],
+    scope: 'tenants:admin',
+    scopes: ['tenants:admin'],
+    iss: 'http://localhost/oidc',
+    aud: 'http://localhost/oidc',
+    exp: 9_999_999_999,
+    iat: 1,
+  };
+
   beforeEach(async () => {
     mockFindById = jest.fn();
     mockFindByTenant = jest.fn();
@@ -113,7 +127,7 @@ describe('ConnectorCredentialService', () => {
 
       mockCreate.mockResolvedValue(mockCredential);
 
-      const result = await service.create(dto);
+      const result = await service.create(dto, auth);
 
       expect(mockCreate).toHaveBeenCalled();
       expect(result).toEqual(mockCredential);
@@ -124,7 +138,7 @@ describe('ConnectorCredentialService', () => {
     it('should find a credential by ID', async () => {
       mockFindById.mockResolvedValue(mockCredential);
 
-      const result = await service.findById(mockCredential.id);
+      const result = await service.findById(mockCredential.id, auth);
 
       expect(mockFindById).toHaveBeenCalledWith(mockCredential.id);
       expect(result).toEqual(mockCredential);
@@ -133,7 +147,15 @@ describe('ConnectorCredentialService', () => {
     it('should throw NotFoundException if credential not found', async () => {
       mockFindById.mockResolvedValue(null);
 
-      await expect(service.findById('nonexistent')).rejects.toThrow(
+      await expect(service.findById('nonexistent', auth)).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('should throw NotFoundException when auth is omitted', async () => {
+      mockFindById.mockResolvedValue(mockCredential);
+
+      await expect(service.findById(mockCredential.id)).rejects.toThrow(
         NotFoundException,
       );
     });
@@ -196,7 +218,7 @@ describe('ConnectorCredentialService', () => {
       mockFindById.mockResolvedValue(mockCredential);
       mockUpdate.mockResolvedValue(updatedCredential);
 
-      const result = await service.update(mockCredential.id, updateDto);
+      const result = await service.update(mockCredential.id, updateDto, auth);
 
       expect(mockFindById).toHaveBeenCalledWith(mockCredential.id);
       expect(mockUpdate).toHaveBeenCalled();
@@ -217,7 +239,7 @@ describe('ConnectorCredentialService', () => {
       mockFindById.mockResolvedValue(mockCredential);
       mockDelete.mockResolvedValue(undefined);
 
-      await service.delete(mockCredential.id);
+      await service.delete(mockCredential.id, auth);
 
       expect(mockFindById).toHaveBeenCalledWith(mockCredential.id);
       expect(mockDelete).toHaveBeenCalledWith(mockCredential.id);
@@ -226,7 +248,7 @@ describe('ConnectorCredentialService', () => {
     it('should throw NotFoundException if credential not found during delete', async () => {
       mockFindById.mockResolvedValue(null);
 
-      await expect(service.delete('nonexistent')).rejects.toThrow(
+      await expect(service.delete('nonexistent', auth)).rejects.toThrow(
         NotFoundException,
       );
     });
@@ -245,6 +267,7 @@ describe('ConnectorCredentialService', () => {
       const result = await service.decryptCredential(
         validHexKey,
         mockCredential.id,
+        auth,
       );
 
       expect(mockFindById).toHaveBeenCalledWith(mockCredential.id);
@@ -261,11 +284,11 @@ describe('ConnectorCredentialService', () => {
       const shortKey = 'tooshort';
 
       await expect(
-        service.decryptCredential(shortKey, mockCredential.id),
+        service.decryptCredential(shortKey, mockCredential.id, auth),
       ).rejects.toThrow(BadRequestException);
 
       await expect(
-        service.decryptCredential(shortKey, mockCredential.id),
+        service.decryptCredential(shortKey, mockCredential.id, auth),
       ).rejects.toThrow('Invalid key provided.');
     });
 
@@ -276,7 +299,7 @@ describe('ConnectorCredentialService', () => {
         '0000000000000000000000000000000000000000000000000000000000000 00';
 
       await expect(
-        service.decryptCredential(invalidHexKey, mockCredential.id),
+        service.decryptCredential(invalidHexKey, mockCredential.id, auth),
       ).rejects.toThrow(BadRequestException);
     });
 
@@ -284,11 +307,11 @@ describe('ConnectorCredentialService', () => {
       mockFindById.mockResolvedValue(null);
 
       await expect(
-        service.decryptCredential(validHexKey, 'nonexistent'),
+        service.decryptCredential(validHexKey, 'nonexistent', auth),
       ).rejects.toThrow(NotFoundException);
 
       await expect(
-        service.decryptCredential(validHexKey, 'nonexistent'),
+        service.decryptCredential(validHexKey, 'nonexistent', auth),
       ).rejects.toThrow(
         `Connector credential with ID 'nonexistent' was not found.`,
       );
@@ -301,11 +324,11 @@ describe('ConnectorCredentialService', () => {
       });
 
       await expect(
-        service.decryptCredential(validHexKey, mockCredential.id),
+        service.decryptCredential(validHexKey, mockCredential.id, auth),
       ).rejects.toThrow(BadRequestException);
 
       await expect(
-        service.decryptCredential(validHexKey, mockCredential.id),
+        service.decryptCredential(validHexKey, mockCredential.id, auth),
       ).rejects.toThrow('Invalid key provided.');
     });
 
@@ -313,11 +336,11 @@ describe('ConnectorCredentialService', () => {
       const keyArray = [validHexKey, 'another_key'] as any;
 
       await expect(
-        service.decryptCredential(keyArray, mockCredential.id),
+        service.decryptCredential(keyArray, mockCredential.id, auth),
       ).rejects.toThrow(BadRequestException);
 
       await expect(
-        service.decryptCredential(keyArray, mockCredential.id),
+        service.decryptCredential(keyArray, mockCredential.id, auth),
       ).rejects.toThrow('Invalid key provided.');
 
       expect(mockFindById).not.toHaveBeenCalled();
@@ -327,11 +350,11 @@ describe('ConnectorCredentialService', () => {
       const invalidKeyType = 12345 as any;
 
       await expect(
-        service.decryptCredential(invalidKeyType, mockCredential.id),
+        service.decryptCredential(invalidKeyType, mockCredential.id, auth),
       ).rejects.toThrow(BadRequestException);
 
       await expect(
-        service.decryptCredential(invalidKeyType, mockCredential.id),
+        service.decryptCredential(invalidKeyType, mockCredential.id, auth),
       ).rejects.toThrow('Invalid key provided.');
 
       expect(mockFindById).not.toHaveBeenCalled();

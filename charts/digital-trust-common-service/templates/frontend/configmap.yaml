@@ -1,0 +1,48 @@
+{{- if .Values.frontend.enabled -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "digital-trust-common-service.frontend.configMapName" . }}
+  labels:
+    {{- include "digital-trust-common-service.frontend.labels" . | nindent 4 }}
+data:
+  Caddyfile: |
+{{- if .Values.frontend.trustedProxies }}
+    # Global options must be the first block in a Caddyfile — they cannot live
+    # inside the site block below.
+    #
+    # Caddy only preserves an inbound X-Forwarded-Proto when the immediate peer
+    # is trusted; otherwise it overwrites the header with the scheme it observed
+    # itself. The OpenShift router terminates TLS at the edge and forwards plain
+    # http to this listener, so without this the API sees
+    # `x-forwarded-proto: http` and node-oidc-provider derives every discovery
+    # endpoint as http:// while `issuer` stays https:// — which breaks the login
+    # redirect and makes Keycloak reject the token exchange with invalid_grant.
+    {
+    	servers {
+    		trusted_proxies static{{- range .Values.frontend.trustedProxies }} {{ . }}{{- end }}
+    	}
+    }
+{{ end }}
+    :{{ .Values.frontend.service.targetPort }} {
+    	encode zstd gzip
+
+    	# The `handle` blocks are load-bearing, not stylistic. Caddy's default
+    	# directive order runs `try_files` before `reverse_proxy`, so with both
+    	# in the same (sub)route the SPA fallback rewrites /api/* to /index.html
+    	# and the @api matcher never fires — every proxied path silently returns
+    	# the SPA. `handle` blocks are mutually exclusive and evaluated in
+    	# written order, which is what keeps the proxy ahead of the fallback.
+    	# Mirrors the local-dev Caddyfile in caddy/Caddyfile.
+    	@api path{{- range .Values.frontend.proxyPaths }} {{ . }}{{- end }}
+    	handle @api {
+    		reverse_proxy http://{{ include "digital-trust-common-service.fullname" . }}:{{ .Values.service.port }}
+    	}
+
+    	handle {
+    		root * /srv
+    		try_files {path} /index.html
+    		file_server
+    	}
+    }
+{{- end }}

@@ -1,0 +1,129 @@
+suite: migration job
+templates:
+  - templates/migration-job.yaml
+tests:
+  - it: is not rendered by default
+    set:
+      upstreamFederation:
+        existingSecret:
+          name: dtsc-ci-oidc-client
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  # The PR overlay is the first environment to enable the Job, and CI only
+  # proves the overlay renders; this pins what it renders.
+  - it: renders the Job for PR environments with the TypeORM CLI
+    values:
+      - ../values-pr.yaml
+    set:
+      # The overlay expects these injected at deploy time.
+      oidcSigning:
+        keys: '{"keys":[{"kty":"RSA","kid":"test-kid"}]}'
+      connectorEncryption:
+        keys:
+          "1": test-connector-key
+    asserts:
+      - hasDocuments:
+          count: 1
+      - isKind:
+          of: Job
+      - equal:
+          path: metadata.annotations["helm.sh/hook"]
+          value: pre-install,pre-upgrade
+      - equal:
+          path: spec.template.spec.containers[0].command
+          value: [node]
+      - equal:
+          path: spec.template.spec.containers[0].args
+          value:
+            - node_modules/typeorm/cli.js
+            - migration:run
+            - -d
+            - dist/libs/database/src/data-source.js
+      # Pre-provisioned, so a hook may reference it.
+      - contains:
+          path: spec.template.spec.containers[0].envFrom
+          content:
+            secretRef:
+              name: digital-trust-common-service-pr-secret
+      # The chart's ServiceAccount is a release resource too: naming it here
+      # gets the pod refused with "serviceaccount not found".
+      - notExists:
+          path: spec.template.spec.serviceAccountName
+      - equal:
+          path: spec.template.spec.automountServiceAccountToken
+          value: false
+
+  - it: names a pre-existing ServiceAccount when the chart does not create one
+    values:
+      - ../ci/ci-values.yaml
+    set:
+      serviceAccount:
+        create: false
+        name: pre-existing-sa
+      upstreamFederation:
+        existingSecret:
+          name: dtsc-ci-oidc-client
+    asserts:
+      - equal:
+          path: spec.template.spec.serviceAccountName
+          value: pre-existing-sa
+
+  # A pre-install hook runs before the release ConfigMap exists; reading env
+  # from it leaves the pod in CreateContainerConfigError and the install
+  # times out.
+  - it: carries its non-secret env inline instead of the release ConfigMap
+    values:
+      - ../ci/ci-values.yaml
+    set:
+      upstreamFederation:
+        existingSecret:
+          name: dtsc-ci-oidc-client
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: DB_HOST
+            value: postgres
+      - notContains:
+          path: spec.template.spec.containers[0].envFrom
+          content:
+            configMapRef:
+              name: RELEASE-NAME-digital-trust-common-service-config
+
+  # The chart-managed Secret is a release resource too; on a first install the
+  # hook would wait for it until the deadline. Refused at render time instead.
+  - it: refuses a chart-managed Secret alongside a pre-install hook
+    values:
+      - ../ci/ci-values.yaml
+    set:
+      secret:
+        existingSecret: ""
+        create: true
+      upstreamFederation:
+        existingSecret:
+          name: dtsc-ci-oidc-client
+    asserts:
+      - failedTemplate:
+          errorPattern: requires secret.existingSecret
+
+  - it: accepts a chart-managed Secret when the hook does not run pre-install
+    values:
+      - ../ci/ci-values.yaml
+    set:
+      secret:
+        existingSecret: ""
+        create: true
+      migrations:
+        hook:
+          types: post-install,pre-upgrade
+      upstreamFederation:
+        existingSecret:
+          name: dtsc-ci-oidc-client
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].envFrom
+          content:
+            secretRef:
+              name: RELEASE-NAME-digital-trust-common-service-secret

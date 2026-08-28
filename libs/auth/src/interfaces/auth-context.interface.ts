@@ -8,6 +8,11 @@ export type AuthTokenType = 'user' | 'client';
 export interface AuthContext {
   sub: string;
   tokenType: AuthTokenType;
+  /**
+   * OAuth client that requested the token. Present on user tokens (SPA
+   * `client_id`) as well as client-credentials tokens. Null only when the
+   * JWT omitted `client_id` (legacy or malformed user tokens).
+   */
   clientId: string | null;
   tenantId: string | null;
   roles: string[];
@@ -19,4 +24,6 @@ export interface AuthContext {
   aud: string | string[];
   exp: number;
   iat: number;
+  /** JWT `jti`, used to locate the oidc-provider AccessToken for grant revoke. */
+  jti?: string | null;
 }

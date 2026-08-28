@@ -1,3 +1,5 @@
+import { JwtGuard, ScopeGuard, TenantGuard, type AuthContext } from '@app/auth';
+import { CanActivate } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 
 import { ConnectionController } from './connection.controller';
@@ -9,6 +11,12 @@ import {
 } from './connection.entity';
 import { ConnectionService } from './connection.service';
 import { CreateConnectionDto } from './dto/create-connection.dto';
+
+class AllowGuard implements CanActivate {
+  public canActivate(): boolean {
+    return true;
+  }
+}
 
 describe('ConnectionController', () => {
   let controller: ConnectionController;
@@ -34,6 +42,20 @@ describe('ConnectionController', () => {
     tenant: undefined as any,
     createdAt: new Date(),
     updatedAt: new Date(),
+  };
+
+  const auth: AuthContext = {
+    sub: 'user-1',
+    tokenType: 'user',
+    clientId: 'spa',
+    tenantId: mockConnection.tenantId,
+    roles: [],
+    scope: 'connections:manage',
+    scopes: ['connections:manage'],
+    iss: 'http://localhost/oidc',
+    aud: 'http://localhost/oidc',
+    exp: 9_999_999_999,
+    iat: 1,
   };
 
   beforeEach(async () => {
@@ -63,7 +85,14 @@ describe('ConnectionController', () => {
           useValue: mockService,
         },
       ],
-    }).compile();
+    })
+      .overrideGuard(JwtGuard)
+      .useClass(AllowGuard)
+      .overrideGuard(ScopeGuard)
+      .useClass(AllowGuard)
+      .overrideGuard(TenantGuard)
+      .useClass(AllowGuard)
+      .compile();
 
     controller = module.get<ConnectionController>(ConnectionController);
   });
@@ -87,9 +116,9 @@ describe('ConnectionController', () => {
 
       mockCreate.mockResolvedValue(mockConnection);
 
-      const result = await controller.create(dto);
+      const result = await controller.create(dto, auth);
 
-      expect(mockCreate).toHaveBeenCalledWith(dto);
+      expect(mockCreate).toHaveBeenCalledWith(dto, auth);
       expect(result).toEqual(mockConnection);
     });
   });
@@ -98,9 +127,9 @@ describe('ConnectionController', () => {
     it('should find a connection by id', async () => {
       mockFindById.mockResolvedValue(mockConnection);
 
-      const result = await controller.findById(mockConnection.id);
+      const result = await controller.findById(mockConnection.id, auth);
 
-      expect(mockFindById).toHaveBeenCalledWith(mockConnection.id);
+      expect(mockFindById).toHaveBeenCalledWith(mockConnection.id, auth);
       expect(result).toEqual(mockConnection);
     });
   });
@@ -111,10 +140,12 @@ describe('ConnectionController', () => {
 
       const result = await controller.findByExternalConnectionId(
         mockConnection.externalConnectionId,
+        auth,
       );
 
       expect(mockFindByExternalConnectionId).toHaveBeenCalledWith(
         mockConnection.externalConnectionId,
+        auth,
       );
       expect(result).toEqual(mockConnection);
     });
@@ -154,9 +185,9 @@ describe('ConnectionController', () => {
 
       mockUpdate.mockResolvedValue({ ...mockConnection, ...dto });
 
-      const result = await controller.update(mockConnection.id, dto);
+      const result = await controller.update(mockConnection.id, dto, auth);
 
-      expect(mockUpdate).toHaveBeenCalledWith(mockConnection.id, dto);
+      expect(mockUpdate).toHaveBeenCalledWith(mockConnection.id, dto, auth);
       expect(result.state).toEqual(ConnectionState.COMPLETED);
     });
   });
@@ -165,9 +196,9 @@ describe('ConnectionController', () => {
     it('should delete a connection', async () => {
       mockDelete.mockResolvedValue(undefined);
 
-      await controller.delete(mockConnection.id);
+      await controller.delete(mockConnection.id, auth);
 
-      expect(mockDelete).toHaveBeenCalledWith(mockConnection.id);
+      expect(mockDelete).toHaveBeenCalledWith(mockConnection.id, auth);
     });
   });
 });

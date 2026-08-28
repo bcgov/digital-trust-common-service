@@ -1,3 +1,4 @@
+import type { AuthContext } from '@app/auth';
 import {
   ConflictException,
   Injectable,
@@ -6,6 +7,10 @@ import {
 
 import { AuditAction } from '../audit-log/audit-log.entity';
 import { DomainAuditService } from '../audit-log/domain-audit.service';
+import {
+  assertResourceTenantOrNotFound,
+  assertTenantAccess,
+} from '../common/assert-tenant-access';
 
 import { Connection, ConnectionState } from './connection.entity';
 import { ConnectionRepository } from './connection.repository';
@@ -19,7 +24,12 @@ export class ConnectionService {
     private readonly domainAudit: DomainAuditService,
   ) {}
 
-  public async create(dto: CreateConnectionDto): Promise<Connection> {
+  public async create(
+    dto: CreateConnectionDto,
+    auth: AuthContext,
+  ): Promise<Connection> {
+    assertTenantAccess(auth, dto.tenantId);
+
     const existing = await this.connectionRepository.findByExternalConnectionId(
       dto.externalConnectionId,
     );
@@ -51,30 +61,33 @@ export class ConnectionService {
     return created;
   }
 
-  public async findById(id: string): Promise<Connection> {
+  public async findById(id: string, auth: AuthContext): Promise<Connection> {
     const connection = await this.connectionRepository.findById(id);
+    const notFound = `Connection '${id}' was not found.`;
 
     if (!connection) {
-      throw new NotFoundException(`Connection '${id}' was not found.`);
+      throw new NotFoundException(notFound);
     }
 
+    assertResourceTenantOrNotFound(auth, connection.tenantId, notFound);
     return connection;
   }
 
   public async findByExternalConnectionId(
     externalConnectionId: string,
+    auth: AuthContext,
   ): Promise<Connection> {
     const connection =
       await this.connectionRepository.findByExternalConnectionId(
         externalConnectionId,
       );
+    const notFound = `Connection with external ID '${externalConnectionId}' was not found.`;
 
     if (!connection) {
-      throw new NotFoundException(
-        `Connection with external ID '${externalConnectionId}' was not found.`,
-      );
+      throw new NotFoundException(notFound);
     }
 
+    assertResourceTenantOrNotFound(auth, connection.tenantId, notFound);
     return connection;
   }
 
@@ -95,8 +108,9 @@ export class ConnectionService {
   public async update(
     id: string,
     dto: UpdateConnectionDto,
+    auth: AuthContext,
   ): Promise<Connection> {
-    const connection = await this.findById(id);
+    const connection = await this.findById(id, auth);
 
     if (dto.theirLabel !== undefined) {
       connection.theirLabel = dto.theirLabel;
@@ -130,8 +144,8 @@ export class ConnectionService {
     return updated;
   }
 
-  public async delete(id: string): Promise<void> {
-    const connection = await this.findById(id);
+  public async delete(id: string, auth: AuthContext): Promise<void> {
+    const connection = await this.findById(id, auth);
 
     await this.connectionRepository.delete(id);
 
@@ -141,5 +155,10 @@ export class ConnectionService {
       resourceType: 'connection',
       resourceId: id,
     });
+  }
+
+  /** Used by the tenant status-change cascade when a tenant is deactivated. */
+  public async abandonAllForTenant(tenantId: string): Promise<number> {
+    return this.connectionRepository.abandonAllForTenant(tenantId);
   }
 }

@@ -176,8 +176,16 @@ describe('OIDC client_credentials grant (integration)', () => {
       .send({ grant_type: 'client_credentials', scope: 'credentials:offer' })
       .expect(200);
 
+    // Scoped to this client rather than counting every RefreshToken row: the
+    // integration tier shares one database, so a global count asserts that no
+    // *other* spec issued a refresh token, which is not what this test is about
+    // and breaks the moment one legitimately does.
     const rows = await dataSource.query<Array<{ count: string }>>(
-      `SELECT COUNT(*)::text AS count FROM oidc_model WHERE model_name = 'RefreshToken'`,
+      `SELECT COUNT(*)::text AS count
+         FROM oidc_model
+        WHERE model_name = 'RefreshToken'
+          AND payload ->> 'clientId' = $1`,
+      [clientId],
     );
 
     expect(Number(rows[0]?.count ?? 0)).toBe(0);

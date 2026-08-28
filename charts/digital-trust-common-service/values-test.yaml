@@ -8,6 +8,9 @@ image:
 
 replicaCount: 2
 
+frontend:
+  enabled: true
+
 route:
   enabled: true
   # TODO: confirm hostname (typically *.apps.silver.devops.gov.bc.ca)

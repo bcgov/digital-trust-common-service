@@ -38,6 +38,24 @@ describe('jwt-validation helpers', () => {
     expect(user.clientId).toBeNull();
     expect(user.roles).toEqual(['admin']);
     expect(user.scopes).toEqual(['credentials:offer', 'credentials:verify']);
+    expect(user.jti).toBeNull();
+
+    const userWithClient = normalizeAuthPayload({
+      sub: 'a3f8c2d1-1111-4123-8123-123456789abc',
+      client_id: 'digital-trust-common-service-ui',
+      jti: 'access-token-jti',
+      scope: 'openid',
+      tenant_id: 'tenant-1',
+      roles: ['member'],
+      iss: 'http://localhost:3000/oidc',
+      aud: 'http://localhost:3000/oidc',
+      exp: 123,
+      iat: 100,
+    });
+
+    expect(userWithClient.tokenType).toBe('user');
+    expect(userWithClient.clientId).toBe('digital-trust-common-service-ui');
+    expect(userWithClient.jti).toBe('access-token-jti');
 
     const client = normalizeAuthPayload({
       sub: 'client:ext-service-1',

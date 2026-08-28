@@ -1,4 +1,14 @@
 import {
+  ApiJwtAuth,
+  CONNECTIONS_MANAGE_SCOPE,
+  CurrentAuth,
+  JwtGuard,
+  RequireScopes,
+  ScopeGuard,
+  TenantGuard,
+  type AuthContext,
+} from '@app/auth';
+import {
   Body,
   Controller,
   Delete,
@@ -9,13 +19,16 @@ import {
   Post,
   Query,
   ParseEnumPipe,
+  UseGuards,
 } from '@nestjs/common';
 import {
   ApiBody,
   ApiCreatedResponse,
+  ApiForbiddenResponse,
   ApiOkResponse,
   ApiNotFoundResponse,
   ApiQuery,
+  ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 
 import { SkipAutoAudit } from '../audit-log/skip-auto-audit.decorator';
@@ -27,6 +40,13 @@ import { CreateConnectionDto } from './dto/create-connection.dto';
 import { UpdateConnectionDto } from './dto/update-connection.dto';
 
 @SkipAutoAudit()
+@ApiJwtAuth()
+@UseGuards(JwtGuard, ScopeGuard, TenantGuard)
+@RequireScopes(CONNECTIONS_MANAGE_SCOPE)
+@ApiUnauthorizedResponse({ description: 'Authentication is required' })
+@ApiForbiddenResponse({
+  description: 'Token lacks connections:manage, or tenant claim does not match',
+})
 @Controller({ path: 'connections', version: API_VERSION })
 export class ConnectionController {
   public constructor(private readonly connectionService: ConnectionService) {}
@@ -55,34 +75,11 @@ export class ConnectionController {
       },
     },
   })
-  public async create(@Body() dto: CreateConnectionDto): Promise<Connection> {
-    return await this.connectionService.create(dto);
-  }
-
-  @Get(':id')
-  @ApiOkResponse({
-    description: 'Connection found',
-    type: Connection,
-  })
-  @ApiNotFoundResponse({ description: 'Connection not found' })
-  public async findById(
-    @Param('id', ParseUUIDPipe) id: string,
+  public async create(
+    @Body() dto: CreateConnectionDto,
+    @CurrentAuth() auth: AuthContext,
   ): Promise<Connection> {
-    return await this.connectionService.findById(id);
-  }
-
-  @Get('external/:externalConnectionId')
-  @ApiOkResponse({
-    description: 'Connection found by external connection ID',
-    type: Connection,
-  })
-  @ApiNotFoundResponse({ description: 'Connection not found' })
-  public async findByExternalConnectionId(
-    @Param('externalConnectionId') externalConnectionId: string,
-  ): Promise<Connection> {
-    return await this.connectionService.findByExternalConnectionId(
-      externalConnectionId,
-    );
+    return await this.connectionService.create(dto, auth);
   }
 
   @Get('tenant/:tenantId')
@@ -108,6 +105,35 @@ export class ConnectionController {
       );
     }
     return await this.connectionService.findByTenantId(tenantId);
+  }
+
+  @Get('external/:externalConnectionId')
+  @ApiOkResponse({
+    description: 'Connection found by external connection ID',
+    type: Connection,
+  })
+  @ApiNotFoundResponse({ description: 'Connection not found' })
+  public async findByExternalConnectionId(
+    @Param('externalConnectionId') externalConnectionId: string,
+    @CurrentAuth() auth: AuthContext,
+  ): Promise<Connection> {
+    return await this.connectionService.findByExternalConnectionId(
+      externalConnectionId,
+      auth,
+    );
+  }
+
+  @Get(':id')
+  @ApiOkResponse({
+    description: 'Connection found',
+    type: Connection,
+  })
+  @ApiNotFoundResponse({ description: 'Connection not found' })
+  public async findById(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentAuth() auth: AuthContext,
+  ): Promise<Connection> {
+    return await this.connectionService.findById(id, auth);
   }
 
   @Patch(':id')
@@ -138,14 +164,18 @@ export class ConnectionController {
   public async update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateConnectionDto,
+    @CurrentAuth() auth: AuthContext,
   ): Promise<Connection> {
-    return await this.connectionService.update(id, dto);
+    return await this.connectionService.update(id, dto, auth);
   }
 
   @Delete(':id')
   @ApiOkResponse({ description: 'Connection deleted successfully' })
   @ApiNotFoundResponse({ description: 'Connection not found' })
-  public async delete(@Param('id', ParseUUIDPipe) id: string): Promise<void> {
-    return await this.connectionService.delete(id);
+  public async delete(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentAuth() auth: AuthContext,
+  ): Promise<void> {
+    return await this.connectionService.delete(id, auth);
   }
 }

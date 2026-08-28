@@ -181,6 +181,14 @@ export class TenantUserService {
     return await this.tenantUserRepository.findByExternalUserId(externalUserId);
   }
 
+  public async findActiveByExternalUserId(
+    externalUserId: string,
+  ): Promise<TenantUser[]> {
+    return await this.tenantUserRepository.findActiveByExternalUserId(
+      externalUserId,
+    );
+  }
+
   public async findByTenantAndExternalUserId(
     tenantId: string,
     externalUserId: string,

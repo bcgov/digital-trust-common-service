@@ -6,6 +6,7 @@ import { Response } from 'express';
 
 import { AdminModule } from '../admin/admin.module';
 import { AuditLogModule } from '../audit-log/audit-log.module';
+import { AuthApiModule } from '../auth/auth-api.module';
 import { API_BASE_PATH } from '../common/constants/api-version.constants';
 import { ConnectionModule } from '../connection/connection.module';
 import { ConnectorCredentialModule } from '../connector-credential/connector-credential.module';
@@ -38,8 +39,10 @@ const swaggerApps = [
     modules: [
       TenantModule,
       TenantUserModule,
+      AuthApiModule,
       CredentialDefinitionModule,
       AuditLogModule,
+      OAuthClientModule,
     ],
   },
   {
@@ -47,12 +50,7 @@ const swaggerApps = [
     title: 'Digital Credential Operations API',
     description: 'API endpoints for Digital Credential operations',
     version: '1.0',
-    modules: [
-      ConnectionModule,
-      ConnectorCredentialModule,
-      OAuthClientModule,
-      OperationModule,
-    ],
+    modules: [ConnectionModule, ConnectorCredentialModule, OperationModule],
   },
   {
     name: 'admin',
@@ -203,7 +201,7 @@ export class SwaggerService {
     modules: Array<Type<unknown>> = [TenantModule, TenantUserModule],
   ): void {
     const config = buildDocumentConfig(title, description, version, {
-      includeAppJwtBearerAuth: name === 'admin',
+      includeAppJwtBearerAuth: name === 'admin' || name === 'tenant',
     });
 
     const document = SwaggerModule.createDocument(app, config, {
@@ -236,7 +234,7 @@ export class SwaggerService {
     document?: ReturnType<typeof SwaggerModule.createDocument>,
   ): void {
     const config = buildDocumentConfig(title, description, version, {
-      includeAppJwtBearerAuth: name === 'admin',
+      includeAppJwtBearerAuth: name === 'admin' || name === 'tenant',
     });
 
     const docToUse =

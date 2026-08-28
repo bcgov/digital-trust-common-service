@@ -3,6 +3,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { AuditLogModule } from '../audit-log/audit-log.module';
+import { TenantStatusModule } from '../tenant/tenant-status.module';
 
 import { OidcTenantUserAdapter } from './oidc-tenant-user.adapter';
 import { TenantMembershipGuard } from './tenant-membership.guard';
@@ -12,7 +13,12 @@ import { TenantUserRepository } from './tenant-user.repository';
 import { TenantUserService } from './tenant-user.service';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([TenantUser]), AuditLogModule, AuthModule],
+  imports: [
+    TypeOrmModule.forFeature([TenantUser]),
+    AuditLogModule,
+    AuthModule,
+    TenantStatusModule,
+  ],
   controllers: [TenantUserController],
   providers: [
     TenantUserService,

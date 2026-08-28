@@ -127,6 +127,20 @@ export class Tenant {
   })
   public deleted_at?: Date;
 
+  @ApiProperty({
+    description:
+      'The date and time when the tenant was deactivated. Null unless the tenant is currently deactivated; cleared on reactivation. Used to measure the data retention window.',
+    example: null,
+    required: false,
+    nullable: true,
+  })
+  @Column({
+    name: 'deactivated_at',
+    type: 'timestamptz',
+    nullable: true,
+  })
+  public deactivated_at?: Date | null;
+
   @OneToMany(() => TenantUser, (tenantUser) => tenantUser.tenant)
   public users!: TenantUser[];
 }

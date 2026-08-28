@@ -1,14 +1,18 @@
+import { useQueryClient } from '@tanstack/react-query';
 import {
   Building2,
+  Check,
   ChevronsUpDown,
   LayoutDashboard,
   LogOut,
   Settings,
 } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { NavLink, Outlet } from 'react-router';
 
 import { BcGovHeader } from '@/components/bc-gov-header';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -18,6 +22,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import type { AuthTenant } from '@/lib/api/resources/auth';
 import { useAuth } from '@/lib/auth/context';
 import { cn } from '@/lib/utils';
 
@@ -38,22 +43,73 @@ function initialsOf(name: string | undefined): string {
 }
 
 export function AppShell() {
-  const { user, logout } = useAuth();
+  const { user, logout, listAuthTenants, switchTenant } = useAuth();
+  const queryClient = useQueryClient();
+  const [tenants, setTenants] = useState<AuthTenant[]>([]);
+  const [switching, setSwitching] = useState(false);
+
+  useEffect(() => {
+    void listAuthTenants()
+      .then(setTenants)
+      .catch(() => setTenants([]));
+  }, [listAuthTenants, user?.tenantId]);
+
+  const current = tenants.find((tenant) => tenant.id === user?.tenantId);
+  const canSwitch = tenants.length > 1;
+
+  const onSelectTenant = async (tenantId: string) => {
+    if (!canSwitch || tenantId === user?.tenantId || switching) return;
+    setSwitching(true);
+    try {
+      await switchTenant(tenantId);
+      await queryClient.invalidateQueries();
+    } finally {
+      setSwitching(false);
+    }
+  };
 
   return (
     <div className="flex min-h-svh flex-col">
       <BcGovHeader logoTo="/dashboard">
-        {/* Tenant switcher placeholder — real switching arrives with #84 / AU-09. */}
-        <Button
-          variant="outline"
-          size="sm"
-          disabled
-          title="Tenant switching arrives with the tenant dashboard (#84)"
-        >
-          <Building2 className="size-4" aria-hidden="true" />
-          All tenants
-          <ChevronsUpDown className="size-3.5 opacity-60" aria-hidden="true" />
-        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={!canSwitch || switching}
+              title={
+                canSwitch
+                  ? 'Switch tenant'
+                  : 'Tenant switching requires membership in more than one tenant'
+              }
+            >
+              <Building2 className="size-4" aria-hidden="true" />
+              {current?.name ?? 'All tenants'}
+              <ChevronsUpDown
+                className="size-3.5 opacity-60"
+                aria-hidden="true"
+              />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-56">
+            <DropdownMenuLabel>Tenants</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            {tenants.map((tenant) => (
+              <DropdownMenuItem
+                key={tenant.id}
+                disabled={switching}
+                onSelect={() => {
+                  void onSelectTenant(tenant.id);
+                }}
+              >
+                <span className="flex-1 truncate">{tenant.name}</span>
+                {tenant.id === user?.tenantId ? (
+                  <Check className="size-4" aria-hidden="true" />
+                ) : null}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -70,12 +126,23 @@ export function AppShell() {
             <DropdownMenuLabel className="font-normal">
               <p className="text-sm font-medium">{user?.name}</p>
               <p className="text-xs text-muted-foreground">{user?.email}</p>
+              {user?.roles.length ? (
+                <p className="mt-1 flex flex-wrap gap-1">
+                  {user.roles.map((role) => (
+                    <Badge key={role} variant="secondary">
+                      {role}
+                    </Badge>
+                  ))}
+                </p>
+              ) : null}
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuItem
               onSelect={() => {
-                // RequireAuth redirects to /login (replace) as soon as
-                // logout clears the user — no manual navigation needed.
+                // No manual navigation either way: mock logout clears the
+                // user and RequireAuth redirects to /login, while OIDC
+                // logout leaves the SPA entirely for the provider's
+                // end-session endpoint and returns to /login from there.
                 void logout();
               }}
             >

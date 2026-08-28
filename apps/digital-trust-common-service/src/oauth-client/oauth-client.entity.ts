@@ -11,6 +11,16 @@ import {
 
 import { Tenant } from '../tenant/tenant.entity';
 
+export enum OAuthClientRevokedReason {
+  /**
+   * Set when this client was bulk-revoked as a side effect of its tenant
+   * being deactivated. Reactivating the tenant auto-restores only clients
+   * with this reason — clients revoked individually for cause (reason left
+   * null) are never resurrected by a tenant status change.
+   */
+  TENANT_DEACTIVATION = 'tenant_deactivation',
+}
+
 @Entity({ name: 'oauth_client' })
 @Index('idx_oauth_client_tenant', ['tenantId'])
 export class OAuthClient {
@@ -41,8 +51,25 @@ export class OAuthClient {
   @Column({ name: 'client_id', type: 'varchar', length: 255, unique: true })
   public clientId!: string;
 
-  @Column({ name: 'client_secret_hash', type: 'text' })
-  public clientSecretHash!: string;
+  /**
+   * NULL for public (PKCE) clients, which have no secret to hash. The
+   * `chk_oauth_client_secret_matches_kind` constraint keeps this in lockstep
+   * with `isPublic`.
+   */
+  @Column({ name: 'client_secret_hash', type: 'text', nullable: true })
+  public clientSecretHash?: string | null;
+
+  @ApiProperty({
+    description:
+      'Whether this is a public (PKCE) client — a browser or native app that cannot hold a secret. Public clients authenticate with PKCE alone (token_endpoint_auth_method=none) and are never issued a client secret.',
+    example: false,
+  })
+  @Column({
+    name: 'is_public',
+    type: 'boolean',
+    default: false,
+  })
+  public isPublic!: boolean;
 
   @ApiProperty({
     description: 'The human-readable name of the OAuth client',
@@ -64,7 +91,7 @@ export class OAuthClient {
 
   @ApiProperty({
     description:
-      'JWT role claims stamped on tokens issued to this client (machine / client_credentials clients only; currently platform-admin)',
+      'JWT role claims stamped on tokens issued to this client (machine / client_credentials clients only). Tenant-scoped roles may be assigned by tenant admins; platform-admin requires a platform-admin caller.',
     example: [],
     required: false,
   })
@@ -86,6 +113,19 @@ export class OAuthClient {
     default: [],
   })
   public redirectUris!: string[];
+
+  @ApiProperty({
+    description:
+      'Array of allowed RP-initiated logout return URIs. Kept separate from redirectUris so a sign-out cannot be redirected onto the login callback route.',
+    example: ['https://app.example.com/login'],
+  })
+  @Column({
+    name: 'post_logout_redirect_uris',
+    type: 'text',
+    array: true,
+    default: [],
+  })
+  public postLogoutRedirectUris!: string[];
 
   @ApiProperty({
     description: 'Array of allowed grant types',
@@ -148,4 +188,20 @@ export class OAuthClient {
     nullable: true,
   })
   public revokedAt?: Date | null;
+
+  @ApiProperty({
+    description:
+      'Reason this client was revoked, when revoked as a side effect of a tenant lifecycle change. Null for manually revoked clients and clients that were never revoked.',
+    enum: OAuthClientRevokedReason,
+    example: OAuthClientRevokedReason.TENANT_DEACTIVATION,
+    required: false,
+    nullable: true,
+  })
+  @Column({
+    name: 'revoked_reason',
+    type: 'enum',
+    enum: OAuthClientRevokedReason,
+    nullable: true,
+  })
+  public revokedReason?: OAuthClientRevokedReason | null;
 }

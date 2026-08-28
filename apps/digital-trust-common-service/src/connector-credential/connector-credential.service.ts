@@ -1,10 +1,17 @@
+import type { AuthContext } from '@app/auth';
 import {
   BadRequestException,
+  forwardRef,
+  Inject,
   Injectable,
   Logger,
   NotFoundException,
 } from '@nestjs/common';
 
+import {
+  assertResourceTenantOrNotFound,
+  assertTenantAccess,
+} from '../common/assert-tenant-access';
 import { EncryptionService } from '../common/crypto/encryption.service';
 import { ConnectorType } from '../connection/connection.entity';
 import { TenantService } from '../tenant/tenant.service';
@@ -20,13 +27,16 @@ export class ConnectorCredentialService {
 
   public constructor(
     private readonly credentialRepository: ConnectorCredentialRepository,
+    @Inject(forwardRef(() => TenantService))
     private readonly tenantService: TenantService,
     private readonly encryptionService: EncryptionService,
   ) {}
 
   public async create(
     dto: CreateConnectorCredentialDto,
+    auth: AuthContext,
   ): Promise<ConnectorCredential> {
+    assertTenantAccess(auth, dto.tenantId);
     await this.tenantService.findById(dto.tenantId);
 
     const encryptedCredentials = this.encryptionService.encrypt(
@@ -66,15 +76,18 @@ export class ConnectorCredentialService {
     }
   }
 
-  public async findById(id: string): Promise<ConnectorCredential> {
+  public async findById(
+    id: string,
+    auth?: AuthContext,
+  ): Promise<ConnectorCredential> {
     const credential = await this.credentialRepository.findById(id);
+    const notFound = `Connector credential with ID '${id}' was not found.`;
 
     if (!credential) {
-      throw new NotFoundException(
-        `Connector credential with ID '${id}' was not found.`,
-      );
+      throw new NotFoundException(notFound);
     }
 
+    assertResourceTenantOrNotFound(auth, credential.tenantId, notFound);
     await this.lazyRotateKeyIfNeeded(credential);
 
     return credential;
@@ -130,8 +143,9 @@ export class ConnectorCredentialService {
   public async update(
     id: string,
     dto: UpdateConnectorCredentialDto,
+    auth: AuthContext,
   ): Promise<ConnectorCredential> {
-    await this.findById(id);
+    await this.findById(id, auth);
 
     const updates: Partial<Omit<ConnectorCredential, 'tenant'>> = {};
 
@@ -156,12 +170,21 @@ export class ConnectorCredentialService {
     return updated;
   }
 
-  public async delete(id: string): Promise<void> {
-    await this.findById(id);
+  public async delete(id: string, auth: AuthContext): Promise<void> {
+    await this.findById(id, auth);
     await this.credentialRepository.delete(id);
   }
 
-  public async decryptCredential(key: string, id: string): Promise<string> {
+  /** Used by the tenant status-change cascade when a tenant is deactivated. */
+  public async deactivateAllForTenant(tenantId: string): Promise<number> {
+    return this.credentialRepository.deactivateAllForTenant(tenantId);
+  }
+
+  public async decryptCredential(
+    key: string,
+    id: string,
+    auth: AuthContext,
+  ): Promise<string> {
     // Type guard: ensure key is a string (defense in depth against parameter tampering)
     if (Array.isArray(key)) {
       this.logger.warn(`Key parameter is an array for credential ID: ${id}`);
@@ -175,13 +198,7 @@ export class ConnectorCredentialService {
       throw new BadRequestException('Invalid key provided.');
     }
 
-    const credential = await this.credentialRepository.findById(id);
-
-    if (!credential) {
-      throw new NotFoundException(
-        `Connector credential with ID '${id}' was not found.`,
-      );
-    }
+    const credential = await this.findById(id, auth);
 
     if (key.length !== 64) {
       this.logger.warn(

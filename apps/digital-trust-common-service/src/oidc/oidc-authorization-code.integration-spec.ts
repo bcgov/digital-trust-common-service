@@ -1,11 +1,12 @@
 import { createHash, randomBytes, randomUUID } from 'crypto';
 import { mkdtempSync, rmSync } from 'fs';
+import { createServer } from 'http';
 import { tmpdir } from 'os';
 import { join } from 'path';
 
 import { AppDataSource } from '@app/database/data-source';
 import { buildSslConfig } from '@app/database/ssl.util';
-import { OidcMountService } from '@app/oidc';
+import { DEFAULT_JWT_AUDIENCE, OidcMountService } from '@app/oidc';
 import { PgBossService } from '@app/pg-boss';
 import { INestApplication } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
@@ -14,9 +15,40 @@ import request from 'supertest';
 import { App } from 'supertest/types';
 import { DataSource } from 'typeorm';
 
-import { buildBasicAuthHeader } from '../../test/support/oidc-test-helpers';
+import {
+  buildBasicAuthHeader,
+  verifyTokenAgainstJwks,
+} from '../../test/support/oidc-test-helpers';
+import { configureApp } from '../app.config';
 import { AppModule } from '../app.module';
+import { API_BASE_PATH } from '../common/constants/api-version.constants';
 import { UpstreamOidcService } from '../upstream-oidc/oidc-upstream.service';
+
+async function getFreePort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const server = createServer();
+
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', () => {
+      const address = server.address();
+
+      if (!address || typeof address === 'string') {
+        server.close(() => reject(new Error('Unable to resolve free port')));
+        return;
+      }
+
+      const { port } = address;
+      server.close((error) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+
+        resolve(port);
+      });
+    });
+  });
+}
 
 type MockUpstreamInteraction = {
   id: string;
@@ -40,11 +72,16 @@ describe('OIDC authorization_code grant (integration)', () => {
   let app: INestApplication<App>;
   let dataSource: DataSource;
   let keysDir: string;
+  let listenPort: number;
   let tenantId: string;
+  let secondTenantId: string;
   let clientId: string;
+  let publicClientId: string;
+  let federatedExternalUserId: string;
 
   const clientSecret = 'authorization-code-secret-value';
   const redirectUri = 'https://oidc.localhost/callback';
+  const postLogoutRedirectUri = 'https://oidc.localhost/login';
 
   const mockBoss = {
     start: jest.fn().mockResolvedValue(undefined),
@@ -103,7 +140,7 @@ describe('OIDC authorization_code grant (integration)', () => {
         throw new Error(`Interaction not found for state: ${state}`);
       }
 
-      const upstreamSubject = 'external-test-user';
+      const upstreamSubject = federatedExternalUserId;
       const upstreamIdToken = `mock-upstream-id-token-${randomUUID()}`;
 
       return Promise.resolve({
@@ -205,7 +242,12 @@ describe('OIDC authorization_code grant (integration)', () => {
    * because the interaction/upstream flow crosses hosts and the upstream
    * federation endpoint is mocked.
    */
-  const completeAuthorizationCodeFlow = async (state: string) => {
+  const completeAuthorizationCodeFlow = async (
+    state: string,
+    options: { clientId?: string; scope?: string; prompt?: string } = {},
+  ) => {
+    const flowClientId = options.clientId ?? clientId;
+    const scope = options.scope ?? 'openid offline_access credentials:verify';
     const codeVerifier = generatePkceVerifier();
     const codeChallenge = toS256CodeChallenge(codeVerifier);
     const issuer = process.env.OIDC_ISSUER as string;
@@ -215,10 +257,11 @@ describe('OIDC authorization_code grant (integration)', () => {
     const authorizeResponse = await browser
       .get('/oidc/auth')
       .query({
-        client_id: clientId,
+        client_id: flowClientId,
         redirect_uri: redirectUri,
         response_type: 'code',
-        scope: 'openid credentials:verify',
+        scope,
+        prompt: options.prompt,
         state,
         nonce: `nonce-${randomUUID()}`,
         code_challenge: codeChallenge,
@@ -330,11 +373,60 @@ describe('OIDC authorization_code grant (integration)', () => {
     };
   };
 
+  /**
+   * Token exchange with no Authorization header — the shape a public client
+   * has to use, since it holds no credential to present. Returns the raw
+   * response so a caller can assert on a rejection as well as a success.
+   */
+  const exchangeCodeWithoutClientAuth = (
+    exchangeClientId: string,
+    code: string,
+    codeVerifier: string,
+  ) => {
+    // Returns the supertest request rather than awaiting it, so a caller can
+    // chain `.expect(200)` or assert on a rejection.
+    return request(app.getHttpServer()).post('/oidc/token').type('form').send({
+      grant_type: 'authorization_code',
+      client_id: exchangeClientId,
+      code,
+      redirect_uri: redirectUri,
+      code_verifier: codeVerifier,
+    });
+  };
+
+  /**
+   * Signs the SPA's public client in and returns its token response. The
+   * scope and `prompt` are the load-bearing part: `offline_access` is what
+   * makes the provider issue a refresh token, `tenant` is what releases
+   * tenant_id/tenant_role, and without `prompt=consent` the provider silently
+   * drops `offline_access` (check_scope.js) and issues no refresh token.
+   */
+  const startPublicClientSession = async () => {
+    const { code, codeVerifier } = await completeAuthorizationCodeFlow(
+      `rp-state-${randomUUID()}`,
+      {
+        clientId: publicClientId,
+        scope: 'openid offline_access tenant credentials:verify',
+        prompt: 'consent',
+      },
+    );
+
+    const response = await exchangeCodeWithoutClientAuth(
+      publicClientId,
+      code,
+      codeVerifier,
+    ).expect(200);
+
+    return response.body as Record<string, unknown>;
+  };
+
   beforeAll(async () => {
     keysDir = mkdtempSync(join(tmpdir(), 'oidc-auth-code-it-'));
+    listenPort = await getFreePort();
 
     process.env.OIDC_KEYS_PATH = join(keysDir, 'oidc-keys.json');
-    process.env.OIDC_ISSUER = 'http://127.0.0.1/oidc';
+    process.env.OIDC_ISSUER = `http://127.0.0.1:${listenPort}/oidc`;
+    process.env.JWT_JWKS_URI = `http://127.0.0.1:${listenPort}/oidc/jwks`;
     process.env.OIDC_COOKIE_KEYS = 'authorization-code-cookie-key';
     process.env.OIDC_GRANT_TYPES =
       'client_credentials,authorization_code,refresh_token';
@@ -361,7 +453,8 @@ describe('OIDC authorization_code grant (integration)', () => {
 
     tenantId = tenants[0].id;
 
-    const externalUserId = 'external-test-user';
+    federatedExternalUserId = `external-test-user-${randomUUID()}`;
+    const externalUserId = federatedExternalUserId;
 
     await dataSource.query(
       `INSERT INTO tenant_user (
@@ -370,8 +463,10 @@ describe('OIDC authorization_code grant (integration)', () => {
         email,
         display_name,
         role,
-        status
-      ) VALUES ($1, $2, $3, $4, $5, $6)`,
+        status,
+        created_at,
+        updated_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $7)`,
       [
         tenantId,
         externalUserId,
@@ -379,6 +474,37 @@ describe('OIDC authorization_code grant (integration)', () => {
         'Federated User',
         'member',
         'active',
+        '2026-01-01T00:00:00.000Z',
+      ],
+    );
+
+    const secondTenants = await dataSource.query<Array<{ id: string }>>(
+      `INSERT INTO tenant (name, slug, status)
+       VALUES ($1, $2, 'active')
+       RETURNING id`,
+      ['OIDC Second Tenant', `oidc-auth-code-it-2-${Date.now()}`],
+    );
+    secondTenantId = secondTenants[0].id;
+
+    await dataSource.query(
+      `INSERT INTO tenant_user (
+        tenant_id,
+        external_user_id,
+        email,
+        display_name,
+        role,
+        status,
+        created_at,
+        updated_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $7)`,
+      [
+        secondTenantId,
+        externalUserId,
+        'federated.user@example.com',
+        'Federated User',
+        'admin',
+        'active',
+        '2026-01-02T00:00:00.000Z',
       ],
     );
 
@@ -403,9 +529,39 @@ describe('OIDC authorization_code grant (integration)', () => {
         clientId,
         clientSecretHash,
         'OIDC Authorization Code Integration Client',
-        ['openid', 'credentials:verify'],
+        ['openid', 'offline_access', 'credentials:verify'],
         [redirectUri],
-        ['authorization_code'],
+        ['authorization_code', 'refresh_token'],
+      ],
+    );
+
+    /*
+     * A browser SPA: no secret at all, authenticating with PKCE alone. Seeded
+     * next to the confidential client so one flow can be run through both and
+     * the differences are the client's, not the fixture's.
+     */
+    publicClientId = `oidc-auth-code-public-client-${randomUUID()}`;
+
+    await dataSource.query(
+      `INSERT INTO oauth_client (
+         tenant_id,
+         client_id,
+         client_secret_hash,
+         is_public,
+         name,
+         scopes,
+         redirect_uris,
+         post_logout_redirect_uris,
+         grant_types
+       ) VALUES ($1, $2, NULL, TRUE, $3, $4, $5, $6, $7)`,
+      [
+        tenantId,
+        publicClientId,
+        'OIDC Authorization Code Public Integration Client',
+        ['openid', 'offline_access', 'tenant', 'credentials:verify'],
+        [redirectUri],
+        [postLogoutRedirectUri],
+        ['authorization_code', 'refresh_token'],
       ],
     );
 
@@ -422,10 +578,11 @@ describe('OIDC authorization_code grant (integration)', () => {
       .compile();
 
     app = moduleFixture.createNestApplication();
-
+    configureApp(app);
     OidcMountService.mount(app);
 
     await app.init();
+    await app.listen(listenPort, '127.0.0.1');
   }, 30000);
 
   afterAll(async () => {
@@ -440,6 +597,7 @@ describe('OIDC authorization_code grant (integration)', () => {
     delete process.env.OIDC_GRANT_TYPES;
     delete process.env.OIDC_KEYS_PATH;
     delete process.env.OIDC_ISSUER;
+    delete process.env.JWT_JWKS_URI;
     delete process.env.OIDC_COOKIE_KEYS;
 
     rmSync(keysDir, {
@@ -477,39 +635,122 @@ describe('OIDC authorization_code grant (integration)', () => {
     expect(tokenBody.token_type).toBe('Bearer');
     expect(tokenBody.expires_in).toBe(5 * 60);
 
-    const introspectionResponse = await request(app.getHttpServer())
-      .post('/oidc/token/introspection')
-      .set('Authorization', buildBasicAuthHeader(clientId, clientSecret))
-      .type('form')
-      .send({
-        token: tokenBody.access_token as string,
-      })
-      .expect(200);
+    // The access token must be a resource-server JWT for the API audience, not
+    // an opaque userinfo token: JwtValidationService verifies it with jose, so
+    // an opaque string 401s every guarded route. Verified against /oidc/jwks
+    // rather than introspected — the provider refuses to introspect structured
+    // tokens at all (reject_structured_tokens.js), which is precisely why an
+    // introspection-based assertion here could not tell the two apart.
+    const accessTokenClaims = await verifyTokenAgainstJwks(
+      app.getHttpServer(),
+      tokenBody.access_token as string,
+    );
 
-    const introspectionBody = introspectionResponse.body as Record<
-      string,
-      unknown
-    >;
-
-    expect(introspectionBody.active).toBe(true);
-    expect(introspectionBody.client_id).toBe(clientId);
-    expect(introspectionBody.tenant_id).toBe(tenantId);
-    expect(introspectionBody.tenant_role).toBe('member');
+    expect(accessTokenClaims.aud).toBe(DEFAULT_JWT_AUDIENCE);
+    expect(accessTokenClaims.client_id).toBe(clientId);
+    expect(accessTokenClaims.tenant_id).toBe(tenantId);
+    expect(accessTokenClaims.tenant_role).toBe('member');
 
     const grantedScopes =
-      typeof introspectionBody.scope === 'string'
-        ? introspectionBody.scope.split(/\s+/).filter(Boolean)
+      typeof accessTokenClaims.scope === 'string'
+        ? accessTokenClaims.scope.split(/\s+/).filter(Boolean)
         : [];
 
     expect(grantedScopes).toContain('credentials:verify');
+  });
+
+  /**
+   * The SPA's path, which nothing else here covers: a client with no secret,
+   * authenticating with PKCE and a bare `client_id` in the token body. Worth
+   * exercising against the real provider rather than a mocked one because the
+   * three things that can break it are all provider-side — whether the client
+   * metadata we emit for `token_endpoint_auth_method: 'none'` is accepted at
+   * all, whether the token endpoint takes an unauthenticated client, and
+   * whether the resulting grant resolves to an API-audience JWT rather than an
+   * opaque userinfo token.
+   */
+  it('issues an API-audience JWT to a public client authenticating with PKCE alone', async () => {
+    const tokenBody = await startPublicClientSession();
+
+    const claims = await verifyTokenAgainstJwks(
+      app.getHttpServer(),
+      tokenBody.access_token as string,
+    );
+
+    expect(claims.aud).toBe(DEFAULT_JWT_AUDIENCE);
+    expect(claims.client_id).toBe(publicClientId);
+    expect(claims.tenant_id).toBe(tenantId);
+    expect(claims.tenant_role).toBe('member');
+
+    // offline_access is what makes the provider issue a refresh token at all.
+    expect(tokenBody.refresh_token).toEqual(expect.any(String));
+
+    // The id_token must carry the identity claims the SPA renders from. They
+    // are withheld whenever the access token has no `aud`, so this assertion
+    // is the id_token half of the same provider behaviour.
+    const idTokenClaims = await verifyTokenAgainstJwks(
+      app.getHttpServer(),
+      tokenBody.id_token as string,
+    );
+
+    expect(idTokenClaims.tenant_id).toBe(tenantId);
+    expect(idTokenClaims.tenant_role).toBe('member');
+  });
+
+  it('keeps issuing API-audience JWTs to a public client across a refresh', async () => {
+    const tokenBody = await startPublicClientSession();
+
+    const refreshResponse = await request(app.getHttpServer())
+      .post('/oidc/token')
+      .type('form')
+      .send({
+        grant_type: 'refresh_token',
+        client_id: publicClientId,
+        refresh_token: tokenBody.refresh_token as string,
+      })
+      .expect(200);
+
+    const refreshed = refreshResponse.body as Record<string, unknown>;
+
+    // The refresh grant resolves the resource independently of the code
+    // exchange, so a fix that only covers login regresses here five minutes
+    // into a session.
+    const claims = await verifyTokenAgainstJwks(
+      app.getHttpServer(),
+      refreshed.access_token as string,
+    );
+
+    expect(claims.aud).toBe(DEFAULT_JWT_AUDIENCE);
+    expect(claims.tenant_id).toBe(tenantId);
+
+    // Rotation: the replacement must not be the token that was just spent.
+    expect(refreshed.refresh_token).toEqual(expect.any(String));
+    expect(refreshed.refresh_token).not.toBe(tokenBody.refresh_token);
+  });
+
+  it('rejects a confidential client that presents no credential', async () => {
+    const { code, codeVerifier } = await completeAuthorizationCodeFlow(
+      `rp-state-${randomUUID()}`,
+    );
+
+    // The mirror image of the public-client case: the same unauthenticated
+    // request shape must not be a way around client authentication for a
+    // client that has a secret.
+    const response = await exchangeCodeWithoutClientAuth(
+      clientId,
+      code,
+      codeVerifier,
+    );
+
+    expect(response.status).toBeGreaterThanOrEqual(400);
+    expect((response.body as { error?: string }).error).toBe('invalid_client');
   });
 
   it('resolves role scopes through the tenant override, not the global default', async () => {
     // member's platform default includes credentials:verify, which is what the
     // first test relies on. Overriding the role for this tenant alone must
     // take that away, proving overrides reach the grant and therefore the
-    // token — the AU-07 (#40) guarantee that a settings screen actually
-    // enforces something.
+    // token — so a tenant settings screen actually enforces something.
     await dataSource.query(
       `INSERT INTO tenant_role_scope (tenant_id, role, scopes)
        VALUES ($1, 'member'::tenant_user_role, $2::text[])
@@ -562,7 +803,7 @@ describe('OIDC authorization_code grant (integration)', () => {
         client_id: clientId,
         redirect_uri: redirectUri,
         response_type: 'code',
-        scope: 'openid credentials:verify',
+        scope: 'openid offline_access credentials:verify',
         state: `rp-state-${randomUUID()}`,
         nonce: `nonce-${randomUUID()}`,
         code_challenge: codeChallenge,
@@ -604,5 +845,164 @@ describe('OIDC authorization_code grant (integration)', () => {
 
     expect(response.text).toContain('Error processing callback');
     expect(response.text).toContain('invalid_grant');
+  });
+
+  it('issues the first (oldest) membership tenant at login when the user belongs to two tenants', async () => {
+    const { code: authorizationCode, codeVerifier } =
+      await completeAuthorizationCodeFlow(`rp-state-${randomUUID()}`);
+
+    const tokenResponse = await request(app.getHttpServer())
+      .post('/oidc/token')
+      .set('Authorization', buildBasicAuthHeader(clientId, clientSecret))
+      .type('form')
+      .send({
+        grant_type: 'authorization_code',
+        code: authorizationCode,
+        redirect_uri: redirectUri,
+        code_verifier: codeVerifier,
+      })
+      .expect(200);
+
+    const tokenBody = tokenResponse.body as { access_token: string };
+    const payload = await verifyTokenAgainstJwks(
+      app.getHttpServer(),
+      tokenBody.access_token,
+      process.env.OIDC_ISSUER,
+    );
+
+    expect(payload.tenant_id).toBe(tenantId);
+  });
+
+  it('exchanges a user token for a new tenant-scoped token and revokes the previous grant', async () => {
+    const { code: authorizationCode, codeVerifier } =
+      await completeAuthorizationCodeFlow(`rp-state-${randomUUID()}`);
+
+    const tokenResponse = await request(app.getHttpServer())
+      .post('/oidc/token')
+      .set('Authorization', buildBasicAuthHeader(clientId, clientSecret))
+      .type('form')
+      .send({
+        grant_type: 'authorization_code',
+        code: authorizationCode,
+        redirect_uri: redirectUri,
+        code_verifier: codeVerifier,
+      })
+      .expect(200);
+
+    const tokenBody = tokenResponse.body as {
+      access_token: string;
+      refresh_token?: string;
+    };
+
+    const switchResponse = await request(app.getHttpServer())
+      .post(`${API_BASE_PATH}/auth/switch-tenant`)
+      .set('Authorization', `Bearer ${tokenBody.access_token}`)
+      .send({ tenant_id: secondTenantId })
+      .expect(200);
+
+    const switched = switchResponse.body as {
+      access_token: string;
+      refresh_token: string;
+      token_type: string;
+      expires_in: number;
+    };
+
+    expect(switched.token_type).toBe('Bearer');
+    expect(switched.refresh_token).toEqual(expect.any(String));
+    expect(switched.expires_in).toBe(5 * 60);
+
+    const newPayload = await verifyTokenAgainstJwks(
+      app.getHttpServer(),
+      switched.access_token,
+      process.env.OIDC_ISSUER,
+    );
+
+    expect(newPayload.tenant_id).toBe(secondTenantId);
+    expect(newPayload.roles).toEqual(['admin']);
+
+    if (tokenBody.refresh_token) {
+      await request(app.getHttpServer())
+        .post('/oidc/token')
+        .set('Authorization', buildBasicAuthHeader(clientId, clientSecret))
+        .type('form')
+        .send({
+          grant_type: 'refresh_token',
+          refresh_token: tokenBody.refresh_token,
+        })
+        .expect(400);
+    }
+
+    const memberships = await request(app.getHttpServer())
+      .get(`${API_BASE_PATH}/auth/tenants`)
+      .set('Authorization', `Bearer ${switched.access_token}`)
+      .expect(200);
+
+    const listed = memberships.body as Array<{ id: string; role: string }>;
+    expect(listed.map((row) => row.id).sort()).toEqual(
+      [tenantId, secondTenantId].sort(),
+    );
+
+    const refreshResponse = await request(app.getHttpServer())
+      .post('/oidc/token')
+      .set('Authorization', buildBasicAuthHeader(clientId, clientSecret))
+      .type('form')
+      .send({
+        grant_type: 'refresh_token',
+        refresh_token: switched.refresh_token,
+      })
+      .expect(200);
+
+    const refreshed = await verifyTokenAgainstJwks(
+      app.getHttpServer(),
+      (refreshResponse.body as { access_token: string }).access_token,
+      process.env.OIDC_ISSUER,
+    );
+    expect(refreshed.tenant_id).toBe(secondTenantId);
+  });
+
+  it('rejects tenant switching for client_credentials tokens', async () => {
+    const machineClientId = `oidc-machine-${randomUUID()}`;
+    const machineSecret = 'machine-secret-value';
+    const machineHash = await hash(machineSecret, { type: argon2i });
+
+    await dataSource.query(
+      `INSERT INTO oauth_client (
+         tenant_id,
+         client_id,
+         client_secret_hash,
+         name,
+         scopes,
+         grant_types
+       ) VALUES ($1, $2, $3, $4, $5, $6)`,
+      [
+        tenantId,
+        machineClientId,
+        machineHash,
+        'Machine Client',
+        ['credentials:verify'],
+        ['client_credentials'],
+      ],
+    );
+
+    const tokenResponse = await request(app.getHttpServer())
+      .post('/oidc/token')
+      .set(
+        'Authorization',
+        buildBasicAuthHeader(machineClientId, machineSecret),
+      )
+      .type('form')
+      .send({
+        grant_type: 'client_credentials',
+        scope: 'credentials:verify',
+      })
+      .expect(200);
+
+    const tokenBody = tokenResponse.body as { access_token: string };
+
+    await request(app.getHttpServer())
+      .post(`${API_BASE_PATH}/auth/switch-tenant`)
+      .set('Authorization', `Bearer ${tokenBody.access_token}`)
+      .send({ tenant_id: secondTenantId })
+      .expect(403);
   });
 });

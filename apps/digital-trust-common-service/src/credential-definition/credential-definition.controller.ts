@@ -1,4 +1,14 @@
 import {
+  ApiJwtAuth,
+  CurrentAuth,
+  JwtGuard,
+  RequireScopes,
+  ScopeGuard,
+  TENANT_SUPERUSER_SCOPE,
+  TenantGuard,
+  type AuthContext,
+} from '@app/auth';
+import {
   Body,
   Controller,
   Delete,
@@ -8,12 +18,15 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  UseGuards,
 } from '@nestjs/common';
 import {
   ApiBody,
   ApiCreatedResponse,
+  ApiForbiddenResponse,
   ApiOkResponse,
   ApiNotFoundResponse,
+  ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 
 import { SkipAutoAudit } from '../audit-log/skip-auto-audit.decorator';
@@ -29,6 +42,13 @@ import { CreateCredentialDefinitionDto } from './dto/create-credential-definitio
 import { UpdateCredentialDefinitionDto } from './dto/update-credential-definition.dto';
 
 @SkipAutoAudit()
+@ApiJwtAuth()
+@UseGuards(JwtGuard, ScopeGuard, TenantGuard)
+@RequireScopes(TENANT_SUPERUSER_SCOPE)
+@ApiUnauthorizedResponse({ description: 'Authentication is required' })
+@ApiForbiddenResponse({
+  description: 'Token lacks tenants:admin, or tenant claim does not match',
+})
 @Controller({ path: 'credential-definitions', version: API_VERSION })
 export class CredentialDefinitionController {
   public constructor(
@@ -60,20 +80,9 @@ export class CredentialDefinitionController {
   })
   public async create(
     @Body() dto: CreateCredentialDefinitionDto,
+    @CurrentAuth() auth: AuthContext,
   ): Promise<CredentialDefinition> {
-    return await this.credentialDefinitionService.create(dto);
-  }
-
-  @Get(':id')
-  @ApiOkResponse({
-    description: 'Credential definition found',
-    type: CredentialDefinition,
-  })
-  @ApiNotFoundResponse({ description: 'Credential definition not found' })
-  public async findById(
-    @Param('id', ParseUUIDPipe) id: string,
-  ): Promise<CredentialDefinition> {
-    return await this.credentialDefinitionService.findById(id);
+    return await this.credentialDefinitionService.create(dto, auth);
   }
 
   @Get('tenant/:tenantId')
@@ -96,8 +105,9 @@ export class CredentialDefinitionController {
   public async findByFormat(
     @Param('format', new ParseEnumPipe(CredentialDefinitionFormat))
     format: CredentialDefinitionFormat,
+    @CurrentAuth() auth: AuthContext,
   ): Promise<CredentialDefinition[]> {
-    return await this.credentialDefinitionService.findByFormat(format);
+    return await this.credentialDefinitionService.findByFormat(format, auth);
   }
 
   @Get('connector/:connectorType')
@@ -112,10 +122,25 @@ export class CredentialDefinitionController {
       new ParseEnumPipe(CredentialDefinitionConnectorType),
     )
     connectorType: CredentialDefinitionConnectorType,
+    @CurrentAuth() auth: AuthContext,
   ): Promise<CredentialDefinition[]> {
     return await this.credentialDefinitionService.findByConnector(
       connectorType,
+      auth,
     );
+  }
+
+  @Get(':id')
+  @ApiOkResponse({
+    description: 'Credential definition found',
+    type: CredentialDefinition,
+  })
+  @ApiNotFoundResponse({ description: 'Credential definition not found' })
+  public async findById(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentAuth() auth: AuthContext,
+  ): Promise<CredentialDefinition> {
+    return await this.credentialDefinitionService.findById(id, auth);
   }
 
   @Patch(':id')
@@ -139,14 +164,18 @@ export class CredentialDefinitionController {
   public async update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateCredentialDefinitionDto,
+    @CurrentAuth() auth: AuthContext,
   ): Promise<CredentialDefinition> {
-    return await this.credentialDefinitionService.update(id, dto);
+    return await this.credentialDefinitionService.update(id, dto, auth);
   }
 
   @Delete(':id')
   @ApiOkResponse({ description: 'Credential definition deleted successfully' })
   @ApiNotFoundResponse({ description: 'Credential definition not found' })
-  public async delete(@Param('id', ParseUUIDPipe) id: string): Promise<void> {
-    return await this.credentialDefinitionService.delete(id);
+  public async delete(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentAuth() auth: AuthContext,
+  ): Promise<void> {
+    return await this.credentialDefinitionService.delete(id, auth);
   }
 }

@@ -4,7 +4,7 @@ kind: HorizontalPodAutoscaler
 metadata:
   name: {{ include "digital-trust-common-service.fullname" . }}
   labels:
-    {{- include "digital-trust-common-service.labels" . | nindent 4 }}
+    {{- include "digital-trust-common-service.api.labels" . | nindent 4 }}
 spec:
   scaleTargetRef:
     apiVersion: apps/v1

@@ -6,6 +6,13 @@ image:
   repository: bcgov/digital-trust-common-service
   tag: ci
 
+frontend:
+  enabled: true
+  image:
+    registry: ghcr.io
+    repository: bcgov/digital-trust-common-service-ui
+    tag: ci
+
 route:
   enabled: true
   host: digital-trust-common-service.example.com
@@ -22,10 +29,10 @@ migrations:
   enabled: true
 
 secret:
-  create: true
-  data:
-    DB_USERNAME: ci-user
-    DB_PASSWORD: ci-pass
+  # A chart-managed Secret cannot serve the pre-install migration hook (see
+  # migrations.enabled in values.yaml), so name one instead; nothing is looked
+  # up when rendering.
+  existingSecret: ci-secret
 
 networkPolicy:
   enabled: true

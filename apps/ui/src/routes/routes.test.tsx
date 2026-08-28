@@ -31,6 +31,40 @@ describe('routing', () => {
     expect(router.state.location.pathname).toBe('/settings');
   });
 
+  /**
+   * With no deep link to return to, sign-in lands on tenant selection rather
+   * than the dashboard: nearly everything the UI does is scoped to a tenant,
+   * and a user may belong to more than one.
+   */
+  it('lands on tenant selection when there was no deep link', async () => {
+    const user = userEvent.setup();
+    const router = renderAt('/login');
+
+    await user.click(await screen.findByRole('button', { name: /sign in/i }));
+
+    expect(await screen.findByText('Acme Ministry')).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe('/tenants');
+  });
+
+  /**
+   * The OIDC redirect arrives before any session exists, so the callback must
+   * sit outside RequireAuth. Guarded, it would bounce to /login and strip the
+   * authorization code from the URL — making every sign-in fail.
+   */
+  it('serves the auth callback to unauthenticated visitors', async () => {
+    const router = renderAt('/auth/callback?code=abc&state=xyz');
+
+    // Mock mode has no redirect to complete, so the callback forwards to
+    // tenant selection — where the guard (correctly) sends a signed-out
+    // visitor to /login. Guarded instead, the callback itself would have been
+    // the page bounced, and `from` would still hold its URL.
+    expect(
+      await screen.findByRole('button', { name: /sign in/i }),
+    ).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe('/login');
+    expect(router.state.location.state).toEqual({ from: '/tenants' });
+  });
+
   it('renders the 404 page for unknown routes', async () => {
     renderAt('/definitely-not-a-page');
     expect(await screen.findByText('404')).toBeInTheDocument();

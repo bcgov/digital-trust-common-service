@@ -10,8 +10,16 @@
 # a per-pod smoke check and the interactive/session path land with AU-02 (#35).
 replicaCount: 2
 
+frontend:
+  enabled: true
+
 image:
   pullPolicy: Always
+
+# pr-deploy.yml creates the PR database empty; the hook Job brings it to the
+# current schema before the pods roll.
+migrations:
+  enabled: true
 
 resources:
   requests:

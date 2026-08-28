@@ -1,0 +1,39 @@
+suite: pod hardening defaults
+templates:
+  - templates/serviceaccount.yaml
+  - templates/deployment.yaml
+  # deployment.yaml checksums these, so they must be loaded alongside it
+  - templates/configmap.yaml
+  - templates/secret.yaml
+  - templates/connector-encryption-secret.yaml
+  - templates/oidc-signing-secret.yaml
+tests:
+  # Nothing in the API, Worker or UI calls the Kubernetes API, so the token
+  # should not be projected into the pods by default.
+  - it: does not automount the service account token by default
+    set:
+      upstreamFederation:
+        existingSecret:
+          name: dtsc-ci-oidc-client
+    asserts:
+      - equal:
+          path: automountServiceAccountToken
+          value: false
+        template: templates/serviceaccount.yaml
+
+  # Without a startup probe, a slow boot (Nest module init + DB connect) gets
+  # killed by liveness before it ever becomes ready.
+  - it: gates liveness behind a startup probe on the API
+    set:
+      upstreamFederation:
+        existingSecret:
+          name: dtsc-ci-oidc-client
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].startupProbe.httpGet.path
+          value: /health/live
+        template: templates/deployment.yaml
+      - equal:
+          path: spec.template.spec.containers[0].startupProbe.failureThreshold
+          value: 30
+        template: templates/deployment.yaml

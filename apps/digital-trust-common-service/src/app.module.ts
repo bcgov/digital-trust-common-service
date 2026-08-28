@@ -17,6 +17,7 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuditAutoInterceptor } from './audit-log/audit-auto.interceptor';
 import { AuditLogModule } from './audit-log/audit-log.module';
+import { AuthApiModule } from './auth/auth-api.module';
 import { EncryptionModule } from './common/crypto/encryption.module';
 import { ConnectionModule } from './connection/connection.module';
 import { ConnectorCredentialModule } from './connector-credential/connector-credential.module';
@@ -32,6 +33,7 @@ import { RoleScopeModule } from './role-scope/role-scope.module';
 import { RoleScopeRepository } from './role-scope/role-scope.repository';
 import { SeedModule } from './seed/seed.module';
 import { ShutdownModule } from './shutdown/shutdown.module';
+import { TenantStatusChangeModule } from './tenant/tenant-status-change.module';
 import { TenantModule } from './tenant/tenant.module';
 import { OidcTenantUserAdapter } from './tenant-user/oidc-tenant-user.adapter';
 import { TenantUserModule } from './tenant-user/tenant-user.module';
@@ -44,6 +46,7 @@ import { VerificationProfileModule } from './verification-profile/verification-p
     AdapterRegistryModule,
     AdminModule,
     AuditLogModule,
+    AuthApiModule,
     ConfigModule.forRoot({ isGlobal: true }),
     ConnectionModule,
     ConnectorCredentialModule,
@@ -84,6 +87,7 @@ import { VerificationProfileModule } from './verification-profile/verification-p
     RoleScopeModule,
     ShutdownModule,
     TenantModule,
+    TenantStatusChangeModule,
     TenantUserModule,
     UpstreamOidcModule,
     VerificationProfileModule,

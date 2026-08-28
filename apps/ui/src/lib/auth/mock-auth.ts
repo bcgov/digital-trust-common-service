@@ -1,14 +1,33 @@
-import type { AuthClient, AuthUser } from './types';
+import type { AuthTenant } from '@/lib/api/resources/auth';
+
+import type { AuthClient, AuthState, AuthUser } from './types';
 
 const STORAGE_KEY = 'dtsc-ui:mock-auth';
+
+export const MOCK_AUTH_TENANTS: AuthTenant[] = [
+  {
+    id: '11111111-1111-4111-8111-111111111111',
+    name: 'Acme Ministry',
+    slug: 'acme-ministry',
+    role: 'owner',
+  },
+  {
+    id: '22222222-2222-4222-8222-222222222222',
+    name: 'Example Agency',
+    slug: 'example-agency',
+    role: 'admin',
+  },
+];
 
 const MOCK_USER: AuthUser = {
   sub: 'mock-user',
   name: 'Mock User',
   email: 'mock.user@example.com',
-  tenantId: undefined,
+  tenantId: MOCK_AUTH_TENANTS[0]?.id,
   roles: ['owner'],
 };
+
+const SIGNED_OUT: AuthState = { status: 'unauthenticated', user: null };
 
 interface MockSession {
   user: AuthUser;
@@ -26,44 +45,68 @@ function readSession(): MockSession | null {
 }
 
 /**
- * Fake auth for local development until the app's interactive OIDC flow
- * exists (AU-02 backend + #83 frontend). Survives reloads via sessionStorage.
+ * Fake auth for local development without a backend. Survives reloads via
+ * sessionStorage. Never reaches a `loading` state: sessionStorage is
+ * synchronous, so the session is known by the time the client is built.
  */
 export function createMockAuthClient(): AuthClient {
   let session = readSession();
+  let state: AuthState = session
+    ? { status: 'authenticated', user: session.user }
+    : SIGNED_OUT;
   const listeners = new Set<() => void>();
 
-  const notify = () => {
+  const setSession = (next: MockSession | null) => {
+    session = next;
+    state = next ? { status: 'authenticated', user: next.user } : SIGNED_OUT;
+
+    if (next) {
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    } else {
+      sessionStorage.removeItem(STORAGE_KEY);
+    }
+
     for (const listener of listeners) listener();
   };
 
   return {
-    getUser: () => session?.user ?? null,
+    getState: () => state,
     getAccessToken: () => session?.accessToken ?? null,
     login: (_returnTo?: string) => {
-      session = {
+      setSession({
         user: MOCK_USER,
         accessToken: `mock-token-${crypto.randomUUID()}`,
-      };
-      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(session));
-      notify();
+      });
       return Promise.resolve();
     },
     logout: () => {
-      session = null;
-      sessionStorage.removeItem(STORAGE_KEY);
-      notify();
+      setSession(null);
       return Promise.resolve();
     },
+    // Mock login never leaves the app, so there is no redirect to complete.
+    // Reaching /auth/callback in mock mode just means someone typed the URL.
+    completeLogin: () => Promise.resolve(null),
     refresh: () => {
       if (!session) return Promise.resolve(null);
-      session = {
-        ...session,
+      const accessToken = `mock-token-${crypto.randomUUID()}`;
+      setSession({ ...session, accessToken });
+      return Promise.resolve(accessToken);
+    },
+    listAuthTenants: () => Promise.resolve(MOCK_AUTH_TENANTS),
+    switchTenant: (tenantId: string) => {
+      if (!session) return Promise.resolve();
+      const membership = MOCK_AUTH_TENANTS.find(
+        (tenant) => tenant.id === tenantId,
+      );
+      setSession({
+        user: {
+          ...session.user,
+          tenantId,
+          roles: membership ? [membership.role] : session.user.roles,
+        },
         accessToken: `mock-token-${crypto.randomUUID()}`,
-      };
-      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(session));
-      notify();
-      return Promise.resolve(session.accessToken);
+      });
+      return Promise.resolve();
     },
     subscribe: (listener) => {
       listeners.add(listener);
