@@ -853,11 +853,16 @@ deliberately strict: **zero** active connectors and **more than one** are both e
 which connector a tenant meant could issue a credential from the wrong agent, and nothing about
 that failure is visible afterwards.
 
-A connector reached by id — from tenant config or from a caller — is checked to belong to the
-requesting tenant and to be `active`. A `default_connector` that is missing, not a string, or points
-at another tenant's row is refused, never silently followed. The config endpoint validates
-ownership and `active` on write, but this check is not redundant: `config` is JSONB with no foreign
-key, and a connector can be deactivated or deleted after the default was set.
+A connector reached by id — from tenant config or from a caller — is selected out of the tenant's
+own connectors rather than fetched by id, so isolation is structural: another tenant's row is never
+in the candidate list. It must also be `active`. A `default_connector` that is missing, not a
+string, or names a row the tenant does not own is refused, never silently followed. The config
+endpoint validates the same things on write, but that is not enough on its own: `config` is JSONB
+with no foreign key, and a connector can be deactivated or deleted after the default was set.
+
+Note that `ConnectorCredentialService.findById()` is deliberately **not** used here. It is the
+HTTP-caller entry point and answers "not found" unless given an `AuthContext`, which an internal
+resolver has no way to supply.
 
 ### Errors
 

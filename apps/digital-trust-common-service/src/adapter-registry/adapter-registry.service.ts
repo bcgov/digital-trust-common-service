@@ -5,12 +5,7 @@ import {
   FormatNotSupportedError,
   ConnectorType as PortConnectorType,
 } from '@app/credential-ports';
-import {
-  ForbiddenException,
-  Injectable,
-  Logger,
-  NotFoundException,
-} from '@nestjs/common';
+import { ForbiddenException, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
 import { ConnectorType } from '../connection/connection.entity';
@@ -195,29 +190,18 @@ export class AdapterRegistry {
       return await this.findSoleActiveConnector(tenantId);
     }
 
-    let connector: ConnectorCredential;
+    // Selected from the tenant's own connectors rather than fetched by id.
+    // findById() is the HTTP-caller entry point: it demands an AuthContext and
+    // answers "not found" without one, which no internal caller can satisfy.
+    // Scoping the query by tenant also makes isolation structural — another
+    // tenant's connector is simply not in the list to be picked.
+    const connector = (
+      await this.connectorCredentialService.findByTenant(tenantId)
+    ).find((candidate) => candidate.id === explicitId);
 
-    try {
-      connector = await this.connectorCredentialService.findById(explicitId);
-    } catch (error) {
-      // Only a genuine miss becomes ConnectorUnavailableError. Swallowing
-      // everything here would report a database outage as a missing connector
-      // and hide the failure from whoever is on call.
-      if (!(error instanceof NotFoundException)) {
-        throw error;
-      }
-
+    if (!connector) {
       throw new ConnectorUnavailableError(
-        `Connector '${explicitId}' was not found`,
-        { tenantId, connectorId: explicitId },
-      );
-    }
-
-    // Tenant isolation: a connector id from tenant config (or a caller) must
-    // never reach across tenants.
-    if (connector.tenantId !== tenantId) {
-      throw new ConnectorUnavailableError(
-        `Connector '${explicitId}' does not belong to tenant '${tenantId}'`,
+        `Connector '${explicitId}' was not found for tenant '${tenantId}'`,
         { tenantId, connectorId: explicitId },
       );
     }

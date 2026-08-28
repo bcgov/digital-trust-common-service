@@ -5,7 +5,7 @@ import {
   MockAdapter,
   ConnectorType as PortConnectorType,
 } from '@app/credential-ports';
-import { ForbiddenException, NotFoundException } from '@nestjs/common';
+import { ForbiddenException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Test, TestingModule } from '@nestjs/testing';
 
@@ -20,6 +20,7 @@ import { AdapterRegistry } from './adapter-registry.service';
 const TENANT_A = '11111111-1111-1111-1111-111111111111';
 const TENANT_B = '22222222-2222-2222-2222-222222222222';
 const CONNECTOR_A = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+const CONNECTOR_B = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
 
 function buildTenant(config: Record<string, unknown> = {}): Tenant {
   return { id: TENANT_A, config } as Tenant;
@@ -39,13 +40,13 @@ function buildConnector(overrides: Partial<ConnectorCredential> = {}) {
 describe('AdapterRegistry', () => {
   let registry: AdapterRegistry;
   let tenantService: { findById: jest.Mock };
-  let connectorService: { findById: jest.Mock; findByTenant: jest.Mock };
+  let connectorService: { findByTenant: jest.Mock };
   let configService: { get: jest.Mock };
   let adapter: MockAdapter;
 
   beforeEach(async () => {
     tenantService = { findById: jest.fn() };
-    connectorService = { findById: jest.fn(), findByTenant: jest.fn() };
+    connectorService = { findByTenant: jest.fn() };
     configService = { get: jest.fn().mockReturnValue(undefined) };
     adapter = new MockAdapter({
       connectorType: PortConnectorType.Traction,
@@ -129,7 +130,7 @@ describe('AdapterRegistry', () => {
       tenantService.findById.mockResolvedValue(
         buildTenant({ default_connector: CONNECTOR_A }),
       );
-      connectorService.findById.mockResolvedValue(buildConnector());
+      connectorService.findByTenant.mockResolvedValue([buildConnector()]);
     });
 
     it("should fall back to the connector's primary format when omitted", async () => {
@@ -172,35 +173,39 @@ describe('AdapterRegistry', () => {
       tenantService.findById.mockResolvedValue(
         buildTenant({ default_connector: CONNECTOR_A }),
       );
-      connectorService.findById.mockResolvedValue(connector);
+      connectorService.findByTenant.mockResolvedValue([connector]);
 
       const resolved = await registry.resolve(TENANT_A);
 
-      expect(connectorService.findById).toHaveBeenCalledWith(CONNECTOR_A);
+      expect(connectorService.findByTenant).toHaveBeenCalledWith(TENANT_A);
       expect(resolved.connector).toBe(connector);
       expect(resolved.adapter).toBe(adapter);
     });
 
     it('should refuse a default_connector owned by another tenant', async () => {
+      // Tenant A's config names a connector that exists, but belongs to B.
       tenantService.findById.mockResolvedValue(
-        buildTenant({ default_connector: CONNECTOR_A }),
+        buildTenant({ default_connector: CONNECTOR_B }),
       );
-      connectorService.findById.mockResolvedValue(
-        buildConnector({ tenantId: TENANT_B }),
-      );
+      // The lookup is tenant-scoped, so B's connector is never a candidate.
+      connectorService.findByTenant.mockResolvedValue([
+        buildConnector({ id: CONNECTOR_A, tenantId: TENANT_A }),
+      ]);
 
       await expect(registry.resolve(TENANT_A)).rejects.toBeInstanceOf(
         ConnectorUnavailableError,
       );
+      expect(connectorService.findByTenant).toHaveBeenCalledWith(TENANT_A);
+      expect(connectorService.findByTenant).not.toHaveBeenCalledWith(TENANT_B);
     });
 
     it('should refuse an inactive connector', async () => {
       tenantService.findById.mockResolvedValue(
         buildTenant({ default_connector: CONNECTOR_A }),
       );
-      connectorService.findById.mockResolvedValue(
+      connectorService.findByTenant.mockResolvedValue([
         buildConnector({ active: false }),
-      );
+      ]);
 
       await expect(registry.resolve(TENANT_A)).rejects.toBeInstanceOf(
         ConnectorUnavailableError,
@@ -211,9 +216,7 @@ describe('AdapterRegistry', () => {
       tenantService.findById.mockResolvedValue(
         buildTenant({ default_connector: CONNECTOR_A }),
       );
-      connectorService.findById.mockRejectedValue(
-        new NotFoundException('Connector credential was not found.'),
-      );
+      connectorService.findByTenant.mockResolvedValue([]);
 
       await expect(registry.resolve(TENANT_A)).rejects.toBeInstanceOf(
         ConnectorUnavailableError,
@@ -225,7 +228,7 @@ describe('AdapterRegistry', () => {
         buildTenant({ default_connector: CONNECTOR_A }),
       );
       const outage = new Error('read ECONNRESET');
-      connectorService.findById.mockRejectedValue(outage);
+      connectorService.findByTenant.mockRejectedValue(outage);
 
       // Reporting a database outage as "connector not found" sends whoever is
       // on call after a config problem that does not exist.
@@ -278,7 +281,7 @@ describe('AdapterRegistry', () => {
 
       const resolved = await registry.resolve(TENANT_A);
 
-      expect(connectorService.findById).not.toHaveBeenCalled();
+      expect(tenantService.findById).toHaveBeenCalledWith(TENANT_A);
       expect(resolved.connector).toBe(connector);
     });
 
@@ -286,9 +289,9 @@ describe('AdapterRegistry', () => {
       tenantService.findById.mockResolvedValue(
         buildTenant({ default_connector: CONNECTOR_A }),
       );
-      connectorService.findById.mockResolvedValue(
+      connectorService.findByTenant.mockResolvedValue([
         buildConnector({ connectorType: ConnectorType.CREDO }),
-      );
+      ]);
 
       await expect(registry.resolve(TENANT_A)).rejects.toBeInstanceOf(
         ConnectorUnavailableError,
@@ -300,13 +303,15 @@ describe('AdapterRegistry', () => {
       tenantService.findById.mockResolvedValue(
         buildTenant({ default_connector: CONNECTOR_A }),
       );
-      connectorService.findById.mockResolvedValue(connector);
+      connectorService.findByTenant.mockResolvedValue([
+        buildConnector(),
+        connector,
+      ]);
 
       const resolved = await registry.resolve(TENANT_A, undefined, {
         connectorId: 'explicit',
       });
 
-      expect(connectorService.findById).toHaveBeenCalledWith('explicit');
       expect(resolved.connector).toBe(connector);
     });
   });

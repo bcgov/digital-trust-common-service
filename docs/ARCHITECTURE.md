@@ -291,8 +291,8 @@ connector's endpoint and credentials to perform the operation.
 
 Invariants:
 
-- A connector reached by id is verified to belong to the requesting tenant and to be `active`; a
-  `default_connector` pointing at another tenant's row is refused, not followed. The tenant config
+- A connector reached by id is selected from the tenant's own connectors and must be `active`, so a
+  `default_connector` pointing at another tenant's row is simply not a candidate. The tenant config
   endpoint validates the same things on write, but `config` is JSONB with no foreign key and a
   connector can be deactivated afterwards, so resolution re-checks rather than trusting it.
 - The step-4 fallback is strict — zero active connectors **and** more than one are both
