@@ -1,13 +1,8 @@
-import { InitialExtensions1783630501649 } from '@app/database/migrations/000001_initial-extensions';
-import { CreateTenantEntity1784231917556 } from '@app/database/migrations/000002_create-tenant-entity';
-import { CreateTenantUserEntity1784241747468 } from '@app/database/migrations/000003_create-tenant-user-entity';
-import { CreateCredentialDefinitionRegistry1784316680145 } from '@app/database/migrations/000004_create-credential-definition-registry';
-import { CreateConnectionState1784732194397 } from '@app/database/migrations/000005_create-connection-state';
-import { CreateOperationEntity1784242000000 } from '@app/database/migrations/000006_create-operation-entity';
+import { AppDataSource } from '@app/database/data-source';
 import { buildSslConfig } from '@app/database/ssl.util';
 import { DataSource } from 'typeorm';
 
-import { Tenant } from '../tenant/tenant.entity';
+import { SEED_ENTITIES } from '../seed/seed.constants';
 
 import { Operation, OperationState } from './operation.entity';
 import { OperationRepository } from './operation.repository';
@@ -36,28 +31,19 @@ describe('operation tenant isolation integration', () => {
   };
 
   beforeAll(async () => {
+    // The real migration list and the shared entity set, not hand-maintained
+    // copies: Operation relates to Tenant, which relates on to TenantUser, so a
+    // partial entity list fails metadata build, and a partial migration list
+    // only passes when a sibling spec happens to have migrated further first.
     dataSource = new DataSource({
-      type: 'postgres',
-      host: process.env.DB_HOST,
-      port: Number(process.env.DB_PORT),
-      username: process.env.DB_USERNAME,
-      password: process.env.DB_PASSWORD,
-      database: process.env.DB_NAME,
-      entities: [Operation, Tenant],
-      migrations: [
-        InitialExtensions1783630501649,
-        CreateTenantEntity1784231917556,
-        CreateTenantUserEntity1784241747468,
-        CreateCredentialDefinitionRegistry1784316680145,
-        CreateConnectionState1784732194397,
-        CreateOperationEntity1784242000000,
-      ],
+      ...AppDataSource.options,
+      entities: [...SEED_ENTITIES],
       ssl: buildSslConfig(
         process.env.DB_SSL,
         process.env.DB_SSL_REJECT_UNAUTHORIZED,
         process.env.DB_SSL_CA,
       ),
-    });
+    } as DataSource['options']);
 
     await dataSource.initialize();
     await dataSource.runMigrations();
