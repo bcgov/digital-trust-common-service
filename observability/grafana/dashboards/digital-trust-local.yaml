@@ -1,0 +1,9 @@
+apiVersion: 1
+
+providers:
+  - name: Digital Trust local observability
+    type: file
+    folder: Digital Trust
+    options:
+      path: /etc/grafana/provisioning/digital-trust
+      foldersFromFilesStructure: false
