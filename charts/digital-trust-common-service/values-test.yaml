@@ -34,8 +34,10 @@ autoscaling:
   maxReplicas: 4
   targetCPUUtilizationPercentage: 80
 
+# The hook Job brings the database to the current schema before the pods roll.
+# It reads the pre-provisioned database Secret named under `secret` below.
 migrations:
-  enabled: false
+  enabled: true
 
 worker:
   enabled: false
