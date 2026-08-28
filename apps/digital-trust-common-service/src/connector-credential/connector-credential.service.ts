@@ -1,11 +1,11 @@
 import type { AuthContext } from '@app/auth';
 import {
-  BadRequestException,
+  ConflictException,
   forwardRef,
   Inject,
   Injectable,
-  Logger,
   NotFoundException,
+  UnprocessableEntityException,
 } from '@nestjs/common';
 
 import {
@@ -14,52 +14,80 @@ import {
 } from '../common/assert-tenant-access';
 import { EncryptionService } from '../common/crypto/encryption.service';
 import { ConnectorType } from '../connection/connection.entity';
+import { CredentialRepository } from '../credential/credential.repository';
 import { TenantService } from '../tenant/tenant.service';
 
 import { ConnectorCredential } from './connector-credential.entity';
 import { ConnectorCredentialRepository } from './connector-credential.repository';
-import { CreateConnectorCredentialDto } from './dto/create-connector-credential.dto';
+import { ConnectorHealthCheckService } from './connector-health-check.service';
+import {
+  ConnectorCredentialsDto,
+  CreateConnectorCredentialDto,
+} from './dto/create-connector-credential.dto';
 import { UpdateConnectorCredentialDto } from './dto/update-connector-credential.dto';
 
 @Injectable()
 export class ConnectorCredentialService {
-  private readonly logger = new Logger(ConnectorCredentialService.name);
-
   public constructor(
     private readonly credentialRepository: ConnectorCredentialRepository,
     @Inject(forwardRef(() => TenantService))
     private readonly tenantService: TenantService,
     private readonly encryptionService: EncryptionService,
+    private readonly healthCheckService: ConnectorHealthCheckService,
+    private readonly credentialUsageRepository: CredentialRepository,
   ) {}
 
   public async create(
+    tenantId: string,
     dto: CreateConnectorCredentialDto,
     auth: AuthContext,
   ): Promise<ConnectorCredential> {
-    assertTenantAccess(auth, dto.tenantId);
-    await this.tenantService.findById(dto.tenantId);
+    assertTenantAccess(auth, tenantId);
+    await this.tenantService.findById(tenantId);
 
-    const encryptedCredentials = this.encryptionService.encrypt(
-      dto.credentialsPlainText,
+    await this.assertHealthy(
+      dto.connectorType,
+      dto.endpointUrl,
+      dto.credentials,
     );
 
-    const credential = await this.credentialRepository.create({
-      tenantId: dto.tenantId,
+    const encryptedCredentials = this.encryptionService.encrypt(
+      dto.credentials,
+    );
+
+    return await this.credentialRepository.create({
+      tenantId,
       connectorType: dto.connectorType,
       credentialsEncrypted: encryptedCredentials.ciphertext,
       endpointUrl: dto.endpointUrl,
-      active: dto.active ?? true,
+      active: true,
       keyVersion: encryptedCredentials.keyVersion,
     } as ConnectorCredential);
+  }
 
-    return credential;
+  private async assertHealthy(
+    connectorType: ConnectorType,
+    endpointUrl: string,
+    credentials: ConnectorCredentialsDto,
+  ): Promise<void> {
+    const healthCheck = await this.healthCheckService.check(
+      connectorType,
+      endpointUrl,
+      credentials,
+    );
+
+    if (healthCheck.status !== 'healthy') {
+      throw new UnprocessableEntityException(
+        `Could not verify connectivity to the connector endpoint: ${healthCheck.message ?? 'unknown error'}`,
+      );
+    }
   }
 
   private async lazyRotateKeyIfNeeded(
     credential: ConnectorCredential,
   ): Promise<void> {
     if (this.encryptionService.requiresRotation(credential.keyVersion)) {
-      const decrypted = this.encryptionService.decrypt<string>(
+      const decrypted = this.encryptionService.decrypt<ConnectorCredentialsDto>(
         credential.credentialsEncrypted,
         credential.keyVersion,
       );
@@ -145,7 +173,7 @@ export class ConnectorCredentialService {
     dto: UpdateConnectorCredentialDto,
     auth: AuthContext,
   ): Promise<ConnectorCredential> {
-    await this.findById(id, auth);
+    const existing = await this.findById(id, auth);
 
     const updates: Partial<Omit<ConnectorCredential, 'tenant'>> = {};
 
@@ -153,8 +181,19 @@ export class ConnectorCredentialService {
       updates.endpointUrl = dto.endpointUrl;
     }
 
-    if (typeof dto.active === 'boolean') {
-      updates.active = dto.active;
+    if (dto.credentials !== undefined) {
+      await this.assertHealthy(
+        existing.connectorType,
+        dto.endpointUrl ?? existing.endpointUrl,
+        dto.credentials,
+      );
+
+      const encryptedCredentials = this.encryptionService.encrypt(
+        dto.credentials,
+      );
+
+      updates.credentialsEncrypted = encryptedCredentials.ciphertext;
+      updates.keyVersion = encryptedCredentials.keyVersion;
     }
 
     const updated = await this.credentialRepository.update(id, updates);
@@ -172,6 +211,16 @@ export class ConnectorCredentialService {
 
   public async delete(id: string, auth: AuthContext): Promise<void> {
     await this.findById(id, auth);
+
+    const hasDependents =
+      await this.credentialUsageRepository.existsByConnectorId(id);
+
+    if (hasDependents) {
+      throw new ConflictException(
+        'Cannot delete connector: credential records still reference it.',
+      );
+    }
+
     await this.credentialRepository.delete(id);
   }
 
@@ -180,71 +229,21 @@ export class ConnectorCredentialService {
     return this.credentialRepository.deactivateAllForTenant(tenantId);
   }
 
-  public async decryptCredential(
-    key: string,
+  public async testConnectivity(
     id: string,
     auth: AuthContext,
-  ): Promise<string> {
-    // Type guard: ensure key is a string (defense in depth against parameter tampering)
-    if (Array.isArray(key)) {
-      this.logger.warn(`Key parameter is an array for credential ID: ${id}`);
-      throw new BadRequestException('Invalid key provided.');
-    }
-
-    if (typeof key !== 'string') {
-      this.logger.warn(
-        `Key parameter is not a string for credential ID: ${id}`,
-      );
-      throw new BadRequestException('Invalid key provided.');
-    }
-
+  ): Promise<{ status: string; latencyMs: number; message?: string }> {
     const credential = await this.findById(id, auth);
 
-    if (key.length !== 64) {
-      this.logger.warn(
-        `Invalid key length for credential ID ${id}: expected 64 characters, got ${key.length}`,
-      );
-      throw new BadRequestException('Invalid key provided.');
-    }
+    const decrypted = this.encryptionService.decrypt<ConnectorCredentialsDto>(
+      credential.credentialsEncrypted,
+      credential.keyVersion,
+    );
 
-    // Validate hex format using regex before attempting Buffer conversion
-    if (!/^[0-9a-fA-F]{64}$/.test(key)) {
-      this.logger.warn(
-        `Invalid key format for credential ID ${id}: not a valid hexadecimal string`,
-      );
-      throw new BadRequestException('Invalid key provided.');
-    }
-
-    let keyBuffer: Buffer;
-
-    try {
-      keyBuffer = Buffer.from(key, 'hex');
-    } catch (error) {
-      this.logger.error(
-        `Failed to convert key to buffer for credential ID ${id}: ${error instanceof Error ? error.message : String(error)}`,
-      );
-      throw new BadRequestException('Invalid key provided.');
-    }
-
-    if (keyBuffer.length !== 32) {
-      this.logger.warn(
-        `Invalid key buffer length for credential ID ${id}: expected 32 bytes, got ${keyBuffer.length} bytes`,
-      );
-      throw new BadRequestException('Invalid key provided.');
-    }
-
-    try {
-      const decrypted = this.encryptionService.decryptWithKey<string>(
-        credential.credentialsEncrypted,
-        keyBuffer,
-      );
-
-      return decrypted;
-    } catch (error) {
-      this.logger.error(
-        `Failed to decrypt connector credential with ID '${id}': ${error instanceof Error ? error.message : String(error)}`,
-      );
-      throw new BadRequestException('Invalid key provided.');
-    }
+    return await this.healthCheckService.check(
+      credential.connectorType,
+      credential.endpointUrl,
+      decrypted,
+    );
   }
 }

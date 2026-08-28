@@ -13,32 +13,33 @@ import {
   Controller,
   Delete,
   Get,
-  Header,
+  HttpCode,
+  HttpStatus,
   Param,
   ParseUUIDPipe,
   Patch,
   Post,
-  Query,
   UseGuards,
 } from '@nestjs/common';
 import {
   ApiBody,
+  ApiConflictResponse,
   ApiCreatedResponse,
   ApiForbiddenResponse,
+  ApiNoContentResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiUnauthorizedResponse,
+  ApiUnprocessableEntityResponse,
 } from '@nestjs/swagger';
 
 import { API_VERSION } from '../common/constants/api-version.constants';
-import { ConnectorType } from '../connection/connection.entity';
 import { TenantStatusGuard } from '../tenant/tenant-status.guard';
 
 import { ConnectorCredential } from './connector-credential.entity';
 import { ConnectorCredentialService } from './connector-credential.service';
 import { ConnectorCredentialResponseDto } from './dto/connector-credential-response.dto';
 import { CreateConnectorCredentialDto } from './dto/create-connector-credential.dto';
-import { DecryptConnectorCredentialDto } from './dto/decrypt-connector-credential.dto';
 import { UpdateConnectorCredentialDto } from './dto/update-connector-credential.dto';
 
 @ApiJwtAuth()
@@ -48,7 +49,7 @@ import { UpdateConnectorCredentialDto } from './dto/update-connector-credential.
 @ApiForbiddenResponse({
   description: 'Token lacks tenants:admin, or tenant claim does not match',
 })
-@Controller({ path: 'connector-credentials', version: API_VERSION })
+@Controller({ path: 'tenants/:tenantId/connectors', version: API_VERSION })
 export class ConnectorCredentialController {
   public constructor(
     private readonly credentialService: ConnectorCredentialService,
@@ -56,15 +57,18 @@ export class ConnectorCredentialController {
 
   @Post()
   @ApiCreatedResponse({
-    description: 'Connector credential created successfully',
+    description: 'Connector registered',
     type: ConnectorCredentialResponseDto,
   })
+  @ApiUnprocessableEntityResponse({
+    description: 'Connectivity to the connector endpoint could not be verified',
+  })
   @ApiBody({
-    description: 'Connector credential creation request',
+    description: 'Connector registration request',
     type: CreateConnectorCredentialDto,
     examples: {
       example1: {
-        summary: 'Create a connector credential',
+        summary: 'Register a Traction connector',
         value: {
           tenant_id: '123e4567-e89b-12d3-a456-426614174000',
           connector_type: 'traction',
@@ -76,51 +80,32 @@ export class ConnectorCredentialController {
     },
   })
   public async create(
+    @Param('tenantId', ParseUUIDPipe) tenantId: string,
     @Body() dto: CreateConnectorCredentialDto,
     @CurrentAuth() auth: AuthContext,
   ): Promise<ConnectorCredentialResponseDto> {
-    const credential = await this.credentialService.create(dto, auth);
+    const credential = await this.credentialService.create(tenantId, dto, auth);
     return this.toResponseDto(credential);
   }
 
-  @Get('tenant/:tenantId')
+  @Get()
   @ApiOkResponse({
-    description: 'List of connector credentials for the specified tenant',
+    description: 'List of connectors for the tenant',
     type: [ConnectorCredentialResponseDto],
   })
   public async findByTenant(
     @Param('tenantId', ParseUUIDPipe) tenantId: string,
-    @Query('connectorType') connectorType?: ConnectorType,
-    @Query('active') active?: string,
   ): Promise<ConnectorCredentialResponseDto[]> {
-    let credentials;
-
-    if (connectorType && active !== undefined) {
-      const isActive = active === 'true';
-      credentials =
-        await this.credentialService.findByTenantAndConnectorTypeAndActive(
-          tenantId,
-          connectorType,
-          isActive,
-        );
-    } else if (connectorType) {
-      credentials = await this.credentialService.findByTenantAndConnectorType(
-        tenantId,
-        connectorType,
-      );
-    } else {
-      credentials = await this.credentialService.findByTenant(tenantId);
-    }
-
+    const credentials = await this.credentialService.findByTenant(tenantId);
     return credentials.map((credential) => this.toResponseDto(credential));
   }
 
   @Get(':id')
   @ApiOkResponse({
-    description: 'Connector credential found',
+    description: 'Connector details',
     type: ConnectorCredentialResponseDto,
   })
-  @ApiNotFoundResponse({ description: 'Connector credential not found' })
+  @ApiNotFoundResponse({ description: 'Connector not found' })
   public async findById(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentAuth() auth: AuthContext,
@@ -131,25 +116,27 @@ export class ConnectorCredentialController {
 
   @Patch(':id')
   @ApiOkResponse({
-    description: 'Connector credential updated successfully',
+    description: 'Connector updated',
     type: ConnectorCredentialResponseDto,
   })
-  @ApiNotFoundResponse({ description: 'Connector credential not found' })
+  @ApiNotFoundResponse({ description: 'Connector not found' })
+  @ApiUnprocessableEntityResponse({
+    description: 'Connectivity to the connector endpoint could not be verified',
+  })
   @ApiBody({
-    description: 'Connector credential update request',
+    description: 'Connector update request',
     type: UpdateConnectorCredentialDto,
     examples: {
       example1: {
-        summary: 'Update credential endpoint URL',
+        summary: 'Update the connector endpoint URL',
         value: {
-          endpoint_url: 'https://api.updated.com/v2',
+          endpointUrl: 'https://traction.example.com/api/v2',
         },
       },
       example2: {
-        summary: 'Activate credential and update key version',
+        summary: 'Rotate connector credentials',
         value: {
-          active: true,
-          keyVersion: 2,
+          credentials: { apiKey: 'sk_live_new456' },
         },
       },
     },
@@ -164,8 +151,12 @@ export class ConnectorCredentialController {
   }
 
   @Delete(':id')
-  @ApiOkResponse({ description: 'Connector credential deleted successfully' })
-  @ApiNotFoundResponse({ description: 'Connector credential not found' })
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiNoContentResponse({ description: 'Connector removed' })
+  @ApiNotFoundResponse({ description: 'Connector not found' })
+  @ApiConflictResponse({
+    description: 'Active credential records still reference this connector',
+  })
   public async delete(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentAuth() auth: AuthContext,
@@ -173,33 +164,14 @@ export class ConnectorCredentialController {
     return await this.credentialService.delete(id, auth);
   }
 
-  @Post(':id/decrypt')
-  @Header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
-  @Header('Pragma', 'no-cache')
-  @Header('Expires', '0')
-  @ApiOkResponse({
-    description: 'Connector credential decrypted successfully',
-    type: String,
-  })
-  @ApiNotFoundResponse({ description: 'Connector credential not found' })
-  @ApiBody({
-    description: 'Request body containing the decryption key',
-    type: DecryptConnectorCredentialDto,
-    examples: {
-      example1: {
-        summary: 'Decrypt a connector credential',
-        value: {
-          key: '25a1d9892813680c2a7e6363818f22005b633d394083f3da8937c405d1ef9f86',
-        },
-      },
-    },
-  })
-  public async decrypt(
+  @Post(':id/test')
+  @ApiOkResponse({ description: 'Connectivity test result' })
+  @ApiNotFoundResponse({ description: 'Connector not found' })
+  public async test(
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: DecryptConnectorCredentialDto,
     @CurrentAuth() auth: AuthContext,
-  ): Promise<string> {
-    return await this.credentialService.decryptCredential(dto.key, id, auth);
+  ): Promise<{ status: string; latencyMs: number; message?: string }> {
+    return await this.credentialService.testConnectivity(id, auth);
   }
 
   private toResponseDto(

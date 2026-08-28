@@ -1,6 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { Expose } from 'class-transformer';
 
+import { ConnectorType } from '../../connection/connection.entity';
 import { ConnectorCredential } from '../connector-credential.entity';
 
 export class ConnectorCredentialResponseDto {
@@ -22,9 +23,10 @@ export class ConnectorCredentialResponseDto {
   @ApiProperty({
     name: 'connector_type',
     description: 'The type of connector',
-    example: 'traction',
+    enum: ConnectorType,
+    example: ConnectorType.TRACTION,
   })
-  public connectorType!: string;
+  public connectorType!: ConnectorType;
 
   @Expose({ name: 'endpoint_url' })
   @ApiProperty({

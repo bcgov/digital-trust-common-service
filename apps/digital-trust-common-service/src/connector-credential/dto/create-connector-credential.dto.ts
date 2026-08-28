@@ -1,22 +1,41 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { Expose } from 'class-transformer';
-import { IsEnum, IsOptional, IsString, IsUUID } from 'class-validator';
+import { Expose, Type } from 'class-transformer';
+import {
+  IsEnum,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  IsUrl,
+  ValidateNested,
+} from 'class-validator';
 
 import { ConnectorType } from '../../connection/connection.entity';
 
-export class CreateConnectorCredentialDto {
-  @Expose({ name: 'tenant_id' })
+export class ConnectorCredentialsDto {
+  @Expose({ name: 'api_key' })
   @ApiProperty({
-    name: 'tenant_id',
-    description: 'The tenant ID',
-    example: '123e4567-e89b-12d3-a456-426614174000',
+    description: 'The API key used to authenticate with the agent endpoint',
+    example: 'sk_live_abc123',
   })
-  @IsUUID()
-  public tenantId!: string;
+  @IsString()
+  @IsNotEmpty()
+  public apiKey!: string;
 
   @Expose({ name: 'connector_type' })
   @ApiProperty({
-    name: 'connector_type',
+    description:
+      'The Traction sub-tenant ID this credential maps to (Traction connectors only)',
+    example: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
+    required: false,
+  })
+  @IsOptional()
+  @IsString()
+  public tractionTenantId?: string;
+}
+
+export class CreateConnectorCredentialDto {
+  @Expose({ name: 'connector_type' })
+  @ApiProperty({
     description: 'The connector type',
     enum: ConnectorType,
     example: ConnectorType.TRACTION,
@@ -26,27 +45,19 @@ export class CreateConnectorCredentialDto {
 
   @Expose({ name: 'credentials_plain_text' })
   @ApiProperty({
-    name: 'credentials_plain_text',
-    description: 'The encrypted credentials in plain text (base64 encoded)',
+    description: 'The endpoint URL for the connector agent',
+    example: 'https://traction.example.com/api',
   })
-  @IsString()
-  public credentialsPlainText!: string;
-
-  @Expose({ name: 'endpoint_url' })
-  @ApiProperty({
-    name: 'endpoint_url',
-    description: 'The endpoint URL for the connector',
-    example: 'https://api.salesforce.com/v57.0',
-  })
-  @IsString()
+  @IsUrl()
   public endpointUrl!: string;
 
   @Expose()
   @ApiProperty({
-    description: 'Whether this credential is active',
-    required: false,
-    example: true,
+    description:
+      'The connector-specific credentials. Encrypted at rest and never returned after creation.',
+    type: ConnectorCredentialsDto,
   })
-  @IsOptional()
-  public active?: boolean;
+  @ValidateNested()
+  @Type(() => ConnectorCredentialsDto)
+  public credentials!: ConnectorCredentialsDto;
 }

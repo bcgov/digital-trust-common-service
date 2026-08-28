@@ -16,6 +16,7 @@ describe('CredentialRepository', () => {
       findOne: jest.fn(),
       find: jest.fn(),
       update: jest.fn(),
+      count: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -97,5 +98,24 @@ describe('CredentialRepository', () => {
       issuedAt,
       revokedAt,
     });
+  });
+
+  it('existsByConnectorId returns true when at least one credential references the connector', async () => {
+    (mockRepo.count as jest.Mock).mockResolvedValue(2);
+
+    await expect(repository.existsByConnectorId('connector-1')).resolves.toBe(
+      true,
+    );
+    expect(mockRepo.count).toHaveBeenCalledWith({
+      where: { connectorId: 'connector-1' },
+    });
+  });
+
+  it('existsByConnectorId returns false when no credential references the connector', async () => {
+    (mockRepo.count as jest.Mock).mockResolvedValue(0);
+
+    await expect(repository.existsByConnectorId('connector-1')).resolves.toBe(
+      false,
+    );
   });
 });

@@ -67,7 +67,7 @@ describe('product controllers (e2e) — auth enforcement', () => {
     ['GET', `${API_BASE_PATH}/tenants/${tenantId}/audit-logs`],
     ['GET', `${API_BASE_PATH}/connections/tenant/${tenantId}`],
     ['GET', `${API_BASE_PATH}/tenants/${tenantId}/clients`],
-    ['GET', `${API_BASE_PATH}/connector-credentials/tenant/${tenantId}`],
+    ['GET', `${API_BASE_PATH}/tenants/${tenantId}/connectors`],
     ['GET', `${API_BASE_PATH}/credential-definitions/tenant/${tenantId}`],
     [
       'GET',

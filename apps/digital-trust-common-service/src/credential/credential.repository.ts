@@ -61,4 +61,16 @@ export class CredentialRepository {
         : {}),
     });
   }
+
+  /**
+   * Used to block connector deletion when credential records still reference
+   * it (mirrors the `fk_credential_connector` ON DELETE RESTRICT constraint,
+   * but surfaces as a clean check before the DB rejects the delete).
+   */
+  public async existsByConnectorId(connectorId: string): Promise<boolean> {
+    const count = await this.repository.count({
+      where: { connectorId },
+    });
+    return count > 0;
+  }
 }
