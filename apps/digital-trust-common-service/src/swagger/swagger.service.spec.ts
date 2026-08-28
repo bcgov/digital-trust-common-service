@@ -30,6 +30,10 @@ jest.mock('@nestjs/swagger', () => {
     ApiProperty: decorator,
     ApiBearerAuth: decorator,
     ApiUnauthorizedResponse: decorator,
+    ApiOperation: decorator,
+    ApiOkResponse: decorator,
+    ApiForbiddenResponse: decorator,
+    ApiTags: decorator,
   };
 });
 
@@ -60,6 +64,7 @@ const mockAppModules = (
 const modulesToMock = [
   '../tenant/tenant.module',
   '../tenant-user/tenant-user.module',
+  '../auth/auth-api.module',
   '../credential-definition/credential-definition.module',
   '../connection/connection.module',
   '../oauth-client/oauth-client.module',

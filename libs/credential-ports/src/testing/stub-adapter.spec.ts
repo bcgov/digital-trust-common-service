@@ -1,5 +1,6 @@
 import { NotImplementedException } from '@nestjs/common';
 
+import { ConnectorType } from '../enums/connector-type.enum';
 import { CredentialFormat } from '../enums/credential-format.enum';
 
 import { StubAdapter } from './stub-adapter';
@@ -9,6 +10,17 @@ describe('StubAdapter', () => {
 
   beforeEach(() => {
     stub = new StubAdapter();
+  });
+
+  it('should declare a connector type', () => {
+    expect(Object.values(ConnectorType)).toContain(stub.connectorType);
+  });
+
+  it('should declare at least one supported format', () => {
+    expect(stub.supportedFormats.length).toBeGreaterThan(0);
+    stub.supportedFormats.forEach((format) => {
+      expect(Object.values(CredentialFormat)).toContain(format);
+    });
   });
 
   it('should reject offerCredential', async () => {

@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
     signinSilent: vi.fn(),
     revokeTokens: vi.fn(),
     removeUser: vi.fn(),
+    storeUser: vi.fn(),
     events: {
       addUserLoaded: vi.fn(),
       addUserUnloaded: vi.fn(),
@@ -371,6 +372,51 @@ describe('oidc auth client', () => {
       const client = createOidcAuthClient();
 
       await expect(client.refresh()).resolves.toBeNull();
+    });
+  });
+
+  describe('switchTenant', () => {
+    const loginIdToken = 'login-id-token';
+    const targetTenantId = '22222222-2222-4222-8222-222222222222';
+
+    it('keeps the login id_token so RP-logout still has a session hint', async () => {
+      mocks.manager.getUser.mockResolvedValue(
+        makeUser(
+          { tenant_id: '11111111-1111-4111-8111-111111111111' },
+          { id_token: loginIdToken, access_token: 'login-access-token' },
+        ),
+      );
+      const client = createOidcAuthClient();
+      await vi.waitFor(() =>
+        expect(client.getState().status).toBe('authenticated'),
+      );
+
+      await client.switchTenant(targetTenantId);
+
+      expect(mocks.manager.storeUser).toHaveBeenCalledTimes(1);
+      const stored = mocks.manager.storeUser.mock.calls[0]?.[0] as User;
+      expect(stored.id_token).toBe(loginIdToken);
+      expect(stored.access_token).not.toBe('login-access-token');
+      expect(client.getState().user?.tenantId).toBe(targetTenantId);
+    });
+
+    it('still signs out through the provider after a tenant switch', async () => {
+      mocks.manager.getUser.mockResolvedValue(
+        makeUser(
+          { tenant_id: '11111111-1111-4111-8111-111111111111' },
+          { id_token: loginIdToken },
+        ),
+      );
+      const client = createOidcAuthClient();
+      await vi.waitFor(() =>
+        expect(client.getState().status).toBe('authenticated'),
+      );
+
+      await client.switchTenant(targetTenantId);
+      await client.logout();
+
+      expect(mocks.manager.revokeTokens).toHaveBeenCalledTimes(1);
+      expect(mocks.manager.signoutRedirect).toHaveBeenCalledTimes(1);
     });
   });
 

@@ -71,9 +71,8 @@ export function normalizeAuthPayload(payload: JWTPayload): AuthContext {
   const explicitClientId = readOptionalString(payload.client_id);
   const tokenType = resolveTokenType(sub, explicitClientId);
   const clientId =
-    tokenType === 'client'
-      ? (explicitClientId ?? deriveClientIdFromSub(sub))
-      : null;
+    explicitClientId ??
+    (tokenType === 'client' ? deriveClientIdFromSub(sub) : null);
   const scope = readScope(payload.scope);
   const roles = readRoles(payload.roles);
 
@@ -89,6 +88,7 @@ export function normalizeAuthPayload(payload: JWTPayload): AuthContext {
     aud: payload.aud ?? '',
     exp: Number(payload.exp ?? 0),
     iat: Number(payload.iat ?? 0),
+    jti: readOptionalString(payload.jti),
   };
 }
 

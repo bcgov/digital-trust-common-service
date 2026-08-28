@@ -57,6 +57,7 @@ describe('OidcInteractionController', () => {
   const mockTenantUserService = {
     findById: jest.fn(),
     findByTenantAndExternalUserId: jest.fn(),
+    findActiveByExternalUserId: jest.fn(),
     claimInvitedByEmail: jest.fn(),
     create: jest.fn(),
   };
@@ -75,6 +76,7 @@ describe('OidcInteractionController', () => {
 
   beforeEach(async () => {
     jest.clearAllMocks();
+    mockTenantUserService.findActiveByExternalUserId.mockResolvedValue([]);
 
     module = await Test.createTestingModule({
       controllers: [OidcInteractionController],
@@ -941,6 +943,165 @@ describe('OidcInteractionController', () => {
         upstreamIdToken: 'upstream-id-token',
         expiresAt: null,
       });
+    });
+
+    it('should bind the oldest active membership when the user belongs to multiple tenants', async () => {
+      const mockInteraction = {
+        id: 'interaction-123',
+        state: 'state-123',
+        nonce: 'nonce-123',
+        interactionUid: 'interaction-uid',
+        codeVerifier: 'verifier',
+        tenantId: 'spa-client-tenant',
+        tenantUserId: null,
+        createdAt: new Date(),
+        expiresAt: new Date(),
+        consumedAt: null,
+      };
+
+      mockUpstreamOidcService.handleUpstreamCallback.mockResolvedValue({
+        claims: {
+          sub: 'external-user-123',
+          email: 'user@example.com',
+          name: 'Test User',
+        },
+        interaction: mockInteraction,
+        upstreamSession: {
+          upstreamSubject: 'external-user-123',
+          upstreamIdToken: 'upstream-id-token',
+          expiresAt: null,
+        },
+      });
+
+      const firstMembership = {
+        id: 'older-membership',
+        tenantId: 'tenant-older',
+        externalUserId: 'external-user-123',
+        email: 'user@example.com',
+        displayName: 'Test User',
+        role: 'admin' as OidcTenantUserRole,
+        status: 'active' as OidcTenantUserStatus,
+      };
+      const laterMembership = {
+        id: 'newer-membership',
+        tenantId: 'spa-client-tenant',
+        externalUserId: 'external-user-123',
+        email: 'user@example.com',
+        displayName: 'Test User',
+        role: 'member' as OidcTenantUserRole,
+        status: 'active' as OidcTenantUserStatus,
+      };
+
+      mockTenantUserService.findActiveByExternalUserId.mockResolvedValue([
+        firstMembership,
+        laterMembership,
+      ]);
+      mockUpstreamOidcService.setTenantUserIdForInteraction.mockResolvedValue(
+        mockInteraction,
+      );
+      mockUpstreamOidcService.consumeInteraction.mockResolvedValue(
+        mockInteraction,
+      );
+      mockConfigService.get.mockReturnValue('http://localhost:3000/oidc');
+
+      const mockReq = {
+        headers: { host: 'localhost:3000' },
+        url: '/oidc/callback?code=auth-code&state=state-123',
+      } as IncomingMessage;
+
+      const mockRes = {
+        headersSent: false,
+        statusCode: 200,
+        setHeader: jest.fn(),
+        end: jest.fn(),
+      } as any;
+
+      await controller.callback(
+        'auth-code',
+        'state-123',
+        'nonce-123',
+        undefined,
+        undefined,
+        mockReq,
+        mockRes,
+      );
+
+      expect(
+        mockTenantUserService.findActiveByExternalUserId,
+      ).toHaveBeenCalledWith('external-user-123');
+      expect(
+        mockTenantUserService.findByTenantAndExternalUserId,
+      ).not.toHaveBeenCalled();
+      expect(mockTenantUserService.create).not.toHaveBeenCalled();
+      expect(
+        mockUpstreamOidcService.setTenantUserIdForInteraction,
+      ).toHaveBeenCalledWith('state-123', 'older-membership');
+    });
+
+    it('should reject when the only tenant-scoped membership is not active', async () => {
+      const mockInteraction = {
+        id: 'interaction-123',
+        state: 'state-123',
+        interactionUid: 'interaction-uid',
+        codeVerifier: 'verifier',
+        tenantId: 'tenant-123',
+        tenantUserId: null,
+        createdAt: new Date(),
+        expiresAt: new Date(),
+        consumedAt: null,
+      };
+
+      mockUpstreamOidcService.handleUpstreamCallback.mockResolvedValue({
+        claims: {
+          sub: 'external-user-disabled',
+          email: 'disabled@example.com',
+          name: 'Disabled User',
+        },
+        interaction: mockInteraction,
+        upstreamSession: {
+          upstreamSubject: 'external-user-disabled',
+          upstreamIdToken: 'upstream-id-token',
+          expiresAt: null,
+        },
+      });
+      mockTenantUserService.findActiveByExternalUserId.mockResolvedValue([]);
+      mockTenantUserService.claimInvitedByEmail.mockResolvedValue(null);
+      mockTenantUserService.findByTenantAndExternalUserId.mockResolvedValue({
+        id: 'disabled-membership',
+        tenantId: 'tenant-123',
+        externalUserId: 'external-user-disabled',
+        email: 'disabled@example.com',
+        displayName: 'Disabled User',
+        role: 'member' as OidcTenantUserRole,
+        status: 'disabled' as OidcTenantUserStatus,
+      });
+
+      const mockReq = {
+        headers: { host: 'localhost:3000' },
+        url: '/oidc/callback?code=auth-code&state=state-123',
+      } as IncomingMessage;
+
+      const mockRes = {
+        headersSent: false,
+        statusCode: 200,
+        setHeader: jest.fn(),
+        end: jest.fn(),
+      } as any;
+
+      await controller.callback(
+        'auth-code',
+        'state-123',
+        'nonce-123',
+        undefined,
+        undefined,
+        mockReq,
+        mockRes,
+      );
+
+      expect(mockRes.statusCode).toBe(400);
+      expect(mockRes.end).toHaveBeenCalledWith(
+        expect.stringContaining('Federated user is not active'),
+      );
     });
 
     it('should return 400 when upstream error occurs', async () => {

@@ -31,9 +31,10 @@ resources:
 autoscaling:
   enabled: false
 
-# Migrations run automatically in dev once the runner command lands.
+# The hook Job brings dev to the current schema before the pods roll. It reads
+# the pre-provisioned database Secret named under `secret` below.
 migrations:
-  enabled: false
+  enabled: true
 
 worker:
   enabled: false

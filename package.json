@@ -27,6 +27,7 @@
     "migrate:up": "node -r dotenv/config ./node_modules/typeorm/cli.js migration:run -d dist/libs/database/src/data-source.js",
     "migrate:down": "node -r dotenv/config ./node_modules/typeorm/cli.js migration:revert -d dist/libs/database/src/data-source.js",
     "seed": "npm run build && node dist/apps/digital-trust-common-service/src/seed/run-seed.js",
+    "bootstrap": "npm run build && node dist/apps/digital-trust-common-service/src/bootstrap/run-bootstrap.js",
     "prepare": "husky"
   },
   "dependencies": {

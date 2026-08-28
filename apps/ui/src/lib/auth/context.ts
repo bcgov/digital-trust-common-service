@@ -1,5 +1,7 @@
 import { createContext, useContext } from 'react';
 
+import type { AuthTenant } from '@/lib/api/resources/auth';
+
 import type { AuthStatus, AuthUser } from './types';
 
 export interface AuthContextValue {
@@ -11,6 +13,8 @@ export interface AuthContextValue {
   login: (returnTo?: string) => Promise<void>;
   logout: () => Promise<void>;
   completeLogin: () => Promise<string | null>;
+  listAuthTenants: () => Promise<AuthTenant[]>;
+  switchTenant: (tenantId: string) => Promise<void>;
 }
 
 export const AuthContext = createContext<AuthContextValue | null>(null);

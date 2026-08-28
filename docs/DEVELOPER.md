@@ -298,8 +298,10 @@ authorize/token cross-origin and drop the provider's session cookie.
 
 Prerequisites, all covered above: Keycloak running with the realm imported,
 `config/upstream-identity-federation.json` pointing at it, migrations applied,
-and the seed loaded (it registers the SPA's OIDC client). Sign in as one of
-the seeded `acme-corp` users.
+and the seed loaded (it registers the SPA's OIDC client locally and in PR
+previews; a hosted environment registers it with the bootstrap CLI instead —
+see [Bootstrapping a hosted environment](#bootstrapping-a-hosted-environment)).
+Sign in as one of the seeded `acme-corp` users.
 
 The client the SPA uses:
 
@@ -311,7 +313,7 @@ The client the SPA uses:
 | Redirect URI | `https://app.localhost/auth/callback` | |
 | Post-logout URI | `https://app.localhost/login` | Validated separately from the login redirect. |
 | Scopes | `openid profile email tenant offline_access` | The set **every** role holds — see the caveat below. |
-| Tenant | `acme-corp` | Interactive login is tenant-scoped through the client (see below). |
+| Tenant | `acme-corp` locally (seed); the operator tenant in a hosted environment (bootstrap) | Interactive login is tenant-scoped through the client (see below). |
 
 Two constraints worth knowing before changing any of that:
 
@@ -538,6 +540,36 @@ SEED_ON_START=true
 
 Re-running the seed updates existing rows keyed by slug, external IDs, and profile name/version — it does not create duplicates.
 
+## Bootstrapping a hosted environment
+
+The seed is demo data for local development and PR previews. A hosted
+environment (dev, test, prod) starts from an empty database and gets exactly
+three rows from the bootstrap CLI instead — the minimum for real sign-in and
+for administering everything else through the API:
+
+| Created | Details |
+|---------|---------|
+| Tenant | The operator's own tenant (`--tenant-slug`, `--tenant-name`). Left untouched if it already exists. |
+| UI client | The SPA's public client `dtsc-ui`, owned by that tenant, with redirect URIs on `OIDC_ISSUER`'s origin (`/auth/callback`, `/login`). Re-registered in place on every run, so a changed issuer is picked up by running it again. |
+| Platform-admin client | `dtsc-platform-admin`: a confidential `client_credentials` client with the `platform-admin` role and the `tenants:admin` scope. Its secret is printed **once**, on creation, and stored only as a hash; keep it with the environment's other secrets. A re-run leaves an existing one alone; `--rotate-admin-secret` mints and prints a new secret — also the recovery path when the only platform-admin secret is lost, since nothing can then authenticate to rotate it through the API. |
+
+Run it once per environment from a running API pod, which already has the
+database credentials and `OIDC_ISSUER` in its environment:
+
+```bash
+oc -n <namespace> exec deploy/digital-trust-common-service -- \
+  node dist/apps/digital-trust-common-service/src/bootstrap/run-bootstrap.js \
+  --tenant-slug dts-platform --tenant-name "Digital Trust Services"
+```
+
+Locally the same thing is `npm run bootstrap -- --tenant-slug ... --tenant-name ...`.
+
+From there, everything is API work with the platform-admin client's token
+(`POST /oidc/token`, `grant_type=client_credentials`): further tenants,
+invitations, consumers' clients. Sign-in is tenant-scoped through the UI
+client, so a person with no membership yet lands in the bootstrap tenant as
+`readonly` on first login and is promoted from there.
+
 ## Authorization scope catalog (AU-04)
 
 The canonical OAuth scope names live in `@app/auth` (`libs/auth/src/constants/scopes.constants.ts`) and are seeded into the `role_scope` table by migration `000013_create-role-scopes`.
@@ -570,7 +602,12 @@ Generated `client_id` values are prefixed `dtcs_`. The plaintext `clientSecret` 
 
 Assigned scopes must be in the published catalog, present in `OIDC_SCOPES`, and a subset of the caller's effective scopes (`tenants:admin` expands to all Level 2 + Level 3). `platform-admin` bypasses the caller-subset check.
 
-**User-token scope resolution:** the `role_scope` seed is consumed by `ScopeGuard` indirectly (scopes must appear on the JWT). Mapping `tenant_user.role` → `role_scope` → JWT `scope` at issuance is deferred to **[AU-02 #35](https://github.com/bcgov/digital-trust-common-service/issues/35)** (interactive login + `extraTokenClaims`). `RoleScopeRepository` is injectable for that work. Client-credentials tokens continue to take scopes from `oauth_client.scopes` at registration.
+**User-token scope resolution:** the `role_scope` seed is consumed at grant
+creation (`OidcInteractionController` and `POST /api/v1/auth/switch-tenant`)
+so user JWTs carry the scopes for the active tenant role. `extraTokenClaims`
+stamps `tenant_id`, `tenant_role`, and `roles: [<tenant_user.role>]`.
+Client-credentials tokens continue to take scopes from `oauth_client.scopes`
+at registration.
 
 ### Migration from placeholder scopes
 
@@ -745,9 +782,23 @@ Mismatch / missing `tenant_id` claim → **403** `{ error: { code: "TENANT_ACCES
 
 **v1 is claim-match only for `:tenantId` route params.** Body/`/:id` routes
 use the shared `assertTenantAccess` helper (same claim-match + platform-admin
-bypass). Live `TenantUser` membership lookup beyond that remains AU-09 /
-membership-guard territory. Client-credentials tokens already carry a fixed
-`tenant_id` from `oauth_client`.
+bypass). Live `TenantUser` membership lookup is used by
+`POST /api/v1/auth/switch-tenant` (and `GET /api/v1/auth/tenants`) rather than
+by TenantGuard. Client-credentials tokens already carry a fixed `tenant_id`
+from `oauth_client` and cannot switch.
+
+## Tenant switching
+
+Users who belong to more than one tenant get a token scoped to their **oldest
+active membership** at login. To change context, the SPA calls
+`POST /api/v1/auth/switch-tenant` with a valid user Bearer token. The API:
+
+1. Rejects machine (`client_credentials`) tokens with 403.
+2. Requires an active `tenant_user` row for the same Keycloak subject in the target tenant.
+3. Issues a new access token and refresh token whose `tenant_id`, `roles`, and `scope` come from the target membership.
+4. Revokes the previous grant so both tokens cannot be used at once (the old JWT may still verify until `exp`, at most 5 minutes).
+
+`GET /api/v1/auth/tenants` lists the caller's active memberships for the UI selector. `GET /api/v1/tenants` is not membership-filtered.
 
 ### Controller auth inventory
 
@@ -795,6 +846,81 @@ App-issued access tokens carry a stable API `aud`, not the OIDC issuer URL:
 - Downstream gateways (OB-07 Loki) request `resource=<absolute URI>` and must be listed in `JWT_ADDITIONAL_AUDIENCES` (e.g. `https://loki-gateway`). Those JWTs are rejected by `JwtGuard` by design.
 
 `JWT_AUDIENCE` and extra resources must be absolute URIs without fragments (RFC 8707 / oidc-provider). Override via `.env` if needed; Helm `config.JWT_AUDIENCE` defaults to the same URI in every environment.
+
+## Adapter registry (CA-02)
+
+`AdapterRegistry` (`apps/digital-trust-common-service/src/adapter-registry/`) maps a connector type
+to the adapter that implements the credential ports, and resolves which adapter serves a given
+tenant. Callers never name Traction or Credo directly.
+
+Adapters register themselves at startup and advertise their own capabilities — the registry holds no
+per-connector knowledge:
+
+```ts
+// In an adapter module's onModuleInit
+this.registry.register(this.tractionAdapter);
+```
+
+`AgentAdapter` therefore carries `connectorType` and `supportedFormats` (`AdapterCapabilities` in
+`@app/credential-ports`). The registry keys its map on the adapter's own `connectorType`, so an
+adapter cannot be filed under a type it does not implement. The first entry of `supportedFormats` is
+the connector's **primary** format, used when a caller omits one; the type is a non-empty tuple
+(`SupportedFormats`), so an adapter with no formats is a compile error, and `register()` rejects one
+at startup for callers that reach it untyped.
+
+### Resolution order
+
+`resolve(tenantId, format?, options?)` returns `{ adapter, connector, format }`:
+
+1. **`options.adapterOverride`** — platform-admin escape hatch (see below).
+2. **`options.connectorId`** — explicit connector, e.g. an issuance profile's `connector_id`.
+3. **`tenant.config.default_connector`** — the tenant default, set via
+   `PATCH /api/v1/tenants/:id/config`.
+4. **Fallback** — the tenant's single active `ConnectorCredential`.
+
+Setting a default is optional, so step 4 serves tenants that have never configured one. It is
+deliberately strict: **zero** active connectors and **more than one** are both errors. Guessing
+which connector a tenant meant could issue a credential from the wrong agent, and nothing about
+that failure is visible afterwards.
+
+A connector reached by id — from tenant config or from a caller — is selected out of the tenant's
+own connectors rather than fetched by id, so isolation is structural: another tenant's row is never
+in the candidate list. It must also be `active`. A `default_connector` that is missing, not a
+string, or names a row the tenant does not own is refused, never silently followed. The config
+endpoint validates the same things on write, but that is not enough on its own: `config` is JSONB
+with no foreign key, and a connector can be deactivated or deleted after the default was set.
+
+Note that `ConnectorCredentialService.findById()` is deliberately **not** used here. It is the
+HTTP-caller entry point and answers "not found" unless given an `AuthContext`, which an internal
+resolver has no way to supply.
+
+### Errors
+
+| Condition | Error | `code` |
+| --- | --- | --- |
+| No adapter registered for the connector type | `ConnectorUnavailableError` | `CONNECTOR_UNAVAILABLE` |
+| Connector missing, inactive, or owned by another tenant | `ConnectorUnavailableError` | `CONNECTOR_UNAVAILABLE` |
+| No active connector, or an ambiguous fallback | `ConnectorUnavailableError` | `CONNECTOR_UNAVAILABLE` |
+| Requested format not in `supportedFormats` | `FormatNotSupportedError` | `FORMAT_NOT_SUPPORTED` |
+| Override requested but not permitted | `ForbiddenException` | HTTP 403 |
+
+Registering two adapters for the same connector type throws a plain `Error` at startup — a
+misconfiguration should be loud, not silently resolved to whichever registered last.
+
+### `ADAPTER_OVERRIDE_ENABLED`
+
+Defaults to `false`. When on, a **platform-admin** caller may pass `adapterOverride` to route an
+operation through a different connector type than the tenant's configured one. Both conditions must
+hold; either failing raises `ForbiddenException` rather than silently ignoring the override, so a
+privilege failure is never hidden from the caller. The override still requires the tenant to have an
+active connector of the overridden type — it selects an adapter, it does not conjure credentials.
+
+CA-02 ships the service-level parameter only. The `?adapter=` query-param plumbing arrives with the
+credential controllers (CA-03 / CA-04).
+
+> **Note:** `ConnectorType` currently exists twice — `@app/credential-ports` (the port-layer enum)
+> and `connection/connection.entity.ts` (the entity enum). The string values are identical;
+> `toPortConnectorType()` bridges them. Collapsing the two is a tracked follow-up.
 
 ## Testing
 

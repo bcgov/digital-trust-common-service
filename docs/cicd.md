@@ -91,6 +91,28 @@ Publish jobs are guarded with `if: github.repository_owner == 'bcgov'`. Forks ca
 - **CD pipeline (`cd.yml`):** Concurrency group `cd-<ref>` with `cancel-in-progress: false`. Concurrent pushes to the same ref queue rather than cancel, preventing half-pushed state (e.g., image pushed but chart or notification abandoned).
 - **CI workflow (`ci.yml`):** Concurrency group `ci-<ref>` with `cancel-in-progress: true`. Superseded PR pushes cancel stale runs since nothing is published.
 
+## Bootstrapping dev, test, and prod
+
+The pipelines deploy the chart; they never create application data. A hosted
+environment is brought up once, by hand, in this order:
+
+1. Pre-provision the Secrets the overlay names: database credentials
+   (`secret.existingSecret`), connector-encryption keys, the OIDC signing JWKS
+   and the upstream federation JSON. The migration hook Job reads the database
+   Secret before any release resource exists, which is why that one must
+   pre-exist rather than be chart-created.
+2. Register the environment's Keycloak client with `https://<host>/oidc/callback`
+   as a valid redirect URI and put its credentials in the upstream federation
+   Secret.
+3. Deploy (dev: push to `main`). The hosted overlays enable the migration
+   hook Job, so the empty database is migrated before the pods roll.
+4. Run the bootstrap CLI once from an API pod — see
+   [DEVELOPER.md](DEVELOPER.md#bootstrapping-a-hosted-environment). It creates
+   the operator tenant, the SPA's `dtsc-ui` client with that environment's
+   redirect URIs, and a platform-admin client whose secret is printed once.
+5. Everything else — tenants, invitations, consumers' clients — goes through
+   the API with the platform-admin client's token.
+
 ## Deferred: Phase 2 Scope
 
 Deploying to the dev environment on pushes to `main` (`deploy-dev` job in `cd.yml`, via `oc-setup` + `helm upgrade`) is already implemented. The following capabilities are still **not implemented** and are planned for a future phase:

@@ -11,11 +11,13 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_INTERCEPTOR } from '@nestjs/core';
 
+import { AdapterRegistryModule } from './adapter-registry/adapter-registry.module';
 import { AdminModule } from './admin/admin.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuditAutoInterceptor } from './audit-log/audit-auto.interceptor';
 import { AuditLogModule } from './audit-log/audit-log.module';
+import { AuthApiModule } from './auth/auth-api.module';
 import { EncryptionModule } from './common/crypto/encryption.module';
 import { ConnectionModule } from './connection/connection.module';
 import { ConnectorCredentialModule } from './connector-credential/connector-credential.module';
@@ -41,8 +43,10 @@ import { VerificationProfileModule } from './verification-profile/verification-p
 
 @Module({
   imports: [
+    AdapterRegistryModule,
     AdminModule,
     AuditLogModule,
+    AuthApiModule,
     ConfigModule.forRoot({ isGlobal: true }),
     ConnectionModule,
     ConnectorCredentialModule,

@@ -11,6 +11,8 @@ import { OfferCredentialRequest } from '../dto/offer-credential-request.dto';
 import { PresentationExchange } from '../dto/presentation-exchange.dto';
 import { PresentationRequest } from '../dto/presentation-request.dto';
 import { RevocationResult } from '../dto/revocation-result.dto';
+import { ConnectorType } from '../enums/connector-type.enum';
+import { CredentialFormat } from '../enums/credential-format.enum';
 import {
   ConnectionState,
   CredentialExchangeState,
@@ -21,13 +23,28 @@ import {
   ConnectorUnavailableError,
   ValidationError,
 } from '../errors/adapter-error';
-import { AgentAdapter } from '../ports/agent-adapter';
+import { AgentAdapter, SupportedFormats } from '../ports/agent-adapter';
 
-export interface MockAdapterConfig {
+/**
+ * Runtime behaviour, reconfigurable at any point during a test.
+ */
+export interface MockAdapterBehaviour {
   readonly mode?: 'success' | 'delayed' | 'failure';
   readonly delayMs?: number;
   readonly failureError?: AdapterError;
 }
+
+/**
+ * Capabilities, fixed once at construction. Kept separate from behaviour so
+ * `configure()` cannot accept them: the AdapterRegistry keys its map on
+ * `connectorType`, and changing it after registration would desync the map.
+ */
+export interface MockAdapterCapabilities {
+  readonly connectorType?: ConnectorType;
+  readonly supportedFormats?: SupportedFormats;
+}
+
+export type MockAdapterConfig = MockAdapterBehaviour & MockAdapterCapabilities;
 
 export interface MockAdapterCall {
   readonly method: string;
@@ -57,7 +74,11 @@ export class MockAdapter implements AgentAdapter {
 
   private readonly calls: MockAdapterCall[] = [];
 
-  private config: MockAdapterConfig;
+  private config: MockAdapterBehaviour;
+
+  public readonly connectorType: ConnectorType;
+
+  public readonly supportedFormats: SupportedFormats;
 
   public constructor(config: MockAdapterConfig = {}) {
     this.config = {
@@ -65,9 +86,13 @@ export class MockAdapter implements AgentAdapter {
       mode: 'success',
       ...config,
     };
+    this.connectorType = config.connectorType ?? ConnectorType.Traction;
+    this.supportedFormats = config.supportedFormats ?? [
+      CredentialFormat.AnonCreds,
+    ];
   }
 
-  public configure(config: Partial<MockAdapterConfig>): void {
+  public configure(config: MockAdapterBehaviour): void {
     this.config = {
       ...this.config,
       ...config,

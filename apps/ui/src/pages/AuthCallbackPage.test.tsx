@@ -17,6 +17,8 @@ function renderCallback(auth: Partial<AuthContextValue>) {
     login: vi.fn(),
     logout: vi.fn(),
     completeLogin: vi.fn().mockResolvedValue(null),
+    listAuthTenants: vi.fn(),
+    switchTenant: vi.fn(),
     ...auth,
   };
 

@@ -16,6 +16,8 @@ function renderGuardedAt(status: AuthStatus, path = '/dashboard') {
     login: vi.fn(),
     logout: vi.fn(),
     completeLogin: vi.fn(),
+    listAuthTenants: vi.fn(),
+    switchTenant: vi.fn(),
   };
 
   const router = createMemoryRouter(

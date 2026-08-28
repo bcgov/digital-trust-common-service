@@ -34,9 +34,10 @@ autoscaling:
   maxReplicas: 8
   targetCPUUtilizationPercentage: 75
 
-# Run migrations as an init container in prod (fail-fast before serving traffic).
+# The hook Job brings the database to the current schema before the pods roll.
+# It reads the pre-provisioned database Secret named under `secret` below.
 migrations:
-  enabled: false     # TODO: enable once the migration runner command is available
+  enabled: true
 
 worker:
   enabled: false     # TODO: enable once dist/worker.js ships
