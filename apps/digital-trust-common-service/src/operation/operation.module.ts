@@ -1,3 +1,4 @@
+import { AuthModule } from '@app/auth';
 import { PgBossModule } from '@app/pg-boss';
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
@@ -11,7 +12,12 @@ import { OperationRepository } from './operation.repository';
 import { OperationService } from './operation.service';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Operation]), TenantModule, PgBossModule],
+  imports: [
+    TypeOrmModule.forFeature([Operation]),
+    TenantModule,
+    PgBossModule,
+    AuthModule,
+  ],
   controllers: [OperationController],
   providers: [OperationService, OperationRepository, OperationPurgeService],
   exports: [OperationService, OperationRepository],
