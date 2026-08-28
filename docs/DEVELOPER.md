@@ -298,8 +298,10 @@ authorize/token cross-origin and drop the provider's session cookie.
 
 Prerequisites, all covered above: Keycloak running with the realm imported,
 `config/upstream-identity-federation.json` pointing at it, migrations applied,
-and the seed loaded (it registers the SPA's OIDC client). Sign in as one of
-the seeded `acme-corp` users.
+and the seed loaded (it registers the SPA's OIDC client locally and in PR
+previews; a hosted environment registers it with the bootstrap CLI instead —
+see [Bootstrapping a hosted environment](#bootstrapping-a-hosted-environment)).
+Sign in as one of the seeded `acme-corp` users.
 
 The client the SPA uses:
 
@@ -311,7 +313,7 @@ The client the SPA uses:
 | Redirect URI | `https://app.localhost/auth/callback` | |
 | Post-logout URI | `https://app.localhost/login` | Validated separately from the login redirect. |
 | Scopes | `openid profile email tenant offline_access` | The set **every** role holds — see the caveat below. |
-| Tenant | `acme-corp` | Interactive login is tenant-scoped through the client (see below). |
+| Tenant | `acme-corp` locally (seed); the operator tenant in a hosted environment (bootstrap) | Interactive login is tenant-scoped through the client (see below). |
 
 Two constraints worth knowing before changing any of that:
 
@@ -539,6 +541,36 @@ SEED_ON_START=true
 | Operations | pending, completed, failed per active tenant |
 
 Re-running the seed updates existing rows keyed by slug, external IDs, and profile name/version — it does not create duplicates.
+
+## Bootstrapping a hosted environment
+
+The seed is demo data for local development and PR previews. A hosted
+environment (dev, test, prod) starts from an empty database and gets exactly
+three rows from the bootstrap CLI instead — the minimum for real sign-in and
+for administering everything else through the API:
+
+| Created | Details |
+|---------|---------|
+| Tenant | The operator's own tenant (`--tenant-slug`, `--tenant-name`). Left untouched if it already exists. |
+| UI client | The SPA's public client `dtsc-ui`, owned by that tenant, with redirect URIs on `OIDC_ISSUER`'s origin (`/auth/callback`, `/login`). Re-registered in place on every run, so a changed issuer is picked up by running it again. |
+| Platform-admin client | `dtsc-platform-admin`: a confidential `client_credentials` client with the `platform-admin` role and the `tenants:admin` scope. Its secret is printed **once**, on creation, and stored only as a hash; keep it with the environment's other secrets. A re-run leaves an existing one alone; `--rotate-admin-secret` mints and prints a new secret — also the recovery path when the only platform-admin secret is lost, since nothing can then authenticate to rotate it through the API. |
+
+Run it once per environment from a running API pod, which already has the
+database credentials and `OIDC_ISSUER` in its environment:
+
+```bash
+oc -n <namespace> exec deploy/digital-trust-common-service -- \
+  node dist/apps/digital-trust-common-service/src/bootstrap/run-bootstrap.js \
+  --tenant-slug dts-platform --tenant-name "Digital Trust Services"
+```
+
+Locally the same thing is `npm run bootstrap -- --tenant-slug ... --tenant-name ...`.
+
+From there, everything is API work with the platform-admin client's token
+(`POST /oidc/token`, `grant_type=client_credentials`): further tenants,
+invitations, consumers' clients. Sign-in is tenant-scoped through the UI
+client, so a person with no membership yet lands in the bootstrap tenant as
+`readonly` on first login and is promoted from there.
 
 ## Authorization scope catalog (AU-04)
 
