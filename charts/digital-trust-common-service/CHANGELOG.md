@@ -34,6 +34,8 @@ and this chart adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.h
   adapter override in the credential adapter registry (CA-02).
 - PR environments (`values-pr.yaml`) run the migration hook Job, so a
   preview's empty database reaches the current schema before the pods roll.
+- The dev, test and prod overlays run it too, so every hosted deploy migrates
+  its database before the pods roll.
 
 ### Fixed
 
