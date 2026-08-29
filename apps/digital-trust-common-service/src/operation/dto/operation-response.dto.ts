@@ -1,13 +1,14 @@
 import { ApiProperty } from '@nestjs/swagger';
 
+import { OPERATION_TYPE } from '../operation-type.constants';
 import { Operation, OperationState } from '../operation.entity';
 import type { OperationResult } from '../operation.entity';
 
 /**
- * Uniform operation envelope (AG-02). Deliberately a whitelist rather than the
+ * Uniform operation envelope. Deliberately a whitelist rather than the
  * Operation entity: `request` holds the caller's original body, which may contain
  * credential attributes (PII). That payload is exposed only through the dedicated
- * `/request` sub-resource (#275), which carries its own audit and TTL treatment.
+ * `/request` sub-resource, which carries its own audit and TTL treatment.
  * `external_id`, `expires_at`, `viewed_at`, and `tenant_id` are internal bookkeeping
  * and are likewise not part of the contract.
  */
@@ -27,8 +28,12 @@ export class OperationResponseDto {
   public batch_id!: string | null;
 
   @ApiProperty({
-    description: 'The operation type',
-    example: 'credential.offer',
+    description: `The operation type. Known values: ${Object.values(
+      OPERATION_TYPE,
+    ).join(
+      ', ',
+    )}. Left open rather than enumerated, since later slices add types.`,
+    example: OPERATION_TYPE.CREDENTIAL_OFFER,
   })
   public type!: string;
 

@@ -408,6 +408,21 @@ describe('OperationService', () => {
       );
     });
 
+    it('throws NotFoundException when the row was purged mid-write', async () => {
+      // markFirstView also returns null when the row is gone, not only when a
+      // concurrent poll won. Serving the copy loaded moments earlier would
+      // report an operation that no longer exists.
+      mockFindByIdForTenant.mockResolvedValue(
+        buildOperation({ state: OperationState.COMPLETED }),
+      );
+      mockMarkFirstView.mockResolvedValue(null);
+      mockFindById.mockResolvedValue(null);
+
+      await expect(service.getForTenant('t1', 'op-1')).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+    });
+
     it.each([OperationState.PENDING, OperationState.PROCESSING])(
       'leaves %s operations unviewed (TTL ignores viewedAt for in-flight states)',
       async (state) => {

@@ -48,7 +48,7 @@ export class OperationRepository {
   }
 
   /**
-   * Tenant-scoped lookup backing the polling endpoint (AG-02). The tenant filter
+   * Tenant-scoped lookup backing the polling endpoint. The tenant filter
    * lives in the WHERE clause rather than a post-load comparison so that another
    * tenant's operation id is indistinguishable from a missing row — callers get a
    * 404 either way and cannot probe for ids they do not own.

@@ -22,7 +22,7 @@ import { OperationResponseDto } from './dto/operation-response.dto';
 import { OperationService } from './operation.service';
 
 /**
- * Operation polling (AG-02). No scope is required beyond a tenant-scoped token:
+ * Operation polling. No scope is required beyond a tenant-scoped token:
  * reads are authorized by TenantGuard claim-match, not ScopeGuard, so a readonly
  * role can poll the operations its tenant created.
  */

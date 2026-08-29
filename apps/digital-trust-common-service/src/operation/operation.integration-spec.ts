@@ -8,7 +8,7 @@ import { Operation, OperationState } from './operation.entity';
 import { OperationRepository } from './operation.repository';
 
 /**
- * Tenant isolation for the polling endpoint (AG-02.1) at the SQL layer: the
+ * Tenant isolation for the polling endpoint at the SQL layer: the
  * repository filter is what turns another tenant's operation id into a 404.
  * Guard-level claim-match (403) is covered by jwt-guard.integration-spec.ts.
  */

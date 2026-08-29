@@ -11,6 +11,7 @@ import {
   IssuanceProfileProtocolHint,
   IssuanceProfileStatus,
 } from '../issuance-profile/issuance-profile.entity';
+import { OPERATION_TYPE } from '../operation/operation-type.constants';
 import { OperationState } from '../operation/operation.entity';
 import { TenantStatus } from '../tenant/tenant.entity';
 import { TenantUserRole } from '../tenant-user/tenant-user.entity';
@@ -296,13 +297,13 @@ export const SEED_CONNECTIONS: readonly SeedConnectionDefinition[] = [
 export const SEED_OPERATIONS: readonly SeedOperationDefinition[] = [
   {
     externalId: 'seed-op-pending',
-    type: 'credential.offer',
+    type: OPERATION_TYPE.CREDENTIAL_OFFER,
     state: OperationState.PENDING,
     result: null,
   },
   {
     externalId: 'seed-op-completed',
-    type: 'credential.offer',
+    type: OPERATION_TYPE.CREDENTIAL_OFFER,
     state: OperationState.COMPLETED,
     result: {
       credentialExchangeId: 'seed-exchange-completed',

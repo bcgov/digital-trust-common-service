@@ -516,10 +516,10 @@ describe('JwtGuard, ScopeGuard, and TenantGuard (integration)', () => {
 
   /**
    * The cases above run against controllers registered only in this spec. These
-   * two run against a real product route (AG-02), so deleting @UseGuards from
+   * two run against a real product route, so deleting @UseGuards from
    * OperationController fails a test instead of silently serving every tenant.
    */
-  describe('operations route (AG-02)', () => {
+  describe('operations route', () => {
     const operationsPath = (id: string): string =>
       `${API_BASE_PATH}/tenants/${id}/operations/123e4567-e89b-12d3-a456-426614174000`;
 

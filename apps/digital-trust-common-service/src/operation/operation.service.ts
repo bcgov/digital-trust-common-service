@@ -83,7 +83,7 @@ export class OperationService {
   }
 
   /**
-   * Tenant-scoped read backing GET /tenants/:tenantId/operations/:operationId (AG-02).
+   * Tenant-scoped read backing GET /tenants/:tenantId/operations/:operationId.
    *
    * Only terminal states (completed/failed) are marked viewed: the TTL rules ignore
    * viewedAt for pending/processing, so stamping it on every poll of an in-flight
@@ -105,10 +105,10 @@ export class OperationService {
 
   /**
    * Stamps viewedAt in any state, unlike getForTenant. This is the writer-side
-   * call for CT-06 (#70) and ME-02 (#91), where "viewed" records that a consumer
-   * took delivery of the record rather than that someone polled the route; the
-   * e2e pins that a still-PENDING operation can be marked viewed without its TTL
-   * moving. Read paths should use getForTenant.
+   * call for the webhook and state-update workers, where "viewed" records that a
+   * consumer took delivery of the record rather than that someone polled the
+   * route; the e2e pins that a still-PENDING operation can be marked viewed
+   * without its TTL moving. Read paths should use getForTenant.
    */
   public async markViewed(id: string): Promise<Operation> {
     const operation = await this.operations.findById(id);
@@ -140,10 +140,18 @@ export class OperationService {
       expiresAt,
     );
 
-    // No row updated means a concurrent poll stamped it first. Its values are
-    // authoritative; re-read rather than returning the ones we did not write.
+    // No row updated means either a concurrent poll stamped it first, or the
+    // purge removed the row between the read and this write. Re-read to tell
+    // them apart: the winner's values are authoritative, and a row that is gone
+    // must not be served from the copy loaded moments ago.
     if (!stored) {
-      return (await this.operations.findById(operation.id)) ?? operation;
+      const current = await this.operations.findById(operation.id);
+
+      if (!current) {
+        throw new NotFoundException('Operation not found');
+      }
+
+      return current;
     }
 
     operation.viewedAt = stored.viewedAt;
