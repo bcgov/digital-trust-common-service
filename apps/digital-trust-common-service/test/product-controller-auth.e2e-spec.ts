@@ -55,6 +55,10 @@ describe('product controllers (e2e) — auth enforcement', () => {
     ['GET', `${API_BASE_PATH}/tenants/${tenantId}/clients`],
     ['GET', `${API_BASE_PATH}/connector-credentials/tenant/${tenantId}`],
     ['GET', `${API_BASE_PATH}/credential-definitions/tenant/${tenantId}`],
+    [
+      'GET',
+      `${API_BASE_PATH}/tenants/${tenantId}/operations/123e4567-e89b-12d3-a456-426614174000`,
+    ],
   ])('%s %s returns 401 without a bearer token', async (method, path) => {
     const response = await request(app.getHttpServer())
       [method.toLowerCase() as 'get'](path)

@@ -47,6 +47,60 @@ export class OperationRepository {
     return this.repo.findOne({ where: { id } });
   }
 
+  /**
+   * Tenant-scoped lookup backing the polling endpoint. The tenant filter
+   * lives in the WHERE clause rather than a post-load comparison so that another
+   * tenant's operation id is indistinguishable from a missing row — callers get a
+   * 404 either way and cannot probe for ids they do not own.
+   */
+  public findByIdForTenant(
+    id: string,
+    tenantId: string,
+  ): Promise<Operation | null> {
+    return this.repo.findOne({ where: { id, tenantId } });
+  }
+
+  /**
+   * Stamps the first view and its recomputed expiry, once. Raw SQL on purpose:
+   *
+   * - `WHERE viewed_at IS NULL` makes it single-shot, so two concurrent first
+   *   polls cannot both write and leave the later expiry to win.
+   * - it leaves `updated_at` alone. Both `save()` and `update()` touch the
+   *   @UpdateDateColumn, which would move `updated_at` on a read and make
+   *   pollers diffing that field see a state change that never happened.
+   *
+   * Returns the stored row on success, or null when another caller won the race.
+   *
+   * The UPDATE is wrapped in a CTE and selected from, like purgeExpiredBatch
+   * above: query() returns `[rows, rowCount]` for an UPDATE command and the bare
+   * row array only for a SELECT, so an unwrapped `UPDATE ... RETURNING` reads
+   * back as a two-element array whose first entry is the rows.
+   */
+  public async markFirstView(
+    id: string,
+    viewedAt: Date,
+    expiresAt: Date,
+  ): Promise<{ viewedAt: Date; expiresAt: Date } | null> {
+    const rows = await this.repo.manager.query<
+      { viewed_at: Date; expires_at: Date }[]
+    >(
+      `WITH updated AS (
+        UPDATE operation
+        SET viewed_at = $2, expires_at = $3
+        WHERE id = $1 AND viewed_at IS NULL
+        RETURNING viewed_at, expires_at
+      )
+      SELECT viewed_at, expires_at FROM updated`,
+      [id, viewedAt, expiresAt],
+    );
+
+    if (rows.length === 0) {
+      return null;
+    }
+
+    return { viewedAt: rows[0].viewed_at, expiresAt: rows[0].expires_at };
+  }
+
   public async updateState(
     id: string,
     state: OperationState,

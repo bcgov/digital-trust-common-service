@@ -118,6 +118,11 @@ jobs:
           platforms: linux/amd64
           pr_number: ${{ github.event.number }}
           cache_scope: ui-pr
+          # Real sign-in against the release's own /oidc provider. The auth
+          # mode is baked in at build time because it decides which code
+          # ships, so a hosted image must never be the mock-login build.
+          build_args: |
+            VITE_AUTH_MODE=oidc
 
   provision-db:
     needs: [preflight]

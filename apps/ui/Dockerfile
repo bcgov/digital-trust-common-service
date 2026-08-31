@@ -8,9 +8,12 @@ RUN npm ci
 COPY . .
 
 # Vite inlines VITE_* variables into the bundle at build time, so the auth mode
-# is baked into the image rather than settable at runtime. Defaults to the mock
-# AuthClient; build with --build-arg VITE_AUTH_MODE=oidc once the interactive
-# OIDC flow lands (#83 / AU-02).
+# is a property of the image, not of a deployment. Defaults to the mock
+# AuthClient for local use; hosted images are built with
+# --build-arg VITE_AUTH_MODE=oidc by the workflows. Per-environment settings
+# are not build args at all: the SPA reads them at runtime from
+# /srv/config.json, which the build copies from public/ and a deployment
+# mounts its own copy over.
 ARG VITE_AUTH_MODE=mock
 ENV VITE_AUTH_MODE=$VITE_AUTH_MODE
 

@@ -307,11 +307,11 @@ The client the SPA uses:
 
 | Property | Value | Why |
 |----------|-------|-----|
-| `client_id` | `dtsc-ui` | Well-known, so one SPA build works in any environment. Override with `VITE_OIDC_CLIENT_ID`. |
+| `client_id` | `dtsc-ui` | The SPA reads the id it presents from its runtime config (`oidcClientId` in `apps/ui/public/config.json`; `frontend.config.oidcClientId` in the chart), so one image works in any environment. |
 | Kind | Public (PKCE, no secret) | A browser cannot keep a secret. Registered with `token_endpoint_auth_method=none`. |
 | Grants | `authorization_code`, `refresh_token` | `refresh_token` is what keeps the session past the 5-minute access token. |
-| Redirect URI | `https://app.localhost/auth/callback` | |
-| Post-logout URI | `https://app.localhost/login` | Validated separately from the login redirect. |
+| Redirect URI | `<origin of OIDC_ISSUER>/auth/callback` | `https://app.localhost/auth/callback` locally. The seed derives the origin from `OIDC_ISSUER` because the front door serves the SPA and `/oidc` on one origin, so the same seed registers the right URIs in a PR environment. |
+| Post-logout URI | `<origin of OIDC_ISSUER>/login` | Validated separately from the login redirect. |
 | Scopes | `openid profile email tenant offline_access` | The set **every** role holds — see the caveat below. |
 | Tenant | `acme-corp` locally (seed); the operator tenant in a hosted environment (bootstrap) | Interactive login is tenant-scoped through the client (see below). |
 
@@ -320,7 +320,8 @@ Two constraints worth knowing before changing any of that:
 - **Scopes are all-or-nothing per role.** The interaction handler *rejects*
   a sign-in that requests scopes the user's role lacks rather than trimming
   them, and `readonly` carries no API scopes at all. So adding e.g.
-  `tenants:admin` to `VITE_OIDC_SCOPES` locks out every user below that role.
+  `tenants:admin` to `oidcScopes` in the SPA's runtime config locks out every
+  user below that role.
 - **The API-JWT decision is the provider's, not the SPA's.** A browser client
   cannot send an RFC 8707 `resource` on the token request — oidc-client-ts
   appends it to the authorize URL only, and that is not where oidc-provider
@@ -534,7 +535,7 @@ SEED_ON_START=true
 | Credential defs | Person credential, Employee badge (active tenants) |
 | Issuance profiles | Published `person-credential/1.0`, draft `employee-badge/1.0` |
 | Verification profile | Published `identity-check/1.0` with age predicate |
-| OAuth clients | One confidential client per tenant (new ones use secret `dev-seed-client-secret`), plus the public UI client `dtsc-ui` |
+| OAuth clients | One confidential client per tenant (secret from `SEED_CLIENT_SECRET`; where unset — hosted previews — a random one nothing can replay), plus the public UI client `dtsc-ui` with redirect URIs on `OIDC_ISSUER`'s origin |
 | Connections | Five states per active tenant |
 | Operations | pending, completed, failed per active tenant |
 
@@ -1117,7 +1118,12 @@ The Vite dev server proxies `/api`, `/oidc` and `/health` to the backend
 mirroring the production Caddy reverse proxy — the SPA uses relative URLs only.
 Sign-in defaults to **mock mode** (`VITE_AUTH_MODE=mock`); the real
 Authorization Code + PKCE flow needs `VITE_AUTH_MODE=oidc` and the Caddy
-front door — see [Signing in for real](#signing-in-for-real).
+front door — see [Signing in for real](#signing-in-for-real). That switch is
+the only `VITE_*` value that matters: settings that differ between
+deployments (the OIDC client id and scopes) are read at runtime from
+`/config.json` — `apps/ui/public/config.json` locally, the chart's
+`frontend.config.*` when deployed — so one built image serves every
+environment.
 
 Checks (mirrored by the `ui` job in CI): `npm run lint`, `npm run format:check`,
 `npm test`, `npm run build`. API types are generated from the OpenAPI spec via

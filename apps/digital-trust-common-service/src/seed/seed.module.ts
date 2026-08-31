@@ -1,4 +1,5 @@
 import { DatabaseModule } from '@app/database';
+import { OidcConfigModule } from '@app/oidc';
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
@@ -13,6 +14,8 @@ import { SEED_ENTITIES, SEED_REPOSITORY_PROVIDERS } from './seed.constants';
     ConfigModule.forRoot({ isGlobal: true }),
     DatabaseModule,
     EncryptionModule,
+    // For the issuer the SPA client's redirect URIs are derived from.
+    OidcConfigModule,
     TypeOrmModule.forFeature([...SEED_ENTITIES]),
   ],
   providers: [DevSeedService, ...SEED_REPOSITORY_PROVIDERS],

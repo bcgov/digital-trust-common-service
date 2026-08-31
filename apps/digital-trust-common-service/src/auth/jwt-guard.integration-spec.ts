@@ -513,4 +513,54 @@ describe('JwtGuard, ScopeGuard, and TenantGuard (integration)', () => {
       resolvedTenantId: otherTenantId,
     });
   });
+
+  /**
+   * The cases above run against controllers registered only in this spec. These
+   * two run against a real product route, so deleting @UseGuards from
+   * OperationController fails a test instead of silently serving every tenant.
+   */
+  describe('operations route', () => {
+    const operationsPath = (id: string): string =>
+      `${API_BASE_PATH}/tenants/${id}/operations/123e4567-e89b-12d3-a456-426614174000`;
+
+    it('returns 403 when a client for tenant A reads tenant B operations', async () => {
+      const { token } = await issueTokenAndVerify(
+        app.getHttpServer(),
+        tenantClientId,
+        tenantClientSecret,
+        'credentials:offer',
+        process.env.OIDC_ISSUER,
+      );
+
+      const response = await request(app.getHttpServer())
+        .get(operationsPath(otherTenantId))
+        .set('Authorization', `Bearer ${token.accessToken}`)
+        .expect(403);
+
+      expect(response.body).toMatchObject({
+        error: {
+          code: 'TENANT_ACCESS_DENIED',
+          required_tenant_id: otherTenantId,
+          token_tenant_id: tenantId,
+        },
+      });
+    });
+
+    it('returns 404, not 403, for an unknown operation id on the caller own tenant', async () => {
+      // Confirms the guard passes on a matching tenant and the repository filter
+      // is what answers: an id the tenant does not own is a plain 404.
+      const { token } = await issueTokenAndVerify(
+        app.getHttpServer(),
+        tenantClientId,
+        tenantClientSecret,
+        'credentials:offer',
+        process.env.OIDC_ISSUER,
+      );
+
+      await request(app.getHttpServer())
+        .get(operationsPath(tenantId))
+        .set('Authorization', `Bearer ${token.accessToken}`)
+        .expect(404);
+    });
+  });
 });

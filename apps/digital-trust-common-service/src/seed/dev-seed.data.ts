@@ -11,6 +11,7 @@ import {
   IssuanceProfileProtocolHint,
   IssuanceProfileStatus,
 } from '../issuance-profile/issuance-profile.entity';
+import { OPERATION_TYPE } from '../operation/operation-type.constants';
 import { OperationState } from '../operation/operation.entity';
 import { TenantStatus } from '../tenant/tenant.entity';
 import { TenantUserRole } from '../tenant-user/tenant-user.entity';
@@ -18,8 +19,6 @@ import {
   VerificationProfileProtocolHint,
   VerificationProfileStatus,
 } from '../verification-profile/verification-profile.entity';
-
-export const DEV_SEED_CLIENT_SECRET = 'dev-seed-client-secret';
 
 export const ADMIN_SCOPES = [
   'credentials:offer',
@@ -122,10 +121,9 @@ export function seedApiClientId(slug: string): string {
  * The admin UI's OIDC client. Public rather than confidential:
  * a browser app cannot keep a secret, so it authenticates with PKCE alone.
  *
- * The id is well-known rather than generated because the SPA is built once
- * and deployed everywhere — it reads the id from `VITE_OIDC_CLIENT_ID`,
- * which defaults to this value. Non-dev environments register their own
- * client with the same id.
+ * The SPA reads the id it presents from its runtime config (`oidcClientId`
+ * in `config.json`), which defaults to this value; an environment that
+ * registers its client under another id sets it there.
  */
 export const UI_SPA_CLIENT_ID = 'dtsc-ui';
 
@@ -138,15 +136,33 @@ export const UI_SPA_CLIENT_ID = 'dtsc-ui';
 export const UI_SPA_TENANT_SLUG = 'acme-corp';
 
 /**
- * The Caddy front door (see caddy/Caddyfile), not the raw Vite origin.
- * `OIDC_ISSUER` is `https://app.localhost/oidc`, and every endpoint in the
- * discovery document points there — reaching the SPA on
- * `http://localhost:5173` would put the authorize/token calls cross-origin
- * and drop the provider's session cookie.
+ * Paths on the SPA the provider redirects back to, after authorization and
+ * after an RP-initiated logout. Spelled here and in the SPA
+ * (apps/ui/src/lib/auth/constants.ts); the provider's exact-match check is
+ * the only thing that notices when the two drift.
  */
-export const UI_SPA_REDIRECT_URIS = ['https://app.localhost/auth/callback'];
+export const UI_SPA_CALLBACK_PATH = '/auth/callback';
+export const UI_SPA_POST_LOGOUT_PATH = '/login';
 
-export const UI_SPA_POST_LOGOUT_REDIRECT_URIS = ['https://app.localhost/login'];
+/**
+ * The SPA's origin, derived from the provider's issuer. The front door
+ * serves the SPA and mounts the provider under `/oidc` on one origin — Caddy
+ * locally, the frontend Deployment in Kubernetes — so the issuer's origin is
+ * the SPA's origin wherever the seed runs: `https://app.localhost` locally,
+ * the PR route in a PR environment. Deriving it is what makes the registered
+ * redirect URIs right in every environment rather than in one.
+ */
+export function uiSpaOrigin(issuer: string): string {
+  return new URL(issuer).origin;
+}
+
+export function uiSpaRedirectUris(origin: string): string[] {
+  return [`${origin}${UI_SPA_CALLBACK_PATH}`];
+}
+
+export function uiSpaPostLogoutRedirectUris(origin: string): string[] {
+  return [`${origin}${UI_SPA_POST_LOGOUT_PATH}`];
+}
 
 /**
  * Only the claim-releasing scopes every role holds. `readonly` ships with no
@@ -296,13 +312,13 @@ export const SEED_CONNECTIONS: readonly SeedConnectionDefinition[] = [
 export const SEED_OPERATIONS: readonly SeedOperationDefinition[] = [
   {
     externalId: 'seed-op-pending',
-    type: 'credential.offer',
+    type: OPERATION_TYPE.CREDENTIAL_OFFER,
     state: OperationState.PENDING,
     result: null,
   },
   {
     externalId: 'seed-op-completed',
-    type: 'credential.offer',
+    type: OPERATION_TYPE.CREDENTIAL_OFFER,
     state: OperationState.COMPLETED,
     result: {
       credentialExchangeId: 'seed-exchange-completed',

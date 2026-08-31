@@ -26,6 +26,9 @@ MSW toolchain rather than introducing parallel patterns.
 - The API rejects unknown body fields; send only properties declared by the API contract.
 - `VITE_AUTH_MODE` is build-time configuration. Preserve the existing `AuthClient` seam when changing
   authentication behavior and keep mock mode working until the real OIDC flow is complete.
+- Settings that differ between deployments (the OIDC client id and scopes) are runtime configuration,
+  not `VITE_*` variables: `public/config.json` locally, the chart's `frontend.config.*` when
+  deployed, loaded by `src/lib/config.ts` before the app mounts. Add new per-environment values there.
 
 ## Generated Types
 

@@ -6,6 +6,9 @@ metadata:
   labels:
     {{- include "digital-trust-common-service.frontend.labels" . | nindent 4 }}
 data:
+  # Read by the SPA once, at startup — see `frontend.config` in values.yaml.
+  config.json: |
+    {{- .Values.frontend.config | toPrettyJson | nindent 4 }}
   Caddyfile: |
 {{- if .Values.frontend.trustedProxies }}
     # Global options must be the first block in a Caddyfile — they cannot live
@@ -26,6 +29,11 @@ data:
 {{ end }}
     :{{ .Values.frontend.service.targetPort }} {
     	encode zstd gzip
+
+    	# The SPA reads /config.json once, at startup. Make the browser
+    	# revalidate it rather than trust its heuristic cache, so a ConfigMap
+    	# change reaches the next page load once the pods have rolled.
+    	header /config.json Cache-Control no-cache
 
     	# The `handle` blocks are load-bearing, not stylistic. Caddy's default
     	# directive order runs `try_files` before `reverse_proxy`, so with both
