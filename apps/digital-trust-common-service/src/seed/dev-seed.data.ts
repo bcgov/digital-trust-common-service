@@ -20,8 +20,6 @@ import {
   VerificationProfileStatus,
 } from '../verification-profile/verification-profile.entity';
 
-export const DEV_SEED_CLIENT_SECRET = 'dev-seed-client-secret';
-
 export const ADMIN_SCOPES = [
   'credentials:offer',
   'credentials:verify',

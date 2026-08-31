@@ -40,7 +40,9 @@ config:
   # Demo tenants and users, plus the UI's OIDC client registered with redirect
   # URIs on this PR's route (derived from OIDC_ISSUER), so the preview signs
   # in for real. Every replica runs the seed at boot; it is idempotent and
-  # serialises behind an advisory lock.
+  # serialises behind an advisory lock. SEED_CLIENT_SECRET stays unset here:
+  # the seeded confidential clients get random secrets, so nothing in the
+  # repository mints tokens against a preview's public /oidc/token.
   SEED_ON_START: "true"
 
 secret:

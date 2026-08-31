@@ -1,7 +1,9 @@
 import { OidcConfigService } from '@app/oidc';
 import { Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getDataSourceToken } from '@nestjs/typeorm';
+import { verify } from 'argon2';
 
 import { EncryptionService } from '../common/crypto/encryption.service';
 import { Connection } from '../connection/connection.entity';
@@ -26,7 +28,6 @@ import { VerificationProfile } from '../verification-profile/verification-profil
 import { VerificationProfileRepository } from '../verification-profile/verification-profile.repository';
 
 import {
-  DEV_SEED_CLIENT_SECRET,
   MOCK_TRACTION_ENDPOINT,
   UI_SPA_CLIENT_ID,
   seedApiClientId,
@@ -98,6 +99,8 @@ describe('DevSeedService', () => {
     }),
   };
 
+  // Default (get() -> undefined) is the hosted-preview path: random secrets.
+  const config = { get: jest.fn() };
   const oidcConfig = {
     getConfig: jest.fn(() => ({ issuer: 'https://app.localhost/oidc' })),
   };
@@ -139,6 +142,7 @@ describe('DevSeedService', () => {
         { provide: ConnectionRepository, useValue: connectionRepo },
         { provide: OperationRepository, useValue: operationRepo },
         { provide: EncryptionService, useValue: encryptionService },
+        { provide: ConfigService, useValue: config },
         { provide: OidcConfigService, useValue: oidcConfig },
         { provide: getDataSourceToken(), useValue: dataSource },
       ],
@@ -412,10 +416,13 @@ describe('DevSeedService', () => {
       .spyOn(Logger.prototype, 'log')
       .mockImplementation(() => undefined);
 
+    config.get.mockImplementation((key: string) =>
+      key === 'SEED_CLIENT_SECRET' ? 'spec-seed-secret' : undefined,
+    );
     await service.run();
 
     for (const [message] of logSpy.mock.calls) {
-      expect(String(message)).not.toContain(DEV_SEED_CLIENT_SECRET);
+      expect(String(message)).not.toContain('spec-seed-secret');
     }
 
     logSpy.mockRestore();
@@ -431,16 +438,38 @@ describe('DevSeedService', () => {
     expect(summary.operations).toBe(6);
   });
 
-  it('uses the documented dev OAuth client secret only on first create', async () => {
+  it('hashes SEED_CLIENT_SECRET for confidential clients when it is set', async () => {
+    config.get.mockImplementation((key: string) =>
+      key === 'SEED_CLIENT_SECRET' ? 'spec-seed-secret' : undefined,
+    );
+
     await service.run();
 
     const createCall = oauthClientRepo.create.mock.calls.find(
       ([payload]: [{ clientId: string }]) =>
         payload.clientId === seedApiClientId('acme-corp'),
-    );
+    ) as [{ clientSecretHash: string }] | undefined;
 
     expect(createCall).toBeDefined();
-    expect(DEV_SEED_CLIENT_SECRET).toBe('dev-seed-client-secret');
+    await expect(
+      verify(createCall![0].clientSecretHash, 'spec-seed-secret'),
+    ).resolves.toBe(true);
+  });
+
+  // A publicly routed preview seeds with SEED_CLIENT_SECRET unset; the old
+  // repository-documented secret must not open any of its clients.
+  it('gives confidential clients unreplayable secrets when it is unset', async () => {
+    await service.run();
+
+    const hashes = oauthClientRepo.create.mock.calls
+      .map(([payload]: [{ clientSecretHash?: string | null }]) => payload)
+      .filter((payload) => payload.clientSecretHash)
+      .map((payload) => payload.clientSecretHash as string);
+
+    expect(hashes.length).toBeGreaterThan(0);
+    await expect(verify(hashes[0], 'dev-seed-client-secret')).resolves.toBe(
+      false,
+    );
   });
 
   it('updates existing tenant users instead of creating duplicates', async () => {

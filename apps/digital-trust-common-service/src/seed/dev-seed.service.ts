@@ -1,5 +1,8 @@
+import { randomBytes } from 'crypto';
+
 import { OidcConfigService } from '@app/oidc';
 import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { argon2i, hash } from 'argon2';
 import { DataSource } from 'typeorm';
@@ -31,7 +34,6 @@ import { VerificationProfileRepository } from '../verification-profile/verificat
 
 import {
   ADMIN_SCOPES,
-  DEV_SEED_CLIENT_SECRET,
   MEMBER_SCOPES,
   MOCK_TRACTION_ENDPOINT,
   SEED_CONNECTOR,
@@ -87,6 +89,7 @@ export class DevSeedService {
     private readonly connections: ConnectionRepository,
     private readonly operations: OperationRepository,
     private readonly encryptionService: EncryptionService,
+    private readonly config: ConfigService,
     private readonly oidcConfig: OidcConfigService,
     @InjectDataSource() private readonly dataSource: DataSource,
   ) {}
@@ -288,7 +291,7 @@ export class DevSeedService {
     }
 
     const clientSecretHash = await this.hashClientSecret(
-      DEV_SEED_CLIENT_SECRET,
+      this.seedClientSecret(),
     );
 
     await this.oauthClients.create({
@@ -594,6 +597,18 @@ export class DevSeedService {
     }
 
     return count;
+  }
+
+  /**
+   * `SEED_CLIENT_SECRET` when set (local dev, where the secret is documented);
+   * otherwise a fresh random secret per client, so nothing in the repository
+   * can mint tokens against a publicly routed preview's seeded clients.
+   */
+  private seedClientSecret(): string {
+    return (
+      this.config.get<string>('SEED_CLIENT_SECRET') ||
+      randomBytes(24).toString('hex')
+    );
   }
 
   private async hashClientSecret(secret: string): Promise<string> {

@@ -537,7 +537,7 @@ SEED_ON_START=true
 | Credential defs | Person credential, Employee badge (active tenants) |
 | Issuance profiles | Published `person-credential/1.0`, draft `employee-badge/1.0` |
 | Verification profile | Published `identity-check/1.0` with age predicate |
-| OAuth clients | One confidential client per tenant (new ones use secret `dev-seed-client-secret`), plus the public UI client `dtsc-ui` with redirect URIs on `OIDC_ISSUER`'s origin |
+| OAuth clients | One confidential client per tenant (secret from `SEED_CLIENT_SECRET`; where unset — hosted previews — a random one nothing can replay), plus the public UI client `dtsc-ui` with redirect URIs on `OIDC_ISSUER`'s origin |
 | Connections | Five states per active tenant |
 | Operations | pending, completed, failed per active tenant |
 
