@@ -131,7 +131,7 @@ The local dev topology intentionally exposes a single HTTPS origin for the brows
 
 This mirrors the production goal of same-origin execution for the app, OIDC endpoints, and browser cookies. The same-origin pattern is a dependency of the interactive PKCE flow and avoids cross-site cookie and CORS issues in local browser-based auth.
 
-The UI image itself also ships with a static Caddy configuration. In `apps/ui/Caddyfile`, the built SPA is served on port `:8080` with a fallback to `index.html`, which is appropriate for static frontend deployment. That container Caddy is distinct from the local dev ingress in `caddy/Caddyfile`: the latter is the routing layer for the API + Vite pair, while the former is the static frontend asset server.
+The UI image itself also ships with a static Caddy configuration. In `apps/ui/Caddyfile`, the built SPA is served on port `:8080` with a fallback to `index.html`, which is appropriate for static frontend deployment. That container Caddy is distinct from the local dev ingress in `caddy/Caddyfile`: the latter is the routing layer for the API + Vite pair, while the former is the static frontend asset server. The image also carries the SPA's runtime configuration, `config.json` (from `apps/ui/public/`), which the SPA fetches before it mounts; the Helm chart mounts its own copy over it (`frontend.config.*`), so one image serves every environment.
 
 ---
 

@@ -1,8 +1,15 @@
 import { ErrorResponse, WebStorageStateStore, type User } from 'oidc-client-ts';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import type { AppConfig } from '@/lib/config';
+
 import { AuthProviderError } from './errors';
 import { createOidcAuthClient } from './oidc-auth';
+
+const config: AppConfig = {
+  oidcClientId: 'dtsc-ui',
+  oidcScopes: 'openid profile email tenant offline_access',
+};
 
 const mocks = vi.hoisted(() => ({
   manager: {
@@ -57,7 +64,7 @@ describe('oidc auth client', () => {
 
   describe('logout', () => {
     it('revokes the refresh token before starting the provider sign-out', async () => {
-      const client = createOidcAuthClient();
+      const client = createOidcAuthClient(config);
 
       await client.logout();
 
@@ -73,7 +80,7 @@ describe('oidc auth client', () => {
     it('still signs out when revocation fails', async () => {
       const error = vi.spyOn(console, 'error').mockImplementation(() => {});
       mocks.manager.revokeTokens.mockRejectedValueOnce(new Error('offline'));
-      const client = createOidcAuthClient();
+      const client = createOidcAuthClient(config);
 
       await expect(client.logout()).resolves.toBeUndefined();
 
@@ -90,7 +97,7 @@ describe('oidc auth client', () => {
       mocks.manager.signoutRedirect.mockRejectedValueOnce(
         new Error('No end session endpoint'),
       );
-      const client = createOidcAuthClient();
+      const client = createOidcAuthClient(config);
 
       await expect(client.logout()).resolves.toBeUndefined();
 
@@ -102,13 +109,26 @@ describe('oidc auth client', () => {
 
   describe('UserManager configuration', () => {
     it('points at this origin so the flow stays first-party', () => {
-      createOidcAuthClient();
+      createOidcAuthClient(config);
 
       expect(mocks.captured.settings).toMatchObject({
         authority: `${window.location.origin}/oidc`,
-        client_id: 'dtsc-ui',
         redirect_uri: `${window.location.origin}/auth/callback`,
         post_logout_redirect_uri: `${window.location.origin}/login`,
+      });
+    });
+
+    // The two sign-in settings that differ between environments come from the
+    // runtime config, not from anything baked into the bundle.
+    it('presents the client id and scopes from the runtime config', () => {
+      createOidcAuthClient({
+        oidcClientId: 'pr-42-ui',
+        oidcScopes: 'openid tenant offline_access',
+      });
+
+      expect(mocks.captured.settings).toMatchObject({
+        client_id: 'pr-42-ui',
+        scope: 'openid tenant offline_access',
       });
     });
 
@@ -120,7 +140,7 @@ describe('oidc auth client', () => {
      * bug.
      */
     it('keeps the session and the PKCE transaction in sessionStorage', () => {
-      createOidcAuthClient();
+      createOidcAuthClient(config);
 
       expect(vi.mocked(WebStorageStateStore).mock.calls).toEqual([
         [{ store: window.sessionStorage }],
@@ -136,7 +156,7 @@ describe('oidc auth client', () => {
      * sign-out with the browser still authenticated.
      */
     it('configures refresh-token-only revocation, left to logout()', () => {
-      createOidcAuthClient();
+      createOidcAuthClient(config);
 
       expect(mocks.captured.settings).toMatchObject({
         revokeTokenTypes: ['refresh_token'],
@@ -144,25 +164,16 @@ describe('oidc auth client', () => {
       expect(mocks.captured.settings?.revokeTokensOnSignout).toBeUndefined();
     });
 
-    // offline_access is what makes the provider issue a refresh token at all;
-    // tenant is what releases tenant_id / tenant_role.
-    it('requests the scopes every role holds, including offline_access', () => {
-      createOidcAuthClient();
-
-      expect(mocks.captured.settings?.scope).toBe(
-        'openid profile email tenant offline_access',
-      );
-    });
-
     /**
-     * Inseparable from the scope above. OIDC Core requires the provider to
-     * ignore an `offline_access` request whose prompt does not contain
-     * `consent`, and oidc-provider drops the scope silently — leaving a
-     * session with no refresh token, which ends at the first access-token
-     * expiry five minutes later.
+     * Inseparable from `offline_access` in the configured scopes, which is
+     * what makes the provider issue a refresh token at all. OIDC Core
+     * requires the provider to ignore an `offline_access` request whose
+     * prompt does not contain `consent`, and oidc-provider drops the scope
+     * silently — leaving a session with no refresh token, which ends at the
+     * first access-token expiry five minutes later.
      */
     it('asks for consent so offline_access is not silently dropped', () => {
-      createOidcAuthClient();
+      createOidcAuthClient(config);
 
       expect(mocks.captured.settings?.prompt).toBe('consent');
     });
@@ -170,7 +181,7 @@ describe('oidc auth client', () => {
     // Refresh is driven by the API client's 401 single-flight handler, so a
     // background timer would duplicate it and race the same refresh token.
     it('leaves silent renew to the API client', () => {
-      createOidcAuthClient();
+      createOidcAuthClient(config);
 
       expect(mocks.captured.settings?.automaticSilentRenew).toBe(false);
     });
@@ -178,13 +189,13 @@ describe('oidc auth client', () => {
 
   describe('session restore', () => {
     it('starts in loading, not unauthenticated', () => {
-      const client = createOidcAuthClient();
+      const client = createOidcAuthClient(config);
 
       expect(client.getState()).toEqual({ status: 'loading', user: null });
     });
 
     it('settles to unauthenticated when no session is stored', async () => {
-      const client = createOidcAuthClient();
+      const client = createOidcAuthClient(config);
 
       await vi.waitFor(() =>
         expect(client.getState().status).toBe('unauthenticated'),
@@ -195,7 +206,7 @@ describe('oidc auth client', () => {
     // A rejected restore must not strand the app on the loading screen.
     it('settles to unauthenticated when the restore fails', async () => {
       mocks.manager.getUser.mockRejectedValue(new Error('storage unavailable'));
-      const client = createOidcAuthClient();
+      const client = createOidcAuthClient(config);
 
       await vi.waitFor(() =>
         expect(client.getState().status).toBe('unauthenticated'),
@@ -214,7 +225,7 @@ describe('oidc auth client', () => {
           tenant_role: 'admin',
         }),
       );
-      const client = createOidcAuthClient();
+      const client = createOidcAuthClient(config);
 
       await vi.waitFor(() =>
         expect(client.getState().status).toBe('authenticated'),
@@ -237,7 +248,7 @@ describe('oidc auth client', () => {
       mocks.manager.getUser.mockResolvedValue(
         makeUser({ roles: ['platform-admin'], tenant_role: 'readonly' }),
       );
-      const client = createOidcAuthClient();
+      const client = createOidcAuthClient(config);
 
       await vi.waitFor(() =>
         expect(client.getState().user?.roles).toEqual(['platform-admin']),
@@ -246,7 +257,7 @@ describe('oidc auth client', () => {
 
     it('yields no roles when neither claim is present', async () => {
       mocks.manager.getUser.mockResolvedValue(makeUser({}));
-      const client = createOidcAuthClient();
+      const client = createOidcAuthClient(config);
 
       await vi.waitFor(() =>
         expect(client.getState().status).toBe('authenticated'),
@@ -258,7 +269,7 @@ describe('oidc auth client', () => {
       mocks.manager.getUser.mockResolvedValue(
         makeUser({ roles: ['admin', 7, null] }),
       );
-      const client = createOidcAuthClient();
+      const client = createOidcAuthClient(config);
 
       await vi.waitFor(() =>
         expect(client.getState().user?.roles).toEqual(['admin']),
@@ -267,7 +278,7 @@ describe('oidc auth client', () => {
   });
 
   /**
-   * #183. Access tokens live five minutes, so `expired` is the ordinary state
+   * Access tokens live five minutes, so `expired` is the ordinary state
    * between refreshes. Reading it as "signed out" races the API client's 401
    * refresh and throws a mid-session user back to /login. Expiry that cannot
    * be refreshed surfaces as a failed refresh instead, which logs out.
@@ -276,7 +287,7 @@ describe('oidc auth client', () => {
     mocks.manager.getUser.mockResolvedValue(
       makeUser({ name: 'Ada' }, { expired: true }),
     );
-    const client = createOidcAuthClient();
+    const client = createOidcAuthClient(config);
 
     await vi.waitFor(() =>
       expect(client.getState().status).toBe('authenticated'),
@@ -287,7 +298,7 @@ describe('oidc auth client', () => {
 
   describe('login', () => {
     it('round-trips the intended destination through the provider', async () => {
-      const client = createOidcAuthClient();
+      const client = createOidcAuthClient(config);
 
       await client.login('/tenants/abc/credentials');
 
@@ -300,7 +311,7 @@ describe('oidc auth client', () => {
       mocks.manager.signinRedirectCallback.mockResolvedValue(
         makeUser({ name: 'Ada' }, { state: { returnTo: '/settings' } }),
       );
-      const client = createOidcAuthClient();
+      const client = createOidcAuthClient(config);
 
       await expect(client.completeLogin()).resolves.toBe('/settings');
       expect(client.getState().status).toBe('authenticated');
@@ -310,7 +321,7 @@ describe('oidc auth client', () => {
     // a destination of its own.
     it('reports null when the callback carries no destination', async () => {
       mocks.manager.signinRedirectCallback.mockResolvedValue(makeUser({}));
-      const client = createOidcAuthClient();
+      const client = createOidcAuthClient(config);
 
       await expect(client.completeLogin()).resolves.toBeNull();
     });
@@ -319,7 +330,7 @@ describe('oidc auth client', () => {
       mocks.manager.signinRedirectCallback.mockRejectedValue(
         new Error('invalid_grant'),
       );
-      const client = createOidcAuthClient();
+      const client = createOidcAuthClient(config);
 
       await expect(client.completeLogin()).rejects.toThrow('invalid_grant');
     });
@@ -339,7 +350,7 @@ describe('oidc auth client', () => {
           error_description: 'Insufficient role',
         }),
       );
-      const client = createOidcAuthClient();
+      const client = createOidcAuthClient(config);
 
       const rejection = client.completeLogin();
       await expect(rejection).rejects.toBeInstanceOf(AuthProviderError);
@@ -356,7 +367,7 @@ describe('oidc auth client', () => {
       mocks.manager.signinSilent.mockResolvedValue(
         makeUser({ name: 'Ada' }, { access_token: 'fresh-token' }),
       );
-      const client = createOidcAuthClient();
+      const client = createOidcAuthClient(config);
 
       await expect(client.refresh()).resolves.toBe('fresh-token');
       expect(client.getAccessToken()).toBe('fresh-token');
@@ -369,7 +380,7 @@ describe('oidc auth client', () => {
      */
     it('resolves null instead of rejecting when it cannot refresh', async () => {
       mocks.manager.signinSilent.mockRejectedValue(new Error('invalid_grant'));
-      const client = createOidcAuthClient();
+      const client = createOidcAuthClient(config);
 
       await expect(client.refresh()).resolves.toBeNull();
     });
@@ -386,7 +397,7 @@ describe('oidc auth client', () => {
           { id_token: loginIdToken, access_token: 'login-access-token' },
         ),
       );
-      const client = createOidcAuthClient();
+      const client = createOidcAuthClient(config);
       await vi.waitFor(() =>
         expect(client.getState().status).toBe('authenticated'),
       );
@@ -407,7 +418,7 @@ describe('oidc auth client', () => {
           { id_token: loginIdToken },
         ),
       );
-      const client = createOidcAuthClient();
+      const client = createOidcAuthClient(config);
       await vi.waitFor(() =>
         expect(client.getState().status).toBe('authenticated'),
       );
@@ -423,7 +434,7 @@ describe('oidc auth client', () => {
   // RP-initiated logout, not a local token wipe: without ending the provider
   // session the next sign-in silently resumes it and never reaches Keycloak.
   it('signs out through the provider', async () => {
-    const client = createOidcAuthClient();
+    const client = createOidcAuthClient(config);
 
     await client.logout();
 
@@ -432,7 +443,7 @@ describe('oidc auth client', () => {
 
   it('returns a referentially stable state between changes', async () => {
     mocks.manager.getUser.mockResolvedValue(makeUser({ name: 'Ada' }));
-    const client = createOidcAuthClient();
+    const client = createOidcAuthClient(config);
 
     await vi.waitFor(() =>
       expect(client.getState().status).toBe('authenticated'),

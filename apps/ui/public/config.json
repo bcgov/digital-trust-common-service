@@ -1,0 +1,4 @@
+{
+  "oidcClientId": "dtsc-ui",
+  "oidcScopes": "openid profile email tenant offline_access"
+}

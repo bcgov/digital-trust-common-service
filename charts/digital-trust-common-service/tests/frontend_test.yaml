@@ -153,3 +153,55 @@ tests:
           path: data.Caddyfile
           pattern: '\A:8080 \{'
         template: templates/frontend/configmap.yaml
+
+  # The SPA's per-environment settings come from the ConfigMap, mounted over
+  # the copy baked into the image. Without the mount every environment would
+  # run on the image's defaults; without the key there is nothing to mount.
+  - it: renders frontend.config as config.json and mounts it over the image copy
+    values:
+      - ../ci/ci-values.yaml
+    set:
+      frontend:
+        config:
+          oidcClientId: ci-ui
+      upstreamFederation:
+        existingSecret:
+          name: dtsc-ci-oidc-client
+    asserts:
+      - matchRegex:
+          path: data["config.json"]
+          pattern: '"oidcClientId": "ci-ui"'
+        template: templates/frontend/configmap.yaml
+      # The overlay set one key; the other must survive the values merge.
+      - matchRegex:
+          path: data["config.json"]
+          pattern: '"oidcScopes": "openid profile email tenant offline_access"'
+        template: templates/frontend/configmap.yaml
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: frontend-config
+            mountPath: /srv/config.json
+            subPath: config.json
+            readOnly: true
+        template: templates/frontend/deployment.yaml
+      # A subPath mount never updates in place; the checksum is what rolls the
+      # pods when the config changes.
+      - isNotEmpty:
+          path: spec.template.metadata.annotations["checksum/frontend-config"]
+        template: templates/frontend/deployment.yaml
+
+  # Browsers apply heuristic caching to a file served with no explicit expiry,
+  # which would let a stale config.json outlive a redeploy.
+  - it: serves config.json with revalidation required
+    values:
+      - ../ci/ci-values.yaml
+    set:
+      upstreamFederation:
+        existingSecret:
+          name: dtsc-ci-oidc-client
+    asserts:
+      - matchRegex:
+          path: data.Caddyfile
+          pattern: 'header /config.json Cache-Control no-cache'
+        template: templates/frontend/configmap.yaml

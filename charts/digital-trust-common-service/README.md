@@ -180,6 +180,8 @@ Generate the JWKS payload with `npm run oidc:generate-keys > oidc-keys.json`, th
 | frontend.autoscaling.maxReplicas | int | `3` | Maximum frontend replicas |
 | frontend.autoscaling.minReplicas | int | `1` | Minimum frontend replicas |
 | frontend.autoscaling.targetCPUUtilizationPercentage | int | `80` | Target average CPU utilization (percentage) |
+| frontend.config.oidcClientId | string | `"dtsc-ui"` | client_id the SPA presents to the OIDC provider. Each environment registers a public (PKCE) client under this id on the provider side; the development seed registers `dtsc-ui`. |
+| frontend.config.oidcScopes | string | `"openid profile email tenant offline_access"` | Scopes the SPA requests at sign-in. Keep to the set every role holds: the provider rejects, rather than trims, a request for scopes the user's role lacks, and `readonly` carries no API scopes at all. |
 | frontend.enabled | bool | `true` | Deploy the UI frontend |
 | frontend.image.pullPolicy | string | `"IfNotPresent"` | Frontend image pull policy |
 | frontend.image.registry | string | `"ghcr.io"` | Frontend image registry |

@@ -9,6 +9,7 @@ import {
 import { FullPageError, FullPageStatus } from '@/components/full-page-status';
 import { Button } from '@/components/ui/button';
 import { setAuthHandlers } from '@/lib/api/client';
+import { getAppConfig } from '@/lib/config';
 import { env } from '@/lib/env';
 
 import { AuthContext, type AuthContextValue } from './context';
@@ -28,7 +29,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
     void import('./oidc-auth')
       .then(({ createOidcAuthClient }) => {
-        if (!cancelled) setClient(createOidcAuthClient());
+        if (!cancelled) setClient(createOidcAuthClient(getAppConfig()));
       })
       .catch(() => {
         // Without this the app sits on "Checking your session…" forever. The

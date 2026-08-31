@@ -11,7 +11,7 @@ import {
   switchTenant as postSwitchTenant,
 } from '@/lib/api/resources/auth';
 
-import { env } from '@/lib/env';
+import type { AppConfig } from '@/lib/config';
 
 import { AUTH_CALLBACK_PATH, POST_LOGOUT_PATH } from './constants';
 import { AuthProviderError } from './errors';
@@ -71,16 +71,21 @@ function toAuthUser(user: User): AuthUser {
   return toAuthUserFromProfile(user.profile);
 }
 
-export function createOidcAuthClient(): AuthClient {
+/**
+ * `config` is the deployment's runtime config (see `lib/config.ts`): the
+ * client id and scopes are the two things about sign-in that legitimately
+ * differ between environments, and neither may be baked into the image.
+ */
+export function createOidcAuthClient(config: AppConfig): AuthClient {
   const manager = new UserManager({
     // Same-origin by design (Caddy/Vite proxy) — the provider is mounted at
     // /oidc, so discovery, authorize, token and logout all stay first-party
     // and the provider's session cookie is sent as it should be.
     authority: `${window.location.origin}/oidc`,
-    client_id: env.VITE_OIDC_CLIENT_ID,
+    client_id: config.oidcClientId,
     redirect_uri: `${window.location.origin}${AUTH_CALLBACK_PATH}`,
     post_logout_redirect_uri: `${window.location.origin}${POST_LOGOUT_PATH}`,
-    scope: env.VITE_OIDC_SCOPES,
+    scope: config.oidcScopes,
     // Required for `offline_access` to survive, and with it the refresh token
     // the whole 401-refresh path depends on. OIDC Core says the provider MUST
     // ignore an offline_access request whose prompt does not contain consent,
@@ -146,7 +151,7 @@ export function createOidcAuthClient(): AuthClient {
     // Deliberately not gated on `currentUser.expired`. Access tokens live 5
     // minutes, so an expired one is the normal steady state between refreshes
     // — treating it as signed-out would race the API client's 401 refresh and
-    // throw the user back to /login mid-session (#183). Expiry that cannot be
+    // throw the user back to /login mid-session. Expiry that cannot be
     // refreshed surfaces as a failed refresh, which logs out explicitly.
     getState: () => currentState,
     getAccessToken: () => currentUser?.access_token ?? null,

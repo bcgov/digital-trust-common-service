@@ -1,5 +1,6 @@
 import { AppDataSource } from '@app/database/data-source';
 import { buildSslConfig } from '@app/database/ssl.util';
+import { OidcConfigModule, OidcConfigService } from '@app/oidc';
 import { ConfigModule } from '@nestjs/config';
 import { Test, TestingModule } from '@nestjs/testing';
 import { TypeOrmModule } from '@nestjs/typeorm';
@@ -9,9 +10,10 @@ import { EncryptionModule } from '../common/crypto/encryption.module';
 
 import {
   UI_SPA_CLIENT_ID,
-  UI_SPA_POST_LOGOUT_REDIRECT_URIS,
-  UI_SPA_REDIRECT_URIS,
   seedApiClientId,
+  uiSpaOrigin,
+  uiSpaPostLogoutRedirectUris,
+  uiSpaRedirectUris,
 } from './dev-seed.data';
 import { DevSeedService } from './dev-seed.service';
 import { SEED_ENTITIES, SEED_REPOSITORY_PROVIDERS } from './seed.constants';
@@ -60,6 +62,7 @@ describe('DevSeedService integration', () => {
           ),
         }),
         EncryptionModule,
+        OidcConfigModule,
         TypeOrmModule.forFeature([...SEED_ENTITIES]),
       ],
       providers: [DevSeedService, ...SEED_REPOSITORY_PROVIDERS],
@@ -147,9 +150,14 @@ describe('DevSeedService integration', () => {
     // from drifting into each other's shape, so pin both halves here.
     expect(rows[0]?.is_public).toBe(true);
     expect(rows[0]?.client_secret_hash).toBeNull();
-    expect(rows[0]?.redirect_uris).toEqual(UI_SPA_REDIRECT_URIS);
+    // Whatever OIDC_ISSUER this run has: the redirect URIs must sit on its
+    // origin, or the provider rejects the SPA's callback in that environment.
+    const origin = uiSpaOrigin(
+      module.get(OidcConfigService).getConfig().issuer,
+    );
+    expect(rows[0]?.redirect_uris).toEqual(uiSpaRedirectUris(origin));
     expect(rows[0]?.post_logout_redirect_uris).toEqual(
-      UI_SPA_POST_LOGOUT_REDIRECT_URIS,
+      uiSpaPostLogoutRedirectUris(origin),
     );
   });
 

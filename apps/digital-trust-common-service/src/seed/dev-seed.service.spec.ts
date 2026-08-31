@@ -1,5 +1,9 @@
+import { OidcConfigService } from '@app/oidc';
 import { Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Test, TestingModule } from '@nestjs/testing';
+import { getDataSourceToken } from '@nestjs/typeorm';
+import { verify } from 'argon2';
 
 import { EncryptionService } from '../common/crypto/encryption.service';
 import { Connection } from '../connection/connection.entity';
@@ -24,12 +28,11 @@ import { VerificationProfile } from '../verification-profile/verification-profil
 import { VerificationProfileRepository } from '../verification-profile/verification-profile.repository';
 
 import {
-  DEV_SEED_CLIENT_SECRET,
   MOCK_TRACTION_ENDPOINT,
   UI_SPA_CLIENT_ID,
   seedApiClientId,
 } from './dev-seed.data';
-import { DevSeedService } from './dev-seed.service';
+import { DEV_SEED_LOCK_CLASS, DevSeedService } from './dev-seed.service';
 
 describe('DevSeedService', () => {
   let service: DevSeedService;
@@ -96,6 +99,21 @@ describe('DevSeedService', () => {
     }),
   };
 
+  // Default (get() -> undefined) is the hosted-preview path: random secrets.
+  const config = { get: jest.fn() };
+  const oidcConfig = {
+    getConfig: jest.fn(() => ({ issuer: 'https://app.localhost/oidc' })),
+  };
+
+  // The seed's advisory lock is taken on the transaction's manager.
+  const lockManager = { query: jest.fn() };
+  const dataSource = {
+    transaction: jest.fn(
+      (work: (manager: typeof lockManager) => Promise<unknown>) =>
+        work(lockManager),
+    ),
+  };
+
   beforeEach(async () => {
     jest.clearAllMocks();
 
@@ -124,6 +142,9 @@ describe('DevSeedService', () => {
         { provide: ConnectionRepository, useValue: connectionRepo },
         { provide: OperationRepository, useValue: operationRepo },
         { provide: EncryptionService, useValue: encryptionService },
+        { provide: ConfigService, useValue: config },
+        { provide: OidcConfigService, useValue: oidcConfig },
+        { provide: getDataSourceToken(), useValue: dataSource },
       ],
     }).compile();
 
@@ -298,6 +319,79 @@ describe('DevSeedService', () => {
     ).toHaveLength(1);
   });
 
+  /**
+   * The redirect URIs are the one per-environment fact about the SPA
+   * client. The provider matches them exactly, so a PR environment seeded
+   * with the local origin refuses every sign-in with invalid_redirect_uri;
+   * the front door puts the SPA and /oidc on one origin, which is what makes
+   * the issuer's origin the right one everywhere.
+   */
+  it("registers the SPA client's redirect URIs on the issuer's origin", async () => {
+    oidcConfig.getConfig.mockReturnValueOnce({
+      issuer: 'https://pr-42.apps.example.test/oidc',
+    });
+
+    await service.run();
+
+    expect(oauthClientRepo.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        clientId: UI_SPA_CLIENT_ID,
+        redirectUris: ['https://pr-42.apps.example.test/auth/callback'],
+        postLogoutRedirectUris: ['https://pr-42.apps.example.test/login'],
+      }),
+    );
+  });
+
+  // A re-seed after the route changed must not leave the old origin behind.
+  it("replaces an existing SPA client's redirect URIs on re-seed", async () => {
+    oidcConfig.getConfig.mockReturnValueOnce({
+      issuer: 'https://pr-42.apps.example.test/oidc',
+    });
+    oauthClientRepo.findByClientId.mockImplementation((clientId: string) =>
+      Promise.resolve(
+        clientId === UI_SPA_CLIENT_ID
+          ? {
+              id: 'client-spa',
+              clientId,
+              redirectUris: ['https://app.localhost/auth/callback'],
+              postLogoutRedirectUris: ['https://app.localhost/login'],
+            }
+          : null,
+      ),
+    );
+
+    await service.run();
+
+    expect(oauthClientRepo.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        clientId: UI_SPA_CLIENT_ID,
+        redirectUris: ['https://pr-42.apps.example.test/auth/callback'],
+        postLogoutRedirectUris: ['https://pr-42.apps.example.test/login'],
+      }),
+    );
+  });
+
+  describe('concurrent runs', () => {
+    /**
+     * Every replica of a Deployment with SEED_ON_START runs the seed at
+     * boot. Two pods finding no `acme-corp` row at the same instant would
+     * both create it and one would die on the unique slug; the lock makes
+     * the second wait, then find everything already there.
+     */
+    it('takes the advisory lock before writing anything', async () => {
+      await service.run();
+
+      expect(dataSource.transaction).toHaveBeenCalledTimes(1);
+      expect(lockManager.query).toHaveBeenCalledWith(
+        'SELECT pg_advisory_xact_lock($1, hashtext($2))',
+        [DEV_SEED_LOCK_CLASS, 'dev-seed'],
+      );
+      const [locked] = lockManager.query.mock.invocationCallOrder;
+      const writes = tenantRepo.update.mock.invocationCallOrder;
+      expect(locked).toBeLessThan(Math.min(...writes));
+    });
+  });
+
   it('clears revokedAt when updating an existing OAuth client', async () => {
     oauthClientRepo.findByClientId.mockImplementation((clientId: string) =>
       Promise.resolve({
@@ -322,10 +416,13 @@ describe('DevSeedService', () => {
       .spyOn(Logger.prototype, 'log')
       .mockImplementation(() => undefined);
 
+    config.get.mockImplementation((key: string) =>
+      key === 'SEED_CLIENT_SECRET' ? 'spec-seed-secret' : undefined,
+    );
     await service.run();
 
     for (const [message] of logSpy.mock.calls) {
-      expect(String(message)).not.toContain(DEV_SEED_CLIENT_SECRET);
+      expect(String(message)).not.toContain('spec-seed-secret');
     }
 
     logSpy.mockRestore();
@@ -341,16 +438,38 @@ describe('DevSeedService', () => {
     expect(summary.operations).toBe(6);
   });
 
-  it('uses the documented dev OAuth client secret only on first create', async () => {
+  it('hashes SEED_CLIENT_SECRET for confidential clients when it is set', async () => {
+    config.get.mockImplementation((key: string) =>
+      key === 'SEED_CLIENT_SECRET' ? 'spec-seed-secret' : undefined,
+    );
+
     await service.run();
 
     const createCall = oauthClientRepo.create.mock.calls.find(
       ([payload]: [{ clientId: string }]) =>
         payload.clientId === seedApiClientId('acme-corp'),
-    );
+    ) as [{ clientSecretHash: string }] | undefined;
 
     expect(createCall).toBeDefined();
-    expect(DEV_SEED_CLIENT_SECRET).toBe('dev-seed-client-secret');
+    await expect(
+      verify(createCall![0].clientSecretHash, 'spec-seed-secret'),
+    ).resolves.toBe(true);
+  });
+
+  // A publicly routed preview seeds with SEED_CLIENT_SECRET unset; the old
+  // repository-documented secret must not open any of its clients.
+  it('gives confidential clients unreplayable secrets when it is unset', async () => {
+    await service.run();
+
+    const hashes = oauthClientRepo.create.mock.calls
+      .map(([payload]: [{ clientSecretHash?: string | null }]) => payload)
+      .filter((payload) => payload.clientSecretHash)
+      .map((payload) => payload.clientSecretHash as string);
+
+    expect(hashes.length).toBeGreaterThan(0);
+    await expect(verify(hashes[0], 'dev-seed-client-secret')).resolves.toBe(
+      false,
+    );
   });
 
   it('updates existing tenant users instead of creating duplicates', async () => {

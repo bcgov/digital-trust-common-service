@@ -39,6 +39,11 @@ export default defineConfig(({ mode }) => {
       environment: 'jsdom',
       setupFiles: ['./src/test/setup.ts'],
       css: false,
+      // Vitest loads .env like the dev server does, so a developer running
+      // with VITE_AUTH_MODE=oidc would otherwise have every AuthProvider
+      // render try the real OIDC client — without a loaded runtime config.
+      // The suite covers that client directly; app-level tests run in mock.
+      env: { VITE_AUTH_MODE: 'mock' },
     },
   };
 });

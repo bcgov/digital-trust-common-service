@@ -90,6 +90,10 @@ jobs:
           registry_username: ${{ github.actor }}
           registry_password: ${{ secrets.GITHUB_TOKEN }}
           cache_scope: ui
+          # Real sign-in against the deployment's own /oidc provider; the
+          # mock-login build is for local use only.
+          build_args: |
+            VITE_AUTH_MODE=oidc
 
       - name: Extract commit-pinned image tag
         id: sha-tag

@@ -7,7 +7,7 @@
 # must load the same OIDC signing JWKS from the shared Secret, or a token minted
 # by one pod fails verification against another's /oidc/jwks. Note this does not
 # by itself prove the cross-pod path (the workflow only waits for readiness);
-# a per-pod smoke check and the interactive/session path land with AU-02 (#35).
+# a per-pod smoke check is still to come.
 replicaCount: 2
 
 frontend:
@@ -37,6 +37,13 @@ config:
   # from .env.example.
   DB_POOL_MAX: "5"
   PGBOSS_POOL_MAX: "3"
+  # Demo tenants and users, plus the UI's OIDC client registered with redirect
+  # URIs on this PR's route (derived from OIDC_ISSUER), so the preview signs
+  # in for real. Every replica runs the seed at boot; it is idempotent and
+  # serialises behind an advisory lock. SEED_CLIENT_SECRET stays unset here:
+  # the seeded confidential clients get random secrets, so nothing in the
+  # repository mints tokens against a preview's public /oidc/token.
+  SEED_ON_START: "true"
 
 secret:
   # PR databases are owned by the same application user as dev; reuse the dev Secret.
