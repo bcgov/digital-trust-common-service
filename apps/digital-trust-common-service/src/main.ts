@@ -21,6 +21,7 @@ async function bootstrap() {
   SwaggerService.setupSwagger(app, configService);
 
   if (shouldRunDevSeedOnStart(configService)) {
+    await app.init();
     await app.get(DevSeedService).run();
   }
 
