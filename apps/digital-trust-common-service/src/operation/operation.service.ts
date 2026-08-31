@@ -2,7 +2,10 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 
 import { TenantService } from '../tenant/tenant.service';
 
-import { computeOperationExpiresAt } from './operation-ttl.util';
+import {
+  computeOperationExpiresAt,
+  isTerminalOperationState,
+} from './operation-ttl.util';
 import {
   Operation,
   OperationRequest,
@@ -79,6 +82,34 @@ export class OperationService {
     return this.operations.save(operation);
   }
 
+  /**
+   * Tenant-scoped read backing GET /tenants/:tenantId/operations/:operationId.
+   *
+   * Only terminal states (completed/failed) are marked viewed: the TTL rules ignore
+   * viewedAt for pending/processing, so stamping it on every poll of an in-flight
+   * operation would be a write with no effect on expiry.
+   */
+  public async getForTenant(tenantId: string, id: string): Promise<Operation> {
+    const operation = await this.operations.findByIdForTenant(id, tenantId);
+
+    if (!operation) {
+      throw new NotFoundException('Operation not found');
+    }
+
+    if (!isTerminalOperationState(operation.state) || operation.viewedAt) {
+      return operation;
+    }
+
+    return this.applyViewed(operation);
+  }
+
+  /**
+   * Stamps viewedAt in any state, unlike getForTenant. This is the writer-side
+   * call for the webhook and state-update workers, where "viewed" records that a
+   * consumer took delivery of the record rather than that someone polled the
+   * route; the e2e pins that a still-PENDING operation can be marked viewed
+   * without its TTL moving. Read paths should use getForTenant.
+   */
   public async markViewed(id: string): Promise<Operation> {
     const operation = await this.operations.findById(id);
 
@@ -90,17 +121,43 @@ export class OperationService {
       return operation;
     }
 
-    const tenant = await this.tenants.findById(operation.tenantId);
+    return this.applyViewed(operation);
+  }
 
-    operation.viewedAt = new Date();
-    operation.expiresAt = this.computeExpiresAt(
+  private async applyViewed(operation: Operation): Promise<Operation> {
+    const tenant = await this.tenants.findById(operation.tenantId);
+    const viewedAt = new Date();
+    const expiresAt = this.computeExpiresAt(
       operation.state,
       operation.createdAt,
-      operation.viewedAt,
+      viewedAt,
       tenant.config,
     );
 
-    return this.operations.save(operation);
+    const stored = await this.operations.markFirstView(
+      operation.id,
+      viewedAt,
+      expiresAt,
+    );
+
+    // No row updated means either a concurrent poll stamped it first, or the
+    // purge removed the row between the read and this write. Re-read to tell
+    // them apart: the winner's values are authoritative, and a row that is gone
+    // must not be served from the copy loaded moments ago.
+    if (!stored) {
+      const current = await this.operations.findById(operation.id);
+
+      if (!current) {
+        throw new NotFoundException('Operation not found');
+      }
+
+      return current;
+    }
+
+    operation.viewedAt = stored.viewedAt;
+    operation.expiresAt = stored.expiresAt;
+
+    return operation;
   }
 
   public async transitionState(

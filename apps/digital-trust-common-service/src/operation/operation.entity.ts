@@ -20,6 +20,8 @@ import {
 import { API_BASE_PATH } from '../common/constants/api-version.constants';
 import { Tenant } from '../tenant/tenant.entity';
 
+import { OPERATION_TYPE } from './operation-type.constants';
+
 export enum OperationState {
   PENDING = 'pending',
   PROCESSING = 'processing',
@@ -86,7 +88,7 @@ export class Operation {
 
   @ApiProperty({
     description: 'The operation type',
-    example: 'credential.offer',
+    example: OPERATION_TYPE.CREDENTIAL_OFFER,
   })
   @Column({ type: 'varchar', length: 50 })
   @IsString()
