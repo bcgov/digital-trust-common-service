@@ -205,7 +205,12 @@ export class RoleScopeService {
         previous.join(' ') !== scopes.join(' ');
 
       if (!changed) {
-        return { role, scopes, source, revokedRecordCount };
+        return {
+          role,
+          scopes,
+          source,
+          revokedRecordCount,
+        };
       }
 
       await this.auditLog.write(

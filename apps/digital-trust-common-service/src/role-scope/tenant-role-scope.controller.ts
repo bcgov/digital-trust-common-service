@@ -10,6 +10,7 @@ import {
 import type { AuthContext } from '@app/auth';
 import {
   Body,
+  ClassSerializerInterceptor,
   Controller,
   Delete,
   Get,
@@ -17,6 +18,7 @@ import {
   ParseUUIDPipe,
   Patch,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
@@ -56,6 +58,7 @@ import { RoleScopeService } from './role-scope.service';
 @ApiJwtAuth()
 @Controller({ path: 'tenants/:tenantId', version: API_VERSION })
 @UseGuards(JwtGuard, ScopeGuard, TenantGuard, TenantStatusGuard)
+@UseInterceptors(ClassSerializerInterceptor)
 export class TenantRoleScopeController {
   public constructor(private readonly roleScopes: RoleScopeService) {}
 
@@ -106,7 +109,7 @@ export class TenantRoleScopeController {
     @Body() body: UpdateRoleScopesDto,
     @CurrentAuth() auth: AuthContext,
   ): Promise<RoleScopesResponseDto> {
-    return this.roleScopes.replaceRoleScopes({
+    const result = await this.roleScopes.replaceRoleScopes({
       tenantId: params.tenantId,
       role: params.role,
       scopes: body.scopes,
@@ -115,6 +118,7 @@ export class TenantRoleScopeController {
       actorRoles: auth.roles,
       actorTokenType: auth.tokenType,
     });
+    return RoleScopesResponseDto.from(result);
   }
 
   @Delete('roles/:role/scopes')
@@ -140,7 +144,7 @@ export class TenantRoleScopeController {
     @Param() params: RoleParamDto,
     @CurrentAuth() auth: AuthContext,
   ): Promise<RoleScopesResponseDto> {
-    return this.roleScopes.resetRoleScopes({
+    const result = await this.roleScopes.resetRoleScopes({
       tenantId: params.tenantId,
       role: params.role,
       actorId: auth.sub,
@@ -148,5 +152,6 @@ export class TenantRoleScopeController {
       actorRoles: auth.roles,
       actorTokenType: auth.tokenType,
     });
+    return RoleScopesResponseDto.from(result);
   }
 }

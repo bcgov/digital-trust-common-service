@@ -1,3 +1,4 @@
+import { Exclude, Expose } from 'class-transformer';
 import {
   IsEmail,
   IsEnum,
@@ -8,21 +9,26 @@ import {
 
 import { TenantUserRole, TenantUserStatus } from '../tenant-user.entity';
 
+@Exclude()
 export class UpdateTenantUserDto {
+  @Expose()
   @IsOptional()
   @IsEmail()
   @MaxLength(255)
   public email?: string;
 
+  @Expose({ name: 'display_name' })
   @IsOptional()
   @IsString()
   @MaxLength(255)
   public displayName?: string;
 
+  @Expose()
   @IsOptional()
   @IsEnum(TenantUserRole)
   public role?: TenantUserRole;
 
+  @Expose()
   @IsOptional()
   @IsEnum(TenantUserStatus)
   public status?: TenantUserStatus;

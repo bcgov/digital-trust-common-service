@@ -103,18 +103,20 @@ export class Tenant {
     example: '2024-01-01T00:00:00Z',
   })
   @CreateDateColumn({
+    name: 'created_at',
     type: 'timestamptz',
   })
-  public created_at!: Date;
+  public createdAt!: Date;
 
   @ApiProperty({
     description: 'The date and time when the tenant was last updated',
     example: '2024-01-01T00:00:00Z',
   })
   @UpdateDateColumn({
+    name: 'updated_at',
     type: 'timestamptz',
   })
-  public updated_at!: Date;
+  public updatedAt!: Date;
 
   @ApiProperty({
     description: 'The date and time when the tenant was soft deleted',
@@ -122,10 +124,11 @@ export class Tenant {
     required: false,
   })
   @DeleteDateColumn({
+    name: 'deleted_at',
     type: 'timestamptz',
     nullable: true,
   })
-  public deleted_at?: Date;
+  public deletedAt?: Date;
 
   @ApiProperty({
     description:
@@ -139,7 +142,7 @@ export class Tenant {
     type: 'timestamptz',
     nullable: true,
   })
-  public deactivated_at?: Date | null;
+  public deactivatedAt?: Date | null;
 
   @OneToMany(() => TenantUser, (tenantUser) => tenantUser.tenant)
   public users!: TenantUser[];

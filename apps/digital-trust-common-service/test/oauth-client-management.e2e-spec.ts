@@ -294,14 +294,14 @@ describe('OAuth client management (e2e)', () => {
       .expect(201);
 
     const created = createResponse.body as {
-      client: { clientId: string; scopes: string[]; tenantId: string };
-      clientSecret: string;
+      client: { client_id: string; scopes: string[]; tenant_id: string };
+      client_secret: string;
     };
 
-    expect(created.client.clientId).toMatch(/^dtcs_[0-9a-f]{32}$/);
-    expect(created.client.tenantId).toBe(tenantId);
+    expect(created.client.client_id).toMatch(/^dtcs_[0-9a-f]{32}$/);
+    expect(created.client.tenant_id).toBe(tenantId);
     expect(created.client.scopes).toEqual(['credentials:offer']);
-    expect(created.clientSecret).toHaveLength(64);
+    expect(created.client_secret).toHaveLength(64);
 
     const listResponse = await request(app.getHttpServer())
       .get(clientsPath(tenantId))
@@ -310,36 +310,38 @@ describe('OAuth client management (e2e)', () => {
 
     const listed = listResponse.body as Array<Record<string, unknown>>;
     const listedCreated = listed.find(
-      (row) => row.clientId === created.client.clientId,
+      (row) => row.client_id === created.client.client_id,
     );
 
     expect(listedCreated).toBeDefined();
-    expect(listedCreated).not.toHaveProperty('clientSecret');
+    expect(listedCreated).not.toHaveProperty('client_secret');
     expect(listedCreated).not.toHaveProperty('clientSecretHash');
 
     await issueTokenAndVerify(
       app.getHttpServer(),
-      created.client.clientId,
-      created.clientSecret,
+      created.client.client_id,
+      created.client_secret,
       'credentials:offer',
       process.env.OIDC_ISSUER,
     );
 
     const rotateResponse = await request(app.getHttpServer())
-      .post(`${clientsPath(tenantId)}/${created.client.clientId}/rotate-secret`)
+      .post(
+        `${clientsPath(tenantId)}/${created.client.client_id}/rotate-secret`,
+      )
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(200);
 
-    const rotated = rotateResponse.body as { clientSecret: string };
+    const rotated = rotateResponse.body as { client_secret: string };
 
-    expect(rotated.clientSecret).toHaveLength(64);
-    expect(rotated.clientSecret).not.toBe(created.clientSecret);
+    expect(rotated.client_secret).toHaveLength(64);
+    expect(rotated.client_secret).not.toBe(created.client_secret);
 
     await request(app.getHttpServer())
       .post('/oidc/token')
       .set(
         'Authorization',
-        buildBasicAuthHeader(created.client.clientId, created.clientSecret),
+        buildBasicAuthHeader(created.client.client_id, created.client_secret),
       )
       .type('form')
       .send({ grant_type: 'client_credentials', scope: 'credentials:offer' })
@@ -347,14 +349,14 @@ describe('OAuth client management (e2e)', () => {
 
     await issueTokenAndVerify(
       app.getHttpServer(),
-      created.client.clientId,
-      rotated.clientSecret,
+      created.client.client_id,
+      rotated.client_secret,
       'credentials:offer',
       process.env.OIDC_ISSUER,
     );
 
     await request(app.getHttpServer())
-      .delete(`${clientsPath(tenantId)}/${created.client.clientId}`)
+      .delete(`${clientsPath(tenantId)}/${created.client.client_id}`)
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(204);
 
@@ -362,7 +364,7 @@ describe('OAuth client management (e2e)', () => {
       .post('/oidc/token')
       .set(
         'Authorization',
-        buildBasicAuthHeader(created.client.clientId, rotated.clientSecret),
+        buildBasicAuthHeader(created.client.client_id, rotated.client_secret),
       )
       .type('form')
       .send({ grant_type: 'client_credentials', scope: 'credentials:offer' })

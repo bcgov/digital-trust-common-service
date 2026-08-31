@@ -33,10 +33,10 @@ describe('AuthController', () => {
   beforeEach(async () => {
     listTenants = jest.fn().mockResolvedValue([]);
     switchTenant = jest.fn().mockResolvedValue({
-      access_token: 'at',
-      refresh_token: 'rt',
-      token_type: 'Bearer',
-      expires_in: 300,
+      accessToken: 'at',
+      refreshToken: 'rt',
+      tokenType: 'Bearer',
+      expiresIn: 300,
     });
 
     const module: TestingModule = await Test.createTestingModule({
@@ -59,7 +59,7 @@ describe('AuthController', () => {
 
   it('delegates switch-tenant to the service with auth and tenant id', async () => {
     await controller.switchTenant(auth, {
-      tenant_id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+      tenantId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
     });
 
     expect(switchTenant).toHaveBeenCalledWith(

@@ -128,10 +128,12 @@ describe('AdapterRegistry (integration)', () => {
   ): Promise<ConnectorCredential> {
     return await connectors.create(
       {
-        tenantId,
-        connectorType: overrides.connectorType ?? ConnectorType.TRACTION,
-        credentialsPlainText: JSON.stringify({ apiKey: 'integration-secret' }),
-        endpointUrl: overrides.endpointUrl ?? 'https://traction.example.com',
+        tenant_id: tenantId,
+        connector_type: overrides.connectorType ?? ConnectorType.TRACTION,
+        credentials_plain_text: JSON.stringify({
+          apiKey: 'integration-secret',
+        }),
+        endpoint_url: overrides.endpointUrl ?? 'https://traction.example.com',
         active: overrides.active ?? true,
       },
       authFor(tenantId),

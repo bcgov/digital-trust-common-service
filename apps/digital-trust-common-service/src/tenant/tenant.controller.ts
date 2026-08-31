@@ -11,6 +11,7 @@ import {
 import type { AuthContext } from '@app/auth';
 import {
   Body,
+  ClassSerializerInterceptor,
   Controller,
   Delete,
   Get,
@@ -20,6 +21,7 @@ import {
   Post,
   Query,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
 import {
   ApiBody,
@@ -40,11 +42,15 @@ import { API_VERSION } from '../common/constants/api-version.constants';
 
 import { CreateTenantDto } from './dto/create-tenant.dto';
 import { ListTenantsQueryDto } from './dto/list-tenants-query.dto';
+import {
+  PaginatedTenantsResponseDto,
+  TenantResponseDto,
+  TenantsPaginationDto,
+} from './dto/tenant-response.dto';
 import { UpdateTenantConfigDto } from './dto/update-tenant-config.dto';
 import { UpdateTenantStatusDto } from './dto/update-tenant-status.dto';
 import { UpdateTenantDto } from './dto/update-tenant.dto';
 import { TenantStatusGuard } from './tenant-status.guard';
-import { Tenant } from './tenant.entity';
 import { PaginatedTenants, TenantService } from './tenant.service';
 
 @SkipAutoAudit()
@@ -52,6 +58,7 @@ import { PaginatedTenants, TenantService } from './tenant.service';
 @ApiJwtAuth()
 @UseGuards(JwtGuard, ScopeGuard, TenantStatusGuard)
 @Controller({ path: 'tenants', version: API_VERSION })
+@UseInterceptors(ClassSerializerInterceptor)
 export class TenantController {
   public constructor(private readonly tenantService: TenantService) {}
 
@@ -64,7 +71,7 @@ export class TenantController {
   })
   @ApiCreatedResponse({
     description: 'Tenant created successfully',
-    type: Tenant,
+    type: TenantResponseDto,
   })
   @ApiConflictResponse({ description: 'Tenant slug already exists' })
   @ApiForbiddenResponse({ description: 'Caller is not a platform admin' })
@@ -80,7 +87,7 @@ export class TenantController {
           slug: 'acme-corp',
           description: 'A sample tenant organization',
           config: { theme: 'dark', timezone: 'UTC' },
-          ownerEmail: 'owner@acme-corp.example',
+          owner_email: 'owner@acme-corp.example',
         },
       },
     },
@@ -88,8 +95,9 @@ export class TenantController {
   public async create(
     @Body() dto: CreateTenantDto,
     @CurrentAuth() auth?: AuthContext,
-  ): Promise<Tenant> {
-    return this.tenantService.create(dto, auth);
+  ): Promise<TenantResponseDto> {
+    const tenant = await this.tenantService.create(dto, auth);
+    return TenantResponseDto.fromEntity(tenant);
   }
 
   @Patch(':id')
@@ -106,7 +114,7 @@ export class TenantController {
   })
   @ApiOkResponse({
     description: 'Tenant updated successfully',
-    type: Tenant,
+    type: TenantResponseDto,
   })
   @ApiNotFoundResponse({ description: 'Tenant not found' })
   @ApiForbiddenResponse({
@@ -130,9 +138,10 @@ export class TenantController {
     @Body() dto: UpdateTenantDto,
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentAuth() auth?: AuthContext,
-  ): Promise<Tenant> {
+  ): Promise<TenantResponseDto> {
     this.assertTenantAccess(auth, id);
-    return this.tenantService.update(id, dto);
+    const tenant = await this.tenantService.update(id, dto);
+    return TenantResponseDto.fromEntity(tenant);
   }
 
   @Patch(':id/config')
@@ -149,7 +158,7 @@ export class TenantController {
   })
   @ApiOkResponse({
     description: 'Tenant configuration updated successfully',
-    type: Tenant,
+    type: TenantResponseDto,
   })
   @ApiNotFoundResponse({
     description: 'Tenant not found, or default_connector does not exist',
@@ -179,9 +188,10 @@ export class TenantController {
     @Body() dto: UpdateTenantConfigDto,
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentAuth() auth?: AuthContext,
-  ): Promise<Tenant> {
+  ): Promise<TenantResponseDto> {
     this.assertTenantAccess(auth, id);
-    return this.tenantService.updateConfig(id, dto, auth);
+    const tenant = await this.tenantService.updateConfig(id, dto, auth);
+    return TenantResponseDto.fromEntity(tenant);
   }
 
   @Patch(':id/status')
@@ -198,7 +208,7 @@ export class TenantController {
   })
   @ApiOkResponse({
     description: 'Tenant status updated successfully',
-    type: Tenant,
+    type: TenantResponseDto,
   })
   @ApiNotFoundResponse({ description: 'Tenant not found' })
   @ApiConflictResponse({
@@ -219,8 +229,9 @@ export class TenantController {
   public async updateStatus(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateTenantStatusDto,
-  ): Promise<Tenant> {
-    return this.tenantService.updateStatus(id, dto.status);
+  ): Promise<TenantResponseDto> {
+    const tenant = await this.tenantService.updateStatus(id, dto.status);
+    return TenantResponseDto.fromEntity(tenant);
   }
 
   @Get()
@@ -231,15 +242,19 @@ export class TenantController {
   })
   @ApiOkResponse({
     description: 'Paginated tenant list',
+    type: PaginatedTenantsResponseDto,
   })
   @ApiUnauthorizedResponse({ description: 'Authentication is required' })
   public async list(
     @Query() query: ListTenantsQueryDto,
     @CurrentAuth() auth?: AuthContext,
-  ): Promise<PaginatedTenants> {
-    const empty: PaginatedTenants = {
+  ): Promise<PaginatedTenantsResponseDto> {
+    const empty: PaginatedTenantsResponseDto = {
       data: [],
-      pagination: { next_cursor: null, has_more: false },
+      pagination: TenantsPaginationDto.from({
+        next_cursor: null,
+        has_more: false,
+      }),
     };
 
     if (!auth) {
@@ -247,10 +262,11 @@ export class TenantController {
     }
 
     if (auth.roles.includes(PLATFORM_ADMIN_ROLE)) {
-      return this.tenantService.list({
+      const page = await this.tenantService.list({
         limit: query.limit,
         cursor: query.cursor,
       });
+      return this.toPaginatedResponse(page);
     }
 
     if (!auth.tenantId) {
@@ -259,7 +275,13 @@ export class TenantController {
 
     const tenant = await this.tenantService.findById(auth.tenantId);
     return tenant
-      ? { data: [tenant], pagination: { next_cursor: null, has_more: false } }
+      ? {
+          data: [TenantResponseDto.fromEntity(tenant)],
+          pagination: TenantsPaginationDto.from({
+            next_cursor: null,
+            has_more: false,
+          }),
+        }
       : empty;
   }
 
@@ -276,7 +298,7 @@ export class TenantController {
   })
   @ApiOkResponse({
     description: 'Tenant found',
-    type: Tenant,
+    type: TenantResponseDto,
   })
   @ApiNotFoundResponse({ description: 'Tenant not found' })
   @ApiForbiddenResponse({
@@ -286,7 +308,7 @@ export class TenantController {
   public async findById(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentAuth() auth?: AuthContext,
-  ): Promise<Tenant | null> {
+  ): Promise<TenantResponseDto | null> {
     const tenant = await this.tenantService.findById(id);
 
     if (!tenant) {
@@ -294,7 +316,7 @@ export class TenantController {
     }
 
     this.assertTenantAccess(auth, tenant.id);
-    return tenant;
+    return TenantResponseDto.fromEntity(tenant);
   }
 
   @Get('slug/:slug')
@@ -310,7 +332,7 @@ export class TenantController {
   })
   @ApiOkResponse({
     description: 'Tenant found by slug',
-    type: Tenant,
+    type: TenantResponseDto,
   })
   @ApiNotFoundResponse({ description: 'Tenant not found' })
   @ApiForbiddenResponse({
@@ -320,7 +342,7 @@ export class TenantController {
   public async findBySlug(
     @Param('slug') slug: string,
     @CurrentAuth() auth?: AuthContext,
-  ): Promise<Tenant | null> {
+  ): Promise<TenantResponseDto | null> {
     const tenant = await this.tenantService.findBySlug(slug);
 
     if (!tenant) {
@@ -328,7 +350,7 @@ export class TenantController {
     }
 
     this.assertTenantAccess(auth, tenant.id);
-    return tenant;
+    return TenantResponseDto.fromEntity(tenant);
   }
 
   @Delete(':id')
@@ -375,5 +397,14 @@ export class TenantController {
     tenantId: string,
   ): void {
     assertTenantAccess(auth, tenantId);
+  }
+
+  private toPaginatedResponse(
+    page: PaginatedTenants,
+  ): PaginatedTenantsResponseDto {
+    return {
+      data: page.data.map((tenant) => TenantResponseDto.fromEntity(tenant)),
+      pagination: TenantsPaginationDto.from(page.pagination),
+    };
   }
 }

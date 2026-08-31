@@ -164,10 +164,10 @@ describe('AdapterRegistry (e2e)', () => {
       const tenantId = await createTenant();
       const connector = await connectors.create(
         {
-          tenantId,
-          connectorType: ConnectorType.TRACTION,
-          credentialsPlainText: JSON.stringify({ apiKey: 'e2e-secret' }),
-          endpointUrl: 'https://traction-e2e.example.com',
+          tenant_id: tenantId,
+          connector_type: ConnectorType.TRACTION,
+          credentials_plain_text: JSON.stringify({ apiKey: 'e2e-secret' }),
+          endpoint_url: 'https://traction-e2e.example.com',
           active: true,
         },
         authFor(tenantId),
@@ -195,10 +195,10 @@ describe('AdapterRegistry (e2e)', () => {
       const tenantB = await createTenant();
       const connectorA = await connectors.create(
         {
-          tenantId: tenantA,
-          connectorType: ConnectorType.TRACTION,
-          credentialsPlainText: JSON.stringify({ apiKey: 'tenant-a' }),
-          endpointUrl: 'https://tenant-a.example.com',
+          tenant_id: tenantA,
+          connector_type: ConnectorType.TRACTION,
+          credentials_plain_text: JSON.stringify({ apiKey: 'tenant-a' }),
+          endpoint_url: 'https://tenant-a.example.com',
           active: true,
         },
         authFor(tenantA),
@@ -268,10 +268,10 @@ describe('AdapterRegistry (e2e)', () => {
 
         await enabledConnectors.create(
           {
-            tenantId,
-            connectorType: ConnectorType.TRACTION,
-            credentialsPlainText: JSON.stringify({ apiKey: 'override' }),
-            endpointUrl: 'https://override.example.com',
+            tenant_id: tenantId,
+            connector_type: ConnectorType.TRACTION,
+            credentials_plain_text: JSON.stringify({ apiKey: 'override' }),
+            endpoint_url: 'https://override.example.com',
             active: true,
           },
           authFor(tenantId),

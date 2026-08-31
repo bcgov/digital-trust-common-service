@@ -103,7 +103,7 @@ export interface paths {
         put?: never;
         /**
          * Create a new tenant
-         * @description Requires platform-admin privileges. Links the given ownerEmail as the tenant's initial owner. There is no self-service tenant creation path.
+         * @description Requires platform-admin privileges. Links the given owner_email as the tenant's initial owner. There is no self-service tenant creation path.
          */
         post: operations["createTenant"];
         delete?: never;
@@ -1071,9 +1071,9 @@ export interface paths {
         /**
          * Register an API client (OAuth2 client_credentials)
          * @description Creates a new OAuth2 client for service-to-service authentication.
-         *     Tenant association is taken from the path (`tenantId`); `createdBy` is
+         *     Tenant association is taken from the path (`tenantId`); `created_by` is
          *     recorded from the authenticated user and is not accepted on the body.
-         *     Generated `client_id` values are prefixed `dtcs_`. The `clientSecret`
+         *     Generated `client_id` values are prefixed `dtcs_`. The `client_secret`
          *     is returned ONCE in the response and cannot be retrieved again.
          *     Requested scopes cannot exceed the caller's own grants.
          */
@@ -1676,7 +1676,7 @@ export interface components {
              * Format: email
              * @description Email of the user to link as the tenant's initial owner
              */
-            ownerEmail: string;
+            owner_email: string;
         };
         UpdateTenantRequest: {
             name?: string;
@@ -1720,7 +1720,7 @@ export interface components {
              * @description OIDC records deleted because the change removed scopes. Zero when
              *     the change only widened the role.
              */
-            revokedRecordCount?: number;
+            revoked_record_count?: number;
         };
         InviteUserRequest: {
             /** Format: email */
@@ -2080,44 +2080,44 @@ export interface components {
             /** Format: uuid */
             id?: string;
             /** Format: uuid */
-            tenantId?: string;
+            tenant_id?: string;
             /** @description Public OAuth client_id. Newly generated values are prefixed `dtcs_`. */
-            clientId?: string;
+            client_id?: string;
             name?: string;
             scopes?: string[];
             /** @description JWT role claims for machine clients. Tenant-scoped roles (owner, admin, member, readonly) may be assigned by tenant admins; platform-admin requires a platform-admin caller. */
             roles?: string[];
-            redirectUris?: string[];
-            grantTypes?: string[];
+            redirect_uris?: string[];
+            grant_types?: string[];
             /** Format: uuid */
-            createdBy?: string | null;
-            refreshTokenTtlSeconds?: number | null;
+            created_by?: string | null;
+            refresh_token_ttl_seconds?: number | null;
             /** Format: date-time */
-            createdAt?: string;
+            created_at?: string;
             /** Format: date-time */
-            revokedAt?: string | null;
+            revoked_at?: string | null;
         };
         ClientWithSecret: {
             client: components["schemas"]["Client"];
             /** @description Shown ONCE at creation and rotate-secret. Cannot be retrieved again. */
-            clientSecret: string;
+            client_secret: string;
         };
-        /** @description Tenant is taken from the path, not this body. createdBy is recorded from the authenticated user sub. */
+        /** @description Tenant is taken from the path, not this body. created_by is recorded from the authenticated user sub. */
         CreateClientRequest: {
             name: string;
             scopes: ("credentials:offer" | "credentials:verify" | "credentials:hold" | "credentials:revoke" | "connections:manage" | "profiles:manage" | "users:manage" | "clients:manage" | "logs:read" | "audit:read" | "tenants:admin")[];
             roles?: ("owner" | "admin" | "member" | "readonly" | "platform-admin")[];
-            redirectUris?: string[];
-            grantTypes?: string[];
-            refreshTokenTtlSeconds?: number;
+            redirect_uris?: string[];
+            grant_types?: string[];
+            refresh_token_ttl_seconds?: number;
         };
         UpdateClientRequest: {
             name?: string;
             scopes?: ("credentials:offer" | "credentials:verify" | "credentials:hold" | "credentials:revoke" | "connections:manage" | "profiles:manage" | "users:manage" | "clients:manage" | "logs:read" | "audit:read" | "tenants:admin")[];
             roles?: ("owner" | "admin" | "member" | "readonly" | "platform-admin")[];
-            redirectUris?: string[];
-            grantTypes?: string[];
-            refreshTokenTtlSeconds?: number | null;
+            redirect_uris?: string[];
+            grant_types?: string[];
+            refresh_token_ttl_seconds?: number | null;
         };
         Credential: {
             /** Format: uuid */
@@ -3012,7 +3012,12 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
+                    /** Format: email */
+                    email?: string;
+                    display_name?: string;
                     role?: components["schemas"]["TenantRole"];
+                    /** @enum {string} */
+                    status?: "active" | "invited" | "disabled";
                 };
             };
         };
@@ -4526,12 +4531,12 @@ export interface operations {
                 limit?: components["parameters"]["Limit"];
                 action?: "issue" | "verify" | "hold" | "revoke" | "create" | "update" | "delete" | "login" | "token_grant";
                 /** @description Filter by actor (user ID or client ID) */
-                actor_id?: string;
+                actorId?: string;
                 /** @description Filter by resource type (e.g., credential, connection, tenant) */
-                resource_type?: string;
-                resource_id?: string;
+                resourceType?: string;
+                resourceId?: string;
                 /** @description Filter audit entries linked to a specific operation */
-                operation_id?: string;
+                operationId?: string;
                 since?: string;
                 until?: string;
             };
@@ -4655,6 +4660,8 @@ export interface operations {
                         by_state?: {
                             [key: string]: number;
                         };
+                        /** @description Total number of operations across all states and tenants */
+                        total_count?: number;
                         /** Format: date-time */
                         oldest_pending?: string | null;
                     };
@@ -4769,12 +4776,20 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description All sessions revoked */
-            204: {
+            /** @description Sessions revoked */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        tenant_user_id: string;
+                        /** Format: uuid */
+                        account_id: string;
+                        revoked_record_count: number;
+                    };
+                };
             };
         };
     };

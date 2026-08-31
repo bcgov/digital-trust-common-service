@@ -1,12 +1,14 @@
 import { ApiJwtAuth, CurrentAuth, JwtGuard, type AuthContext } from '@app/auth';
 import {
   Body,
+  ClassSerializerInterceptor,
   Controller,
   Get,
   HttpCode,
   HttpStatus,
   Post,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
 import {
   ApiForbiddenResponse,
@@ -27,6 +29,7 @@ import { SwitchTenantDto } from './dto/switch-tenant.dto';
 @ApiJwtAuth()
 @SkipAutoAudit()
 @UseGuards(JwtGuard)
+@UseInterceptors(ClassSerializerInterceptor)
 @Controller({ path: 'auth', version: API_VERSION })
 export class AuthController {
   public constructor(private readonly authService: AuthService) {}
@@ -63,6 +66,6 @@ export class AuthController {
     @CurrentAuth() auth: AuthContext,
     @Body() dto: SwitchTenantDto,
   ): Promise<SwitchTenantResponseDto> {
-    return await this.authService.switchTenant(auth, dto.tenant_id);
+    return await this.authService.switchTenant(auth, dto.tenantId);
   }
 }

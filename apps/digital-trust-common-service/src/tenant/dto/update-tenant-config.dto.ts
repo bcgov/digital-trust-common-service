@@ -1,17 +1,22 @@
+import { Exclude, Expose } from 'class-transformer';
 import { IsArray, IsEnum, IsObject, IsOptional, IsUUID } from 'class-validator';
 
 import { CredentialDefinitionFormat } from '../../credential-definition/credential-definition.entity';
 
+@Exclude()
 export class UpdateTenantConfigDto {
+  @Expose({ name: 'allowed_formats' })
   @IsOptional()
   @IsArray()
   @IsEnum(CredentialDefinitionFormat, { each: true })
-  public allowed_formats?: CredentialDefinitionFormat[];
+  public allowedFormats?: CredentialDefinitionFormat[];
 
+  @Expose({ name: 'default_connector' })
   @IsOptional()
   @IsUUID()
-  public default_connector?: string | null;
+  public defaultConnector?: string | null;
 
+  @Expose()
   @IsOptional()
   @IsObject()
   public features?: Record<string, unknown>;

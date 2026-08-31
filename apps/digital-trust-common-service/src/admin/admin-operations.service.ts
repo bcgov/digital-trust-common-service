@@ -11,11 +11,6 @@ export class AdminOperationsService {
   public async getStats(): Promise<OperationStatsResponseDto> {
     const stats = await this.operations.getStats();
 
-    return {
-      countsByState: stats.countsByState,
-      totalCount: stats.totalCount,
-      oldestPendingCreatedAt:
-        stats.oldestPendingCreatedAt?.toISOString() ?? null,
-    };
+    return OperationStatsResponseDto.fromStats(stats);
   }
 }

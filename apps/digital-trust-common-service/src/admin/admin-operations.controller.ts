@@ -5,7 +5,13 @@ import {
   RequireRoles,
   ScopeGuard,
 } from '@app/auth';
-import { Controller, Get, UseGuards } from '@nestjs/common';
+import {
+  ClassSerializerInterceptor,
+  Controller,
+  Get,
+  UseGuards,
+  UseInterceptors,
+} from '@nestjs/common';
 import { ApiForbiddenResponse, ApiOkResponse, ApiTags } from '@nestjs/swagger';
 
 import { API_VERSION } from '../common/constants/api-version.constants';
@@ -18,6 +24,7 @@ import { OperationStatsResponseDto } from './dto/operation-stats-response.dto';
 @Controller({ path: 'admin/operations', version: API_VERSION })
 @RequireRoles(PLATFORM_ADMIN_ROLE)
 @UseGuards(JwtGuard, ScopeGuard)
+@UseInterceptors(ClassSerializerInterceptor)
 export class AdminOperationsController {
   public constructor(
     private readonly adminOperationsService: AdminOperationsService,
