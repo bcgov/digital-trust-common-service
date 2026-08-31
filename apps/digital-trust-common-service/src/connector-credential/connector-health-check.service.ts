@@ -43,8 +43,6 @@ export class ConnectorHealthCheckService {
     }
   }
 
-  // TODO: provisional — confirm the real Traction/ACA-Py multitenancy auth
-  // contract (token endpoint + payload shape) and adjust accordingly.
   private async checkTraction(
     endpointUrl: string,
     credentials: ConnectorCredentialsDto,
