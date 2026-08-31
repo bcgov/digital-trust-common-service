@@ -93,4 +93,16 @@ describe('runtime config', () => {
 
     await expect(loadAppConfig()).rejects.toThrow(/oidcScopes/);
   });
+
+  // A scope list without these still parses, but breaks the app in slow
+  // motion (no OIDC request, no tenant claims, or a session that dies at the
+  // first token expiry). The loader's job is to fail here instead.
+  it('rejects a scope list missing what the app depends on', async () => {
+    serveJson({ oidcClientId: 'dtsc-ui', oidcScopes: 'openid profile email' });
+    const { loadAppConfig } = await freshModule();
+
+    await expect(loadAppConfig()).rejects.toThrow(
+      /openid, tenant, offline_access/,
+    );
+  });
 });

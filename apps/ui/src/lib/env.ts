@@ -8,9 +8,10 @@ import { z } from 'zod';
 const envSchema = z.object({
   // mock: fake local login, no backend required
   // oidc: real PKCE flow against this origin's /oidc provider
-  // A build variant rather than configuration: it decides whether the mock
-  // client or oidc-client-ts ships in the bundle, which is why it is the one
-  // value that stays baked in.
+  // A build variant rather than configuration: the inlined value fixes the
+  // selection at build time, so no runtime input can flip a hosted image to
+  // mock login. (The mock module remains as dead code in an oidc bundle;
+  // oidc-client-ts is a lazy chunk a mock build never fetches.)
   // A blank `VITE_AUTH_MODE=` line yields '' (not undefined), which must fall
   // back to the default rather than fail the enum and blank the whole app.
   VITE_AUTH_MODE: z.preprocess(

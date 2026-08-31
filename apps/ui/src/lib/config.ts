@@ -9,9 +9,11 @@ import { z } from 'zod';
  * chart renders `frontend.config.*` into a ConfigMap and mounts it over that
  * copy.
  *
- * `VITE_AUTH_MODE` stays build-time on purpose: it decides which code ships,
- * not how the shipped code is configured.
+ * `VITE_AUTH_MODE` stays build-time on purpose: the auth-mode selection is
+ * fixed when the image is built, never by anything read at runtime.
  */
+const REQUIRED_SCOPES = ['openid', 'tenant', 'offline_access'];
+
 const appConfigSchema = z.object({
   // client_id of the SPA's public (PKCE) OIDC client. Each environment
   // registers a client under the id it serves here; the dev seed registers
@@ -21,8 +23,21 @@ const appConfigSchema = z.object({
   // Scopes requested at sign-in. Keep to the set every role holds: `readonly`
   // users carry no API scopes, and the provider's interaction handler rejects
   // (rather than trims) a request for scopes the user's role lacks — so adding
-  // e.g. `tenants:admin` here locks those users out.
-  oidcScopes: z.string().min(1),
+  // e.g. `tenants:admin` here locks those users out. The floor is as firm as
+  // the ceiling: without `openid` this is not an OIDC request, without
+  // `tenant` the claims the UI is built around never arrive, and without
+  // `offline_access` there is no refresh token and the session dies at the
+  // first access-token expiry.
+  oidcScopes: z
+    .string()
+    .min(1)
+    .refine(
+      (value) => {
+        const scopes = value.split(/\s+/);
+        return REQUIRED_SCOPES.every((scope) => scopes.includes(scope));
+      },
+      { message: `must include ${REQUIRED_SCOPES.join(', ')}` },
+    ),
 });
 
 export type AppConfig = z.infer<typeof appConfigSchema>;
