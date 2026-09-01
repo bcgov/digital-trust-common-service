@@ -11,7 +11,6 @@ import {
 import type { AuthContext } from '@app/auth';
 import {
   Body,
-  ClassSerializerInterceptor,
   Controller,
   Delete,
   Get,
@@ -21,7 +20,6 @@ import {
   Post,
   Query,
   UseGuards,
-  UseInterceptors,
 } from '@nestjs/common';
 import {
   ApiBody,
@@ -58,7 +56,6 @@ import { PaginatedTenants, TenantService } from './tenant.service';
 @ApiJwtAuth()
 @UseGuards(JwtGuard, ScopeGuard, TenantStatusGuard)
 @Controller({ path: 'tenants', version: API_VERSION })
-@UseInterceptors(ClassSerializerInterceptor)
 export class TenantController {
   public constructor(private readonly tenantService: TenantService) {}
 

@@ -8,7 +8,6 @@ import {
 } from '@app/auth';
 import {
   Body,
-  ClassSerializerInterceptor,
   Controller,
   Delete,
   Get,
@@ -20,7 +19,6 @@ import {
   Post,
   Query,
   UseGuards,
-  UseInterceptors,
 } from '@nestjs/common';
 import {
   ApiBody,
@@ -64,7 +62,6 @@ import { TenantUserService } from './tenant-user.service';
 @RequireScopes(USERS_MANAGE_SCOPE)
 @RequireTenantRoles(TenantUserRole.OWNER, TenantUserRole.ADMIN)
 @Controller({ path: 'tenants/:tenantId/users', version: API_VERSION })
-@UseInterceptors(ClassSerializerInterceptor)
 export class TenantUserController {
   public constructor(private readonly tenantUserService: TenantUserService) {}
 

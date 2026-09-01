@@ -9,7 +9,6 @@ import {
 } from '@app/auth';
 import {
   Body,
-  ClassSerializerInterceptor,
   Controller,
   Delete,
   Get,
@@ -20,7 +19,6 @@ import {
   Patch,
   Post,
   UseGuards,
-  UseInterceptors,
 } from '@nestjs/common';
 import {
   ApiBody,
@@ -48,7 +46,6 @@ import { OAuthClientService } from './oauth-client.service';
 @RequireScopes('clients:manage')
 @UseGuards(JwtGuard, ScopeGuard, TenantGuard)
 @Controller({ path: 'tenants/:tenantId/clients', version: API_VERSION })
-@UseInterceptors(ClassSerializerInterceptor)
 export class OAuthClientController {
   public constructor(private readonly oauthClientService: OAuthClientService) {}
 

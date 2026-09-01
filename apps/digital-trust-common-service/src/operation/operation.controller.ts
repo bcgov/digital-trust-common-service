@@ -1,12 +1,10 @@
 import { ApiJwtAuth, JwtGuard, TenantGuard } from '@app/auth';
 import {
-  ClassSerializerInterceptor,
   Controller,
   Get,
   Param,
   ParseUUIDPipe,
   UseGuards,
-  UseInterceptors,
 } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
@@ -36,7 +34,6 @@ import { OperationService } from './operation.service';
   description: 'Token tenant claim does not match the requested tenant',
 })
 @Controller({ path: 'tenants/:tenantId/operations', version: API_VERSION })
-@UseInterceptors(ClassSerializerInterceptor)
 export class OperationController {
   public constructor(private readonly operations: OperationService) {}
 

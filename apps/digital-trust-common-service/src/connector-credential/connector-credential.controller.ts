@@ -10,7 +10,6 @@ import {
 } from '@app/auth';
 import {
   Body,
-  ClassSerializerInterceptor,
   Controller,
   Delete,
   Get,
@@ -21,7 +20,6 @@ import {
   Post,
   Query,
   UseGuards,
-  UseInterceptors,
 } from '@nestjs/common';
 import {
   ApiBody,
@@ -50,7 +48,6 @@ import { UpdateConnectorCredentialDto } from './dto/update-connector-credential.
   description: 'Token lacks tenants:admin, or tenant claim does not match',
 })
 @Controller({ path: 'connector-credentials', version: API_VERSION })
-@UseInterceptors(ClassSerializerInterceptor)
 export class ConnectorCredentialController {
   public constructor(
     private readonly credentialService: ConnectorCredentialService,

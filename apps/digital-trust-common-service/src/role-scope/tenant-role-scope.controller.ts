@@ -10,7 +10,6 @@ import {
 import type { AuthContext } from '@app/auth';
 import {
   Body,
-  ClassSerializerInterceptor,
   Controller,
   Delete,
   Get,
@@ -18,7 +17,6 @@ import {
   ParseUUIDPipe,
   Patch,
   UseGuards,
-  UseInterceptors,
 } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
@@ -58,7 +56,6 @@ import { RoleScopeService } from './role-scope.service';
 @ApiJwtAuth()
 @Controller({ path: 'tenants/:tenantId', version: API_VERSION })
 @UseGuards(JwtGuard, ScopeGuard, TenantGuard, TenantStatusGuard)
-@UseInterceptors(ClassSerializerInterceptor)
 export class TenantRoleScopeController {
   public constructor(private readonly roleScopes: RoleScopeService) {}
 

@@ -8,7 +8,6 @@ import {
 } from '@app/auth';
 import {
   Controller,
-  ClassSerializerInterceptor,
   Get,
   Header,
   Param,
@@ -16,7 +15,6 @@ import {
   Query,
   StreamableFile,
   UseGuards,
-  UseInterceptors,
 } from '@nestjs/common';
 import {
   ApiForbiddenResponse,
@@ -47,7 +45,6 @@ import { ListAuditLogsQueryDto } from './dto/list-audit-logs-query.dto';
   description: 'Token lacks audit:read, or tenant claim does not match',
 })
 @Controller({ path: 'tenants/:tenantId/audit-logs', version: API_VERSION })
-@UseInterceptors(ClassSerializerInterceptor)
 export class AuditLogController {
   public constructor(private readonly auditLogService: AuditLogService) {}
 

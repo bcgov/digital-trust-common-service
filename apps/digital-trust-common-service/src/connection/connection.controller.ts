@@ -10,7 +10,6 @@ import {
 } from '@app/auth';
 import {
   Body,
-  ClassSerializerInterceptor,
   Controller,
   Delete,
   Get,
@@ -21,7 +20,6 @@ import {
   Query,
   ParseEnumPipe,
   UseGuards,
-  UseInterceptors,
 } from '@nestjs/common';
 import {
   ApiBody,
@@ -45,7 +43,6 @@ import { UpdateConnectionDto } from './dto/update-connection.dto';
 @SkipAutoAudit()
 @ApiJwtAuth()
 @UseGuards(JwtGuard, ScopeGuard, TenantGuard)
-@UseInterceptors(ClassSerializerInterceptor)
 @RequireScopes(CONNECTIONS_MANAGE_SCOPE)
 @ApiUnauthorizedResponse({ description: 'Authentication is required' })
 @ApiForbiddenResponse({
