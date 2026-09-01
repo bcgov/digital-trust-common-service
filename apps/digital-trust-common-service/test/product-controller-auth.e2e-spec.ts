@@ -24,8 +24,8 @@ import { Tenant, TenantStatus } from '../src/tenant/tenant.entity';
  * A second describe block below covers TenantStatusGuard: with a real
  * (suspended) tenant row and JwtGuard stubbed just enough to attach an
  * authenticated context, ScopeGuard, TenantGuard, and TenantStatusGuard all
- * run for real, so a missing or misordered TenantStatusGuard on any of the
- * six affected controllers would surface as a failing 403 assertion here.
+ * run for real, so a missing TenantStatusGuard on any of the six affected
+ * controllers would surface as a failing 403 assertion here.
  */
 describe('product controllers (e2e) — auth enforcement', () => {
   let app: INestApplication<App>;
