@@ -2,6 +2,8 @@ import { JwtGuard, ScopeGuard, TenantGuard } from '@app/auth';
 import { StreamableFile, CanActivate } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 
+import { TenantStatusGuard } from '../tenant/tenant-status.guard';
+
 import { AuditLogController } from './audit-log.controller';
 import { AuditAction, AuditActorType, AuditLog } from './audit-log.entity';
 import { AuditLogService } from './audit-log.service';
@@ -61,6 +63,8 @@ describe('AuditLogController', () => {
       .overrideGuard(ScopeGuard)
       .useClass(AllowGuard)
       .overrideGuard(TenantGuard)
+      .useClass(AllowGuard)
+      .overrideGuard(TenantStatusGuard)
       .useClass(AllowGuard)
       .compile();
 

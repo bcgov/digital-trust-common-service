@@ -2,6 +2,8 @@ import { JwtGuard, ScopeGuard, TenantGuard, type AuthContext } from '@app/auth';
 import { CanActivate } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 
+import { TenantStatusGuard } from '../tenant/tenant-status.guard';
+
 import { ConnectionController } from './connection.controller';
 import {
   Connection,
@@ -92,6 +94,8 @@ describe('ConnectionController', () => {
       .overrideGuard(ScopeGuard)
       .useClass(AllowGuard)
       .overrideGuard(TenantGuard)
+      .useClass(AllowGuard)
+      .overrideGuard(TenantStatusGuard)
       .useClass(AllowGuard)
       .compile();
 

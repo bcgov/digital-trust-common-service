@@ -33,6 +33,7 @@ import {
 
 import { SkipAutoAudit } from '../audit-log/skip-auto-audit.decorator';
 import { API_VERSION } from '../common/constants/api-version.constants';
+import { TenantStatusGuard } from '../tenant/tenant-status.guard';
 
 import { ConnectionState } from './connection.entity';
 import { ConnectionService } from './connection.service';
@@ -42,7 +43,7 @@ import { UpdateConnectionDto } from './dto/update-connection.dto';
 
 @SkipAutoAudit()
 @ApiJwtAuth()
-@UseGuards(JwtGuard, ScopeGuard, TenantGuard)
+@UseGuards(JwtGuard, ScopeGuard, TenantGuard, TenantStatusGuard)
 @RequireScopes(CONNECTIONS_MANAGE_SCOPE)
 @ApiUnauthorizedResponse({ description: 'Authentication is required' })
 @ApiForbiddenResponse({

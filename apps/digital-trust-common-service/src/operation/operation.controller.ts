@@ -17,6 +17,7 @@ import {
 } from '@nestjs/swagger';
 
 import { API_VERSION } from '../common/constants/api-version.constants';
+import { TenantStatusGuard } from '../tenant/tenant-status.guard';
 
 import { OperationResponseDto } from './dto/operation-response.dto';
 import { OperationService } from './operation.service';
@@ -28,7 +29,7 @@ import { OperationService } from './operation.service';
  */
 @ApiTags('Operations')
 @ApiJwtAuth()
-@UseGuards(JwtGuard, TenantGuard)
+@UseGuards(JwtGuard, TenantGuard, TenantStatusGuard)
 @ApiUnauthorizedResponse({ description: 'Authentication is required' })
 @ApiForbiddenResponse({
   description: 'Token tenant claim does not match the requested tenant',

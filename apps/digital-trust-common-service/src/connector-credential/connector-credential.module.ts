@@ -3,6 +3,7 @@ import { forwardRef, Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { EncryptionModule } from '../common/crypto/encryption.module';
+import { TenantStatusModule } from '../tenant/tenant-status.module';
 import { TenantModule } from '../tenant/tenant.module';
 
 import { ConnectorCredentialController } from './connector-credential.controller';
@@ -16,6 +17,7 @@ import { ConnectorCredentialService } from './connector-credential.service';
     EncryptionModule,
     forwardRef(() => TenantModule),
     AuthModule,
+    TenantStatusModule,
   ],
   controllers: [ConnectorCredentialController],
   providers: [ConnectorCredentialService, ConnectorCredentialRepository],
