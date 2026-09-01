@@ -34,8 +34,9 @@ import {
 import { SkipAutoAudit } from '../audit-log/skip-auto-audit.decorator';
 import { API_VERSION } from '../common/constants/api-version.constants';
 
-import { Connection, ConnectionState } from './connection.entity';
+import { ConnectionState } from './connection.entity';
 import { ConnectionService } from './connection.service';
+import { ConnectionResponseDto } from './dto/connection-response.dto';
 import { CreateConnectionDto } from './dto/create-connection.dto';
 import { UpdateConnectionDto } from './dto/update-connection.dto';
 
@@ -54,7 +55,7 @@ export class ConnectionController {
   @Post()
   @ApiCreatedResponse({
     description: 'Connection created successfully',
-    type: Connection,
+    type: ConnectionResponseDto,
   })
   @ApiBody({
     description: 'Connection creation request',
@@ -63,13 +64,13 @@ export class ConnectionController {
       example1: {
         summary: 'Create a new connection',
         value: {
-          tenantId: '123e4567-e89b-12d3-a456-426614174000',
-          externalConnectionId: 'ext-conn-001',
+          tenant_id: '123e4567-e89b-12d3-a456-426614174000',
+          external_connection_id: 'ext-conn-001',
           state: 'invited',
-          connectorType: 'traction',
+          connector_type: 'traction',
           protocol: 'didcomm-v2',
-          theirLabel: 'Alice',
-          theirDid: 'did:example:alice',
+          their_label: 'Alice',
+          their_did: 'did:example:alice',
           metadata: { key: 'value' },
         },
       },
@@ -78,14 +79,16 @@ export class ConnectionController {
   public async create(
     @Body() dto: CreateConnectionDto,
     @CurrentAuth() auth: AuthContext,
-  ): Promise<Connection> {
-    return await this.connectionService.create(dto, auth);
+  ): Promise<ConnectionResponseDto> {
+    const connection = await this.connectionService.create(dto, auth);
+
+    return ConnectionResponseDto.fromEntity(connection);
   }
 
   @Get('tenant/:tenantId')
   @ApiOkResponse({
     description: 'List of connections for the specified tenant',
-    type: [Connection],
+    type: [ConnectionResponseDto],
   })
   @ApiQuery({
     name: 'state',
@@ -97,49 +100,53 @@ export class ConnectionController {
     @Param('tenantId', ParseUUIDPipe) tenantId: string,
     @Query('state', new ParseEnumPipe(ConnectionState, { optional: true }))
     state?: ConnectionState,
-  ): Promise<Connection[]> {
-    if (state) {
-      return await this.connectionService.findByTenantIdAndState(
-        tenantId,
-        state,
-      );
-    }
-    return await this.connectionService.findByTenantId(tenantId);
+  ): Promise<ConnectionResponseDto[]> {
+    const connections = state
+      ? await this.connectionService.findByTenantIdAndState(tenantId, state)
+      : await this.connectionService.findByTenantId(tenantId);
+
+    return connections.map((connection) =>
+      ConnectionResponseDto.fromEntity(connection),
+    );
   }
 
   @Get('external/:externalConnectionId')
   @ApiOkResponse({
     description: 'Connection found by external connection ID',
-    type: Connection,
+    type: ConnectionResponseDto,
   })
   @ApiNotFoundResponse({ description: 'Connection not found' })
   public async findByExternalConnectionId(
     @Param('externalConnectionId') externalConnectionId: string,
     @CurrentAuth() auth: AuthContext,
-  ): Promise<Connection> {
-    return await this.connectionService.findByExternalConnectionId(
+  ): Promise<ConnectionResponseDto> {
+    const connection = await this.connectionService.findByExternalConnectionId(
       externalConnectionId,
       auth,
     );
+
+    return ConnectionResponseDto.fromEntity(connection);
   }
 
   @Get(':id')
   @ApiOkResponse({
     description: 'Connection found',
-    type: Connection,
+    type: ConnectionResponseDto,
   })
   @ApiNotFoundResponse({ description: 'Connection not found' })
   public async findById(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentAuth() auth: AuthContext,
-  ): Promise<Connection> {
-    return await this.connectionService.findById(id, auth);
+  ): Promise<ConnectionResponseDto> {
+    const connection = await this.connectionService.findById(id, auth);
+
+    return ConnectionResponseDto.fromEntity(connection);
   }
 
   @Patch(':id')
   @ApiOkResponse({
     description: 'Connection updated successfully',
-    type: Connection,
+    type: ConnectionResponseDto,
   })
   @ApiNotFoundResponse({ description: 'Connection not found' })
   @ApiBody({
@@ -155,7 +162,7 @@ export class ConnectionController {
       example2: {
         summary: 'Update connection label and metadata',
         value: {
-          theirLabel: 'Bob',
+          their_label: 'Bob',
           metadata: { status: 'connected', lastSeen: '2026-07-24' },
         },
       },
@@ -165,8 +172,10 @@ export class ConnectionController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateConnectionDto,
     @CurrentAuth() auth: AuthContext,
-  ): Promise<Connection> {
-    return await this.connectionService.update(id, dto, auth);
+  ): Promise<ConnectionResponseDto> {
+    const connection = await this.connectionService.update(id, dto, auth);
+
+    return ConnectionResponseDto.fromEntity(connection);
   }
 
   @Delete(':id')

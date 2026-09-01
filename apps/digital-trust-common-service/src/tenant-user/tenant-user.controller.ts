@@ -39,11 +39,16 @@ import { TenantStatusGuard } from '../tenant/tenant-status.guard';
 import { CurrentTenantUser } from './current-tenant-user.decorator';
 import { InviteTenantUserDto } from './dto/invite-tenant-user.dto';
 import { ListTenantUsersQueryDto } from './dto/list-tenant-users-query.dto';
+import {
+  PaginatedTenantUsersResponseDto,
+  TenantUserResponseDto,
+  TenantUsersPaginationDto,
+} from './dto/tenant-user-response.dto';
 import { UpdateTenantUserDto } from './dto/update-tenant-user.dto';
 import { RequireTenantRoles } from './require-tenant-roles.decorator';
 import { TenantMembershipGuard } from './tenant-membership.guard';
 import { TenantUser, TenantUserRole } from './tenant-user.entity';
-import { PaginatedTenantUsers, TenantUserService } from './tenant-user.service';
+import { TenantUserService } from './tenant-user.service';
 
 @SkipAutoAudit()
 @ApiJwtAuth()
@@ -68,7 +73,7 @@ export class TenantUserController {
   })
   @ApiCreatedResponse({
     description: 'User invited',
-    type: TenantUser,
+    type: TenantUserResponseDto,
   })
   @ApiConflictResponse({
     description: 'A tenant user with this email already exists for this tenant',
@@ -94,14 +99,16 @@ export class TenantUserController {
   public async create(
     @Param('tenantId', ParseUUIDPipe) tenantId: string,
     @Body() dto: InviteTenantUserDto,
-  ): Promise<TenantUser> {
-    return await this.tenantUserService.invite(tenantId, dto);
+  ): Promise<TenantUserResponseDto> {
+    const created = await this.tenantUserService.invite(tenantId, dto);
+    return TenantUserResponseDto.fromEntity(created);
   }
 
   @Get()
   @ApiOperation({ summary: 'List tenant members' })
   @ApiOkResponse({
     description: 'Paginated user list',
+    type: PaginatedTenantUsersResponseDto,
   })
   @ApiForbiddenResponse({
     description:
@@ -111,17 +118,27 @@ export class TenantUserController {
   public async list(
     @Param('tenantId', ParseUUIDPipe) tenantId: string,
     @Query() query: ListTenantUsersQueryDto,
-  ): Promise<PaginatedTenantUsers> {
-    return await this.tenantUserService.list(tenantId, {
+  ): Promise<{
+    data: TenantUserResponseDto[];
+    pagination: TenantUsersPaginationDto;
+  }> {
+    const page = await this.tenantUserService.list(tenantId, {
       limit: query.limit,
       cursor: query.cursor,
     });
+
+    return {
+      data: page.data.map((tenantUser) =>
+        TenantUserResponseDto.fromEntity(tenantUser),
+      ),
+      pagination: TenantUsersPaginationDto.from(page.pagination),
+    };
   }
 
   @Patch(':userId')
   @ApiOkResponse({
     description: 'Tenant user updated successfully',
-    type: TenantUser,
+    type: TenantUserResponseDto,
   })
   @ApiNotFoundResponse({ description: 'Tenant user not found' })
   @ApiConflictResponse({
@@ -146,7 +163,7 @@ export class TenantUserController {
       example2: {
         summary: 'Update user display name',
         value: {
-          displayName: 'Jane Doe',
+          display_name: 'Jane Doe',
         },
       },
     },
@@ -156,13 +173,14 @@ export class TenantUserController {
     @Param('userId', ParseUUIDPipe) userId: string,
     @Body() dto: UpdateTenantUserDto,
     @CurrentTenantUser() callerTenantUser?: TenantUser,
-  ): Promise<TenantUser> {
-    return await this.tenantUserService.update(
+  ): Promise<TenantUserResponseDto> {
+    const updated = await this.tenantUserService.update(
       tenantId,
       userId,
       dto,
       callerTenantUser?.id,
     );
+    return TenantUserResponseDto.fromEntity(updated);
   }
 
   @Delete(':userId')

@@ -12,6 +12,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { CredentialDefinitionFormat } from '../credential-definition/credential-definition.entity';
 
 import { CreateTenantDto } from './dto/create-tenant.dto';
+import { TenantResponseDto } from './dto/tenant-response.dto';
 import { UpdateTenantConfigDto } from './dto/update-tenant-config.dto';
 import { TenantStatusGuard } from './tenant-status.guard';
 import { TenantController } from './tenant.controller';
@@ -44,8 +45,8 @@ describe('TenantController', () => {
     description: 'A test tenant',
     status: TenantStatus.ACTIVE,
     config: {},
-    created_at: new Date(),
-    updated_at: new Date(),
+    createdAt: new Date(),
+    updatedAt: new Date(),
     users: [],
   };
 
@@ -144,7 +145,7 @@ describe('TenantController', () => {
       controller.findById(mockTenant.id, {
         roles: [PLATFORM_ADMIN_ROLE],
       } as never),
-    ).resolves.toEqual(mockTenant);
+    ).resolves.toEqual(TenantResponseDto.fromEntity(mockTenant));
 
     mockFindById.mockResolvedValue(mockTenant);
     await expect(
@@ -180,7 +181,7 @@ describe('TenantController', () => {
       expect(mockCreate).toHaveBeenCalledWith(dto, {
         roles: [PLATFORM_ADMIN_ROLE],
       });
-      expect(result).toEqual(mockTenant);
+      expect(result).toEqual(TenantResponseDto.fromEntity(mockTenant));
     });
   });
 
@@ -198,7 +199,7 @@ describe('TenantController', () => {
       } as never);
 
       expect(mockUpdate).toHaveBeenCalledWith(id, dto);
-      expect(result).toEqual(updatedTenant);
+      expect(result).toEqual(TenantResponseDto.fromEntity(updatedTenant));
     });
   });
 
@@ -206,7 +207,7 @@ describe('TenantController', () => {
     it('should update tenant config for the caller own tenant', async () => {
       const id = mockTenant.id;
       const dto: UpdateTenantConfigDto = {
-        allowed_formats: [CredentialDefinitionFormat.ANONCREDS],
+        allowedFormats: [CredentialDefinitionFormat.ANONCREDS],
       };
       const updatedTenant = {
         ...mockTenant,
@@ -232,13 +233,13 @@ describe('TenantController', () => {
       const result = await controller.updateConfig(dto, id, auth);
 
       expect(mockUpdateConfig).toHaveBeenCalledWith(id, dto, auth);
-      expect(result).toEqual(updatedTenant);
+      expect(result).toEqual(TenantResponseDto.fromEntity(updatedTenant));
     });
 
     it('should reject a caller from a different tenant', async () => {
       const id = mockTenant.id;
       const dto: UpdateTenantConfigDto = {
-        allowed_formats: [CredentialDefinitionFormat.ANONCREDS],
+        allowedFormats: [CredentialDefinitionFormat.ANONCREDS],
       };
 
       await expect(
@@ -273,7 +274,10 @@ describe('TenantController', () => {
         limit: undefined,
         cursor: undefined,
       });
-      expect(result).toEqual(page);
+      expect(result).toEqual({
+        data: [TenantResponseDto.fromEntity(mockTenant)],
+        pagination: { nextCursor: null, hasMore: false },
+      });
     });
 
     it('should return the caller tenant for tenant-scoped users', async () => {
@@ -287,8 +291,8 @@ describe('TenantController', () => {
       expect(mockFindById).toHaveBeenCalledWith(mockTenant.id);
       expect(mockList).not.toHaveBeenCalled();
       expect(result).toEqual({
-        data: [mockTenant],
-        pagination: { next_cursor: null, has_more: false },
+        data: [TenantResponseDto.fromEntity(mockTenant)],
+        pagination: { nextCursor: null, hasMore: false },
       });
     });
 
@@ -297,7 +301,7 @@ describe('TenantController', () => {
 
       expect(result).toEqual({
         data: [],
-        pagination: { next_cursor: null, has_more: false },
+        pagination: { nextCursor: null, hasMore: false },
       });
     });
   });
@@ -313,7 +317,7 @@ describe('TenantController', () => {
       } as never);
 
       expect(mockFindById).toHaveBeenCalledWith(id);
-      expect(result).toEqual(mockTenant);
+      expect(result).toEqual(TenantResponseDto.fromEntity(mockTenant));
     });
 
     it('should return null if tenant not found', async () => {
@@ -340,7 +344,7 @@ describe('TenantController', () => {
       } as never);
 
       expect(mockFindBySlug).toHaveBeenCalledWith(slug);
-      expect(result).toEqual(mockTenant);
+      expect(result).toEqual(TenantResponseDto.fromEntity(mockTenant));
     });
 
     it('should return null if tenant not found', async () => {
@@ -368,7 +372,7 @@ describe('TenantController', () => {
       });
 
       expect(mockUpdateStatus).toHaveBeenCalledWith(id, TenantStatus.SUSPENDED);
-      expect(result).toEqual(updated);
+      expect(result).toEqual(TenantResponseDto.fromEntity(updated));
     });
   });
 

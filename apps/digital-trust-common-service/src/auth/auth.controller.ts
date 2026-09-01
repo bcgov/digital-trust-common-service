@@ -63,6 +63,6 @@ export class AuthController {
     @CurrentAuth() auth: AuthContext,
     @Body() dto: SwitchTenantDto,
   ): Promise<SwitchTenantResponseDto> {
-    return await this.authService.switchTenant(auth, dto.tenant_id);
+    return await this.authService.switchTenant(auth, dto.tenantId);
   }
 }

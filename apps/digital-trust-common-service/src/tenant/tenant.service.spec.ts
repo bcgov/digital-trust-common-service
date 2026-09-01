@@ -44,8 +44,8 @@ describe('TenantService', () => {
     description: 'A test tenant',
     status: TenantStatus.ACTIVE,
     config: {},
-    created_at: new Date(),
-    updated_at: new Date(),
+    createdAt: new Date(),
+    updatedAt: new Date(),
     users: [],
   };
 
@@ -208,7 +208,7 @@ describe('TenantService', () => {
 
       mockFindBySlug.mockResolvedValue({
         ...mockTenant,
-        deleted_at: new Date(),
+        deletedAt: new Date(),
       });
 
       await expect(service.create(dto)).rejects.toThrow(ConflictException);
@@ -297,7 +297,7 @@ describe('TenantService', () => {
 
     it('should encode a next_cursor when there is more data', async () => {
       const nextCursor = {
-        createdAt: mockTenant.created_at.toISOString(),
+        createdAt: mockTenant.createdAt.toISOString(),
         id: mockTenant.id,
       };
       mockFindPage.mockResolvedValue({
@@ -317,7 +317,7 @@ describe('TenantService', () => {
 
     it('should decode a provided cursor and pass it to the repository', async () => {
       const cursor = {
-        createdAt: mockTenant.created_at.toISOString(),
+        createdAt: mockTenant.createdAt.toISOString(),
         id: mockTenant.id,
       };
       const encoded = service.encodeCursor(cursor);
@@ -447,7 +447,7 @@ describe('TenantService', () => {
       expect(mockUpdate).toHaveBeenCalledWith(
         expect.objectContaining({
           status: TenantStatus.SUSPENDED,
-          deactivated_at: null,
+          deactivatedAt: null,
         }),
         mockManager,
       );
@@ -487,7 +487,7 @@ describe('TenantService', () => {
       expect(mockUpdate).toHaveBeenCalledWith(
         expect.objectContaining({
           status: TenantStatus.DEACTIVATED,
-          deactivated_at: expect.any(Date),
+          deactivatedAt: expect.any(Date),
         }),
         mockManager,
       );
@@ -498,7 +498,7 @@ describe('TenantService', () => {
       const deactivatedTenant = {
         ...mockTenant,
         status: TenantStatus.DEACTIVATED,
-        deactivated_at: new Date(),
+        deactivatedAt: new Date(),
       };
       const reactivated = { ...mockTenant, status: TenantStatus.ACTIVE };
 
@@ -510,7 +510,7 @@ describe('TenantService', () => {
       expect(mockUpdate).toHaveBeenCalledWith(
         expect.objectContaining({
           status: TenantStatus.ACTIVE,
-          deactivated_at: null,
+          deactivatedAt: null,
         }),
         mockManager,
       );
@@ -620,7 +620,7 @@ describe('TenantService', () => {
       mockUpdate.mockResolvedValue(updated);
 
       const result = await service.updateConfig(id, {
-        allowed_formats: [
+        allowedFormats: [
           'anoncreds',
         ] as import('../credential-definition/credential-definition.entity').CredentialDefinitionFormat[],
       });
@@ -659,7 +659,7 @@ describe('TenantService', () => {
       const result = await service.updateConfig(
         id,
         {
-          default_connector: connectorId,
+          defaultConnector: connectorId,
         },
         auth,
       );
@@ -686,7 +686,7 @@ describe('TenantService', () => {
       });
 
       await expect(
-        service.updateConfig(id, { default_connector: connectorId }, auth),
+        service.updateConfig(id, { defaultConnector: connectorId }, auth),
       ).rejects.toThrow(ConflictException);
       expect(mockUpdate).not.toHaveBeenCalled();
       expect(mockPublish).not.toHaveBeenCalled();
@@ -702,7 +702,7 @@ describe('TenantService', () => {
       });
 
       await expect(
-        service.updateConfig(id, { default_connector: connectorId }, auth),
+        service.updateConfig(id, { defaultConnector: connectorId }, auth),
       ).rejects.toThrow(ConflictException);
       expect(mockUpdate).not.toHaveBeenCalled();
     });
@@ -715,7 +715,7 @@ describe('TenantService', () => {
       );
 
       await expect(
-        service.updateConfig(id, { default_connector: connectorId }, auth),
+        service.updateConfig(id, { defaultConnector: connectorId }, auth),
       ).rejects.toThrow(NotFoundException);
       expect(mockUpdate).not.toHaveBeenCalled();
     });
@@ -732,7 +732,7 @@ describe('TenantService', () => {
       mockUpdate.mockResolvedValue(updated);
 
       const result = await service.updateConfig(id, {
-        default_connector: null,
+        defaultConnector: null,
       });
 
       expect(mockFindConnectorCredentialById).not.toHaveBeenCalled();

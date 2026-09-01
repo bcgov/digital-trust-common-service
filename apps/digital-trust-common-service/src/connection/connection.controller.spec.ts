@@ -10,6 +10,7 @@ import {
   ConnectionProtocol,
 } from './connection.entity';
 import { ConnectionService } from './connection.service';
+import { ConnectionResponseDto } from './dto/connection-response.dto';
 import { CreateConnectionDto } from './dto/create-connection.dto';
 
 class AllowGuard implements CanActivate {
@@ -119,7 +120,7 @@ describe('ConnectionController', () => {
       const result = await controller.create(dto, auth);
 
       expect(mockCreate).toHaveBeenCalledWith(dto, auth);
-      expect(result).toEqual(mockConnection);
+      expect(result).toEqual(ConnectionResponseDto.fromEntity(mockConnection));
     });
   });
 
@@ -130,7 +131,7 @@ describe('ConnectionController', () => {
       const result = await controller.findById(mockConnection.id, auth);
 
       expect(mockFindById).toHaveBeenCalledWith(mockConnection.id, auth);
-      expect(result).toEqual(mockConnection);
+      expect(result).toEqual(ConnectionResponseDto.fromEntity(mockConnection));
     });
   });
 
@@ -147,7 +148,7 @@ describe('ConnectionController', () => {
         mockConnection.externalConnectionId,
         auth,
       );
-      expect(result).toEqual(mockConnection);
+      expect(result).toEqual(ConnectionResponseDto.fromEntity(mockConnection));
     });
   });
 
@@ -158,7 +159,9 @@ describe('ConnectionController', () => {
       const result = await controller.findByTenantId(mockConnection.tenantId);
 
       expect(mockFindByTenantId).toHaveBeenCalledWith(mockConnection.tenantId);
-      expect(result).toEqual([mockConnection]);
+      expect(result).toEqual([
+        ConnectionResponseDto.fromEntity(mockConnection),
+      ]);
     });
 
     it('should find connections by tenant id and state when state is provided', async () => {
@@ -173,7 +176,9 @@ describe('ConnectionController', () => {
         mockConnection.tenantId,
         ConnectionState.ACTIVE,
       );
-      expect(result).toEqual([mockConnection]);
+      expect(result).toEqual([
+        ConnectionResponseDto.fromEntity(mockConnection),
+      ]);
     });
   });
 

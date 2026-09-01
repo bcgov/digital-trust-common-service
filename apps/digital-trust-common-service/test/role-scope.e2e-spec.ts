@@ -47,7 +47,7 @@ interface RoleScopesBody {
   role: string;
   scopes: string[];
   source: string;
-  revokedRecordCount: number;
+  revoked_record_count: number;
 }
 
 interface ErrorBody {
@@ -425,7 +425,7 @@ describe('Role scope API (e2e)', () => {
         .send({ scopes: ['credentials:offer'] })
         .expect(200);
 
-      expect((response.body as RoleScopesBody).revokedRecordCount).toBe(3);
+      expect((response.body as RoleScopesBody).revoked_record_count).toBe(3);
       expect(await oidcRepo.count()).toBe(0);
     });
 
@@ -460,7 +460,7 @@ describe('Role scope API (e2e)', () => {
         })
         .expect(200);
 
-      expect((response.body as RoleScopesBody).revokedRecordCount).toBe(0);
+      expect((response.body as RoleScopesBody).revoked_record_count).toBe(0);
       expect(await oidcRepo.count()).toBe(3);
     });
 

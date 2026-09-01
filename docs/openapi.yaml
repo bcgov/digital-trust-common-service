@@ -392,7 +392,7 @@ paths:
     post:
       operationId: createTenant
       summary: Create a new tenant
-      description: Requires platform-admin privileges. Links the given ownerEmail as the tenant's initial owner. There is no self-service tenant creation path.
+      description: Requires platform-admin privileges. Links the given owner_email as the tenant's initial owner. There is no self-service tenant creation path.
       tags: [Tenants]
       parameters:
         - $ref: "#/components/parameters/IdempotencyKey"
@@ -850,8 +850,16 @@ paths:
             schema:
               type: object
               properties:
+                email:
+                  type: string
+                  format: email
+                display_name:
+                  type: string
                 role:
                   $ref: "#/components/schemas/TenantRole"
+                status:
+                  type: string
+                  enum: [active, invited, disabled]
       responses:
         "200":
           description: User updated
@@ -2081,9 +2089,9 @@ paths:
       summary: Register an API client (OAuth2 client_credentials)
       description: |
         Creates a new OAuth2 client for service-to-service authentication.
-        Tenant association is taken from the path (`tenantId`); `createdBy` is
+        Tenant association is taken from the path (`tenantId`); `created_by` is
         recorded from the authenticated user and is not accepted on the body.
-        Generated `client_id` values are prefixed `dtcs_`. The `clientSecret`
+        Generated `client_id` values are prefixed `dtcs_`. The `client_secret`
         is returned ONCE in the response and cannot be retrieved again.
         Requested scopes cannot exceed the caller's own grants.
       tags: [Clients]
@@ -2272,22 +2280,22 @@ paths:
           schema:
             type: string
             enum: [issue, verify, hold, revoke, create, update, delete, login, token_grant]
-        - name: actor_id
+        - name: actorId
           in: query
           schema:
             type: string
           description: Filter by actor (user ID or client ID)
-        - name: resource_type
+        - name: resourceType
           in: query
           schema:
             type: string
           description: Filter by resource type (e.g., credential, connection, tenant)
-        - name: resource_id
+        - name: resourceId
           in: query
           schema:
             type: string
             format: uuid
-        - name: operation_id
+        - name: operationId
           in: query
           schema:
             type: string
@@ -2423,6 +2431,9 @@ paths:
                     type: object
                     additionalProperties:
                       type: integer
+                  total_count:
+                    type: integer
+                    description: Total number of operations across all states and tenants
                   oldest_pending:
                     type: string
                     format: date-time
@@ -2541,8 +2552,22 @@ paths:
       summary: Revoke all sessions for a user (platform-admin)
       tags: [Admin]
       responses:
-        "204":
-          description: All sessions revoked
+        "201":
+          description: Sessions revoked
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [tenant_user_id, account_id, revoked_record_count]
+                properties:
+                  tenant_user_id:
+                    type: string
+                    format: uuid
+                  account_id:
+                    type: string
+                    format: uuid
+                  revoked_record_count:
+                    type: integer
 
   /api/v1/scopes:
     get:
@@ -3139,7 +3164,7 @@ components:
 
     CreateTenantRequest:
       type: object
-      required: [name, slug, ownerEmail]
+      required: [name, slug, owner_email]
       properties:
         name:
           type: string
@@ -3153,7 +3178,7 @@ components:
         description:
           type: string
           maxLength: 500
-        ownerEmail:
+        owner_email:
           type: string
           format: email
           description: Email of the user to link as the tenant's initial owner
@@ -3236,7 +3261,7 @@ components:
             type: string
         source:
           $ref: "#/components/schemas/RoleScopeSource"
-        revokedRecordCount:
+        revoked_record_count:
           type: integer
           description: |
             OIDC records deleted because the change removed scopes. Zero when
@@ -3857,10 +3882,10 @@ components:
         id:
           type: string
           format: uuid
-        tenantId:
+        tenant_id:
           type: string
           format: uuid
-        clientId:
+        client_id:
           type: string
           description: "Public OAuth client_id. Newly generated values are prefixed `dtcs_`."
         name:
@@ -3874,43 +3899,43 @@ components:
           items:
             type: string
           description: "JWT role claims for machine clients. Tenant-scoped roles (owner, admin, member, readonly) may be assigned by tenant admins; platform-admin requires a platform-admin caller."
-        redirectUris:
+        redirect_uris:
           type: array
           items:
             type: string
-        grantTypes:
+        grant_types:
           type: array
           items:
             type: string
-        createdBy:
+        created_by:
           type: string
           format: uuid
           nullable: true
-        refreshTokenTtlSeconds:
+        refresh_token_ttl_seconds:
           type: integer
           nullable: true
-        createdAt:
+        created_at:
           type: string
           format: date-time
-        revokedAt:
+        revoked_at:
           type: string
           format: date-time
           nullable: true
 
     ClientWithSecret:
       type: object
-      required: [client, clientSecret]
+      required: [client, client_secret]
       properties:
         client:
           $ref: "#/components/schemas/Client"
-        clientSecret:
+        client_secret:
           type: string
           description: "Shown ONCE at creation and rotate-secret. Cannot be retrieved again."
 
     CreateClientRequest:
       type: object
       description: >
-        Tenant is taken from the path, not this body. createdBy is recorded from
+        Tenant is taken from the path, not this body. created_by is recorded from
         the authenticated user sub.
       required: [name, scopes]
       properties:
@@ -3940,15 +3965,15 @@ components:
           items:
             type: string
             enum: [owner, admin, member, readonly, platform-admin]
-        redirectUris:
+        redirect_uris:
           type: array
           items:
             type: string
-        grantTypes:
+        grant_types:
           type: array
           items:
             type: string
-        refreshTokenTtlSeconds:
+        refresh_token_ttl_seconds:
           type: integer
           minimum: 1
 
@@ -3981,15 +4006,15 @@ components:
           items:
             type: string
             enum: [owner, admin, member, readonly, platform-admin]
-        redirectUris:
+        redirect_uris:
           type: array
           items:
             type: string
-        grantTypes:
+        grant_types:
           type: array
           items:
             type: string
-        refreshTokenTtlSeconds:
+        refresh_token_ttl_seconds:
           type: integer
           minimum: 1
           nullable: true

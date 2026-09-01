@@ -55,6 +55,7 @@ describe('AdminSessionsController', () => {
   it('delegates to AdminSessionsService with the authenticated actor', async () => {
     const response: RevokeSessionsResponseDto = {
       tenantUserId: 'user-1',
+      accountId: 'user-1',
       revokedRecordCount: 3,
     };
     mockRevokeSessions.mockResolvedValue(response);
@@ -70,6 +71,7 @@ describe('AdminSessionsController', () => {
   it('passes no actor when the request has no auth context', async () => {
     mockRevokeSessions.mockResolvedValue({
       tenantUserId: 'user-1',
+      accountId: 'user-1',
       revokedRecordCount: 0,
     });
 

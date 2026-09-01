@@ -1,5 +1,6 @@
 import { ROLE_HIERARCHY } from '@app/auth';
 import { ApiProperty } from '@nestjs/swagger';
+import { Expose } from 'class-transformer';
 import { ArrayMaxSize, IsArray, IsIn, IsString, IsUUID } from 'class-validator';
 
 /**
@@ -87,10 +88,26 @@ export class RoleScopesResponseDto {
   @ApiProperty({ enum: ['default', 'override'] })
   public source!: string;
 
+  @Expose({ name: 'revoked_record_count' })
   @ApiProperty({
+    name: 'revoked_record_count',
     description:
       'OIDC records deleted because the change removed scopes. Zero when the change only widened the role.',
     example: 0,
   })
   public revokedRecordCount!: number;
+
+  public static from(result: {
+    role: string;
+    scopes: string[];
+    source: string;
+    revokedRecordCount: number;
+  }): RoleScopesResponseDto {
+    const dto = new RoleScopesResponseDto();
+    dto.role = result.role;
+    dto.scopes = result.scopes;
+    dto.source = result.source;
+    dto.revokedRecordCount = result.revokedRecordCount;
+    return dto;
+  }
 }

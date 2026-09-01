@@ -111,14 +111,14 @@ describe('AdminOperationsController (e2e)', () => {
       .expect(200);
 
     expect(response.body).toEqual({
-      countsByState: {
+      by_state: {
         pending: 0,
         processing: 0,
         completed: 0,
         failed: 0,
       },
-      totalCount: 0,
-      oldestPendingCreatedAt: null,
+      total_count: 0,
+      oldest_pending: null,
     });
   });
 
@@ -150,14 +150,14 @@ describe('AdminOperationsController (e2e)', () => {
       .expect(200);
 
     expect(response.body).toEqual({
-      countsByState: {
+      by_state: {
         pending: 2,
         processing: 1,
         completed: 2,
         failed: 1,
       },
-      totalCount: 6,
-      oldestPendingCreatedAt: olderPendingCreatedAt.toISOString(),
+      total_count: 6,
+      oldest_pending: olderPendingCreatedAt.toISOString(),
     });
   });
 });

@@ -51,7 +51,7 @@ export class TenantRepository {
     const nextCursor =
       hasMore && last
         ? {
-            createdAt: last.created_at.toISOString(),
+            createdAt: last.createdAt.toISOString(),
             id: last.id,
           }
         : null;

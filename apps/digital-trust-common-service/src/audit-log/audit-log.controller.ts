@@ -27,8 +27,12 @@ import {
 
 import { API_VERSION } from '../common/constants/api-version.constants';
 
-import { AuditLog } from './audit-log.entity';
 import { AuditLogService, PaginatedAuditLogs } from './audit-log.service';
+import {
+  AuditLogResponseDto,
+  AuditLogsPaginationDto,
+  PaginatedAuditLogsResponseDto,
+} from './dto/audit-log-response.dto';
 import { ExportAuditLogsQueryDto } from './dto/export-audit-logs-query.dto';
 import { ListAuditLogsQueryDto } from './dto/list-audit-logs-query.dto';
 
@@ -67,19 +71,22 @@ export class AuditLogController {
   }
 
   @Get()
-  @ApiOkResponse({ description: 'Paginated audit log entries' })
+  @ApiOkResponse({
+    description: 'Paginated audit log entries',
+    type: PaginatedAuditLogsResponseDto,
+  })
   public async list(
     @Param('tenantId', ParseUUIDPipe) tenantId: string,
     @Query() query: ListAuditLogsQueryDto,
-  ): Promise<PaginatedAuditLogs> {
-    return await this.auditLogService.list(
+  ): Promise<PaginatedAuditLogsResponseDto> {
+    const page = await this.auditLogService.list(
       tenantId,
       {
         action: query.action,
-        actorId: query.actor_id,
-        resourceType: query.resource_type,
-        resourceId: query.resource_id,
-        operationId: query.operation_id,
+        actorId: query.actorId,
+        resourceType: query.resourceType,
+        resourceId: query.resourceId,
+        operationId: query.operationId,
         since: query.since ? new Date(query.since) : undefined,
         until: query.until ? new Date(query.until) : undefined,
       },
@@ -88,15 +95,31 @@ export class AuditLogController {
         cursor: query.cursor,
       },
     );
+
+    return this.toPaginatedResponse(page);
   }
 
   @Get(':auditLogId')
-  @ApiOkResponse({ description: 'Audit log entry', type: AuditLog })
+  @ApiOkResponse({ description: 'Audit log entry', type: AuditLogResponseDto })
   @ApiNotFoundResponse({ description: 'Audit log entry not found' })
   public async findById(
     @Param('tenantId', ParseUUIDPipe) tenantId: string,
     @Param('auditLogId', ParseUUIDPipe) auditLogId: string,
-  ): Promise<AuditLog> {
-    return await this.auditLogService.findById(tenantId, auditLogId);
+  ): Promise<AuditLogResponseDto> {
+    const entry = await this.auditLogService.findById(tenantId, auditLogId);
+
+    return AuditLogResponseDto.fromEntity(entry);
+  }
+
+  private toPaginatedResponse(
+    page: PaginatedAuditLogs,
+  ): PaginatedAuditLogsResponseDto {
+    return {
+      data: page.data.map((entry) => AuditLogResponseDto.fromEntity(entry)),
+      pagination: AuditLogsPaginationDto.from(
+        page.pagination.next_cursor,
+        page.pagination.has_more,
+      ),
+    };
   }
 }

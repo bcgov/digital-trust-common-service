@@ -5,6 +5,10 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { TenantStatusGuard } from '../tenant/tenant-status.guard';
 
 import { InviteTenantUserDto } from './dto/invite-tenant-user.dto';
+import {
+  TenantUserResponseDto,
+  TenantUsersPaginationDto,
+} from './dto/tenant-user-response.dto';
 import { TenantMembershipGuard } from './tenant-membership.guard';
 import { TenantUserController } from './tenant-user.controller';
 import {
@@ -95,7 +99,7 @@ describe('TenantUserController', () => {
       const result = await controller.create(tenantId, dto);
 
       expect(mockInvite).toHaveBeenCalledWith(tenantId, dto);
-      expect(result).toEqual(mockTenantUser);
+      expect(result).toEqual(TenantUserResponseDto.fromEntity(mockTenantUser));
     });
   });
 
@@ -114,7 +118,10 @@ describe('TenantUserController', () => {
         limit: undefined,
         cursor: undefined,
       });
-      expect(result).toEqual(page);
+      expect(result).toEqual({
+        data: [TenantUserResponseDto.fromEntity(mockTenantUser)],
+        pagination: TenantUsersPaginationDto.from(page.pagination),
+      });
     });
 
     it('should pass cursor and limit query params through to the service', async () => {
@@ -134,7 +141,10 @@ describe('TenantUserController', () => {
         limit: 10,
         cursor: 'some-cursor',
       });
-      expect(result).toEqual(page);
+      expect(result).toEqual({
+        data: [],
+        pagination: TenantUsersPaginationDto.from(page.pagination),
+      });
     });
   });
 
@@ -143,14 +153,20 @@ describe('TenantUserController', () => {
       const tenantId = mockTenantUser.tenantId;
       const userId = mockTenantUser.id;
       const dto = { displayName: 'Updated Name', role: TenantUserRole.ADMIN };
-      const updatedTenantUser = { ...mockTenantUser, ...dto };
+      const updatedTenantUser = {
+        ...mockTenantUser,
+        displayName: dto.displayName,
+        role: dto.role,
+      };
 
       mockUpdate.mockResolvedValue(updatedTenantUser);
 
       const result = await controller.update(tenantId, userId, dto);
 
       expect(mockUpdate).toHaveBeenCalledWith(tenantId, userId, dto, undefined);
-      expect(result).toEqual(updatedTenantUser);
+      expect(result).toEqual(
+        TenantUserResponseDto.fromEntity(updatedTenantUser),
+      );
     });
 
     it("forwards the caller's own TenantUser id for the self-role-change check", async () => {
@@ -179,7 +195,9 @@ describe('TenantUserController', () => {
         dto,
         callerTenantUser.id,
       );
-      expect(result).toEqual(updatedTenantUser);
+      expect(result).toEqual(
+        TenantUserResponseDto.fromEntity(updatedTenantUser),
+      );
     });
 
     it('should throw NotFoundException if tenant user not found', async () => {

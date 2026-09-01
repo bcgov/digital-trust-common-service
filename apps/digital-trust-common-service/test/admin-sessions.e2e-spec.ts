@@ -161,9 +161,9 @@ describe('AdminSessionsController (e2e)', () => {
       .expect(201);
 
     expect(response.body).toEqual({
-      tenantUserId: user.id,
-      accountId: user.id,
-      revokedRecordCount: 6,
+      tenant_user_id: user.id,
+      account_id: user.id,
+      revoked_record_count: 6,
     });
     expect(await oidcRepo.count()).toBe(0);
   });
@@ -211,9 +211,9 @@ describe('AdminSessionsController (e2e)', () => {
       .expect(201);
 
     expect(response.body).toEqual({
-      tenantUserId: user.id,
-      accountId: user.id,
-      revokedRecordCount: 0,
+      tenant_user_id: user.id,
+      account_id: user.id,
+      revoked_record_count: 0,
     });
   });
 
