@@ -1,4 +1,5 @@
 import { AuthModule } from '@app/auth';
+import { TenantSpanInterceptor } from '@app/common/telemetry/tenant-span.interceptor';
 import { DatabaseModule } from '@app/database';
 import {
   OIDC_CLIENT_LOOKUP_PORT,
@@ -104,6 +105,10 @@ import { VerificationProfileModule } from './verification-profile/verification-p
     {
       provide: APP_INTERCEPTOR,
       useClass: AuditAutoInterceptor,
+    },
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: TenantSpanInterceptor,
     },
   ],
 })
