@@ -1,10 +1,9 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { Exclude, Expose } from 'class-transformer';
+import { Expose } from 'class-transformer';
 import { IsEnum, IsOptional, IsString, IsUUID } from 'class-validator';
 
 import { ConnectorType } from '../../connection/connection.entity';
 
-@Exclude()
 export class CreateConnectorCredentialDto {
   @Expose({ name: 'tenant_id' })
   @ApiProperty({

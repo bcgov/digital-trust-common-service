@@ -1,4 +1,4 @@
-import { Exclude, Expose } from 'class-transformer';
+import { Expose } from 'class-transformer';
 import {
   IsEmail,
   IsObject,
@@ -9,7 +9,6 @@ import {
   MaxLength,
 } from 'class-validator';
 
-@Exclude()
 export class CreateTenantDto {
   @Expose()
   @IsString()

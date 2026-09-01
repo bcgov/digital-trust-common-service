@@ -2,7 +2,7 @@ import {
   ASSIGNABLE_OAUTH_CLIENT_SCOPES,
   OAUTH_CLIENT_ALLOWED_ROLES,
 } from '@app/auth';
-import { Exclude, Expose } from 'class-transformer';
+import { Expose } from 'class-transformer';
 import {
   ArrayMinSize,
   IsArray,
@@ -14,7 +14,6 @@ import {
   MaxLength,
 } from 'class-validator';
 
-@Exclude()
 export class UpdateOAuthClientDto {
   @Expose()
   @IsOptional()

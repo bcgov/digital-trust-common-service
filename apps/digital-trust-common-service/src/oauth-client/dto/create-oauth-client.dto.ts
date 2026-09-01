@@ -2,7 +2,7 @@ import {
   ASSIGNABLE_OAUTH_CLIENT_SCOPES,
   OAUTH_CLIENT_ALLOWED_ROLES,
 } from '@app/auth';
-import { Exclude, Expose } from 'class-transformer';
+import { Expose } from 'class-transformer';
 import {
   ArrayMinSize,
   IsArray,
@@ -22,7 +22,6 @@ import {
  * `createdBy` is taken from the authenticated user `sub` in the service —
  * callers cannot spoof the audit actor.
  */
-@Exclude()
 export class CreateOAuthClientDto {
   @Expose()
   @IsString()

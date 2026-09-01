@@ -1,9 +1,8 @@
-import { Exclude, Expose } from 'class-transformer';
+import { Expose } from 'class-transformer';
 import { IsArray, IsEnum, IsObject, IsOptional, IsUUID } from 'class-validator';
 
 import { CredentialDefinitionFormat } from '../../credential-definition/credential-definition.entity';
 
-@Exclude()
 export class UpdateTenantConfigDto {
   @Expose({ name: 'allowed_formats' })
   @IsOptional()

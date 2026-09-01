@@ -1,4 +1,4 @@
-import { Exclude, Expose } from 'class-transformer';
+import { Expose } from 'class-transformer';
 import {
   IsEnum,
   IsOptional,
@@ -14,7 +14,6 @@ import {
   ConnectionProtocol,
 } from '../connection.entity';
 
-@Exclude()
 export class CreateConnectionDto {
   @Expose({ name: 'tenant_id' })
   @IsUUID()

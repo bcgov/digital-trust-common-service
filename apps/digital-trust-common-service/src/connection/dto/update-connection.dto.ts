@@ -1,4 +1,4 @@
-import { Exclude, Expose } from 'class-transformer';
+import { Expose } from 'class-transformer';
 import {
   IsEnum,
   IsObject,
@@ -9,7 +9,6 @@ import {
 
 import { ConnectionProtocol, ConnectionState } from '../connection.entity';
 
-@Exclude()
 export class UpdateConnectionDto {
   @Expose({ name: 'their_label' })
   @IsOptional()

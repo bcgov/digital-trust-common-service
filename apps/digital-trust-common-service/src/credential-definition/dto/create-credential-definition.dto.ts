@@ -1,4 +1,4 @@
-import { Exclude, Expose } from 'class-transformer';
+import { Expose } from 'class-transformer';
 import {
   IsUUID,
   IsString,
@@ -13,7 +13,6 @@ import {
   CredentialDefinitionConnectorType,
 } from '../credential-definition.entity';
 
-@Exclude()
 export class CreateCredentialDefinitionDto {
   @Expose({ name: 'tenant_id' })
   @IsUUID()

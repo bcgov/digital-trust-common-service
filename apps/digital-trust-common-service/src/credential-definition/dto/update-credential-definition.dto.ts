@@ -1,7 +1,6 @@
-import { Exclude, Expose } from 'class-transformer';
+import { Expose } from 'class-transformer';
 import { IsObject, IsOptional, IsString, MaxLength } from 'class-validator';
 
-@Exclude()
 export class UpdateCredentialDefinitionDto {
   @Expose()
   @IsOptional()

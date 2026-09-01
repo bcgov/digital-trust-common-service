@@ -1,8 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { Exclude, Expose } from 'class-transformer';
+import { Expose } from 'class-transformer';
 import { IsUUID } from 'class-validator';
 
-@Exclude()
 export class SwitchTenantDto {
   @Expose({ name: 'tenant_id' })
   @ApiProperty({
