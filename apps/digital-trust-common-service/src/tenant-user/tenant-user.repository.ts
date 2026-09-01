@@ -113,10 +113,12 @@ export class TenantUserRepository {
 
   /**
    * Active memberships for a Keycloak subject, oldest first. Joined through
-   * the tenant so callers can read its lifecycle status, and inner-joined on
-   * `deleted_at IS NULL` because find-options relations do not apply the
-   * soft-delete filter to joined rows — a membership in a soft-deleted
-   * tenant must not surface as switchable.
+   * the tenant so callers can read its lifecycle status. The inner join is
+   * what excludes memberships in soft-deleted tenants: TypeORM already
+   * appends `deleted_at IS NULL` to any join against a soft-deletable
+   * entity (the explicit condition here is belt-and-braces), but
+   * find-options relations build a LEFT join, which would keep the
+   * membership row with a null tenant instead of dropping it.
    */
   public async findActiveByExternalUserId(
     externalUserId: string,

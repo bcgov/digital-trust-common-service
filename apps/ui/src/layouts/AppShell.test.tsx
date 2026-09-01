@@ -1,10 +1,11 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 import { describe, expect, it } from 'vitest';
 
+import { ApiError } from '@/lib/api/errors';
 import { AuthContext, type AuthContextValue } from '@/lib/auth/context';
 import { createMockAuthClient, MOCK_AUTH_TENANTS } from '@/lib/auth/mock-auth';
 import type { AuthClient } from '@/lib/auth/types';
@@ -101,5 +102,48 @@ describe('AppShell tenant switcher', () => {
     expect(
       await screen.findByRole('button', { name: /example agency/i }),
     ).toBeEnabled();
+  });
+
+  it('disables non-active tenants and shows their status', async () => {
+    const user = userEvent.setup();
+    const client = createMockAuthClient();
+    await client.login();
+    renderShell(client);
+
+    await user.click(
+      await screen.findByRole('button', { name: /acme ministry/i }),
+    );
+
+    const suspended = await screen.findByRole('menuitem', {
+      name: /suspended society/i,
+    });
+    expect(suspended).toHaveAttribute('aria-disabled', 'true');
+    expect(within(suspended).getByText('suspended')).toBeInTheDocument();
+  });
+
+  it('surfaces a failed switch instead of swallowing it', async () => {
+    const user = userEvent.setup();
+    const client = createMockAuthClient();
+    await client.login();
+    client.switchTenant = () =>
+      Promise.reject(
+        new ApiError({
+          code: 'TENANT_NOT_ACTIVE',
+          message: 'Tenant is suspended and cannot perform this action',
+          status: 403,
+        }),
+      );
+    renderShell(client);
+
+    await user.click(
+      await screen.findByRole('button', { name: /acme ministry/i }),
+    );
+    await user.click(
+      await screen.findByRole('menuitem', { name: /example agency/i }),
+    );
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      /couldn't switch tenant/i,
+    );
   });
 });

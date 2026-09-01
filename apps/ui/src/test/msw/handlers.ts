@@ -19,9 +19,18 @@ export const mockTenants: Tenant[] = [
     name: 'Example Agency',
     slug: 'example-agency',
     description: null,
-    status: 'suspended',
+    status: 'active',
     created_at: '2026-02-20T10:00:00.000Z',
     updated_at: '2026-02-20T10:00:00.000Z',
+  },
+  {
+    id: '33333333-3333-4333-8333-333333333333',
+    name: 'Suspended Society',
+    slug: 'suspended-society',
+    description: 'Suspended tenant for lifecycle testing',
+    status: 'suspended',
+    created_at: '2026-03-10T10:00:00.000Z',
+    updated_at: '2026-03-10T10:00:00.000Z',
   },
 ];
 
@@ -62,6 +71,24 @@ export const handlers = [
   ),
   http.post(`${API_BASE_PATH}/auth/switch-tenant`, async ({ request }) => {
     const body = (await request.json()) as { tenant_id?: string };
+    const membership = MOCK_AUTH_TENANTS.find(
+      (tenant) => tenant.id === body.tenant_id,
+    );
+
+    // Mirror the API: a known membership in a non-active tenant is refused.
+    if (membership && membership.status !== 'active') {
+      return HttpResponse.json(
+        {
+          error: {
+            code: 'TENANT_NOT_ACTIVE',
+            message: `Tenant is ${membership.status} and cannot perform this action`,
+            tenant_status: membership.status,
+          },
+        },
+        { status: 403 },
+      );
+    }
+
     return HttpResponse.json({
       access_token: mockSwitchedAccessToken(body.tenant_id),
       refresh_token: 'mock-refresh',

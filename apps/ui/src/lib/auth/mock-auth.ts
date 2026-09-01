@@ -1,3 +1,4 @@
+import { ApiError } from '@/lib/api/errors';
 import type { AuthTenant } from '@/lib/api/resources/auth';
 
 import type { AuthClient, AuthState, AuthUser } from './types';
@@ -18,6 +19,13 @@ export const MOCK_AUTH_TENANTS: AuthTenant[] = [
     slug: 'example-agency',
     status: 'active',
     role: 'admin',
+  },
+  {
+    id: '33333333-3333-4333-8333-333333333333',
+    name: 'Suspended Society',
+    slug: 'suspended-society',
+    status: 'suspended',
+    role: 'member',
   },
 ];
 
@@ -100,6 +108,18 @@ export function createMockAuthClient(): AuthClient {
       const membership = MOCK_AUTH_TENANTS.find(
         (tenant) => tenant.id === tenantId,
       );
+
+      // Mirror the API: a known membership in a non-active tenant is refused.
+      if (membership && membership.status !== 'active') {
+        return Promise.reject(
+          new ApiError({
+            code: 'TENANT_NOT_ACTIVE',
+            message: `Tenant is ${membership.status} and cannot perform this action`,
+            status: 403,
+          }),
+        );
+      }
+
       setSession({
         user: {
           ...session.user,

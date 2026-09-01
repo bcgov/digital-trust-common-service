@@ -46,6 +46,10 @@ describe('TenantUserRepository', () => {
       'tenant',
       'tenant.deleted_at IS NULL',
     );
+    expect(queryBuilder.where).toHaveBeenCalledWith(
+      'tenantUser.externalUserId = :externalUserId',
+      { externalUserId: 'keycloak-sub' },
+    );
     expect(queryBuilder.andWhere).toHaveBeenCalledWith(
       'tenantUser.status = :status',
       { status: TenantUserStatus.ACTIVE },

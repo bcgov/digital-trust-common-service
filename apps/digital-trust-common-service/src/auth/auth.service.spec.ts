@@ -214,7 +214,6 @@ describe('AuthService', () => {
     ]);
   });
 
-
   it('rejects listTenants when the subject has no external identity', async () => {
     tenantUsers.findById.mockResolvedValue({
       ...currentUser,
