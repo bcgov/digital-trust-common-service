@@ -216,6 +216,9 @@ services:
       # admin/admin sign-in instead.
       GF_AUTH_ANONYMOUS_ENABLED: 'true'
       GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+    volumes:
+      - ./observability/grafana/dashboards/digital-trust-local.yaml:/otel-lgtm/grafana/conf/provisioning/dashboards/digital-trust-local.yaml:ro
+      - ./observability/grafana/dashboards/digital-trust-local.json:/etc/grafana/provisioning/digital-trust/digital-trust-local.json:ro
 
 
 volumes:

@@ -399,81 +399,79 @@ first service in the platform's OpenTelemetry rollout, so when a trace fails to
 turn up in a cluster, having already watched it work locally is what separates
 "our instrumentation is wrong" from "the cluster path is wrong".
 
-The application is not instrumented yet; that work will land in a follow-up change. Until it
-lands, this stack starts and Grafana loads, but nothing is sending it data.
-
 ### Start the stack
 
-It sits behind the `obs` profile rather than starting with everything else,
-because it runs five backends and is only needed when you are working on
-telemetry:
+Start the development dependencies and observability stack:
 
 ```bash
-docker compose --profile obs up -d lgtm
+docker compose --profile dev --profile obs up -d db keycloak caddy lgtm
 ```
 
-Grafana is then reachable two ways, whichever you prefer:
-
-- <http://localhost:3001> — no certificate or hosts entry needed
-- <https://grafana.localhost> — through Caddy, alongside `app.localhost` and
-  `keycloak.localhost` (needs the [hosts entry](#hosts-entries-macos-and-windows)
-  and the [Caddy CA](#export-and-trust-the-caddy-local-ca))
-
-Grafana is published on 3001 because the `app` service already holds 3000.
-Anonymous access is enabled locally, so there is no login screen.
-
-Storage lives inside the container: `docker compose down` discards collected
-telemetry and any dashboards you saved.
-
-### Point the application at it
-
-Copy the OpenTelemetry block from `.env.example` into your `.env` and set:
+When running the API on the host, export and trust the Caddy certificate, then
+apply the current schema:
 
 ```bash
+docker compose cp \
+  caddy:/data/caddy/pki/authorities/local/root.crt \
+  ./caddy/root.crt
+export NODE_EXTRA_CA_CERTS="$PWD/caddy/root.crt"
+npm run build && npm run migrate:up
+```
+
+On macOS and Windows, add `app.localhost`, `keycloak.localhost`, and
+`grafana.localhost` to the hosts file as described in
+[Hosts entries (macOS and Windows)](#hosts-entries-macos-and-windows).
+
+Copy the OpenTelemetry block from `.env.example` into `.env` and enable it:
+
+```env
 OTEL_ENABLED=true
+OTEL_SERVICE_NAME=digital-trust-common-service
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
+OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+OTEL_TRACES_EXPORTER=otlp
+OTEL_METRICS_EXPORTER=otlp
 ```
 
-The remaining values work as shipped. `OTEL_EXPORTER_OTLP_ENDPOINT` defaults to
-`http://localhost:4318` for the standard workflow (the API on the host); the
-compose `app` service overrides it to `http://lgtm:4318`, so running the API in
-a container needs no edit either.
+The defaults target the host-run API. The Compose `app` service overrides the
+endpoint to `http://lgtm:4318` when the API runs in a container. Telemetry is
+disabled by default so tests and CI do not connect to an unavailable collector.
 
-`OTEL_ENABLED` is off by default so that test runs and CI do not open exporter
-connections to a collector that is not there.
+Start the API with `npm run start:dev`.
 
 ### Confirm it works
 
-With the stack up, the app running and `OTEL_ENABLED=true`, make a few requests
-(`curl http://localhost:3000/health/live`), then open Grafana and use
+With the stack up and the API running, make a few requests, for example:
+
+```bash
+curl http://localhost:3000/health/live
+```
+
+Open <http://localhost:3001> (or <https://grafana.localhost>) and use
 **Explore**:
 
 - **Tempo** — traces for incoming HTTP requests, with NestJS handler and `pg`
   query spans nested underneath. A visible trace is the go/no-go signal that the
   SDK, the collector and the exporter are all wired correctly.
-- **Mimir** — HTTP request duration metrics.
-- **Loki** — log lines carrying a `trace_id` field, once structured logging
-  lands ([#102](https://github.com/bcgov/digital-trust-common-service/issues/102)).
-  If `trace_id` is missing locally, it will be missing in production too.
+- **Prometheus** — HTTP, runtime, and database metrics.
+- **Loki** — structured stdout logs and trace correlation when available.
 
-### How this differs from OpenShift
+Telemetry exports are periodic; allow up to a minute for metrics to appear.
+The local API currently exports traces and metrics, not continuous profiles.
 
-The instrumentation code is identical in both places. What differs is where
-telemetry goes, and how logs get there:
+The application instrumentation is the same locally and on OpenShift. Locally,
+the LGTM container receives OTLP. In OpenShift, the platform Alloy collector
+receives OTLP and ships stdout logs to Loki.
 
-| | Local | OpenShift |
-|---|---|---|
-| Collector | the `lgtm` container | Alloy, at `monitoring-collector-alloy:4318` |
-| Log transport | OTLP push to the collector | stdout, scraped by Alloy |
-| `OTEL_LOGS_EXPORTER` | `otlp` | not set |
-| Trace correlation in logs | yes | yes |
+### Stop the stack
 
-Logs are the only real difference, and only in how they travel. The SDK attaches
-trace context to log records either way, so the end result in Grafana — logs in
-Loki linking to spans in Tempo — is the same.
+```bash
+docker compose --profile dev --profile obs down
+```
 
-Protocol is `http/protobuf` on port 4318 rather than gRPC on 4317. Alloy accepts
-both; this is the platform standard. The two must agree: an HTTP client posting
-to the gRPC port fails silently.
+Add `-v` to also remove local database and telemetry volumes. This also replaces
+the Caddy CA, which must be exported and trusted again before restarting a
+host-run API.
 
 ## Database Migrations
 
