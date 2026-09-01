@@ -463,6 +463,25 @@ The application instrumentation is the same locally and on OpenShift. Locally,
 the LGTM container receives OTLP. In OpenShift, the platform Alloy collector
 receives OTLP and ships stdout logs to Loki.
 
+### Find one tenant's traces
+
+Authenticated requests carry `tenant.id` on the HTTP server span, and
+`operation.id` where the route has one. In **Explore → Tempo**, switch to
+**TraceQL** and search:
+
+```
+{ .tenant.id = "<tenant uuid>" }
+```
+
+The attribute sits on the root `GET /api/v1/…` span, alongside `http.route`
+and `http.response.status_code`, with the express, Nest, and `pg` spans nested
+underneath.
+
+Unauthenticated traffic carries no `tenant.id` at all; searching
+`{ name = "GET /health/live" }` returns traces without it. Requests with no
+trusted tenant context are deliberately left unattributed rather than assigned
+to a placeholder tenant.
+
 ### Stop the stack
 
 ```bash
