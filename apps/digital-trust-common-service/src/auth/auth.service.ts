@@ -6,6 +6,8 @@ import { ForbiddenException, Injectable, Logger } from '@nestjs/common';
 import { AuditAction } from '../audit-log/audit-log.entity';
 import { DomainAuditService } from '../audit-log/domain-audit.service';
 import { RoleScopeRepository } from '../role-scope/role-scope.repository';
+import { assertTenantActive } from '../tenant/assert-tenant-active';
+import { TenantRepository } from '../tenant/tenant.repository';
 import {
   TenantUser,
   TenantUserStatus,
@@ -29,6 +31,7 @@ export class AuthService {
 
   public constructor(
     private readonly tenantUsers: TenantUserService,
+    private readonly tenants: TenantRepository,
     private readonly roleScopes: RoleScopeRepository,
     private readonly oidcProvider: OidcProviderService,
     private readonly oidcConfig: OidcConfigService,
@@ -50,20 +53,15 @@ export class AuthService {
       current.externalUserId,
     );
 
-    return memberships.flatMap((membership) => {
-      if (!membership.tenant) {
-        return [];
-      }
-
-      return [
-        {
-          id: membership.tenant.id,
-          name: membership.tenant.name,
-          slug: membership.tenant.slug,
-          role: membership.role,
-        },
-      ];
-    });
+    // The membership query inner-joins non-deleted tenants, so `tenant` is
+    // always present here.
+    return memberships.map((membership) => ({
+      id: membership.tenant.id,
+      name: membership.tenant.name,
+      slug: membership.tenant.slug,
+      status: membership.tenant.status,
+      role: membership.role,
+    }));
   }
 
   public async switchTenant(
@@ -99,6 +97,12 @@ export class AuthService {
         },
       );
     }
+
+    // Membership alone is not enough: every request scoped to a suspended or
+    // deactivated tenant is rejected by the status guard, so minting a token
+    // for one would strand the caller in a context where nothing works.
+    // Same shared policy the guard enforces, applied up front.
+    assertTenantActive(await this.tenants.findById(targetTenantId));
 
     // oidc-provider adapters key AccessToken by model id (`jti`), not the
     // raw JWT string returned to clients.

@@ -35,7 +35,7 @@ export class AuthController {
   @ApiOperation({
     summary: 'List tenants the current user can switch to',
     description:
-      'Returns active memberships for the caller. Machine clients receive 403.',
+      'Returns active memberships for the caller, including tenant lifecycle status. Soft-deleted tenants are omitted. Machine clients receive 403.',
   })
   @ApiOkResponse({ type: [AuthTenantDto] })
   @ApiForbiddenResponse({
@@ -52,12 +52,12 @@ export class AuthController {
   @ApiOperation({
     summary: 'Switch active tenant context',
     description:
-      'Exchange the current valid user token for a new token scoped to a different tenant. The previous grant is revoked.',
+      'Exchange the current valid user token for a new token scoped to a different tenant. The previous grant is revoked. A target tenant that is not active is refused.',
   })
   @ApiOkResponse({ type: SwitchTenantResponseDto })
   @ApiForbiddenResponse({
     description:
-      'Caller is a machine client, or is not an active member of the target tenant',
+      'Caller is a machine client, is not an active member of the target tenant, or the target tenant is not active',
   })
   public async switchTenant(
     @CurrentAuth() auth: AuthContext,

@@ -796,10 +796,11 @@ active membership** at login. To change context, the SPA calls
 
 1. Rejects machine (`client_credentials`) tokens with 403.
 2. Requires an active `tenant_user` row for the same Keycloak subject in the target tenant.
-3. Issues a new access token and refresh token whose `tenant_id`, `roles`, and `scope` come from the target membership.
-4. Revokes the previous grant so both tokens cannot be used at once (the old JWT may still verify until `exp`, at most 5 minutes).
+3. Requires the target tenant itself to be `active`; a suspended or deactivated target is refused with the same `TENANT_NOT_ACTIVE` error the tenant status guard returns.
+4. Issues a new access token and refresh token whose `tenant_id`, `roles`, and `scope` come from the target membership.
+5. Revokes the previous grant so both tokens cannot be used at once (the old JWT may still verify until `exp`, at most 5 minutes).
 
-`GET /api/v1/auth/tenants` lists the caller's active memberships for the UI selector. `GET /api/v1/tenants` is not membership-filtered.
+`GET /api/v1/auth/tenants` lists the caller's active memberships for the UI selector, including each tenant's lifecycle `status`; memberships in soft-deleted tenants are omitted. `GET /api/v1/tenants` is not membership-filtered.
 
 ### Controller auth inventory
 

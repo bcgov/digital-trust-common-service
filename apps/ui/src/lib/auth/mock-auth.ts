@@ -9,12 +9,14 @@ export const MOCK_AUTH_TENANTS: AuthTenant[] = [
     id: '11111111-1111-4111-8111-111111111111',
     name: 'Acme Ministry',
     slug: 'acme-ministry',
+    status: 'active',
     role: 'owner',
   },
   {
     id: '22222222-2222-4222-8222-222222222222',
     name: 'Example Agency',
     slug: 'example-agency',
+    status: 'active',
     role: 'admin',
   },
 ];

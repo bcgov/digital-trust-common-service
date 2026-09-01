@@ -111,22 +111,30 @@ export class TenantUserRepository {
     });
   }
 
+  /**
+   * Active memberships for a Keycloak subject, oldest first. Joined through
+   * the tenant so callers can read its lifecycle status, and inner-joined on
+   * `deleted_at IS NULL` because find-options relations do not apply the
+   * soft-delete filter to joined rows — a membership in a soft-deleted
+   * tenant must not surface as switchable.
+   */
   public async findActiveByExternalUserId(
     externalUserId: string,
   ): Promise<TenantUser[]> {
-    return await this.repository.find({
-      where: {
-        externalUserId,
+    return await this.repository
+      .createQueryBuilder('tenantUser')
+      .innerJoinAndSelect(
+        'tenantUser.tenant',
+        'tenant',
+        'tenant.deleted_at IS NULL',
+      )
+      .where('tenantUser.externalUserId = :externalUserId', { externalUserId })
+      .andWhere('tenantUser.status = :status', {
         status: TenantUserStatus.ACTIVE,
-      },
-      order: {
-        createdAt: 'ASC',
-        id: 'ASC',
-      },
-      relations: {
-        tenant: true,
-      },
-    });
+      })
+      .orderBy('tenantUser.createdAt', 'ASC')
+      .addOrderBy('tenantUser.id', 'ASC')
+      .getMany();
   }
 
   public async findByTenantAndExternalUserId(

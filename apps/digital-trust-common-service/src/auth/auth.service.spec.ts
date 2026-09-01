@@ -14,6 +14,9 @@ import { Test, TestingModule } from '@nestjs/testing';
 
 import { DomainAuditService } from '../audit-log/domain-audit.service';
 import { RoleScopeRepository } from '../role-scope/role-scope.repository';
+import { TenantNotActiveException } from '../tenant/tenant-not-active.exception';
+import { TenantStatus } from '../tenant/tenant.entity';
+import { TenantRepository } from '../tenant/tenant.repository';
 import {
   TenantUser,
   TenantUserRole,
@@ -36,6 +39,7 @@ describe('AuthService', () => {
     deleteAllForAccount: jest.Mock;
   };
   let domainAudit: { emit: jest.Mock };
+  let tenantRepo: { findById: jest.Mock };
   let accessTokenFind: jest.Mock;
   let grantFind: jest.Mock;
   let grantSave: jest.Mock;
@@ -70,6 +74,7 @@ describe('AuthService', () => {
       id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
       name: 'Target Org',
       slug: 'target-org',
+      status: TenantStatus.ACTIVE,
     } as TenantUser['tenant'],
   };
 
@@ -125,7 +130,12 @@ describe('AuthService', () => {
       findActiveByExternalUserId: jest.fn().mockResolvedValue([
         {
           ...currentUser,
-          tenant: { id: currentUser.tenantId, name: 'A', slug: 'a' },
+          tenant: {
+            id: currentUser.tenantId,
+            name: 'A',
+            slug: 'a',
+            status: TenantStatus.ACTIVE,
+          },
         },
         targetUser,
       ]),
@@ -138,6 +148,12 @@ describe('AuthService', () => {
       deleteAllForAccount: jest.fn().mockResolvedValue([]),
     };
     domainAudit = { emit: jest.fn().mockResolvedValue(undefined) };
+    tenantRepo = {
+      findById: jest.fn().mockResolvedValue({
+        id: targetUser.tenantId,
+        status: TenantStatus.ACTIVE,
+      }),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -167,6 +183,7 @@ describe('AuthService', () => {
         },
         { provide: OidcAccountSessionRepository, useValue: accountSessions },
         { provide: DomainAuditService, useValue: domainAudit },
+        { provide: TenantRepository, useValue: tenantRepo },
       ],
     }).compile();
 
@@ -184,32 +201,19 @@ describe('AuthService', () => {
         id: currentUser.tenantId,
         name: 'A',
         slug: 'a',
+        status: TenantStatus.ACTIVE,
         role: TenantUserRole.MEMBER,
       },
       {
         id: targetUser.tenantId,
         name: 'Target Org',
         slug: 'target-org',
+        status: TenantStatus.ACTIVE,
         role: TenantUserRole.ADMIN,
       },
     ]);
   });
 
-  it('skips memberships that have no tenant relation loaded', async () => {
-    tenantUsers.findActiveByExternalUserId.mockResolvedValue([
-      { ...currentUser, tenant: undefined },
-      targetUser,
-    ]);
-
-    await expect(service.listTenants(userAuth)).resolves.toEqual([
-      {
-        id: targetUser.tenantId,
-        name: 'Target Org',
-        slug: 'target-org',
-        role: TenantUserRole.ADMIN,
-      },
-    ]);
-  });
 
   it('rejects listTenants when the subject has no external identity', async () => {
     tenantUsers.findById.mockResolvedValue({
@@ -273,6 +277,25 @@ describe('AuthService', () => {
     await expect(
       service.switchTenant(userAuth, targetUser.tenantId),
     ).rejects.toThrow(TenantAccessDeniedException);
+  });
+
+  it('rejects switch when the target tenant is not active', async () => {
+    tenantRepo.findById.mockResolvedValue({
+      id: targetUser.tenantId,
+      status: TenantStatus.SUSPENDED,
+    });
+
+    await expect(
+      service.switchTenant(userAuth, targetUser.tenantId),
+    ).rejects.toThrow(TenantNotActiveException);
+  });
+
+  it('rejects switch when the target tenant is soft-deleted or missing', async () => {
+    tenantRepo.findById.mockResolvedValue(null);
+
+    await expect(
+      service.switchTenant(userAuth, targetUser.tenantId),
+    ).rejects.toThrow(TenantNotActiveException);
   });
 
   it('issues a new grant, revokes the previous one, and rebinds the session', async () => {
