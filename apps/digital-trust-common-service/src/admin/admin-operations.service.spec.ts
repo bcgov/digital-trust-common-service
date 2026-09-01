@@ -41,18 +41,18 @@ describe('AdminOperationsService', () => {
     const result = await service.getStats();
 
     expect(result).toEqual({
-      countsByState: {
+      byState: {
         [OperationState.PENDING]: 3,
         [OperationState.PROCESSING]: 0,
         [OperationState.COMPLETED]: 5,
         [OperationState.FAILED]: 1,
       },
       totalCount: 9,
-      oldestPendingCreatedAt: oldestPendingCreatedAt.toISOString(),
+      oldestPending: oldestPendingCreatedAt.toISOString(),
     });
   });
 
-  it('returns null oldestPendingCreatedAt when there are no pending operations', async () => {
+  it('returns null oldestPending when there are no pending operations', async () => {
     mockGetStats.mockResolvedValue({
       countsByState: {
         [OperationState.PENDING]: 0,
@@ -66,6 +66,6 @@ describe('AdminOperationsService', () => {
 
     const result = await service.getStats();
 
-    expect(result.oldestPendingCreatedAt).toBeNull();
+    expect(result.oldestPending).toBeNull();
   });
 });

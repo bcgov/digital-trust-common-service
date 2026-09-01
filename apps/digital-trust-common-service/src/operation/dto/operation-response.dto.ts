@@ -1,4 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
+import { Expose } from 'class-transformer';
 
 import { OPERATION_TYPE } from '../operation-type.constants';
 import { Operation, OperationState } from '../operation.entity';
@@ -19,13 +20,15 @@ export class OperationResponseDto {
   })
   public id!: string;
 
+  @Expose({ name: 'batch_id' })
   @ApiProperty({
+    name: 'batch_id',
     description:
       'The parent batch operation id. Present only on child operations of a batch.',
     example: null,
     nullable: true,
   })
-  public batch_id!: string | null;
+  public batchId!: string | null;
 
   @ApiProperty({
     description: `The operation type. Known values: ${Object.values(
@@ -44,17 +47,21 @@ export class OperationResponseDto {
   })
   public state!: OperationState;
 
+  @Expose({ name: 'created_at' })
   @ApiProperty({
+    name: 'created_at',
     description: 'The date and time when the operation was created',
     example: '2024-01-01T00:00:00.000Z',
   })
-  public created_at!: Date;
+  public createdAt!: Date;
 
+  @Expose({ name: 'updated_at' })
   @ApiProperty({
+    name: 'updated_at',
     description: 'The date and time when the operation was last updated',
     example: '2024-01-01T00:00:00.000Z',
   })
-  public updated_at!: Date;
+  public updatedAt!: Date;
 
   @ApiProperty({
     description:
@@ -67,14 +74,14 @@ export class OperationResponseDto {
   public result!: OperationResult;
 
   public static fromEntity(operation: Operation): OperationResponseDto {
-    return {
-      id: operation.id,
-      batch_id: operation.batchId ?? null,
-      type: operation.type,
-      state: operation.state,
-      created_at: operation.createdAt,
-      updated_at: operation.updatedAt,
-      result: operation.result ?? null,
-    };
+    const dto = new OperationResponseDto();
+    dto.id = operation.id;
+    dto.batchId = operation.batchId ?? null;
+    dto.type = operation.type;
+    dto.state = operation.state;
+    dto.createdAt = operation.createdAt;
+    dto.updatedAt = operation.updatedAt;
+    dto.result = operation.result ?? null;
+    return dto;
   }
 }

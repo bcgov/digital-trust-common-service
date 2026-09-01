@@ -1,4 +1,5 @@
 import {
+  ClassSerializerInterceptor,
   INestApplication,
   RequestMethod,
   ValidationPipe,
@@ -44,5 +45,9 @@ export function configureApp(app: INestApplication): void {
     type: VersioningType.URI,
   });
 
-  app.useGlobalInterceptors(new DeprecationInterceptor(app.get(Reflector)));
+  const reflector = app.get(Reflector);
+  app.useGlobalInterceptors(
+    new DeprecationInterceptor(reflector),
+    new ClassSerializerInterceptor(reflector),
+  );
 }

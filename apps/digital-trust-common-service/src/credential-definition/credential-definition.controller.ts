@@ -33,12 +33,12 @@ import { SkipAutoAudit } from '../audit-log/skip-auto-audit.decorator';
 import { API_VERSION } from '../common/constants/api-version.constants';
 
 import {
-  CredentialDefinition,
   CredentialDefinitionConnectorType,
   CredentialDefinitionFormat,
 } from './credential-definition.entity';
 import { CredentialDefinitionService } from './credential-definition.service';
 import { CreateCredentialDefinitionDto } from './dto/create-credential-definition.dto';
+import { CredentialDefinitionResponseDto } from './dto/credential-definition-response.dto';
 import { UpdateCredentialDefinitionDto } from './dto/update-credential-definition.dto';
 
 @SkipAutoAudit()
@@ -58,7 +58,7 @@ export class CredentialDefinitionController {
   @Post()
   @ApiCreatedResponse({
     description: 'Credential definition created successfully',
-    type: CredentialDefinition,
+    type: CredentialDefinitionResponseDto,
   })
   @ApiBody({
     description: 'Credential definition creation request',
@@ -67,12 +67,12 @@ export class CredentialDefinitionController {
       example1: {
         summary: 'Create a credential definition',
         value: {
-          tenantId: '123e4567-e89b-12d3-a456-426614174000',
+          tenant_id: '123e4567-e89b-12d3-a456-426614174000',
           name: 'Driver License Definition',
           format: 'anoncreds',
-          externalId: 'ext-cred-def-001',
-          connectorType: 'traction',
-          schemaDefinition: { version: '1.0', attributes: ['name', 'age'] },
+          external_id: 'ext-cred-def-001',
+          connector_type: 'traction',
+          schema_definition: { version: '1.0', attributes: ['name', 'age'] },
           metadata: { issuer: 'DMV' },
         },
       },
@@ -81,40 +81,55 @@ export class CredentialDefinitionController {
   public async create(
     @Body() dto: CreateCredentialDefinitionDto,
     @CurrentAuth() auth: AuthContext,
-  ): Promise<CredentialDefinition> {
-    return await this.credentialDefinitionService.create(dto, auth);
+  ): Promise<CredentialDefinitionResponseDto> {
+    const credentialDefinition = await this.credentialDefinitionService.create(
+      dto,
+      auth,
+    );
+
+    return CredentialDefinitionResponseDto.fromEntity(credentialDefinition);
   }
 
   @Get('tenant/:tenantId')
   @ApiOkResponse({
     description: 'List of credential definitions for the tenant',
-    type: [CredentialDefinition],
+    type: [CredentialDefinitionResponseDto],
   })
   @ApiNotFoundResponse({ description: 'Tenant not found' })
   public async findByTenantId(
     @Param('tenantId', ParseUUIDPipe) tenantId: string,
-  ): Promise<CredentialDefinition[]> {
-    return await this.credentialDefinitionService.findByTenantId(tenantId);
+  ): Promise<CredentialDefinitionResponseDto[]> {
+    const credentialDefinitions =
+      await this.credentialDefinitionService.findByTenantId(tenantId);
+
+    return credentialDefinitions.map((credentialDefinition) =>
+      CredentialDefinitionResponseDto.fromEntity(credentialDefinition),
+    );
   }
 
   @Get('format/:format')
   @ApiOkResponse({
     description: 'List of credential definitions for the specified format',
-    type: [CredentialDefinition],
+    type: [CredentialDefinitionResponseDto],
   })
   public async findByFormat(
     @Param('format', new ParseEnumPipe(CredentialDefinitionFormat))
     format: CredentialDefinitionFormat,
     @CurrentAuth() auth: AuthContext,
-  ): Promise<CredentialDefinition[]> {
-    return await this.credentialDefinitionService.findByFormat(format, auth);
+  ): Promise<CredentialDefinitionResponseDto[]> {
+    const credentialDefinitions =
+      await this.credentialDefinitionService.findByFormat(format, auth);
+
+    return credentialDefinitions.map((credentialDefinition) =>
+      CredentialDefinitionResponseDto.fromEntity(credentialDefinition),
+    );
   }
 
   @Get('connector/:connectorType')
   @ApiOkResponse({
     description:
       'List of credential definitions for the specified connector type',
-    type: [CredentialDefinition],
+    type: [CredentialDefinitionResponseDto],
   })
   public async findByConnector(
     @Param(
@@ -123,30 +138,38 @@ export class CredentialDefinitionController {
     )
     connectorType: CredentialDefinitionConnectorType,
     @CurrentAuth() auth: AuthContext,
-  ): Promise<CredentialDefinition[]> {
-    return await this.credentialDefinitionService.findByConnector(
-      connectorType,
-      auth,
+  ): Promise<CredentialDefinitionResponseDto[]> {
+    const credentialDefinitions =
+      await this.credentialDefinitionService.findByConnector(
+        connectorType,
+        auth,
+      );
+
+    return credentialDefinitions.map((credentialDefinition) =>
+      CredentialDefinitionResponseDto.fromEntity(credentialDefinition),
     );
   }
 
   @Get(':id')
   @ApiOkResponse({
     description: 'Credential definition found',
-    type: CredentialDefinition,
+    type: CredentialDefinitionResponseDto,
   })
   @ApiNotFoundResponse({ description: 'Credential definition not found' })
   public async findById(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentAuth() auth: AuthContext,
-  ): Promise<CredentialDefinition> {
-    return await this.credentialDefinitionService.findById(id, auth);
+  ): Promise<CredentialDefinitionResponseDto> {
+    const credentialDefinition =
+      await this.credentialDefinitionService.findById(id, auth);
+
+    return CredentialDefinitionResponseDto.fromEntity(credentialDefinition);
   }
 
   @Patch(':id')
   @ApiOkResponse({
     description: 'Credential definition updated successfully',
-    type: CredentialDefinition,
+    type: CredentialDefinitionResponseDto,
   })
   @ApiNotFoundResponse({ description: 'Credential definition not found' })
   @ApiBody({
@@ -165,8 +188,14 @@ export class CredentialDefinitionController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateCredentialDefinitionDto,
     @CurrentAuth() auth: AuthContext,
-  ): Promise<CredentialDefinition> {
-    return await this.credentialDefinitionService.update(id, dto, auth);
+  ): Promise<CredentialDefinitionResponseDto> {
+    const credentialDefinition = await this.credentialDefinitionService.update(
+      id,
+      dto,
+      auth,
+    );
+
+    return CredentialDefinitionResponseDto.fromEntity(credentialDefinition);
   }
 
   @Delete(':id')

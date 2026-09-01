@@ -82,6 +82,10 @@ export class AdminSessionsService {
       `Revoked ${revokedRecordCount} OIDC record(s) for tenant user ${tenantUserId}`,
     );
 
-    return { tenantUserId, accountId, revokedRecordCount };
+    return RevokeSessionsResponseDto.from(
+      tenantUserId,
+      accountId,
+      revokedRecordCount,
+    );
   }
 }

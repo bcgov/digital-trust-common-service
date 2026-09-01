@@ -140,12 +140,12 @@ export class AuthService {
       `Switched tenant context for ${current.externalUserId} from ${current.tenantId} to ${target.tenantId}`,
     );
 
-    return {
-      access_token: issued.accessToken,
-      refresh_token: issued.refreshToken,
-      token_type: 'Bearer',
-      expires_in: this.oidcConfig.getConfig().accessTokenTtlSeconds,
-    };
+    return SwitchTenantResponseDto.from(
+      issued.accessToken,
+      issued.refreshToken,
+      'Bearer',
+      this.oidcConfig.getConfig().accessTokenTtlSeconds,
+    );
   }
 
   private assertUserToken(auth: AuthContext): void {

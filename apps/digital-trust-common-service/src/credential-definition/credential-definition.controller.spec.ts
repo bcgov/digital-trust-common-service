@@ -12,6 +12,7 @@ import {
 } from './credential-definition.entity';
 import { CredentialDefinitionService } from './credential-definition.service';
 import { CreateCredentialDefinitionDto } from './dto/create-credential-definition.dto';
+import { CredentialDefinitionResponseDto } from './dto/credential-definition-response.dto';
 
 class AllowGuard implements CanActivate {
   public canActivate(): boolean {
@@ -131,7 +132,9 @@ describe('CredentialDefinitionController', () => {
       const result = await controller.create(dto, auth);
 
       expect(mockCreate).toHaveBeenCalledWith(dto, auth);
-      expect(result).toEqual(mockCredentialDefinition);
+      expect(result).toEqual(
+        CredentialDefinitionResponseDto.fromEntity(mockCredentialDefinition),
+      );
     });
   });
 
@@ -143,7 +146,9 @@ describe('CredentialDefinitionController', () => {
       const result = await controller.findById(id, auth);
 
       expect(mockFindById).toHaveBeenCalledWith(id, auth);
-      expect(result).toEqual(mockCredentialDefinition);
+      expect(result).toEqual(
+        CredentialDefinitionResponseDto.fromEntity(mockCredentialDefinition),
+      );
     });
 
     it('should throw NotFoundException if credential definition not found', async () => {
@@ -166,7 +171,11 @@ describe('CredentialDefinitionController', () => {
       const result = await controller.findByTenantId(tenantId);
 
       expect(mockFindByTenantId).toHaveBeenCalledWith(tenantId);
-      expect(result).toEqual(definitions);
+      expect(result).toEqual(
+        definitions.map((definition) =>
+          CredentialDefinitionResponseDto.fromEntity(definition),
+        ),
+      );
     });
 
     it('should return empty array if no definitions found for tenant', async () => {
@@ -188,7 +197,11 @@ describe('CredentialDefinitionController', () => {
       const result = await controller.findByFormat(format, auth);
 
       expect(mockFindByFormat).toHaveBeenCalledWith(format, auth);
-      expect(result).toEqual(definitions);
+      expect(result).toEqual(
+        definitions.map((definition) =>
+          CredentialDefinitionResponseDto.fromEntity(definition),
+        ),
+      );
     });
 
     it('should return empty array if no definitions found for format', async () => {
@@ -211,7 +224,11 @@ describe('CredentialDefinitionController', () => {
       const result = await controller.findByConnector(connectorType, auth);
 
       expect(mockFindByConnector).toHaveBeenCalledWith(connectorType, auth);
-      expect(result).toEqual(definitions);
+      expect(result).toEqual(
+        definitions.map((definition) =>
+          CredentialDefinitionResponseDto.fromEntity(definition),
+        ),
+      );
     });
 
     it('should return empty array if no definitions found for connector', async () => {
@@ -236,7 +253,9 @@ describe('CredentialDefinitionController', () => {
       const result = await controller.update(id, dto, auth);
 
       expect(mockUpdate).toHaveBeenCalledWith(id, dto, auth);
-      expect(result).toEqual(updatedDefinition);
+      expect(result).toEqual(
+        CredentialDefinitionResponseDto.fromEntity(updatedDefinition),
+      );
     });
 
     it('should throw NotFoundException if credential definition not found', async () => {

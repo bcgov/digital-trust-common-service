@@ -65,10 +65,10 @@ export class ConnectorCredentialController {
       example1: {
         summary: 'Create a connector credential',
         value: {
-          tenantId: '123e4567-e89b-12d3-a456-426614174000',
-          connectorType: 'traction',
-          credentialsPlainText: 'base64plaintextcredentials==',
-          endpointUrl: 'https://api.example.com/v1',
+          tenant_id: '123e4567-e89b-12d3-a456-426614174000',
+          connector_type: 'traction',
+          credentials_plain_text: 'base64plaintextcredentials==',
+          endpoint_url: 'https://api.example.com/v1',
           active: true,
         },
       },
@@ -141,7 +141,7 @@ export class ConnectorCredentialController {
       example1: {
         summary: 'Update credential endpoint URL',
         value: {
-          endpointUrl: 'https://api.updated.com/v2',
+          endpoint_url: 'https://api.updated.com/v2',
         },
       },
       example2: {
@@ -204,15 +204,6 @@ export class ConnectorCredentialController {
   private toResponseDto(
     credential: ConnectorCredential,
   ): ConnectorCredentialResponseDto {
-    return {
-      id: credential.id,
-      tenantId: credential.tenantId,
-      connectorType: credential.connectorType,
-      endpointUrl: credential.endpointUrl,
-      active: credential.active,
-      keyVersion: credential.keyVersion,
-      createdAt: credential.createdAt,
-      updatedAt: credential.updatedAt,
-    };
+    return ConnectorCredentialResponseDto.fromEntity(credential);
   }
 }

@@ -36,8 +36,8 @@ describe('TenantStatusGuard', () => {
     slug: 'test-tenant',
     status: TenantStatus.ACTIVE,
     config: {},
-    created_at: new Date(),
-    updated_at: new Date(),
+    createdAt: new Date(),
+    updatedAt: new Date(),
     users: [],
   };
 

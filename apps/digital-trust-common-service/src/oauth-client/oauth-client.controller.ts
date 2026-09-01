@@ -53,7 +53,7 @@ export class OAuthClientController {
   @ApiOperation({
     summary: 'Register an API client (OAuth2 client_credentials)',
     description:
-      'Creates a new OAuth2 client for service-to-service authentication. Tenant is taken from the path; createdBy is recorded from the authenticated user. The clientSecret is returned ONCE and cannot be retrieved again.',
+      'Creates a new OAuth2 client for service-to-service authentication. Tenant is taken from the path; created_by is recorded from the authenticated user. The client_secret is returned ONCE and cannot be retrieved again.',
   })
   @ApiParam({ name: 'tenantId', format: 'uuid' })
   @ApiCreatedResponse({
@@ -73,8 +73,8 @@ export class OAuthClientController {
         value: {
           name: 'Mobile App',
           scopes: ['credentials:offer', 'credentials:verify'],
-          redirectUris: ['https://app.example.com/callback'],
-          grantTypes: ['client_credentials'],
+          redirect_uris: ['https://app.example.com/callback'],
+          grant_types: ['client_credentials'],
         },
       },
     },
@@ -89,10 +89,7 @@ export class OAuthClientController {
       dto,
       auth,
     );
-    return {
-      client: this.toResponseDto(client),
-      clientSecret,
-    };
+    return CreateOAuthClientResponseDto.from(client, clientSecret);
   }
 
   @Get()
@@ -142,20 +139,20 @@ export class OAuthClientController {
           'Grant platform-admin on a client_credentials-only machine client (platform-admin caller)',
         value: {
           roles: ['platform-admin'],
-          grantTypes: ['client_credentials'],
+          grant_types: ['client_credentials'],
         },
       },
       example3: {
         summary: 'Grant a tenant-scoped role (tenant admin)',
         value: {
           roles: ['admin'],
-          grantTypes: ['client_credentials'],
+          grant_types: ['client_credentials'],
         },
       },
       example4: {
         summary: 'Update redirect URIs',
         value: {
-          redirectUris: ['https://app.updated.com/callback'],
+          redirect_uris: ['https://app.updated.com/callback'],
         },
       },
     },
@@ -217,26 +214,10 @@ export class OAuthClientController {
       tenantId,
       clientId,
     );
-    return {
-      client: this.toResponseDto(client),
-      clientSecret,
-    };
+    return CreateOAuthClientResponseDto.from(client, clientSecret);
   }
 
   private toResponseDto(client: OAuthClient): OAuthClientResponseDto {
-    return {
-      id: client.id,
-      tenantId: client.tenantId,
-      clientId: client.clientId,
-      name: client.name,
-      scopes: client.scopes,
-      roles: client.roles,
-      redirectUris: client.redirectUris,
-      grantTypes: client.grantTypes,
-      refreshTokenTtlSeconds: client.refreshTokenTtlSeconds ?? null,
-      createdBy: client.createdBy,
-      createdAt: client.createdAt,
-      revokedAt: client.revokedAt,
-    };
+    return OAuthClientResponseDto.fromEntity(client);
   }
 }

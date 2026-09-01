@@ -43,14 +43,14 @@ describe('AdminOperationsController', () => {
 
   it('delegates to AdminOperationsService.getStats', async () => {
     const stats: OperationStatsResponseDto = {
-      countsByState: {
+      byState: {
         [OperationState.PENDING]: 1,
         [OperationState.PROCESSING]: 0,
         [OperationState.COMPLETED]: 2,
         [OperationState.FAILED]: 0,
       },
       totalCount: 3,
-      oldestPendingCreatedAt: '2024-01-01T00:00:00.000Z',
+      oldestPending: '2024-01-01T00:00:00.000Z',
     };
     mockGetStats.mockResolvedValue(stats);
 

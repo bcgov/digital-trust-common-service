@@ -245,9 +245,9 @@ export class TenantService {
       throw new NotFoundException('Tenant not found');
     }
 
-    if (dto.default_connector !== undefined && dto.default_connector !== null) {
+    if (dto.defaultConnector !== undefined && dto.defaultConnector !== null) {
       const credential = await this.connectorCredentialService.findById(
-        dto.default_connector,
+        dto.defaultConnector,
         auth,
       );
 
@@ -264,12 +264,12 @@ export class TenantService {
 
     const config: Record<string, unknown> = { ...tenant.config };
 
-    if (dto.allowed_formats !== undefined) {
-      config.allowed_formats = dto.allowed_formats;
+    if (dto.allowedFormats !== undefined) {
+      config.allowed_formats = dto.allowedFormats;
     }
 
-    if (dto.default_connector !== undefined) {
-      config.default_connector = dto.default_connector;
+    if (dto.defaultConnector !== undefined) {
+      config.default_connector = dto.defaultConnector;
     }
 
     if (dto.features !== undefined) {
@@ -334,7 +334,7 @@ export class TenantService {
   }
 
   /**
-   * Suspends, deactivates, or reactivates a tenant. `deactivated_at` is set
+   * Suspends, deactivates, or reactivates a tenant. `deactivatedAt` is set
    * when moving into `DEACTIVATED` (it anchors the 90-day data retention
    * window) and cleared for any other target status. Side effects (revoking
    * API keys, closing connections, deactivating connector credentials) are
@@ -362,7 +362,7 @@ export class TenantService {
     }
 
     tenant.status = status;
-    tenant.deactivated_at =
+    tenant.deactivatedAt =
       status === TenantStatus.DEACTIVATED ? new Date() : null;
 
     const saved = await this.dataSource.transaction(async (manager) => {

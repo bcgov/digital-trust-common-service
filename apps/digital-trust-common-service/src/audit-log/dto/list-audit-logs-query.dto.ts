@@ -22,22 +22,22 @@ export class ListAuditLogsQueryDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
-  public actor_id?: string;
+  public actorId?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
-  public resource_type?: string;
+  public resourceType?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
   @IsUUID()
-  public resource_id?: string;
+  public resourceId?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
   @IsUUID()
-  public operation_id?: string;
+  public operationId?: string;
 
   @ApiPropertyOptional()
   @IsOptional()

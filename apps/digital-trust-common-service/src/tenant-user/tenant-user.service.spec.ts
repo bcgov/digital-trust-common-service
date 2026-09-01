@@ -432,7 +432,11 @@ describe('TenantUserService', () => {
       const tenantId = mockTenantUser.tenantId;
       const id = mockTenantUser.id;
       const dto = { displayName: 'Updated Name', role: TenantUserRole.ADMIN };
-      const updatedTenantUser = { ...mockTenantUser, ...dto };
+      const updatedTenantUser = {
+        ...mockTenantUser,
+        displayName: dto.displayName,
+        role: dto.role,
+      };
 
       mockFindByTenantAndId.mockResolvedValue(mockTenantUser);
       mockUpdate.mockResolvedValue(updatedTenantUser);
@@ -483,7 +487,10 @@ describe('TenantUserService', () => {
       const tenantId = mockTenantUser.tenantId;
       const id = mockTenantUser.id;
       const dto = { displayName: 'My New Name' };
-      const updatedTenantUser = { ...mockTenantUser, ...dto };
+      const updatedTenantUser = {
+        ...mockTenantUser,
+        displayName: dto.displayName,
+      };
 
       mockFindByTenantAndId.mockResolvedValue(mockTenantUser);
       mockUpdate.mockResolvedValue(updatedTenantUser);
@@ -536,7 +543,11 @@ describe('TenantUserService', () => {
       const tenantId = mockTenantUser.tenantId;
       const owner = { ...mockTenantUser, role: TenantUserRole.OWNER };
       const dto = { role: TenantUserRole.OWNER, displayName: 'Updated Name' };
-      const updatedTenantUser = { ...owner, ...dto };
+      const updatedTenantUser = {
+        ...owner,
+        role: dto.role,
+        displayName: dto.displayName,
+      };
 
       mockFindByTenantAndId.mockResolvedValue(owner);
       mockUpdate.mockResolvedValue(updatedTenantUser);

@@ -67,11 +67,11 @@ describe('OperationController', () => {
 
     await expect(controller.findById(tenantId, operationId)).resolves.toEqual({
       id: operationId,
-      batch_id: null,
+      batchId: null,
       type: 'credential.offer',
       state: OperationState.PENDING,
-      created_at: createdAt,
-      updated_at: createdAt,
+      createdAt,
+      updatedAt: createdAt,
       result: null,
     });
     expect(mockGetForTenant).toHaveBeenCalledWith(tenantId, operationId);
@@ -91,9 +91,9 @@ describe('OperationController', () => {
     const response = await controller.findById(tenantId, operationId);
 
     expect(response.state).toBe(OperationState.COMPLETED);
-    expect(response.batch_id).toBe('123e4567-e89b-12d3-a456-426614174009');
+    expect(response.batchId).toBe('123e4567-e89b-12d3-a456-426614174009');
     expect(response.result).toEqual({ credential_exchange_id: 'exch-1' });
-    expect(response.updated_at).toEqual(updatedAt);
+    expect(response.updatedAt).toEqual(updatedAt);
   });
 
   it('returns the failure envelope for a failed operation', async () => {
@@ -121,13 +121,13 @@ describe('OperationController', () => {
     const response = await controller.findById(tenantId, operationId);
 
     expect(Object.keys(response).sort()).toEqual([
-      'batch_id',
-      'created_at',
+      'batchId',
+      'createdAt',
       'id',
       'result',
       'state',
       'type',
-      'updated_at',
+      'updatedAt',
     ]);
   });
 

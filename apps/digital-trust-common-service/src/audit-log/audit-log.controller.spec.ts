@@ -5,6 +5,10 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { AuditLogController } from './audit-log.controller';
 import { AuditAction, AuditActorType, AuditLog } from './audit-log.entity';
 import { AuditLogService } from './audit-log.service';
+import {
+  AuditLogResponseDto,
+  AuditLogsPaginationDto,
+} from './dto/audit-log-response.dto';
 
 class AllowGuard implements CanActivate {
   public canActivate(): boolean {
@@ -70,8 +74,8 @@ describe('AuditLogController', () => {
     });
 
     await expect(controller.list(tenantId, { limit: 10 })).resolves.toEqual({
-      data: [mockEntry],
-      pagination: { next_cursor: null, has_more: false },
+      data: [AuditLogResponseDto.fromEntity(mockEntry)],
+      pagination: AuditLogsPaginationDto.from(null, false),
     });
   });
 
@@ -79,7 +83,7 @@ describe('AuditLogController', () => {
     mockFindById.mockResolvedValue(mockEntry);
 
     await expect(controller.findById(tenantId, mockEntry.id)).resolves.toEqual(
-      mockEntry,
+      AuditLogResponseDto.fromEntity(mockEntry),
     );
   });
 

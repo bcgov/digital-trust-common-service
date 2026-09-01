@@ -279,10 +279,10 @@ describe('AuthService', () => {
     const result = await service.switchTenant(userAuth, targetUser.tenantId);
 
     expect(result).toEqual({
-      access_token: 'new-access-token',
-      refresh_token: 'new-refresh-token',
-      token_type: 'Bearer',
-      expires_in: 300,
+      accessToken: 'new-access-token',
+      refreshToken: 'new-refresh-token',
+      tokenType: 'Bearer',
+      expiresIn: 300,
     });
     expect(roleScopes.findScopesForRole).toHaveBeenCalledWith(
       targetUser.role,
