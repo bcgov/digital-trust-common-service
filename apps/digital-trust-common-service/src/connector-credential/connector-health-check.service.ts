@@ -58,11 +58,13 @@ export class ConnectorHealthCheckService {
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ api_key: credentials.apiKey }),
               signal: AbortSignal.timeout(HEALTH_CHECK_TIMEOUT_MS),
+              redirect: 'manual',
             },
           )
         : await fetch(`${endpointUrl}/status/ready`, {
             headers: { Authorization: `Bearer ${credentials.apiKey}` },
             signal: AbortSignal.timeout(HEALTH_CHECK_TIMEOUT_MS),
+            redirect: 'manual',
           });
 
       return this.toResult(response, start);
@@ -83,6 +85,7 @@ export class ConnectorHealthCheckService {
       const response = await fetch(`${endpointUrl}/health`, {
         headers: { Authorization: `Bearer ${credentials.apiKey}` },
         signal: AbortSignal.timeout(HEALTH_CHECK_TIMEOUT_MS),
+        redirect: 'manual',
       });
 
       return this.toResult(response, start);

@@ -221,7 +221,20 @@ export class ConnectorCredentialService {
       );
     }
 
-    await this.credentialRepository.delete(id);
+    try {
+      await this.credentialRepository.delete(id);
+    } catch (error) {
+      const pgCode = (error as { driverError?: { code?: string } }).driverError
+        ?.code;
+      // Defense in depth: the fk_credential_connector constraint is ON DELETE RESTRICT,
+      // so a race can still fail here even if the pre-check passed.
+      if (pgCode === '23503') {
+        throw new ConflictException(
+          'Cannot delete connector: credential records still reference it.',
+        );
+      }
+      throw error;
+    }
   }
 
   /** Used by the tenant status-change cascade when a tenant is deactivated. */

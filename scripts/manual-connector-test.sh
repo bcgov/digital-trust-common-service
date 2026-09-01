@@ -39,6 +39,7 @@ set -euo pipefail
 BASE_URL="${BASE_URL:-https://app.localhost}"
 TENANT_ID="${TENANT_ID:?Set TENANT_ID to an existing tenant id}"
 CLIENT_ID="${CLIENT_ID:?Set CLIENT_ID to an OAuth client with the tenants:admin scope}"
+CLIENT_SECRET="${CLIENT_SECRET:?Set CLIENT_SECRET to that client secret}"
 TRACTION_ENDPOINT_URL="${TRACTION_ENDPOINT_URL:?Set TRACTION_ENDPOINT_URL to the Traction agent endpoint}"
 TRACTION_API_KEY="${TRACTION_API_KEY:?Set TRACTION_API_KEY to the Traction agent API key}"
 TRACTION_TENANT_ID="${TRACTION_TENANT_ID:-}"
