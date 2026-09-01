@@ -53,10 +53,11 @@ info:
     credentials must be re-authenticated. Suspension only blocks access — it does not revoke or
     restore anything. Deactivated tenant data is retained for 90 days.
 
-    **Current limitation**: the `403 TENANT_NOT_ACTIVE` check (`TenantStatusGuard`) is only wired
-    up on Tenant Settings and Tenant Users endpoints so far. Connections, Credentials,
-    Presentations, Clients, and Connectors have no such guard yet, so a caller from a suspended or
-    deactivated tenant can still use those endpoints until the guard is added there too.
+    **Current limitation**: the `403 TENANT_NOT_ACTIVE` check (`TenantStatusGuard`) is wired up on
+    Tenant Settings, Tenant Users, Audit Logs, Connections, Connectors, Credential Definitions,
+    Clients, and Operations endpoints. Credentials (issuance) and Presentations endpoints are not
+    yet implemented in this service, so the guard does not apply to them yet — it must be added
+    when those endpoints are built.
   contact:
     name: BC Gov Digital Trust
   license:
@@ -560,10 +561,10 @@ paths:
         tenant only blocks its own callers (`403 TENANT_NOT_ACTIVE`); it does not touch OAuth
         clients, connector credentials, or connections.
 
-        **Current limitation**: the `403 TENANT_NOT_ACTIVE` block is only enforced on Tenant
-        Settings and Tenant Users endpoints so far. Connections, Credentials, Presentations,
-        Clients, and Connectors are not yet guarded, so a suspended or deactivated tenant's own
-        callers can still use them.
+        **Current limitation**: the `403 TENANT_NOT_ACTIVE` block is now enforced on Tenant
+        Settings, Tenant Users, Audit Logs, Connections, Connectors, Credential Definitions,
+        Clients, and Operations endpoints. Credentials (issuance) and Presentations endpoints are
+        not yet implemented in this service, so the guard does not apply to them yet.
       tags: [Tenants]
       requestBody:
         required: true
