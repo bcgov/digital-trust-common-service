@@ -120,8 +120,7 @@ describe('ConnectorCredentialService', () => {
       const dto: CreateConnectorCredentialDto = {
         tenantId: mockCredential.tenantId,
         connectorType: mockCredential.connectorType,
-        credentialsPlainText:
-          Buffer.from('encrypted_data').toString('base64'),
+        credentialsPlainText: Buffer.from('encrypted_data').toString('base64'),
         endpointUrl: mockCredential.endpointUrl,
         active: mockCredential.active,
       };
