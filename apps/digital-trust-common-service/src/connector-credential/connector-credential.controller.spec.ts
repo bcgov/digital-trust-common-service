@@ -10,6 +10,7 @@ import { ConnectorCredential } from './connector-credential.entity';
 import { ConnectorCredentialService } from './connector-credential.service';
 import { ConnectorCredentialResponseDto } from './dto/connector-credential-response.dto';
 import { CreateConnectorCredentialDto } from './dto/create-connector-credential.dto';
+import { UpdateConnectorCredentialDto } from './dto/update-connector-credential.dto';
 
 class AllowGuard implements CanActivate {
   public canActivate(): boolean {
@@ -32,19 +33,19 @@ describe('ConnectorCredentialController', () => {
     tenantId: '123e4567-e89b-12d3-a456-426614174001',
     connectorType: ConnectorType.TRACTION,
     credentialsEncrypted: Buffer.from('encrypted_data'),
-    endpointUrl: 'https://traction.example.com/api',
+    endpointUrl: 'https://api.salesforce.com/v57.0',
     active: true,
     keyVersion: 1,
     createdAt: new Date(),
     updatedAt: new Date(),
-    tenant: undefined as unknown as ConnectorCredential['tenant'],
+    tenant: undefined as any,
   };
 
   const auth: AuthContext = {
     sub: 'user-1',
     tokenType: 'user',
     clientId: 'spa',
-    tenantId: mockCredential.tenantId,
+    tenantId: '123e4567-e89b-12d3-a456-426614174001',
     roles: [],
     scope: 'tenants:admin',
     scopes: ['tenants:admin'],
@@ -109,8 +110,8 @@ describe('ConnectorCredentialController', () => {
     expect(controller).toBeDefined();
   });
 
-  describe('POST /tenants/:tenantId/connectors', () => {
-    it('should create a new connector', async () => {
+  describe('POST /connector-credentials', () => {
+    it('should create a new connector credential', async () => {
       const dto: CreateConnectorCredentialDto = {
         connectorType: mockCredential.connectorType,
         endpointUrl: mockCredential.endpointUrl,
@@ -134,19 +135,8 @@ describe('ConnectorCredentialController', () => {
     });
   });
 
-  describe('GET /tenants/:tenantId/connectors', () => {
-    it('should find all connectors for a tenant', async () => {
-      mockFindByTenant.mockResolvedValue([mockCredential]);
-
-      const result = await controller.findByTenant(mockCredential.tenantId);
-
-      expect(mockFindByTenant).toHaveBeenCalledWith(mockCredential.tenantId);
-      expect(result).toEqual([mockResponseDto]);
-    });
-  });
-
-  describe('GET /tenants/:tenantId/connectors/:id', () => {
-    it('should find a connector by ID', async () => {
+  describe('GET /connector-credentials/:id', () => {
+    it('should find a credential by ID', async () => {
       mockFindById.mockResolvedValue(mockCredential);
 
       const result = await controller.findById(mockCredential.id, auth);
@@ -156,9 +146,22 @@ describe('ConnectorCredentialController', () => {
     });
   });
 
-  describe('PATCH /tenants/:tenantId/connectors/:id', () => {
-    it('should update a connector', async () => {
-      const updateDto = { endpointUrl: 'https://traction.example.com/v2' };
+  describe('GET /connector-credentials/tenant/:tenantId', () => {
+    it('should find all credentials for a tenant', async () => {
+      mockFindByTenant.mockResolvedValue([mockCredential]);
+
+      const result = await controller.findByTenant(mockCredential.tenantId);
+
+      expect(mockFindByTenant).toHaveBeenCalledWith(mockCredential.tenantId);
+      expect(result).toEqual([mockResponseDto]);
+    });
+  });
+
+  describe('PATCH /connector-credentials/:id', () => {
+    it('should update a connector credential', async () => {
+      const updateDto: UpdateConnectorCredentialDto = {
+        endpointUrl: 'https://traction.example.com/api/v2',
+      };
       const updatedCredential = {
         ...mockCredential,
         endpointUrl: updateDto.endpointUrl,
@@ -185,8 +188,8 @@ describe('ConnectorCredentialController', () => {
     });
   });
 
-  describe('DELETE /tenants/:tenantId/connectors/:id', () => {
-    it('should delete a connector', async () => {
+  describe('DELETE /connector-credentials/:id', () => {
+    it('should delete a connector credential', async () => {
       mockDelete.mockResolvedValue(undefined);
 
       await controller.delete(mockCredential.id, auth);
@@ -195,10 +198,10 @@ describe('ConnectorCredentialController', () => {
     });
   });
 
-  describe('POST /tenants/:tenantId/connectors/:id/test', () => {
-    it('should test connector connectivity', async () => {
-      const testResult = { status: 'healthy', latencyMs: 12 };
-      mockTestConnectivity.mockResolvedValue(testResult);
+  describe('POST /connector-credentials/:id/test', () => {
+    it('should return the connectivity test result', async () => {
+      const connectivityResult = { status: 'healthy', latencyMs: 42 };
+      mockTestConnectivity.mockResolvedValue(connectivityResult);
 
       const result = await controller.test(mockCredential.id, auth);
 
@@ -206,7 +209,7 @@ describe('ConnectorCredentialController', () => {
         mockCredential.id,
         auth,
       );
-      expect(result).toEqual(testResult);
+      expect(result).toEqual(connectivityResult);
     });
   });
 });

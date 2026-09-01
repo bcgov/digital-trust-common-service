@@ -12,7 +12,6 @@ import {
 import { ConnectorType } from '../../connection/connection.entity';
 
 export class ConnectorCredentialsDto {
-  @Expose({ name: 'api_key' })
   @ApiProperty({
     description: 'The API key used to authenticate with the agent endpoint',
     example: 'sk_live_abc123',
@@ -21,7 +20,6 @@ export class ConnectorCredentialsDto {
   @IsNotEmpty()
   public apiKey!: string;
 
-  @Expose({ name: 'connector_type' })
   @ApiProperty({
     description:
       'The Traction sub-tenant ID this credential maps to (Traction connectors only)',
@@ -43,7 +41,7 @@ export class CreateConnectorCredentialDto {
   @IsEnum(ConnectorType)
   public connectorType!: ConnectorType;
 
-  @Expose({ name: 'credentials_plain_text' })
+  @Expose({ name: 'endpoint_url' })
   @ApiProperty({
     description: 'The endpoint URL for the connector agent',
     example: 'https://traction.example.com/api',
