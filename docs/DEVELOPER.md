@@ -152,9 +152,10 @@ docker compose up -d db caddy keycloak
 docker compose --profile ui up
 ```
 
-The containerized API reads Caddy's CA straight from the `caddy_data` volume,
-so it needs no certificate export. The export below is for host-mode Node and
-for your browser.
+The containerized API is handed Caddy's root certificate automatically — the
+`caddy-ca` service copies it onto a dedicated volume once Caddy has generated
+it — so it needs no certificate export. The export below is for host-mode Node
+and for your browser.
 
 #### Export and trust the Caddy local CA
 
@@ -220,9 +221,9 @@ export NODE_EXTRA_CA_CERTS="$PWD/caddy/root.crt"
 ```
 
 This allows the host-run app to call `https://keycloak.localhost` successfully
-during upstream federation flows. The current Compose `app` service does not
-mount `caddy/root.crt`, so use the host-run app for this local TLS workflow
-unless you add a certificate mount and container path explicitly.
+during upstream federation flows. The containerized `app` needs none of this:
+the `caddy-ca` service publishes Caddy's root certificate on its own volume and
+compose points `NODE_EXTRA_CA_CERTS` at it.
 
 #### Configure Keycloak Endpoint
 
@@ -372,9 +373,11 @@ needs Caddy's CA trusted — see
 
 > **Known issue:** `app`, `migrate` and `seed` all build into the same
 > bind-mounted `dist/`, and `deleteOutDir` means concurrent builds can wipe
-> each other. A first `up` occasionally fails with `Cannot find module`;
-> `docker compose restart app` clears it. Tracked in
-> [#375](https://github.com/bcgov/digital-trust-common-service/issues/375).
+> each other, so a first `up` occasionally fails with `Cannot find module`.
+> Check `docker compose ps -a` before restarting anything: if `migrate` or
+> `seed` exited nonzero they need rerunning with `docker compose up migrate
+> seed`, since restarting `app` alone leaves the schema or demo data
+> incomplete. Then `docker compose restart app`.
 
 **Useful commands:**
 ```bash
