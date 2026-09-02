@@ -50,22 +50,16 @@ export class ConnectorHealthCheckService {
     const start = Date.now();
 
     try {
-      const response = credentials.tractionTenantId
-        ? await fetch(
-            `${endpointUrl}/multitenancy/tenant/${credentials.tractionTenantId}/token`,
-            {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ api_key: credentials.apiKey }),
-              signal: AbortSignal.timeout(HEALTH_CHECK_TIMEOUT_MS),
-              redirect: 'manual',
-            },
-          )
-        : await fetch(`${endpointUrl}/status/ready`, {
-            headers: { Authorization: `Bearer ${credentials.apiKey}` },
-            signal: AbortSignal.timeout(HEALTH_CHECK_TIMEOUT_MS),
-            redirect: 'manual',
-          });
+      const response = await fetch(
+        `${endpointUrl}/multitenancy/tenant/${credentials.tractionTenantId}/token`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ api_key: credentials.apiKey }),
+          signal: AbortSignal.timeout(HEALTH_CHECK_TIMEOUT_MS),
+          redirect: 'manual',
+        },
+      );
 
       return this.toResult(response, start);
     } catch (error) {

@@ -61,24 +61,6 @@ describe('ConnectorHealthCheckService', () => {
       expect(result.status).toBe('healthy');
     });
 
-    it('falls back to a status check when tractionTenantId is absent', async () => {
-      (global.fetch as jest.Mock).mockResolvedValue({ ok: true, status: 200 });
-
-      const result = await service.check(
-        ConnectorType.TRACTION,
-        'https://traction.example.com',
-        { apiKey: 'key-1' },
-      );
-
-      expect(global.fetch).toHaveBeenCalledWith(
-        'https://traction.example.com/status/ready',
-        expect.objectContaining({
-          headers: { Authorization: 'Bearer key-1' },
-        }),
-      );
-      expect(result.status).toBe('healthy');
-    });
-
     it('reports unhealthy on a non-ok response', async () => {
       (global.fetch as jest.Mock).mockResolvedValue({
         ok: false,
