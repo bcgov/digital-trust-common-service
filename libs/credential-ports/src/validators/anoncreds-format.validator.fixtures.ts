@@ -35,6 +35,19 @@ export const SCHEMA_WITH_INVALID_OPTIONAL_ATTRIBUTE = {
   optionalAttributes: ['not_a_declared_attribute'],
 };
 
+export const SCHEMA_WITH_NON_ARRAY_OPTIONAL_ATTRIBUTES = {
+  attr_names: ['given_names', 'family_name'],
+  schema_name: 'person-credential',
+  schema_version: '1.0',
+  optionalAttributes: 'given_names',
+};
+
+export const SCHEMA_MISSING_ATTR_NAMES_WITH_OPTIONAL = {
+  schema_name: 'person-credential',
+  schema_version: '1.0',
+  optionalAttributes: ['given_names'],
+};
+
 export const VALID_ATTRIBUTES = [
   { name: 'given_names', value: 'Avery' },
   { name: 'family_name', value: 'Smith' },
@@ -64,4 +77,27 @@ export const ATTRIBUTES_WITH_NON_STRING_VALUE = [
   { name: 'family_name', value: 'Smith' },
   // Intentionally untyped to simulate a malformed JSON payload at the wire.
   { name: 'birthdate_dateint', value: 19900101 as unknown as string },
+];
+
+// A circular reference so describe() falls back from JSON.stringify to its
+// catch branch, exercising the unserializable-value path.
+const circularValue: Record<string, unknown> = {};
+circularValue.self = circularValue;
+
+export const ATTRIBUTES_WITH_UNSERIALIZABLE_VALUE = [
+  { name: 'given_names', value: circularValue as unknown as string },
+  { name: 'family_name', value: 'Smith' },
+  { name: 'birthdate_dateint', value: '19900101' },
+];
+
+// JSON.stringify() returns undefined (rather than throwing) for a function
+// value, exercising describe()'s `??` fallback instead of its catch branch.
+export const ATTRIBUTES_WITH_UNSTRINGIFIABLE_VALUE = [
+  {
+    name: 'given_names',
+
+    value: (() => {}) as unknown as string,
+  },
+  { name: 'family_name', value: 'Smith' },
+  { name: 'birthdate_dateint', value: '19900101' },
 ];

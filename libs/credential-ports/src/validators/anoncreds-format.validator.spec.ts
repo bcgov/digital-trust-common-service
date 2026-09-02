@@ -6,10 +6,14 @@ import {
   ATTRIBUTES_WITH_DUPLICATE,
   ATTRIBUTES_WITH_EXTRA,
   ATTRIBUTES_WITH_NON_STRING_VALUE,
+  ATTRIBUTES_WITH_UNSERIALIZABLE_VALUE,
+  ATTRIBUTES_WITH_UNSTRINGIFIABLE_VALUE,
   SCHEMA_MISSING_ATTR_NAMES,
+  SCHEMA_MISSING_ATTR_NAMES_WITH_OPTIONAL,
   SCHEMA_MISSING_NAME_AND_VERSION,
   SCHEMA_WITH_DUPLICATE_ATTR_NAMES,
   SCHEMA_WITH_INVALID_OPTIONAL_ATTRIBUTE,
+  SCHEMA_WITH_NON_ARRAY_OPTIONAL_ATTRIBUTES,
   VALID_ATTRIBUTES,
   VALID_SCHEMA,
   VALID_SCHEMA_WITH_OPTIONAL,
@@ -67,6 +71,29 @@ describe('AnonCredsFormatValidator', () => {
       expect(issues).toContainEqual(
         expect.objectContaining({ field: 'optionalAttributes' }),
       );
+    });
+
+    it('flags optionalAttributes when it is not an array of strings', () => {
+      const issues = validator.validateSchema(
+        SCHEMA_WITH_NON_ARRAY_OPTIONAL_ATTRIBUTES,
+      );
+
+      expect(issues).toContainEqual(
+        expect.objectContaining({
+          field: 'optionalAttributes',
+          expected: 'an array of attribute name strings',
+        }),
+      );
+    });
+
+    it('skips cross-checking optionalAttributes when attr_names is itself invalid', () => {
+      const issues = validator.validateSchema(
+        SCHEMA_MISSING_ATTR_NAMES_WITH_OPTIONAL,
+      );
+
+      expect(issues).toEqual([
+        expect.objectContaining({ field: 'attr_names' }),
+      ]);
     });
   });
 
@@ -136,6 +163,34 @@ describe('AnonCredsFormatValidator', () => {
 
       expect(issues).toContainEqual(
         expect.objectContaining({ field: 'birthdate_dateint' }),
+      );
+    });
+
+    it('falls back to a placeholder when a value cannot be serialized', () => {
+      const issues = validator.validateAttributes(
+        VALID_SCHEMA,
+        ATTRIBUTES_WITH_UNSERIALIZABLE_VALUE,
+      );
+
+      expect(issues).toContainEqual(
+        expect.objectContaining({
+          field: 'given_names',
+          actual: '[unserializable value]',
+        }),
+      );
+    });
+
+    it('falls back to a placeholder when a value stringifies to undefined', () => {
+      const issues = validator.validateAttributes(
+        VALID_SCHEMA,
+        ATTRIBUTES_WITH_UNSTRINGIFIABLE_VALUE,
+      );
+
+      expect(issues).toContainEqual(
+        expect.objectContaining({
+          field: 'given_names',
+          actual: '[unserializable value]',
+        }),
       );
     });
 

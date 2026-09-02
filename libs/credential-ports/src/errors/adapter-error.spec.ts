@@ -2,6 +2,7 @@ import {
   AdapterError,
   ConnectorUnavailableError,
   FormatNotSupportedError,
+  FormatValidationError,
   TimeoutError,
   ValidationError,
 } from './adapter-error';
@@ -113,5 +114,34 @@ describe('ValidationError', () => {
     const error = new ValidationError(['name must not be empty']);
 
     expect(error.message).toBe('Validation failed');
+  });
+});
+
+describe('FormatValidationError', () => {
+  it('should expose the expected error shape', () => {
+    const issues = [
+      {
+        field: 'given_names',
+        expected: 'a value',
+        actual: 'missing',
+        message: "Required attribute 'given_names' was not supplied",
+      },
+    ];
+    const error = new FormatValidationError(issues, 'Invalid credential');
+
+    expect(error).toBeInstanceOf(FormatValidationError);
+    expect(error).toBeInstanceOf(AdapterError);
+    expect(error).toBeInstanceOf(Error);
+    expect(error.code).toBe('FORMAT_VALIDATION_ERROR');
+    expect(error.name).toBe('FormatValidationError');
+    expect(error.message).toBe('Invalid credential');
+    expect(error.context).toEqual({ issues });
+    expect(error.issues).toBe(issues);
+  });
+
+  it('should use its default message', () => {
+    const error = new FormatValidationError([]);
+
+    expect(error.message).toBe('Format validation failed');
   });
 });
