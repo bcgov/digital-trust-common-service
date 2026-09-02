@@ -72,9 +72,9 @@ export class ConnectorCredentialController {
         value: {
           tenant_id: '123e4567-e89b-12d3-a456-426614174000',
           connector_type: 'traction',
-          credentials_plain_text: 'base64plaintextcredentials==',
           endpoint_url: 'https://api.example.com/v1',
           active: true,
+          credentials: { apiKey: 'integration-secret' },
         },
       },
     },

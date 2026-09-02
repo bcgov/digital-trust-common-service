@@ -138,9 +138,6 @@ describe('AdapterRegistry (integration)', () => {
       tenantId,
       {
         connectorType: overrides.connectorType ?? ConnectorType.TRACTION,
-        credentialsPlainText: JSON.stringify({
-          apiKey: 'integration-secret',
-        }),
         endpointUrl: overrides.endpointUrl ?? 'https://traction.example.com',
         credentials: { apiKey: 'integration-secret' },
       },
