@@ -23,7 +23,7 @@ describe('CredentialDefinitionService', () => {
   let mockFindByFormat: jest.Mock;
   let mockFindByConnector: jest.Mock;
   let mockUpdate: jest.Mock;
-  let mockDelete: jest.Mock;
+  let mockDeactivate: jest.Mock;
   let mockEmit: jest.Mock;
 
   const mockCredentialDefinition: CredentialDefinition = {
@@ -34,6 +34,7 @@ describe('CredentialDefinitionService', () => {
     schemaDefinition: { schema: 'test' },
     externalId: 'external-123',
     connectorType: CredentialDefinitionConnectorType.TRACTION,
+    isActive: true,
     metadata: { key: 'value' },
     createdAt: new Date(),
     updatedAt: new Date(),
@@ -72,7 +73,7 @@ describe('CredentialDefinitionService', () => {
     mockFindByFormat = jest.fn();
     mockFindByConnector = jest.fn();
     mockUpdate = jest.fn();
-    mockDelete = jest.fn();
+    mockDeactivate = jest.fn();
     mockEmit = jest.fn().mockResolvedValue(undefined);
 
     const mockRepository = {
@@ -83,7 +84,7 @@ describe('CredentialDefinitionService', () => {
       findByFormat: mockFindByFormat,
       findByConnector: mockFindByConnector,
       update: mockUpdate,
-      delete: mockDelete,
+      deactivate: mockDeactivate,
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -365,17 +366,17 @@ describe('CredentialDefinitionService', () => {
   });
 
   describe('delete', () => {
-    it('should delete a credential definition if found', async () => {
+    it('should deactivate a credential definition if found', async () => {
       const id = mockCredentialDefinition.id;
       mockFindById.mockResolvedValue(mockCredentialDefinition);
 
       await service.delete(id, auth);
 
       expect(mockFindById).toHaveBeenCalledWith(id);
-      expect(mockDelete).toHaveBeenCalledWith(id);
+      expect(mockDeactivate).toHaveBeenCalledWith(id);
       expect(mockEmit).toHaveBeenCalledWith({
         tenantId: mockCredentialDefinition.tenantId,
-        action: AuditAction.DELETE,
+        action: AuditAction.UPDATE,
         resourceType: 'credential_definition',
         resourceId: id,
       });
@@ -386,7 +387,7 @@ describe('CredentialDefinitionService', () => {
       mockFindById.mockResolvedValue(null);
 
       await expect(service.delete(id, auth)).rejects.toThrow(NotFoundException);
-      expect(mockDelete).not.toHaveBeenCalled();
+      expect(mockDeactivate).not.toHaveBeenCalled();
       expect(mockEmit).not.toHaveBeenCalled();
     });
   });

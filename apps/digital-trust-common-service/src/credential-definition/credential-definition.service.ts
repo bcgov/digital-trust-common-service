@@ -160,14 +160,19 @@ export class CredentialDefinitionService {
     return updated;
   }
 
+  /**
+   * Deactivates the credential definition rather than deleting its row, so
+   * that records referencing its id (e.g. an issuance profile's
+   * `credential_definition_id`) keep resolving.
+   */
   public async delete(id: string, auth: AuthContext): Promise<void> {
     const credentialDefinition = await this.findById(id, auth);
 
-    await this.credentialDefinitionRepository.delete(id);
+    await this.credentialDefinitionRepository.deactivate(id);
 
     await this.domainAudit.emit({
       tenantId: credentialDefinition.tenantId,
-      action: AuditAction.DELETE,
+      action: AuditAction.UPDATE,
       resourceType: 'credential_definition',
       resourceId: id,
     });

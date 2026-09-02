@@ -23,6 +23,7 @@ import { AddTenantApprovalStatus1787255721437 } from './migrations/000020_add-te
 import { AllowInvitedTenantUser1787341200000 } from './migrations/000021_allow-invited-tenant-user';
 import { AddTenantStatusLifecycleColumns1787700000000 } from './migrations/000022_add-tenant-status-lifecycle-columns';
 import { AddOauthClientPublic1787900000000 } from './migrations/000023_add-oauth-client-public';
+import { AddCredentialDefinitionActive1788353244312 } from './migrations/000024_add-credential-definition-active';
 import { buildSslConfig } from './ssl.util';
 
 export const AppDataSource = new DataSource({
@@ -33,8 +34,7 @@ export const AppDataSource = new DataSource({
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME,
   entities: ['dist/**/*.entity.js'],
-  migrations: [
-    InitialExtensions1783630501649,
+  migrations: [InitialExtensions1783630501649,
     CreateTenantEntity1784231917556,
     CreateTenantUserEntity1784241747468,
     CreateCredentialDefinitionRegistry1784316680145,
@@ -56,8 +56,7 @@ export const AppDataSource = new DataSource({
     AddTenantApprovalStatus1787255721437,
     AllowInvitedTenantUser1787341200000,
     AddTenantStatusLifecycleColumns1787700000000,
-    AddOauthClientPublic1787900000000,
-  ],
+    AddOauthClientPublic1787900000000, AddCredentialDefinitionActive1788353244312],
   ssl: buildSslConfig(
     process.env.DB_SSL,
     process.env.DB_SSL_REJECT_UNAUTHORIZED,

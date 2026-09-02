@@ -200,7 +200,9 @@ export class CredentialDefinitionController {
   }
 
   @Delete(':id')
-  @ApiOkResponse({ description: 'Credential definition deleted successfully' })
+  @ApiOkResponse({
+    description: 'Credential definition deactivated successfully',
+  })
   @ApiNotFoundResponse({ description: 'Credential definition not found' })
   public async delete(
     @Param('id', ParseUUIDPipe) id: string,

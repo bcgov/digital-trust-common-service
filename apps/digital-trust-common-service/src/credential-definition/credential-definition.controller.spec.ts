@@ -54,6 +54,7 @@ describe('CredentialDefinitionController', () => {
     schemaDefinition: { schema: 'test' },
     externalId: 'external-123',
     connectorType: CredentialDefinitionConnectorType.TRACTION,
+    isActive: true,
     metadata: { key: 'value' },
     createdAt: new Date(),
     updatedAt: new Date(),

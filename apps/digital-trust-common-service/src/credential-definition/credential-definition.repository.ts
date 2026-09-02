@@ -88,7 +88,13 @@ export class CredentialDefinitionRepository {
     return await this.repository.save(credentialDefinition);
   }
 
-  public async delete(id: string): Promise<void> {
-    await this.repository.delete(id);
+  /**
+   * Deactivates a credential definition rather than removing its row: other
+   * records (e.g. an issuance profile) may still reference its id, and
+   * deactivation stops it from being offered for new issuance without
+   * breaking those references.
+   */
+  public async deactivate(id: string): Promise<void> {
+    await this.repository.update({ id }, { isActive: false });
   }
 }
