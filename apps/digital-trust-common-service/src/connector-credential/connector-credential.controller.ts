@@ -70,11 +70,10 @@ export class ConnectorCredentialController {
       example1: {
         summary: 'Register a Traction connector',
         value: {
-          tenant_id: '123e4567-e89b-12d3-a456-426614174000',
           connector_type: 'traction',
           endpoint_url: 'https://api.example.com/v1',
           active: true,
-          credentials: { apiKey: 'integration-secret' },
+          credentials: { api_key: 'integration-secret' },
         },
       },
     },
@@ -130,13 +129,13 @@ export class ConnectorCredentialController {
       example1: {
         summary: 'Update the connector endpoint URL',
         value: {
-          endpointUrl: 'https://traction.example.com/api/v2',
+          endpoint_url: 'https://traction.example.com/api/v2',
         },
       },
       example2: {
         summary: 'Rotate connector credentials',
         value: {
-          credentials: { apiKey: 'sk_live_new456' },
+          credentials: { api_key: 'sk_live_new456' },
         },
       },
     },

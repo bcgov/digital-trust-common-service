@@ -1,5 +1,6 @@
 import type { AuthContext } from '@app/auth';
 import {
+  BadRequestException,
   ConflictException,
   forwardRef,
   Inject,
@@ -208,6 +209,12 @@ export class ConnectorCredentialService {
         existing.connectorType,
         endpointUrl,
         existingCredentials,
+      );
+    }
+
+    if (Object.keys(updates).length === 0) {
+      throw new BadRequestException(
+        'At least one of endpoint_url or credentials must be provided.',
       );
     }
 

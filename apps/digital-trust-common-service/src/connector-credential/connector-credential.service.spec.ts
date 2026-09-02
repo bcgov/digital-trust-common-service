@@ -1,5 +1,6 @@
 import { AuthContext } from '@app/auth';
 import {
+  BadRequestException,
   ConflictException,
   NotFoundException,
   UnprocessableEntityException,
@@ -414,6 +415,17 @@ describe('ConnectorCredentialService', () => {
       await expect(
         service.update('nonexistent', { endpointUrl: 'https://x.com' }, auth),
       ).rejects.toThrow(NotFoundException);
+    });
+
+    it('should throw BadRequestException when no fields are provided', async () => {
+      mockFindById.mockResolvedValue(mockCredential);
+
+      await expect(service.update(mockCredential.id, {}, auth)).rejects.toThrow(
+        BadRequestException,
+      );
+
+      expect(mockHealthCheck).not.toHaveBeenCalled();
+      expect(mockUpdate).not.toHaveBeenCalled();
     });
   });
 

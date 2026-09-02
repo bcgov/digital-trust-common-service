@@ -1,6 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { Expose, Type } from 'class-transformer';
 import {
+  IsDefined,
   IsEnum,
   IsNotEmpty,
   IsOptional,
@@ -12,6 +13,7 @@ import {
 import { ConnectorType } from '../../connection/connection.entity';
 
 export class ConnectorCredentialsDto {
+  @Expose({ name: 'api_key' })
   @ApiProperty({
     description: 'The API key used to authenticate with the agent endpoint',
     example: 'sk_live_abc123',
@@ -20,6 +22,7 @@ export class ConnectorCredentialsDto {
   @IsNotEmpty()
   public apiKey!: string;
 
+  @Expose({ name: 'traction_tenant_id' })
   @ApiProperty({
     description:
       'The Traction sub-tenant ID this credential maps to (Traction connectors only)',
@@ -55,6 +58,7 @@ export class CreateConnectorCredentialDto {
       'The connector-specific credentials. Encrypted at rest and never returned after creation.',
     type: ConnectorCredentialsDto,
   })
+  @IsDefined()
   @ValidateNested()
   @Type(() => ConnectorCredentialsDto)
   public credentials!: ConnectorCredentialsDto;
