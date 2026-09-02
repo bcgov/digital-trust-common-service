@@ -19,6 +19,9 @@ services:
     env_file:
       - .env
     environment:
+      # Container-mode values; .env stays correct for the host workflow.
+      DB_HOST: db
+      NODE_EXTRA_CA_CERTS: ./caddy/root.crt
       # .env carries http://localhost:4318 so the default workflow (the API on
       # the host) works unedited. In compose the collector is a sibling
       # container, so point at it by service name. An inline `environment`
@@ -37,6 +40,8 @@ services:
       - /app/node_modules
     env_file:
       - .env
+    environment:
+      DB_HOST: db
     depends_on:
       db:
         condition: service_healthy
@@ -52,6 +57,8 @@ services:
       - ./config:/app/config:ro
     env_file:
       - .env
+    environment:
+      DB_HOST: db
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -182,6 +189,13 @@ services:
 
   caddy:
     image: caddy:2
+    # Containers resolve these to Caddy, so the API reaches Keycloak and its
+    # own JWKS by the same hostnames the browser uses.
+    networks:
+      default:
+        aliases:
+          - keycloak.localhost
+          - app.localhost
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
