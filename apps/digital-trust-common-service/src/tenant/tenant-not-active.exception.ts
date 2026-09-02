@@ -11,8 +11,11 @@ export interface TenantNotActiveErrorBody {
 }
 
 /**
- * Thrown by {@link TenantStatusGuard} when the caller's own tenant
- * (`AuthContext.tenantId`) is suspended or deactivated.
+ * Thrown when a tenant's lifecycle state forbids an operation — the
+ * caller's own tenant on guarded routes (TenantStatusGuard), or the target
+ * tenant of a switch. Raised through `assertTenantActive`, which owns the
+ * policy, including reporting a missing or soft-deleted tenant as
+ * deactivated.
  *
  * Distinct from `TenantAccessDeniedException` (JWT `tenant_id` claim
  * mismatch against a route param) — this is about the tenant's own

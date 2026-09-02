@@ -5,8 +5,7 @@ import {
 import type { AuthenticatedRequest } from '@app/auth/types/express';
 import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
 
-import { TenantNotActiveException } from './tenant-not-active.exception';
-import { TenantStatus } from './tenant.entity';
+import { assertTenantActive } from './assert-tenant-active';
 import { TenantRepository } from './tenant.repository';
 
 /**
@@ -55,21 +54,7 @@ export class TenantStatusGuard implements CanActivate {
       return true;
     }
 
-    const tenant = await this.tenants.findById(auth.tenantId);
-
-    if (!tenant) {
-      throw new TenantNotActiveException(
-        'Tenant could not be found and cannot perform this action',
-        TenantStatus.DEACTIVATED,
-      );
-    }
-
-    if (tenant.status !== TenantStatus.ACTIVE) {
-      throw new TenantNotActiveException(
-        `Tenant is ${tenant.status} and cannot perform this action`,
-        tenant.status,
-      );
-    }
+    assertTenantActive(await this.tenants.findById(auth.tenantId));
 
     return true;
   }

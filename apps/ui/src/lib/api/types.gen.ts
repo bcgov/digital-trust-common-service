@@ -59,6 +59,7 @@ export interface paths {
          *     The caller must have an active membership in the target tenant.
          *     Machine (`client_credentials`) tokens cannot switch; each client is bound to one tenant.
          *     The previous grant is revoked so the old refresh token cannot be used alongside the new one.
+         *     A target tenant that is not active is refused with a TENANT_NOT_ACTIVE error.
          */
         post: operations["switchTenant"];
         delete?: never;
@@ -76,7 +77,8 @@ export interface paths {
         };
         /**
          * List tenants the current user can switch to
-         * @description Returns the caller's active tenant memberships (id, name, slug, role).
+         * @description Returns the caller's active tenant memberships (id, name, slug, role)
+         *     with each tenant's lifecycle status; soft-deleted tenants are omitted.
          *     Machine clients receive 403.
          */
         get: operations["listAuthTenants"];
@@ -2495,6 +2497,11 @@ export interface operations {
                         id: string;
                         name: string;
                         slug: string;
+                        /**
+                         * @description Tenant lifecycle status. Only active tenants can be switched into.
+                         * @enum {string}
+                         */
+                        status: "active" | "pending_approval" | "rejected" | "suspended" | "deactivated";
                         /** @enum {string} */
                         role: "owner" | "admin" | "member" | "readonly";
                     }[];

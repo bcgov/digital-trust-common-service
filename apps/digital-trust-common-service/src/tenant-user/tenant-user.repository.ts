@@ -111,22 +111,32 @@ export class TenantUserRepository {
     });
   }
 
+  /**
+   * Active memberships for a Keycloak subject, oldest first. Joined through
+   * the tenant so callers can read its lifecycle status. The inner join is
+   * what excludes memberships in soft-deleted tenants: TypeORM already
+   * appends `deleted_at IS NULL` to any join against a soft-deletable
+   * entity (the explicit condition here is belt-and-braces), but
+   * find-options relations build a LEFT join, which would keep the
+   * membership row with a null tenant instead of dropping it.
+   */
   public async findActiveByExternalUserId(
     externalUserId: string,
   ): Promise<TenantUser[]> {
-    return await this.repository.find({
-      where: {
-        externalUserId,
+    return await this.repository
+      .createQueryBuilder('tenantUser')
+      .innerJoinAndSelect(
+        'tenantUser.tenant',
+        'tenant',
+        'tenant.deleted_at IS NULL',
+      )
+      .where('tenantUser.externalUserId = :externalUserId', { externalUserId })
+      .andWhere('tenantUser.status = :status', {
         status: TenantUserStatus.ACTIVE,
-      },
-      order: {
-        createdAt: 'ASC',
-        id: 'ASC',
-      },
-      relations: {
-        tenant: true,
-      },
-    });
+      })
+      .orderBy('tenantUser.createdAt', 'ASC')
+      .addOrderBy('tenantUser.id', 'ASC')
+      .getMany();
   }
 
   public async findByTenantAndExternalUserId(
