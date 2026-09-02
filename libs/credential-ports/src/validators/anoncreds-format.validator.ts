@@ -28,16 +28,16 @@ function isNonEmptyStringArray(value: unknown): value is readonly string[] {
 }
 
 /**
- * Validates AnonCreds schema_definitions and offered attributes (CA-09.2).
+ * Validates AnonCreds schema_definitions and offered attributes.
  *
- * Rules (from CA-09):
+ * Rules:
  * - The schema declares attr_names, schema_name, and schema_version.
  * - Attributes are flat name/value string pairs (no nesting).
  * - Every attribute name must exactly match an attr_names entry; no extras.
  * - All attr_names are required unless listed in the schema's
- *   optionalAttributes array, a per-definition metadata field this
- *   validator introduces to satisfy CA-09's "optional flag in metadata"
- *   requirement.
+ *   optional_attributes array, a per-definition metadata field this
+ *   validator introduces to support an optional-attribute flag in
+ *   metadata.
  * - Values are always strings; ACA-Py encodes predicate values as strings
  *   internally, so numeric-looking values are not unwrapped here.
  */
@@ -81,15 +81,16 @@ export class AnonCredsFormatValidator implements FormatValidator {
       }
     }
 
-    const optionalAttributes = schema.optionalAttributes;
+    const optionalAttributes = schema.optional_attributes;
 
     if (optionalAttributes !== undefined) {
       if (!isStringArray(optionalAttributes)) {
         issues.push({
-          field: 'optionalAttributes',
+          field: 'optional_attributes',
           expected: 'an array of attribute name strings',
           actual: describe(optionalAttributes),
-          message: 'AnonCreds schema optionalAttributes must be a string array',
+          message:
+            'AnonCreds schema optional_attributes must be a string array',
         });
       } else if (isNonEmptyStringArray(attrNames)) {
         const knownNames = new Set(attrNames);
@@ -97,10 +98,10 @@ export class AnonCredsFormatValidator implements FormatValidator {
         for (const optionalName of optionalAttributes) {
           if (!knownNames.has(optionalName)) {
             issues.push({
-              field: 'optionalAttributes',
+              field: 'optional_attributes',
               expected: `one of: ${attrNames.join(', ')}`,
               actual: optionalName,
-              message: `optionalAttributes entry '${optionalName}' is not declared in attr_names`,
+              message: `optional_attributes entry '${optionalName}' is not declared in attr_names`,
             });
           }
         }
@@ -128,8 +129,8 @@ export class AnonCredsFormatValidator implements FormatValidator {
       ];
     }
 
-    const optionalAttributes = isStringArray(schema.optionalAttributes)
-      ? schema.optionalAttributes
+    const optionalAttributes = isStringArray(schema.optional_attributes)
+      ? schema.optional_attributes
       : [];
     const knownNames = new Set(attrNames);
     const requiredNames = new Set(

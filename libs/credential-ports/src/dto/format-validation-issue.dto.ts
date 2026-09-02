@@ -1,4 +1,4 @@
-// Structured description of a single format-validation failure (CA-09).
+// Structured description of a single format-validation failure.
 export interface FormatValidationIssue {
   // Attribute or schema field the issue relates to.
   readonly field: string;

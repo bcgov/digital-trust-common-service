@@ -72,7 +72,7 @@ export class ValidationError extends AdapterError {
   }
 }
 
-// Error returned when format-specific schema or attribute validation (CA-09)
+// Error returned when format-specific schema or attribute validation
 // fails. Distinct from ValidationError: issues here are structured per field
 // rather than free-text, so callers can surface them per-attribute.
 export class FormatValidationError extends AdapterError {

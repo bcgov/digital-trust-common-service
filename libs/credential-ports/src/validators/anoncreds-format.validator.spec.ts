@@ -35,7 +35,7 @@ describe('AnonCredsFormatValidator', () => {
       expect(validator.validateSchema(VALID_SCHEMA)).toEqual([]);
     });
 
-    it('accepts a schema whose optionalAttributes are declared attributes', () => {
+    it('accepts a schema whose optional_attributes are declared attributes', () => {
       expect(validator.validateSchema(VALID_SCHEMA_WITH_OPTIONAL)).toEqual([]);
     });
 
@@ -63,30 +63,30 @@ describe('AnonCredsFormatValidator', () => {
       ]);
     });
 
-    it('flags an optionalAttributes entry not present in attr_names', () => {
+    it('flags an optional_attributes entry not present in attr_names', () => {
       const issues = validator.validateSchema(
         SCHEMA_WITH_INVALID_OPTIONAL_ATTRIBUTE,
       );
 
       expect(issues).toContainEqual(
-        expect.objectContaining({ field: 'optionalAttributes' }),
+        expect.objectContaining({ field: 'optional_attributes' }),
       );
     });
 
-    it('flags optionalAttributes when it is not an array of strings', () => {
+    it('flags optional_attributes when it is not an array of strings', () => {
       const issues = validator.validateSchema(
         SCHEMA_WITH_NON_ARRAY_OPTIONAL_ATTRIBUTES,
       );
 
       expect(issues).toContainEqual(
         expect.objectContaining({
-          field: 'optionalAttributes',
+          field: 'optional_attributes',
           expected: 'an array of attribute name strings',
         }),
       );
     });
 
-    it('skips cross-checking optionalAttributes when attr_names is itself invalid', () => {
+    it('skips cross-checking optional_attributes when attr_names is itself invalid', () => {
       const issues = validator.validateSchema(
         SCHEMA_MISSING_ATTR_NAMES_WITH_OPTIONAL,
       );
@@ -116,7 +116,7 @@ describe('AnonCredsFormatValidator', () => {
       ]);
     });
 
-    it('does not require attributes listed in optionalAttributes', () => {
+    it('does not require attributes listed in optional_attributes', () => {
       const withoutOptional = [
         { name: 'given_names', value: 'Avery' },
         { name: 'family_name', value: 'Smith' },

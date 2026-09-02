@@ -11,7 +11,7 @@ import { FormatValidatorRegistry } from './validators/format-validator.registry'
 
 /**
  * Provides fail-closed default bindings for all credential port contracts,
- * plus the FormatValidatorRegistry (CA-09) pre-populated with every
+ * plus the FormatValidatorRegistry, pre-populated with every
  * FormatValidator this library ships.
  */
 @Module({

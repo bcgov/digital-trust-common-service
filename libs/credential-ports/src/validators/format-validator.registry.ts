@@ -6,8 +6,8 @@ import { FormatValidator } from '../ports/format-validator.port';
 
 /**
  * Runtime registry mapping a credential format to the FormatValidator that
- * implements it. Mirrors AdapterRegistry's register/resolve pattern so CA-03
- * and CA-08 can inject one registry and resolve the right validator by
+ * implements it. Mirrors AdapterRegistry's register/resolve pattern so
+ * callers can inject one registry and resolve the right validator by
  * format instead of depending on concrete validator classes.
  */
 @Injectable()
@@ -37,7 +37,7 @@ export class FormatValidatorRegistry {
    * Resolves the validator for a format, or throws FormatNotSupportedError
    * when none is registered. Callers should treat that as "cannot validate
    * this format yet" rather than "invalid": formats without a validator
-   * (SD-JWT, mDL, W3C VC) each need their own CA-09 sub-issue before they
+   * (SD-JWT, mDL, W3C VC) each need their own follow-up support before they
    * can be checked.
    */
   public resolve(format: CredentialFormat): FormatValidator {

@@ -4,7 +4,7 @@ import { CredentialFormat } from '../enums/credential-format.enum';
 
 /**
  * Validates credential definitions and offered attributes against
- * format-specific structural rules (CA-09). Implementations register
+ * format-specific structural rules. Implementations register
  * themselves with FormatValidatorRegistry, keyed by their own `format`.
  */
 export abstract class FormatValidator {
@@ -13,7 +13,7 @@ export abstract class FormatValidator {
 
   /**
    * Validates a credential definition's schema_definition at registration
-   * time (CA-08), before any attributes exist. Returns an empty array when
+   * time, before any attributes exist. Returns an empty array when
    * the schema is structurally valid.
    */
   public abstract validateSchema(
@@ -22,7 +22,7 @@ export abstract class FormatValidator {
 
   /**
    * Validates offered attribute values against the schema they claim to
-   * satisfy, at offer time (CA-03). Returns an empty array when the
+   * satisfy, at offer time. Returns an empty array when the
    * attributes are valid.
    */
   public abstract validateAttributes(

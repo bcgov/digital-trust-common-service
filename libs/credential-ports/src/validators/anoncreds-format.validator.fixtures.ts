@@ -1,4 +1,4 @@
-// Fixtures for AnonCredsFormatValidator specs (CA-09.2).
+// Fixtures for AnonCredsFormatValidator specs.
 
 export const VALID_SCHEMA = {
   attr_names: ['given_names', 'family_name', 'birthdate_dateint'],
@@ -10,7 +10,7 @@ export const VALID_SCHEMA_WITH_OPTIONAL = {
   attr_names: ['given_names', 'family_name', 'middle_name'],
   schema_name: 'person-credential',
   schema_version: '1.0',
-  optionalAttributes: ['middle_name'],
+  optional_attributes: ['middle_name'],
 };
 
 export const SCHEMA_MISSING_ATTR_NAMES = {
@@ -32,20 +32,20 @@ export const SCHEMA_WITH_INVALID_OPTIONAL_ATTRIBUTE = {
   attr_names: ['given_names', 'family_name'],
   schema_name: 'person-credential',
   schema_version: '1.0',
-  optionalAttributes: ['not_a_declared_attribute'],
+  optional_attributes: ['not_a_declared_attribute'],
 };
 
 export const SCHEMA_WITH_NON_ARRAY_OPTIONAL_ATTRIBUTES = {
   attr_names: ['given_names', 'family_name'],
   schema_name: 'person-credential',
   schema_version: '1.0',
-  optionalAttributes: 'given_names',
+  optional_attributes: 'given_names',
 };
 
 export const SCHEMA_MISSING_ATTR_NAMES_WITH_OPTIONAL = {
   schema_name: 'person-credential',
   schema_version: '1.0',
-  optionalAttributes: ['given_names'],
+  optional_attributes: ['given_names'],
 };
 
 export const VALID_ATTRIBUTES = [
