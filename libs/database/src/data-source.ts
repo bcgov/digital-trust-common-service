@@ -34,7 +34,8 @@ export const AppDataSource = new DataSource({
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME,
   entities: ['dist/**/*.entity.js'],
-  migrations: [InitialExtensions1783630501649,
+  migrations: [
+    InitialExtensions1783630501649,
     CreateTenantEntity1784231917556,
     CreateTenantUserEntity1784241747468,
     CreateCredentialDefinitionRegistry1784316680145,
@@ -56,7 +57,9 @@ export const AppDataSource = new DataSource({
     AddTenantApprovalStatus1787255721437,
     AllowInvitedTenantUser1787341200000,
     AddTenantStatusLifecycleColumns1787700000000,
-    AddOauthClientPublic1787900000000, AddCredentialDefinitionActive1788353244312],
+    AddOauthClientPublic1787900000000,
+    AddCredentialDefinitionActive1788353244312,
+  ],
   ssl: buildSslConfig(
     process.env.DB_SSL,
     process.env.DB_SSL_REJECT_UNAUTHORIZED,

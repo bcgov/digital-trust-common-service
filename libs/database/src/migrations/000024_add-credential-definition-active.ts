@@ -9,9 +9,7 @@ export const migrationName = 'AddCredentialDefinitionActive';
  * since other records (e.g. an issuance profile's `credential_definition_id`)
  * may still reference it after it stops being offered.
  */
-export class AddCredentialDefinitionActive1788353244312
-  implements MigrationInterface
-{
+export class AddCredentialDefinitionActive1788353244312 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
       ALTER TABLE credential_definition
