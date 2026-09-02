@@ -1642,7 +1642,7 @@ Client → API Pod → Traction/Credo Agent Service
 
 - **W3C TraceContext** propagation for distributed traces
 - `trace_id` injected into every structured log line → seamless log-to-trace navigation
-- `tenant_id` and `operation_id` added as span attributes for filtering by tenant or credential operation
+- `tenant.id` and `operation.id` are set on the HTTP **server** span at the request boundary, so traces can be filtered by tenant or by credential operation. Both are request-scoped: never process resource attributes (one process serves every tenant, so the first one resolved would label all traffic) and never metric labels (unbounded cardinality). A request without a trusted tenant context is left unattributed rather than assigned a placeholder.
 
 ### Structured Logging
 
