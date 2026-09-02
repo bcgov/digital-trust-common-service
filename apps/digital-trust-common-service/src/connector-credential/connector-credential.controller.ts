@@ -72,7 +72,6 @@ export class ConnectorCredentialController {
         value: {
           connector_type: 'traction',
           endpoint_url: 'https://api.example.com/v1',
-          active: true,
           credentials: { api_key: 'integration-secret' },
         },
       },
