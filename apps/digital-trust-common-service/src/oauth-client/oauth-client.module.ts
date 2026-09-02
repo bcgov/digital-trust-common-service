@@ -3,6 +3,8 @@ import { OidcConfigModule } from '@app/oidc/config';
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
+import { TenantStatusModule } from '../tenant/tenant-status.module';
+
 import { OAuthClientLookupAdapter } from './oauth-client-lookup.adapter';
 import { OAuthClientController } from './oauth-client.controller';
 import { OAuthClient } from './oauth-client.entity';
@@ -14,6 +16,7 @@ import { OAuthClientService } from './oauth-client.service';
     TypeOrmModule.forFeature([OAuthClient]),
     OidcConfigModule,
     AuthModule,
+    TenantStatusModule,
   ],
   controllers: [OAuthClientController],
   providers: [

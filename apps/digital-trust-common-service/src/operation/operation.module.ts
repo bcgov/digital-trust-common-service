@@ -3,6 +3,7 @@ import { PgBossModule } from '@app/pg-boss';
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
+import { TenantStatusModule } from '../tenant/tenant-status.module';
 import { TenantModule } from '../tenant/tenant.module';
 
 import { OperationPurgeService } from './operation-purge.service';
@@ -17,6 +18,7 @@ import { OperationService } from './operation.service';
     TenantModule,
     PgBossModule,
     AuthModule,
+    TenantStatusModule,
   ],
   controllers: [OperationController],
   providers: [OperationService, OperationRepository, OperationPurgeService],

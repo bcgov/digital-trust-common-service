@@ -203,10 +203,10 @@ export interface paths {
          *     tenant only blocks its own callers (`403 TENANT_NOT_ACTIVE`); it does not touch OAuth
          *     clients, connector credentials, or connections.
          *
-         *     **Current limitation**: the `403 TENANT_NOT_ACTIVE` block is only enforced on Tenant
-         *     Settings and Tenant Users endpoints so far. Connections, Credentials, Presentations,
-         *     Clients, and Connectors are not yet guarded, so a suspended or deactivated tenant's own
-         *     callers can still use them.
+         *     **Current limitation**: the `403 TENANT_NOT_ACTIVE` block is now enforced on Tenant
+         *     Settings, Tenant Users, Audit Logs, Connections, Connectors, Credential Definitions,
+         *     Clients, and Operations endpoints. Credentials (issuance) and Presentations endpoints are
+         *     not yet implemented in this service, so the guard does not apply to them yet.
          */
         patch: operations["updateTenantStatus"];
         trace?: never;

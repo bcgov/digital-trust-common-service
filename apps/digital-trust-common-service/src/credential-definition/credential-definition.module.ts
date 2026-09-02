@@ -3,6 +3,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { AuditLogModule } from '../audit-log/audit-log.module';
+import { TenantStatusModule } from '../tenant/tenant-status.module';
 
 import { CredentialDefinitionController } from './credential-definition.controller';
 import { CredentialDefinition } from './credential-definition.entity';
@@ -14,6 +15,7 @@ import { CredentialDefinitionService } from './credential-definition.service';
     TypeOrmModule.forFeature([CredentialDefinition]),
     AuditLogModule,
     AuthModule,
+    TenantStatusModule,
   ],
   controllers: [CredentialDefinitionController],
   providers: [CredentialDefinitionService, CredentialDefinitionRepository],

@@ -33,6 +33,7 @@ import {
 } from '@nestjs/swagger';
 
 import { API_VERSION } from '../common/constants/api-version.constants';
+import { TenantStatusGuard } from '../tenant/tenant-status.guard';
 
 import { CreateOAuthClientResponseDto } from './dto/create-oauth-client-response.dto';
 import { CreateOAuthClientDto } from './dto/create-oauth-client.dto';
@@ -44,7 +45,7 @@ import { OAuthClientService } from './oauth-client.service';
 @ApiTags('Clients')
 @ApiJwtAuth()
 @RequireScopes('clients:manage')
-@UseGuards(JwtGuard, ScopeGuard, TenantGuard)
+@UseGuards(JwtGuard, ScopeGuard, TenantGuard, TenantStatusGuard)
 @Controller({ path: 'tenants/:tenantId/clients', version: API_VERSION })
 export class OAuthClientController {
   public constructor(private readonly oauthClientService: OAuthClientService) {}

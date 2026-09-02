@@ -3,6 +3,7 @@ import { CanActivate } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 
 import { ConnectorType } from '../connection/connection.entity';
+import { TenantStatusGuard } from '../tenant/tenant-status.guard';
 
 import { ConnectorCredentialController } from './connector-credential.controller';
 import { ConnectorCredential } from './connector-credential.entity';
@@ -102,6 +103,8 @@ describe('ConnectorCredentialController', () => {
       .overrideGuard(ScopeGuard)
       .useClass(AllowGuard)
       .overrideGuard(TenantGuard)
+      .useClass(AllowGuard)
+      .overrideGuard(TenantStatusGuard)
       .useClass(AllowGuard)
       .compile();
 

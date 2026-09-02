@@ -3,6 +3,8 @@ import { CanActivate } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { Test, TestingModule } from '@nestjs/testing';
 
+import { TenantStatusGuard } from '../tenant/tenant-status.guard';
+
 import { CreateOAuthClientDto } from './dto/create-oauth-client.dto';
 import { OAuthClientResponseDto } from './dto/oauth-client-response.dto';
 import { UpdateOAuthClientDto } from './dto/update-oauth-client.dto';
@@ -101,6 +103,8 @@ describe('OAuthClientController', () => {
       .overrideGuard(ScopeGuard)
       .useClass(AllowGuard)
       .overrideGuard(TenantGuard)
+      .useClass(AllowGuard)
+      .overrideGuard(TenantStatusGuard)
       .useClass(AllowGuard)
       .compile();
 
