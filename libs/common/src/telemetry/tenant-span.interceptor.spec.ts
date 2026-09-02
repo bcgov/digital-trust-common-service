@@ -1,5 +1,5 @@
 import type { AuthenticatedRequest } from '@app/auth/types/express';
-import type { ExecutionContext } from '@nestjs/common';
+import { Logger, type ExecutionContext } from '@nestjs/common';
 import { trace, type Span } from '@opentelemetry/api';
 import { lastValueFrom, of } from 'rxjs';
 
@@ -13,12 +13,27 @@ jest.mock('@opentelemetry/api', () => ({
 }));
 
 describe('TenantSpanInterceptor', () => {
+  // Identifiers must be UUID-shaped to reach a span: interceptors run before
+  // ParseUUIDPipe, so the raw path segment is all we have to go on.
+  const ROUTE_TENANT_ID = '11111111-1111-4111-8111-111111111111';
+  const CLAIM_TENANT_ID = '22222222-2222-4222-8222-222222222222';
+  const OPERATION_ID = '33333333-3333-4333-8333-333333333333';
+
   const getActiveSpanMock = trace.getActiveSpan as jest.MockedFunction<
     typeof trace.getActiveSpan
   >;
 
+  let warnSpy: jest.SpyInstance;
+
   beforeEach(() => {
     jest.clearAllMocks();
+    warnSpy = jest
+      .spyOn(Logger.prototype, 'warn')
+      .mockImplementation(() => undefined);
+  });
+
+  afterEach(() => {
+    warnSpy.mockRestore();
   });
 
   async function runInterceptor(
@@ -52,32 +67,32 @@ describe('TenantSpanInterceptor', () => {
 
   it('sets tenant.id from the route tenant', async () => {
     const { nextHandle, result, setAttribute } = await runInterceptor({
-      tenantId: 'route-tenant',
+      tenantId: ROUTE_TENANT_ID,
     });
 
-    expect(setAttribute).toHaveBeenCalledWith('tenant.id', 'route-tenant');
+    expect(setAttribute).toHaveBeenCalledWith('tenant.id', ROUTE_TENANT_ID);
     expect(nextHandle).toHaveBeenCalledTimes(1);
     expect(result).toBe('handled');
   });
 
   it('sets tenant.id from the JWT tenant claim when route tenant is absent', async () => {
     const { nextHandle, result, setAttribute } = await runInterceptor({
-      auth: { tenantId: 'claim-tenant' } as AuthenticatedRequest['auth'],
+      auth: { tenantId: CLAIM_TENANT_ID } as AuthenticatedRequest['auth'],
     });
 
-    expect(setAttribute).toHaveBeenCalledWith('tenant.id', 'claim-tenant');
+    expect(setAttribute).toHaveBeenCalledWith('tenant.id', CLAIM_TENANT_ID);
     expect(nextHandle).toHaveBeenCalledTimes(1);
     expect(result).toBe('handled');
   });
 
   it('prefers the route tenant over the JWT tenant claim', async () => {
     const { nextHandle, result, setAttribute } = await runInterceptor({
-      auth: { tenantId: 'claim-tenant' } as AuthenticatedRequest['auth'],
-      tenantId: 'route-tenant',
+      auth: { tenantId: CLAIM_TENANT_ID } as AuthenticatedRequest['auth'],
+      tenantId: ROUTE_TENANT_ID,
     });
 
-    expect(setAttribute).toHaveBeenCalledWith('tenant.id', 'route-tenant');
-    expect(setAttribute).not.toHaveBeenCalledWith('tenant.id', 'claim-tenant');
+    expect(setAttribute).toHaveBeenCalledWith('tenant.id', ROUTE_TENANT_ID);
+    expect(setAttribute).not.toHaveBeenCalledWith('tenant.id', CLAIM_TENANT_ID);
     expect(nextHandle).toHaveBeenCalledTimes(1);
     expect(result).toBe('handled');
   });
@@ -95,12 +110,12 @@ describe('TenantSpanInterceptor', () => {
 
   it('sets operation.id from the operation route parameter', async () => {
     const { nextHandle, result, setAttribute } = await runInterceptor({
-      params: { operationId: 'operation-1' },
-      tenantId: 'route-tenant',
+      params: { operationId: OPERATION_ID },
+      tenantId: ROUTE_TENANT_ID,
     });
 
-    expect(setAttribute).toHaveBeenCalledWith('tenant.id', 'route-tenant');
-    expect(setAttribute).toHaveBeenCalledWith('operation.id', 'operation-1');
+    expect(setAttribute).toHaveBeenCalledWith('tenant.id', ROUTE_TENANT_ID);
+    expect(setAttribute).toHaveBeenCalledWith('operation.id', OPERATION_ID);
     expect(nextHandle).toHaveBeenCalledTimes(1);
     expect(result).toBe('handled');
   });
@@ -112,7 +127,7 @@ describe('TenantSpanInterceptor', () => {
     const context = {
       getType: jest.fn(() => 'http'),
       switchToHttp: jest.fn(() => ({
-        getRequest: jest.fn(() => ({ tenantId: 'route-tenant' })),
+        getRequest: jest.fn(() => ({ tenantId: ROUTE_TENANT_ID })),
       })),
     } as unknown as ExecutionContext;
 
@@ -126,7 +141,7 @@ describe('TenantSpanInterceptor', () => {
 
   it('passes the request through for non-HTTP execution contexts', async () => {
     const { nextHandle, result, setAttribute } = await runInterceptor(
-      { tenantId: 'route-tenant' },
+      { tenantId: ROUTE_TENANT_ID },
       'rpc',
     );
 
@@ -148,7 +163,7 @@ describe('TenantSpanInterceptor', () => {
     const context = {
       getType: jest.fn(() => 'http'),
       switchToHttp: jest.fn(() => ({
-        getRequest: jest.fn(() => ({ tenantId: 'route-tenant' })),
+        getRequest: jest.fn(() => ({ tenantId: ROUTE_TENANT_ID })),
       })),
     } as unknown as ExecutionContext;
 
@@ -156,7 +171,7 @@ describe('TenantSpanInterceptor', () => {
       interceptor.intercept(context, { handle: nextHandle }),
     );
 
-    expect(setAttribute).toHaveBeenCalledWith('tenant.id', 'route-tenant');
+    expect(setAttribute).toHaveBeenCalledWith('tenant.id', ROUTE_TENANT_ID);
     expect(nextHandle).toHaveBeenCalledTimes(1);
     expect(result).toBe('handled');
   });
@@ -170,8 +185,8 @@ describe('TenantSpanInterceptor', () => {
     } as ReturnType<typeof trace.getActiveSpan>);
 
     const request: Partial<AuthenticatedRequest> = {
-      params: { operationId: 'operation-1' },
-      tenantId: 'route-tenant',
+      params: { operationId: OPERATION_ID },
+      tenantId: ROUTE_TENANT_ID,
     };
     rememberServerSpan(request, {
       setAttribute: serverSetAttribute,
@@ -191,13 +206,66 @@ describe('TenantSpanInterceptor', () => {
 
     expect(serverSetAttribute).toHaveBeenCalledWith(
       'tenant.id',
-      'route-tenant',
+      ROUTE_TENANT_ID,
     );
     expect(serverSetAttribute).toHaveBeenCalledWith(
       'operation.id',
-      'operation-1',
+      OPERATION_ID,
     );
     expect(activeSetAttribute).not.toHaveBeenCalled();
+    expect(nextHandle).toHaveBeenCalledTimes(1);
+    expect(result).toBe('handled');
+  });
+  it('ignores an operation id that is not a UUID', async () => {
+    const { nextHandle, result, setAttribute } = await runInterceptor({
+      params: { operationId: '../../etc/passwd' },
+      tenantId: ROUTE_TENANT_ID,
+    });
+
+    expect(setAttribute).toHaveBeenCalledWith('tenant.id', ROUTE_TENANT_ID);
+    expect(setAttribute).not.toHaveBeenCalledWith(
+      'operation.id',
+      expect.any(String),
+    );
+    expect(nextHandle).toHaveBeenCalledTimes(1);
+    expect(result).toBe('handled');
+  });
+
+  it('falls back to the JWT claim when the route tenant is not a UUID', async () => {
+    const { setAttribute } = await runInterceptor({
+      auth: { tenantId: CLAIM_TENANT_ID } as AuthenticatedRequest['auth'],
+      tenantId: 'not-a-uuid',
+    });
+
+    expect(setAttribute).toHaveBeenCalledWith('tenant.id', CLAIM_TENANT_ID);
+  });
+
+  it('logs a warning when enrichment fails', async () => {
+    const { nextHandle, result } = await runInterceptor({
+      get tenantId(): string {
+        throw new Error('request torn down');
+      },
+    } as Partial<AuthenticatedRequest>);
+
+    expect(warnSpy).toHaveBeenCalledWith(
+      'Failed to enrich span with tenant context',
+      expect.any(String),
+    );
+    expect(nextHandle).toHaveBeenCalledTimes(1);
+    expect(result).toBe('handled');
+  });
+  it('logs without a stack when the failure is not an Error', async () => {
+    const { nextHandle, result } = await runInterceptor({
+      get tenantId(): string {
+        // eslint-disable-next-line @typescript-eslint/only-throw-error -- deliberately non-Error, which is the branch under test
+        throw 'request torn down';
+      },
+    } as Partial<AuthenticatedRequest>);
+
+    expect(warnSpy).toHaveBeenCalledWith(
+      'Failed to enrich span with tenant context',
+      undefined,
+    );
     expect(nextHandle).toHaveBeenCalledTimes(1);
     expect(result).toBe('handled');
   });
