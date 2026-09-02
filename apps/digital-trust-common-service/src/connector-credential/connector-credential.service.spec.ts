@@ -315,7 +315,7 @@ describe('ConnectorCredentialService', () => {
   });
 
   describe('update', () => {
-    it('should update the endpoint URL without running a health check', async () => {
+    it('should re-validate the endpoint against existing credentials when only the endpoint changes', async () => {
       const dto: UpdateConnectorCredentialDto = {
         endpointUrl: 'https://traction.example.com/api/v2',
       };
@@ -329,11 +329,39 @@ describe('ConnectorCredentialService', () => {
 
       const result = await service.update(mockCredential.id, dto, auth);
 
-      expect(mockHealthCheck).not.toHaveBeenCalled();
+      expect(mockDecrypt).toHaveBeenCalledWith(
+        mockCredential.credentialsEncrypted,
+        mockCredential.keyVersion,
+      );
+      expect(mockHealthCheck).toHaveBeenCalledWith(
+        mockCredential.connectorType,
+        dto.endpointUrl,
+        mockCredentials,
+      );
+      expect(mockEncrypt).not.toHaveBeenCalled();
       expect(mockUpdate).toHaveBeenCalledWith(mockCredential.id, {
         endpointUrl: dto.endpointUrl,
       });
       expect(result).toEqual(updatedCredential);
+    });
+
+    it('should throw UnprocessableEntityException when the new endpoint fails validation', async () => {
+      const dto: UpdateConnectorCredentialDto = {
+        endpointUrl: 'https://169.254.169.254/',
+      };
+
+      mockFindById.mockResolvedValue(mockCredential);
+      mockHealthCheck.mockResolvedValue({
+        status: 'unhealthy',
+        latencyMs: 0,
+        message: 'blocked host',
+      });
+
+      await expect(
+        service.update(mockCredential.id, dto, auth),
+      ).rejects.toThrow(UnprocessableEntityException);
+
+      expect(mockUpdate).not.toHaveBeenCalled();
     });
 
     it('should re-run the health check and re-encrypt when rotating credentials', async () => {

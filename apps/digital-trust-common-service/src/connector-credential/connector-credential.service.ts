@@ -176,6 +176,7 @@ export class ConnectorCredentialService {
     const existing = await this.findById(id, auth);
 
     const updates: Partial<Omit<ConnectorCredential, 'tenant'>> = {};
+    const endpointUrl = dto.endpointUrl ?? existing.endpointUrl;
 
     if (dto.endpointUrl !== undefined) {
       updates.endpointUrl = dto.endpointUrl;
@@ -184,7 +185,7 @@ export class ConnectorCredentialService {
     if (dto.credentials !== undefined) {
       await this.assertHealthy(
         existing.connectorType,
-        dto.endpointUrl ?? existing.endpointUrl,
+        endpointUrl,
         dto.credentials,
       );
 
@@ -194,6 +195,20 @@ export class ConnectorCredentialService {
 
       updates.credentialsEncrypted = encryptedCredentials.ciphertext;
       updates.keyVersion = encryptedCredentials.keyVersion;
+    } else if (dto.endpointUrl !== undefined) {
+      // Credentials aren't being rotated, but the endpoint changed — still
+      // validate it (SSRF checks included) against the existing credentials.
+      const existingCredentials =
+        this.encryptionService.decrypt<ConnectorCredentialsDto>(
+          existing.credentialsEncrypted,
+          existing.keyVersion,
+        );
+
+      await this.assertHealthy(
+        existing.connectorType,
+        endpointUrl,
+        existingCredentials,
+      );
     }
 
     const updated = await this.credentialRepository.update(id, updates);
