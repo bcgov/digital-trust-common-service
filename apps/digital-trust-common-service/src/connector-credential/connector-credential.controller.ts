@@ -32,6 +32,7 @@ import {
 
 import { API_VERSION } from '../common/constants/api-version.constants';
 import { ConnectorType } from '../connection/connection.entity';
+import { TenantStatusGuard } from '../tenant/tenant-status.guard';
 
 import { ConnectorCredential } from './connector-credential.entity';
 import { ConnectorCredentialService } from './connector-credential.service';
@@ -41,7 +42,7 @@ import { DecryptConnectorCredentialDto } from './dto/decrypt-connector-credentia
 import { UpdateConnectorCredentialDto } from './dto/update-connector-credential.dto';
 
 @ApiJwtAuth()
-@UseGuards(JwtGuard, ScopeGuard, TenantGuard)
+@UseGuards(JwtGuard, ScopeGuard, TenantGuard, TenantStatusGuard)
 @RequireScopes(TENANT_SUPERUSER_SCOPE)
 @ApiUnauthorizedResponse({ description: 'Authentication is required' })
 @ApiForbiddenResponse({

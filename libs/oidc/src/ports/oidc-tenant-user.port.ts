@@ -32,7 +32,10 @@ export interface OidcTenantUserPort {
   ): Promise<OidcTenantUserRecord | null>;
   /**
    * Active memberships for a Keycloak subject, oldest first (`created_at ASC`).
-   * Used at login to pick the first tenant when a user belongs to more than one.
+   * Memberships whose tenant is soft-deleted are excluded. Used at login to
+   * pick the first tenant when a user belongs to more than one; non-active
+   * tenants (suspended, deactivated) are still returned so callers can list
+   * them with their status.
    */
   findActiveByExternalUserId(
     externalUserId: string,

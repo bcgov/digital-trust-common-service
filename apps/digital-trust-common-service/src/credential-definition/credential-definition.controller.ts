@@ -31,6 +31,7 @@ import {
 
 import { SkipAutoAudit } from '../audit-log/skip-auto-audit.decorator';
 import { API_VERSION } from '../common/constants/api-version.constants';
+import { TenantStatusGuard } from '../tenant/tenant-status.guard';
 
 import {
   CredentialDefinitionConnectorType,
@@ -43,7 +44,7 @@ import { UpdateCredentialDefinitionDto } from './dto/update-credential-definitio
 
 @SkipAutoAudit()
 @ApiJwtAuth()
-@UseGuards(JwtGuard, ScopeGuard, TenantGuard)
+@UseGuards(JwtGuard, ScopeGuard, TenantGuard, TenantStatusGuard)
 @RequireScopes(TENANT_SUPERUSER_SCOPE)
 @ApiUnauthorizedResponse({ description: 'Authentication is required' })
 @ApiForbiddenResponse({

@@ -22,6 +22,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { ApiError } from '@/lib/api/errors';
 import type { AuthTenant } from '@/lib/api/resources/auth';
 import { useAuth } from '@/lib/auth/context';
 import { cn } from '@/lib/utils';
@@ -47,6 +48,7 @@ export function AppShell() {
   const queryClient = useQueryClient();
   const [tenants, setTenants] = useState<AuthTenant[]>([]);
   const [switching, setSwitching] = useState(false);
+  const [switchError, setSwitchError] = useState<string | null>(null);
 
   useEffect(() => {
     void listAuthTenants()
@@ -60,9 +62,16 @@ export function AppShell() {
   const onSelectTenant = async (tenantId: string) => {
     if (!canSwitch || tenantId === user?.tenantId || switching) return;
     setSwitching(true);
+    setSwitchError(null);
     try {
       await switchTenant(tenantId);
       await queryClient.invalidateQueries();
+    } catch (cause) {
+      setSwitchError(
+        cause instanceof ApiError
+          ? `Couldn't switch tenant: ${cause.message}`
+          : "Couldn't switch tenant. Please try again.",
+      );
     } finally {
       setSwitching(false);
     }
@@ -97,19 +106,29 @@ export function AppShell() {
             {tenants.map((tenant) => (
               <DropdownMenuItem
                 key={tenant.id}
-                disabled={switching}
+                disabled={switching || tenant.status !== 'active'}
                 onSelect={() => {
                   void onSelectTenant(tenant.id);
                 }}
               >
                 <span className="flex-1 truncate">{tenant.name}</span>
-                {tenant.id === user?.tenantId ? (
+                {tenant.status !== 'active' ? (
+                  <span className="text-xs text-muted-foreground">
+                    {tenant.status}
+                  </span>
+                ) : tenant.id === user?.tenantId ? (
                   <Check className="size-4" aria-hidden="true" />
                 ) : null}
               </DropdownMenuItem>
             ))}
           </DropdownMenuContent>
         </DropdownMenu>
+
+        {switchError ? (
+          <p role="alert" className="text-sm text-destructive">
+            {switchError}
+          </p>
+        ) : null}
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

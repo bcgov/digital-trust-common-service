@@ -1005,4 +1005,98 @@ describe('OIDC authorization_code grant (integration)', () => {
       .send({ tenant_id: secondTenantId })
       .expect(403);
   });
+
+  const insertTenantWithMembership = async (
+    status: string,
+  ): Promise<string> => {
+    const rows = await dataSource.query<Array<{ id: string }>>(
+      `INSERT INTO tenant (name, slug, status)
+       VALUES ($1, $2, $3)
+       RETURNING id`,
+      [
+        `Lifecycle ${status} tenant`,
+        `oidc-auth-code-it-${status}-${randomUUID()}`,
+        status,
+      ],
+    );
+    const lifecycleTenantId = rows[0].id;
+
+    await dataSource.query(
+      `INSERT INTO tenant_user (
+        tenant_id,
+        external_user_id,
+        email,
+        display_name,
+        role,
+        status,
+        created_at,
+        updated_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, now(), now())`,
+      [
+        lifecycleTenantId,
+        federatedExternalUserId,
+        `member@lifecycle-${randomUUID()}.example.test`,
+        'Lifecycle Member',
+        'member',
+        'active',
+      ],
+    );
+
+    return lifecycleTenantId;
+  };
+
+  const obtainUserAccessToken = async (): Promise<string> => {
+    const { code: authorizationCode, codeVerifier } =
+      await completeAuthorizationCodeFlow(`rp-state-${randomUUID()}`);
+
+    const tokenResponse = await request(app.getHttpServer())
+      .post('/oidc/token')
+      .set('Authorization', buildBasicAuthHeader(clientId, clientSecret))
+      .type('form')
+      .send({
+        grant_type: 'authorization_code',
+        code: authorizationCode,
+        redirect_uri: redirectUri,
+        code_verifier: codeVerifier,
+      })
+      .expect(200);
+
+    return (tokenResponse.body as { access_token: string }).access_token;
+  };
+
+  it('lists membership tenant statuses and refuses switching into a non-active tenant', async () => {
+    const suspendedTenantId = await insertTenantWithMembership('suspended');
+    const deletedTenantId = await insertTenantWithMembership('active');
+    await dataSource.query(
+      `UPDATE tenant SET deleted_at = now() WHERE id = $1`,
+      [deletedTenantId],
+    );
+
+    const accessToken = await obtainUserAccessToken();
+
+    const memberships = await request(app.getHttpServer())
+      .get(`${API_BASE_PATH}/auth/tenants`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    const listed = memberships.body as Array<{ id: string; status: string }>;
+
+    expect(listed.find((row) => row.id === tenantId)?.status).toBe('active');
+    expect(listed.find((row) => row.id === suspendedTenantId)?.status).toBe(
+      'suspended',
+    );
+    expect(listed.some((row) => row.id === deletedTenantId)).toBe(false);
+
+    const refused = await request(app.getHttpServer())
+      .post(`${API_BASE_PATH}/auth/switch-tenant`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ tenant_id: suspendedTenantId })
+      .expect(403);
+
+    const body = refused.body as {
+      error: { code: string; tenant_status: string };
+    };
+    expect(body.error.code).toBe('TENANT_NOT_ACTIVE');
+    expect(body.error.tenant_status).toBe('suspended');
+  });
 });

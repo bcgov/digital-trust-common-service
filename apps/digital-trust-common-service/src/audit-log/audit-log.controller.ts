@@ -26,6 +26,7 @@ import {
 } from '@nestjs/swagger';
 
 import { API_VERSION } from '../common/constants/api-version.constants';
+import { TenantStatusGuard } from '../tenant/tenant-status.guard';
 
 import { AuditLogService, PaginatedAuditLogs } from './audit-log.service';
 import {
@@ -38,7 +39,7 @@ import { ListAuditLogsQueryDto } from './dto/list-audit-logs-query.dto';
 
 @ApiTags('Audit Logs')
 @ApiJwtAuth()
-@UseGuards(JwtGuard, ScopeGuard, TenantGuard)
+@UseGuards(JwtGuard, ScopeGuard, TenantGuard, TenantStatusGuard)
 @RequireScopes(AUDIT_READ_SCOPE)
 @ApiUnauthorizedResponse({ description: 'Authentication is required' })
 @ApiForbiddenResponse({
