@@ -1,3 +1,5 @@
+import { FormatValidationIssue } from '../dto/format-validation-issue.dto';
+
 // Base class for stable, machine-readable adapter errors.
 export abstract class AdapterError extends Error {
   // Stable machine-readable code.
@@ -65,6 +67,25 @@ export class ValidationError extends AdapterError {
   public readonly issues: readonly string[];
 
   public constructor(issues: readonly string[], message = 'Validation failed') {
+    super(message, { issues });
+    this.issues = issues;
+  }
+}
+
+// Error returned when format-specific schema or attribute validation (CA-09)
+// fails. Distinct from ValidationError: issues here are structured per field
+// rather than free-text, so callers can surface them per-attribute.
+export class FormatValidationError extends AdapterError {
+  // Stable machine-readable code.
+  public readonly code = 'FORMAT_VALIDATION_ERROR';
+
+  // All validation issues found, one per offending field.
+  public readonly issues: readonly FormatValidationIssue[];
+
+  public constructor(
+    issues: readonly FormatValidationIssue[],
+    message = 'Format validation failed',
+  ) {
     super(message, { issues });
     this.issues = issues;
   }

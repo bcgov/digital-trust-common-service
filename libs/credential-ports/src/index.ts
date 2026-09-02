@@ -27,12 +27,14 @@ export type {
   InvitationOptions,
 } from './dto/connection.dto';
 export type { RevocationResult } from './dto/revocation-result.dto';
+export type { FormatValidationIssue } from './dto/format-validation-issue.dto';
 
 // Errors (runtime classes)
 export {
   AdapterError,
   ConnectorUnavailableError,
   FormatNotSupportedError,
+  FormatValidationError,
   TimeoutError,
   ValidationError,
 } from './errors/adapter-error';
@@ -42,9 +44,12 @@ export {
   validateOfferCredentialRequest,
   validatePresentationRequest,
 } from './validators/credential.validators';
+export { AnonCredsFormatValidator } from './validators/anoncreds-format.validator';
+export { FormatValidatorRegistry } from './validators/format-validator.registry';
 
 // Ports (abstract classes — runtime values usable as DI tokens)
 export { ConnectionPort } from './ports/connection.port';
+export { FormatValidator } from './ports/format-validator.port';
 export { HolderPort } from './ports/holder.port';
 export { IssuerPort } from './ports/issuer.port';
 export { RevocationPort } from './ports/revocation.port';
