@@ -51,6 +51,9 @@ Copy `.env.example` to `.env` and update values as needed:
 cp .env.example .env
 ```
 
+No edits are needed for either workflow: the values that differ between them
+(`DB_HOST`, `NODE_EXTRA_CA_CERTS`) are set inline in `docker-compose.yml`.
+
 **Key environment variables:**
 
 ```env
@@ -58,7 +61,7 @@ PORT=3000                          # Application port
 NODE_ENV=development               # Environment (development/production)
 
 # Database Configuration
-DB_HOST=localhost                  # Database host (localhost or db for Docker)
+DB_HOST=localhost                  # Database host (compose overrides to `db`)
 DB_PORT=5432                       # PostgreSQL default port
 DB_USERNAME=postgres               # Database user
 DB_PASSWORD=postgres               # Database password
@@ -123,7 +126,7 @@ same-origin front door that mirrors the production topology (SPA + `/oidc` +
 > redirect URIs. Either reset just the Keycloak services and volume:
 >
 > ```bash
-> docker compose --profile dev rm -sf keycloak keycloak-db
+> docker compose rm -sf keycloak keycloak-db
 > docker volume rm $(docker volume ls -q --filter name=keycloak-db-data)
 > ```
 >
@@ -136,18 +139,23 @@ same-origin front door that mirrors the production topology (SPA + `/oidc` +
 
 #### Start the local HTTPS stack
 
-Bring up the infrastructure services (the `app` service has no profile, so a
-bare `docker compose --profile dev up` starts the containerized API too and
-binds port `3000` — use the targeted list below when running the API on the
-host):
+Keycloak, Caddy and the API are all unprofiled, because the API performs
+upstream OIDC discovery in `onModuleInit` and cannot start without them. So a
+bare `up` brings up the whole backend; name services explicitly when you want
+only the infrastructure:
 
 ```bash
 # infra only — API and UI run on the host (default workflow)
-docker compose --profile dev up -d db caddy keycloak
+docker compose up -d db caddy keycloak
 
 # or everything containerized, including the app on :3000 and the UI on :5173
-docker compose --profile dev --profile ui up
+docker compose --profile ui up
 ```
+
+The containerized API is handed Caddy's root certificate automatically — the
+`caddy-ca` service copies it onto a dedicated volume once Caddy has generated
+it — so it needs no certificate export. The export below is for host-mode Node
+and for your browser.
 
 #### Export and trust the Caddy local CA
 
@@ -174,16 +182,22 @@ sudo security add-trusted-cert -d -r trustRoot \
 ```powershell
 # Windows (admin PowerShell)
 Import-Certificate -FilePath .\caddy\root.crt -CertStoreLocation Cert:\LocalMachine\Root
+
+# or, without admin — browsers trust the per-user store too
+Import-Certificate -FilePath .\caddy\root.crt -CertStoreLocation Cert:\CurrentUser\Root
 ```
 
 Note: recreating the `caddy_data` volume (e.g. `docker compose down -v`) generates a new CA — re-export and re-trust the cert afterwards.
 
 #### Hosts entries (macOS and Windows)
 
-Browsers resolve `*.localhost` subdomains themselves, but the OS resolver on
-macOS and Windows does not — Node fails with `getaddrinfo ENOTFOUND
-keycloak.localhost` during upstream federation calls. Add hosts entries
-(most Linux distros resolve `*.localhost` natively and can skip this):
+Only needed when running **the API on the host**. Containers resolve these
+names through aliases on the `caddy` service, and browsers resolve
+`*.localhost` themselves — so the fully containerized workflow needs no hosts
+entries at all. A host-run Node process is the exception: the OS resolver on
+macOS and Windows does not handle `.localhost` subdomains, and Node fails with
+`getaddrinfo ENOTFOUND keycloak.localhost` during upstream federation calls.
+(Most Linux distros resolve `*.localhost` natively and can skip this.)
 
 ```bash
 # macOS
@@ -207,9 +221,9 @@ export NODE_EXTRA_CA_CERTS="$PWD/caddy/root.crt"
 ```
 
 This allows the host-run app to call `https://keycloak.localhost` successfully
-during upstream federation flows. The current Compose `app` service does not
-mount `caddy/root.crt`, so use the host-run app for this local TLS workflow
-unless you add a certificate mount and container path explicitly.
+during upstream federation flows. The containerized `app` needs none of this:
+the `caddy-ca` service publishes Caddy's root certificate on its own volume and
+compose points `NODE_EXTRA_CA_CERTS` at it.
 
 #### Configure Keycloak Endpoint
 
@@ -276,7 +290,7 @@ docker compose --profile ui up ui
 
 Both publish port `5173`, so Caddy reaches the dev server at
 `host.docker.internal:5173` in either case. Once the dev stack
-(`docker compose --profile dev up -d db caddy keycloak`) and a dev server are
+(`docker compose up -d db caddy keycloak`) and a dev server are
 running, open
 `https://app.localhost` — HMR works through the proxy, and `/api`, `/oidc` and
 `/health` hit the API without any CORS or cross-site cookie concerns.
@@ -341,16 +355,29 @@ provisioning a public one is a platform/deployment step today.
 
 ### Option 1: Docker Compose (Recommended for Development)
 
-Start all services (app, database, and migrations) with one command:
+Start all services with one command:
 
 ```bash
 docker compose up
 ```
 
 This will:
-- Start PostgreSQL database
-- Run database migrations automatically
-- Start the application server on http://localhost:3000
+- Start PostgreSQL, Keycloak (with the realm imported) and Caddy
+- Run database migrations, then the development seed
+- Start the application server on http://localhost:3000, fronted by Caddy at
+  https://app.localhost
+
+Add `--profile ui` for the containerized Vite dev server. Your browser still
+needs Caddy's CA trusted — see
+[Export and trust the Caddy local CA](#export-and-trust-the-caddy-local-ca).
+
+> **Known issue:** `app`, `migrate` and `seed` all build into the same
+> bind-mounted `dist/`, and `deleteOutDir` means concurrent builds can wipe
+> each other, so a first `up` occasionally fails with `Cannot find module`.
+> Check `docker compose ps -a` before restarting anything: if `migrate` or
+> `seed` exited nonzero they need rerunning with `docker compose up migrate
+> seed`, since restarting `app` alone leaves the schema or demo data
+> incomplete. Then `docker compose restart app`.
 
 **Useful commands:**
 ```bash
@@ -404,7 +431,7 @@ turn up in a cluster, having already watched it work locally is what separates
 Start the development dependencies and observability stack:
 
 ```bash
-docker compose --profile dev --profile obs up -d db keycloak caddy lgtm
+docker compose --profile obs up -d db keycloak caddy lgtm
 ```
 
 When running the API on the host, export and trust the Caddy certificate, then
@@ -485,7 +512,7 @@ to a placeholder tenant.
 ### Stop the stack
 
 ```bash
-docker compose --profile dev --profile obs down
+docker compose --profile obs down
 ```
 
 Add `-v` to also remove local database and telemetry volumes. This also replaces
