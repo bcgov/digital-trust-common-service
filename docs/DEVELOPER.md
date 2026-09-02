@@ -374,7 +374,7 @@ needs Caddy's CA trusted — see
 > bind-mounted `dist/`, and `deleteOutDir` means concurrent builds can wipe
 > each other. A first `up` occasionally fails with `Cannot find module`;
 > `docker compose restart app` clears it. Tracked in
-> [#372](https://github.com/bcgov/digital-trust-common-service/issues/372).
+> [#375](https://github.com/bcgov/digital-trust-common-service/issues/375).
 
 **Useful commands:**
 ```bash
