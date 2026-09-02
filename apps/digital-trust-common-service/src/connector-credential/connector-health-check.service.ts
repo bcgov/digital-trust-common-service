@@ -44,6 +44,14 @@ export class ConnectorHealthCheckService {
   ): Promise<ConnectorHealthCheckResult> {
     const start = Date.now();
 
+    if (!credentials.tractionTenantId) {
+      return {
+        status: 'unhealthy',
+        latencyMs: Date.now() - start,
+        message: 'Traction connectors require traction_tenant_id.',
+      };
+    }
+
     try {
       const response = await fetch(
         `${endpointUrl}/multitenancy/tenant/${credentials.tractionTenantId}/token`,

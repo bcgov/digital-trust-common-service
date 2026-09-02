@@ -89,6 +89,20 @@ describe('ConnectorHealthCheckService', () => {
       expect(result.status).toBe('unhealthy');
       expect(result.message).toBe('ECONNREFUSED');
     });
+
+    it('reports unhealthy without fetching when tractionTenantId is missing', async () => {
+      const result = await service.check(
+        ConnectorType.TRACTION,
+        'https://traction.example.com',
+        { apiKey: 'key-1' },
+      );
+
+      expect(result.status).toBe('unhealthy');
+      expect(result.message).toBe(
+        'Traction connectors require traction_tenant_id.',
+      );
+      expect(global.fetch).not.toHaveBeenCalled();
+    });
   });
 
   describe('credo', () => {
