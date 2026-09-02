@@ -27,14 +27,14 @@ actionlint, and yamllint at the versions CI uses.
 | Apply migrations | `npm run build && npm run migrate:up` |
 | Seed | `npm run seed` |
 | Test DB | `docker compose --profile test up -d db-test migrate-test seed-test` |
-| Local dev front door | `docker compose --profile dev --profile ui up -d` |
+| Local dev front door | `docker compose --profile ui up -d` |
 
 `migrate:up` runs from `dist/` — build first or it applies stale migrations.
 
 Compose keeps `app`, `migrate`, and `seed` unprofiled and reading `.env`. The `test` profile
 provides the isolated `*-test` database services, `dev` adds Keycloak, and `ui` optionally runs the
 containerized Vite dev server. Caddy is unprofiled and provides the local HTTPS front door; use
-`docker compose --profile dev up -d` with the host UI, or add `--profile ui` for the containerized
+`docker compose up -d` with the host UI, or add `--profile ui` for the containerized
 UI.
 
 ## Layout and imports
