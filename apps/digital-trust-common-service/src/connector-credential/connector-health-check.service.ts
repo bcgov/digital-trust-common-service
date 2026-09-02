@@ -18,11 +18,6 @@ export interface ConnectorHealthCheckResult {
 /**
  * Attempts to authenticate against, and health-check, a tenant's backend
  * agent endpoint (Traction or Credo Agent Service).
- *
- * PROVISIONAL: neither agent's exact API contract has been verified against
- * a real deployment or vendor documentation checked into this repo. The
- * request shapes below are best-effort placeholders — revisit once the real
- * Traction/Credo Agent Service contracts are confirmed.
  */
 @Injectable()
 export class ConnectorHealthCheckService {
