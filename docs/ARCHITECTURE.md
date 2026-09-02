@@ -1576,7 +1576,7 @@ Attack prevention:
 - Tenant manipulates `traction_tenant_id` / `tenant_id` in a query → the gateway ignores query content; scope comes from the JWT + `ConnectorCredential` lookup
 - Tenant without `logs:read` → the gateway fails closed (403) before any Loki call
 - Tenant spoofs `X-Scope-OrgID` → the gateway strips and sets the header itself; Loki is network-isolated (NetworkPolicy — dev/test hardening required) and not directly reachable
-- Tenant registers another tenant's Traction sub-tenant → blocked at connector creation (TM-07 validates ownership by authenticating against Traction and verifying tenant response)
+- Tenant registers another tenant's Traction sub-tenant → blocked at connector creation: credentials must successfully authenticate against the supplied `traction_tenant_id`'s Traction endpoint (`ConnectorHealthCheckService`); the exact request shape is unverified against real vendor documentation
 
 > `ConnectorCredential` is a planned **P0** entity (PE-06); today only `Connection` exists in code. `traction_tenant_id` should be a queryable column on `ConnectorCredential` — CT-06 already resolves the tenant from it on inbound webhooks; the gateway needs the reverse.
 

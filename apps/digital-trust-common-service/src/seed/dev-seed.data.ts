@@ -339,8 +339,8 @@ export const SEED_OPERATIONS: readonly SeedOperationDefinition[] = [
 export const SEED_CONNECTOR = {
   connectorType: ConnectorType.TRACTION,
   protocol: ConnectionProtocol.DIDCOMM_V1,
-  credentialsPlainText: JSON.stringify({
+  credentials: {
     apiKey: 'dev-seed-traction-api-key',
-    tenantId: 'dev-seed-traction-tenant',
-  }),
+    tractionTenantId: 'dev-seed-traction-tenant',
+  },
 } as const;

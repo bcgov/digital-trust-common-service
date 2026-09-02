@@ -990,7 +990,7 @@ paths:
     delete:
       operationId: deleteConnector
       summary: Remove connector
-      description: Fails if active credential definitions depend on this connector.
+      description: Fails if credentials were issued through this connector.
       tags: [Connectors]
       responses:
         "204":

@@ -239,7 +239,7 @@ export class DevSeedService {
     ).find((credential) => credential.endpointUrl === MOCK_TRACTION_ENDPOINT);
 
     const encrypted = this.encryptionService.encrypt(
-      SEED_CONNECTOR.credentialsPlainText,
+      SEED_CONNECTOR.credentials,
     );
 
     if (existing) {
