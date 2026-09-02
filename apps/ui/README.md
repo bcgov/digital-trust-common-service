@@ -44,10 +44,10 @@ interactive PKCE flow), the Docker dev stack fronts everything at
 the API on `:3000` and everything else to the Vite dev server on `:5173`.
 
 ```bash
-# repo root: infra (db + caddy + keycloak). `app` has no profile, so a bare
-# `--profile dev up` would also start the containerized API on :3000 — use
-# the targeted list when running the API on the host.
-docker compose --profile dev up -d db caddy keycloak
+# repo root: infra (db + caddy + keycloak). A bare `up` would also start the
+# containerized API on :3000 — name the services you want when running the
+# API on the host.
+docker compose up -d db caddy keycloak
 
 # dev server on the host (default) …
 cd apps/ui && npm run dev

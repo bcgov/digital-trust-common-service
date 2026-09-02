@@ -10,6 +10,7 @@ import { ConnectorCredential } from './connector-credential.entity';
 import { ConnectorCredentialService } from './connector-credential.service';
 import { ConnectorCredentialResponseDto } from './dto/connector-credential-response.dto';
 import { CreateConnectorCredentialDto } from './dto/create-connector-credential.dto';
+import { UpdateConnectorCredentialDto } from './dto/update-connector-credential.dto';
 
 class AllowGuard implements CanActivate {
   public canActivate(): boolean {
@@ -23,11 +24,9 @@ describe('ConnectorCredentialController', () => {
   let mockCreate: jest.Mock;
   let mockFindById: jest.Mock;
   let mockFindByTenant: jest.Mock;
-  let mockFindByTenantAndConnectorType: jest.Mock;
-  let mockFindByTenantAndConnectorTypeAndActive: jest.Mock;
   let mockUpdate: jest.Mock;
   let mockDelete: jest.Mock;
-  let mockDecryptCredential: jest.Mock;
+  let mockTestConnectivity: jest.Mock;
 
   const mockCredential: ConnectorCredential = {
     id: '123e4567-e89b-12d3-a456-426614174000',
@@ -62,7 +61,6 @@ describe('ConnectorCredentialController', () => {
     connectorType: mockCredential.connectorType,
     endpointUrl: mockCredential.endpointUrl,
     active: mockCredential.active,
-    keyVersion: mockCredential.keyVersion,
     createdAt: mockCredential.createdAt,
     updatedAt: mockCredential.updatedAt,
   };
@@ -71,22 +69,17 @@ describe('ConnectorCredentialController', () => {
     mockCreate = jest.fn();
     mockFindById = jest.fn();
     mockFindByTenant = jest.fn();
-    mockFindByTenantAndConnectorType = jest.fn();
-    mockFindByTenantAndConnectorTypeAndActive = jest.fn();
     mockUpdate = jest.fn();
     mockDelete = jest.fn();
-    mockDecryptCredential = jest.fn();
+    mockTestConnectivity = jest.fn();
 
     const mockService = {
       create: mockCreate,
       findById: mockFindById,
       findByTenant: mockFindByTenant,
-      findByTenantAndConnectorType: mockFindByTenantAndConnectorType,
-      findByTenantAndConnectorTypeAndActive:
-        mockFindByTenantAndConnectorTypeAndActive,
       update: mockUpdate,
       delete: mockDelete,
-      decryptCredential: mockDecryptCredential,
+      testConnectivity: mockTestConnectivity,
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -120,18 +113,24 @@ describe('ConnectorCredentialController', () => {
   describe('POST /connector-credentials', () => {
     it('should create a new connector credential', async () => {
       const dto: CreateConnectorCredentialDto = {
-        tenantId: mockCredential.tenantId,
         connectorType: mockCredential.connectorType,
-        credentialsPlainText: Buffer.from('encrypted_data').toString('base64'),
         endpointUrl: mockCredential.endpointUrl,
-        active: mockCredential.active,
+        credentials: { apiKey: 'sk_live_abc123' },
       };
 
       mockCreate.mockResolvedValue(mockCredential);
 
-      const result = await controller.create(dto, auth);
+      const result = await controller.create(
+        mockCredential.tenantId,
+        dto,
+        auth,
+      );
 
-      expect(mockCreate).toHaveBeenCalledWith(dto, auth);
+      expect(mockCreate).toHaveBeenCalledWith(
+        mockCredential.tenantId,
+        dto,
+        auth,
+      );
       expect(result).toEqual(mockResponseDto);
     });
   });
@@ -156,47 +155,21 @@ describe('ConnectorCredentialController', () => {
       expect(mockFindByTenant).toHaveBeenCalledWith(mockCredential.tenantId);
       expect(result).toEqual([mockResponseDto]);
     });
-
-    it('should filter by connector type when provided', async () => {
-      mockFindByTenantAndConnectorType.mockResolvedValue([mockCredential]);
-
-      const result = await controller.findByTenant(
-        mockCredential.tenantId,
-        mockCredential.connectorType,
-      );
-
-      expect(mockFindByTenantAndConnectorType).toHaveBeenCalledWith(
-        mockCredential.tenantId,
-        mockCredential.connectorType,
-      );
-      expect(result).toEqual([mockResponseDto]);
-    });
-
-    it('should filter by connector type and active status when both provided', async () => {
-      mockFindByTenantAndConnectorTypeAndActive.mockResolvedValue([
-        mockCredential,
-      ]);
-
-      const result = await controller.findByTenant(
-        mockCredential.tenantId,
-        mockCredential.connectorType,
-        'true',
-      );
-
-      expect(mockFindByTenantAndConnectorTypeAndActive).toHaveBeenCalledWith(
-        mockCredential.tenantId,
-        mockCredential.connectorType,
-        true,
-      );
-      expect(result).toEqual([mockResponseDto]);
-    });
   });
 
   describe('PATCH /connector-credentials/:id', () => {
     it('should update a connector credential', async () => {
-      const updateDto = { active: false };
-      const updatedCredential = { ...mockCredential, active: false };
-      const updatedResponseDto = { ...mockResponseDto, active: false };
+      const updateDto: UpdateConnectorCredentialDto = {
+        endpointUrl: 'https://traction.example.com/api/v2',
+      };
+      const updatedCredential = {
+        ...mockCredential,
+        endpointUrl: updateDto.endpointUrl,
+      };
+      const updatedResponseDto = {
+        ...mockResponseDto,
+        endpointUrl: updateDto.endpointUrl,
+      };
 
       mockUpdate.mockResolvedValue(updatedCredential);
 
@@ -225,81 +198,18 @@ describe('ConnectorCredentialController', () => {
     });
   });
 
-  describe('GET /connector-credentials/:id/decrypt', () => {
-    const validHexKey =
-      '2222222222222222222222222222222222222222222222222222222222222222';
+  describe('POST /connector-credentials/:id/test', () => {
+    it('should return the connectivity test result', async () => {
+      const connectivityResult = { status: 'healthy', latencyMs: 42 };
+      mockTestConnectivity.mockResolvedValue(connectivityResult);
 
-    it('should decrypt a connector credential with valid key', async () => {
-      const decryptedValue = 'decrypted_credentials_content';
-      const dto = { key: validHexKey };
+      const result = await controller.test(mockCredential.id, auth);
 
-      mockDecryptCredential.mockResolvedValue(decryptedValue);
-
-      const result = await controller.decrypt(mockCredential.id, dto, auth);
-
-      expect(mockDecryptCredential).toHaveBeenCalledWith(
-        validHexKey,
+      expect(mockTestConnectivity).toHaveBeenCalledWith(
         mockCredential.id,
         auth,
       );
-      expect(result).toEqual(decryptedValue);
-    });
-
-    it('should throw BadRequestException for invalid key length', async () => {
-      const invalidKey = 'tooshort';
-      const dto = { key: invalidKey };
-
-      mockDecryptCredential.mockRejectedValue(
-        new Error(
-          `Invalid key format. Expected 64 hex characters (32 bytes) but got ${invalidKey.length} characters.`,
-        ),
-      );
-
-      await expect(
-        controller.decrypt(mockCredential.id, dto, auth),
-      ).rejects.toThrow();
-    });
-
-    it('should throw BadRequestException for invalid hex key', async () => {
-      const invalidHexKey =
-        'ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ';
-      const dto = { key: invalidHexKey };
-
-      mockDecryptCredential.mockRejectedValue(
-        new Error(`Key must be a valid hexadecimal string.`),
-      );
-
-      await expect(
-        controller.decrypt(mockCredential.id, dto, auth),
-      ).rejects.toThrow();
-    });
-
-    it('should throw NotFoundException when credential not found', async () => {
-      const dto = { key: validHexKey };
-
-      mockDecryptCredential.mockRejectedValue(
-        new Error(
-          `Connector credential with ID '${mockCredential.id}' was not found.`,
-        ),
-      );
-
-      await expect(
-        controller.decrypt(mockCredential.id, dto, auth),
-      ).rejects.toThrow();
-    });
-
-    it('should throw BadRequestException on decryption failure', async () => {
-      const dto = { key: validHexKey };
-
-      mockDecryptCredential.mockRejectedValue(
-        new Error(
-          `Failed to decrypt connector credential with ID '${mockCredential.id}': Authentication tag mismatch`,
-        ),
-      );
-
-      await expect(
-        controller.decrypt(mockCredential.id, dto, auth),
-      ).rejects.toThrow();
+      expect(result).toEqual(connectivityResult);
     });
   });
 });

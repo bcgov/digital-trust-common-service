@@ -144,4 +144,39 @@ describe('tracing', () => {
       serviceName: undefined,
     });
   });
+  it('remembers the server span for incoming requests only', () => {
+    process.env.OTEL_ENABLED = 'true';
+    const { getNodeAutoInstrumentations } = mockTelemetryDependencies();
+
+    loadTracing();
+
+    const { getServerSpan } =
+      // eslint-disable-next-line @typescript-eslint/no-require-imports -- module reloaded per test
+      require('./server-span') as typeof import('./server-span');
+    const { IncomingMessage } =
+      // eslint-disable-next-line @typescript-eslint/no-require-imports -- module reloaded per test
+      require('node:http') as typeof import('node:http');
+    const { Socket } =
+      // eslint-disable-next-line @typescript-eslint/no-require-imports -- module reloaded per test
+      require('node:net') as typeof import('node:net');
+
+    const config = getNodeAutoInstrumentations.mock.calls[0][0] as Record<
+      string,
+      { requestHook: (span: unknown, request: unknown) => void }
+    >;
+    const { requestHook } = config['@opentelemetry/instrumentation-http'];
+    const span = { setAttribute: jest.fn() };
+
+    const incoming = new IncomingMessage(new Socket());
+    requestHook(span, incoming);
+
+    expect(getServerSpan(incoming)).toBe(span);
+
+    // The same hook fires for outgoing calls, where the request is a
+    // ClientRequest and there is no server span to remember.
+    const outgoing = { getHeader: jest.fn() };
+    requestHook(span, outgoing);
+
+    expect(getServerSpan(outgoing)).toBeUndefined();
+  });
 });
