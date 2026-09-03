@@ -143,16 +143,33 @@ describe('TenantUserRepository', () => {
     });
   });
 
-  it('setDisplayNameAndRole updates only those two columns', async () => {
-    await repository.setDisplayNameAndRole(
-      'user-1',
-      'acme-corp Owner',
-      TenantUserRole.OWNER,
-    );
+  describe('setDisplayNameAndRole', () => {
+    it('updates only those two columns, keyed by tenant and email', async () => {
+      const changed = await repository.setDisplayNameAndRole(
+        'tenant-1',
+        'owner@acme-corp.example.test',
+        'acme-corp Owner',
+        TenantUserRole.OWNER,
+      );
 
-    expect(ormRepository.update).toHaveBeenCalledWith('user-1', {
-      displayName: 'acme-corp Owner',
-      role: TenantUserRole.OWNER,
+      expect(changed).toBe(true);
+      expect(ormRepository.update).toHaveBeenCalledWith(
+        { tenantId: 'tenant-1', email: 'owner@acme-corp.example.test' },
+        { displayName: 'acme-corp Owner', role: TenantUserRole.OWNER },
+      );
+    });
+
+    it('reports no change when no such row exists', async () => {
+      ormRepository.update.mockResolvedValue({ affected: 0 });
+
+      await expect(
+        repository.setDisplayNameAndRole(
+          'tenant-1',
+          'nobody@acme-corp.example.test',
+          'Nobody',
+          TenantUserRole.MEMBER,
+        ),
+      ).resolves.toBe(false);
     });
   });
 });

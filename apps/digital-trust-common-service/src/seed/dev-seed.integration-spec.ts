@@ -72,6 +72,14 @@ describe('DevSeedService integration', () => {
 
     seedService = module.get(DevSeedService);
     queryDataSource = module.get(DataSource);
+
+    // The seed's tenants persist in the shared test database between runs.
+    // Start from no seeded users, so the counts below are this run's work
+    // whatever an earlier seed left behind.
+    await queryDataSource.query(
+      `DELETE FROM tenant_user WHERE tenant_id IN
+         (SELECT id FROM tenant WHERE slug IN ('acme-corp', 'test-org', 'suspended-co'))`,
+    );
   });
 
   afterAll(async () => {

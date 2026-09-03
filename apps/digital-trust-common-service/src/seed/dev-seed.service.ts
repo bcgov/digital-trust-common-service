@@ -204,14 +204,27 @@ export class DevSeedService {
     let count = 0;
 
     for (const userDef of seedUsersForTenant(slug)) {
-      // Keyed by email, the pair the unique constraint is on, so a row whose
-      // subject a sign-in has replaced is still recognised as this user.
-      const existing = await this.tenantUsers.findByTenantAndEmail(
-        tenant.id,
-        userDef.email,
-      );
+      // Keyed by tenant and email, the pair the unique constraint is on, so a
+      // row whose subject a sign-in has replaced is still this user. Written
+      // without a prior read: the first statement applies only while the row
+      // still carries the subject the seed gave it, so a sign-in that claims
+      // it meanwhile wins; the second refreshes a claimed row's demo role and
+      // display name and nothing else.
+      const refreshed =
+        (await this.tenantUsers.refreshSeeded(tenant.id, userDef.email, {
+          externalUserId: userDef.externalUserId,
+          status: userDef.status,
+          displayName: userDef.displayName,
+          role: userDef.role,
+        })) ||
+        (await this.tenantUsers.setDisplayNameAndRole(
+          tenant.id,
+          userDef.email,
+          userDef.displayName,
+          userDef.role,
+        ));
 
-      if (!existing) {
+      if (!refreshed) {
         await this.tenantUsers.create({
           tenantId: tenant.id,
           externalUserId: userDef.externalUserId ?? undefined,
@@ -220,30 +233,6 @@ export class DevSeedService {
           role: userDef.role,
           status: userDef.status,
         });
-      } else {
-        // One conditional statement rather than read-modify-save. It applies
-        // only while the row still carries the subject the seed gave it, so
-        // a sign-in that claims the row meanwhile wins.
-        const refreshed = await this.tenantUsers.refreshSeeded(
-          tenant.id,
-          userDef.email,
-          {
-            externalUserId: userDef.externalUserId,
-            status: userDef.status,
-            displayName: userDef.displayName,
-            role: userDef.role,
-          },
-        );
-
-        if (!refreshed) {
-          // Somebody has signed in on this row. The subject and status are
-          // theirs; the seed still decides the demo role and display name.
-          await this.tenantUsers.setDisplayNameAndRole(
-            existing.id,
-            userDef.displayName,
-            userDef.role,
-          );
-        }
       }
 
       count += 1;

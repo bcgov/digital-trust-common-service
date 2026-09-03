@@ -238,16 +238,22 @@ export class TenantUserRepository {
   }
 
   /**
-   * Updates only the display name and role, in one statement. Unlike
-   * {@link update}, which saves a whole loaded entity, this cannot write
-   * stale values back over a concurrent change to any other column.
+   * Refreshes only the display name and role of the user at this tenant and
+   * email, in one statement, so nothing else on a claimed row is touched.
+   * Returns whether a row changed.
    */
   public async setDisplayNameAndRole(
-    id: string,
+    tenantId: string,
+    email: string,
     displayName: string,
     role: TenantUserRole,
-  ): Promise<void> {
-    await this.repository.update(id, { displayName, role });
+  ): Promise<boolean> {
+    const result = await this.repository.update(
+      { tenantId, email },
+      { displayName, role },
+    );
+
+    return (result.affected ?? 0) > 0;
   }
 
   public async update(tenantUser: TenantUser): Promise<TenantUser> {

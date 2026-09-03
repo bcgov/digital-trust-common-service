@@ -45,7 +45,6 @@ describe('DevSeedService', () => {
   };
 
   const tenantUserRepo = {
-    findByTenantAndEmail: jest.fn(),
     create: jest.fn(),
     refreshSeeded: jest.fn(),
     setDisplayNameAndRole: jest.fn(),
@@ -179,8 +178,9 @@ describe('DevSeedService', () => {
       config: {},
     });
 
-    tenantUserRepo.findByTenantAndEmail.mockResolvedValue(null);
-    tenantUserRepo.refreshSeeded.mockResolvedValue(true);
+    // No seeded rows exist yet: both writes miss and the seed creates.
+    tenantUserRepo.refreshSeeded.mockResolvedValue(false);
+    tenantUserRepo.setDisplayNameAndRole.mockResolvedValue(false);
     tenantUserRepo.create.mockResolvedValue({});
 
     connectorCredentialRepo.findByTenant.mockResolvedValue([]);
@@ -480,10 +480,9 @@ describe('DevSeedService', () => {
       .find((user) => user.email === email);
   }
 
-  function existingUserByEmail(user: TenantUser): void {
-    tenantUserRepo.findByTenantAndEmail.mockImplementation(
-      (_tenantId: string, email: string) =>
-        Promise.resolve(email === user.email ? user : null),
+  function rowExistsFor(mock: jest.Mock, email: string): void {
+    mock.mockImplementation((_tenantId: string, rowEmail: string) =>
+      Promise.resolve(rowEmail === email),
     );
   }
 
@@ -504,14 +503,8 @@ describe('DevSeedService', () => {
     });
   });
 
-  it('refreshes an unclaimed invitation with one conditional update, never a save', async () => {
-    existingUserByEmail({
-      id: 'user-invited',
-      tenantId: 'tenant-acme',
-      email: 'owner@acme-corp.example.test',
-      role: 'owner',
-      status: TenantUserStatus.INVITED,
-    } as TenantUser);
+  it('refreshes an unclaimed invitation with one conditional update', async () => {
+    rowExistsFor(tenantUserRepo.refreshSeeded, 'owner@acme-corp.example.test');
 
     await service.run();
 
@@ -525,65 +518,37 @@ describe('DevSeedService', () => {
         role: 'owner',
       },
     );
-    expect(tenantUserRepo.setDisplayNameAndRole).not.toHaveBeenCalled();
+    expect(tenantUserRepo.setDisplayNameAndRole).not.toHaveBeenCalledWith(
+      'tenant-acme',
+      'owner@acme-corp.example.test',
+      expect.anything(),
+      expect.anything(),
+    );
     expect(createdUser('owner@acme-corp.example.test')).toBeUndefined();
   });
 
-  it('leaves a claimed row its identity and status, refreshing only role and display name', async () => {
-    existingUserByEmail({
-      id: 'user-claimed',
-      tenantId: 'tenant-acme',
-      externalUserId: 'keycloak-sub-1',
-      email: 'owner@acme-corp.example.test',
-      displayName: 'Someone',
-      role: 'readonly',
-      status: TenantUserStatus.DISABLED,
-    } as TenantUser);
-    // The conditional update matches no row once a real subject is on it.
-    tenantUserRepo.refreshSeeded.mockResolvedValue(false);
+  it('refreshes only display name and role once a sign-in has claimed the row', async () => {
+    // The conditional update misses a claimed row, whether the claim landed
+    // long ago or between the two statements; the narrow update names no
+    // subject and no status, so neither can be undone.
+    rowExistsFor(
+      tenantUserRepo.setDisplayNameAndRole,
+      'owner@acme-corp.example.test',
+    );
 
     await service.run();
 
     expect(tenantUserRepo.setDisplayNameAndRole).toHaveBeenCalledWith(
-      'user-claimed',
+      'tenant-acme',
+      'owner@acme-corp.example.test',
       'acme-corp Owner',
       'owner',
     );
     expect(createdUser('owner@acme-corp.example.test')).toBeUndefined();
   });
 
-  it('does not undo a claim that lands between its read and its write', async () => {
-    // Read while still invited; by the time the conditional update runs the
-    // login callback has claimed the row, so the update reports no match.
-    existingUserByEmail({
-      id: 'user-racing',
-      tenantId: 'tenant-acme',
-      email: 'owner@acme-corp.example.test',
-      role: 'owner',
-      status: TenantUserStatus.INVITED,
-    } as TenantUser);
-    tenantUserRepo.refreshSeeded.mockResolvedValue(false);
-
-    await service.run();
-
-    expect(tenantUserRepo.setDisplayNameAndRole).toHaveBeenCalledWith(
-      'user-racing',
-      'acme-corp Owner',
-      'owner',
-    );
-    expect(createdUser('owner@acme-corp.example.test')).toBeUndefined();
-  });
-
-  it('resets a placeholder user in a non-invitable tenant to active', async () => {
-    existingUserByEmail({
-      id: 'user-placeholder',
-      tenantId: 'tenant-new',
-      externalUserId: 'dev-test-org-owner',
-      email: 'owner@test-org.example.test',
-      displayName: 'old',
-      role: 'member',
-      status: TenantUserStatus.INVITED,
-    } as TenantUser);
+  it('refreshes a placeholder user in a non-invitable tenant as active', async () => {
+    rowExistsFor(tenantUserRepo.refreshSeeded, 'owner@test-org.example.test');
 
     await service.run();
 
