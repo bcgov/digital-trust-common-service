@@ -47,7 +47,7 @@ describe('DevSeedService', () => {
   const tenantUserRepo = {
     findByTenantAndEmail: jest.fn(),
     create: jest.fn(),
-    resetSeeded: jest.fn(),
+    refreshSeeded: jest.fn(),
     setDisplayNameAndRole: jest.fn(),
   };
 
@@ -180,7 +180,7 @@ describe('DevSeedService', () => {
     });
 
     tenantUserRepo.findByTenantAndEmail.mockResolvedValue(null);
-    tenantUserRepo.resetSeeded.mockResolvedValue(true);
+    tenantUserRepo.refreshSeeded.mockResolvedValue(true);
     tenantUserRepo.create.mockResolvedValue({});
 
     connectorCredentialRepo.findByTenant.mockResolvedValue([]);
@@ -504,42 +504,30 @@ describe('DevSeedService', () => {
     });
   });
 
-  it.each([
-    ['an unclaimed invitation', null, TenantUserStatus.INVITED],
-    [
-      'a placeholder from before invitations',
-      'dev-acme-corp-owner',
-      TenantUserStatus.ACTIVE,
-    ],
-  ])(
-    'resets %s with one conditional update, never a save or a delete',
-    async (_label, externalUserId, status) => {
-      existingUserByEmail({
-        id: 'user-owned',
-        tenantId: 'tenant-acme',
-        externalUserId: externalUserId ?? undefined,
-        email: 'owner@acme-corp.example.test',
+  it('refreshes an unclaimed invitation with one conditional update, never a save', async () => {
+    existingUserByEmail({
+      id: 'user-invited',
+      tenantId: 'tenant-acme',
+      email: 'owner@acme-corp.example.test',
+      role: 'owner',
+      status: TenantUserStatus.INVITED,
+    } as TenantUser);
+
+    await service.run();
+
+    expect(tenantUserRepo.refreshSeeded).toHaveBeenCalledWith(
+      'tenant-acme',
+      'owner@acme-corp.example.test',
+      {
+        externalUserId: null,
+        status: TenantUserStatus.INVITED,
+        displayName: 'acme-corp Owner',
         role: 'owner',
-        status,
-      } as TenantUser);
-
-      await service.run();
-
-      expect(tenantUserRepo.resetSeeded).toHaveBeenCalledWith(
-        'tenant-acme',
-        'owner@acme-corp.example.test',
-        'dev-acme-corp-owner',
-        {
-          externalUserId: null,
-          status: TenantUserStatus.INVITED,
-          displayName: 'acme-corp Owner',
-          role: 'owner',
-        },
-      );
-      expect(tenantUserRepo.setDisplayNameAndRole).not.toHaveBeenCalled();
-      expect(createdUser('owner@acme-corp.example.test')).toBeUndefined();
-    },
-  );
+      },
+    );
+    expect(tenantUserRepo.setDisplayNameAndRole).not.toHaveBeenCalled();
+    expect(createdUser('owner@acme-corp.example.test')).toBeUndefined();
+  });
 
   it('leaves a claimed row its identity and status, refreshing only role and display name', async () => {
     existingUserByEmail({
@@ -552,7 +540,7 @@ describe('DevSeedService', () => {
       status: TenantUserStatus.DISABLED,
     } as TenantUser);
     // The conditional update matches no row once a real subject is on it.
-    tenantUserRepo.resetSeeded.mockResolvedValue(false);
+    tenantUserRepo.refreshSeeded.mockResolvedValue(false);
 
     await service.run();
 
@@ -574,7 +562,7 @@ describe('DevSeedService', () => {
       role: 'owner',
       status: TenantUserStatus.INVITED,
     } as TenantUser);
-    tenantUserRepo.resetSeeded.mockResolvedValue(false);
+    tenantUserRepo.refreshSeeded.mockResolvedValue(false);
 
     await service.run();
 
@@ -599,10 +587,9 @@ describe('DevSeedService', () => {
 
     await service.run();
 
-    expect(tenantUserRepo.resetSeeded).toHaveBeenCalledWith(
+    expect(tenantUserRepo.refreshSeeded).toHaveBeenCalledWith(
       'tenant-new',
       'owner@test-org.example.test',
-      'dev-test-org-owner',
       {
         externalUserId: 'dev-test-org-owner',
         status: TenantUserStatus.ACTIVE,

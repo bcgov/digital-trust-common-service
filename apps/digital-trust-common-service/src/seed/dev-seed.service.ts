@@ -47,7 +47,6 @@ import {
   UI_SPA_SCOPES,
   UI_SPA_TENANT_SLUG,
   seedApiClientId,
-  seedPlaceholderExternalUserId,
   seedUsersForTenant,
   uiSpaOrigin,
   uiSpaPostLogoutRedirectUris,
@@ -223,13 +222,11 @@ export class DevSeedService {
         });
       } else {
         // One conditional statement rather than read-modify-save. It applies
-        // only while the row still carries no subject or the seed's own
-        // placeholder, so a sign-in that claims the row meanwhile wins, and
-        // an old placeholder becomes an invitation atomically.
-        const reset = await this.tenantUsers.resetSeeded(
+        // only while the row still carries the subject the seed gave it, so
+        // a sign-in that claims the row meanwhile wins.
+        const refreshed = await this.tenantUsers.refreshSeeded(
           tenant.id,
           userDef.email,
-          seedPlaceholderExternalUserId(slug, userDef.role),
           {
             externalUserId: userDef.externalUserId,
             status: userDef.status,
@@ -238,7 +235,7 @@ export class DevSeedService {
           },
         );
 
-        if (!reset) {
+        if (!refreshed) {
           // Somebody has signed in on this row. The subject and status are
           // theirs; the seed still decides the demo role and display name.
           await this.tenantUsers.setDisplayNameAndRole(

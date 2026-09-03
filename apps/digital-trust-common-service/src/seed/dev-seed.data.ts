@@ -123,17 +123,6 @@ export const UI_SPA_CLIENT_ID = 'dtsc-ui';
 export const UI_SPA_TENANT_SLUG = 'acme-corp';
 
 /**
- * Subject for a seeded user that is not meant to sign in. Also how the seed
- * recognises a row it created before it seeded invitations.
- */
-export function seedPlaceholderExternalUserId(
-  slug: string,
-  role: TenantUserRole,
-): string {
-  return `dev-${slug}-${role}`;
-}
-
-/**
  * The SPA client's tenant gets invitations at emails the checked-in Keycloak
  * realm (keycloak/config/realm.json) has accounts for, so each role can be
  * exercised through a real sign-in. Every other tenant's users are
@@ -148,9 +137,7 @@ export function seedUsersForTenant(slug: string): SeedUserDefinition[] {
   ];
 
   return roles.map(([role, label]) => ({
-    externalUserId: invitable
-      ? null
-      : seedPlaceholderExternalUserId(slug, role),
+    externalUserId: invitable ? null : `dev-${slug}-${role}`,
     email: `${role}@${slug}.example.test`,
     displayName: `${slug} ${label}`,
     role,

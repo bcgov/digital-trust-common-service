@@ -203,17 +203,15 @@ export class TenantUserRepository {
   }
 
   /**
-   * Rewrites a seeded user's identity in one statement, and only while the
-   * seed still owns it: the row carries no subject, or the placeholder
-   * subject the seed gave it. `externalUserId: null` makes the row an
-   * unclaimed invitation. A row a sign-in has claimed since the caller
-   * looked at it does not match, so the claim cannot be undone. Returns
-   * whether a row changed.
+   * Refreshes a seeded user's status, display name and role in one
+   * statement, only while the row still carries the subject the seed gave
+   * it: none for an invitation, the placeholder for a list-only user. A row
+   * a sign-in has claimed does not match, so the claim cannot be undone.
+   * Returns whether a row changed.
    */
-  public async resetSeeded(
+  public async refreshSeeded(
     tenantId: string,
     email: string,
-    placeholderExternalUserId: string,
     fields: {
       externalUserId: string | null;
       status: TenantUserStatus;
@@ -225,19 +223,15 @@ export class TenantUserRepository {
       .createQueryBuilder()
       .update(TenantUser)
       .set({
-        // The entity types the column as optional rather than nullable, so a
-        // raw NULL is the only way through the query builder's typing.
-        externalUserId: fields.externalUserId ?? (() => 'NULL'),
         status: fields.status,
         displayName: fields.displayName,
         role: fields.role,
       })
       .where('tenant_id = :tenantId', { tenantId })
       .andWhere('email = :email', { email })
-      .andWhere(
-        '(external_user_id IS NULL OR external_user_id = :placeholder)',
-        { placeholder: placeholderExternalUserId },
-      )
+      .andWhere('external_user_id IS NOT DISTINCT FROM :externalUserId', {
+        externalUserId: fields.externalUserId,
+      })
       .execute();
 
     return (result.affected ?? 0) > 0;

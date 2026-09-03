@@ -168,26 +168,6 @@ describe('DevSeedService integration', () => {
     }
   });
 
-  it('turns a placeholder row from before invitations back into one', async () => {
-    await seedService.run();
-    const email = 'admin@acme-corp.example.test';
-
-    await queryDataSource.query(
-      `UPDATE tenant_user SET external_user_id = 'dev-acme-corp-admin', status = 'active'
-       WHERE email = $1`,
-      [email],
-    );
-
-    await seedService.run();
-
-    const rows = await queryDataSource.query<
-      Array<{ external_user_id: string | null; status: string }>
-    >('SELECT external_user_id, status FROM tenant_user WHERE email = $1', [
-      email,
-    ]);
-    expect(rows).toEqual([{ external_user_id: null, status: 'invited' }]);
-  });
-
   it('seeds the SPA client as public, with no secret', async () => {
     await seedService.run();
 

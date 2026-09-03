@@ -79,7 +79,7 @@ describe('TenantUserRepository', () => {
     );
   });
 
-  describe('resetSeeded', () => {
+  describe('refreshSeeded', () => {
     const fields = {
       externalUserId: null,
       status: TenantUserStatus.INVITED,
@@ -87,26 +87,20 @@ describe('TenantUserRepository', () => {
       role: TenantUserRole.OWNER,
     };
 
-    it('clears the subject with a raw NULL and matches only seed-owned rows', async () => {
-      const changed = await repository.resetSeeded(
+    it('writes only the seeded fields and matches only an unchanged subject', async () => {
+      const changed = await repository.refreshSeeded(
         'tenant-1',
         'owner@acme-corp.example.test',
-        'dev-acme-corp-owner',
         fields,
       );
 
       expect(changed).toBe(true);
       expect(queryBuilder.update).toHaveBeenCalledWith(TenantUser);
-      const [values] = queryBuilder.set.mock.calls[0] as [
-        Record<string, unknown>,
-      ];
-      expect(values).toMatchObject({
+      expect(queryBuilder.set).toHaveBeenCalledWith({
         status: TenantUserStatus.INVITED,
         displayName: 'acme-corp Owner',
         role: TenantUserRole.OWNER,
       });
-      expect(typeof values.externalUserId).toBe('function');
-      expect((values.externalUserId as () => string)()).toBe('NULL');
       expect(queryBuilder.where).toHaveBeenCalledWith('tenant_id = :tenantId', {
         tenantId: 'tenant-1',
       });
@@ -114,16 +108,15 @@ describe('TenantUserRepository', () => {
         email: 'owner@acme-corp.example.test',
       });
       expect(queryBuilder.andWhere).toHaveBeenCalledWith(
-        '(external_user_id IS NULL OR external_user_id = :placeholder)',
-        { placeholder: 'dev-acme-corp-owner' },
+        'external_user_id IS NOT DISTINCT FROM :externalUserId',
+        { externalUserId: null },
       );
     });
 
-    it('sets a placeholder subject when one is given', async () => {
-      await repository.resetSeeded(
+    it('matches a placeholder subject for a list-only user', async () => {
+      await repository.refreshSeeded(
         'tenant-1',
         'owner@test-org.example.test',
-        'dev-test-org-owner',
         {
           ...fields,
           externalUserId: 'dev-test-org-owner',
@@ -131,11 +124,9 @@ describe('TenantUserRepository', () => {
         },
       );
 
-      expect(queryBuilder.set).toHaveBeenCalledWith(
-        expect.objectContaining({
-          externalUserId: 'dev-test-org-owner',
-          status: TenantUserStatus.ACTIVE,
-        }),
+      expect(queryBuilder.andWhere).toHaveBeenCalledWith(
+        'external_user_id IS NOT DISTINCT FROM :externalUserId',
+        { externalUserId: 'dev-test-org-owner' },
       );
     });
 
@@ -143,10 +134,9 @@ describe('TenantUserRepository', () => {
       queryBuilder.execute.mockResolvedValue({ affected: 0 });
 
       await expect(
-        repository.resetSeeded(
+        repository.refreshSeeded(
           'tenant-1',
           'owner@acme-corp.example.test',
-          'dev-acme-corp-owner',
           fields,
         ),
       ).resolves.toBe(false);
