@@ -52,6 +52,7 @@ import {
   uiSpaPostLogoutRedirectUris,
   uiSpaRedirectUris,
 } from './dev-seed.data';
+import { SeedTenantUserRepository } from './seed-tenant-user.repository';
 
 /**
  * Advisory-lock class id for the seed, distinct from the other advisory
@@ -80,6 +81,7 @@ export class DevSeedService {
   public constructor(
     private readonly tenants: TenantRepository,
     private readonly tenantUsers: TenantUserRepository,
+    private readonly seedTenantUsers: SeedTenantUserRepository,
     private readonly connectorCredentials: ConnectorCredentialRepository,
     private readonly credentialDefinitions: CredentialDefinitionRepository,
     private readonly issuanceProfiles: IssuanceProfileRepository,
@@ -211,13 +213,13 @@ export class DevSeedService {
       // it meanwhile wins; the second refreshes a claimed row's demo role and
       // display name and nothing else.
       const refreshed =
-        (await this.tenantUsers.refreshSeeded(tenant.id, userDef.email, {
+        (await this.seedTenantUsers.refreshSeeded(tenant.id, userDef.email, {
           externalUserId: userDef.externalUserId,
           status: userDef.status,
           displayName: userDef.displayName,
           role: userDef.role,
         })) ||
-        (await this.tenantUsers.setDisplayNameAndRole(
+        (await this.seedTenantUsers.setDisplayNameAndRole(
           tenant.id,
           userDef.email,
           userDef.displayName,

@@ -33,6 +33,7 @@ import {
   seedApiClientId,
 } from './dev-seed.data';
 import { DEV_SEED_LOCK_CLASS, DevSeedService } from './dev-seed.service';
+import { SeedTenantUserRepository } from './seed-tenant-user.repository';
 
 describe('DevSeedService', () => {
   let service: DevSeedService;
@@ -46,6 +47,9 @@ describe('DevSeedService', () => {
 
   const tenantUserRepo = {
     create: jest.fn(),
+  };
+
+  const seedTenantUserRepo = {
     refreshSeeded: jest.fn(),
     setDisplayNameAndRole: jest.fn(),
   };
@@ -122,6 +126,7 @@ describe('DevSeedService', () => {
         DevSeedService,
         { provide: TenantRepository, useValue: tenantRepo },
         { provide: TenantUserRepository, useValue: tenantUserRepo },
+        { provide: SeedTenantUserRepository, useValue: seedTenantUserRepo },
         {
           provide: ConnectorCredentialRepository,
           useValue: connectorCredentialRepo,
@@ -179,8 +184,8 @@ describe('DevSeedService', () => {
     });
 
     // No seeded rows exist yet: both writes miss and the seed creates.
-    tenantUserRepo.refreshSeeded.mockResolvedValue(false);
-    tenantUserRepo.setDisplayNameAndRole.mockResolvedValue(false);
+    seedTenantUserRepo.refreshSeeded.mockResolvedValue(false);
+    seedTenantUserRepo.setDisplayNameAndRole.mockResolvedValue(false);
     tenantUserRepo.create.mockResolvedValue({});
 
     connectorCredentialRepo.findByTenant.mockResolvedValue([]);
@@ -504,11 +509,14 @@ describe('DevSeedService', () => {
   });
 
   it('refreshes an unclaimed invitation with one conditional update', async () => {
-    rowExistsFor(tenantUserRepo.refreshSeeded, 'owner@acme-corp.example.test');
+    rowExistsFor(
+      seedTenantUserRepo.refreshSeeded,
+      'owner@acme-corp.example.test',
+    );
 
     await service.run();
 
-    expect(tenantUserRepo.refreshSeeded).toHaveBeenCalledWith(
+    expect(seedTenantUserRepo.refreshSeeded).toHaveBeenCalledWith(
       'tenant-acme',
       'owner@acme-corp.example.test',
       {
@@ -518,7 +526,7 @@ describe('DevSeedService', () => {
         role: 'owner',
       },
     );
-    expect(tenantUserRepo.setDisplayNameAndRole).not.toHaveBeenCalledWith(
+    expect(seedTenantUserRepo.setDisplayNameAndRole).not.toHaveBeenCalledWith(
       'tenant-acme',
       'owner@acme-corp.example.test',
       expect.anything(),
@@ -532,13 +540,13 @@ describe('DevSeedService', () => {
     // long ago or between the two statements; the narrow update names no
     // subject and no status, so neither can be undone.
     rowExistsFor(
-      tenantUserRepo.setDisplayNameAndRole,
+      seedTenantUserRepo.setDisplayNameAndRole,
       'owner@acme-corp.example.test',
     );
 
     await service.run();
 
-    expect(tenantUserRepo.setDisplayNameAndRole).toHaveBeenCalledWith(
+    expect(seedTenantUserRepo.setDisplayNameAndRole).toHaveBeenCalledWith(
       'tenant-acme',
       'owner@acme-corp.example.test',
       'acme-corp Owner',
@@ -548,11 +556,14 @@ describe('DevSeedService', () => {
   });
 
   it('refreshes a placeholder user in a non-invitable tenant as active', async () => {
-    rowExistsFor(tenantUserRepo.refreshSeeded, 'owner@test-org.example.test');
+    rowExistsFor(
+      seedTenantUserRepo.refreshSeeded,
+      'owner@test-org.example.test',
+    );
 
     await service.run();
 
-    expect(tenantUserRepo.refreshSeeded).toHaveBeenCalledWith(
+    expect(seedTenantUserRepo.refreshSeeded).toHaveBeenCalledWith(
       'tenant-new',
       'owner@test-org.example.test',
       {
