@@ -332,6 +332,15 @@ accounts existed keeps the realm it first imported; reset it with the
 `docker compose rm -sf keycloak keycloak-db` steps in the `oidc.localhost`
 note above to pick them up.
 
+Likewise, a database seeded before these invitations existed still holds
+active `dev-acme-corp-*` rows at these emails. The seed leaves them alone, and
+a sign-in would then fail on the email uniqueness constraint, so clear them
+and run `docker compose up seed` again:
+
+```sql
+DELETE FROM tenant_user WHERE external_user_id LIKE 'dev-acme-corp-%';
+```
+
 The client the SPA uses:
 
 | Property | Value | Why |
