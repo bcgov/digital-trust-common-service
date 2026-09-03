@@ -412,7 +412,7 @@ export interface paths {
         post?: never;
         /**
          * Remove connector
-         * @description Fails if active credential definitions depend on this connector.
+         * @description Fails if credentials were issued through this connector.
          */
         delete: operations["deleteConnector"];
         options?: never;

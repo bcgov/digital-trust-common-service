@@ -1,14 +1,7 @@
-import { Expose } from 'class-transformer';
-import { IsBoolean, IsOptional, IsString } from 'class-validator';
+import { OmitType, PartialType } from '@nestjs/swagger';
 
-export class UpdateConnectorCredentialDto {
-  @Expose({ name: 'endpoint_url' })
-  @IsOptional()
-  @IsString()
-  public endpointUrl?: string;
+import { CreateConnectorCredentialDto } from './create-connector-credential.dto';
 
-  @Expose()
-  @IsOptional()
-  @IsBoolean()
-  public active?: boolean;
-}
+export class UpdateConnectorCredentialDto extends PartialType(
+  OmitType(CreateConnectorCredentialDto, ['connectorType'] as const),
+) {}

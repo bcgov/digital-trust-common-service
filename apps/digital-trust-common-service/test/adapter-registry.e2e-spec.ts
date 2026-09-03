@@ -20,6 +20,7 @@ import { configureApp } from '../src/app.config';
 import { AppModule } from '../src/app.module';
 import { ConnectorType } from '../src/connection/connection.entity';
 import { ConnectorCredentialService } from '../src/connector-credential/connector-credential.service';
+import { ConnectorHealthCheckService } from '../src/connector-credential/connector-health-check.service';
 
 const mockBoss = {
   start: jest.fn().mockResolvedValue(undefined),
@@ -30,6 +31,14 @@ const mockBoss = {
   work: jest.fn().mockResolvedValue(undefined),
 };
 
+// This suite exercises resolution logic, not real connector connectivity —
+// the endpoint URLs below are made-up example.com subdomains with no DNS
+// records, so the real health check would always fail before we ever reach
+// AdapterRegistry.
+const mockHealthCheckService = {
+  check: jest.fn().mockResolvedValue({ status: 'healthy', latencyMs: 1 }),
+};
+
 async function bootstrap(): Promise<TestingModule> {
   return await Test.createTestingModule({ imports: [AppModule] })
     .overrideProvider(PgBossService)
@@ -37,6 +46,8 @@ async function bootstrap(): Promise<TestingModule> {
       boss: mockBoss,
       initializeBoss: jest.fn().mockResolvedValue(mockBoss),
     })
+    .overrideProvider(ConnectorHealthCheckService)
+    .useValue(mockHealthCheckService)
     .compile();
 }
 
@@ -163,12 +174,11 @@ describe('AdapterRegistry (e2e)', () => {
 
       const tenantId = await createTenant();
       const connector = await connectors.create(
+        tenantId,
         {
-          tenantId,
           connectorType: ConnectorType.TRACTION,
-          credentialsPlainText: JSON.stringify({ apiKey: 'e2e-secret' }),
           endpointUrl: 'https://traction-e2e.example.com',
-          active: true,
+          credentials: { apiKey: 'e2e-secret' },
         },
         authFor(tenantId),
       );
@@ -194,12 +204,11 @@ describe('AdapterRegistry (e2e)', () => {
       const tenantA = await createTenant();
       const tenantB = await createTenant();
       const connectorA = await connectors.create(
+        tenantA,
         {
-          tenantId: tenantA,
           connectorType: ConnectorType.TRACTION,
-          credentialsPlainText: JSON.stringify({ apiKey: 'tenant-a' }),
           endpointUrl: 'https://tenant-a.example.com',
-          active: true,
+          credentials: { apiKey: 'tenant-a' },
         },
         authFor(tenantA),
       );
@@ -267,12 +276,11 @@ describe('AdapterRegistry (e2e)', () => {
         createdTenantIds.push(tenantId);
 
         await enabledConnectors.create(
+          tenantId,
           {
-            tenantId,
             connectorType: ConnectorType.TRACTION,
-            credentialsPlainText: JSON.stringify({ apiKey: 'override' }),
             endpointUrl: 'https://override.example.com',
-            active: true,
+            credentials: { apiKey: 'override' },
           },
           authFor(tenantId),
         );

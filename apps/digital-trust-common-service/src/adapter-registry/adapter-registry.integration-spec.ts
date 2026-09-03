@@ -16,6 +16,7 @@ import { AppModule } from '../app.module';
 import { ConnectorType } from '../connection/connection.entity';
 import { ConnectorCredential } from '../connector-credential/connector-credential.entity';
 import { ConnectorCredentialService } from '../connector-credential/connector-credential.service';
+import { ConnectorHealthCheckService } from '../connector-credential/connector-health-check.service';
 
 import { AdapterRegistry } from './adapter-registry.service';
 
@@ -51,6 +52,13 @@ describe('AdapterRegistry (integration)', () => {
       .useValue({
         boss: mockBoss,
         initializeBoss: jest.fn().mockResolvedValue(mockBoss),
+      })
+      // Connector creation now health-checks the real endpoint before
+      // persisting; these tests use fake hostnames and only care about the
+      // registry's resolution logic, not connectivity, so stub it healthy.
+      .overrideProvider(ConnectorHealthCheckService)
+      .useValue({
+        check: jest.fn().mockResolvedValue({ status: 'healthy', latencyMs: 1 }),
       })
       .compile();
 
@@ -126,18 +134,27 @@ describe('AdapterRegistry (integration)', () => {
       endpointUrl?: string;
     } = {},
   ): Promise<ConnectorCredential> {
-    return await connectors.create(
+    const connector = await connectors.create(
+      tenantId,
       {
-        tenantId,
         connectorType: overrides.connectorType ?? ConnectorType.TRACTION,
-        credentialsPlainText: JSON.stringify({
-          apiKey: 'integration-secret',
-        }),
         endpointUrl: overrides.endpointUrl ?? 'https://traction.example.com',
-        active: overrides.active ?? true,
+        credentials: { apiKey: 'integration-secret' },
       },
       authFor(tenantId),
     );
+
+    // create() always persists as active; flip it directly for the
+    // inactive-connector fixtures below (there's no service-level API for
+    // creating an inactive row).
+    if (overrides.active === false) {
+      await dataSource.query(
+        'UPDATE connector_credential SET active = false WHERE id = $1',
+        [connector.id],
+      );
+    }
+
+    return connector;
   }
 
   async function setDefaultConnector(
