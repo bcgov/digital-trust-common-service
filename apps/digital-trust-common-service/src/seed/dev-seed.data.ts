@@ -14,7 +14,10 @@ import {
 import { OPERATION_TYPE } from '../operation/operation-type.constants';
 import { OperationState } from '../operation/operation.entity';
 import { TenantStatus } from '../tenant/tenant.entity';
-import { TenantUserRole } from '../tenant-user/tenant-user.entity';
+import {
+  TenantUserRole,
+  TenantUserStatus,
+} from '../tenant-user/tenant-user.entity';
 import {
   VerificationProfileProtocolHint,
   VerificationProfileStatus,
@@ -46,10 +49,17 @@ export interface SeedTenantDefinition {
 }
 
 export interface SeedUserDefinition {
-  externalUserId: string;
+  /**
+   * Keycloak subject. `null` seeds an unclaimed invitation: the row carries
+   * no identity until someone signs in with a matching email and the login
+   * callback claims it. A placeholder value can never match a real account,
+   * so that user exists only to populate lists.
+   */
+  externalUserId: string | null;
   email: string;
   displayName: string;
   role: TenantUserRole;
+  status: TenantUserStatus;
 }
 
 export interface SeedConnectionDefinition {
@@ -90,29 +100,6 @@ export const SEED_TENANTS: readonly SeedTenantDefinition[] = [
   },
 ];
 
-export function seedUsersForTenant(slug: string): SeedUserDefinition[] {
-  return [
-    {
-      externalUserId: `dev-${slug}-owner`,
-      email: `owner@${slug}.example.test`,
-      displayName: `${slug} Owner`,
-      role: TenantUserRole.OWNER,
-    },
-    {
-      externalUserId: `dev-${slug}-admin`,
-      email: `admin@${slug}.example.test`,
-      displayName: `${slug} Admin`,
-      role: TenantUserRole.ADMIN,
-    },
-    {
-      externalUserId: `dev-${slug}-member`,
-      email: `member@${slug}.example.test`,
-      displayName: `${slug} Member`,
-      role: TenantUserRole.MEMBER,
-    },
-  ];
-}
-
 export function seedApiClientId(slug: string): string {
   return `dev-seed-${slug}-api`;
 }
@@ -134,6 +121,29 @@ export const UI_SPA_CLIENT_ID = 'dtsc-ui';
  * client belongs to one tenant, and a dev login always lands in this one.
  */
 export const UI_SPA_TENANT_SLUG = 'acme-corp';
+
+/**
+ * The SPA client's tenant gets invitations at emails the checked-in Keycloak
+ * realm (keycloak/config/realm.json) has accounts for, so each role can be
+ * exercised through a real sign-in. Every other tenant's users are
+ * placeholders: they populate member lists and cannot sign in.
+ */
+export function seedUsersForTenant(slug: string): SeedUserDefinition[] {
+  const invitable = slug === UI_SPA_TENANT_SLUG;
+  const roles: ReadonlyArray<[TenantUserRole, string]> = [
+    [TenantUserRole.OWNER, 'Owner'],
+    [TenantUserRole.ADMIN, 'Admin'],
+    [TenantUserRole.MEMBER, 'Member'],
+  ];
+
+  return roles.map(([role, label]) => ({
+    externalUserId: invitable ? null : `dev-${slug}-${role}`,
+    email: `${role}@${slug}.example.test`,
+    displayName: `${slug} ${label}`,
+    role,
+    status: invitable ? TenantUserStatus.INVITED : TenantUserStatus.ACTIVE,
+  }));
+}
 
 /**
  * Paths on the SPA the provider redirects back to, after authorization and

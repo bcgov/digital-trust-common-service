@@ -50,6 +50,51 @@
         }
       ],
       "realmRoles": ["admin"]
+    },
+    {
+      "username": "acme-owner",
+      "enabled": true,
+      "email": "owner@acme-corp.example.test",
+      "emailVerified": true,
+      "firstName": "Acme",
+      "lastName": "Owner",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "acme-owner",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "acme-admin",
+      "enabled": true,
+      "email": "admin@acme-corp.example.test",
+      "emailVerified": true,
+      "firstName": "Acme",
+      "lastName": "Admin",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "acme-admin",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "acme-member",
+      "enabled": true,
+      "email": "member@acme-corp.example.test",
+      "emailVerified": true,
+      "firstName": "Acme",
+      "lastName": "Member",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "acme-member",
+          "temporary": false
+        }
+      ]
     }
   ]
 }
