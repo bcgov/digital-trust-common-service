@@ -1,6 +1,8 @@
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
+import { NativeLogger } from 'nestjs-pino';
 
+import { AppModule } from './app.module';
 import { DevSeedService } from './seed/dev-seed.service';
 import { shouldRunDevSeedOnStart } from './seed/seed-on-start.util';
 
@@ -31,6 +33,7 @@ describe('application bootstrap', () => {
     const configService = {
       get: jest.fn().mockReturnValue('3000'),
     };
+    const loggerService = {};
     const seedService = {
       run: jest.fn().mockImplementation(() => {
         calls.push('seed');
@@ -43,11 +46,15 @@ describe('application bootstrap', () => {
     });
     const app = {
       enableShutdownHooks: jest.fn(),
-      get: jest
-        .fn()
-        .mockImplementation((token: { name?: string }) =>
-          token.name === ConfigService.name ? configService : seedService,
-        ),
+      get: jest.fn().mockImplementation((token: { name?: string }) => {
+        if (token.name === ConfigService.name) {
+          return configService;
+        }
+        if (token.name === NativeLogger.name) {
+          return loggerService;
+        }
+        return seedService;
+      }),
       init: jest.fn().mockImplementation(() => {
         calls.push('init');
         return Promise.resolve();
@@ -57,6 +64,7 @@ describe('application bootstrap', () => {
         resolveListen();
         return Promise.resolve();
       }),
+      useLogger: jest.fn(),
     };
 
     mockNestFactory.create.mockResolvedValue(app as never);
@@ -67,6 +75,11 @@ describe('application bootstrap', () => {
     });
     await listened;
 
+    expect(mockNestFactory.create.mock.calls[0]).toEqual([
+      AppModule,
+      { bufferLogs: true },
+    ]);
+    expect(app.useLogger).toHaveBeenCalledWith(loggerService);
     expect(app.get).toHaveBeenCalledWith(DevSeedService);
     expect(calls).toEqual(['init', 'seed', 'listen']);
   });
