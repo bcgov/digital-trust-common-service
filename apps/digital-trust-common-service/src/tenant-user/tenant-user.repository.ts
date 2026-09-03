@@ -202,6 +202,60 @@ export class TenantUserRepository {
     return await this.findByTenantAndExternalUserId(tenantId, externalUserId);
   }
 
+  /**
+   * Rewrites a seeded user's identity in one statement, and only while the
+   * seed still owns it: the row carries no subject, or the placeholder
+   * subject the seed gave it. `externalUserId: null` makes the row an
+   * unclaimed invitation. A row a sign-in has claimed since the caller
+   * looked at it does not match, so the claim cannot be undone. Returns
+   * whether a row changed.
+   */
+  public async resetSeeded(
+    tenantId: string,
+    email: string,
+    placeholderExternalUserId: string,
+    fields: {
+      externalUserId: string | null;
+      status: TenantUserStatus;
+      displayName: string;
+      role: TenantUserRole;
+    },
+  ): Promise<boolean> {
+    const result = await this.repository
+      .createQueryBuilder()
+      .update(TenantUser)
+      .set({
+        // The entity types the column as optional rather than nullable, so a
+        // raw NULL is the only way through the query builder's typing.
+        externalUserId: fields.externalUserId ?? (() => 'NULL'),
+        status: fields.status,
+        displayName: fields.displayName,
+        role: fields.role,
+      })
+      .where('tenant_id = :tenantId', { tenantId })
+      .andWhere('email = :email', { email })
+      .andWhere(
+        '(external_user_id IS NULL OR external_user_id = :placeholder)',
+        { placeholder: placeholderExternalUserId },
+      )
+      .execute();
+
+    return (result.affected ?? 0) > 0;
+  }
+
+  /**
+   * Updates only the display name and role, in one statement. Unlike
+   * {@link update}, which saves a whole loaded entity, this cannot write
+   * stale values back over a concurrent change to any other column.
+   */
+  public async setDisplayNameAndRole(
+    id: string,
+    displayName: string,
+    role: TenantUserRole,
+  ): Promise<void> {
+    await this.repository.update(id, { displayName, role });
+  }
+
   public async update(tenantUser: TenantUser): Promise<TenantUser> {
     return await this.repository.save(tenantUser);
   }

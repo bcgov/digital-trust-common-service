@@ -27,7 +27,6 @@ import { Operation, OperationState } from '../operation/operation.entity';
 import { OperationRepository } from '../operation/operation.repository';
 import { Tenant, TenantStatus } from '../tenant/tenant.entity';
 import { TenantRepository } from '../tenant/tenant.repository';
-import { TenantUser } from '../tenant-user/tenant-user.entity';
 import { TenantUserRepository } from '../tenant-user/tenant-user.repository';
 import { VerificationProfile } from '../verification-profile/verification-profile.entity';
 import { VerificationProfileRepository } from '../verification-profile/verification-profile.repository';
@@ -44,7 +43,6 @@ import {
   SEED_TENANTS,
   SEED_VERIFICATION_PROFILE,
   SeedTenantDefinition,
-  SeedUserDefinition,
   UI_SPA_CLIENT_ID,
   UI_SPA_SCOPES,
   UI_SPA_TENANT_SLUG,
@@ -215,67 +213,46 @@ export class DevSeedService {
       );
 
       if (!existing) {
-        await this.tenantUsers.create(
-          this.seededTenantUser(tenant.id, userDef),
-        );
-      } else if (!this.seedOwnsIdentity(existing, slug, userDef)) {
-        // Somebody has signed in on this row. The subject and status are
-        // theirs; the seed still decides the demo role and display name.
-        existing.displayName = userDef.displayName;
-        existing.role = userDef.role;
-        await this.tenantUsers.update(existing);
-      } else if (userDef.externalUserId === null && existing.externalUserId) {
-        // A placeholder from before this tenant's users became invitations.
-        // Nothing references a row that never signed in, and `save` ignores
-        // undefined, so replace it rather than try to clear the subject.
-        await this.tenantUsers.delete(existing.id);
-        await this.tenantUsers.create(
-          this.seededTenantUser(tenant.id, userDef),
-        );
+        await this.tenantUsers.create({
+          tenantId: tenant.id,
+          externalUserId: userDef.externalUserId ?? undefined,
+          email: userDef.email,
+          displayName: userDef.displayName,
+          role: userDef.role,
+          status: userDef.status,
+        });
       } else {
-        if (userDef.externalUserId !== null) {
-          existing.externalUserId = userDef.externalUserId;
+        // One conditional statement rather than read-modify-save. It applies
+        // only while the row still carries no subject or the seed's own
+        // placeholder, so a sign-in that claims the row meanwhile wins, and
+        // an old placeholder becomes an invitation atomically.
+        const reset = await this.tenantUsers.resetSeeded(
+          tenant.id,
+          userDef.email,
+          seedPlaceholderExternalUserId(slug, userDef.role),
+          {
+            externalUserId: userDef.externalUserId,
+            status: userDef.status,
+            displayName: userDef.displayName,
+            role: userDef.role,
+          },
+        );
+
+        if (!reset) {
+          // Somebody has signed in on this row. The subject and status are
+          // theirs; the seed still decides the demo role and display name.
+          await this.tenantUsers.setDisplayNameAndRole(
+            existing.id,
+            userDef.displayName,
+            userDef.role,
+          );
         }
-        existing.displayName = userDef.displayName;
-        existing.role = userDef.role;
-        existing.status = userDef.status;
-        await this.tenantUsers.update(existing);
       }
 
       count += 1;
     }
 
     return count;
-  }
-
-  private seededTenantUser(
-    tenantId: string,
-    def: SeedUserDefinition,
-  ): Partial<TenantUser> {
-    return {
-      tenantId,
-      externalUserId: def.externalUserId ?? undefined,
-      email: def.email,
-      displayName: def.displayName,
-      role: def.role,
-      status: def.status,
-    };
-  }
-
-  /**
-   * The seed may overwrite a user row's identity while the row carries no
-   * subject, or the placeholder subject the seed gave it. A real subject
-   * means somebody signed in, and the identity is theirs to keep.
-   */
-  private seedOwnsIdentity(
-    existing: TenantUser,
-    slug: string,
-    def: SeedUserDefinition,
-  ): boolean {
-    return (
-      !existing.externalUserId ||
-      existing.externalUserId === seedPlaceholderExternalUserId(slug, def.role)
-    );
   }
 
   private async upsertConnector(tenantId: string): Promise<number> {
