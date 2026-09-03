@@ -280,7 +280,7 @@ describe('CredentialDefinitionController', () => {
   });
 
   describe('DELETE /tenants/:tenantId/credential-definitions/:id', () => {
-    it('should delete a credential definition', async () => {
+    it('should deactivate a credential definition', async () => {
       const id = mockCredentialDefinition.id;
       mockDelete.mockResolvedValue(undefined);
 
