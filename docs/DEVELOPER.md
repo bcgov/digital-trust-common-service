@@ -591,7 +591,7 @@ Putting `trace_id` inside the `{...}` selector matches nothing.
 
 Expect few matches today. Almost every current log site is startup or background
 work, where there is no active span; the service does not yet log during request
-handling. That changes when the per-request access log lands (OB-09.2).
+handling. That changes once a per-request access log is emitted.
 
 ### Stop the stack
 

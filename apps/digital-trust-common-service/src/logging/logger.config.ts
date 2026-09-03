@@ -15,11 +15,11 @@ const REDACTION_CENSOR = '[Redacted]';
 // than a coverage plan.
 //
 // Today the deepest thing logged is the serialized request (`req.headers.cookie`,
-// depth 3); no call site passes an object to the logger. Depth grows when we
-// start logging payloads we did not shape — upstream error bodies once the
-// Traction adapter lands (CT-01), and domain events in OB-08. Revisit then,
-// against real shapes. The primary defence for foreign payloads is not logging
-// them: see the redaction rules in docs/ARCHITECTURE.md.
+// depth 3); no call site passes an object to the logger. Depth grows once we log
+// payloads we did not shape — upstream error bodies from an adapter, or domain
+// events carrying structured detail. Revisit then, against real shapes. The
+// primary defence for foreign payloads is not logging them at all: see the
+// redaction rules in docs/ARCHITECTURE.md.
 const MAX_REDACTION_DEPTH = 6;
 
 const VALID_LOG_LEVELS = new Set<LevelWithSilent>([
