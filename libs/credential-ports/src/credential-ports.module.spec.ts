@@ -9,6 +9,7 @@ import { IssuerPort } from './ports/issuer.port';
 import { RevocationPort } from './ports/revocation.port';
 import { VerifierPort } from './ports/verifier.port';
 import { StubAdapter } from './testing/stub-adapter';
+import { FormatValidatorRegistry } from './validators/format-validator.registry';
 
 describe('CredentialPortsModule', () => {
   let module: TestingModule;
@@ -17,6 +18,9 @@ describe('CredentialPortsModule', () => {
     module = await Test.createTestingModule({
       imports: [CredentialPortsModule],
     }).compile();
+
+    // Triggers onModuleInit, which registers this module's format validators.
+    await module.init();
   });
 
   it('should provide IssuerPort as StubAdapter', () => {
@@ -63,5 +67,13 @@ describe('CredentialPortsModule', () => {
         format: CredentialFormat.AnonCreds,
       }),
     ).rejects.toBeInstanceOf(NotImplementedException);
+  });
+
+  it('registers the AnonCreds format validator on the shared registry', () => {
+    const registry = module.get<FormatValidatorRegistry>(
+      FormatValidatorRegistry,
+    );
+
+    expect(registry.has(CredentialFormat.AnonCreds)).toBe(true);
   });
 });
