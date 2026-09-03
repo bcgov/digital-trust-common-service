@@ -45,9 +45,10 @@ describe('DevSeedService', () => {
   };
 
   const tenantUserRepo = {
-    findByTenantAndExternalUserId: jest.fn(),
+    findByTenantAndEmail: jest.fn(),
     create: jest.fn(),
     update: jest.fn(),
+    delete: jest.fn(),
   };
 
   const connectorCredentialRepo = {
@@ -178,7 +179,7 @@ describe('DevSeedService', () => {
       config: {},
     });
 
-    tenantUserRepo.findByTenantAndExternalUserId.mockResolvedValue(null);
+    tenantUserRepo.findByTenantAndEmail.mockResolvedValue(null);
     tenantUserRepo.create.mockResolvedValue({});
 
     connectorCredentialRepo.findByTenant.mockResolvedValue([]);
@@ -472,31 +473,109 @@ describe('DevSeedService', () => {
     );
   });
 
-  it('updates existing tenant users instead of creating duplicates', async () => {
-    const existingUser = {
-      id: 'user-1',
+  function createdUser(email: string): Partial<TenantUser> | undefined {
+    return tenantUserRepo.create.mock.calls
+      .map(([user]: [Partial<TenantUser>]) => user)
+      .find((user) => user.email === email);
+  }
+
+  function existingUserByEmail(user: TenantUser): void {
+    tenantUserRepo.findByTenantAndEmail.mockImplementation(
+      (_tenantId: string, email: string) =>
+        Promise.resolve(email === user.email ? user : null),
+    );
+  }
+
+  it('seeds the SPA tenant users as invitations and the rest as placeholders', async () => {
+    await service.run();
+
+    const invited = createdUser('owner@acme-corp.example.test');
+    expect(invited).toMatchObject({
       tenantId: 'tenant-acme',
-      externalUserId: 'dev-acme-corp-owner',
-      email: 'old@example.test',
       role: 'owner',
       status: TenantUserStatus.INVITED,
-    } as TenantUser;
+    });
+    expect(invited?.externalUserId).toBeUndefined();
 
-    tenantUserRepo.findByTenantAndExternalUserId.mockImplementation(
-      (_tenantId: string, externalUserId: string) =>
-        Promise.resolve(
-          externalUserId === 'dev-acme-corp-owner' ? existingUser : null,
-        ),
-    );
+    expect(createdUser('owner@test-org.example.test')).toMatchObject({
+      externalUserId: 'dev-test-org-owner',
+      status: TenantUserStatus.ACTIVE,
+    });
+  });
+
+  it('keeps a claimed invitation claimed and refreshes its role', async () => {
+    const claimed = {
+      id: 'user-claimed',
+      tenantId: 'tenant-acme',
+      externalUserId: 'keycloak-sub-1',
+      email: 'owner@acme-corp.example.test',
+      displayName: 'Someone',
+      role: 'readonly',
+      status: TenantUserStatus.ACTIVE,
+    } as TenantUser;
+    existingUserByEmail(claimed);
 
     await service.run();
 
     expect(tenantUserRepo.update).toHaveBeenCalledWith(
       expect.objectContaining({
-        email: 'owner@acme-corp.example.test',
+        id: 'user-claimed',
+        externalUserId: 'keycloak-sub-1',
+        status: TenantUserStatus.ACTIVE,
+        role: 'owner',
+        displayName: 'acme-corp Owner',
+      }),
+    );
+    expect(tenantUserRepo.delete).not.toHaveBeenCalled();
+    expect(createdUser(claimed.email)).toBeUndefined();
+  });
+
+  it('replaces a placeholder with an invitation once its tenant is invitable', async () => {
+    const legacy = {
+      id: 'user-legacy',
+      tenantId: 'tenant-acme',
+      externalUserId: 'dev-acme-corp-owner',
+      email: 'owner@acme-corp.example.test',
+      role: 'owner',
+      status: TenantUserStatus.ACTIVE,
+    } as TenantUser;
+    existingUserByEmail(legacy);
+
+    await service.run();
+
+    expect(tenantUserRepo.delete).toHaveBeenCalledWith('user-legacy');
+    expect(createdUser(legacy.email)).toMatchObject({
+      status: TenantUserStatus.INVITED,
+    });
+    expect(tenantUserRepo.update).not.toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'user-legacy' }),
+    );
+  });
+
+  it('resets a placeholder user instead of creating a duplicate', async () => {
+    const placeholder = {
+      id: 'user-placeholder',
+      tenantId: 'tenant-new',
+      externalUserId: 'dev-test-org-owner',
+      email: 'owner@test-org.example.test',
+      displayName: 'old',
+      role: 'member',
+      status: TenantUserStatus.INVITED,
+    } as TenantUser;
+    existingUserByEmail(placeholder);
+
+    await service.run();
+
+    expect(tenantUserRepo.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: 'user-placeholder',
+        externalUserId: 'dev-test-org-owner',
+        displayName: 'test-org Owner',
+        role: 'owner',
         status: TenantUserStatus.ACTIVE,
       }),
     );
+    expect(createdUser(placeholder.email)).toBeUndefined();
   });
 
   it('updates an existing connector credential for the mock traction endpoint', async () => {

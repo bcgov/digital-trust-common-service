@@ -315,7 +315,22 @@ Prerequisites, all covered above: Keycloak running with the realm imported,
 and the seed loaded (it registers the SPA's OIDC client locally and in PR
 previews; a hosted environment registers it with the bootstrap CLI instead —
 see [Bootstrapping a hosted environment](#bootstrapping-a-hosted-environment)).
-Sign in as one of the seeded `acme-corp` users.
+Sign in with one of the realm's `acme-corp` accounts (the password is the
+username). The seed holds an unclaimed invitation for each, so the first
+sign-in claims the matching `tenant_user` row and lands with that role:
+
+| Username | Email | Role |
+|----------|-------|------|
+| `acme-owner` | `owner@acme-corp.example.test` | owner |
+| `acme-admin` | `admin@acme-corp.example.test` | admin |
+| `acme-member` | `member@acme-corp.example.test` | member |
+
+The realm's `admin` account (`admin@example.com`, password `admin`) has no
+seeded row: the login callback creates one on the fly with the `readonly`
+role, which holds no API scopes. A Keycloak volume created before these
+accounts existed keeps the realm it first imported; reset it with the
+`docker compose rm -sf keycloak keycloak-db` steps in the `oidc.localhost`
+note above to pick them up.
 
 The client the SPA uses:
 
@@ -577,7 +592,7 @@ SEED_ON_START=true
 | Resource | Details |
 |----------|---------|
 | Tenants | `acme-corp`, `test-org` (active), `suspended-co` (suspended) |
-| Users | owner / admin / member per tenant |
+| Users | owner / admin / member per tenant. In `acme-corp` these are unclaimed invitations at the emails of the realm's accounts (see [Signing in for real](#signing-in-for-real)); elsewhere they are placeholders that cannot sign in |
 | Connectors | Mock Traction endpoint per tenant |
 | Credential defs | Person credential, Employee badge (active tenants) |
 | Issuance profiles | Published `person-credential/1.0`, draft `employee-badge/1.0` |
@@ -586,7 +601,7 @@ SEED_ON_START=true
 | Connections | Five states per active tenant |
 | Operations | pending, completed, failed per active tenant |
 
-Re-running the seed updates existing rows keyed by slug, external IDs, and profile name/version — it does not create duplicates.
+Re-running the seed updates existing rows keyed by slug, email (users), external IDs, and profile name/version — it does not create duplicates. A user row that a real sign-in has claimed keeps its identity and status; the seed only refreshes its role and display name.
 
 ## Bootstrapping a hosted environment
 
