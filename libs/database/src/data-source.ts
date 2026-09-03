@@ -23,6 +23,7 @@ import { AddTenantApprovalStatus1787255721437 } from './migrations/000020_add-te
 import { AllowInvitedTenantUser1787341200000 } from './migrations/000021_allow-invited-tenant-user';
 import { AddTenantStatusLifecycleColumns1787700000000 } from './migrations/000022_add-tenant-status-lifecycle-columns';
 import { AddOauthClientPublic1787900000000 } from './migrations/000023_add-oauth-client-public';
+import { CreateRateLimitHitsTable1788380667109 } from './migrations/000024_create-rate-limit-hits-table';
 import { buildSslConfig } from './ssl.util';
 
 export const AppDataSource = new DataSource({
@@ -57,6 +58,7 @@ export const AppDataSource = new DataSource({
     AllowInvitedTenantUser1787341200000,
     AddTenantStatusLifecycleColumns1787700000000,
     AddOauthClientPublic1787900000000,
+    CreateRateLimitHitsTable1788380667109,
   ],
   ssl: buildSslConfig(
     process.env.DB_SSL,

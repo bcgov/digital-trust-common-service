@@ -611,8 +611,9 @@ paths:
         is a platform admin. Merges the given top-level keys into the tenant's existing `config` —
         any key omitted from the request body (including `operation_ttl`) is left unchanged.
 
-        `rate_limits` is not accepted here: it is read-only and can only be set via
-        `PATCH /usage/limits`. Sending it returns `400`, same as any other undeclared property.
+        `rate_limits` is not accepted here: it is read-only and holds the tenant's rate-limit tier
+        (see `GET /api/v1/admin/rate-limits/{tenantId}`). Sending it returns `400`, same as any
+        other undeclared property.
 
         When `default_connector` is provided, it must reference a `ConnectorCredential` that
         belongs to this tenant and is currently active, or the request is rejected with `404`
@@ -2748,87 +2749,89 @@ paths:
                   storage_mb:
                     type: number
 
-  /api/v1/tenants/{tenantId}/usage/reset-counters:
+  /api/v1/admin/rate-limits/{tenantId}:
+    parameters:
+      - $ref: "#/components/parameters/TenantId"
+    get:
+      operationId: getTenantRateLimitStatus
+      summary: View a tenant's current rate-limit status (platform-admin)
+      description: |
+        Resolved tier, limit, and per-route hit counts within the current
+        sliding window — mirrors the limit `TenantRateLimitGuard` would
+        apply to the tenant right now. Requires the platform-admin role.
+      tags: [Admin]
+      responses:
+        "200":
+          description: Current rate-limit status for the tenant
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [tenant_id, tier, window_ms, limit, routes]
+                properties:
+                  tenant_id:
+                    type: string
+                    format: uuid
+                  tier:
+                    type: string
+                    enum: [standard, premium]
+                  window_ms:
+                    type: integer
+                    description: Sliding window length, in milliseconds
+                  limit:
+                    type: integer
+                  routes:
+                    type: array
+                    items:
+                      type: object
+                      required: [route_key, hits]
+                      properties:
+                        route_key:
+                          type: string
+                          description: Controller.handler key the hits were recorded under
+                        hits:
+                          type: integer
+                          description: Hits recorded for this route within the current window
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/admin/rate-limits/{tenantId}/reset:
     parameters:
       - $ref: "#/components/parameters/TenantId"
     post:
-      operationId: resetTenantUsageCounters
-      summary: Reset usage counters (admin only)
+      operationId: resetTenantRateLimit
+      summary: Reset a tenant's rate limit (platform-admin)
       description: |
-        Reset rate limit and usage counters for the tenant. Intended for incident response,
-        testing, or correcting erroneous rate limit blocks. Requires platform-admin role.
+        Deletes every recorded rate-limit hit for the tenant, clearing it
+        back to zero for every route. Intended for incident response,
+        testing, or correcting erroneous rate limit blocks. Requires the
+        platform-admin role.
       tags: [Admin]
       responses:
-        "200":
-          description: Counters reset
+        "201":
+          description: Rate limit reset
           content:
             application/json:
               schema:
                 type: object
+                required: [tenant_id, deleted_count]
                 properties:
-                  message:
+                  tenant_id:
                     type: string
-                    example: "Usage counters reset successfully"
-                  reset_at:
-                    type: string
-                    format: date-time
+                    format: uuid
+                  deleted_count:
+                    type: integer
+                    description: Number of rate-limit hit rows deleted for the tenant
+        "400":
+          $ref: "#/components/responses/BadRequest"
         "403":
           $ref: "#/components/responses/Forbidden"
-
-  /api/v1/tenants/{tenantId}/usage/limits:
-    parameters:
-      - $ref: "#/components/parameters/TenantId"
-    patch:
-      operationId: updateTenantUsageLimits
-      summary: Override tenant quota limits (admin only)
-      description: |
-        Temporarily override per-tenant rate limits and quotas (API calls/min, credentials/day, storage).
-        Intended for SLA management, tier upgrades, or incident mitigation. Requires platform-admin role.
-      tags: [Admin]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                api_calls_per_minute:
-                  type: integer
-                  minimum: 1
-                  description: Override default API rate limit
-                credentials_per_day:
-                  type: integer
-                  minimum: 1
-                  description: Override daily credential issuance limit
-                storage_mb:
-                  type: integer
-                  minimum: 1
-                  description: Override storage quota
-                expires_at:
-                  type: string
-                  format: date-time
-                  nullable: true
-                  description: When this override expires (null for permanent)
-      responses:
-        "200":
-          description: Limits updated
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  api_calls_per_minute:
-                    type: integer
-                  credentials_per_day:
-                    type: integer
-                  storage_mb:
-                    type: integer
-                  expires_at:
-                    type: string
-                    format: date-time
-                    nullable: true
-        "403":
-          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
 
 # ═══════════════════════════════════════════════════════════════════════
 # Components
@@ -3111,9 +3114,17 @@ components:
           type: object
           readOnly: true
           description: |
-            Active per-tenant rate limit overrides. Populated when a platform-admin
-            has called `PATCH /usage/limits`; absent when platform defaults apply.
+            Rate-limit configuration. `tier` selects the fixed request-per-minute
+            ceiling `TenantRateLimitGuard` applies (`standard` or `premium`, see
+            `GET /api/v1/admin/rate-limits/{tenantId}`). The remaining fields are
+            reserved for a possible future per-tenant override and are not
+            currently populated by any endpoint. Not writable through
+            `PATCH /api/v1/tenants/{tenantId}/config`.
           properties:
+            tier:
+              type: string
+              enum: [standard, premium]
+              default: standard
             api_calls_per_minute:
               type: integer
               nullable: true

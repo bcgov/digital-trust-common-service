@@ -229,8 +229,10 @@ export class TenantService {
   /**
    * Merges the provided keys into the tenant's existing `config`; keys the
    * DTO omits (e.g. `operation_ttl`, `rate_limits`) are left untouched.
-   * `rate_limits` is intentionally not accepted by `UpdateTenantConfigDto` —
-   * it stays read-only here and is only writable via `PATCH /usage/limits`.
+   * `rate_limits` is intentionally not accepted by `UpdateTenantConfigDto`
+   * — it stays read-only here. It holds the rate-limit tier
+   * (`rate_limits.tier`, read by `resolveRateLimitTier`) alongside any
+   * future per-tenant quota overrides; no endpoint currently writes it.
    * No worker currently consumes `tenant.config-change`; it is published for
    * future dependent services (e.g. an adapter registry cache).
    */

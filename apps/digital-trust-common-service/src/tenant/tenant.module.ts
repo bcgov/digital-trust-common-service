@@ -23,6 +23,6 @@ import { TenantService } from './tenant.service';
   ],
   controllers: [TenantController],
   providers: [TenantService, TenantRepository],
-  exports: [TenantService],
+  exports: [TenantService, TenantRepository],
 })
 export class TenantModule {}
