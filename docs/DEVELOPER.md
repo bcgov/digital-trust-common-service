@@ -534,6 +534,65 @@ Unauthenticated traffic carries no `tenant.id` at all; searching
 trusted tenant context are deliberately left unattributed rather than assigned
 to a placeholder tenant.
 
+### Application logs
+
+The service logs structured JSON to stdout — one object per line, from startup
+onwards:
+
+```json
+{"level":"log","timestamp":1788464635181,"pid":22814,
+ "service":"digital-trust-common-service","context":"NestFactory",
+ "message":"Starting Nest application..."}
+```
+
+`LOG_LEVEL` sets the threshold (`trace`, `debug`, `info`, `warn`, `error`,
+`fatal`, `silent`). It defaults to `info`, and an unrecognised value falls back
+to `info` rather than failing startup. Locally it comes from `.env`; deployed it
+comes from the Helm ConfigMap, which already carries it in every overlay.
+
+Sensitive values are redacted centrally in
+`apps/digital-trust-common-service/src/logging/logger.config.ts` — tokens,
+secrets, passwords, keys, cookies, and credential claim values. Redaction is a
+backstop for mistakes, not the control: log identifiers and outcomes you have
+chosen, never whole entities, upstream response bodies, or caught error
+payloads. See the redaction rules in
+[ARCHITECTURE.md](./ARCHITECTURE.md#observability).
+
+#### Reading them in Grafana
+
+Locally the OpenTelemetry SDK ships log records to the LGTM collector over OTLP
+(`OTEL_LOGS_EXPORTER=otlp`), so they land in Loki with no log-shipping setup. In
+OpenShift they go to stdout and the platform Alloy collector picks them up.
+
+In **Explore → Loki**:
+
+```
+{service_name="digital-trust-common-service"}
+```
+
+`context`, `severity_text` and `deployment_environment_name` are available as
+labels for filtering.
+
+#### Correlating a log line with its trace
+
+When a log line is emitted inside an active span, the OpenTelemetry pino
+instrumentation adds `trace_id` and `span_id` automatically — there is no
+application code doing this. Expanding such a line in Grafana shows a
+**Trace: …** button that opens it in Tempo.
+
+`trace_id` arrives as structured metadata rather than a stream label, so filter
+for it *after* the selector:
+
+```
+{service_name="digital-trust-common-service"} | trace_id != ""
+```
+
+Putting `trace_id` inside the `{...}` selector matches nothing.
+
+Expect few matches today. Almost every current log site is startup or background
+work, where there is no active span; the service does not yet log during request
+handling. That changes when the per-request access log lands (OB-09.2).
+
 ### Stop the stack
 
 ```bash
