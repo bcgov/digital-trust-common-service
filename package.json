@@ -51,10 +51,13 @@
     "escape-html": "^1.0.3",
     "ip-address": "^10.5.0",
     "jose": "^6.2.5",
+    "nestjs-pino": "^5.1.0",
     "oidc-provider": "^9.11.1",
     "openid-client": "^6.8.4",
     "pg": "^8.22.0",
     "pg-boss": "^12.26.0",
+    "pino": "^10.3.1",
+    "pino-http": "^11.0.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2",
     "typeorm": "^1.1.0"
