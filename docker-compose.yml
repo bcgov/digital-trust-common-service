@@ -37,6 +37,18 @@ services:
       # not guarantee — Caddy mints its CA a moment after the process starts.
       caddy-ca:
         condition: service_completed_successfully
+      # app and migrate both build into the shared bind-mounted dist/, and
+      # `deleteOutDir` makes overlapping builds wipe each other mid-write.
+      migrate:
+        condition: service_completed_successfully
+    # Without this the container reports `Up` as soon as `tsc --watch` starts,
+    # whether or not Nest ever booted — a failed start looks healthy.
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://localhost:3000/health/live']
+      interval: 5s
+      timeout: 3s
+      retries: 40
+      start_period: 90s
   migrate:
     build:
       context: .
@@ -57,7 +69,9 @@ services:
     build:
       context: .
       target: deps
-    command: sh -c "npm run seed"
+    # Deliberately not `npm run seed`: that rebuilds, and app has already built
+    # into the shared dist/ by the time this runs.
+    command: node dist/apps/digital-trust-common-service/src/seed/run-seed.js
     volumes:
       - .:/app
       - /app/node_modules
@@ -67,8 +81,11 @@ services:
     environment:
       DB_HOST: db
     depends_on:
-      migrate:
-        condition: service_completed_successfully
+      # Waiting on app rather than migrate leaves one builder at a time, and
+      # keeps the dependency pointing this way: demo data failing must not stop
+      # the API from serving.
+      app:
+        condition: service_healthy
 
   db:
     image: postgres:18.4

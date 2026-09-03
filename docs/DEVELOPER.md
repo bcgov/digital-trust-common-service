@@ -371,13 +371,14 @@ Add `--profile ui` for the containerized Vite dev server. Your browser still
 needs Caddy's CA trusted — see
 [Export and trust the Caddy local CA](#export-and-trust-the-caddy-local-ca).
 
-> **Known issue:** `app`, `migrate` and `seed` all build into the same
-> bind-mounted `dist/`, and `deleteOutDir` means concurrent builds can wipe
-> each other, so a first `up` occasionally fails with `Cannot find module`.
-> Check `docker compose ps -a` before restarting anything: if `migrate` or
-> `seed` exited nonzero they need rerunning with `docker compose up migrate
-> seed`, since restarting `app` alone leaves the schema or demo data
-> incomplete. Then `docker compose restart app`.
+Services start in sequence: `migrate` builds and applies migrations, then `app`
+builds and boots, then `seed` runs once `app` reports healthy. That ordering is
+deliberate — all three share one bind-mounted `dist/`, and `deleteOutDir` means
+overlapping builds wipe each other's output mid-write.
+
+For the same reason, apply a new migration against an already-running stack
+with `docker compose exec app npm run migrate:up`, not `docker compose up
+migrate` — the named service would rebuild and wipe the running app's `dist/`.
 
 **Useful commands:**
 ```bash
