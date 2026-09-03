@@ -1,4 +1,5 @@
 import { AuthModule } from '@app/auth';
+import { CredentialPortsModule } from '@app/credential-ports';
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
@@ -16,6 +17,7 @@ import { CredentialDefinitionService } from './credential-definition.service';
     AuditLogModule,
     AuthModule,
     TenantStatusModule,
+    CredentialPortsModule,
   ],
   controllers: [CredentialDefinitionController],
   providers: [CredentialDefinitionService, CredentialDefinitionRepository],

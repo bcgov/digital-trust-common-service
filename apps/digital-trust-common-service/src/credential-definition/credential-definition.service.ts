@@ -1,5 +1,10 @@
 import type { AuthContext } from '@app/auth';
 import {
+  CredentialFormat,
+  FormatValidatorRegistry,
+} from '@app/credential-ports';
+import {
+  BadRequestException,
   ConflictException,
   Injectable,
   NotFoundException,
@@ -22,11 +27,30 @@ import { CredentialDefinitionRepository } from './credential-definition.reposito
 import { CreateCredentialDefinitionDto } from './dto/create-credential-definition.dto';
 import { UpdateCredentialDefinitionDto } from './dto/update-credential-definition.dto';
 
+/**
+ * Maps the `format` stored on credential definitions onto the port-layer
+ * enum. The two enums are maintained independently: the entity enum covers
+ * every format this API accepts, while the port enum only lists formats
+ * that have a validator (or adapter) implementation. Returns undefined for
+ * a value the port layer does not know, since the string values are not
+ * guaranteed to match (e.g. entity 'sd-jwt' vs. port 'sd-jwt-vc').
+ */
+export function toPortCredentialFormat(
+  format: CredentialDefinitionFormat,
+): CredentialFormat | undefined {
+  const candidate: string = format;
+
+  return Object.values(CredentialFormat).find(
+    (value) => (value as string) === candidate,
+  );
+}
+
 @Injectable()
 export class CredentialDefinitionService {
   public constructor(
     private readonly credentialDefinitionRepository: CredentialDefinitionRepository,
     private readonly domainAudit: DomainAuditService,
+    private readonly formatValidatorRegistry: FormatValidatorRegistry,
   ) {}
 
   public async create(
@@ -48,6 +72,8 @@ export class CredentialDefinitionService {
       );
     }
 
+    this.validateSchemaDefinition(dto.format, dto.schemaDefinition);
+
     const created = await this.credentialDefinitionRepository.create({
       tenantId: dto.tenantId,
       name: dto.name,
@@ -66,6 +92,34 @@ export class CredentialDefinitionService {
     });
 
     return created;
+  }
+
+  /**
+   * Validates the schema definition against the format's structural rules
+   * when a FormatValidator is registered for it. Formats without a
+   * registered validator yet (e.g. SD-JWT, mDL, W3C VC) are accepted
+   * as-is until their own validator ships.
+   */
+  private validateSchemaDefinition(
+    format: CredentialDefinitionFormat,
+    schemaDefinition: Readonly<Record<string, unknown>>,
+  ): void {
+    const portFormat = toPortCredentialFormat(format);
+
+    if (!portFormat || !this.formatValidatorRegistry.has(portFormat)) {
+      return;
+    }
+
+    const issues = this.formatValidatorRegistry
+      .resolve(portFormat)
+      .validateSchema(schemaDefinition);
+
+    if (issues.length > 0) {
+      throw new BadRequestException({
+        message: 'Credential definition schema failed format validation',
+        issues,
+      });
+    }
   }
 
   public async findById(

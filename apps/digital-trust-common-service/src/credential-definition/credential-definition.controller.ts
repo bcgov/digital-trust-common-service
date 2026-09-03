@@ -21,6 +21,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import {
+  ApiBadRequestResponse,
   ApiBody,
   ApiCreatedResponse,
   ApiForbiddenResponse,
@@ -61,6 +62,10 @@ export class CredentialDefinitionController {
     description: 'Credential definition created successfully',
     type: CredentialDefinitionResponseDto,
   })
+  @ApiBadRequestResponse({
+    description:
+      'schema_definition failed format-specific structural validation',
+  })
   @ApiBody({
     description: 'Credential definition creation request',
     type: CreateCredentialDefinitionDto,
@@ -73,7 +78,11 @@ export class CredentialDefinitionController {
           format: 'anoncreds',
           external_id: 'ext-cred-def-001',
           connector_type: 'traction',
-          schema_definition: { version: '1.0', attributes: ['name', 'age'] },
+          schema_definition: {
+            attr_names: ['name', 'age'],
+            schema_name: 'driver-license',
+            schema_version: '1.0',
+          },
           metadata: { issuer: 'DMV' },
         },
       },
