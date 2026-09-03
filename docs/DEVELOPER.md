@@ -777,7 +777,9 @@ issuance, so they reach the JWT `scope` claim.
 The two catalog `GET`s require authentication but no scope. "Public
 information" here means non-secret, not anonymous: serving it unauthenticated
 publishes the platform's full capability taxonomy and adds pre-auth surface
-that has no rate limiting in front of it yet (AG-03 #77).
+that now sits behind the global per-tenant rate limiter (TM-07) rather than
+unlimited, though a scope-gated endpoint would still narrow it further
+(AG-03 #77).
 
 Writes require `tenants:admin` rather than `users:manage`. `admin` holds
 `users:manage`, so guarding with it would let an admin grant themselves any
@@ -1061,7 +1063,58 @@ credential controllers (CA-03 / CA-04).
 > and `connection/connection.entity.ts` (the entity enum). The string values are identical;
 > `toPortConnectorType()` bridges them. Collapsing the two is a tracked follow-up.
 
+## Per-tenant rate limiting (TM-07)
+
+A global `APP_GUARD` (`TenantRateLimitGuard`, extends `@nestjs/throttler`'s `ThrottlerGuard`) throttles
+every request. Hits are recorded in the `rate_limit_hits` table (migration
+`000024_create-rate-limit-hits-table`) and counted with a **sliding window** (`COUNT` of hits in the
+last `RATE_LIMIT_WINDOW_MS`), not the package's default fixed-window in-memory store —
+`RateLimitStorageService` implements `ThrottlerStorage` against Postgres so limits are enforced
+consistently across replicas.
+
+Global `APP_GUARD`s run before per-controller auth guards, so `request.auth` (populated by
+`JwtGuard`) is not available yet. The guard keys on the route's `:tenantId` path param instead,
+falling back to the caller's IP for routes with no `tenantId` param (e.g. admin/global endpoints).
+
+Limit tier is resolved per request from `Tenant.config.rate_limits.tier` (`'standard'` | `'premium'`,
+defaulting to `'standard'` for anything missing or unrecognized — a lookup failure fails open to the
+lower tier rather than the request). This is the same reserved `rate_limits` config key
+`TenantService.updateConfig` already protects from `PATCH /tenants/{tenantId}/config` — it stays
+read-only there and currently has no endpoint that writes it. `429` responses and the
+`Retry-After` / `X-RateLimit-*` headers are handled entirely by the base `ThrottlerGuard` — no
+custom exception filter.
+
+**Environment variables** (see `.env.example`):
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `RATE_LIMIT_ENABLED` | `true` | Master switch. Set `false` to disable (the integration/e2e test setup does this by default). |
+| `RATE_LIMIT_WINDOW_MS` | `60000` | Sliding window length, in milliseconds. |
+| `RATE_LIMIT_STANDARD_PER_MINUTE` | `100` | Request limit for the `standard` tier. |
+| `RATE_LIMIT_PREMIUM_PER_MINUTE` | `1000` | Request limit for the `premium` tier. |
+| `RATE_LIMIT_PRUNE_CRON` | `0 * * * *` | Cron schedule for the pg-boss pruning worker. |
+| `RATE_LIMIT_HIT_RETENTION_MINUTES` | `5` | How long a hit row is kept before pruning. Must stay comfortably above `RATE_LIMIT_WINDOW_MS`, or the sliding window loses hits it still needs to count. |
+
+A pg-boss worker (`rate-limit-prune.worker.ts`, queue `rate-limit.prune`) runs on the
+`RATE_LIMIT_PRUNE_CRON` schedule and deletes hit rows older than `RATE_LIMIT_HIT_RETENTION_MINUTES`,
+gated by `PG_BOSS_WORKERS_ENABLED` like the other maintenance workers.
+
+**Admin endpoints** (platform-admin role required):
+
+| Endpoint | Purpose |
+| --- | --- |
+| `GET /api/v1/admin/rate-limits/{tenantId}` | Resolved tier, limit, and per-route hit counts for the tenant within the current window. |
+| `POST /api/v1/admin/rate-limits/{tenantId}/reset` | Deletes every recorded hit for the tenant, clearing it back to zero across every route. |
+
+Because the path param is literally `:tenantId`, the global guard throttles these two admin routes
+against the *target* tenant's own quota/tier, unlike other admin routes whose params aren't named
+`tenantId` and so fall back to IP-based standard-tier limiting.
+
+> **Note:** Per-endpoint `@Throttle()` overrides are not yet used anywhere (no controller currently
+> needs a tighter limit than its tier default). This section will be extended if one is added.
+
 ## Testing
+
 
 ### Run Unit Tests
 

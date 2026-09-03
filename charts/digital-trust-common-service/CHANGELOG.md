@@ -32,6 +32,10 @@ and this chart adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.h
 - Generated `README.md` (via helm-docs).
 - `config.ADAPTER_OVERRIDE_ENABLED` (default `"false"`), gating the platform-admin
   adapter override in the credential adapter registry (CA-02).
+- Per-tenant rate limiting config: `config.RATE_LIMIT_ENABLED` (default
+  `"true"`), `config.RATE_LIMIT_WINDOW_MS`, `config.RATE_LIMIT_STANDARD_PER_MINUTE`,
+  `config.RATE_LIMIT_PREMIUM_PER_MINUTE`, `config.RATE_LIMIT_PRUNE_CRON`, and
+  `config.RATE_LIMIT_HIT_RETENTION_MINUTES`.
 - PR environments (`values-pr.yaml`) run the migration hook Job, so a
   preview's empty database reaches the current schema before the pods roll.
 - The dev, test and prod overlays run it too, so every hosted deploy migrates

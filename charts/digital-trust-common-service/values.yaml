@@ -373,6 +373,15 @@ config:
   AUDIT_PARTITION_MONTHS_AHEAD: "3"
   # Platform-admin adapter override (CA-02). Off outside debugging.
   ADAPTER_OVERRIDE_ENABLED: "false"
+  # Per-tenant rate limiting. Master switch, sliding window length (ms),
+  # standard/premium tier limits per window, and the hourly prune job's cron
+  # + retention window for rate_limit_hits rows.
+  RATE_LIMIT_ENABLED: "true"
+  RATE_LIMIT_WINDOW_MS: "60000"
+  RATE_LIMIT_STANDARD_PER_MINUTE: "100"
+  RATE_LIMIT_PREMIUM_PER_MINUTE: "1000"
+  RATE_LIMIT_PRUNE_CRON: "0 * * * *"
+  RATE_LIMIT_HIT_RETENTION_MINUTES: "5"
 
 # -- Extra plain environment variables appended to every container (name/value list)
 extraEnv: []

@@ -32,6 +32,7 @@ import { createLoggerModuleParams } from './logging/logger.config';
 import { OAuthClientLookupAdapter } from './oauth-client/oauth-client-lookup.adapter';
 import { OAuthClientModule } from './oauth-client/oauth-client.module';
 import { OperationModule } from './operation/operation.module';
+import { RateLimitModule } from './rate-limit/rate-limit.module';
 import { RoleScopeModule } from './role-scope/role-scope.module';
 import { RoleScopeRepository } from './role-scope/role-scope.repository';
 import { SeedModule } from './seed/seed.module';
@@ -91,6 +92,7 @@ import { VerificationProfileModule } from './verification-profile/verification-p
     }),
     AuthModule,
     OperationModule,
+    RateLimitModule,
     RoleScopeModule,
     ShutdownModule,
     TenantModule,
