@@ -58,7 +58,10 @@ export class FormatValidatorRegistry {
     return [...this.validators.keys()];
   }
 
-  /** Clears all registrations. Test seam only. */
+  /**
+   * Clears all registrations. Intended for tests to reset registry state
+   * between cases; production code should never need to call this.
+   */
   public reset(): void {
     this.validators.clear();
   }

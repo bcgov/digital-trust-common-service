@@ -27,6 +27,138 @@ function isNonEmptyStringArray(value: unknown): value is readonly string[] {
   return isStringArray(value) && value.length > 0;
 }
 
+function validateAttrNames(
+  attrNames: unknown,
+): FormatValidationIssue | undefined {
+  if (!isNonEmptyStringArray(attrNames)) {
+    return {
+      field: 'attr_names',
+      expected: 'a non-empty array of attribute name strings',
+      actual: describe(attrNames),
+      message:
+        'AnonCreds schema must declare attr_names as a non-empty array of strings',
+    };
+  }
+
+  if (new Set(attrNames).size !== attrNames.length) {
+    return {
+      field: 'attr_names',
+      expected: 'unique attribute names',
+      actual: describe(attrNames),
+      message: 'AnonCreds schema attr_names must not contain duplicates',
+    };
+  }
+
+  return undefined;
+}
+
+function validateSchemaNameAndVersion(
+  schema: Readonly<Record<string, unknown>>,
+): FormatValidationIssue[] {
+  const issues: FormatValidationIssue[] = [];
+
+  for (const field of ['schema_name', 'schema_version'] as const) {
+    const value = schema[field];
+
+    if (typeof value !== 'string' || value.trim().length === 0) {
+      issues.push({
+        field,
+        expected: 'a non-empty string',
+        actual: describe(value),
+        message: `AnonCreds schema must declare a non-empty ${field}`,
+      });
+    }
+  }
+
+  return issues;
+}
+
+function validateOptionalAttributes(
+  optionalAttributes: unknown,
+  attrNames: unknown,
+): FormatValidationIssue[] {
+  if (optionalAttributes === undefined) {
+    return [];
+  }
+
+  if (!isStringArray(optionalAttributes)) {
+    return [
+      {
+        field: 'optional_attributes',
+        expected: 'an array of attribute name strings',
+        actual: describe(optionalAttributes),
+        message: 'AnonCreds schema optional_attributes must be a string array',
+      },
+    ];
+  }
+
+  if (!isNonEmptyStringArray(attrNames)) {
+    return [];
+  }
+
+  const knownNames = new Set(attrNames);
+
+  return optionalAttributes
+    .filter((optionalName) => !knownNames.has(optionalName))
+    .map((optionalName) => ({
+      field: 'optional_attributes',
+      expected: `one of: ${attrNames.join(', ')}`,
+      actual: optionalName,
+      message: `optional_attributes entry '${optionalName}' is not declared in attr_names`,
+    }));
+}
+
+function validateAttributeEntry(
+  attribute: CredentialAttribute,
+  attrNames: readonly string[],
+  knownNames: ReadonlySet<string>,
+  isDuplicate: boolean,
+): FormatValidationIssue | undefined {
+  if (isDuplicate) {
+    return {
+      field: attribute.name,
+      expected: 'a single value',
+      actual: 'duplicate attribute',
+      message: `Attribute '${attribute.name}' was supplied more than once`,
+    };
+  }
+
+  if (!knownNames.has(attribute.name)) {
+    return {
+      field: attribute.name,
+      expected: `one of: ${attrNames.join(', ')}`,
+      actual: attribute.name,
+      message: `Attribute '${attribute.name}' is not declared in the credential definition schema`,
+    };
+  }
+
+  if (typeof attribute.value !== 'string') {
+    return {
+      field: attribute.name,
+      expected: 'a string value',
+      actual: describe(attribute.value),
+      message:
+        'AnonCreds attribute values must be strings; ACA-Py encodes predicate values as strings internally',
+    };
+  }
+
+  return undefined;
+}
+
+function findMissingRequiredAttributes(
+  requiredNames: ReadonlySet<string>,
+  seenNames: ReadonlySet<string>,
+): FormatValidationIssue[] {
+  return [...requiredNames]
+    .filter((requiredName) => !seenNames.has(requiredName))
+    .map((requiredName) => ({
+      field: requiredName,
+      expected: 'a value',
+      actual: 'missing',
+      message: `Required attribute '${requiredName}' was not supplied`,
+    }));
+}
+
 /**
  * Validates AnonCreds schema_definitions and offered attributes.
  *
@@ -48,65 +180,19 @@ export class AnonCredsFormatValidator implements FormatValidator {
   public validateSchema(
     schema: Readonly<Record<string, unknown>>,
   ): readonly FormatValidationIssue[] {
-    const issues: FormatValidationIssue[] = [];
     const attrNames = schema.attr_names;
+    const issues: FormatValidationIssue[] = [];
 
-    if (!isNonEmptyStringArray(attrNames)) {
-      issues.push({
-        field: 'attr_names',
-        expected: 'a non-empty array of attribute name strings',
-        actual: describe(attrNames),
-        message:
-          'AnonCreds schema must declare attr_names as a non-empty array of strings',
-      });
-    } else if (new Set(attrNames).size !== attrNames.length) {
-      issues.push({
-        field: 'attr_names',
-        expected: 'unique attribute names',
-        actual: describe(attrNames),
-        message: 'AnonCreds schema attr_names must not contain duplicates',
-      });
+    const attrNamesIssue = validateAttrNames(attrNames);
+
+    if (attrNamesIssue) {
+      issues.push(attrNamesIssue);
     }
 
-    for (const field of ['schema_name', 'schema_version'] as const) {
-      const value = schema[field];
-
-      if (typeof value !== 'string' || value.trim().length === 0) {
-        issues.push({
-          field,
-          expected: 'a non-empty string',
-          actual: describe(value),
-          message: `AnonCreds schema must declare a non-empty ${field}`,
-        });
-      }
-    }
-
-    const optionalAttributes = schema.optional_attributes;
-
-    if (optionalAttributes !== undefined) {
-      if (!isStringArray(optionalAttributes)) {
-        issues.push({
-          field: 'optional_attributes',
-          expected: 'an array of attribute name strings',
-          actual: describe(optionalAttributes),
-          message:
-            'AnonCreds schema optional_attributes must be a string array',
-        });
-      } else if (isNonEmptyStringArray(attrNames)) {
-        const knownNames = new Set(attrNames);
-
-        for (const optionalName of optionalAttributes) {
-          if (!knownNames.has(optionalName)) {
-            issues.push({
-              field: 'optional_attributes',
-              expected: `one of: ${attrNames.join(', ')}`,
-              actual: optionalName,
-              message: `optional_attributes entry '${optionalName}' is not declared in attr_names`,
-            });
-          }
-        }
-      }
-    }
+    issues.push(...validateSchemaNameAndVersion(schema));
+    issues.push(
+      ...validateOptionalAttributes(schema.optional_attributes, attrNames),
+    );
 
     return issues;
   }
@@ -141,49 +227,21 @@ export class AnonCredsFormatValidator implements FormatValidator {
     const seenNames = new Set<string>();
 
     for (const attribute of attributes) {
-      if (seenNames.has(attribute.name)) {
-        issues.push({
-          field: attribute.name,
-          expected: 'a single value',
-          actual: 'duplicate attribute',
-          message: `Attribute '${attribute.name}' was supplied more than once`,
-        });
-        continue;
-      }
+      const issue = validateAttributeEntry(
+        attribute,
+        attrNames,
+        knownNames,
+        seenNames.has(attribute.name),
+      );
 
       seenNames.add(attribute.name);
 
-      if (!knownNames.has(attribute.name)) {
-        issues.push({
-          field: attribute.name,
-          expected: `one of: ${attrNames.join(', ')}`,
-          actual: attribute.name,
-          message: `Attribute '${attribute.name}' is not declared in the credential definition schema`,
-        });
-        continue;
-      }
-
-      if (typeof attribute.value !== 'string') {
-        issues.push({
-          field: attribute.name,
-          expected: 'a string value',
-          actual: describe(attribute.value),
-          message:
-            'AnonCreds attribute values must be strings; ACA-Py encodes predicate values as strings internally',
-        });
+      if (issue) {
+        issues.push(issue);
       }
     }
 
-    for (const requiredName of requiredNames) {
-      if (!seenNames.has(requiredName)) {
-        issues.push({
-          field: requiredName,
-          expected: 'a value',
-          actual: 'missing',
-          message: `Required attribute '${requiredName}' was not supplied`,
-        });
-      }
-    }
+    issues.push(...findMissingRequiredAttributes(requiredNames, seenNames));
 
     return issues;
   }
