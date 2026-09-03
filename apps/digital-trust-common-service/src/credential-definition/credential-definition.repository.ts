@@ -60,10 +60,10 @@ export class CredentialDefinitionRepository {
 
   public async findByFormat(
     format: CredentialDefinitionFormat,
-    tenantId?: string,
+    tenantId: string,
   ): Promise<CredentialDefinition[]> {
     return await this.repository.find({
-      where: tenantId ? { format, tenantId } : { format },
+      where: { format, tenantId },
       order: {
         createdAt: 'ASC',
       },
@@ -72,10 +72,10 @@ export class CredentialDefinitionRepository {
 
   public async findByConnector(
     connectorType: CredentialDefinitionConnectorType,
-    tenantId?: string,
+    tenantId: string,
   ): Promise<CredentialDefinition[]> {
     return await this.repository.find({
-      where: tenantId ? { connectorType, tenantId } : { connectorType },
+      where: { connectorType, tenantId },
       order: {
         createdAt: 'ASC',
       },

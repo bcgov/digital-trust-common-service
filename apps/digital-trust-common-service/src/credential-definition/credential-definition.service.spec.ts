@@ -135,8 +135,8 @@ describe('CredentialDefinitionService', () => {
 
   describe('create', () => {
     it('should create a new credential definition if name is unique for tenant', async () => {
+      const tenantId = mockCredentialDefinition.tenantId;
       const dto: CreateCredentialDefinitionDto = {
-        tenantId: mockCredentialDefinition.tenantId,
         name: mockCredentialDefinition.name,
         format: mockCredentialDefinition.format,
         schemaDefinition: mockCredentialDefinition.schemaDefinition,
@@ -148,15 +148,15 @@ describe('CredentialDefinitionService', () => {
       mockFindByTenantAndNameAndFormat.mockResolvedValue(null);
       mockCreate.mockResolvedValue(mockCredentialDefinition);
 
-      const result = await service.create(dto, auth);
+      const result = await service.create(tenantId, dto, auth);
 
       expect(mockFindByTenantAndNameAndFormat).toHaveBeenCalledWith(
-        dto.tenantId,
+        tenantId,
         dto.name,
         dto.format,
       );
       expect(mockCreate).toHaveBeenCalledWith({
-        tenantId: dto.tenantId,
+        tenantId,
         name: dto.name,
         format: dto.format,
         schemaDefinition: dto.schemaDefinition,
@@ -174,8 +174,8 @@ describe('CredentialDefinitionService', () => {
     });
 
     it('should throw ConflictException if name already exists for tenant', async () => {
+      const tenantId = mockCredentialDefinition.tenantId;
       const dto: CreateCredentialDefinitionDto = {
-        tenantId: mockCredentialDefinition.tenantId,
         name: mockCredentialDefinition.name,
         format: mockCredentialDefinition.format,
         schemaDefinition: mockCredentialDefinition.schemaDefinition,
@@ -188,11 +188,11 @@ describe('CredentialDefinitionService', () => {
         mockCredentialDefinition,
       );
 
-      await expect(service.create(dto, auth)).rejects.toThrow(
+      await expect(service.create(tenantId, dto, auth)).rejects.toThrow(
         ConflictException,
       );
       expect(mockFindByTenantAndNameAndFormat).toHaveBeenCalledWith(
-        dto.tenantId,
+        tenantId,
         dto.name,
         dto.format,
       );
@@ -201,8 +201,8 @@ describe('CredentialDefinitionService', () => {
     });
 
     it('skips schema validation when no validator is registered for the format', async () => {
+      const tenantId = mockCredentialDefinition.tenantId;
       const dto: CreateCredentialDefinitionDto = {
-        tenantId: mockCredentialDefinition.tenantId,
         name: mockCredentialDefinition.name,
         format: CredentialDefinitionFormat.SD_JWT,
         schemaDefinition: mockCredentialDefinition.schemaDefinition,
@@ -214,7 +214,7 @@ describe('CredentialDefinitionService', () => {
       mockFindByTenantAndNameAndFormat.mockResolvedValue(null);
       mockCreate.mockResolvedValue(mockCredentialDefinition);
 
-      await service.create(dto, auth);
+      await service.create(tenantId, dto, auth);
 
       // SD_JWT has no matching port-layer format value, so the format
       // never resolves and the registry is never consulted.
@@ -224,8 +224,8 @@ describe('CredentialDefinitionService', () => {
     });
 
     it('skips schema validation when a mapped format has no registered validator', async () => {
+      const tenantId = mockCredentialDefinition.tenantId;
       const dto: CreateCredentialDefinitionDto = {
-        tenantId: mockCredentialDefinition.tenantId,
         name: mockCredentialDefinition.name,
         format: CredentialDefinitionFormat.ANONCREDS,
         schemaDefinition: mockCredentialDefinition.schemaDefinition,
@@ -238,7 +238,7 @@ describe('CredentialDefinitionService', () => {
       mockCreate.mockResolvedValue(mockCredentialDefinition);
       mockHas.mockReturnValue(false);
 
-      await service.create(dto, auth);
+      await service.create(tenantId, dto, auth);
 
       expect(mockHas).toHaveBeenCalledWith(CredentialFormat.AnonCreds);
       expect(mockResolve).not.toHaveBeenCalled();
@@ -246,8 +246,8 @@ describe('CredentialDefinitionService', () => {
     });
 
     it('validates the schema when a validator is registered and it is valid', async () => {
+      const tenantId = mockCredentialDefinition.tenantId;
       const dto: CreateCredentialDefinitionDto = {
-        tenantId: mockCredentialDefinition.tenantId,
         name: mockCredentialDefinition.name,
         format: CredentialDefinitionFormat.ANONCREDS,
         schemaDefinition: mockCredentialDefinition.schemaDefinition,
@@ -261,7 +261,7 @@ describe('CredentialDefinitionService', () => {
       mockHas.mockReturnValue(true);
       mockValidateSchema.mockReturnValue([]);
 
-      await service.create(dto, auth);
+      await service.create(tenantId, dto, auth);
 
       expect(mockHas).toHaveBeenCalledWith(CredentialFormat.AnonCreds);
       expect(mockResolve).toHaveBeenCalledWith(CredentialFormat.AnonCreds);
@@ -270,8 +270,8 @@ describe('CredentialDefinitionService', () => {
     });
 
     it('throws BadRequestException when the schema fails format validation', async () => {
+      const tenantId = mockCredentialDefinition.tenantId;
       const dto: CreateCredentialDefinitionDto = {
-        tenantId: mockCredentialDefinition.tenantId,
         name: mockCredentialDefinition.name,
         format: CredentialDefinitionFormat.ANONCREDS,
         schemaDefinition: mockCredentialDefinition.schemaDefinition,
@@ -285,7 +285,7 @@ describe('CredentialDefinitionService', () => {
       mockHas.mockReturnValue(true);
       mockValidateSchema.mockReturnValue(issues);
 
-      await expect(service.create(dto, auth)).rejects.toThrow(
+      await expect(service.create(tenantId, dto, auth)).rejects.toThrow(
         BadRequestException,
       );
       expect(mockCreate).not.toHaveBeenCalled();
@@ -353,95 +353,49 @@ describe('CredentialDefinitionService', () => {
 
   describe('findByFormat', () => {
     it('should return all credential definitions with specified format', async () => {
+      const tenantId = mockCredentialDefinition.tenantId;
       const format = CredentialDefinitionFormat.ANONCREDS;
       const definitions = [mockCredentialDefinition];
       mockFindByFormat.mockResolvedValue(definitions);
 
-      const result = await service.findByFormat(format, auth);
+      const result = await service.findByFormat(tenantId, format);
 
-      expect(mockFindByFormat).toHaveBeenCalledWith(format, auth.tenantId);
+      expect(mockFindByFormat).toHaveBeenCalledWith(format, tenantId);
       expect(result).toEqual(definitions);
     });
 
     it('should return empty array if no definitions found for format', async () => {
+      const tenantId = mockCredentialDefinition.tenantId;
       const format = CredentialDefinitionFormat.SD_JWT;
       mockFindByFormat.mockResolvedValue([]);
 
-      const result = await service.findByFormat(format, auth);
+      const result = await service.findByFormat(tenantId, format);
 
       expect(result).toEqual([]);
-    });
-
-    it('lists all tenants for platform-admin without a tenant filter', async () => {
-      const format = CredentialDefinitionFormat.ANONCREDS;
-      const definitions = [mockCredentialDefinition];
-      mockFindByFormat.mockResolvedValue(definitions);
-
-      const result = await service.findByFormat(format, {
-        ...auth,
-        roles: ['platform-admin'],
-      });
-
-      expect(mockFindByFormat).toHaveBeenCalledWith(format);
-      expect(result).toEqual(definitions);
-    });
-
-    it('returns an empty list when the token has no tenant_id', async () => {
-      await expect(
-        service.findByFormat(CredentialDefinitionFormat.ANONCREDS, {
-          ...auth,
-          tenantId: null,
-        }),
-      ).resolves.toEqual([]);
-      expect(mockFindByFormat).not.toHaveBeenCalled();
     });
   });
 
   describe('findByConnector', () => {
     it('should return all credential definitions for connector type', async () => {
+      const tenantId = mockCredentialDefinition.tenantId;
       const connectorType = CredentialDefinitionConnectorType.TRACTION;
       const definitions = [mockCredentialDefinition];
       mockFindByConnector.mockResolvedValue(definitions);
 
-      const result = await service.findByConnector(connectorType, auth);
+      const result = await service.findByConnector(tenantId, connectorType);
 
-      expect(mockFindByConnector).toHaveBeenCalledWith(
-        connectorType,
-        auth.tenantId,
-      );
+      expect(mockFindByConnector).toHaveBeenCalledWith(connectorType, tenantId);
       expect(result).toEqual(definitions);
     });
 
     it('should return empty array if no definitions found for connector', async () => {
+      const tenantId = mockCredentialDefinition.tenantId;
       const connectorType = CredentialDefinitionConnectorType.CREDO;
       mockFindByConnector.mockResolvedValue([]);
 
-      const result = await service.findByConnector(connectorType, auth);
+      const result = await service.findByConnector(tenantId, connectorType);
 
       expect(result).toEqual([]);
-    });
-
-    it('lists all tenants for platform-admin without a tenant filter', async () => {
-      const connectorType = CredentialDefinitionConnectorType.TRACTION;
-      mockFindByConnector.mockResolvedValue([mockCredentialDefinition]);
-
-      const result = await service.findByConnector(connectorType, {
-        ...auth,
-        roles: ['platform-admin'],
-      });
-
-      expect(mockFindByConnector).toHaveBeenCalledWith(connectorType);
-      expect(result).toEqual([mockCredentialDefinition]);
-    });
-
-    it('returns an empty list when the token has no tenant_id', async () => {
-      await expect(
-        service.findByConnector(CredentialDefinitionConnectorType.TRACTION, {
-          ...auth,
-          tenantId: null,
-        }),
-      ).resolves.toEqual([]);
-      expect(mockFindByConnector).not.toHaveBeenCalled();
     });
   });
 

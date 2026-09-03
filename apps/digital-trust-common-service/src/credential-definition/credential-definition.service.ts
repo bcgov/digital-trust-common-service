@@ -15,7 +15,6 @@ import { DomainAuditService } from '../audit-log/domain-audit.service';
 import {
   assertResourceTenantOrNotFound,
   assertTenantAccess,
-  isPlatformAdmin,
 } from '../common/assert-tenant-access';
 
 import {
@@ -54,14 +53,15 @@ export class CredentialDefinitionService {
   ) {}
 
   public async create(
+    tenantId: string,
     dto: CreateCredentialDefinitionDto,
     auth: AuthContext,
   ): Promise<CredentialDefinition> {
-    assertTenantAccess(auth, dto.tenantId);
+    assertTenantAccess(auth, tenantId);
 
     const existing =
       await this.credentialDefinitionRepository.findByTenantAndNameAndFormat(
-        dto.tenantId,
+        tenantId,
         dto.name,
         dto.format,
       );
@@ -75,7 +75,7 @@ export class CredentialDefinitionService {
     this.validateSchemaDefinition(dto.format, dto.schemaDefinition);
 
     const created = await this.credentialDefinitionRepository.create({
-      tenantId: dto.tenantId,
+      tenantId,
       name: dto.name,
       format: dto.format,
       schemaDefinition: dto.schemaDefinition,
@@ -149,40 +149,22 @@ export class CredentialDefinitionService {
   }
 
   public async findByFormat(
+    tenantId: string,
     format: CredentialDefinitionFormat,
-    auth: AuthContext,
   ): Promise<CredentialDefinition[]> {
-    if (isPlatformAdmin(auth)) {
-      return await this.credentialDefinitionRepository.findByFormat(format);
-    }
-
-    if (!auth.tenantId) {
-      return [];
-    }
-
     return await this.credentialDefinitionRepository.findByFormat(
       format,
-      auth.tenantId,
+      tenantId,
     );
   }
 
   public async findByConnector(
+    tenantId: string,
     connectorType: CredentialDefinitionConnectorType,
-    auth: AuthContext,
   ): Promise<CredentialDefinition[]> {
-    if (isPlatformAdmin(auth)) {
-      return await this.credentialDefinitionRepository.findByConnector(
-        connectorType,
-      );
-    }
-
-    if (!auth.tenantId) {
-      return [];
-    }
-
     return await this.credentialDefinitionRepository.findByConnector(
       connectorType,
-      auth.tenantId,
+      tenantId,
     );
   }
 
