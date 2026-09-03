@@ -17,6 +17,8 @@ import { TenantUserRepository } from '../tenant-user/tenant-user.repository';
 import { VerificationProfile } from '../verification-profile/verification-profile.entity';
 import { VerificationProfileRepository } from '../verification-profile/verification-profile.repository';
 
+import { SeedTenantUserRepository } from './seed-tenant-user.repository';
+
 export const SEED_ENTITIES = [
   Tenant,
   TenantUser,
@@ -32,6 +34,7 @@ export const SEED_ENTITIES = [
 export const SEED_REPOSITORY_PROVIDERS = [
   TenantRepository,
   TenantUserRepository,
+  SeedTenantUserRepository,
   ConnectorCredentialRepository,
   CredentialDefinitionRepository,
   IssuanceProfileRepository,

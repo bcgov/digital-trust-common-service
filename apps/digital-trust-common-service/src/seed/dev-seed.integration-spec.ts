@@ -72,6 +72,14 @@ describe('DevSeedService integration', () => {
 
     seedService = module.get(DevSeedService);
     queryDataSource = module.get(DataSource);
+
+    // The seed's tenants persist in the shared test database between runs.
+    // Start from no seeded users, so the counts below are this run's work
+    // whatever an earlier seed left behind.
+    await queryDataSource.query(
+      `DELETE FROM tenant_user WHERE tenant_id IN
+         (SELECT id FROM tenant WHERE slug IN ('acme-corp', 'test-org', 'suspended-co'))`,
+    );
   });
 
   afterAll(async () => {
@@ -109,7 +117,14 @@ describe('DevSeedService integration', () => {
     );
 
     expect(tenantCount).toBe(3);
-    expect(userCount).toBe(9);
+    // Six placeholders; acme-corp's three users are invitations instead.
+    expect(userCount).toBe(6);
+    expect(
+      await countRows(
+        'tenant_user',
+        "external_user_id IS NULL AND status = 'invited' AND email LIKE '%@acme-corp.example.test'",
+      ),
+    ).toBe(3);
     expect(oauthClientCount).toBe(3);
 
     const second = await seedService.run();
@@ -127,6 +142,38 @@ describe('DevSeedService integration', () => {
     expect(await countRows('oauth_client', "client_id LIKE 'dev-seed-%'")).toBe(
       oauthClientCount,
     );
+  });
+
+  it('keeps a claimed invitation claimed across re-seeds', async () => {
+    await seedService.run();
+    const email = 'owner@acme-corp.example.test';
+
+    try {
+      // What the login callback does on first sign-in, plus a role change.
+      await queryDataSource.query(
+        `UPDATE tenant_user SET external_user_id = $1, status = 'active', role = 'readonly'
+         WHERE email = $2`,
+        ['keycloak-sub-1', email],
+      );
+
+      await expect(seedService.run()).resolves.toBeDefined();
+
+      const rows = await queryDataSource.query<
+        Array<{ external_user_id: string | null; status: string; role: string }>
+      >(
+        'SELECT external_user_id, status, role FROM tenant_user WHERE email = $1',
+        [email],
+      );
+      expect(rows).toEqual([
+        { external_user_id: 'keycloak-sub-1', status: 'active', role: 'owner' },
+      ]);
+    } finally {
+      // Back to an unclaimed invitation, as later runs of this file expect.
+      await queryDataSource.query(
+        `UPDATE tenant_user SET external_user_id = NULL, status = 'invited' WHERE email = $1`,
+        [email],
+      );
+    }
   });
 
   it('seeds the SPA client as public, with no secret', async () => {

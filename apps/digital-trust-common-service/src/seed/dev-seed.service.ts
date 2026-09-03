@@ -27,7 +27,6 @@ import { Operation, OperationState } from '../operation/operation.entity';
 import { OperationRepository } from '../operation/operation.repository';
 import { Tenant, TenantStatus } from '../tenant/tenant.entity';
 import { TenantRepository } from '../tenant/tenant.repository';
-import { TenantUserStatus } from '../tenant-user/tenant-user.entity';
 import { TenantUserRepository } from '../tenant-user/tenant-user.repository';
 import { VerificationProfile } from '../verification-profile/verification-profile.entity';
 import { VerificationProfileRepository } from '../verification-profile/verification-profile.repository';
@@ -53,6 +52,7 @@ import {
   uiSpaPostLogoutRedirectUris,
   uiSpaRedirectUris,
 } from './dev-seed.data';
+import { SeedTenantUserRepository } from './seed-tenant-user.repository';
 
 /**
  * Advisory-lock class id for the seed, distinct from the other advisory
@@ -81,6 +81,7 @@ export class DevSeedService {
   public constructor(
     private readonly tenants: TenantRepository,
     private readonly tenantUsers: TenantUserRepository,
+    private readonly seedTenantUsers: SeedTenantUserRepository,
     private readonly connectorCredentials: ConnectorCredentialRepository,
     private readonly credentialDefinitions: CredentialDefinitionRepository,
     private readonly issuanceProfiles: IssuanceProfileRepository,
@@ -205,25 +206,34 @@ export class DevSeedService {
     let count = 0;
 
     for (const userDef of seedUsersForTenant(slug)) {
-      const existing = await this.tenantUsers.findByTenantAndExternalUserId(
-        tenant.id,
-        userDef.externalUserId,
-      );
+      // Keyed by tenant and email, the pair the unique constraint is on, so a
+      // row whose subject a sign-in has replaced is still this user. Written
+      // without a prior read: the first statement applies only while the row
+      // still carries the subject the seed gave it, so a sign-in that claims
+      // it meanwhile wins; the second refreshes a claimed row's demo role and
+      // display name and nothing else.
+      const refreshed =
+        (await this.seedTenantUsers.refreshSeeded(tenant.id, userDef.email, {
+          externalUserId: userDef.externalUserId,
+          status: userDef.status,
+          displayName: userDef.displayName,
+          role: userDef.role,
+        })) ||
+        (await this.seedTenantUsers.setDisplayNameAndRole(
+          tenant.id,
+          userDef.email,
+          userDef.displayName,
+          userDef.role,
+        ));
 
-      if (existing) {
-        existing.email = userDef.email;
-        existing.displayName = userDef.displayName;
-        existing.role = userDef.role;
-        existing.status = TenantUserStatus.ACTIVE;
-        await this.tenantUsers.update(existing);
-      } else {
+      if (!refreshed) {
         await this.tenantUsers.create({
           tenantId: tenant.id,
-          externalUserId: userDef.externalUserId,
+          externalUserId: userDef.externalUserId ?? undefined,
           email: userDef.email,
           displayName: userDef.displayName,
           role: userDef.role,
-          status: TenantUserStatus.ACTIVE,
+          status: userDef.status,
         });
       }
 
