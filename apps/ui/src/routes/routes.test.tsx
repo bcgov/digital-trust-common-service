@@ -52,11 +52,6 @@ describe('routing', () => {
   });
 
   /**
-   * The OIDC redirect arrives before any session exists, so the callback must
-   * sit outside RequireAuth. Guarded, it would bounce to /login and strip the
-   * authorization code from the URL — making every sign-in fail.
-   */
-  /**
    * A session that can no longer be refreshed is cleared in this tab only:
    * after a tenant switch elsewhere the provider session is alive, so the
    * way back is sign-in with the destination kept, not a full logout.
@@ -94,6 +89,11 @@ describe('routing', () => {
     });
   });
 
+  /**
+   * The OIDC redirect arrives before any session exists, so the callback must
+   * sit outside RequireAuth. Guarded, it would bounce to /login and strip the
+   * authorization code from the URL — making every sign-in fail.
+   */
   it('serves the auth callback to unauthenticated visitors', async () => {
     const router = renderAt('/auth/callback?code=abc&state=xyz');
 

@@ -77,7 +77,14 @@ export function TenantSwitcher() {
     );
   }
 
-  if (memberships.length <= 1) {
+  // The dropdown only exists when there is somewhere else to go. That is
+  // not the same as "more than one membership": a token bound to a tenant
+  // the list no longer carries still needs the way to the one it does.
+  const canSwitch = memberships.some(
+    (membership) => membership.id !== user?.tenantId,
+  );
+
+  if (!canSwitch) {
     return (
       <div className="flex items-center gap-2 text-sm font-medium">
         <Building2 className="size-4" aria-hidden="true" />
