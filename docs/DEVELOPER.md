@@ -1263,8 +1263,12 @@ Checks (mirrored by the `ui` job in CI): `npm run lint`, `npm run format:check`,
 
 ## Useful Development Endpoints
 
-- Health Check: `GET http://localhost:3000/health/live`
+- Liveness check: `GET http://localhost:3000/health/live`
+- Readiness check: `GET http://localhost:3000/health/ready`
+- Dependency diagnostics: `GET http://localhost:3000/health/status`
 - API Documentation: Check `docs/openapi.yaml`
+
+`/health/ready` is the Kubernetes routing contract: it checks graceful shutdown state and database connectivity only. It does not check pg-boss, the in-process OIDC provider, Traction, or migration state. pg-boss and OIDC provider state are visible on `/health/status` so operators can alert on them without removing every pod from service for a shared or non-routing dependency. Migration state is not rechecked at runtime because the Helm chart runs migrations as a hook before application pods start.
 
 ## Troubleshooting
 

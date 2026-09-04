@@ -1685,9 +1685,10 @@ Client → API Pod → Traction/Credo Agent Service
 | Endpoint | Purpose | Checks |
 |----------|---------|--------|
 | `GET /health/live` | Liveness probe | Process running |
-| `GET /health/ready` | Readiness probe | DB, pg-boss, oidc-provider |
+| `GET /health/ready` | Readiness probe | Graceful shutdown state and database connectivity |
+| `GET /health/status` | Operator diagnostics | Database, pg-boss, and in-process OIDC provider state |
 
-Uses `@nestjs/terminus` with custom health indicators. Returns degraded (200 + warning body) if non-critical dependency is unavailable, unhealthy (503) if critical.
+Liveness answers only whether the process is wedged and should be restarted, so it ignores graceful shutdown: draining a terminating pod is readiness' job, and failing liveness would ask the kubelet to restart a container that is shutting down on purpose. Readiness answers only whether the pod should receive traffic. It returns 503 during graceful shutdown or when the database is unavailable, and it deliberately does not consult pg-boss, the in-process OIDC provider, Traction, or migration state. pg-boss and OIDC state are exposed through `/health/status` for humans and monitoring without turning non-routing concerns into Kubernetes probe failures. Runtime migration checks are omitted because Helm runs migrations as a pre-install/pre-upgrade hook before application pods start.
 
 ### Collector Deployment
 
