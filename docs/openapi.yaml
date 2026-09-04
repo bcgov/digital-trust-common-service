@@ -289,22 +289,55 @@ paths:
     get:
       operationId: getReadiness
       summary: Readiness probe
-      description: Returns 200 if all critical dependencies (DB, pg-boss, OIDC provider) are healthy.
+      description: |
+        Returns 200 when this instance should receive traffic.
+
+        Readiness answers only that question, so it checks graceful-shutdown state
+        and database connectivity. It deliberately does not consult pg-boss, the
+        in-process OIDC provider, Traction, or migration state — a shared
+        dependency in a probe makes every pod fail together, turning a partial
+        degradation into a full outage. Use `/health/status` for dependency detail.
       tags: [Health]
       security: []
       responses:
         "200":
-          description: All dependencies healthy
+          description: Ready to receive traffic
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/HealthResponse"
+                $ref: "#/components/schemas/ReadinessResponse"
         "503":
-          description: One or more critical dependencies unhealthy
+          description: Shutting down, or the database is unavailable
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/HealthResponse"
+                $ref: "#/components/schemas/ReadinessResponse"
+
+  /health/status:
+    get:
+      operationId: getHealthStatus
+      summary: Operator diagnostics
+      description: |
+        Reports the state of the database, pg-boss and the in-process OIDC
+        provider. Wired to no probe: a dependency being down is an alerting
+        concern rather than a routing one, so a failing dependency still returns
+        200 with `status: degraded`. The only 503 is during graceful shutdown,
+        where the response carries `details.shutdown` alone.
+      tags: [Health]
+      security: []
+      responses:
+        "200":
+          description: Dependency states, healthy or degraded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatusResponse"
+        "503":
+          description: Shutting down
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatusResponse"
 
   # ─── Auth ─────────────────────────────────────────────────────────────
   /api/v1/auth/switch-tenant:
@@ -3055,6 +3088,56 @@ components:
                 enum: [up, down]
               message:
                 type: string
+
+    HealthDependency:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [up, down]
+
+    ReadinessResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [ok, error, shutting_down]
+        info:
+          type: object
+          description: Checks that passed.
+          additionalProperties:
+            $ref: "#/components/schemas/HealthDependency"
+        error:
+          type: object
+          description: Checks that failed.
+          additionalProperties:
+            $ref: "#/components/schemas/HealthDependency"
+        details:
+          type: object
+          description: All checks, passed and failed.
+          additionalProperties:
+            $ref: "#/components/schemas/HealthDependency"
+
+    HealthStatusResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [ok, degraded, shutting_down]
+        details:
+          type: object
+          description: |
+            Dependency states while the service is running. During graceful
+            shutdown only `shutdown` is present.
+          properties:
+            database:
+              $ref: "#/components/schemas/HealthDependency"
+            pgBoss:
+              $ref: "#/components/schemas/HealthDependency"
+            oidcProvider:
+              $ref: "#/components/schemas/HealthDependency"
+            shutdown:
+              $ref: "#/components/schemas/HealthDependency"
 
     # ─── Tenant ──────────────────────────────────────────────────────
     Tenant:

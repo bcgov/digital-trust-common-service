@@ -10,6 +10,8 @@ export class PgBossService {
 
   public boss!: PgBoss;
 
+  private running = false;
+
   private readonly maxRetries = 5;
 
   private readonly retryDelayMs = 1000;
@@ -51,10 +53,41 @@ export class PgBossService {
     this.boss = boss;
     this.logger.log('Starting pg-boss...');
 
+    // Attach before starting: pg-boss is an EventEmitter, so an unheard 'error'
+    // event throws and takes the process down, and it can raise one during start
+    // itself. Its pool emits on any dropped connection — losing the database, for
+    // instance — which must degrade the service rather than kill it. pg-boss
+    // reconnects on its own, so this only reports.
+    boss.on('error', (error: Error) => {
+      this.logger.error(
+        `pg-boss raised an error: ${error.message}`,
+        error.stack,
+      );
+    });
+
     await this.startWithRetry(boss);
+    this.running = true;
 
     this.logger.log('pg-boss started');
     return boss;
+  }
+
+  public isRunning(): boolean {
+    return this.running;
+  }
+
+  public async stop(): Promise<void> {
+    if (!this.boss) {
+      this.running = false;
+      return;
+    }
+
+    try {
+      await this.boss.stop();
+    } finally {
+      // A failed stop still leaves pg-boss unusable, so never report it running.
+      this.running = false;
+    }
   }
 
   private async startWithRetry(boss: PgBoss, attempt = 1): Promise<void> {

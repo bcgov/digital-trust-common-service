@@ -122,6 +122,8 @@ describe('Role scope API (e2e)', () => {
       .useValue({
         boss: mockBoss,
         initializeBoss: jest.fn().mockResolvedValue(mockBoss),
+        stop: jest.fn().mockResolvedValue(undefined),
+        isRunning: jest.fn().mockReturnValue(true),
       })
       .overrideGuard(JwtGuard)
       .useClass(AllowGuard)
@@ -501,6 +503,8 @@ describe('Role scope API (e2e) — unauthenticated', () => {
       .useValue({
         boss: mockBoss,
         initializeBoss: jest.fn().mockResolvedValue(mockBoss),
+        stop: jest.fn().mockResolvedValue(undefined),
+        isRunning: jest.fn().mockReturnValue(true),
       })
       .compile();
 
@@ -546,6 +550,8 @@ describe('Role scope API (e2e) — cross-tenant', () => {
       .useValue({
         boss: mockBoss,
         initializeBoss: jest.fn().mockResolvedValue(mockBoss),
+        stop: jest.fn().mockResolvedValue(undefined),
+        isRunning: jest.fn().mockReturnValue(true),
       })
       .overrideGuard(JwtGuard)
       .useClass(ForeignTenantGuard)

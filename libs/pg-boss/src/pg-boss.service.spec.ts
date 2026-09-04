@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
 import { PgBossService } from './pg-boss.service';
@@ -23,7 +24,7 @@ describe('PgBossService', () => {
 
   it('starts pg-boss on module init', async () => {
     const start = jest.fn().mockResolvedValue(undefined);
-    const mockBoss = { start, stop: jest.fn() };
+    const mockBoss = { on: jest.fn(), start, stop: jest.fn() };
 
     jest.spyOn(service as any, 'createBoss').mockResolvedValue(mockBoss);
 
@@ -31,12 +32,101 @@ describe('PgBossService', () => {
 
     expect(start).toHaveBeenCalledTimes(1);
     expect(service.boss).toBe(mockBoss);
+    expect(service.isRunning()).toBe(true);
+  });
+
+  it('reports pg-boss stopped after shutdown', async () => {
+    const start = jest.fn().mockResolvedValue(undefined);
+    const stop = jest.fn().mockResolvedValue(undefined);
+    const mockBoss = { on: jest.fn(), start, stop };
+
+    jest.spyOn(service as any, 'createBoss').mockResolvedValue(mockBoss);
+
+    await service.initializeBoss();
+    await service.stop();
+
+    expect(stop).toHaveBeenCalledTimes(1);
+    expect(service.isRunning()).toBe(false);
+  });
+
+  it('listens for errors before starting pg-boss', async () => {
+    const calls: string[] = [];
+    const mockBoss = {
+      on: jest.fn((event: string) => {
+        calls.push(`on:${event}`);
+      }),
+      start: jest.fn().mockImplementation(() => {
+        calls.push('start');
+        return Promise.resolve();
+      }),
+      stop: jest.fn(),
+    };
+
+    jest.spyOn(service as any, 'createBoss').mockResolvedValue(mockBoss);
+
+    await service.initializeBoss();
+
+    // pg-boss can raise during start itself, so the handler has to be in place
+    // first. Asserted as an exact sequence rather than with indexOf: indexOf
+    // returns -1 when the listener was never attached, and -1 is less than
+    // every real index, so the comparison passes on the failure it exists to
+    // catch.
+    expect(calls).toEqual(['on:error', 'start']);
+  });
+
+  it('logs pg-boss errors instead of letting them crash the process', async () => {
+    const handlers: Record<string, (error: Error) => void> = {};
+    const mockBoss = {
+      on: jest.fn((event: string, handler: (error: Error) => void) => {
+        handlers[event] = handler;
+      }),
+      start: jest.fn().mockResolvedValue(undefined),
+      stop: jest.fn(),
+    };
+    const errorSpy = jest.spyOn(Logger.prototype, 'error').mockImplementation();
+
+    jest.spyOn(service as any, 'createBoss').mockResolvedValue(mockBoss);
+
+    await service.initializeBoss();
+
+    // pg-boss is an EventEmitter: an unheard 'error' event throws.
+    expect(() =>
+      handlers.error(new Error('terminating connection')),
+    ).not.toThrow();
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining('terminating connection'),
+      expect.stringContaining('Error: terminating connection'),
+    );
+    expect(service.isRunning()).toBe(true);
+
+    errorSpy.mockRestore();
+  });
+
+  it('reports pg-boss stopped even when stopping fails', async () => {
+    const stop = jest.fn().mockRejectedValue(new Error('stop failed'));
+    const mockBoss = {
+      on: jest.fn(),
+      start: jest.fn().mockResolvedValue(undefined),
+      stop,
+    };
+
+    jest.spyOn(service as any, 'createBoss').mockResolvedValue(mockBoss);
+
+    await service.initializeBoss();
+
+    await expect(service.stop()).rejects.toThrow('stop failed');
+    expect(service.isRunning()).toBe(false);
+  });
+
+  it('stops cleanly when pg-boss was never started', async () => {
+    await expect(service.stop()).resolves.toBeUndefined();
+    expect(service.isRunning()).toBe(false);
   });
 
   describe('startWithRetry', () => {
     it('should succeed on first attempt', async () => {
       const start = jest.fn().mockResolvedValue(undefined);
-      const mockBoss = { start, stop: jest.fn() };
+      const mockBoss = { on: jest.fn(), start, stop: jest.fn() };
 
       jest.spyOn(service as any, 'createBoss').mockResolvedValue(mockBoss);
 
@@ -51,7 +141,7 @@ describe('PgBossService', () => {
         .mockRejectedValueOnce(new Error('Connection failed'))
         .mockResolvedValueOnce(undefined);
 
-      const mockBoss = { start, stop: jest.fn() };
+      const mockBoss = { on: jest.fn(), start, stop: jest.fn() };
 
       jest.spyOn(service as any, 'createBoss').mockResolvedValue(mockBoss);
 
@@ -70,7 +160,7 @@ describe('PgBossService', () => {
         .mockRejectedValueOnce(new Error('Attempt 2 failed'))
         .mockResolvedValueOnce(undefined);
 
-      const mockBoss = { start, stop: jest.fn() };
+      const mockBoss = { on: jest.fn(), start, stop: jest.fn() };
 
       jest.spyOn(service as any, 'createBoss').mockResolvedValue(mockBoss);
 
@@ -100,7 +190,7 @@ describe('PgBossService', () => {
         .mockRejectedValueOnce(new Error('Attempt 2 failed'))
         .mockResolvedValueOnce(undefined);
 
-      const mockBoss = { start, stop: jest.fn() };
+      const mockBoss = { on: jest.fn(), start, stop: jest.fn() };
 
       jest.spyOn(service as any, 'createBoss').mockResolvedValue(mockBoss);
 
