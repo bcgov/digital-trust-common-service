@@ -1062,7 +1062,7 @@ credential controllers (CA-03 / CA-04).
 > and `connection/connection.entity.ts` (the entity enum). The string values are identical;
 > `toPortConnectorType()` bridges them. Collapsing the two is a tracked follow-up.
 
-## Per-tenant rate limiting (TM-07)
+## Per-tenant rate limiting
 
 Two guards share one Postgres-backed store (`rate_limit_hits`, migration
 `000024_create-rate-limit-hits-table`), counted with a **sliding window** (`COUNT` of hits in the
