@@ -1,9 +1,9 @@
-import { HttpException, HttpStatus } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 
 import { GracefulShutdownService } from '../shutdown/shutdown.service';
 
 import { HealthController } from './health.controller';
+import { HealthService } from './health.service';
 
 describe('HealthController', () => {
   let controller: HealthController;
@@ -13,6 +13,10 @@ describe('HealthController', () => {
     const mockShutdownService = {
       isInShutdown: jest.fn(),
     };
+    const mockHealthService = {
+      ready: jest.fn(),
+      status: jest.fn(),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [HealthController],
@@ -20,6 +24,10 @@ describe('HealthController', () => {
         {
           provide: GracefulShutdownService,
           useValue: mockShutdownService,
+        },
+        {
+          provide: HealthService,
+          useValue: mockHealthService,
         },
       ],
     }).compile();
@@ -29,19 +37,16 @@ describe('HealthController', () => {
   });
 
   describe('GET /health/live', () => {
-    it('should return status ok when not in shutdown', () => {
-      shutdownService.isInShutdown.mockReturnValue(false);
+    it('should return status ok', () => {
       expect(controller.live()).toEqual({ status: 'ok' });
     });
 
-    it('should throw SERVICE_UNAVAILABLE when in shutdown', () => {
+    // Draining a terminating pod is readiness' job. Failing liveness here would
+    // ask the kubelet to restart a container that is shutting down on purpose.
+    it('should stay live during graceful shutdown', () => {
       shutdownService.isInShutdown.mockReturnValue(true);
-      expect(() => controller.live()).toThrow(
-        new HttpException(
-          'Shutdown in progress',
-          HttpStatus.SERVICE_UNAVAILABLE,
-        ),
-      );
+
+      expect(controller.live()).toEqual({ status: 'ok' });
     });
   });
 });
