@@ -49,6 +49,28 @@ describe('PgBossService', () => {
     expect(service.isRunning()).toBe(false);
   });
 
+  it('listens for errors before starting pg-boss', async () => {
+    const calls: string[] = [];
+    const mockBoss = {
+      on: jest.fn((event: string) => {
+        calls.push(`on:${event}`);
+      }),
+      start: jest.fn().mockImplementation(() => {
+        calls.push('start');
+        return Promise.resolve();
+      }),
+      stop: jest.fn(),
+    };
+
+    jest.spyOn(service as any, 'createBoss').mockResolvedValue(mockBoss);
+
+    await service.initializeBoss();
+
+    // pg-boss can raise during start itself, so the handler has to be in place first.
+    expect(calls.indexOf('on:error')).toBeLessThan(calls.indexOf('start'));
+    expect(calls.indexOf('on:stopped')).toBeLessThan(calls.indexOf('start'));
+  });
+
   it('logs pg-boss errors instead of letting them crash the process', async () => {
     const handlers: Record<string, (error: Error) => void> = {};
     const mockBoss = {
@@ -70,6 +92,7 @@ describe('PgBossService', () => {
     ).not.toThrow();
     expect(errorSpy).toHaveBeenCalledWith(
       expect.stringContaining('terminating connection'),
+      expect.stringContaining('Error: terminating connection'),
     );
     expect(service.isRunning()).toBe(true);
 

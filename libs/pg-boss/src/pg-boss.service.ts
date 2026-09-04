@@ -53,15 +53,16 @@ export class PgBossService {
     this.boss = boss;
     this.logger.log('Starting pg-boss...');
 
-    await this.startWithRetry(boss);
-    this.running = true;
-
-    // pg-boss is an EventEmitter, so an unheard 'error' event throws and takes the
-    // process down. Its pool raises one whenever an idle connection drops — losing
-    // the database, for instance — which must degrade the service, not kill it.
-    // pg-boss reconnects on its own, so this only reports.
+    // Attach before starting: pg-boss is an EventEmitter, so an unheard 'error'
+    // event throws and takes the process down, and it can raise one during start
+    // itself. Its pool emits on any dropped connection — losing the database, for
+    // instance — which must degrade the service rather than kill it. pg-boss
+    // reconnects on its own, so this only reports.
     boss.on('error', (error: Error) => {
-      this.logger.error(`pg-boss raised an error: ${error.message}`);
+      this.logger.error(
+        `pg-boss raised an error: ${error.message}`,
+        error.stack,
+      );
     });
 
     // pg-boss can stop on its own; without this the running flag would report the
@@ -69,6 +70,9 @@ export class PgBossService {
     boss.on('stopped', () => {
       this.running = false;
     });
+
+    await this.startWithRetry(boss);
+    this.running = true;
 
     this.logger.log('pg-boss started');
     return boss;

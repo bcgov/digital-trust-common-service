@@ -1,4 +1,4 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, Header } from '@nestjs/common';
 import {
   ApiOkResponse,
   ApiOperation,
@@ -25,6 +25,7 @@ export class HealthController {
    * the kubelet to restart a container that is shutting down on purpose.
    */
   @Get('live')
+  @Header('Cache-Control', 'no-cache, no-store, must-revalidate')
   @ApiOperation({ summary: 'Report process liveness.' })
   @ApiOkResponse({ description: 'Process is live.' })
   public live(): { status: string } {
@@ -32,6 +33,7 @@ export class HealthController {
   }
 
   @Get('ready')
+  @Header('Cache-Control', 'no-cache, no-store, must-revalidate')
   @ApiOperation({ summary: 'Report whether the pod should receive traffic.' })
   @ApiOkResponse({
     description: 'The pod can receive traffic.',
@@ -46,6 +48,7 @@ export class HealthController {
   }
 
   @Get('status')
+  @Header('Cache-Control', 'no-cache, no-store, must-revalidate')
   @ApiOperation({ summary: 'Report dependency status for operators.' })
   @ApiOkResponse({
     description: 'Dependency status details.',
