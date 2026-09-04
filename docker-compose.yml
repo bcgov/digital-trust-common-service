@@ -24,6 +24,7 @@ services:
     environment:
       # Container-mode values; .env stays correct for the host workflow.
       DB_HOST: db
+      LOG_LEVEL: ${LOG_LEVEL:-info}
       NODE_EXTRA_CA_CERTS: /caddy-ca/root.crt
       # .env carries http://localhost:4318 so the default workflow (the API on
       # the host) works unedited. In compose the collector is a sibling

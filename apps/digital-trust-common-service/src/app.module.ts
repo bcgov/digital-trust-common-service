@@ -9,8 +9,9 @@ import {
   OidcModule,
 } from '@app/oidc';
 import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_INTERCEPTOR } from '@nestjs/core';
+import { LoggerModule } from 'nestjs-pino';
 
 import { AdapterRegistryModule } from './adapter-registry/adapter-registry.module';
 import { AdminModule } from './admin/admin.module';
@@ -27,6 +28,7 @@ import { CredentialDefinitionModule } from './credential-definition/credential-d
 import { HealthModule } from './health/health.module';
 import { IssuanceProfileModule } from './issuance-profile/issuance-profile.module';
 import { JobsModule } from './jobs/jobs.module';
+import { createLoggerModuleParams } from './logging/logger.config';
 import { OAuthClientLookupAdapter } from './oauth-client/oauth-client-lookup.adapter';
 import { OAuthClientModule } from './oauth-client/oauth-client.module';
 import { OperationModule } from './operation/operation.module';
@@ -49,6 +51,10 @@ import { VerificationProfileModule } from './verification-profile/verification-p
     AuditLogModule,
     AuthApiModule,
     ConfigModule.forRoot({ isGlobal: true }),
+    LoggerModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: createLoggerModuleParams,
+    }),
     ConnectionModule,
     ConnectorCredentialModule,
     CredentialDefinitionModule,
