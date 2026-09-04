@@ -33,9 +33,39 @@ export interface paths {
         };
         /**
          * Readiness probe
-         * @description Returns 200 if all critical dependencies (DB, pg-boss, OIDC provider) are healthy.
+         * @description Returns 200 when this instance should receive traffic.
+         *
+         *     Readiness answers only that question, so it checks graceful-shutdown state
+         *     and database connectivity. It deliberately does not consult pg-boss, the
+         *     in-process OIDC provider, Traction, or migration state — a shared
+         *     dependency in a probe makes every pod fail together, turning a partial
+         *     degradation into a full outage. Use `/health/status` for dependency detail.
          */
         get: operations["getReadiness"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/health/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Operator diagnostics
+         * @description Reports the state of the database, pg-boss and the in-process OIDC
+         *     provider. Wired to no probe: a dependency being down is an alerting
+         *     concern rather than a routing one, so a failing dependency still returns
+         *     200 with `status: degraded`. The only 503 is during graceful shutdown,
+         *     where the response carries `details.shutdown` alone.
+         */
+        get: operations["getHealthStatus"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1600,6 +1630,40 @@ export interface components {
                 };
             };
         };
+        HealthDependency: {
+            /** @enum {string} */
+            status?: "up" | "down";
+        };
+        ReadinessResponse: {
+            /** @enum {string} */
+            status?: "ok" | "error" | "shutting_down";
+            /** @description Checks that passed. */
+            info?: {
+                [key: string]: components["schemas"]["HealthDependency"];
+            };
+            /** @description Checks that failed. */
+            error?: {
+                [key: string]: components["schemas"]["HealthDependency"];
+            };
+            /** @description All checks, passed and failed. */
+            details?: {
+                [key: string]: components["schemas"]["HealthDependency"];
+            };
+        };
+        HealthStatusResponse: {
+            /** @enum {string} */
+            status?: "ok" | "degraded" | "shutting_down";
+            /**
+             * @description Dependency states while the service is running. During graceful
+             *     shutdown only `shutdown` is present.
+             */
+            details?: {
+                database?: components["schemas"]["HealthDependency"];
+                pgBoss?: components["schemas"]["HealthDependency"];
+                oidcProvider?: components["schemas"]["HealthDependency"];
+                shutdown?: components["schemas"]["HealthDependency"];
+            };
+        };
         Tenant: {
             /** Format: uuid */
             id?: string;
@@ -2417,22 +2481,51 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description All dependencies healthy */
+            /** @description Ready to receive traffic */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HealthResponse"];
+                    "application/json": components["schemas"]["ReadinessResponse"];
                 };
             };
-            /** @description One or more critical dependencies unhealthy */
+            /** @description Shutting down, or the database is unavailable */
             503: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HealthResponse"];
+                    "application/json": components["schemas"]["ReadinessResponse"];
+                };
+            };
+        };
+    };
+    getHealthStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Dependency states, healthy or degraded */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HealthStatusResponse"];
+                };
+            };
+            /** @description Shutting down */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HealthStatusResponse"];
                 };
             };
         };
