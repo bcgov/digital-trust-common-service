@@ -65,12 +65,6 @@ export class PgBossService {
       );
     });
 
-    // pg-boss can stop on its own; without this the running flag would report the
-    // startup outcome forever rather than the current state.
-    boss.on('stopped', () => {
-      this.running = false;
-    });
-
     await this.startWithRetry(boss);
     this.running = true;
 

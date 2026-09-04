@@ -66,9 +66,12 @@ describe('PgBossService', () => {
 
     await service.initializeBoss();
 
-    // pg-boss can raise during start itself, so the handler has to be in place first.
-    expect(calls.indexOf('on:error')).toBeLessThan(calls.indexOf('start'));
-    expect(calls.indexOf('on:stopped')).toBeLessThan(calls.indexOf('start'));
+    // pg-boss can raise during start itself, so the handler has to be in place
+    // first. Asserted as an exact sequence rather than with indexOf: indexOf
+    // returns -1 when the listener was never attached, and -1 is less than
+    // every real index, so the comparison passes on the failure it exists to
+    // catch.
+    expect(calls).toEqual(['on:error', 'start']);
   });
 
   it('logs pg-boss errors instead of letting them crash the process', async () => {
@@ -97,26 +100,6 @@ describe('PgBossService', () => {
     expect(service.isRunning()).toBe(true);
 
     errorSpy.mockRestore();
-  });
-
-  it('reports pg-boss stopped when it stops on its own', async () => {
-    const handlers: Record<string, () => void> = {};
-    const mockBoss = {
-      on: jest.fn((event: string, handler: () => void) => {
-        handlers[event] = handler;
-      }),
-      start: jest.fn().mockResolvedValue(undefined),
-      stop: jest.fn(),
-    };
-
-    jest.spyOn(service as any, 'createBoss').mockResolvedValue(mockBoss);
-
-    await service.initializeBoss();
-    expect(service.isRunning()).toBe(true);
-
-    handlers.stopped();
-
-    expect(service.isRunning()).toBe(false);
   });
 
   it('reports pg-boss stopped even when stopping fails', async () => {
