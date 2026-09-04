@@ -23,8 +23,10 @@ export class AdminRateLimitService {
 
   /**
    * Resolved tier, limit, and per-route hit counts within the current
-   * sliding window — read-only, mirrors the limit `TenantRateLimitGuard`
-   * would apply to the tenant right now.
+   * sliding window — read-only, reports the limit `TenantRateLimitGuard`
+   * would apply to the tenant's own traffic right now. This endpoint is
+   * itself `@RateLimitByCaller()`, so it is throttled against the calling
+   * admin at the flat standard rate, not against the reported tenant limit.
    */
   public async getStatus(
     tenantId: string,

@@ -6,9 +6,17 @@ const KEY_SEPARATOR = '::';
  * `generateKey()` to produce this format instead of the library's default
  * SHA-256 hash, so `RateLimitStorageService` can recover the structured
  * `tracker`/`routeKey` needed to query `rate_limit_hits`.
+ *
+ * `tracker` and `routeKey` are each `encodeURIComponent`-escaped before
+ * joining. `tracker` falls back to the caller's IP for tenant-less/
+ * by-caller routes, and IPv6 (or IPv6-mapped IPv4, e.g. `::ffff:127.0.0.1`)
+ * addresses themselves contain the `::` separator — encoding guarantees
+ * the only literal `::` left in the built key is the real separator, so
+ * `parseRateLimitKey`'s `indexOf` lookup can't be fooled into splitting
+ * in the middle of a tracker value.
  */
 export function buildRateLimitKey(tracker: string, routeKey: string): string {
-  return `${tracker}${KEY_SEPARATOR}${routeKey}`;
+  return `${encodeURIComponent(tracker)}${KEY_SEPARATOR}${encodeURIComponent(routeKey)}`;
 }
 
 export function parseRateLimitKey(key: string): {
@@ -22,7 +30,9 @@ export function parseRateLimitKey(key: string): {
   }
 
   return {
-    tracker: key.slice(0, separatorIndex),
-    routeKey: key.slice(separatorIndex + KEY_SEPARATOR.length),
+    tracker: decodeURIComponent(key.slice(0, separatorIndex)),
+    routeKey: decodeURIComponent(
+      key.slice(separatorIndex + KEY_SEPARATOR.length),
+    ),
   };
 }

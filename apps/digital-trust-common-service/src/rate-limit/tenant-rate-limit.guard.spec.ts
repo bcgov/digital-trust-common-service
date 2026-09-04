@@ -44,6 +44,47 @@ describe('TenantRateLimitGuard', () => {
 
       expect(tracker).toBe('203.0.113.5');
     });
+
+    type GuardWithReflector = {
+      reflector: { getAllAndOverride: jest.Mock };
+      getTracker(
+        req: Record<string, unknown>,
+        context?: ExecutionContext,
+      ): Promise<string>;
+    };
+
+    function withReflector(byCaller: boolean): GuardWithReflector {
+      const instance = Object.create(
+        TenantRateLimitGuard.prototype,
+      ) as GuardWithReflector;
+      instance.reflector = {
+        getAllAndOverride: jest.fn().mockReturnValue(byCaller),
+      };
+      return instance;
+    }
+
+    const context = {
+      getHandler: () => ({ name: 'reset' }),
+      getClass: () => ({ name: 'AdminRateLimitController' }),
+    } as unknown as ExecutionContext;
+
+    it('falls back to the caller IP when the route is marked @RateLimitByCaller(), even with a tenantId param', async () => {
+      const tracker = await withReflector(true).getTracker(
+        { params: { tenantId: 't1' }, ip: '203.0.113.5' },
+        context,
+      );
+
+      expect(tracker).toBe('203.0.113.5');
+    });
+
+    it('uses the tenantId route param when the route is not marked @RateLimitByCaller()', async () => {
+      const tracker = await withReflector(false).getTracker(
+        { params: { tenantId: 't1' }, ip: '203.0.113.5' },
+        context,
+      );
+
+      expect(tracker).toBe('t1');
+    });
   });
 
   describe('generateKey', () => {
