@@ -319,9 +319,10 @@ paths:
       summary: Operator diagnostics
       description: |
         Reports the state of the database, pg-boss and the in-process OIDC
-        provider. Wired to no probe: a dependency being down here is an alerting
-        concern, not a routing one, so the response stays 200 and reports
-        `degraded`.
+        provider. Wired to no probe: a dependency being down is an alerting
+        concern rather than a routing one, so a failing dependency still returns
+        200 with `status: degraded`. The only 503 is during graceful shutdown,
+        where the response carries `details.shutdown` alone.
       tags: [Health]
       security: []
       responses:
@@ -3125,12 +3126,17 @@ components:
           enum: [ok, degraded, shutting_down]
         details:
           type: object
+          description: |
+            Dependency states while the service is running. During graceful
+            shutdown only `shutdown` is present.
           properties:
             database:
               $ref: "#/components/schemas/HealthDependency"
             pgBoss:
               $ref: "#/components/schemas/HealthDependency"
             oidcProvider:
+              $ref: "#/components/schemas/HealthDependency"
+            shutdown:
               $ref: "#/components/schemas/HealthDependency"
 
     # ─── Tenant ──────────────────────────────────────────────────────
