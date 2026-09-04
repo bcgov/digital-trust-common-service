@@ -1526,7 +1526,7 @@ export interface paths {
         /**
          * View a tenant's current rate-limit status (platform-admin)
          * @description Resolved tier, limit, and per-route hit counts within the current
-         *     sliding window — mirrors the limit `TenantRateLimitGuard` would
+         *     sliding window — mirrors the limit `TenantTierRateLimitGuard` would
          *     apply to the tenant right now. Requires the platform-admin role.
          */
         get: operations["getTenantRateLimitStatus"];
@@ -1633,7 +1633,7 @@ export interface components {
             features?: Record<string, never>;
             /**
              * @description Rate-limit configuration. `tier` selects the fixed request-per-minute
-             *     ceiling `TenantRateLimitGuard` applies (`standard` or `premium`, see
+             *     ceiling `TenantTierRateLimitGuard` applies (`standard` or `premium`, see
              *     `GET /api/v1/admin/rate-limits/{tenantId}`). The remaining fields are
              *     reserved for a possible future per-tenant override and are not
              *     currently populated by any endpoint. Not writable through

@@ -4,6 +4,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { EncryptionModule } from '../common/crypto/encryption.module';
 import { CredentialModule } from '../credential/credential.module';
+import { RateLimitModule } from '../rate-limit/rate-limit.module';
 import { TenantStatusModule } from '../tenant/tenant-status.module';
 import { TenantModule } from '../tenant/tenant.module';
 
@@ -21,6 +22,7 @@ import { ConnectorHealthCheckService } from './connector-health-check.service';
     AuthModule,
     TenantStatusModule,
     CredentialModule,
+    RateLimitModule,
   ],
   controllers: [ConnectorCredentialController],
   providers: [

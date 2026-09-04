@@ -2,6 +2,7 @@ import { JwtGuard, ScopeGuard, TenantGuard, type AuthContext } from '@app/auth';
 import { CanActivate } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 
+import { TenantTierRateLimitGuard } from '../rate-limit/tenant-tier-rate-limit.guard';
 import { TenantStatusGuard } from '../tenant/tenant-status.guard';
 import { TenantStatus } from '../tenant/tenant.entity';
 
@@ -106,6 +107,8 @@ describe('CredentialDefinitionController', () => {
       .overrideGuard(TenantGuard)
       .useClass(AllowGuard)
       .overrideGuard(TenantStatusGuard)
+      .useClass(AllowGuard)
+      .overrideGuard(TenantTierRateLimitGuard)
       .useClass(AllowGuard)
       .compile();
 

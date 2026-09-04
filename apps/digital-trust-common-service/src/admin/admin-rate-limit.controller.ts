@@ -26,7 +26,6 @@ import {
 } from '@nestjs/swagger';
 
 import { API_VERSION } from '../common/constants/api-version.constants';
-import { RateLimitByCaller } from '../rate-limit/rate-limit-by-caller.decorator';
 
 import { AdminRateLimitService } from './admin-rate-limit.service';
 import { RateLimitResetResponseDto } from './dto/rate-limit-reset-response.dto';
@@ -43,7 +42,6 @@ export class AdminRateLimitController {
   ) {}
 
   @Get(':tenantId')
-  @RateLimitByCaller()
   @ApiOperation({
     summary: "View a tenant's current rate-limit status",
     description:
@@ -67,7 +65,6 @@ export class AdminRateLimitController {
   }
 
   @Post(':tenantId/reset')
-  @RateLimitByCaller()
   @ApiOperation({
     summary: "Reset a tenant's rate limit",
     description:

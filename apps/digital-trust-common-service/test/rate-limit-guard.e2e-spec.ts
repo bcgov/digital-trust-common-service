@@ -1,6 +1,6 @@
 // Overrides the e2e default (`RATE_LIMIT_ENABLED=false`, set by
 // jest-e2e-setup.ts) so this file — and only this file — exercises the real
-// `TenantRateLimitGuard` end to end. A small standard-tier limit keeps the
+// `RateLimitGuard` end to end. A small standard-tier limit keeps the
 // test fast and deterministic. These must be set before `AppModule` (and
 // therefore `ConfigModule.forRoot()`) is imported/compiled below.
 process.env.RATE_LIMIT_ENABLED = 'true';
@@ -29,14 +29,15 @@ const mockBoss = {
   work: jest.fn().mockResolvedValue(undefined),
 };
 
-// GET /scopes has no `:tenantId` path param (tracker falls back to caller
-// IP) and only `@UseGuards(JwtGuard)` — no roles/scopes. `JwtGuard` is left
-// un-overridden on purpose: `TenantRateLimitGuard` is a global `APP_GUARD`
-// that runs ahead of it, so an unauthenticated caller must still be able to
-// prove the guard blocks with 429 before ever reaching JwtGuard's 401.
+// GET /scopes has no `:tenantId` path param and only `@UseGuards(JwtGuard)`
+// — no roles/scopes. `JwtGuard` is left un-overridden on purpose:
+// `RateLimitGuard` is a global `APP_GUARD` that runs ahead of it (keyed on
+// the caller's IP, regardless of the route), so an unauthenticated caller
+// must still be able to prove the guard blocks with 429 before ever
+// reaching JwtGuard's 401.
 const ROUTE_KEY = 'ScopeController.listScopes';
 
-describe('TenantRateLimitGuard (e2e)', () => {
+describe('RateLimitGuard (e2e)', () => {
   let app: INestApplication<App>;
   let hitRepo: Repository<RateLimitHit>;
 

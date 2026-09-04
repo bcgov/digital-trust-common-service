@@ -25,8 +25,8 @@ export function configureApp(app: INestApplication): void {
   // app and set X-Forwarded-For/-Proto; `trustedProxies`
   // (charts/.../values.yaml) restricts which peers those headers are
   // honored from. Without `trust proxy`, `req.ip` (e.g. in
-  // `TenantRateLimitGuard`'s IP fallback) would resolve to the proxy's own
-  // address for every caller instead of the real client IP.
+  // `RateLimitGuard`'s tracker) would resolve to the proxy's own address
+  // for every caller instead of the real client IP.
   const expressInstance = app.getHttpAdapter().getInstance() as Express;
   expressInstance.set('trust proxy', true);
 

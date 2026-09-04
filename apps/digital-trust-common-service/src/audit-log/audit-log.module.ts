@@ -2,6 +2,7 @@ import { AuthModule } from '@app/auth';
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
+import { RateLimitModule } from '../rate-limit/rate-limit.module';
 import { TenantStatusModule } from '../tenant/tenant-status.module';
 
 import { AuditLogController } from './audit-log.controller';
@@ -17,6 +18,7 @@ import { DomainAuditService } from './domain-audit.service';
     TypeOrmModule.forFeature([AuditLog]),
     AuthModule,
     TenantStatusModule,
+    RateLimitModule,
   ],
   controllers: [AuditLogController],
   providers: [
