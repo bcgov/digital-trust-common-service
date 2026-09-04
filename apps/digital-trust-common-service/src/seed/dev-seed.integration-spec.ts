@@ -9,6 +9,7 @@ import { DataSource } from 'typeorm';
 import { EncryptionModule } from '../common/crypto/encryption.module';
 
 import {
+  MULTI_TENANT_USER,
   UI_SPA_CLIENT_ID,
   seedApiClientId,
   uiSpaOrigin,
@@ -125,6 +126,9 @@ describe('DevSeedService integration', () => {
         "external_user_id IS NULL AND status = 'invited' AND email LIKE '%@acme-corp.example.test'",
       ),
     ).toBe(3);
+    // The multi-tenant account is active in all three tenants from the start.
+    const multiTenantWhere = `external_user_id = '${MULTI_TENANT_USER.externalUserId}' AND status = 'active'`;
+    expect(await countRows('tenant_user', multiTenantWhere)).toBe(3);
     expect(oauthClientCount).toBe(3);
 
     const second = await seedService.run();
@@ -139,6 +143,7 @@ describe('DevSeedService integration', () => {
     expect(
       await countRows('tenant_user', "external_user_id LIKE 'dev-%'"),
     ).toBe(userCount);
+    expect(await countRows('tenant_user', multiTenantWhere)).toBe(3);
     expect(await countRows('oauth_client', "client_id LIKE 'dev-seed-%'")).toBe(
       oauthClientCount,
     );

@@ -123,10 +123,36 @@ export const UI_SPA_CLIENT_ID = 'dtsc-ui';
 export const UI_SPA_TENANT_SLUG = 'acme-corp';
 
 /**
+ * One realm account that belongs to several tenants, so the tenant switcher
+ * has somewhere to switch to during local development. The checked-in realm
+ * (keycloak/config/realm.json) pins this account's Keycloak id, which lets
+ * its rows be seeded already active: the login callback claims invitations
+ * only for a user with no membership anywhere, so a second tenant has to be
+ * active before the first sign-in. Rows are created in `SEED_TENANTS` order
+ * and a sign-in binds to the oldest, so it lands in the first tenant below.
+ */
+export const MULTI_TENANT_USER: {
+  externalUserId: string;
+  email: string;
+  displayName: string;
+  rolesByTenant: Readonly<Partial<Record<string, TenantUserRole>>>;
+} = {
+  externalUserId: '7d2f6a9c-3e1b-4f8a-9c5d-2b6e8a1f4c73',
+  email: 'multi-tenant@example.test',
+  displayName: 'Multi Tenant',
+  rolesByTenant: {
+    'acme-corp': TenantUserRole.ADMIN,
+    'test-org': TenantUserRole.OWNER,
+    'suspended-co': TenantUserRole.MEMBER,
+  },
+};
+
+/**
  * The SPA client's tenant gets invitations at emails the checked-in Keycloak
  * realm (keycloak/config/realm.json) has accounts for, so each role can be
  * exercised through a real sign-in. Every other tenant's users are
- * placeholders: they populate member lists and cannot sign in.
+ * placeholders: they populate member lists and cannot sign in. The
+ * multi-tenant account is appended to each tenant it belongs to.
  */
 export function seedUsersForTenant(slug: string): SeedUserDefinition[] {
   const invitable = slug === UI_SPA_TENANT_SLUG;
@@ -136,13 +162,26 @@ export function seedUsersForTenant(slug: string): SeedUserDefinition[] {
     [TenantUserRole.MEMBER, 'Member'],
   ];
 
-  return roles.map(([role, label]) => ({
+  const users: SeedUserDefinition[] = roles.map(([role, label]) => ({
     externalUserId: invitable ? null : `dev-${slug}-${role}`,
     email: `${role}@${slug}.example.test`,
     displayName: `${slug} ${label}`,
     role,
     status: invitable ? TenantUserStatus.INVITED : TenantUserStatus.ACTIVE,
   }));
+
+  const multiTenantRole = MULTI_TENANT_USER.rolesByTenant[slug];
+  if (multiTenantRole) {
+    users.push({
+      externalUserId: MULTI_TENANT_USER.externalUserId,
+      email: MULTI_TENANT_USER.email,
+      displayName: MULTI_TENANT_USER.displayName,
+      role: multiTenantRole,
+      status: TenantUserStatus.ACTIVE,
+    });
+  }
+
+  return users;
 }
 
 /**
