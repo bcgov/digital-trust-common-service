@@ -10,6 +10,8 @@ export class PgBossService {
 
   public boss!: PgBoss;
 
+  private running = false;
+
   private readonly maxRetries = 5;
 
   private readonly retryDelayMs = 1000;
@@ -52,9 +54,34 @@ export class PgBossService {
     this.logger.log('Starting pg-boss...');
 
     await this.startWithRetry(boss);
+    this.running = true;
+
+    // pg-boss can stop on its own; without this the running flag would report the
+    // startup outcome forever rather than the current state.
+    boss.on('stopped', () => {
+      this.running = false;
+    });
 
     this.logger.log('pg-boss started');
     return boss;
+  }
+
+  public isRunning(): boolean {
+    return this.running;
+  }
+
+  public async stop(): Promise<void> {
+    if (!this.boss) {
+      this.running = false;
+      return;
+    }
+
+    try {
+      await this.boss.stop();
+    } finally {
+      // A failed stop still leaves pg-boss unusable, so never report it running.
+      this.running = false;
+    }
   }
 
   private async startWithRetry(boss: PgBoss, attempt = 1): Promise<void> {

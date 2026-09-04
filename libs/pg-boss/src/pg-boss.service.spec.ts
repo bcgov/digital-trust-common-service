@@ -23,7 +23,7 @@ describe('PgBossService', () => {
 
   it('starts pg-boss on module init', async () => {
     const start = jest.fn().mockResolvedValue(undefined);
-    const mockBoss = { start, stop: jest.fn() };
+    const mockBoss = { on: jest.fn(), start, stop: jest.fn() };
 
     jest.spyOn(service as any, 'createBoss').mockResolvedValue(mockBoss);
 
@@ -31,12 +31,68 @@ describe('PgBossService', () => {
 
     expect(start).toHaveBeenCalledTimes(1);
     expect(service.boss).toBe(mockBoss);
+    expect(service.isRunning()).toBe(true);
+  });
+
+  it('reports pg-boss stopped after shutdown', async () => {
+    const start = jest.fn().mockResolvedValue(undefined);
+    const stop = jest.fn().mockResolvedValue(undefined);
+    const mockBoss = { on: jest.fn(), start, stop };
+
+    jest.spyOn(service as any, 'createBoss').mockResolvedValue(mockBoss);
+
+    await service.initializeBoss();
+    await service.stop();
+
+    expect(stop).toHaveBeenCalledTimes(1);
+    expect(service.isRunning()).toBe(false);
+  });
+
+  it('reports pg-boss stopped when it stops on its own', async () => {
+    const handlers: Record<string, () => void> = {};
+    const mockBoss = {
+      on: jest.fn((event: string, handler: () => void) => {
+        handlers[event] = handler;
+      }),
+      start: jest.fn().mockResolvedValue(undefined),
+      stop: jest.fn(),
+    };
+
+    jest.spyOn(service as any, 'createBoss').mockResolvedValue(mockBoss);
+
+    await service.initializeBoss();
+    expect(service.isRunning()).toBe(true);
+
+    handlers.stopped();
+
+    expect(service.isRunning()).toBe(false);
+  });
+
+  it('reports pg-boss stopped even when stopping fails', async () => {
+    const stop = jest.fn().mockRejectedValue(new Error('stop failed'));
+    const mockBoss = {
+      on: jest.fn(),
+      start: jest.fn().mockResolvedValue(undefined),
+      stop,
+    };
+
+    jest.spyOn(service as any, 'createBoss').mockResolvedValue(mockBoss);
+
+    await service.initializeBoss();
+
+    await expect(service.stop()).rejects.toThrow('stop failed');
+    expect(service.isRunning()).toBe(false);
+  });
+
+  it('stops cleanly when pg-boss was never started', async () => {
+    await expect(service.stop()).resolves.toBeUndefined();
+    expect(service.isRunning()).toBe(false);
   });
 
   describe('startWithRetry', () => {
     it('should succeed on first attempt', async () => {
       const start = jest.fn().mockResolvedValue(undefined);
-      const mockBoss = { start, stop: jest.fn() };
+      const mockBoss = { on: jest.fn(), start, stop: jest.fn() };
 
       jest.spyOn(service as any, 'createBoss').mockResolvedValue(mockBoss);
 
@@ -51,7 +107,7 @@ describe('PgBossService', () => {
         .mockRejectedValueOnce(new Error('Connection failed'))
         .mockResolvedValueOnce(undefined);
 
-      const mockBoss = { start, stop: jest.fn() };
+      const mockBoss = { on: jest.fn(), start, stop: jest.fn() };
 
       jest.spyOn(service as any, 'createBoss').mockResolvedValue(mockBoss);
 
@@ -70,7 +126,7 @@ describe('PgBossService', () => {
         .mockRejectedValueOnce(new Error('Attempt 2 failed'))
         .mockResolvedValueOnce(undefined);
 
-      const mockBoss = { start, stop: jest.fn() };
+      const mockBoss = { on: jest.fn(), start, stop: jest.fn() };
 
       jest.spyOn(service as any, 'createBoss').mockResolvedValue(mockBoss);
 
@@ -100,7 +156,7 @@ describe('PgBossService', () => {
         .mockRejectedValueOnce(new Error('Attempt 2 failed'))
         .mockResolvedValueOnce(undefined);
 
-      const mockBoss = { start, stop: jest.fn() };
+      const mockBoss = { on: jest.fn(), start, stop: jest.fn() };
 
       jest.spyOn(service as any, 'createBoss').mockResolvedValue(mockBoss);
 
