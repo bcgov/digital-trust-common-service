@@ -3,6 +3,7 @@ import { CanActivate } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { Test, TestingModule } from '@nestjs/testing';
 
+import { TenantTierRateLimitGuard } from '../rate-limit/tenant-tier-rate-limit.guard';
 import { TenantStatusGuard } from '../tenant/tenant-status.guard';
 
 import { CreateOAuthClientDto } from './dto/create-oauth-client.dto';
@@ -105,6 +106,8 @@ describe('OAuthClientController', () => {
       .overrideGuard(TenantGuard)
       .useClass(AllowGuard)
       .overrideGuard(TenantStatusGuard)
+      .useClass(AllowGuard)
+      .overrideGuard(TenantTierRateLimitGuard)
       .useClass(AllowGuard)
       .compile();
 

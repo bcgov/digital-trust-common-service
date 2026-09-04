@@ -1,7 +1,9 @@
 import { Controller, Get, HttpException, HttpStatus } from '@nestjs/common';
+import { SkipThrottle } from '@nestjs/throttler';
 
 import { GracefulShutdownService } from '../shutdown/shutdown.service';
 
+@SkipThrottle()
 @Controller('health')
 export class HealthController {
   public constructor(

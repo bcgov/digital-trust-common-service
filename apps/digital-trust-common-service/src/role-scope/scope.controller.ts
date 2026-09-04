@@ -9,8 +9,9 @@ import { RoleScopeService } from './role-scope.service';
 
 /**
  * The scope catalog is non-secret, but it is not served anonymously: it
- * publishes the platform's full capability taxonomy, and there is no rate
- * limiting in front of unauthenticated routes yet (AG-03 #77). Any
+ * publishes the platform's full capability taxonomy. It sits behind the
+ * global per-tenant rate limiter like every other route; a
+ * scope-gated endpoint would still narrow it further. Any
  * authenticated principal may read it, including `readonly`.
  */
 @ApiTags('admin')

@@ -235,8 +235,9 @@ export interface paths {
          *     is a platform admin. Merges the given top-level keys into the tenant's existing `config` —
          *     any key omitted from the request body (including `operation_ttl`) is left unchanged.
          *
-         *     `rate_limits` is not accepted here: it is read-only and can only be set via
-         *     `PATCH /usage/limits`. Sending it returns `400`, same as any other undeclared property.
+         *     `rate_limits` is not accepted here: it is read-only and holds the tenant's rate-limit tier
+         *     (see `GET /api/v1/admin/rate-limits/{tenantId}`). Sending it returns `400`, same as any
+         *     other undeclared property.
          *
          *     When `default_connector` is provided, it must reference a `ConnectorCredential` that
          *     belongs to this tenant and is currently active, or the request is rejected with `404`
@@ -1512,7 +1513,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/tenants/{tenantId}/usage/reset-counters": {
+    "/api/v1/admin/rate-limits/{tenantId}": {
         parameters: {
             query?: never;
             header?: never;
@@ -1522,21 +1523,22 @@ export interface paths {
             };
             cookie?: never;
         };
-        get?: never;
-        put?: never;
         /**
-         * Reset usage counters (admin only)
-         * @description Reset rate limit and usage counters for the tenant. Intended for incident response,
-         *     testing, or correcting erroneous rate limit blocks. Requires platform-admin role.
+         * View a tenant's current rate-limit status (platform-admin)
+         * @description Resolved tier, limit, and per-route hit counts within the current
+         *     sliding window — mirrors the limit `TenantTierRateLimitGuard` would
+         *     apply to the tenant right now. Requires the platform-admin role.
          */
-        post: operations["resetTenantUsageCounters"];
+        get: operations["getTenantRateLimitStatus"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/v1/tenants/{tenantId}/usage/limits": {
+    "/api/v1/admin/rate-limits/{tenantId}/reset": {
         parameters: {
             query?: never;
             header?: never;
@@ -1548,16 +1550,18 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        post?: never;
+        /**
+         * Reset a tenant's rate limit (platform-admin)
+         * @description Deletes every recorded rate-limit hit for the tenant, clearing it
+         *     back to zero for every route. Intended for incident response,
+         *     testing, or correcting erroneous rate limit blocks. Requires the
+         *     platform-admin role.
+         */
+        post: operations["resetTenantRateLimit"];
         delete?: never;
         options?: never;
         head?: never;
-        /**
-         * Override tenant quota limits (admin only)
-         * @description Temporarily override per-tenant rate limits and quotas (API calls/min, credentials/day, storage).
-         *     Intended for SLA management, tier upgrades, or incident mitigation. Requires platform-admin role.
-         */
-        patch: operations["updateTenantUsageLimits"];
+        patch?: never;
         trace?: never;
     };
 }
@@ -1628,10 +1632,19 @@ export interface components {
             /** @description Feature flags (key-value) */
             features?: Record<string, never>;
             /**
-             * @description Active per-tenant rate limit overrides. Populated when a platform-admin
-             *     has called `PATCH /usage/limits`; absent when platform defaults apply.
+             * @description Rate-limit configuration. `tier` selects the fixed request-per-minute
+             *     ceiling `TenantTierRateLimitGuard` applies (`standard` or `premium`, see
+             *     `GET /api/v1/admin/rate-limits/{tenantId}`). The remaining fields are
+             *     reserved for a possible future per-tenant override and are not
+             *     currently populated by any endpoint. Not writable through
+             *     `PATCH /api/v1/tenants/{tenantId}/config`.
              */
             readonly rate_limits?: {
+                /**
+                 * @default standard
+                 * @enum {string}
+                 */
+                tier: "standard" | "premium";
                 api_calls_per_minute?: number | null;
                 credentials_per_day?: number | null;
                 storage_mb?: number | null;
@@ -4973,7 +4986,7 @@ export interface operations {
             };
         };
     };
-    resetTenantUsageCounters: {
+    getTenantRateLimitStatus: {
         parameters: {
             query?: never;
             header?: never;
@@ -4985,24 +4998,35 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Counters reset */
+            /** @description Current rate-limit status for the tenant */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": {
-                        /** @example Usage counters reset successfully */
-                        message?: string;
-                        /** Format: date-time */
-                        reset_at?: string;
+                        /** Format: uuid */
+                        tenant_id: string;
+                        /** @enum {string} */
+                        tier: "standard" | "premium";
+                        /** @description Sliding window length, in milliseconds */
+                        window_ms: number;
+                        limit: number;
+                        routes: {
+                            /** @description Controller.handler key the hits were recorded under */
+                            route_key: string;
+                            /** @description Hits recorded for this route within the current window */
+                            hits: number;
+                        }[];
                     };
                 };
             };
+            400: components["responses"]["BadRequest"];
             403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
         };
     };
-    updateTenantUsageLimits: {
+    resetTenantRateLimit: {
         parameters: {
             query?: never;
             header?: never;
@@ -5012,40 +5036,25 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": {
-                    /** @description Override default API rate limit */
-                    api_calls_per_minute?: number;
-                    /** @description Override daily credential issuance limit */
-                    credentials_per_day?: number;
-                    /** @description Override storage quota */
-                    storage_mb?: number;
-                    /**
-                     * Format: date-time
-                     * @description When this override expires (null for permanent)
-                     */
-                    expires_at?: string | null;
-                };
-            };
-        };
+        requestBody?: never;
         responses: {
-            /** @description Limits updated */
-            200: {
+            /** @description Rate limit reset */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": {
-                        api_calls_per_minute?: number;
-                        credentials_per_day?: number;
-                        storage_mb?: number;
-                        /** Format: date-time */
-                        expires_at?: string | null;
+                        /** Format: uuid */
+                        tenant_id: string;
+                        /** @description Number of rate-limit hit rows deleted for the tenant */
+                        deleted_count: number;
                     };
                 };
             };
+            400: components["responses"]["BadRequest"];
             403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
         };
     };
 }

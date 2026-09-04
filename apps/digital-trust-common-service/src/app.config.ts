@@ -6,12 +6,13 @@ import {
   VersioningType,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
+import type { Express } from 'express';
 
 import { API_PREFIX } from './common/constants/api-version.constants';
 import { DeprecationInterceptor } from './common/interceptors/deprecation.interceptor';
 
 /**
- * Applies the AG-01 global prefix/versioning setup (and other cross-cutting
+ * Applies the global prefix/versioning setup (and other cross-cutting
  * app config) to a Nest application instance.
  *
  * Extracted from `bootstrap()` so both `main.ts` and e2e/integration tests
@@ -20,6 +21,15 @@ import { DeprecationInterceptor } from './common/interceptors/deprecation.interc
  * instead of drifting from it.
  */
 export function configureApp(app: INestApplication): void {
+  // Caddy (dev) and the OpenShift router (prod) both sit in front of the
+  // app and set X-Forwarded-For/-Proto; `trustedProxies`
+  // (charts/.../values.yaml) restricts which peers those headers are
+  // honored from. Without `trust proxy`, `req.ip` (e.g. in
+  // `RateLimitGuard`'s tracker) would resolve to the proxy's own address
+  // for every caller instead of the real client IP.
+  const expressInstance = app.getHttpAdapter().getInstance() as Express;
+  expressInstance.set('trust proxy', true);
+
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
@@ -28,9 +38,9 @@ export function configureApp(app: INestApplication): void {
     }),
   );
 
-  // AG-01: global `/api` prefix + explicit URI versioning (no defaultVersion
-  // — see decision D2). Operational endpoints (health, root) are excluded so
-  // they stay on a single stable, unversioned path (see D5). Swagger is
+  // `/api` prefix + explicit URI versioning (no defaultVersion).
+  // Operational endpoints (health, root) are excluded so
+  // they stay on a single stable, unversioned path. Swagger is
   // mounted separately via raw Express routes in SwaggerService and is
   // unaffected by this prefix.
   app.setGlobalPrefix(API_PREFIX, {
