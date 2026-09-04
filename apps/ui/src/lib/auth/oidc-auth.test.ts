@@ -2,6 +2,7 @@ import { ErrorResponse, WebStorageStateStore, type User } from 'oidc-client-ts';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { AppConfig } from '@/lib/config';
+import { mockSwitchedAccessToken } from '@/test/msw/handlers';
 
 import { AuthProviderError } from './errors';
 import { createOidcAuthClient } from './oidc-auth';
@@ -27,7 +28,21 @@ const mocks = vi.hoisted(() => ({
     },
   },
   captured: { settings: null as Record<string, unknown> | null },
+  postSwitchTenant: vi.fn(),
+  actualPostSwitchTenant: null as PostSwitchTenant | null,
 }));
+
+type PostSwitchTenant =
+  (typeof import('@/lib/api/resources/auth'))['switchTenant'];
+
+// The switch-tenant request is mockable so a test can hold it open and
+// interleave it with a silent renew; by default it passes through to MSW.
+vi.mock('@/lib/api/resources/auth', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('@/lib/api/resources/auth')>();
+  mocks.actualPostSwitchTenant = actual.switchTenant;
+  return { ...actual, switchTenant: mocks.postSwitchTenant };
+});
 
 // Function expressions, not arrows: the code under test calls these with
 // `new`, and an arrow is not constructible. The rest of the library (notably
@@ -60,6 +75,12 @@ describe('oidc auth client', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.manager.getUser.mockResolvedValue(null);
+    mocks.postSwitchTenant.mockImplementation((tenantId: string) => {
+      if (!mocks.actualPostSwitchTenant) {
+        throw new Error('resources/auth was not loaded');
+      }
+      return mocks.actualPostSwitchTenant(tenantId);
+    });
   });
 
   describe('logout', () => {
@@ -428,6 +449,132 @@ describe('oidc auth client', () => {
 
       expect(mocks.manager.revokeTokens).toHaveBeenCalledTimes(1);
       expect(mocks.manager.signoutRedirect).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('a silent renew and a tenant switch in flight together', () => {
+    const tenantA = '11111111-1111-4111-8111-111111111111';
+    const tenantB = '22222222-2222-4222-8222-222222222222';
+
+    function deferred<T>() {
+      let resolve!: (value: T) => void;
+      let reject!: (reason: unknown) => void;
+      const promise = new Promise<T>((res, rej) => {
+        resolve = res;
+        reject = rej;
+      });
+      return { promise, resolve, reject };
+    }
+
+    function switchedTokens(tenantId: string) {
+      return {
+        access_token: mockSwitchedAccessToken(tenantId),
+        refresh_token: 'switched-refresh-token',
+        token_type: 'Bearer',
+        expires_in: 300,
+      };
+    }
+
+    async function signedInClient() {
+      mocks.manager.getUser.mockResolvedValue(
+        makeUser(
+          { tenant_id: tenantA },
+          {
+            access_token: 'login-access-token',
+            refresh_token: 'login-refresh-token',
+          },
+        ),
+      );
+      const client = createOidcAuthClient(config);
+      await vi.waitFor(() =>
+        expect(client.getState().status).toBe('authenticated'),
+      );
+      return client;
+    }
+
+    /** Lets a resolved request's continuation run before the test goes on. */
+    const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+    it('a renew that resolves after the switch does not put the old tenant back', async () => {
+      const client = await signedInClient();
+      const renew = deferred<User>();
+      mocks.manager.signinSilent.mockReturnValue(renew.promise);
+      const refreshing = client.refresh();
+
+      const request = deferred<ReturnType<typeof switchedTokens>>();
+      mocks.postSwitchTenant.mockReturnValue(request.promise);
+      const switching = client.switchTenant(tenantB);
+      request.resolve(switchedTokens(tenantB));
+      await settle();
+      // The switch's tokens wait behind the renew.
+      expect(mocks.manager.storeUser).not.toHaveBeenCalled();
+
+      // The library stores the renewed user and raises userLoaded before
+      // signinSilent resolves; without ordering, that is the last word.
+      const renewed = makeUser(
+        { tenant_id: tenantA },
+        { access_token: 'renewed-old-token' },
+      );
+      const onUserLoaded = mocks.manager.events.addUserLoaded.mock
+        .calls[0]?.[0] as (user: User) => void;
+      onUserLoaded(renewed);
+      renew.resolve(renewed);
+
+      await expect(refreshing).resolves.toBe('renewed-old-token');
+      await switching;
+      expect(client.getState().user?.tenantId).toBe(tenantB);
+      expect(client.getAccessToken()).toBe(mockSwitchedAccessToken(tenantB));
+    });
+
+    it('a renew that fails during the switch answers with the new tenant token', async () => {
+      const client = await signedInClient();
+      const renew = deferred<User>();
+      mocks.manager.signinSilent.mockReturnValue(renew.promise);
+      const refreshing = client.refresh();
+
+      const request = deferred<ReturnType<typeof switchedTokens>>();
+      mocks.postSwitchTenant.mockReturnValue(request.promise);
+      const switching = client.switchTenant(tenantB);
+      request.resolve(switchedTokens(tenantB));
+      await settle();
+
+      // The switch revoked the refresh token this renew was started with.
+      renew.reject(new Error('invalid_grant'));
+
+      await expect(refreshing).resolves.toBe(mockSwitchedAccessToken(tenantB));
+      await switching;
+      expect(client.getState().user?.tenantId).toBe(tenantB);
+    });
+
+    it('refuses a second switch while one is in flight', async () => {
+      const client = await signedInClient();
+      const request = deferred<ReturnType<typeof switchedTokens>>();
+      mocks.postSwitchTenant.mockReturnValue(request.promise);
+      const first = client.switchTenant(tenantB);
+
+      await expect(client.switchTenant(tenantA)).rejects.toThrow(
+        /already in progress/,
+      );
+
+      request.resolve(switchedTokens(tenantB));
+      await first;
+      expect(client.getState().user?.tenantId).toBe(tenantB);
+    });
+  });
+
+  describe('clearSession', () => {
+    it("drops this tab's session without touching the provider's", async () => {
+      mocks.manager.getUser.mockResolvedValue(makeUser({}));
+      const client = createOidcAuthClient(config);
+      await vi.waitFor(() =>
+        expect(client.getState().status).toBe('authenticated'),
+      );
+
+      await client.clearSession();
+
+      expect(mocks.manager.removeUser).toHaveBeenCalledTimes(1);
+      expect(mocks.manager.revokeTokens).not.toHaveBeenCalled();
+      expect(mocks.manager.signoutRedirect).not.toHaveBeenCalled();
     });
   });
 
