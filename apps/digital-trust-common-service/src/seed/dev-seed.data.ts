@@ -123,13 +123,9 @@ export const UI_SPA_CLIENT_ID = 'dtsc-ui';
 export const UI_SPA_TENANT_SLUG = 'acme-corp';
 
 /**
- * One realm account that belongs to several tenants, so the tenant switcher
- * has somewhere to switch to during local development. The checked-in realm
- * (keycloak/config/realm.json) pins this account's Keycloak id, which lets
- * its rows be seeded already active: the login callback claims invitations
- * only for a user with no membership anywhere, so a second tenant has to be
- * active before the first sign-in. Rows are created in `SEED_TENANTS` order
- * and a sign-in binds to the oldest, so it lands in the first tenant below.
+ * One realm account in several tenants, so the tenant switcher has somewhere
+ * to go locally. Seeded active under its pinned Keycloak id, since a login
+ * only claims invitations when the user has no membership yet.
  */
 export const MULTI_TENANT_USER: {
   externalUserId: string;

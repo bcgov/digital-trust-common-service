@@ -77,17 +77,23 @@ describe('DevSeedService integration', () => {
     // The seed's tenants persist in the shared test database between runs.
     // Start from no seeded users, so the counts below are this run's work
     // whatever an earlier seed left behind.
-    await queryDataSource.query(
-      `DELETE FROM tenant_user WHERE tenant_id IN
-         (SELECT id FROM tenant WHERE slug IN ('acme-corp', 'test-org', 'suspended-co'))`,
-    );
+    await clearSeededUsers();
   });
 
   afterAll(async () => {
     if (module) {
+      // Leave no memberships behind for later specs to trip over.
+      await clearSeededUsers();
       await module.close();
     }
   });
+
+  async function clearSeededUsers(): Promise<void> {
+    await queryDataSource.query(
+      `DELETE FROM tenant_user WHERE tenant_id IN
+         (SELECT id FROM tenant WHERE slug IN ('acme-corp', 'test-org', 'suspended-co'))`,
+    );
+  }
 
   async function countRows(table: string, where = 'TRUE'): Promise<number> {
     const rows = await queryDataSource.query<Array<{ count: string }>>(
