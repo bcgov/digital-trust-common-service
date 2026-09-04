@@ -9,6 +9,7 @@ import { DataSource } from 'typeorm';
 import { EncryptionModule } from '../common/crypto/encryption.module';
 
 import {
+  MULTI_TENANT_USER,
   UI_SPA_CLIENT_ID,
   seedApiClientId,
   uiSpaOrigin,
@@ -76,17 +77,23 @@ describe('DevSeedService integration', () => {
     // The seed's tenants persist in the shared test database between runs.
     // Start from no seeded users, so the counts below are this run's work
     // whatever an earlier seed left behind.
-    await queryDataSource.query(
-      `DELETE FROM tenant_user WHERE tenant_id IN
-         (SELECT id FROM tenant WHERE slug IN ('acme-corp', 'test-org', 'suspended-co'))`,
-    );
+    await clearSeededUsers();
   });
 
   afterAll(async () => {
     if (module) {
+      // Leave no memberships behind for later specs to trip over.
+      await clearSeededUsers();
       await module.close();
     }
   });
+
+  async function clearSeededUsers(): Promise<void> {
+    await queryDataSource.query(
+      `DELETE FROM tenant_user WHERE tenant_id IN
+         (SELECT id FROM tenant WHERE slug IN ('acme-corp', 'test-org', 'suspended-co'))`,
+    );
+  }
 
   async function countRows(table: string, where = 'TRUE'): Promise<number> {
     const rows = await queryDataSource.query<Array<{ count: string }>>(
@@ -125,6 +132,9 @@ describe('DevSeedService integration', () => {
         "external_user_id IS NULL AND status = 'invited' AND email LIKE '%@acme-corp.example.test'",
       ),
     ).toBe(3);
+    // The multi-tenant account is active in all three tenants from the start.
+    const multiTenantWhere = `external_user_id = '${MULTI_TENANT_USER.externalUserId}' AND status = 'active'`;
+    expect(await countRows('tenant_user', multiTenantWhere)).toBe(3);
     expect(oauthClientCount).toBe(3);
 
     const second = await seedService.run();
@@ -139,6 +149,7 @@ describe('DevSeedService integration', () => {
     expect(
       await countRows('tenant_user', "external_user_id LIKE 'dev-%'"),
     ).toBe(userCount);
+    expect(await countRows('tenant_user', multiTenantWhere)).toBe(3);
     expect(await countRows('oauth_client', "client_id LIKE 'dev-seed-%'")).toBe(
       oauthClientCount,
     );

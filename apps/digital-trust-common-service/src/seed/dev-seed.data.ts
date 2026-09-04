@@ -123,10 +123,32 @@ export const UI_SPA_CLIENT_ID = 'dtsc-ui';
 export const UI_SPA_TENANT_SLUG = 'acme-corp';
 
 /**
+ * One realm account in several tenants, so the tenant switcher has somewhere
+ * to go locally. Seeded active under its pinned Keycloak id, since a login
+ * only claims invitations when the user has no membership yet.
+ */
+export const MULTI_TENANT_USER: {
+  externalUserId: string;
+  email: string;
+  displayName: string;
+  rolesByTenant: Readonly<Partial<Record<string, TenantUserRole>>>;
+} = {
+  externalUserId: '7d2f6a9c-3e1b-4f8a-9c5d-2b6e8a1f4c73',
+  email: 'multi-tenant@example.test',
+  displayName: 'Multi Tenant',
+  rolesByTenant: {
+    'acme-corp': TenantUserRole.ADMIN,
+    'test-org': TenantUserRole.OWNER,
+    'suspended-co': TenantUserRole.MEMBER,
+  },
+};
+
+/**
  * The SPA client's tenant gets invitations at emails the checked-in Keycloak
  * realm (keycloak/config/realm.json) has accounts for, so each role can be
  * exercised through a real sign-in. Every other tenant's users are
- * placeholders: they populate member lists and cannot sign in.
+ * placeholders: they populate member lists and cannot sign in. The
+ * multi-tenant account is appended to each tenant it belongs to.
  */
 export function seedUsersForTenant(slug: string): SeedUserDefinition[] {
   const invitable = slug === UI_SPA_TENANT_SLUG;
@@ -136,13 +158,26 @@ export function seedUsersForTenant(slug: string): SeedUserDefinition[] {
     [TenantUserRole.MEMBER, 'Member'],
   ];
 
-  return roles.map(([role, label]) => ({
+  const users: SeedUserDefinition[] = roles.map(([role, label]) => ({
     externalUserId: invitable ? null : `dev-${slug}-${role}`,
     email: `${role}@${slug}.example.test`,
     displayName: `${slug} ${label}`,
     role,
     status: invitable ? TenantUserStatus.INVITED : TenantUserStatus.ACTIVE,
   }));
+
+  const multiTenantRole = MULTI_TENANT_USER.rolesByTenant[slug];
+  if (multiTenantRole) {
+    users.push({
+      externalUserId: MULTI_TENANT_USER.externalUserId,
+      email: MULTI_TENANT_USER.email,
+      displayName: MULTI_TENANT_USER.displayName,
+      role: multiTenantRole,
+      status: TenantUserStatus.ACTIVE,
+    });
+  }
+
+  return users;
 }
 
 /**

@@ -95,6 +95,23 @@
           "temporary": false
         }
       ]
+    },
+    {
+      "id": "7d2f6a9c-3e1b-4f8a-9c5d-2b6e8a1f4c73",
+      "username": "multi-tenant",
+      "enabled": true,
+      "email": "multi-tenant@example.test",
+      "emailVerified": true,
+      "firstName": "Multi",
+      "lastName": "Tenant",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "multi-tenant",
+          "temporary": false
+        }
+      ]
     }
+
   ]
 }
