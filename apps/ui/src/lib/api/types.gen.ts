@@ -1775,6 +1775,8 @@ export interface components {
             /** @description Ledger/registry reference (e.g., cred_def_id) */
             external_id?: string | null;
             connector_type?: components["schemas"]["ConnectorType"];
+            /** @description Whether this credential definition is currently active */
+            is_active?: boolean;
             metadata?: Record<string, never>;
             /** Format: date-time */
             created_at?: string;

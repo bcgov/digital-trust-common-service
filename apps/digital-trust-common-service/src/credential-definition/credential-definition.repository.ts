@@ -60,10 +60,10 @@ export class CredentialDefinitionRepository {
 
   public async findByFormat(
     format: CredentialDefinitionFormat,
-    tenantId?: string,
+    tenantId: string,
   ): Promise<CredentialDefinition[]> {
     return await this.repository.find({
-      where: tenantId ? { format, tenantId } : { format },
+      where: { format, tenantId },
       order: {
         createdAt: 'ASC',
       },
@@ -72,10 +72,10 @@ export class CredentialDefinitionRepository {
 
   public async findByConnector(
     connectorType: CredentialDefinitionConnectorType,
-    tenantId?: string,
+    tenantId: string,
   ): Promise<CredentialDefinition[]> {
     return await this.repository.find({
-      where: tenantId ? { connectorType, tenantId } : { connectorType },
+      where: { connectorType, tenantId },
       order: {
         createdAt: 'ASC',
       },
@@ -88,7 +88,13 @@ export class CredentialDefinitionRepository {
     return await this.repository.save(credentialDefinition);
   }
 
-  public async delete(id: string): Promise<void> {
-    await this.repository.delete(id);
+  /**
+   * Deactivates a credential definition rather than removing its row: other
+   * records (e.g. an issuance profile) may still reference its id, and
+   * deactivation stops it from being offered for new issuance without
+   * breaking those references.
+   */
+  public async deactivate(id: string): Promise<void> {
+    await this.repository.update({ id }, { isActive: false });
   }
 }

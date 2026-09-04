@@ -68,7 +68,7 @@ describe('product controllers (e2e) — auth enforcement', () => {
     ['GET', `${API_BASE_PATH}/connections/tenant/${tenantId}`],
     ['GET', `${API_BASE_PATH}/tenants/${tenantId}/clients`],
     ['GET', `${API_BASE_PATH}/tenants/${tenantId}/connectors`],
-    ['GET', `${API_BASE_PATH}/credential-definitions/tenant/${tenantId}`],
+    ['GET', `${API_BASE_PATH}/tenants/${tenantId}/credential-definitions`],
     [
       'GET',
       `${API_BASE_PATH}/tenants/${tenantId}/operations/123e4567-e89b-12d3-a456-426614174000`,
@@ -171,7 +171,7 @@ describe('product controllers (e2e) — tenant status enforcement', () => {
     ['GET', (id: string) => `${API_BASE_PATH}/tenants/${id}/connectors`],
     [
       'GET',
-      (id: string) => `${API_BASE_PATH}/credential-definitions/tenant/${id}`,
+      (id: string) => `${API_BASE_PATH}/tenants/${id}/credential-definitions`,
     ],
     [
       'GET',
