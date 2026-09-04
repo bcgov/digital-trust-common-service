@@ -81,6 +81,37 @@ describe('AppController (e2e)', () => {
       .expect(404);
   });
 
+  it('/health/ready (GET) reports the database up against a real connection', async () => {
+    // The only tier where the readiness contract meets real collaborators. A
+    // unit test can assert the mapping from a mocked indicator, but not that
+    // terminus resolves the DataSource or that the route is reachable at all.
+    const response = await request(app.getHttpServer())
+      .get('/health/ready')
+      .expect(200);
+
+    expect(response.body).toMatchObject({
+      status: 'ok',
+      details: { database: { status: 'up' } },
+    });
+  });
+
+  it('/health/status (GET) reports dependency state', async () => {
+    const response = await request(app.getHttpServer())
+      .get('/health/status')
+      .expect(200);
+
+    expect(response.body).toMatchObject({
+      status: 'ok',
+      details: { database: { status: 'up' } },
+    });
+  });
+
+  it('/api/v1/health/ready (GET) 404s — health sits outside the global prefix', () => {
+    // configureApp() excludes `health/(.*)` from the global prefix so probe
+    // paths stay stable. Nothing else pins that exclusion.
+    return request(app.getHttpServer()).get('/api/v1/health/ready').expect(404);
+  });
+
   afterEach(async () => {
     await app.close();
 
