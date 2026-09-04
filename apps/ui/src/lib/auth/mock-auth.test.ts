@@ -83,6 +83,16 @@ describe('mock auth client', () => {
     expect(calls).toBe(2);
   });
 
+  it('clearSession drops the session, which in mock mode is all there is', async () => {
+    const client = createMockAuthClient();
+    await client.login();
+
+    await client.clearSession();
+
+    expect(client.getState().user).toBeNull();
+    expect(client.getAccessToken()).toBeNull();
+  });
+
   it('switchTenant updates the active tenant and rotates the token', async () => {
     const client = createMockAuthClient();
     await client.login();

@@ -75,8 +75,13 @@ function AuthProviderInner({
     setAuthHandlers({
       getAccessToken: () => client.getAccessToken(),
       refresh: () => client.refresh(),
+      // A renew that cannot succeed means this tab's tokens are dead, not
+      // that the user signed out: after a tenant switch in another tab, the
+      // provider session is alive and bound to the new tenant. Clear this
+      // tab only; RequireAuth sends it to sign-in, which completes silently
+      // against that session. A full logout here would end it for every tab.
       onAuthFailure: () => {
-        void client.logout();
+        void client.clearSession();
       },
     });
     return () => setAuthHandlers(null);
