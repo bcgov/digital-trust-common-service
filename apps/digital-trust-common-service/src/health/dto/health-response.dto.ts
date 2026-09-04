@@ -1,30 +1,36 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import {
+  ApiExtraModels,
+  ApiProperty,
+  ApiPropertyOptional,
+  getSchemaPath,
+} from '@nestjs/swagger';
 
 export class HealthDependencyResponseDto {
   @ApiProperty({ description: 'Dependency state.', example: 'up' })
   public status!: 'up' | 'down';
 }
 
+@ApiExtraModels(HealthDependencyResponseDto)
 export class ReadinessResponseDto {
   @ApiProperty({ description: 'Overall readiness state.', example: 'ok' })
   public status!: 'ok' | 'error' | 'shutting_down';
 
   @ApiProperty({
-    additionalProperties: { type: 'object' },
+    additionalProperties: { $ref: getSchemaPath(HealthDependencyResponseDto) },
     description: 'Healthy dependency checks.',
     example: { database: { status: 'up' } },
   })
   public info!: Record<string, HealthDependencyResponseDto>;
 
   @ApiProperty({
-    additionalProperties: { type: 'object' },
+    additionalProperties: { $ref: getSchemaPath(HealthDependencyResponseDto) },
     description: 'Failed dependency checks.',
     example: {},
   })
   public error!: Record<string, HealthDependencyResponseDto>;
 
   @ApiProperty({
-    additionalProperties: { type: 'object' },
+    additionalProperties: { $ref: getSchemaPath(HealthDependencyResponseDto) },
     description: 'All readiness checks by dependency name.',
     example: { database: { status: 'up' } },
   })
