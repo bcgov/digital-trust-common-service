@@ -1,4 +1,4 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class HealthDependencyResponseDto {
   @ApiProperty({ description: 'Dependency state.', example: 'up' })
@@ -31,15 +31,26 @@ export class ReadinessResponseDto {
   public details!: Record<string, HealthDependencyResponseDto>;
 }
 
+/**
+ * Dependencies are reported individually while the service is running. During
+ * graceful shutdown the response carries `shutdown` alone — dependency state is
+ * not meaningful once teardown has begun — so every key here is optional.
+ */
 export class HealthStatusDetailsResponseDto {
-  @ApiProperty({ type: HealthDependencyResponseDto })
-  public database!: HealthDependencyResponseDto;
+  @ApiPropertyOptional({ type: HealthDependencyResponseDto })
+  public database?: HealthDependencyResponseDto;
 
-  @ApiProperty({ type: HealthDependencyResponseDto })
-  public oidcProvider!: HealthDependencyResponseDto;
+  @ApiPropertyOptional({ type: HealthDependencyResponseDto })
+  public oidcProvider?: HealthDependencyResponseDto;
 
-  @ApiProperty({ type: HealthDependencyResponseDto })
-  public pgBoss!: HealthDependencyResponseDto;
+  @ApiPropertyOptional({ type: HealthDependencyResponseDto })
+  public pgBoss?: HealthDependencyResponseDto;
+
+  @ApiPropertyOptional({
+    description: 'Present only while graceful shutdown is in progress.',
+    type: HealthDependencyResponseDto,
+  })
+  public shutdown?: HealthDependencyResponseDto;
 }
 
 export class HealthStatusResponseDto {
