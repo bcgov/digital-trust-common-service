@@ -74,6 +74,22 @@ describe('HealthService', () => {
       expect(oidcProviderService.getProvider).not.toHaveBeenCalled();
     });
 
+    it('raises 503 when the database is unavailable', async () => {
+      // terminus throws ServiceUnavailableException once an indicator is down,
+      // which is what turns the probe into a 503 and drains the pod.
+      const failure = new ServiceUnavailableException({
+        details: { database: { status: 'down' } },
+        error: { database: { status: 'down' } },
+        info: {},
+        status: 'error',
+      });
+      health.check.mockRejectedValue(failure);
+
+      await expect(service.ready()).rejects.toThrow(
+        ServiceUnavailableException,
+      );
+    });
+
     it('reports shutdown before checking the database', async () => {
       shutdownService.isInShutdown.mockReturnValue(true);
 
