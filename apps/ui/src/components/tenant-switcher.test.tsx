@@ -63,6 +63,16 @@ describe('TenantSwitcher', () => {
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
   });
 
+  it('offers the only membership when the token names a tenant outside the list', async () => {
+    const client = await signedIn();
+    client.listAuthTenants = () => Promise.resolve([agency]);
+    renderSwitcher(client);
+
+    expect(
+      await screen.findByRole('button', { name: /unknown tenant/i }),
+    ).toBeEnabled();
+  });
+
   it('shows a loading state until the memberships arrive', async () => {
     const client = await signedIn();
     client.listAuthTenants = () => new Promise(() => undefined);
