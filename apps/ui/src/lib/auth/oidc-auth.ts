@@ -147,6 +147,21 @@ export function createOidcAuthClient(config: AppConfig): AuthClient {
   manager.events.addUserLoaded(setCurrentUser);
   manager.events.addUserUnloaded(() => setCurrentUser(null));
 
+  // A silent renew and a switch's store phase must not interleave: a renew
+  // that resolves after the switch has stored the new tenant's user puts the
+  // old tenant's back (the library stores it and raises userLoaded), holding
+  // a refresh token the switch already revoked. One at a time, in order.
+  let tokenOps: Promise<unknown> = Promise.resolve();
+  const serialize = <T>(op: () => Promise<T>): Promise<T> => {
+    const run = tokenOps.then(op, op);
+    tokenOps = run.catch(() => undefined);
+    return run;
+  };
+  // The store phase of a switch, queued or running: the window in which the
+  // old refresh token is revoked and the new one is not yet in place.
+  let switchStorePending: Promise<void> | null = null;
+  let switchInFlight: Promise<void> | null = null;
+
   return {
     // Deliberately not gated on `currentUser.expired`. Access tokens live 5
     // minutes, so an expired one is the normal steady state between refreshes
@@ -190,6 +205,10 @@ export function createOidcAuthClient(config: AppConfig): AuthClient {
         console.error('Provider sign-out failed; local session cleared', cause);
       }
     },
+    clearSession: async () => {
+      // removeUser raises userUnloaded, which clears the state above.
+      await manager.removeUser();
+    },
     completeLogin: async () => {
       let user: User;
       try {
@@ -216,39 +235,72 @@ export function createOidcAuthClient(config: AppConfig): AuthClient {
       // Contract (AuthHandlers.refresh): resolve null when a token cannot be
       // obtained — signinSilent rejects on e.g. invalid_grant, and a rejection
       // here would skip the API client's auth-failure handling.
-      try {
-        const user = await manager.signinSilent();
-        setCurrentUser(user);
-        return user?.access_token ?? null;
-      } catch {
-        return null;
+      const token = await serialize(async () => {
+        try {
+          const user = await manager.signinSilent();
+          setCurrentUser(user);
+          return user?.access_token ?? null;
+        } catch {
+          return null;
+        }
+      });
+      if (token) return token;
+
+      // A renew started against the refresh token a switch has just revoked
+      // fails, but the session is fine: the new tokens are on their way in.
+      // Answer with those instead of reporting a dead session.
+      if (switchStorePending) {
+        await switchStorePending.catch(() => undefined);
+        return currentUser?.access_token ?? null;
       }
+      return null;
     },
     listAuthTenants: () => listAuthTenants(),
     switchTenant: async (tenantId: string) => {
-      const tokens = await postSwitchTenant(tenantId);
-      const payload = decodeJwtPayload(tokens.access_token);
-      const profile = {
-        ...(currentUser?.profile ?? {}),
-        ...payload,
-      } as UserProfile;
+      if (switchInFlight) {
+        throw new Error('A tenant switch is already in progress');
+      }
+      switchInFlight = (async () => {
+        // Outside the serialized section on purpose: an expired access token
+        // makes this 401 and the API client renews it, which must not wait
+        // on a switch that is itself waiting on this request.
+        const tokens = await postSwitchTenant(tenantId);
+        const store = serialize(async () => {
+          const payload = decodeJwtPayload(tokens.access_token);
+          const profile = {
+            ...(currentUser?.profile ?? {}),
+            ...payload,
+          } as UserProfile;
 
-      // switch-tenant mints a new access and refresh token only. Keep the
-      // login id_token so RP-initiated logout still has an id_token_hint for
-      // the same provider session (tenant lives on the access token; the
-      // id_token claims may lag until the next full OIDC redirect).
-      const next = new User({
-        access_token: tokens.access_token,
-        refresh_token: tokens.refresh_token,
-        token_type: tokens.token_type,
-        expires_at: Math.floor(Date.now() / 1000) + tokens.expires_in,
-        profile,
-        id_token: currentUser?.id_token,
-        session_state: currentUser?.session_state ?? undefined,
-        scope: currentUser?.scope,
-      });
-      await manager.storeUser(next);
-      setCurrentUser(next);
+          // switch-tenant mints a new access and refresh token only. Keep the
+          // login id_token so RP-initiated logout still has an id_token_hint
+          // for the same provider session (tenant lives on the access token;
+          // the id_token claims may lag until the next full OIDC redirect).
+          const next = new User({
+            access_token: tokens.access_token,
+            refresh_token: tokens.refresh_token,
+            token_type: tokens.token_type,
+            expires_at: Math.floor(Date.now() / 1000) + tokens.expires_in,
+            profile,
+            id_token: currentUser?.id_token,
+            session_state: currentUser?.session_state ?? undefined,
+            scope: currentUser?.scope,
+          });
+          await manager.storeUser(next);
+          setCurrentUser(next);
+        });
+        switchStorePending = store;
+        try {
+          await store;
+        } finally {
+          switchStorePending = null;
+        }
+      })();
+      try {
+        await switchInFlight;
+      } finally {
+        switchInFlight = null;
+      }
     },
     subscribe: (listener) => {
       listeners.add(listener);

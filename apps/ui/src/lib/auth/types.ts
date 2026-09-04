@@ -55,6 +55,14 @@ export interface AuthClient {
   refresh(): Promise<string | null>;
   listAuthTenants(): Promise<AuthTenant[]>;
   switchTenant(tenantId: string): Promise<void>;
+  /**
+   * Drops the session this tab holds without ending the provider's. For when
+   * this tab's tokens are dead (a renew that cannot succeed) while the
+   * provider session, shared with other tabs, may well be alive: the next
+   * sign-in then completes silently and lands in whatever tenant the session
+   * is bound to now.
+   */
+  clearSession(): Promise<void>;
   /** Subscribe to auth state changes; returns an unsubscribe function. */
   subscribe(listener: () => void): () => void;
 }

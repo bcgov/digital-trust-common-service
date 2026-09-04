@@ -1,9 +1,17 @@
-import { NavLink, Outlet, useParams } from 'react-router';
+import {
+  Navigate,
+  NavLink,
+  Outlet,
+  useLocation,
+  useParams,
+} from 'react-router';
 
 import { TenantStatusBadge } from '@/components/tenant-status-badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ApiError } from '@/lib/api/errors';
 import { useTenant } from '@/lib/api/queries/tenants';
+import { useAuth } from '@/lib/auth/context';
+import { replaceTenantInPath } from '@/lib/tenant/active-tenant';
 import { cn } from '@/lib/utils';
 
 const TABS = [
@@ -18,7 +26,25 @@ const TABS = [
 
 export function TenantLayout() {
   const { tenantId } = useParams();
-  const { data: tenant, isLoading, error } = useTenant(tenantId);
+  const location = useLocation();
+  const { user } = useAuth();
+
+  // Every API call is scoped to the token's tenant, so a URL naming another
+  // one can only 404. Land on the same section of the tenant the user is
+  // actually in; the header switcher is the way to the other one.
+  const redirectTo =
+    tenantId && user?.tenantId && tenantId !== user.tenantId
+      ? replaceTenantInPath(location.pathname, tenantId, user.tenantId)
+      : null;
+  const {
+    data: tenant,
+    isLoading,
+    error,
+  } = useTenant(redirectTo ? undefined : tenantId);
+
+  if (redirectTo) {
+    return <Navigate to={redirectTo} replace />;
+  }
 
   if (error) {
     return (
