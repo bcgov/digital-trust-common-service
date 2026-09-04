@@ -254,7 +254,7 @@ Generate the JWKS payload with `npm run oidc:generate-keys > oidc-keys.json`, th
 | podAnnotations | object | `{}` | Annotations added to the API/Worker pods |
 | podLabels | object | `{}` | Labels added to the API/Worker pods |
 | podSecurityContext | object | `{}` | Pod security context. On BC Gov OpenShift the restricted-v2 SCC assigns UID/fsGroup/SELinux automatically; leave empty unless you must pin values. |
-| readinessProbe | object | `{"failureThreshold":3,"httpGet":{"path":"/health/live","port":"http"},"initialDelaySeconds":10,"periodSeconds":10,"timeoutSeconds":3}` | Readiness probe. Uses `/health/live` until a dedicated readiness endpoint is added. |
+| readinessProbe | object | `{"failureThreshold":3,"httpGet":{"path":"/health/ready","port":"http"},"initialDelaySeconds":10,"periodSeconds":10,"timeoutSeconds":3}` | Readiness probe. `/health/ready` reports whether this pod should receive traffic: it fails during graceful shutdown and when the database is unreachable, and deliberately ignores pg-boss, the OIDC provider and Traction. |
 | replicaCount | int | `1` | Number of API pod replicas (ignored when `autoscaling.enabled=true`) |
 | resources | object | `{"limits":{"cpu":"250m","memory":"256Mi"},"requests":{"cpu":"50m","memory":"128Mi"}}` | Resource requests and limits for the API container |
 | route.annotations | object | `{}` | Additional annotations for the Route |

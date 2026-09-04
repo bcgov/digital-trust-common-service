@@ -10,8 +10,8 @@ and this chart adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.h
 ### Added
 
 - Initial Helm chart for deploying digital-trust-common-service to BC Gov OpenShift.
-- API Deployment with templated resources and liveness/readiness probes on
-  `/health/live`.
+- API Deployment with templated resources, a liveness/startup probe on
+  `/health/live` and a readiness probe on `/health/ready`.
 - Optional Frontend Deployment (React SPA + Caddy) with its own Service and
   HPA, reverse-proxying `/api`, `/oidc`, and `/health` to the API service.
 - Database migrations as a `pre-install`/`pre-upgrade` Helm hook Job (gated by
