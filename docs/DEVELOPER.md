@@ -777,9 +777,8 @@ issuance, so they reach the JWT `scope` claim.
 The two catalog `GET`s require authentication but no scope. "Public
 information" here means non-secret, not anonymous: serving it unauthenticated
 publishes the platform's full capability taxonomy and adds pre-auth surface
-that now sits behind the global per-tenant rate limiter (TM-07) rather than
-unlimited, though a scope-gated endpoint would still narrow it further
-(AG-03 #77).
+that now sits behind the global per-tenant rate limiter rather than
+unlimited, though a scope-gated endpoint would still narrow it further.
 
 Writes require `tenants:admin` rather than `users:manage`. `admin` holds
 `users:manage`, so guarding with it would let an admin grant themselves any

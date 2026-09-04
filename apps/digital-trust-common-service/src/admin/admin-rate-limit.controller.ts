@@ -26,6 +26,7 @@ import {
 } from '@nestjs/swagger';
 
 import { API_VERSION } from '../common/constants/api-version.constants';
+import { RateLimitByCaller } from '../rate-limit/rate-limit-by-caller.decorator';
 
 import { AdminRateLimitService } from './admin-rate-limit.service';
 import { RateLimitResetResponseDto } from './dto/rate-limit-reset-response.dto';
@@ -42,10 +43,11 @@ export class AdminRateLimitController {
   ) {}
 
   @Get(':tenantId')
+  @RateLimitByCaller()
   @ApiOperation({
     summary: "View a tenant's current rate-limit status",
     description:
-      'Resolved tier, limit, and per-route hit counts within the current sliding window.',
+      'Resolved tier, limit, and per-route hit counts within the current sliding window. Rate-limited against the calling admin, not the target tenant.',
   })
   @ApiParam({
     name: 'tenantId',
@@ -65,10 +67,11 @@ export class AdminRateLimitController {
   }
 
   @Post(':tenantId/reset')
+  @RateLimitByCaller()
   @ApiOperation({
     summary: "Reset a tenant's rate limit",
     description:
-      'Deletes every recorded hit for the tenant, clearing it back to zero for every route.',
+      'Deletes every recorded hit for the tenant, clearing it back to zero for every route. Rate-limited against the calling admin, not the target tenant, so this always works as an escape hatch even once the tenant is blocked.',
   })
   @ApiParam({
     name: 'tenantId',

@@ -11,6 +11,7 @@ import type {
   ThrottlerStorage,
 } from '@nestjs/throttler';
 
+import { RATE_LIMIT_BY_CALLER_KEY } from './rate-limit-by-caller.decorator';
 import { buildRateLimitKey } from './rate-limit-key';
 
 /**
@@ -18,8 +19,11 @@ import { buildRateLimitKey } from './rate-limit-key';
  * rather than the caller's identity. This lets the guard run as a global
  * `APP_GUARD` ahead of `JwtGuard`/`TenantStatusGuard` without depending on
  * JWT claims those guards attach later in the chain. Routes with no
- * `:tenantId` param (platform-admin/global endpoints) fall back to the
- * caller's IP.
+ * `:tenantId` param (platform-admin/global endpoints), and routes marked
+ * with `@RateLimitByCaller()`, fall back to the caller's IP (`req.ip`) —
+ * this reflects the real client IP, not the reverse proxy's, only because
+ * `configureApp()` enables Express's `trust proxy` setting; see that
+ * function's comment for why.
  *
  * Only `getTracker`/`generateKey`/`shouldSkip` are overridden here;
  * limit/ttl resolution (including the standard-vs-premium tenant tier
@@ -38,15 +42,34 @@ export class TenantRateLimitGuard extends ThrottlerGuard {
     super(options, storageService, reflector);
   }
 
-  protected shouldSkip(_context: ExecutionContext): Promise<boolean> {
+  protected async shouldSkip(context: ExecutionContext): Promise<boolean> {
+    if (await super.shouldSkip(context)) {
+      return true;
+    }
+
     const enabled =
       this.config.get<string>('RATE_LIMIT_ENABLED', 'true') !== 'false';
-    return Promise.resolve(!enabled);
+
+    return !enabled;
   }
 
-  protected getTracker(req: Record<string, unknown>): Promise<string> {
-    const params = req.params as Record<string, string> | undefined;
+  protected getTracker(
+    req: Record<string, unknown>,
+    context?: ExecutionContext,
+  ): Promise<string> {
     const ip = req.ip as string | undefined;
+    const byCaller =
+      context !== undefined &&
+      this.reflector.getAllAndOverride<boolean>(RATE_LIMIT_BY_CALLER_KEY, [
+        context.getHandler(),
+        context.getClass(),
+      ]);
+
+    if (byCaller) {
+      return Promise.resolve(ip ?? 'unknown');
+    }
+
+    const params = req.params as Record<string, string> | undefined;
     return Promise.resolve(params?.tenantId ?? ip ?? 'unknown');
   }
 

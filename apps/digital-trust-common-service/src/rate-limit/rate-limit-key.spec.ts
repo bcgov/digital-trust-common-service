@@ -19,6 +19,24 @@ describe('rate-limit-key', () => {
         routeKey: 'connector::test',
       });
     });
+
+    it('round-trips an IPv6-mapped tracker containing the separator', () => {
+      const key = buildRateLimitKey('::ffff:127.0.0.1', 'ScopeController.list');
+
+      expect(parseRateLimitKey(key)).toEqual({
+        tracker: '::ffff:127.0.0.1',
+        routeKey: 'ScopeController.list',
+      });
+    });
+
+    it('round-trips a bare IPv6 tracker', () => {
+      const key = buildRateLimitKey('::1', 'ScopeController.list');
+
+      expect(parseRateLimitKey(key)).toEqual({
+        tracker: '::1',
+        routeKey: 'ScopeController.list',
+      });
+    });
   });
 
   describe('parseRateLimitKey', () => {
