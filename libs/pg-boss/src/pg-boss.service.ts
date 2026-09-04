@@ -56,6 +56,14 @@ export class PgBossService {
     await this.startWithRetry(boss);
     this.running = true;
 
+    // pg-boss is an EventEmitter, so an unheard 'error' event throws and takes the
+    // process down. Its pool raises one whenever an idle connection drops — losing
+    // the database, for instance — which must degrade the service, not kill it.
+    // pg-boss reconnects on its own, so this only reports.
+    boss.on('error', (error: Error) => {
+      this.logger.error(`pg-boss raised an error: ${error.message}`);
+    });
+
     // pg-boss can stop on its own; without this the running flag would report the
     // startup outcome forever rather than the current state.
     boss.on('stopped', () => {

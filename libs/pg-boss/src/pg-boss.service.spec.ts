@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
 import { PgBossService } from './pg-boss.service';
@@ -46,6 +47,33 @@ describe('PgBossService', () => {
 
     expect(stop).toHaveBeenCalledTimes(1);
     expect(service.isRunning()).toBe(false);
+  });
+
+  it('logs pg-boss errors instead of letting them crash the process', async () => {
+    const handlers: Record<string, (error: Error) => void> = {};
+    const mockBoss = {
+      on: jest.fn((event: string, handler: (error: Error) => void) => {
+        handlers[event] = handler;
+      }),
+      start: jest.fn().mockResolvedValue(undefined),
+      stop: jest.fn(),
+    };
+    const errorSpy = jest.spyOn(Logger.prototype, 'error').mockImplementation();
+
+    jest.spyOn(service as any, 'createBoss').mockResolvedValue(mockBoss);
+
+    await service.initializeBoss();
+
+    // pg-boss is an EventEmitter: an unheard 'error' event throws.
+    expect(() =>
+      handlers.error(new Error('terminating connection')),
+    ).not.toThrow();
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining('terminating connection'),
+    );
+    expect(service.isRunning()).toBe(true);
+
+    errorSpy.mockRestore();
   });
 
   it('reports pg-boss stopped when it stops on its own', async () => {
