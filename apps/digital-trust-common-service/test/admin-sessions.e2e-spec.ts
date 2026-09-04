@@ -68,6 +68,8 @@ describe('AdminSessionsController (e2e)', () => {
       .useValue({
         boss: mockBoss,
         initializeBoss: jest.fn().mockResolvedValue(mockBoss),
+        stop: jest.fn().mockResolvedValue(undefined),
+        isRunning: jest.fn().mockReturnValue(true),
       })
       .overrideGuard(JwtGuard)
       .useClass(AllowGuard)
@@ -246,6 +248,8 @@ describe('AdminSessionsController (e2e) — unauthenticated', () => {
       .useValue({
         boss: mockBoss,
         initializeBoss: jest.fn().mockResolvedValue(mockBoss),
+        stop: jest.fn().mockResolvedValue(undefined),
+        isRunning: jest.fn().mockReturnValue(true),
       })
       .compile();
 

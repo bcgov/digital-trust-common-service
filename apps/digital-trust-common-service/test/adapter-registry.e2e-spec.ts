@@ -45,6 +45,8 @@ async function bootstrap(): Promise<TestingModule> {
     .useValue({
       boss: mockBoss,
       initializeBoss: jest.fn().mockResolvedValue(mockBoss),
+      stop: jest.fn().mockResolvedValue(undefined),
+      isRunning: jest.fn().mockReturnValue(true),
     })
     .overrideProvider(ConnectorHealthCheckService)
     .useValue(mockHealthCheckService)

@@ -23,7 +23,14 @@ describe('AppController (e2e)', () => {
     createQueue: jest.fn().mockResolvedValue(undefined),
     schedule: jest.fn().mockResolvedValue(undefined),
     work: jest.fn().mockResolvedValue('worker-1'),
-    schedule: jest.fn().mockResolvedValue(undefined),
+  };
+
+  // Named so the teardown can assert pg-boss was actually stopped.
+  const pgBossService = {
+    boss: mockBoss,
+    initializeBoss: jest.fn().mockResolvedValue(mockBoss),
+    stop: jest.fn().mockResolvedValue(undefined),
+    isRunning: jest.fn().mockReturnValue(true),
   };
 
   beforeEach(async () => {
@@ -33,10 +40,7 @@ describe('AppController (e2e)', () => {
       imports: [AppModule],
     })
       .overrideProvider(PgBossService)
-      .useValue({
-        boss: mockBoss,
-        initializeBoss: jest.fn().mockResolvedValue(mockBoss),
-      })
+      .useValue(pgBossService)
       .compile();
 
     app = moduleFixture.createNestApplication();
@@ -79,5 +83,11 @@ describe('AppController (e2e)', () => {
 
   afterEach(async () => {
     await app.close();
+
+    // Closing the app must actually reach pg-boss. GracefulShutdownService
+    // catches and logs whatever a participant throws, so a teardown that fails
+    // leaves the suite green — which is how a double missing `stop` went
+    // unnoticed here in the first place.
+    expect(pgBossService.stop).toHaveBeenCalledTimes(1);
   });
 });
