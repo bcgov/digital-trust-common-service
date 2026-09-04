@@ -3,6 +3,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { AuditLogModule } from '../audit-log/audit-log.module';
+import { RateLimitModule } from '../rate-limit/rate-limit.module';
 import { TenantStatusModule } from '../tenant/tenant-status.module';
 
 import { ConnectionController } from './connection.controller';
@@ -16,6 +17,7 @@ import { ConnectionService } from './connection.service';
     AuditLogModule,
     AuthModule,
     TenantStatusModule,
+    RateLimitModule,
   ],
   controllers: [ConnectionController],
   providers: [ConnectionService, ConnectionRepository],

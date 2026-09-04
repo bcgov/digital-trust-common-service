@@ -4,6 +4,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { AuditLogModule } from '../audit-log/audit-log.module';
+import { RateLimitModule } from '../rate-limit/rate-limit.module';
 import { TenantStatusModule } from '../tenant/tenant-status.module';
 
 import { CredentialDefinitionController } from './credential-definition.controller';
@@ -18,6 +19,7 @@ import { CredentialDefinitionService } from './credential-definition.service';
     AuthModule,
     TenantStatusModule,
     CredentialPortsModule,
+    RateLimitModule,
   ],
   controllers: [CredentialDefinitionController],
   providers: [CredentialDefinitionService, CredentialDefinitionRepository],

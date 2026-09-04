@@ -3,6 +3,7 @@ import { OidcConfigModule } from '@app/oidc/config';
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
+import { RateLimitModule } from '../rate-limit/rate-limit.module';
 import { TenantStatusModule } from '../tenant/tenant-status.module';
 
 import { OAuthClientLookupAdapter } from './oauth-client-lookup.adapter';
@@ -17,6 +18,7 @@ import { OAuthClientService } from './oauth-client.service';
     OidcConfigModule,
     AuthModule,
     TenantStatusModule,
+    RateLimitModule,
   ],
   controllers: [OAuthClientController],
   providers: [

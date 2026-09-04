@@ -29,6 +29,7 @@ import {
 
 import { SkipAutoAudit } from '../audit-log/skip-auto-audit.decorator';
 import { API_VERSION } from '../common/constants/api-version.constants';
+import { TenantTierRateLimitGuard } from '../rate-limit/tenant-tier-rate-limit.guard';
 import { TenantStatusGuard } from '../tenant/tenant-status.guard';
 
 import {
@@ -55,7 +56,13 @@ import { RoleScopeService } from './role-scope.service';
 @ApiTags('tenant-settings')
 @ApiJwtAuth()
 @Controller({ path: 'tenants/:tenantId', version: API_VERSION })
-@UseGuards(JwtGuard, ScopeGuard, TenantGuard, TenantStatusGuard)
+@UseGuards(
+  JwtGuard,
+  ScopeGuard,
+  TenantGuard,
+  TenantStatusGuard,
+  TenantTierRateLimitGuard,
+)
 export class TenantRoleScopeController {
   public constructor(private readonly roleScopes: RoleScopeService) {}
 

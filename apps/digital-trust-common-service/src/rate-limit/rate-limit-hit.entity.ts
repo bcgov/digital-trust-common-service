@@ -8,7 +8,8 @@ import {
 } from 'typeorm';
 
 /**
- * One row per request admitted through `TenantRateLimitGuard`. Insert-only;
+ * One row per request admitted through `RateLimitGuard` (global, IP-keyed)
+ * or `TenantTierRateLimitGuard` (per-controller, tenant-keyed). Insert-only;
  * rows are counted within a sliding window to enforce the limit and pruned
  * by `RateLimitPruneWorker` once they fall outside every configured window.
  */
