@@ -1116,9 +1116,9 @@ gated by `PG_BOSS_WORKERS_ENABLED` like the other maintenance workers.
 | `POST /api/v1/admin/rate-limits/{tenantId}/reset` | Deletes every recorded hit for the tenant, clearing it back to zero across every route. |
 
 
-Because the path param is literally `:tenantId`, the global guard throttles these two admin routes
-against the *target* tenant's own quota/tier, unlike other admin routes whose params aren't named
-`tenantId` and so fall back to IP-based standard-tier limiting.
+`RateLimitGuard` always keys on the caller's IP, never on route params, so these two admin routes
+are throttled at the flat standard rate against the calling admin — the same as every other route —
+not against the target tenant's own quota/tier.
 
 > **Note:** Per-endpoint `@Throttle()` overrides are not yet used anywhere (no controller currently
 > needs a tighter limit than its tier default). This section will be extended if one is added.
