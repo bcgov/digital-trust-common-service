@@ -28,8 +28,8 @@ The [Values](#values) section lists all configurable parameters.
 This chart deploys the Digital Credential Common Service (a NestJS modular monolith) to BC Gov
 OpenShift. Key characteristics:
 
-- **API Deployment** — HTTP service on container port `3000`; liveness and
-  readiness probes on `/health/live`.
+- **API Deployment** — HTTP service on container port `3000`; liveness probe on
+  `/health/live`, readiness probe on `/health/ready`.
 - **Frontend Deployment** — React SPA served by Caddy, reverse-proxying `/api`,
   `/oidc`, and `/health` to the API service for same-origin browser traffic.
 - **Migrations** — run as a `pre-install`/`pre-upgrade` Helm hook Job (same image,

@@ -157,7 +157,7 @@ export class JobsService implements ShutdownParticipant, OnModuleInit {
 
   public async shutdown(): Promise<void> {
     this.logger.log('Stopping jobs service...');
-    await this.bossService.boss.stop();
+    await this.bossService.stop();
     this.logger.log('Jobs service stopped');
   }
 }

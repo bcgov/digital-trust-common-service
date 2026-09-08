@@ -1,0 +1,37 @@
+suite: API probe endpoints
+templates:
+  - templates/deployment.yaml
+  # deployment.yaml checksums these, so they must be loaded alongside it
+  - templates/configmap.yaml
+  - templates/secret.yaml
+  - templates/connector-encryption-secret.yaml
+  - templates/oidc-signing-secret.yaml
+tests:
+  # Readiness answers "should this pod receive traffic": it fails during
+  # graceful shutdown and when the database is unreachable. Liveness answers
+  # "is the process broken", so the two must not point at the same endpoint.
+  - it: probes the readiness endpoint for readiness
+    set:
+      upstreamFederation:
+        existingSecret:
+          name: dtsc-ci-oidc-client
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.httpGet.path
+          value: /health/ready
+        template: templates/deployment.yaml
+
+  - it: probes the liveness endpoint for liveness and startup
+    set:
+      upstreamFederation:
+        existingSecret:
+          name: dtsc-ci-oidc-client
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].livenessProbe.httpGet.path
+          value: /health/live
+        template: templates/deployment.yaml
+      - equal:
+          path: spec.template.spec.containers[0].startupProbe.httpGet.path
+          value: /health/live
+        template: templates/deployment.yaml

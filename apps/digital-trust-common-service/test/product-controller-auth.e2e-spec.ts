@@ -49,6 +49,8 @@ describe('product controllers (e2e) — auth enforcement', () => {
       .useValue({
         boss: mockBoss,
         initializeBoss: jest.fn().mockResolvedValue(mockBoss),
+        stop: jest.fn().mockResolvedValue(undefined),
+        isRunning: jest.fn().mockReturnValue(true),
       })
       .compile();
 
@@ -131,6 +133,8 @@ describe('product controllers (e2e) — tenant status enforcement', () => {
       .useValue({
         boss: mockBoss,
         initializeBoss: jest.fn().mockResolvedValue(mockBoss),
+        stop: jest.fn().mockResolvedValue(undefined),
+        isRunning: jest.fn().mockReturnValue(true),
       })
       .overrideGuard(JwtGuard)
       .useClass(TenantAuthStubGuard)

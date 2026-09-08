@@ -52,6 +52,8 @@ describe('AdapterRegistry (integration)', () => {
       .useValue({
         boss: mockBoss,
         initializeBoss: jest.fn().mockResolvedValue(mockBoss),
+        stop: jest.fn().mockResolvedValue(undefined),
+        isRunning: jest.fn().mockReturnValue(true),
       })
       // Connector creation now health-checks the real endpoint before
       // persisting; these tests use fake hostnames and only care about the

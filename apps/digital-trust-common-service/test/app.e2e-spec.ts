@@ -23,7 +23,14 @@ describe('AppController (e2e)', () => {
     createQueue: jest.fn().mockResolvedValue(undefined),
     schedule: jest.fn().mockResolvedValue(undefined),
     work: jest.fn().mockResolvedValue('worker-1'),
-    schedule: jest.fn().mockResolvedValue(undefined),
+  };
+
+  // Named so the teardown can assert pg-boss was actually stopped.
+  const pgBossService = {
+    boss: mockBoss,
+    initializeBoss: jest.fn().mockResolvedValue(mockBoss),
+    stop: jest.fn().mockResolvedValue(undefined),
+    isRunning: jest.fn().mockReturnValue(true),
   };
 
   beforeEach(async () => {
@@ -33,10 +40,7 @@ describe('AppController (e2e)', () => {
       imports: [AppModule],
     })
       .overrideProvider(PgBossService)
-      .useValue({
-        boss: mockBoss,
-        initializeBoss: jest.fn().mockResolvedValue(mockBoss),
-      })
+      .useValue(pgBossService)
       .compile();
 
     app = moduleFixture.createNestApplication();
@@ -77,7 +81,44 @@ describe('AppController (e2e)', () => {
       .expect(404);
   });
 
+  it('/health/ready (GET) reports the database up against a real connection', async () => {
+    // The only tier where the readiness contract meets real collaborators. A
+    // unit test can assert the mapping from a mocked indicator, but not that
+    // terminus resolves the DataSource or that the route is reachable at all.
+    const response = await request(app.getHttpServer())
+      .get('/health/ready')
+      .expect(200);
+
+    expect(response.body).toMatchObject({
+      status: 'ok',
+      details: { database: { status: 'up' } },
+    });
+  });
+
+  it('/health/status (GET) reports dependency state', async () => {
+    const response = await request(app.getHttpServer())
+      .get('/health/status')
+      .expect(200);
+
+    expect(response.body).toMatchObject({
+      status: 'ok',
+      details: { database: { status: 'up' } },
+    });
+  });
+
+  it('/api/v1/health/ready (GET) 404s — health sits outside the global prefix', () => {
+    // configureApp() excludes `health/(.*)` from the global prefix so probe
+    // paths stay stable. Nothing else pins that exclusion.
+    return request(app.getHttpServer()).get('/api/v1/health/ready').expect(404);
+  });
+
   afterEach(async () => {
     await app.close();
+
+    // Closing the app must actually reach pg-boss. GracefulShutdownService
+    // catches and logs whatever a participant throws, so a teardown that fails
+    // leaves the suite green — which is how a double missing `stop` went
+    // unnoticed here in the first place.
+    expect(pgBossService.stop).toHaveBeenCalledTimes(1);
   });
 });

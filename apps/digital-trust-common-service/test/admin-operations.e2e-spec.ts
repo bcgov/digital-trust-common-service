@@ -45,6 +45,8 @@ describe('AdminOperationsController (e2e)', () => {
       .useValue({
         boss: mockBoss,
         initializeBoss: jest.fn().mockResolvedValue(mockBoss),
+        stop: jest.fn().mockResolvedValue(undefined),
+        isRunning: jest.fn().mockReturnValue(true),
       })
       .overrideGuard(JwtGuard)
       .useClass(AllowGuard)
@@ -182,6 +184,8 @@ describe('AdminOperationsController (e2e) — auth enforcement', () => {
       .useValue({
         boss: mockBoss,
         initializeBoss: jest.fn().mockResolvedValue(mockBoss),
+        stop: jest.fn().mockResolvedValue(undefined),
+        isRunning: jest.fn().mockReturnValue(true),
       })
       .compile();
 

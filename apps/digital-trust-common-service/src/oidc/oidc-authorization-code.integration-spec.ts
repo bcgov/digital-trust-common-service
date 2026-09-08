@@ -572,6 +572,8 @@ describe('OIDC authorization_code grant (integration)', () => {
       .useValue({
         boss: mockBoss,
         initializeBoss: jest.fn().mockResolvedValue(mockBoss),
+        stop: jest.fn().mockResolvedValue(undefined),
+        isRunning: jest.fn().mockReturnValue(true),
       })
       .overrideProvider(UpstreamOidcService)
       .useValue(mockUpstreamOidcService)

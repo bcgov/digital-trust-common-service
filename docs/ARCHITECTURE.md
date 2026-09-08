@@ -1403,7 +1403,8 @@ erDiagram
 graph TB
     subgraph "OpenShift Cluster"
         subgraph "Namespace: digital-trust-common-service-dev"
-            POD_API[Pod: API<br/>NestJS + Migration sidecar]
+            POD_API[Pod: API<br/>NestJS]
+            JOB_MIGRATE[Job: migrate<br/>Helm pre-install/pre-upgrade hook]
             POD_WORKER[Pod: Worker<br/>Queue consumers]
             POD_UI[Pod: React SPA<br/>Caddy static server]
             SVC_API[Service: api]
@@ -1421,13 +1422,14 @@ graph TB
     ROUTE_UI --> SVC_UI --> POD_UI
     ROUTE_API --> SVC_API --> POD_API
     POD_API --> PG_POD
+    JOB_MIGRATE --> PG_POD
     POD_WORKER --> PG_POD
     POD_API --> KC_POD
 ```
 
 **Notes:**
 - API and Worker share the same container image; differentiated by entrypoint command
-- Migrations run as init container in the API pod
+- Migrations run as an opt-in Helm hook Job (`migrations.enabled`), not an init container: once per release before the app pods roll, so replicas and HPA scale-ups cannot run them concurrently
 - Horizontal scaling: API pods are stateless (scale freely); Worker pods use pg-boss `teamSize` + `teamConcurrency` for competing consumers
 - NetworkPolicy restricts ingress to routes only; inter-pod communication explicit
 
@@ -1685,9 +1687,10 @@ Client → API Pod → Traction/Credo Agent Service
 | Endpoint | Purpose | Checks |
 |----------|---------|--------|
 | `GET /health/live` | Liveness probe | Process running |
-| `GET /health/ready` | Readiness probe | DB, pg-boss, oidc-provider |
+| `GET /health/ready` | Readiness probe | Graceful shutdown state and database connectivity |
+| `GET /health/status` | Operator diagnostics | Database, pg-boss, and in-process OIDC provider state |
 
-Uses `@nestjs/terminus` with custom health indicators. Returns degraded (200 + warning body) if non-critical dependency is unavailable, unhealthy (503) if critical.
+Liveness answers only whether the process is wedged and should be restarted, so it ignores graceful shutdown: draining a terminating pod is readiness' job, and failing liveness would ask the kubelet to restart a container that is shutting down on purpose. Readiness answers only whether the pod should receive traffic. It returns 503 during graceful shutdown or when the database is unavailable, and it deliberately does not consult pg-boss, the in-process OIDC provider, Traction, or migration state. pg-boss and OIDC state are exposed through `/health/status` for humans and monitoring without turning non-routing concerns into Kubernetes probe failures. Runtime migration checks are omitted because Helm runs migrations as a pre-install/pre-upgrade hook before application pods start.
 
 ### Collector Deployment
 

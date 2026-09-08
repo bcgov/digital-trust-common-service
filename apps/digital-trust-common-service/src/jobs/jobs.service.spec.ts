@@ -16,9 +16,11 @@ describe('JobsService', () => {
   const work = jest.fn().mockResolvedValue('worker-1');
   const stop = jest.fn().mockResolvedValue(undefined);
   const schedule = jest.fn().mockResolvedValue(undefined);
+  const stopService = jest.fn().mockResolvedValue(undefined);
   const emit = jest.fn();
 
   const mockPgBossService = {
+    stop: stopService,
     boss: {
       send,
       createQueue,
@@ -192,6 +194,6 @@ describe('JobsService', () => {
   it('should shutdown the boss service', async () => {
     await service.shutdown();
 
-    expect(stop).toHaveBeenCalledTimes(1);
+    expect(stopService).toHaveBeenCalledTimes(1);
   });
 });
