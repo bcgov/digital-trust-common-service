@@ -10,6 +10,7 @@ export const JOB_QUEUES = {
   AUDIT_PARTITION_MAINTAIN: 'audit.partition-maintain',
   TENANT_STATUS_CHANGE: 'tenant.status-change',
   TENANT_CONFIG_CHANGE: 'tenant.config-change',
+  RATE_LIMIT_PRUNE: 'rate-limit.prune',
 } as const;
 
 export type JobQueueName = (typeof JOB_QUEUES)[keyof typeof JOB_QUEUES];
@@ -23,6 +24,7 @@ export const JOB_DEAD_LETTER_QUEUES = {
   AUDIT_PARTITION_MAINTAIN: 'audit.partition-maintain.dlq',
   TENANT_STATUS_CHANGE: 'tenant.status-change.dlq',
   TENANT_CONFIG_CHANGE: 'tenant.config-change.dlq',
+  RATE_LIMIT_PRUNE: 'rate-limit.prune.dlq',
 } as const;
 
 export type QueueDefinition = {
@@ -88,6 +90,13 @@ export const QUEUE_DEFINITIONS: QueueDefinition[] = [
     deadLetter: JOB_DEAD_LETTER_QUEUES.TENANT_CONFIG_CHANGE,
     retryLimit: 5,
     retryDelay: 30,
+    retryBackoff: true,
+  },
+  {
+    name: JOB_QUEUES.RATE_LIMIT_PRUNE,
+    deadLetter: JOB_DEAD_LETTER_QUEUES.RATE_LIMIT_PRUNE,
+    retryLimit: 3,
+    retryDelay: 60,
     retryBackoff: true,
   },
 ];

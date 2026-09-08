@@ -6,6 +6,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { HealthCheckResult } from '@nestjs/terminus';
+import { SkipThrottle } from '@nestjs/throttler';
 
 import {
   HealthStatusResponseDto,
@@ -14,6 +15,7 @@ import {
 import { HealthService } from './health.service';
 
 @ApiTags('Health')
+@SkipThrottle()
 @Controller('health')
 export class HealthController {
   public constructor(private readonly healthService: HealthService) {}

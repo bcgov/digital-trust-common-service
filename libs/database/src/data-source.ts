@@ -23,6 +23,9 @@ import { AddTenantApprovalStatus1787255721437 } from './migrations/000020_add-te
 import { AllowInvitedTenantUser1787341200000 } from './migrations/000021_allow-invited-tenant-user';
 import { AddTenantStatusLifecycleColumns1787700000000 } from './migrations/000022_add-tenant-status-lifecycle-columns';
 import { AddOauthClientPublic1787900000000 } from './migrations/000023_add-oauth-client-public';
+import { AddCredentialDefinitionActive1788353244312 } from './migrations/000024_add-credential-definition-active';
+import { AddCredentialDefinitionActiveUniqueIndex1788885810789 } from './migrations/000025_add-credential-definition-active-unique-index';
+import { CreateRateLimitHitsTable1788897010000 } from './migrations/000026_create-rate-limit-hits-table';
 import { buildSslConfig } from './ssl.util';
 
 export const AppDataSource = new DataSource({
@@ -57,6 +60,9 @@ export const AppDataSource = new DataSource({
     AllowInvitedTenantUser1787341200000,
     AddTenantStatusLifecycleColumns1787700000000,
     AddOauthClientPublic1787900000000,
+    AddCredentialDefinitionActive1788353244312,
+    AddCredentialDefinitionActiveUniqueIndex1788885810789,
+    CreateRateLimitHitsTable1788897010000,
   ],
   ssl: buildSslConfig(
     process.env.DB_SSL,

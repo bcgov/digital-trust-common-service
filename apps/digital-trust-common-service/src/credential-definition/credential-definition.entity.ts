@@ -123,6 +123,17 @@ export class CredentialDefinition {
   public metadata?: Record<string, unknown>;
 
   @ApiProperty({
+    description: 'Whether this credential definition is currently active',
+    example: true,
+  })
+  @Column({
+    name: 'is_active',
+    type: 'boolean',
+    default: true,
+  })
+  public isActive!: boolean;
+
+  @ApiProperty({
     description: 'The date and time when the credential definition was created',
     example: '2024-01-01T00:00:00Z',
   })

@@ -24,7 +24,7 @@ export class CredentialDefinitionRepository {
 
   public async findById(id: string): Promise<CredentialDefinition | null> {
     return await this.repository.findOne({
-      where: { id },
+      where: { id, isActive: true },
     });
   }
 
@@ -32,7 +32,7 @@ export class CredentialDefinitionRepository {
     tenantId: string,
   ): Promise<CredentialDefinition[]> {
     return await this.repository.find({
-      where: { tenantId },
+      where: { tenantId, isActive: true },
       order: {
         createdAt: 'ASC',
       },
@@ -44,7 +44,7 @@ export class CredentialDefinitionRepository {
     name: string,
   ): Promise<CredentialDefinition | null> {
     return await this.repository.findOne({
-      where: { tenantId, name },
+      where: { tenantId, name, isActive: true },
     });
   }
 
@@ -54,16 +54,16 @@ export class CredentialDefinitionRepository {
     format: CredentialDefinitionFormat,
   ): Promise<CredentialDefinition | null> {
     return await this.repository.findOne({
-      where: { tenantId, name, format },
+      where: { tenantId, name, format, isActive: true },
     });
   }
 
   public async findByFormat(
     format: CredentialDefinitionFormat,
-    tenantId?: string,
+    tenantId: string,
   ): Promise<CredentialDefinition[]> {
     return await this.repository.find({
-      where: tenantId ? { format, tenantId } : { format },
+      where: { format, tenantId, isActive: true },
       order: {
         createdAt: 'ASC',
       },
@@ -72,10 +72,10 @@ export class CredentialDefinitionRepository {
 
   public async findByConnector(
     connectorType: CredentialDefinitionConnectorType,
-    tenantId?: string,
+    tenantId: string,
   ): Promise<CredentialDefinition[]> {
     return await this.repository.find({
-      where: tenantId ? { connectorType, tenantId } : { connectorType },
+      where: { connectorType, tenantId, isActive: true },
       order: {
         createdAt: 'ASC',
       },
@@ -88,7 +88,13 @@ export class CredentialDefinitionRepository {
     return await this.repository.save(credentialDefinition);
   }
 
-  public async delete(id: string): Promise<void> {
-    await this.repository.delete(id);
+  /**
+   * Deactivates a credential definition rather than removing its row: other
+   * records (e.g. an issuance profile) may still reference its id, and
+   * deactivation stops it from being offered for new issuance without
+   * breaking those references.
+   */
+  public async deactivate(id: string): Promise<void> {
+    await this.repository.update({ id }, { isActive: false });
   }
 }

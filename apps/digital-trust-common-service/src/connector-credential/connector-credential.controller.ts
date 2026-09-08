@@ -34,6 +34,7 @@ import {
 } from '@nestjs/swagger';
 
 import { API_VERSION } from '../common/constants/api-version.constants';
+import { TenantTierRateLimitGuard } from '../rate-limit/tenant-tier-rate-limit.guard';
 import { TenantStatusGuard } from '../tenant/tenant-status.guard';
 
 import { ConnectorCredential } from './connector-credential.entity';
@@ -43,7 +44,13 @@ import { CreateConnectorCredentialDto } from './dto/create-connector-credential.
 import { UpdateConnectorCredentialDto } from './dto/update-connector-credential.dto';
 
 @ApiJwtAuth()
-@UseGuards(JwtGuard, ScopeGuard, TenantGuard, TenantStatusGuard)
+@UseGuards(
+  JwtGuard,
+  ScopeGuard,
+  TenantGuard,
+  TenantStatusGuard,
+  TenantTierRateLimitGuard,
+)
 @RequireScopes(TENANT_SUPERUSER_SCOPE)
 @ApiUnauthorizedResponse({ description: 'Authentication is required' })
 @ApiForbiddenResponse({
