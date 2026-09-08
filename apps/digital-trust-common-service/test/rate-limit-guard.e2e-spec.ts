@@ -1,10 +1,10 @@
 // Overrides the e2e default (`RATE_LIMIT_ENABLED=false`, set by
 // jest-e2e-setup.ts) so this file — and only this file — exercises the real
-// `RateLimitGuard` end to end. A small standard-tier limit keeps the
-// test fast and deterministic. These must be set before `AppModule` (and
-// therefore `ConfigModule.forRoot()`) is imported/compiled below.
+// `RateLimitGuard` end to end. A small global limit keeps the test fast and
+// deterministic. These must be set before `AppModule` (and therefore
+// `ConfigModule.forRoot()`) is imported/compiled below.
 process.env.RATE_LIMIT_ENABLED = 'true';
-process.env.RATE_LIMIT_STANDARD_PER_MINUTE = '2';
+process.env.RATE_LIMIT_GLOBAL_PER_MINUTE = '2';
 process.env.RATE_LIMIT_WINDOW_MS = '60000';
 
 import { PgBossService } from '@app/pg-boss';

@@ -28,7 +28,7 @@ import { TenantTierRateLimitGuard } from './tenant-tier-rate-limit.guard';
             name: 'default',
             ttl: Number(config.get<string>('RATE_LIMIT_WINDOW_MS', '60000')),
             limit: Number(
-              config.get<string>('RATE_LIMIT_STANDARD_PER_MINUTE', '100'),
+              config.get<string>('RATE_LIMIT_GLOBAL_PER_MINUTE', '2000'),
             ),
           },
         ],

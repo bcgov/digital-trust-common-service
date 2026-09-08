@@ -1071,11 +1071,13 @@ last `RATE_LIMIT_WINDOW_MS`), not the package's default fixed-window in-memory s
 consistently across replicas.
 
 - **`RateLimitGuard`** (global `APP_GUARD`, extends `@nestjs/throttler`'s `ThrottlerGuard`) throttles
-  every request by the caller's IP, at the flat `RATE_LIMIT_STANDARD_PER_MINUTE` rate. It runs before
+  every request by the caller's IP, at the flat `RATE_LIMIT_GLOBAL_PER_MINUTE` rate. It runs before
   per-controller auth guards, so `request.auth`/`request.tenantId` are not available yet — keying on
   IP instead of a route's `:tenantId` param avoids letting an unauthenticated caller who merely knows
   a (non-secret) tenant UUID burn that tenant's quota. This is pre-auth flood protection only; it does
-  not vary by tenant tier.
+  not vary by tenant tier, and its default is deliberately set above
+  `RATE_LIMIT_PREMIUM_PER_MINUTE` so it never becomes the binding ceiling for a legitimate premium
+  tenant — it exists to absorb floods, not to cap real traffic.
 - **`TenantTierRateLimitGuard`** (applied per-controller, after `TenantGuard`, on every controller
   scoped to `tenants/:tenantId/...`) enforces the tenant's own standard/premium quota, keyed on
   `request.tenantId` — the JWT-verified tenant id `TenantGuard` stamps only after confirming it
@@ -1098,7 +1100,8 @@ throws `ThrottlerException` on block.
 | --- | --- | --- |
 | `RATE_LIMIT_ENABLED` | `true` | Master switch for both guards. Set `false` to disable (the integration/e2e test setup does this by default). |
 | `RATE_LIMIT_WINDOW_MS` | `60000` | Sliding window length, in milliseconds. |
-| `RATE_LIMIT_STANDARD_PER_MINUTE` | `100` | Request limit for the `standard` tier, and the flat rate `RateLimitGuard` applies to every caller. |
+| `RATE_LIMIT_GLOBAL_PER_MINUTE` | `2000` | Flat rate `RateLimitGuard` applies to every caller, regardless of tenant tier. Kept above `RATE_LIMIT_PREMIUM_PER_MINUTE` on purpose — see above. |
+| `RATE_LIMIT_STANDARD_PER_MINUTE` | `100` | Request limit for the `standard` tier, enforced by `TenantTierRateLimitGuard` only. |
 | `RATE_LIMIT_PREMIUM_PER_MINUTE` | `1000` | Request limit for the `premium` tier, enforced by `TenantTierRateLimitGuard` only. |
 | `RATE_LIMIT_PRUNE_CRON` | `0 * * * *` | Cron schedule for the pg-boss pruning worker. |
 | `RATE_LIMIT_HIT_RETENTION_MINUTES` | `5` | How long a hit row is kept before pruning. Must stay comfortably above `RATE_LIMIT_WINDOW_MS`, or the sliding window loses hits it still needs to count. |
@@ -1117,7 +1120,7 @@ gated by `PG_BOSS_WORKERS_ENABLED` like the other maintenance workers.
 
 
 `RateLimitGuard` always keys on the caller's IP, never on route params, so these two admin routes
-are throttled at the flat standard rate against the calling admin — the same as every other route —
+are throttled at the flat global rate against the calling admin — the same as every other route —
 not against the target tenant's own quota/tier.
 
 > **Note:** Per-endpoint `@Throttle()` overrides are not yet used anywhere (no controller currently
