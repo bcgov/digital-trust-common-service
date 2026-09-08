@@ -53,8 +53,10 @@ and this chart adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.h
   Worker deployments when enabled, with the API and Worker reporting under
   different `OTEL_SERVICE_NAME` values. Rendering fails when `otel.enabled` is
   true and `otel.endpoint` is empty, rather than letting the SDK silently drop
-  telemetry against `localhost:4318`. `networkPolicy.collector` adds the
-  matching egress rule to the OTLP collector for the API and Worker.
+  telemetry against `localhost:4318`. Both deployments also report
+  `service.version` from the deployed image tag, so a trace can be tied to a
+  build. `networkPolicy.collector` adds the matching egress rule to the OTLP
+  collector for the API and Worker.
 
 ### Fixed
 

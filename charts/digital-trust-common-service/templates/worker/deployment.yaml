@@ -71,6 +71,8 @@ spec:
               value: {{ .Values.otel.tracesExporter | quote }}
             - name: OTEL_METRICS_EXPORTER
               value: {{ .Values.otel.metricsExporter | quote }}
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: {{ printf "service.version=%s" (include "digital-trust-common-service.imageTag" .) | quote }}
             {{- end }}
           {{- end }}
           {{- with .Values.worker.livenessProbe }}

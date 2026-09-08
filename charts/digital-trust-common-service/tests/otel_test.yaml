@@ -105,6 +105,38 @@ tests:
             value: digital-trust-common-service-worker
         template: templates/worker/deployment.yaml
 
+  - it: reports the deployed image tag as service.version, in step with the image
+    set:
+      upstreamFederation:
+        existingSecret:
+          name: dtsc-ci-oidc-client
+      worker:
+        enabled: true
+      image:
+        tag: "1.4.2"
+      otel:
+        enabled: true
+        endpoint: http://example:4318
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OTEL_RESOURCE_ATTRIBUTES
+            value: service.version=1.4.2
+        template: templates/deployment.yaml
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OTEL_RESOURCE_ATTRIBUTES
+            value: service.version=1.4.2
+        template: templates/worker/deployment.yaml
+      # Locks the point of the shared helper: the reported version and the image
+      # actually deployed come from one expression and cannot drift apart.
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: ghcr.io/bcgov/digital-trust-common-service:1.4.2
+        template: templates/deployment.yaml
+
   - it: renders no OTel variables in either deployment when disabled (the default)
     set:
       upstreamFederation:

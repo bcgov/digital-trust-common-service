@@ -79,6 +79,8 @@ spec:
               value: {{ .Values.otel.tracesExporter | quote }}
             - name: OTEL_METRICS_EXPORTER
               value: {{ .Values.otel.metricsExporter | quote }}
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: {{ printf "service.version=%s" (include "digital-trust-common-service.imageTag" .) | quote }}
             {{- end }}
             {{- if or .Values.oidcSigning.create .Values.oidcSigning.existingSecret }}
             # Marked optional so a pre-provisioned Secret that only carries the
