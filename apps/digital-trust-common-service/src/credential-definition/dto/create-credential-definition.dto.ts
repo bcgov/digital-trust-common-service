@@ -1,6 +1,5 @@
 import { Expose } from 'class-transformer';
 import {
-  IsUUID,
   IsString,
   IsEnum,
   IsObject,
@@ -14,10 +13,6 @@ import {
 } from '../credential-definition.entity';
 
 export class CreateCredentialDefinitionDto {
-  @Expose({ name: 'tenant_id' })
-  @IsUUID()
-  public tenantId!: string;
-
   @Expose()
   @IsString()
   @MaxLength(255)

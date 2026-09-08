@@ -13,6 +13,8 @@ import {
   Controller,
   Delete,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
   ParseEnumPipe,
   ParseUUIDPipe,
@@ -21,11 +23,13 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import {
+  ApiBadRequestResponse,
   ApiBody,
   ApiCreatedResponse,
   ApiForbiddenResponse,
-  ApiOkResponse,
+  ApiNoContentResponse,
   ApiNotFoundResponse,
+  ApiOkResponse,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 
@@ -50,7 +54,10 @@ import { UpdateCredentialDefinitionDto } from './dto/update-credential-definitio
 @ApiForbiddenResponse({
   description: 'Token lacks tenants:admin, or tenant claim does not match',
 })
-@Controller({ path: 'credential-definitions', version: API_VERSION })
+@Controller({
+  path: 'tenants/:tenantId/credential-definitions',
+  version: API_VERSION,
+})
 export class CredentialDefinitionController {
   public constructor(
     private readonly credentialDefinitionService: CredentialDefinitionService,
@@ -61,6 +68,10 @@ export class CredentialDefinitionController {
     description: 'Credential definition created successfully',
     type: CredentialDefinitionResponseDto,
   })
+  @ApiBadRequestResponse({
+    description:
+      'schema_definition failed format-specific structural validation',
+  })
   @ApiBody({
     description: 'Credential definition creation request',
     type: CreateCredentialDefinitionDto,
@@ -68,22 +79,27 @@ export class CredentialDefinitionController {
       example1: {
         summary: 'Create a credential definition',
         value: {
-          tenant_id: '123e4567-e89b-12d3-a456-426614174000',
           name: 'Driver License Definition',
           format: 'anoncreds',
           external_id: 'ext-cred-def-001',
           connector_type: 'traction',
-          schema_definition: { version: '1.0', attributes: ['name', 'age'] },
+          schema_definition: {
+            attr_names: ['name', 'age'],
+            schema_name: 'driver-license',
+            schema_version: '1.0',
+          },
           metadata: { issuer: 'DMV' },
         },
       },
     },
   })
   public async create(
+    @Param('tenantId', ParseUUIDPipe) tenantId: string,
     @Body() dto: CreateCredentialDefinitionDto,
     @CurrentAuth() auth: AuthContext,
   ): Promise<CredentialDefinitionResponseDto> {
     const credentialDefinition = await this.credentialDefinitionService.create(
+      tenantId,
       dto,
       auth,
     );
@@ -91,7 +107,7 @@ export class CredentialDefinitionController {
     return CredentialDefinitionResponseDto.fromEntity(credentialDefinition);
   }
 
-  @Get('tenant/:tenantId')
+  @Get()
   @ApiOkResponse({
     description: 'List of credential definitions for the tenant',
     type: [CredentialDefinitionResponseDto],
@@ -114,12 +130,12 @@ export class CredentialDefinitionController {
     type: [CredentialDefinitionResponseDto],
   })
   public async findByFormat(
+    @Param('tenantId', ParseUUIDPipe) tenantId: string,
     @Param('format', new ParseEnumPipe(CredentialDefinitionFormat))
     format: CredentialDefinitionFormat,
-    @CurrentAuth() auth: AuthContext,
   ): Promise<CredentialDefinitionResponseDto[]> {
     const credentialDefinitions =
-      await this.credentialDefinitionService.findByFormat(format, auth);
+      await this.credentialDefinitionService.findByFormat(tenantId, format);
 
     return credentialDefinitions.map((credentialDefinition) =>
       CredentialDefinitionResponseDto.fromEntity(credentialDefinition),
@@ -133,17 +149,17 @@ export class CredentialDefinitionController {
     type: [CredentialDefinitionResponseDto],
   })
   public async findByConnector(
+    @Param('tenantId', ParseUUIDPipe) tenantId: string,
     @Param(
       'connectorType',
       new ParseEnumPipe(CredentialDefinitionConnectorType),
     )
     connectorType: CredentialDefinitionConnectorType,
-    @CurrentAuth() auth: AuthContext,
   ): Promise<CredentialDefinitionResponseDto[]> {
     const credentialDefinitions =
       await this.credentialDefinitionService.findByConnector(
+        tenantId,
         connectorType,
-        auth,
       );
 
     return credentialDefinitions.map((credentialDefinition) =>
@@ -158,11 +174,12 @@ export class CredentialDefinitionController {
   })
   @ApiNotFoundResponse({ description: 'Credential definition not found' })
   public async findById(
+    @Param('tenantId', ParseUUIDPipe) tenantId: string,
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentAuth() auth: AuthContext,
   ): Promise<CredentialDefinitionResponseDto> {
     const credentialDefinition =
-      await this.credentialDefinitionService.findById(id, auth);
+      await this.credentialDefinitionService.findById(tenantId, id, auth);
 
     return CredentialDefinitionResponseDto.fromEntity(credentialDefinition);
   }
@@ -186,11 +203,13 @@ export class CredentialDefinitionController {
     },
   })
   public async update(
+    @Param('tenantId', ParseUUIDPipe) tenantId: string,
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateCredentialDefinitionDto,
     @CurrentAuth() auth: AuthContext,
   ): Promise<CredentialDefinitionResponseDto> {
     const credentialDefinition = await this.credentialDefinitionService.update(
+      tenantId,
       id,
       dto,
       auth,
@@ -200,12 +219,16 @@ export class CredentialDefinitionController {
   }
 
   @Delete(':id')
-  @ApiOkResponse({ description: 'Credential definition deleted successfully' })
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiNoContentResponse({
+    description: 'Credential definition deactivated successfully',
+  })
   @ApiNotFoundResponse({ description: 'Credential definition not found' })
   public async delete(
+    @Param('tenantId', ParseUUIDPipe) tenantId: string,
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentAuth() auth: AuthContext,
   ): Promise<void> {
-    return await this.credentialDefinitionService.delete(id, auth);
+    return await this.credentialDefinitionService.delete(tenantId, id, auth);
   }
 }

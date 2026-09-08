@@ -3367,6 +3367,9 @@ components:
           description: Ledger/registry reference (e.g., cred_def_id)
         connector_type:
           $ref: "#/components/schemas/ConnectorType"
+        is_active:
+          type: boolean
+          description: Whether this credential definition is currently active
         metadata:
           type: object
         created_at:

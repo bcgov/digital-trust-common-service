@@ -63,6 +63,14 @@ export class CredentialDefinitionResponseDto {
   })
   public connectorType!: CredentialDefinitionConnectorType;
 
+  @Expose({ name: 'is_active' })
+  @ApiProperty({
+    name: 'is_active',
+    description: 'Whether this credential definition is currently active',
+    example: true,
+  })
+  public isActive!: boolean;
+
   @ApiProperty({
     description: 'Additional metadata for the credential definition',
     example: {
@@ -101,6 +109,7 @@ export class CredentialDefinitionResponseDto {
     dto.schemaDefinition = credentialDefinition.schemaDefinition;
     dto.externalId = credentialDefinition.externalId;
     dto.connectorType = credentialDefinition.connectorType;
+    dto.isActive = credentialDefinition.isActive;
     dto.metadata = credentialDefinition.metadata;
     dto.createdAt = credentialDefinition.createdAt;
     dto.updatedAt = credentialDefinition.updatedAt;

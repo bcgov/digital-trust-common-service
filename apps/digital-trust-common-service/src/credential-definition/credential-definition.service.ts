@@ -1,5 +1,10 @@
 import type { AuthContext } from '@app/auth';
 import {
+  CredentialFormat,
+  FormatValidatorRegistry,
+} from '@app/credential-ports';
+import {
+  BadRequestException,
   ConflictException,
   Injectable,
   NotFoundException,
@@ -10,7 +15,6 @@ import { DomainAuditService } from '../audit-log/domain-audit.service';
 import {
   assertResourceTenantOrNotFound,
   assertTenantAccess,
-  isPlatformAdmin,
 } from '../common/assert-tenant-access';
 
 import {
@@ -22,22 +26,42 @@ import { CredentialDefinitionRepository } from './credential-definition.reposito
 import { CreateCredentialDefinitionDto } from './dto/create-credential-definition.dto';
 import { UpdateCredentialDefinitionDto } from './dto/update-credential-definition.dto';
 
+/**
+ * Maps the `format` stored on credential definitions onto the port-layer
+ * enum. The two enums are maintained independently: the entity enum covers
+ * every format this API accepts, while the port enum only lists formats
+ * that have a validator (or adapter) implementation. Returns undefined for
+ * a value the port layer does not know, since the string values are not
+ * guaranteed to match (e.g. entity 'sd-jwt' vs. port 'sd-jwt-vc').
+ */
+export function toPortCredentialFormat(
+  format: CredentialDefinitionFormat,
+): CredentialFormat | undefined {
+  const candidate: string = format;
+
+  return Object.values(CredentialFormat).find(
+    (value) => (value as string) === candidate,
+  );
+}
+
 @Injectable()
 export class CredentialDefinitionService {
   public constructor(
     private readonly credentialDefinitionRepository: CredentialDefinitionRepository,
     private readonly domainAudit: DomainAuditService,
+    private readonly formatValidatorRegistry: FormatValidatorRegistry,
   ) {}
 
   public async create(
+    tenantId: string,
     dto: CreateCredentialDefinitionDto,
     auth: AuthContext,
   ): Promise<CredentialDefinition> {
-    assertTenantAccess(auth, dto.tenantId);
+    assertTenantAccess(auth, tenantId);
 
     const existing =
       await this.credentialDefinitionRepository.findByTenantAndNameAndFormat(
-        dto.tenantId,
+        tenantId,
         dto.name,
         dto.format,
       );
@@ -48,8 +72,10 @@ export class CredentialDefinitionService {
       );
     }
 
+    this.validateSchemaDefinition(dto.format, dto.schemaDefinition);
+
     const created = await this.credentialDefinitionRepository.create({
-      tenantId: dto.tenantId,
+      tenantId,
       name: dto.name,
       format: dto.format,
       schemaDefinition: dto.schemaDefinition,
@@ -68,7 +94,36 @@ export class CredentialDefinitionService {
     return created;
   }
 
+  /**
+   * Validates the schema definition against the format's structural rules
+   * when a FormatValidator is registered for it. Formats without a
+   * registered validator yet (e.g. SD-JWT, mDL, W3C VC) are accepted
+   * as-is until their own validator ships.
+   */
+  private validateSchemaDefinition(
+    format: CredentialDefinitionFormat,
+    schemaDefinition: Readonly<Record<string, unknown>>,
+  ): void {
+    const portFormat = toPortCredentialFormat(format);
+
+    if (!portFormat || !this.formatValidatorRegistry.has(portFormat)) {
+      return;
+    }
+
+    const issues = this.formatValidatorRegistry
+      .resolve(portFormat)
+      .validateSchema(schemaDefinition);
+
+    if (issues.length > 0) {
+      throw new BadRequestException({
+        message: 'Credential definition schema failed format validation',
+        issues,
+      });
+    }
+  }
+
   public async findById(
+    tenantId: string,
     id: string,
     auth: AuthContext,
   ): Promise<CredentialDefinition> {
@@ -76,7 +131,7 @@ export class CredentialDefinitionService {
       await this.credentialDefinitionRepository.findById(id);
     const notFound = `Credential definition '${id}' was not found.`;
 
-    if (!credentialDefinition) {
+    if (!credentialDefinition || credentialDefinition.tenantId !== tenantId) {
       throw new NotFoundException(notFound);
     }
 
@@ -95,49 +150,32 @@ export class CredentialDefinitionService {
   }
 
   public async findByFormat(
+    tenantId: string,
     format: CredentialDefinitionFormat,
-    auth: AuthContext,
   ): Promise<CredentialDefinition[]> {
-    if (isPlatformAdmin(auth)) {
-      return await this.credentialDefinitionRepository.findByFormat(format);
-    }
-
-    if (!auth.tenantId) {
-      return [];
-    }
-
     return await this.credentialDefinitionRepository.findByFormat(
       format,
-      auth.tenantId,
+      tenantId,
     );
   }
 
   public async findByConnector(
+    tenantId: string,
     connectorType: CredentialDefinitionConnectorType,
-    auth: AuthContext,
   ): Promise<CredentialDefinition[]> {
-    if (isPlatformAdmin(auth)) {
-      return await this.credentialDefinitionRepository.findByConnector(
-        connectorType,
-      );
-    }
-
-    if (!auth.tenantId) {
-      return [];
-    }
-
     return await this.credentialDefinitionRepository.findByConnector(
       connectorType,
-      auth.tenantId,
+      tenantId,
     );
   }
 
   public async update(
+    tenantId: string,
     id: string,
     dto: UpdateCredentialDefinitionDto,
     auth: AuthContext,
   ): Promise<CredentialDefinition> {
-    const credentialDefinition = await this.findById(id, auth);
+    const credentialDefinition = await this.findById(tenantId, id, auth);
 
     if (dto.name !== undefined) {
       credentialDefinition.name = dto.name;
@@ -160,14 +198,25 @@ export class CredentialDefinitionService {
     return updated;
   }
 
-  public async delete(id: string, auth: AuthContext): Promise<void> {
-    const credentialDefinition = await this.findById(id, auth);
+  /**
+   * Deactivates the credential definition rather than deleting its row, so
+   * that records referencing its id (e.g. an issuance profile's
+   * `credential_definition_id`) keep resolving. `findById` only resolves
+   * active definitions, so calling delete on an already-deactivated
+   * definition is a 404, preventing duplicate audit events.
+   */
+  public async delete(
+    tenantId: string,
+    id: string,
+    auth: AuthContext,
+  ): Promise<void> {
+    const credentialDefinition = await this.findById(tenantId, id, auth);
 
-    await this.credentialDefinitionRepository.delete(id);
+    await this.credentialDefinitionRepository.deactivate(id);
 
     await this.domainAudit.emit({
       tenantId: credentialDefinition.tenantId,
-      action: AuditAction.DELETE,
+      action: AuditAction.UPDATE,
       resourceType: 'credential_definition',
       resourceId: id,
     });
