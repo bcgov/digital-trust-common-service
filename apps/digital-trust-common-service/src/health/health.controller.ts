@@ -13,7 +13,7 @@ import {
 } from './dto/health-response.dto';
 import { HealthService } from './health.service';
 
-@ApiTags('health')
+@ApiTags('Health')
 @Controller('health')
 export class HealthController {
   public constructor(private readonly healthService: HealthService) {}
