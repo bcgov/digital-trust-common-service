@@ -20,6 +20,7 @@ describe('PgBossService', () => {
 
   afterEach(() => {
     jest.useRealTimers();
+    jest.restoreAllMocks();
   });
 
   it('starts pg-boss on module init', async () => {
@@ -98,8 +99,6 @@ describe('PgBossService', () => {
       expect.stringContaining('Error: terminating connection'),
     );
     expect(service.isRunning()).toBe(true);
-
-    errorSpy.mockRestore();
   });
 
   it('reports pg-boss stopped even when stopping fails', async () => {
