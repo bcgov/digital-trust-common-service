@@ -2,6 +2,7 @@ import { JwtGuard, TenantGuard } from '@app/auth';
 import { CanActivate, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 
+import { TenantTierRateLimitGuard } from '../rate-limit/tenant-tier-rate-limit.guard';
 import { TenantStatusGuard } from '../tenant/tenant-status.guard';
 
 import { OperationController } from './operation.controller';
@@ -60,6 +61,8 @@ describe('OperationController', () => {
       .overrideGuard(TenantGuard)
       .useClass(AllowGuard)
       .overrideGuard(TenantStatusGuard)
+      .useClass(AllowGuard)
+      .overrideGuard(TenantTierRateLimitGuard)
       .useClass(AllowGuard)
       .compile();
 

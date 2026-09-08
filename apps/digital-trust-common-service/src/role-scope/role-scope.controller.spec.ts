@@ -7,6 +7,7 @@ import {
 import type { AuthContext } from '@app/auth';
 import { Test, TestingModule } from '@nestjs/testing';
 
+import { TenantTierRateLimitGuard } from '../rate-limit/tenant-tier-rate-limit.guard';
 import { TenantStatusGuard } from '../tenant/tenant-status.guard';
 
 import { RoleScopeService } from './role-scope.service';
@@ -75,6 +76,8 @@ describe('role-scope controllers', () => {
       .overrideGuard(TenantGuard)
       .useValue({ canActivate: (): boolean => true })
       .overrideGuard(TenantStatusGuard)
+      .useValue({ canActivate: (): boolean => true })
+      .overrideGuard(TenantTierRateLimitGuard)
       .useValue({ canActivate: (): boolean => true })
       .compile();
 

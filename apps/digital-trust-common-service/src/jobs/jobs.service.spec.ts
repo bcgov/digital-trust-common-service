@@ -160,11 +160,11 @@ describe('JobsService', () => {
   it('should only create queues once under concurrent ensureQueues calls', async () => {
     await Promise.all([service.ensureQueues(), service.ensureQueues()]);
 
-    // 7 queues + 7 DLQs
-    expect(createQueue).toHaveBeenCalledTimes(16);
+    // 9 queues + 9 DLQs
+    expect(createQueue).toHaveBeenCalledTimes(18);
 
     await service.ensureQueues();
-    expect(createQueue).toHaveBeenCalledTimes(16);
+    expect(createQueue).toHaveBeenCalledTimes(18);
   });
 
   it('should retry ensureQueues after a previous failure', async () => {
@@ -175,8 +175,8 @@ describe('JobsService', () => {
     await expect(service.ensureQueues()).rejects.toThrow('transient');
     await expect(service.ensureQueues()).resolves.toBeUndefined();
 
-    // First attempt fails mid-way after 1 call; second attempt creates 14.
-    expect(createQueue).toHaveBeenCalledTimes(17);
+    // First attempt fails mid-way after 1 call; second attempt creates 18.
+    expect(createQueue).toHaveBeenCalledTimes(19);
   });
 
   it('should propagate errors from pg-boss', async () => {
