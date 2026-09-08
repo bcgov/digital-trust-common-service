@@ -55,7 +55,7 @@ describe('ConnectorHealthCheckService', () => {
         expect.objectContaining({
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ api_key: 'key-1' }),
+          body: JSON.stringify({ wallet_key: 'key-1' }),
         }),
       );
       expect(result.status).toBe('healthy');
