@@ -66,6 +66,20 @@ spec:
             {{- end }}
             - name: UPSTREAM_IDENTITY_FEDERATION_CONFIG_PATH
               value: {{ printf "%s/%s" .Values.upstreamFederation.mountPath .Values.upstreamFederation.fileName | quote }}
+            {{- if .Values.otel.enabled }}
+            - name: OTEL_ENABLED
+              value: "true"
+            - name: OTEL_SERVICE_NAME
+              value: {{ .Values.otel.apiServiceName | quote }}
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: {{ .Values.otel.endpoint | quote }}
+            - name: OTEL_EXPORTER_OTLP_PROTOCOL
+              value: {{ .Values.otel.protocol | quote }}
+            - name: OTEL_TRACES_EXPORTER
+              value: {{ .Values.otel.tracesExporter | quote }}
+            - name: OTEL_METRICS_EXPORTER
+              value: {{ .Values.otel.metricsExporter | quote }}
+            {{- end }}
             {{- if or .Values.oidcSigning.create .Values.oidcSigning.existingSecret }}
             # Marked optional so a pre-provisioned Secret that only carries the
             # signing JWKS still starts; the application fails fast on its own

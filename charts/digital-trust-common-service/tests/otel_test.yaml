@@ -1,0 +1,186 @@
+suite: OTel settings and collector egress
+templates:
+  - templates/deployment.yaml
+  # deployment.yaml checksums these, so they must be loaded alongside it
+  - templates/configmap.yaml
+  - templates/secret.yaml
+  - templates/connector-encryption-secret.yaml
+  - templates/oidc-signing-secret.yaml
+  - templates/worker/deployment.yaml
+  - templates/networkpolicy.yaml
+tests:
+  - it: renders the OTel variables in the API deployment when enabled
+    set:
+      upstreamFederation:
+        existingSecret:
+          name: dtsc-ci-oidc-client
+      otel:
+        enabled: true
+        endpoint: http://example:4318
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OTEL_ENABLED
+            value: "true"
+        template: templates/deployment.yaml
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OTEL_SERVICE_NAME
+            value: digital-trust-common-service
+        template: templates/deployment.yaml
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OTEL_EXPORTER_OTLP_ENDPOINT
+            value: http://example:4318
+        template: templates/deployment.yaml
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OTEL_EXPORTER_OTLP_PROTOCOL
+            value: http/protobuf
+        template: templates/deployment.yaml
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OTEL_TRACES_EXPORTER
+            value: otlp
+        template: templates/deployment.yaml
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OTEL_METRICS_EXPORTER
+            value: otlp
+        template: templates/deployment.yaml
+
+  - it: renders the OTel variables in the Worker deployment when enabled
+    set:
+      upstreamFederation:
+        existingSecret:
+          name: dtsc-ci-oidc-client
+      worker:
+        enabled: true
+      otel:
+        enabled: true
+        endpoint: http://example:4318
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OTEL_ENABLED
+            value: "true"
+        template: templates/worker/deployment.yaml
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OTEL_SERVICE_NAME
+            value: digital-trust-common-service-worker
+        template: templates/worker/deployment.yaml
+
+  - it: gives the API and Worker different OTEL_SERVICE_NAME values
+    set:
+      upstreamFederation:
+        existingSecret:
+          name: dtsc-ci-oidc-client
+      worker:
+        enabled: true
+      otel:
+        enabled: true
+        endpoint: http://example:4318
+        apiServiceName: digital-trust-common-service
+        workerServiceName: digital-trust-common-service-worker
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OTEL_SERVICE_NAME
+            value: digital-trust-common-service
+        template: templates/deployment.yaml
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OTEL_SERVICE_NAME
+            value: digital-trust-common-service-worker
+        template: templates/worker/deployment.yaml
+
+  - it: renders no OTel variables in either deployment when disabled (the default)
+    set:
+      upstreamFederation:
+        existingSecret:
+          name: dtsc-ci-oidc-client
+      worker:
+        enabled: true
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OTEL_ENABLED
+        template: templates/deployment.yaml
+      - notExists:
+          path: spec.template.spec.containers[0].env
+        template: templates/worker/deployment.yaml
+
+  - it: fails to render when enabled with an empty endpoint
+    set:
+      upstreamFederation:
+        existingSecret:
+          name: dtsc-ci-oidc-client
+      otel:
+        enabled: true
+        endpoint: ""
+    asserts:
+      - failedTemplate:
+          errorMessage: "otel.enabled is set but otel.endpoint is empty. The SDK falls back to localhost:4318, finds nothing, and drops telemetry with no error — set otel.endpoint to the collector's OTLP endpoint in an overlay."
+        template: templates/deployment.yaml
+
+  - it: renders the collector egress policy when enabled
+    templates:
+      - templates/networkpolicy.yaml
+    set:
+      upstreamFederation:
+        existingSecret:
+          name: dtsc-ci-oidc-client
+      frontend:
+        enabled: false
+      networkPolicy:
+        ingress:
+          enabled: false
+        database:
+          enabled: false
+        dnsEgress:
+          enabled: false
+        collector:
+          enabled: true
+    asserts:
+      - hasDocuments:
+          count: 1
+      - isKind:
+          of: NetworkPolicy
+      - equal:
+          path: metadata.name
+          value: RELEASE-NAME-digital-trust-common-service-egress-collector
+      - equal:
+          path: spec.egress[0].ports[0].port
+          value: 4318
+
+  - it: does not render the collector egress policy when disabled (the default)
+    templates:
+      - templates/networkpolicy.yaml
+    set:
+      upstreamFederation:
+        existingSecret:
+          name: dtsc-ci-oidc-client
+      frontend:
+        enabled: false
+      networkPolicy:
+        ingress:
+          enabled: false
+        database:
+          enabled: false
+        dnsEgress:
+          enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0
