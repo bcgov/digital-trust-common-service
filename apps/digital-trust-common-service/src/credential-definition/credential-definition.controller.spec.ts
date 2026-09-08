@@ -144,25 +144,27 @@ describe('CredentialDefinitionController', () => {
 
   describe('GET /tenants/:tenantId/credential-definitions/:id', () => {
     it('should return a credential definition by id', async () => {
+      const tenantId = mockCredentialDefinition.tenantId;
       const id = mockCredentialDefinition.id;
       mockFindById.mockResolvedValue(mockCredentialDefinition);
 
-      const result = await controller.findById(id, auth);
+      const result = await controller.findById(tenantId, id, auth);
 
-      expect(mockFindById).toHaveBeenCalledWith(id, auth);
+      expect(mockFindById).toHaveBeenCalledWith(tenantId, id, auth);
       expect(result).toEqual(
         CredentialDefinitionResponseDto.fromEntity(mockCredentialDefinition),
       );
     });
 
     it('should throw NotFoundException if credential definition not found', async () => {
+      const tenantId = mockCredentialDefinition.tenantId;
       const id = '999e4567-e89b-12d3-a456-426614174000';
       mockFindById.mockRejectedValue(
         new Error('Credential definition not found'),
       );
 
-      await expect(controller.findById(id, auth)).rejects.toThrow();
-      expect(mockFindById).toHaveBeenCalledWith(id, auth);
+      await expect(controller.findById(tenantId, id, auth)).rejects.toThrow();
+      expect(mockFindById).toHaveBeenCalledWith(tenantId, id, auth);
     });
   });
 
@@ -252,21 +254,23 @@ describe('CredentialDefinitionController', () => {
 
   describe('PATCH /tenants/:tenantId/credential-definitions/:id', () => {
     it('should update a credential definition', async () => {
+      const tenantId = mockCredentialDefinition.tenantId;
       const id = mockCredentialDefinition.id;
       const dto = { name: 'Updated Name' };
       const updatedDefinition = { ...mockCredentialDefinition, ...dto };
 
       mockUpdate.mockResolvedValue(updatedDefinition);
 
-      const result = await controller.update(id, dto, auth);
+      const result = await controller.update(tenantId, id, dto, auth);
 
-      expect(mockUpdate).toHaveBeenCalledWith(id, dto, auth);
+      expect(mockUpdate).toHaveBeenCalledWith(tenantId, id, dto, auth);
       expect(result).toEqual(
         CredentialDefinitionResponseDto.fromEntity(updatedDefinition),
       );
     });
 
     it('should throw NotFoundException if credential definition not found', async () => {
+      const tenantId = mockCredentialDefinition.tenantId;
       const id = '999e4567-e89b-12d3-a456-426614174000';
       const dto = { name: 'Updated Name' };
 
@@ -274,29 +278,33 @@ describe('CredentialDefinitionController', () => {
         new Error('Credential definition not found'),
       );
 
-      await expect(controller.update(id, dto, auth)).rejects.toThrow();
-      expect(mockUpdate).toHaveBeenCalledWith(id, dto, auth);
+      await expect(
+        controller.update(tenantId, id, dto, auth),
+      ).rejects.toThrow();
+      expect(mockUpdate).toHaveBeenCalledWith(tenantId, id, dto, auth);
     });
   });
 
   describe('DELETE /tenants/:tenantId/credential-definitions/:id', () => {
     it('should deactivate a credential definition', async () => {
+      const tenantId = mockCredentialDefinition.tenantId;
       const id = mockCredentialDefinition.id;
       mockDelete.mockResolvedValue(undefined);
 
-      await controller.delete(id, auth);
+      await controller.delete(tenantId, id, auth);
 
-      expect(mockDelete).toHaveBeenCalledWith(id, auth);
+      expect(mockDelete).toHaveBeenCalledWith(tenantId, id, auth);
     });
 
     it('should throw NotFoundException if credential definition not found', async () => {
+      const tenantId = mockCredentialDefinition.tenantId;
       const id = '999e4567-e89b-12d3-a456-426614174000';
       mockDelete.mockRejectedValue(
         new Error('Credential definition not found'),
       );
 
-      await expect(controller.delete(id, auth)).rejects.toThrow();
-      expect(mockDelete).toHaveBeenCalledWith(id, auth);
+      await expect(controller.delete(tenantId, id, auth)).rejects.toThrow();
+      expect(mockDelete).toHaveBeenCalledWith(tenantId, id, auth);
     });
   });
 });

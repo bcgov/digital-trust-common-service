@@ -13,6 +13,8 @@ import {
   Controller,
   Delete,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
   ParseEnumPipe,
   ParseUUIDPipe,
@@ -25,8 +27,9 @@ import {
   ApiBody,
   ApiCreatedResponse,
   ApiForbiddenResponse,
-  ApiOkResponse,
+  ApiNoContentResponse,
   ApiNotFoundResponse,
+  ApiOkResponse,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 
@@ -171,11 +174,12 @@ export class CredentialDefinitionController {
   })
   @ApiNotFoundResponse({ description: 'Credential definition not found' })
   public async findById(
+    @Param('tenantId', ParseUUIDPipe) tenantId: string,
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentAuth() auth: AuthContext,
   ): Promise<CredentialDefinitionResponseDto> {
     const credentialDefinition =
-      await this.credentialDefinitionService.findById(id, auth);
+      await this.credentialDefinitionService.findById(tenantId, id, auth);
 
     return CredentialDefinitionResponseDto.fromEntity(credentialDefinition);
   }
@@ -199,11 +203,13 @@ export class CredentialDefinitionController {
     },
   })
   public async update(
+    @Param('tenantId', ParseUUIDPipe) tenantId: string,
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateCredentialDefinitionDto,
     @CurrentAuth() auth: AuthContext,
   ): Promise<CredentialDefinitionResponseDto> {
     const credentialDefinition = await this.credentialDefinitionService.update(
+      tenantId,
       id,
       dto,
       auth,
@@ -213,14 +219,16 @@ export class CredentialDefinitionController {
   }
 
   @Delete(':id')
-  @ApiOkResponse({
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiNoContentResponse({
     description: 'Credential definition deactivated successfully',
   })
   @ApiNotFoundResponse({ description: 'Credential definition not found' })
   public async delete(
+    @Param('tenantId', ParseUUIDPipe) tenantId: string,
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentAuth() auth: AuthContext,
   ): Promise<void> {
-    return await this.credentialDefinitionService.delete(id, auth);
+    return await this.credentialDefinitionService.delete(tenantId, id, auth);
   }
 }

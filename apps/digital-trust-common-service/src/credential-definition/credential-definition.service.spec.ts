@@ -309,23 +309,34 @@ describe('CredentialDefinitionService', () => {
 
   describe('findById', () => {
     it('should return a credential definition if found', async () => {
+      const tenantId = mockCredentialDefinition.tenantId;
       const id = mockCredentialDefinition.id;
       mockFindById.mockResolvedValue(mockCredentialDefinition);
 
-      const result = await service.findById(id, auth);
+      const result = await service.findById(tenantId, id, auth);
 
       expect(mockFindById).toHaveBeenCalledWith(id);
       expect(result).toEqual(mockCredentialDefinition);
     });
 
     it('should throw NotFoundException if credential definition not found', async () => {
+      const tenantId = mockCredentialDefinition.tenantId;
       const id = '999e4567-e89b-12d3-a456-426614174000';
       mockFindById.mockResolvedValue(null);
 
-      await expect(service.findById(id, auth)).rejects.toThrow(
+      await expect(service.findById(tenantId, id, auth)).rejects.toThrow(
         NotFoundException,
       );
       expect(mockFindById).toHaveBeenCalledWith(id);
+    });
+
+    it('should throw NotFoundException if the definition belongs to a different tenant', async () => {
+      const id = mockCredentialDefinition.id;
+      mockFindById.mockResolvedValue(mockCredentialDefinition);
+
+      await expect(
+        service.findById('other-tenant-id', id, auth),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 
@@ -401,6 +412,7 @@ describe('CredentialDefinitionService', () => {
 
   describe('update', () => {
     it('should update a credential definition if found', async () => {
+      const tenantId = mockCredentialDefinition.tenantId;
       const id = mockCredentialDefinition.id;
       const dto = { name: 'Updated Name' };
       const updatedDefinition = { ...mockCredentialDefinition, ...dto };
@@ -408,7 +420,7 @@ describe('CredentialDefinitionService', () => {
       mockFindById.mockResolvedValue(mockCredentialDefinition);
       mockUpdate.mockResolvedValue(updatedDefinition);
 
-      const result = await service.update(id, dto, auth);
+      const result = await service.update(tenantId, id, dto, auth);
 
       expect(mockFindById).toHaveBeenCalledWith(id);
       expect(mockUpdate).toHaveBeenCalled();
@@ -422,6 +434,7 @@ describe('CredentialDefinitionService', () => {
     });
 
     it('should update metadata when provided', async () => {
+      const tenantId = mockCredentialDefinition.tenantId;
       const id = mockCredentialDefinition.id;
       const dto = { metadata: { issuer: 'DMV', version: '2.0' } };
       const updatedDefinition = { ...mockCredentialDefinition, ...dto };
@@ -429,18 +442,19 @@ describe('CredentialDefinitionService', () => {
       mockFindById.mockResolvedValue({ ...mockCredentialDefinition });
       mockUpdate.mockResolvedValue(updatedDefinition);
 
-      const result = await service.update(id, dto, auth);
+      const result = await service.update(tenantId, id, dto, auth);
 
       expect(result.metadata).toEqual(dto.metadata);
     });
 
     it('should throw NotFoundException if credential definition not found', async () => {
+      const tenantId = mockCredentialDefinition.tenantId;
       const id = '999e4567-e89b-12d3-a456-426614174000';
       const dto = { name: 'Updated Name' };
 
       mockFindById.mockResolvedValue(null);
 
-      await expect(service.update(id, dto, auth)).rejects.toThrow(
+      await expect(service.update(tenantId, id, dto, auth)).rejects.toThrow(
         NotFoundException,
       );
       expect(mockFindById).toHaveBeenCalledWith(id);
@@ -450,10 +464,11 @@ describe('CredentialDefinitionService', () => {
 
   describe('delete', () => {
     it('should deactivate a credential definition if found', async () => {
+      const tenantId = mockCredentialDefinition.tenantId;
       const id = mockCredentialDefinition.id;
       mockFindById.mockResolvedValue(mockCredentialDefinition);
 
-      await service.delete(id, auth);
+      await service.delete(tenantId, id, auth);
 
       expect(mockFindById).toHaveBeenCalledWith(id);
       expect(mockDeactivate).toHaveBeenCalledWith(id);
@@ -466,10 +481,27 @@ describe('CredentialDefinitionService', () => {
     });
 
     it('should throw NotFoundException if credential definition not found', async () => {
+      const tenantId = mockCredentialDefinition.tenantId;
       const id = '999e4567-e89b-12d3-a456-426614174000';
       mockFindById.mockResolvedValue(null);
 
-      await expect(service.delete(id, auth)).rejects.toThrow(NotFoundException);
+      await expect(service.delete(tenantId, id, auth)).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(mockDeactivate).not.toHaveBeenCalled();
+      expect(mockEmit).not.toHaveBeenCalled();
+    });
+
+    it('should throw NotFoundException on a repeat delete, since the repository excludes already-inactive definitions', async () => {
+      const tenantId = mockCredentialDefinition.tenantId;
+      const id = mockCredentialDefinition.id;
+      // The repository's findById only resolves active rows, so a
+      // definition deactivated by a prior delete call surfaces as null here.
+      mockFindById.mockResolvedValue(null);
+
+      await expect(service.delete(tenantId, id, auth)).rejects.toThrow(
+        NotFoundException,
+      );
       expect(mockDeactivate).not.toHaveBeenCalled();
       expect(mockEmit).not.toHaveBeenCalled();
     });

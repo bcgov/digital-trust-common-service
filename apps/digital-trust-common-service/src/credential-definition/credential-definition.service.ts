@@ -123,6 +123,7 @@ export class CredentialDefinitionService {
   }
 
   public async findById(
+    tenantId: string,
     id: string,
     auth: AuthContext,
   ): Promise<CredentialDefinition> {
@@ -130,7 +131,7 @@ export class CredentialDefinitionService {
       await this.credentialDefinitionRepository.findById(id);
     const notFound = `Credential definition '${id}' was not found.`;
 
-    if (!credentialDefinition) {
+    if (!credentialDefinition || credentialDefinition.tenantId !== tenantId) {
       throw new NotFoundException(notFound);
     }
 
@@ -169,11 +170,12 @@ export class CredentialDefinitionService {
   }
 
   public async update(
+    tenantId: string,
     id: string,
     dto: UpdateCredentialDefinitionDto,
     auth: AuthContext,
   ): Promise<CredentialDefinition> {
-    const credentialDefinition = await this.findById(id, auth);
+    const credentialDefinition = await this.findById(tenantId, id, auth);
 
     if (dto.name !== undefined) {
       credentialDefinition.name = dto.name;
@@ -199,10 +201,16 @@ export class CredentialDefinitionService {
   /**
    * Deactivates the credential definition rather than deleting its row, so
    * that records referencing its id (e.g. an issuance profile's
-   * `credential_definition_id`) keep resolving.
+   * `credential_definition_id`) keep resolving. `findById` only resolves
+   * active definitions, so calling delete on an already-deactivated
+   * definition is a 404, preventing duplicate audit events.
    */
-  public async delete(id: string, auth: AuthContext): Promise<void> {
-    const credentialDefinition = await this.findById(id, auth);
+  public async delete(
+    tenantId: string,
+    id: string,
+    auth: AuthContext,
+  ): Promise<void> {
+    const credentialDefinition = await this.findById(tenantId, id, auth);
 
     await this.credentialDefinitionRepository.deactivate(id);
 
