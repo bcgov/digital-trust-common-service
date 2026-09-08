@@ -59,6 +59,7 @@ export type {
   AgentAdapter,
   SupportedFormats,
 } from './ports/agent-adapter';
+export type { ConnectorContext } from './ports/connector-context';
 
 // Testing helpers
 export {

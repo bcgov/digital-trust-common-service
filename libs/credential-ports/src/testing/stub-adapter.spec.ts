@@ -2,8 +2,16 @@ import { NotImplementedException } from '@nestjs/common';
 
 import { ConnectorType } from '../enums/connector-type.enum';
 import { CredentialFormat } from '../enums/credential-format.enum';
+import { ConnectorContext } from '../ports/connector-context';
 
 import { StubAdapter } from './stub-adapter';
+
+const context: ConnectorContext = {
+  connectorId: 'connector-1',
+  tenantId: 'tenant-1',
+  endpointUrl: 'https://stub.local',
+  credentials: {},
+};
 
 describe('StubAdapter', () => {
   let stub: StubAdapter;
@@ -25,7 +33,7 @@ describe('StubAdapter', () => {
 
   it('should reject offerCredential', async () => {
     await expect(
-      stub.offerCredential({
+      stub.offerCredential(context, {
         attributes: [{ name: 'given_name', value: 'Avery' }],
         format: CredentialFormat.AnonCreds,
       }),
@@ -33,14 +41,14 @@ describe('StubAdapter', () => {
   });
 
   it('should reject getExchange', async () => {
-    await expect(stub.getExchange('exchange-id')).rejects.toBeInstanceOf(
-      NotImplementedException,
-    );
+    await expect(
+      stub.getExchange(context, 'exchange-id'),
+    ).rejects.toBeInstanceOf(NotImplementedException);
   });
 
   it('should reject requestPresentation', async () => {
     await expect(
-      stub.requestPresentation({
+      stub.requestPresentation(context, {
         name: 'Proof request',
         requestedAttributes: [{ name: 'given_name' }],
       }),
@@ -49,53 +57,55 @@ describe('StubAdapter', () => {
 
   it('should reject getPresentation', async () => {
     await expect(
-      stub.getPresentation('presentation-id'),
+      stub.getPresentation(context, 'presentation-id'),
     ).rejects.toBeInstanceOf(NotImplementedException);
   });
 
   it('should reject acceptOffer', async () => {
-    await expect(stub.acceptOffer('exchange-id')).rejects.toBeInstanceOf(
-      NotImplementedException,
-    );
+    await expect(
+      stub.acceptOffer(context, 'exchange-id'),
+    ).rejects.toBeInstanceOf(NotImplementedException);
   });
 
   it('should reject rejectOffer', async () => {
-    await expect(stub.rejectOffer('exchange-id')).rejects.toBeInstanceOf(
-      NotImplementedException,
-    );
+    await expect(
+      stub.rejectOffer(context, 'exchange-id'),
+    ).rejects.toBeInstanceOf(NotImplementedException);
   });
 
   it('should reject createInvitation', async () => {
-    await expect(stub.createInvitation({})).rejects.toBeInstanceOf(
+    await expect(stub.createInvitation(context, {})).rejects.toBeInstanceOf(
       NotImplementedException,
     );
   });
 
   it('should reject acceptInvitation', async () => {
     await expect(
-      stub.acceptInvitation('https://example.com/invitation'),
+      stub.acceptInvitation(context, 'https://example.com/invitation'),
     ).rejects.toBeInstanceOf(NotImplementedException);
   });
 
   it('should reject list', async () => {
-    await expect(stub.list({})).rejects.toBeInstanceOf(NotImplementedException);
+    await expect(stub.list(context, {})).rejects.toBeInstanceOf(
+      NotImplementedException,
+    );
   });
 
   it('should reject getById', async () => {
-    await expect(stub.getById('connection-id')).rejects.toBeInstanceOf(
+    await expect(stub.getById(context, 'connection-id')).rejects.toBeInstanceOf(
       NotImplementedException,
     );
   });
 
   it('should reject revoke', async () => {
-    await expect(stub.revoke('credential-id')).rejects.toBeInstanceOf(
+    await expect(stub.revoke(context, 'credential-id')).rejects.toBeInstanceOf(
       NotImplementedException,
     );
   });
 
   it('should reject batchRevoke', async () => {
-    await expect(stub.batchRevoke(['credential-id'])).rejects.toBeInstanceOf(
-      NotImplementedException,
-    );
+    await expect(
+      stub.batchRevoke(context, ['credential-id']),
+    ).rejects.toBeInstanceOf(NotImplementedException);
   });
 });

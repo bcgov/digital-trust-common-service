@@ -24,6 +24,7 @@ import {
   ValidationError,
 } from '../errors/adapter-error';
 import { AgentAdapter, SupportedFormats } from '../ports/agent-adapter';
+import { ConnectorContext } from '../ports/connector-context';
 
 /**
  * Runtime behaviour, reconfigurable at any point during a test.
@@ -126,9 +127,10 @@ export class MockAdapter implements AgentAdapter {
   }
 
   public async offerCredential(
+    context: ConnectorContext,
     req: OfferCredentialRequest,
   ): Promise<CredentialExchange> {
-    return this.execute('offerCredential', [req], () => {
+    return this.execute('offerCredential', [context, req], () => {
       const timestamp = this.createTimestamp();
       const id = randomUUID();
       const exchange: CredentialExchange = {
@@ -150,16 +152,20 @@ export class MockAdapter implements AgentAdapter {
     });
   }
 
-  public async getExchange(id: string): Promise<CredentialExchange> {
-    return this.execute('getExchange', [id], () =>
+  public async getExchange(
+    context: ConnectorContext,
+    id: string,
+  ): Promise<CredentialExchange> {
+    return this.execute('getExchange', [context, id], () =>
       this.getCredentialExchangeOrThrow(id),
     );
   }
 
   public async requestPresentation(
+    context: ConnectorContext,
     req: PresentationRequest,
   ): Promise<PresentationExchange> {
-    return this.execute('requestPresentation', [req], () => {
+    return this.execute('requestPresentation', [context, req], () => {
       const timestamp = this.createTimestamp();
       const id = randomUUID();
       const exchange: PresentationExchange = {
@@ -177,14 +183,20 @@ export class MockAdapter implements AgentAdapter {
     });
   }
 
-  public async getPresentation(id: string): Promise<PresentationExchange> {
-    return this.execute('getPresentation', [id], () =>
+  public async getPresentation(
+    context: ConnectorContext,
+    id: string,
+  ): Promise<PresentationExchange> {
+    return this.execute('getPresentation', [context, id], () =>
       this.getPresentationExchangeOrThrow(id),
     );
   }
 
-  public async acceptOffer(exchangeId: string): Promise<CredentialExchange> {
-    return this.execute('acceptOffer', [exchangeId], () => {
+  public async acceptOffer(
+    context: ConnectorContext,
+    exchangeId: string,
+  ): Promise<CredentialExchange> {
+    return this.execute('acceptOffer', [context, exchangeId], () => {
       const exchange = this.getCredentialExchangeOrThrow(exchangeId);
       const updatedExchange: CredentialExchange = {
         ...exchange,
@@ -198,8 +210,11 @@ export class MockAdapter implements AgentAdapter {
     });
   }
 
-  public async rejectOffer(exchangeId: string): Promise<void> {
-    return this.execute('rejectOffer', [exchangeId], () => {
+  public async rejectOffer(
+    context: ConnectorContext,
+    exchangeId: string,
+  ): Promise<void> {
+    return this.execute('rejectOffer', [context, exchangeId], () => {
       const exchange = this.getCredentialExchangeOrThrow(exchangeId);
       const updatedExchange: CredentialExchange = {
         ...exchange,
@@ -212,8 +227,11 @@ export class MockAdapter implements AgentAdapter {
     });
   }
 
-  public async createInvitation(opts: InvitationOptions): Promise<Invitation> {
-    return this.execute('createInvitation', [opts], () => {
+  public async createInvitation(
+    context: ConnectorContext,
+    opts: InvitationOptions,
+  ): Promise<Invitation> {
+    return this.execute('createInvitation', [context, opts], () => {
       const connectionId = randomUUID();
       const invitationId = randomUUID();
       const timestamp = this.createTimestamp();
@@ -241,8 +259,11 @@ export class MockAdapter implements AgentAdapter {
     });
   }
 
-  public async acceptInvitation(url: string): Promise<Connection> {
-    return this.execute('acceptInvitation', [url], () => {
+  public async acceptInvitation(
+    context: ConnectorContext,
+    url: string,
+  ): Promise<Connection> {
+    return this.execute('acceptInvitation', [context, url], () => {
       const invitationId = this.invitationUrls.get(url);
 
       if (!invitationId) {
@@ -268,8 +289,11 @@ export class MockAdapter implements AgentAdapter {
     });
   }
 
-  public async list(filters: ConnectionFilters): Promise<Connection[]> {
-    return this.execute('list', [filters], () => {
+  public async list(
+    context: ConnectorContext,
+    filters: ConnectionFilters,
+  ): Promise<Connection[]> {
+    return this.execute('list', [context, filters], () => {
       const offset = filters.offset ?? 0;
       const filteredConnections = [...this.connections.values()].filter(
         (connection) => {
@@ -293,12 +317,20 @@ export class MockAdapter implements AgentAdapter {
     });
   }
 
-  public async getById(id: string): Promise<Connection> {
-    return this.execute('getById', [id], () => this.getConnectionOrThrow(id));
+  public async getById(
+    context: ConnectorContext,
+    id: string,
+  ): Promise<Connection> {
+    return this.execute('getById', [context, id], () =>
+      this.getConnectionOrThrow(id),
+    );
   }
 
-  public async revoke(credentialId: string): Promise<RevocationResult> {
-    return this.execute('revoke', [credentialId], () => {
+  public async revoke(
+    context: ConnectorContext,
+    credentialId: string,
+  ): Promise<RevocationResult> {
+    return this.execute('revoke', [context, credentialId], () => {
       const existingResult = this.revocations.get(credentialId);
 
       if (existingResult) {
@@ -318,9 +350,10 @@ export class MockAdapter implements AgentAdapter {
   }
 
   public async batchRevoke(
+    context: ConnectorContext,
     ids: readonly string[],
   ): Promise<RevocationResult[]> {
-    return this.execute('batchRevoke', [ids], () =>
+    return this.execute('batchRevoke', [context, ids], () =>
       ids.map((id) => this.createOrGetRevocationResult(id)),
     );
   }

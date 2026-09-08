@@ -10,8 +10,16 @@ import {
   TimeoutError,
   ValidationError,
 } from '../errors/adapter-error';
+import { ConnectorContext } from '../ports/connector-context';
 
 import { MockAdapter } from './mock-adapter';
+
+const context: ConnectorContext = {
+  connectorId: 'connector-1',
+  tenantId: 'tenant-1',
+  endpointUrl: 'https://mock.local',
+  credentials: {},
+};
 
 describe('MockAdapter', () => {
   let adapter: MockAdapter;
@@ -52,7 +60,7 @@ describe('MockAdapter', () => {
   });
 
   it('should resolve issuer, holder, and revocation operations with in-memory state by default', async () => {
-    const exchange = await adapter.offerCredential({
+    const exchange = await adapter.offerCredential(context, {
       connectionId: 'connection-1',
       format: CredentialFormat.AnonCreds,
       attributes: [{ name: 'given_name', value: 'Avery' }],
@@ -63,39 +71,41 @@ describe('MockAdapter', () => {
     expect(exchange.connectionId).toBe('connection-1');
     expect(exchange.state).toBe(CredentialExchangeState.CredentialIssued);
 
-    await expect(adapter.getExchange(exchange.id)).resolves.toEqual(exchange);
+    await expect(adapter.getExchange(context, exchange.id)).resolves.toEqual(
+      exchange,
+    );
 
-    const acceptedExchange = await adapter.acceptOffer(exchange.id);
+    const acceptedExchange = await adapter.acceptOffer(context, exchange.id);
 
     expect(acceptedExchange.id).toBe(exchange.id);
     expect(acceptedExchange.state).toBe(CredentialExchangeState.Done);
 
-    await expect(adapter.getExchange(exchange.id)).resolves.toEqual(
+    await expect(adapter.getExchange(context, exchange.id)).resolves.toEqual(
       acceptedExchange,
     );
 
-    const rejectedExchange = await adapter.offerCredential({
+    const rejectedExchange = await adapter.offerCredential(context, {
       format: CredentialFormat.JsonLd,
       attributes: [{ name: 'family_name', value: 'Nguyen' }],
     });
 
     await expect(
-      adapter.rejectOffer(rejectedExchange.id),
+      adapter.rejectOffer(context, rejectedExchange.id),
     ).resolves.toBeUndefined();
     await expect(
-      adapter.getExchange(rejectedExchange.id),
+      adapter.getExchange(context, rejectedExchange.id),
     ).resolves.toMatchObject({
       id: rejectedExchange.id,
       state: CredentialExchangeState.Abandoned,
       error: 'Offer rejected',
     });
 
-    await expect(adapter.revoke(exchange.id)).resolves.toMatchObject({
+    await expect(adapter.revoke(context, exchange.id)).resolves.toMatchObject({
       credentialId: exchange.id,
       revoked: true,
     });
     await expect(
-      adapter.batchRevoke([exchange.id, rejectedExchange.id]),
+      adapter.batchRevoke(context, [exchange.id, rejectedExchange.id]),
     ).resolves.toEqual([
       expect.objectContaining({
         credentialId: exchange.id,
@@ -109,7 +119,7 @@ describe('MockAdapter', () => {
   });
 
   it('should resolve verifier operations with in-memory state by default', async () => {
-    const exchange = await adapter.requestPresentation({
+    const exchange = await adapter.requestPresentation(context, {
       connectionId: 'connection-2',
       name: 'Proof request',
       requestedAttributes: [{ name: 'given_name' }],
@@ -119,13 +129,13 @@ describe('MockAdapter', () => {
     expect(exchange.id).toBeDefined();
     expect(exchange.connectionId).toBe('connection-2');
     expect(exchange.state).toBe(PresentationExchangeState.RequestSent);
-    await expect(adapter.getPresentation(exchange.id)).resolves.toEqual(
-      exchange,
-    );
+    await expect(
+      adapter.getPresentation(context, exchange.id),
+    ).resolves.toEqual(exchange);
   });
 
   it('should resolve connection operations with in-memory state by default', async () => {
-    const invitation = await adapter.createInvitation({
+    const invitation = await adapter.createInvitation(context, {
       alias: 'Acme',
       multiUse: true,
       label: 'Acme Wallet',
@@ -140,7 +150,7 @@ describe('MockAdapter', () => {
     }
 
     await expect(
-      adapter.getById(invitation.connectionId),
+      adapter.getById(context, invitation.connectionId),
     ).resolves.toMatchObject({
       id: invitation.connectionId,
       state: ConnectionState.Invitation,
@@ -149,6 +159,7 @@ describe('MockAdapter', () => {
     });
 
     const acceptedConnection = await adapter.acceptInvitation(
+      context,
       invitation.invitationUrl,
     );
 
@@ -156,7 +167,7 @@ describe('MockAdapter', () => {
     expect(acceptedConnection.state).toBe(ConnectionState.Active);
 
     await expect(
-      adapter.list({ state: ConnectionState.Active, alias: 'Acme' }),
+      adapter.list(context, { state: ConnectionState.Active, alias: 'Acme' }),
     ).resolves.toEqual([acceptedConnection]);
   });
 
@@ -169,22 +180,26 @@ describe('MockAdapter', () => {
     });
 
     await expect(
-      adapter.offerCredential({
+      adapter.offerCredential(context, {
         format: CredentialFormat.AnonCreds,
         attributes: [{ name: 'given_name', value: 'Avery' }],
       }),
     ).rejects.toBe(failureError);
     await expect(
-      adapter.requestPresentation({
+      adapter.requestPresentation(context, {
         name: 'Proof request',
         requestedAttributes: [{ name: 'given_name' }],
       }),
     ).rejects.toBe(failureError);
-    await expect(adapter.acceptOffer('exchange-id')).rejects.toBe(failureError);
-    await expect(adapter.createInvitation({ alias: 'Acme' })).rejects.toBe(
+    await expect(adapter.acceptOffer(context, 'exchange-id')).rejects.toBe(
       failureError,
     );
-    await expect(adapter.revoke('credential-id')).rejects.toBe(failureError);
+    await expect(
+      adapter.createInvitation(context, { alias: 'Acme' }),
+    ).rejects.toBe(failureError);
+    await expect(adapter.revoke(context, 'credential-id')).rejects.toBe(
+      failureError,
+    );
   });
 
   it('should delay the success path when configured for delayed mode', async () => {
@@ -196,7 +211,7 @@ describe('MockAdapter', () => {
 
     let resolved = false;
     const promise = adapter
-      .offerCredential({
+      .offerCredential(context, {
         format: CredentialFormat.SdJwtVc,
         attributes: [{ name: 'given_name', value: 'Avery' }],
       })
@@ -222,27 +237,27 @@ describe('MockAdapter', () => {
     };
     const filters = { alias: 'Acme' };
 
-    await adapter.offerCredential(offerRequest);
-    await adapter.list(filters);
+    await adapter.offerCredential(context, offerRequest);
+    await adapter.list(context, filters);
 
     const calls = adapter.getCalls();
 
     expect(calls).toHaveLength(2);
     expect(calls[0]).toMatchObject({
       method: 'offerCredential',
-      args: [offerRequest],
+      args: [context, offerRequest],
     });
     expect(calls[0].timestamp).toBeInstanceOf(Date);
     expect(adapter.getCalls('list')).toEqual([
       expect.objectContaining({
         method: 'list',
-        args: [filters],
+        args: [context, filters],
       }),
     ]);
   });
 
   it('should reset call history and in-memory state while preserving configuration', async () => {
-    const exchange = await adapter.offerCredential({
+    const exchange = await adapter.offerCredential(context, {
       format: CredentialFormat.AnonCreds,
       attributes: [{ name: 'given_name', value: 'Avery' }],
     });
@@ -254,14 +269,14 @@ describe('MockAdapter', () => {
     adapter.reset();
 
     expect(adapter.getCalls()).toEqual([]);
-    await expect(adapter.getExchange(exchange.id)).rejects.toBeInstanceOf(
-      ValidationError,
-    );
+    await expect(
+      adapter.getExchange(context, exchange.id),
+    ).rejects.toBeInstanceOf(ValidationError);
 
     adapter.configure({ mode: 'failure' });
 
     await expect(
-      adapter.requestPresentation({
+      adapter.requestPresentation(context, {
         name: 'Proof request',
         requestedAttributes: [{ name: 'given_name' }],
       }),
