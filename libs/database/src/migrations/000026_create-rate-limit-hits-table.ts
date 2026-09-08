@@ -2,7 +2,7 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
 
 export const migrationName = 'CreateRateLimitHitsTable';
 
-export class CreateRateLimitHitsTable1788380667109 implements MigrationInterface {
+export class CreateRateLimitHitsTable1788897010000 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
       CREATE TABLE rate_limit_hits (
