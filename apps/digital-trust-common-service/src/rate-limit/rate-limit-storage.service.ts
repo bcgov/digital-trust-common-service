@@ -32,6 +32,14 @@ interface RateLimitStorageRecord {
  * the window), so the window length is used as a safe upper bound for the
  * `Retry-After` header rather than computing the exact age of the oldest
  * in-window hit.
+ *
+ * The count is checked *before* writing a new hit, and the write is
+ * skipped once the caller is already over its limit: a request that is
+ * already blocked stays blocked regardless of whether it is recorded, so
+ * writing it would only pad `rate_limit_hits` with rows for the same
+ * flood — it does not change the outcome, and does not change when the
+ * caller unblocks (its earlier, already-recorded hits still have to age
+ * out of the window either way).
  */
 @Injectable()
 export class RateLimitStorageService implements ThrottlerStorage {
@@ -45,11 +53,16 @@ export class RateLimitStorageService implements ThrottlerStorage {
     _throttlerName: string,
   ): Promise<RateLimitStorageRecord> {
     const { tracker, routeKey } = parseRateLimitKey(key);
-
-    await this.hits.recordHit(tracker, routeKey);
-
     const since = new Date(Date.now() - ttl);
-    const totalHits = await this.hits.countSince(tracker, routeKey, since);
+
+    const existingHits = await this.hits.countSince(tracker, routeKey, since);
+    const alreadyBlocked = existingHits > limit;
+
+    if (!alreadyBlocked) {
+      await this.hits.recordHit(tracker, routeKey);
+    }
+
+    const totalHits = alreadyBlocked ? existingHits : existingHits + 1;
     const isBlocked = totalHits > limit;
 
     return {

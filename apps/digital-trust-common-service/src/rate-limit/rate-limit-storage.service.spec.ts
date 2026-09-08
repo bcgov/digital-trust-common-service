@@ -26,17 +26,17 @@ describe('RateLimitStorageService', () => {
 
   it('records a hit and reports not blocked when under the limit', async () => {
     (mockRepo.recordHit as jest.Mock).mockResolvedValue(undefined);
-    (mockRepo.countSince as jest.Mock).mockResolvedValue(5);
+    (mockRepo.countSince as jest.Mock).mockResolvedValue(4);
 
     const key = buildRateLimitKey('t1', 'global');
     const result = await service.increment(key, 60000, 100, 60000, 'default');
 
-    expect(mockRepo.recordHit).toHaveBeenCalledWith('t1', 'global');
     expect(mockRepo.countSince).toHaveBeenCalledWith(
       't1',
       'global',
       expect.any(Date),
     );
+    expect(mockRepo.recordHit).toHaveBeenCalledWith('t1', 'global');
     expect(result).toEqual({
       totalHits: 5,
       timeToExpire: 60,
@@ -45,13 +45,30 @@ describe('RateLimitStorageService', () => {
     });
   });
 
-  it('reports blocked once the count exceeds the limit', async () => {
+  it('records the hit that pushes the count over the limit and reports blocked', async () => {
+    (mockRepo.recordHit as jest.Mock).mockResolvedValue(undefined);
+    (mockRepo.countSince as jest.Mock).mockResolvedValue(100);
+
+    const key = buildRateLimitKey('t1', 'global');
+    const result = await service.increment(key, 60000, 100, 30000, 'default');
+
+    expect(mockRepo.recordHit).toHaveBeenCalledWith('t1', 'global');
+    expect(result).toEqual({
+      totalHits: 101,
+      timeToExpire: 60,
+      isBlocked: true,
+      timeToBlockExpire: 30,
+    });
+  });
+
+  it('skips recording a hit once the caller is already over the limit', async () => {
     (mockRepo.recordHit as jest.Mock).mockResolvedValue(undefined);
     (mockRepo.countSince as jest.Mock).mockResolvedValue(101);
 
     const key = buildRateLimitKey('t1', 'global');
     const result = await service.increment(key, 60000, 100, 30000, 'default');
 
+    expect(mockRepo.recordHit).not.toHaveBeenCalled();
     expect(result).toEqual({
       totalHits: 101,
       timeToExpire: 60,
