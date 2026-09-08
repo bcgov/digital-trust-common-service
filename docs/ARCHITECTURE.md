@@ -1403,7 +1403,8 @@ erDiagram
 graph TB
     subgraph "OpenShift Cluster"
         subgraph "Namespace: digital-trust-common-service-dev"
-            POD_API[Pod: API<br/>NestJS + Migration sidecar]
+            POD_API[Pod: API<br/>NestJS]
+            JOB_MIGRATE[Job: migrate<br/>Helm pre-install/pre-upgrade hook]
             POD_WORKER[Pod: Worker<br/>Queue consumers]
             POD_UI[Pod: React SPA<br/>Caddy static server]
             SVC_API[Service: api]
@@ -1421,13 +1422,14 @@ graph TB
     ROUTE_UI --> SVC_UI --> POD_UI
     ROUTE_API --> SVC_API --> POD_API
     POD_API --> PG_POD
+    JOB_MIGRATE --> PG_POD
     POD_WORKER --> PG_POD
     POD_API --> KC_POD
 ```
 
 **Notes:**
 - API and Worker share the same container image; differentiated by entrypoint command
-- Migrations run as init container in the API pod
+- Migrations run as an opt-in Helm hook Job (`migrations.enabled`), not an init container: once per release before the app pods roll, so replicas and HPA scale-ups cannot run them concurrently
 - Horizontal scaling: API pods are stateless (scale freely); Worker pods use pg-boss `teamSize` + `teamConcurrency` for competing consumers
 - NetworkPolicy restricts ingress to routes only; inter-pod communication explicit
 
