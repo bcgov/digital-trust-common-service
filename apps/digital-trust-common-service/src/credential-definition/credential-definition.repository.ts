@@ -24,7 +24,7 @@ export class CredentialDefinitionRepository {
 
   public async findById(id: string): Promise<CredentialDefinition | null> {
     return await this.repository.findOne({
-      where: { id },
+      where: { id, isActive: true },
     });
   }
 
@@ -32,7 +32,7 @@ export class CredentialDefinitionRepository {
     tenantId: string,
   ): Promise<CredentialDefinition[]> {
     return await this.repository.find({
-      where: { tenantId },
+      where: { tenantId, isActive: true },
       order: {
         createdAt: 'ASC',
       },
@@ -44,7 +44,7 @@ export class CredentialDefinitionRepository {
     name: string,
   ): Promise<CredentialDefinition | null> {
     return await this.repository.findOne({
-      where: { tenantId, name },
+      where: { tenantId, name, isActive: true },
     });
   }
 
@@ -54,7 +54,7 @@ export class CredentialDefinitionRepository {
     format: CredentialDefinitionFormat,
   ): Promise<CredentialDefinition | null> {
     return await this.repository.findOne({
-      where: { tenantId, name, format },
+      where: { tenantId, name, format, isActive: true },
     });
   }
 
@@ -63,7 +63,7 @@ export class CredentialDefinitionRepository {
     tenantId: string,
   ): Promise<CredentialDefinition[]> {
     return await this.repository.find({
-      where: { format, tenantId },
+      where: { format, tenantId, isActive: true },
       order: {
         createdAt: 'ASC',
       },
@@ -75,7 +75,7 @@ export class CredentialDefinitionRepository {
     tenantId: string,
   ): Promise<CredentialDefinition[]> {
     return await this.repository.find({
-      where: { connectorType, tenantId },
+      where: { connectorType, tenantId, isActive: true },
       order: {
         createdAt: 'ASC',
       },
