@@ -28,6 +28,7 @@ import { VerificationProfile } from '../verification-profile/verification-profil
 import { VerificationProfileRepository } from '../verification-profile/verification-profile.repository';
 
 import {
+  MULTI_TENANT_USER,
   MOCK_TRACTION_ENDPOINT,
   UI_SPA_CLIENT_ID,
   seedApiClientId,
@@ -508,6 +509,24 @@ describe('DevSeedService', () => {
     });
   });
 
+  it('seeds the multi-tenant account active in every tenant it belongs to', async () => {
+    await service.run();
+
+    const rows = tenantUserRepo.create.mock.calls
+      .map(([user]: [Partial<TenantUser>]) => user)
+      .filter((user) => user.email === MULTI_TENANT_USER.email);
+
+    // One row per tenant, in seed order, each carrying the pinned subject so
+    // a sign-in finds every membership without claiming anything.
+    expect(rows.map((row) => row.role)).toEqual(['admin', 'owner', 'member']);
+    for (const row of rows) {
+      expect(row).toMatchObject({
+        externalUserId: MULTI_TENANT_USER.externalUserId,
+        status: TenantUserStatus.ACTIVE,
+      });
+    }
+  });
+
   it('refreshes an unclaimed invitation with one conditional update', async () => {
     rowExistsFor(
       seedTenantUserRepo.refreshSeeded,
@@ -727,7 +746,8 @@ describe('DevSeedService', () => {
 
     const summary = await service.run();
 
-    expect(summary.users).toBe(9);
+    // Three per tenant, plus the multi-tenant account in each of the three.
+    expect(summary.users).toBe(12);
     expect(summary.connections).toBe(10);
     expect(oauthClientRepo.create).toHaveBeenCalledWith(
       expect.objectContaining({

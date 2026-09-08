@@ -324,6 +324,13 @@ sign-in claims the matching `tenant_user` row and lands with that role:
 | `acme-owner` | `owner@acme-corp.example.test` | owner |
 | `acme-admin` | `admin@acme-corp.example.test` | admin |
 | `acme-member` | `member@acme-corp.example.test` | member |
+| `multi-tenant` | `multi-tenant@example.test` | admin in `acme-corp`, owner in `test-org`, member in `suspended-co` |
+
+`multi-tenant` is the odd one out: its rows are seeded already active, in
+three tenants, so it exists to exercise the tenant switcher. It signs in to
+`acme-corp` and can switch to `test-org` from the header; `suspended-co` is
+listed but not switchable. Its Keycloak id is pinned in the realm file, since
+the seed has to know the subject to create active rows for it.
 
 The realm's `admin` account (`admin@example.com`, password `admin`) has no
 seeded row: the login callback creates one on the fly with the `readonly`
@@ -660,7 +667,7 @@ SEED_ON_START=true
 | Resource | Details |
 |----------|---------|
 | Tenants | `acme-corp`, `test-org` (active), `suspended-co` (suspended) |
-| Users | owner / admin / member per tenant. In `acme-corp` these are unclaimed invitations at the emails of the realm's accounts (see [Signing in for real](#signing-in-for-real)); elsewhere they are placeholders that cannot sign in |
+| Users | owner / admin / member per tenant. In `acme-corp` these are unclaimed invitations at the emails of the realm's accounts (see [Signing in for real](#signing-in-for-real)); elsewhere they are placeholders that cannot sign in. Plus `multi-tenant`, active in all three tenants, for the tenant switcher |
 | Connectors | Mock Traction endpoint per tenant |
 | Credential defs | Person credential, Employee badge (active tenants) |
 | Issuance profiles | Published `person-credential/1.0`, draft `employee-badge/1.0` |
