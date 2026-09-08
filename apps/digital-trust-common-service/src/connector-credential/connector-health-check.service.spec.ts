@@ -51,7 +51,7 @@ describe('ConnectorHealthCheckService', () => {
       );
 
       expect(global.fetch).toHaveBeenCalledWith(
-        'https://traction.example.com/multitenancy/tenant/tenant-abc/token',
+        'https://traction.example.com/multitenancy/wallet/tenant-abc/token',
         expect.objectContaining({
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
