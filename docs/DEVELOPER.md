@@ -512,7 +512,9 @@ Open <http://localhost:3001> (or <https://grafana.localhost>) and use
 - **Tempo** — traces for incoming HTTP requests, with NestJS handler and `pg`
   query spans nested underneath. A visible trace is the go/no-go signal that the
   SDK, the collector and the exporter are all wired correctly.
-- **Prometheus** — HTTP, runtime, and database metrics.
+- **Prometheus** — HTTP, runtime, and database metrics. See
+  [observability-metrics.md](./observability-metrics.md) for the full metric
+  catalog, its dimensions, and the cardinality budget.
 - **Loki** — structured stdout logs and trace correlation when available.
 
 Telemetry exports are periodic; allow up to a minute for metrics to appear.
