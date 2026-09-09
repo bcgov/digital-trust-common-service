@@ -59,8 +59,8 @@ export class TractionTokenManager {
 
     const response = await this.httpClient.request<TractionTokenResponse>({
       method: 'POST',
-      url: `${context.endpointUrl}/multitenancy/wallet/${tractionTenantId}/token`,
-      data: { wallet_key: apiKey },
+      url: `${context.endpointUrl}/multitenancy/tenant/${tractionTenantId}/token`,
+      data: { api_key: apiKey },
     });
 
     const token = response.data.token;

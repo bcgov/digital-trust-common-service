@@ -63,8 +63,8 @@ describe('TractionTokenManager', () => {
     );
     expect(mockRequest).toHaveBeenCalledWith({
       method: 'POST',
-      url: 'https://traction.example.com/multitenancy/wallet/traction-tenant-1/token',
-      data: { wallet_key: 'key-1' },
+      url: 'https://traction.example.com/multitenancy/tenant/traction-tenant-1/token',
+      data: { api_key: 'key-1' },
     });
   });
 

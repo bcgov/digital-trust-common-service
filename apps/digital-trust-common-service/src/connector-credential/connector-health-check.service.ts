@@ -54,11 +54,11 @@ export class ConnectorHealthCheckService {
 
     try {
       const response = await fetch(
-        `${endpointUrl}/multitenancy/wallet/${credentials.tractionTenantId}/token`,
+        `${endpointUrl}/multitenancy/tenant/${credentials.tractionTenantId}/token`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ wallet_key: credentials.apiKey }),
+          body: JSON.stringify({ api_key: credentials.apiKey }),
           signal: AbortSignal.timeout(HEALTH_CHECK_TIMEOUT_MS),
           redirect: 'manual',
         },

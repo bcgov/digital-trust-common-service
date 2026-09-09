@@ -51,11 +51,11 @@ describe('ConnectorHealthCheckService', () => {
       );
 
       expect(global.fetch).toHaveBeenCalledWith(
-        'https://traction.example.com/multitenancy/wallet/tenant-abc/token',
+        'https://traction.example.com/multitenancy/tenant/tenant-abc/token',
         expect.objectContaining({
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ wallet_key: 'key-1' }),
+          body: JSON.stringify({ api_key: 'key-1' }),
         }),
       );
       expect(result.status).toBe('healthy');
