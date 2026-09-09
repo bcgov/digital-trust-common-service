@@ -1,6 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 
 import { assertSafeConnectorUrl } from '../common/assert-safe-connector-url';
+import {
+  buildTractionTokenRequestBody,
+  buildTractionTokenUrl,
+} from '../common/traction-token-request';
 import { ConnectorType } from '../connection/connection.entity';
 
 import { ConnectorCredentialsDto } from './dto/create-connector-credential.dto';
@@ -54,11 +58,13 @@ export class ConnectorHealthCheckService {
 
     try {
       const response = await fetch(
-        `${endpointUrl}/multitenancy/tenant/${credentials.tractionTenantId}/token`,
+        buildTractionTokenUrl(endpointUrl, credentials.tractionTenantId),
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ api_key: credentials.apiKey }),
+          body: JSON.stringify(
+            buildTractionTokenRequestBody(credentials.apiKey),
+          ),
           signal: AbortSignal.timeout(HEALTH_CHECK_TIMEOUT_MS),
           redirect: 'manual',
         },

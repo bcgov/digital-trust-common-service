@@ -6,6 +6,10 @@ import { Injectable, Logger } from '@nestjs/common';
 import { decodeJwt } from 'jose';
 
 import { assertSafeConnectorUrl } from '../common/assert-safe-connector-url';
+import {
+  buildTractionTokenRequestBody,
+  buildTractionTokenUrl,
+} from '../common/traction-token-request';
 
 import { TractionHttpClient } from './traction-http-client.service';
 
@@ -59,8 +63,8 @@ export class TractionTokenManager {
 
     const response = await this.httpClient.request<TractionTokenResponse>({
       method: 'POST',
-      url: `${context.endpointUrl}/multitenancy/tenant/${tractionTenantId}/token`,
-      data: { api_key: apiKey },
+      url: buildTractionTokenUrl(context.endpointUrl, tractionTenantId),
+      data: buildTractionTokenRequestBody(apiKey),
     });
 
     const token = response.data.token;

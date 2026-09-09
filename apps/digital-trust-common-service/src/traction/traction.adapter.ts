@@ -29,8 +29,8 @@ import { AdapterRegistry } from '../adapter-registry/adapter-registry.service';
  * connector_type is 'traction' resolve to this instance.
  *
  * Port method bodies are stubbed pending the HTTP client, token manager, and
- * per-port implementations. every method
- * currently rejects with NotImplementedException.
+ * per-port implementations. Every method currently rejects with
+ * NotImplementedException.
  */
 @Injectable()
 export class TractionAdapter implements AgentAdapter, OnModuleInit {
