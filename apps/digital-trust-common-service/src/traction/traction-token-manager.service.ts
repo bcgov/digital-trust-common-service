@@ -61,6 +61,11 @@ export class TractionTokenManager {
 
     await assertSafeConnectorUrl(context.endpointUrl);
 
+    // codeql[js/request-forgery]: context.endpointUrl is validated
+    // immediately above by assertSafeConnectorUrl (https-only, DNS-checked
+    // against private/loopback/reserved ranges); tractionTenantId is
+    // percent-encoded by buildTractionTokenUrl so it can only affect the
+    // path on that already-validated host.
     const response = await this.httpClient.request<TractionTokenResponse>({
       method: 'POST',
       url: buildTractionTokenUrl(context.endpointUrl, tractionTenantId),
