@@ -108,7 +108,37 @@ The application uses AES-256-GCM encryption to protect sensitive data. Encryptio
 - **Development**: Use the provided `config/encryption-keys.json` with default test keys
 - **Production**: Generate strong random keys and store securely (e.g., in a secrets manager)
 
-### 4. Upstream OIDC Federation Configuration
+### 4. OIDC Signing Keys Configuration
+
+The OIDC provider signs its tokens with an RS256 key from
+`config/oidc-keys.json`. This file contains private key material, so it is
+gitignored and must be generated once after cloning the repository.
+
+For a Docker-only setup, generate the file through the Compose app image. The
+app service mounts `config/` read-only, so generate into the repository root
+and then move the file into place on the host:
+
+```bash
+docker compose run --build --rm --no-deps app node scripts/generate-oidc-keys.mjs oidc-keys.json
+mv oidc-keys.json config/oidc-keys.json
+```
+
+On Windows PowerShell, use `Move-Item` for the second command:
+
+```powershell
+Move-Item .\oidc-keys.json .\config\oidc-keys.json
+```
+
+If Node 24 is installed locally, generate directly into `config/` instead:
+
+```bash
+node scripts/generate-oidc-keys.mjs config/oidc-keys.json
+```
+
+Never commit this file. See [OIDC-KEY-ROTATION.md](OIDC-KEY-ROTATION.md) for
+production provisioning and rotation.
+
+### 5. Upstream OIDC Federation Configuration
 
 The application supports upstream OIDC federation with Keycloak using the `openid-client` library. This library **strictly enforces HTTPS** connections for all OIDC discovery and token endpoints.
 
