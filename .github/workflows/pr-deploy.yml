@@ -218,6 +218,8 @@ jobs:
             --set config.DB_NAME="${DB_NAME}" \
             --set route.host="${ROUTE_HOST}" \
             --set config.OIDC_ISSUER="https://${ROUTE_HOST}/oidc" \
+            --set otel.apiServiceName="${RELEASE_NAME}" \
+            --set otel.workerServiceName="${RELEASE_NAME}-worker" \
             "${EXTRA_ARGS[@]}" \
             --wait --timeout 10m
 

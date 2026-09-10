@@ -42,6 +42,13 @@ worker:
   autoscaling:
     enabled: false
 
+# Export traces and metrics to the platform collector. Service names stay at
+# the chart defaults: each environment writes to its own backend, so the
+# backend already tells you which one you are querying.
+otel:
+  enabled: true
+  endpoint: http://monitoring-collector-alloy:4318
+
 config:
   NODE_ENV: development
   OIDC_ISSUER: https://digital-trust-common-service-dev.apps.silver.devops.gov.bc.ca/oidc
@@ -60,6 +67,12 @@ networkPolicy:
   enabled: true
   keycloak:
     enabled: true
+  collector:
+    enabled: true
+    # Selectors left empty until the platform team confirms the collector's
+    # namespace and pod labels. Empty renders a rule with no `to:` block, which
+    # permits egress to any destination on 4318 — the same shape as the database
+    # and Keycloak rules, but it should be narrowed once those labels are known.
 
 connectorEncryption:
   existingSecret: digital-trust-common-service-dev-connector-encryption
