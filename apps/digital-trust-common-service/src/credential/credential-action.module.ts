@@ -11,7 +11,7 @@ import { CredentialActionController } from './credential-action.controller';
 import { CredentialActionService } from './credential-action.service';
 
 /**
- * Hosts the CA-05 holder accept/reject endpoints. Deliberately separate from
+ * Hosts the holder accept/reject endpoints. Deliberately separate from
  * `CredentialModule`: this feature only ever touches the `Operation` entity
  * (see `CredentialActionService`), not the `Credential` entity, and importing
  * `AdapterRegistryModule` here would otherwise create a module import cycle

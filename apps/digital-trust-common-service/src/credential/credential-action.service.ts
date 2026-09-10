@@ -26,10 +26,10 @@ interface ActionOutcome {
 }
 
 /**
- * Backs POST /tenants/:tenantId/credentials/:exchangeId/accept|reject (CA-05).
+ * Backs POST /tenants/:tenantId/credentials/:exchangeId/accept|reject.
  *
- * `exchangeId` is the Operation UUID returned by the not-yet-built CA-03
- * credential-offer endpoint, not the persisted Credential record id — see
+ * `exchangeId` is the Operation UUID returned by the credential-offer
+ * endpoint, not the persisted Credential record id — see
  * `docs/openapi.yaml`. The offer Operation's `externalId` carries the
  * back-end agent's exchange id, which is what HolderPort needs.
  */
@@ -68,11 +68,16 @@ export class CredentialActionService {
       tenantId,
     );
 
-    // A cross-tenant id and a missing one are indistinguishable 404s, same as
-    // OperationRepository.findByIdForTenant's own tenant-scoped WHERE. An
-    // offer that never recorded the agent's exchange id (externalId) cannot
-    // be actioned either, so it is treated the same as not found.
-    if (!offer || !offer.externalId) {
+    // A cross-tenant id, a missing id, an Operation that isn't a credential
+    // offer, and an offer that never recorded the agent's exchange id
+    // (externalId) are all indistinguishable 404s: none of them is an
+    // actionable offer for this tenant, same as
+    // OperationRepository.findByIdForTenant's own tenant-scoped WHERE.
+    if (
+      !offer ||
+      offer.type !== OPERATION_TYPE.CREDENTIAL_OFFER ||
+      !offer.externalId
+    ) {
       throw new NotFoundException(
         `Credential offer '${exchangeId}' was not found`,
       );

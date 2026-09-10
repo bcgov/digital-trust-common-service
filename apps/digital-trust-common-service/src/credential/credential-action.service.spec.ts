@@ -128,6 +128,17 @@ describe('CredentialActionService', () => {
       );
     });
 
+    it('throws 404 when the Operation is not a credential offer', async () => {
+      mockFindByIdForTenant.mockResolvedValue(
+        buildOffer({ type: OPERATION_TYPE.CREDENTIAL_REVOKE }),
+      );
+
+      await expect(service.accept(tenantId, exchangeId)).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+      expect(mockCreateOperation).not.toHaveBeenCalled();
+    });
+
     it('completes synchronously when the adapter confirms with Done', async () => {
       mockFindByIdForTenant.mockResolvedValue(buildOffer());
       mockCreateOperation.mockResolvedValue(buildActionOperation());

@@ -35,8 +35,8 @@ import { TenantStatusGuard } from '../tenant/tenant-status.guard';
 import { CredentialActionService } from './credential-action.service';
 
 /**
- * Holder-side accept/reject for a credential offer (CA-05). `:exchangeId` is
- * the Operation UUID returned by `POST /credentials/offer` — see
+ * Holder-side accept/reject for a credential offer. `:exchangeId` is the
+ * Operation UUID returned by `POST /credentials/offer` — see
  * `docs/openapi.yaml`, not the persisted Credential record id.
  */
 @SkipAutoAudit()
