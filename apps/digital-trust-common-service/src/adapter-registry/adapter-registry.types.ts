@@ -1,5 +1,6 @@
 import {
   AgentAdapter,
+  ConnectorContext,
   ConnectorType,
   CredentialFormat,
 } from '@app/credential-ports';
@@ -8,12 +9,14 @@ import { ConnectorCredential } from '../connector-credential/connector-credentia
 
 /**
  * Everything a caller needs to perform a credential operation: the adapter to
- * delegate to, the connector record holding its endpoint and credentials, and
- * the credential format the operation resolved to.
+ * delegate to, the connector record holding its endpoint and credentials, the
+ * ready-to-use ConnectorContext (decrypted credentials included) every port
+ * method requires, and the credential format the operation resolved to.
  */
 export interface ResolvedAdapter {
   readonly adapter: AgentAdapter;
   readonly connector: ConnectorCredential;
+  readonly context: ConnectorContext;
   readonly format: CredentialFormat;
 }
 

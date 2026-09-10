@@ -107,6 +107,12 @@ describe('CredentialActionService', () => {
         acceptOffer: mockAcceptOffer,
         rejectOffer: mockRejectOffer,
       },
+      context: {
+        connectorId: 'connector-1',
+        tenantId,
+        endpointUrl: 'https://agent.example.com',
+        credentials: { apiKey: 'secret' },
+      },
     });
   });
 
@@ -167,7 +173,10 @@ describe('CredentialActionService', () => {
         },
         externalId,
       });
-      expect(mockAcceptOffer).toHaveBeenCalledWith(externalId);
+      expect(mockAcceptOffer).toHaveBeenCalledWith(
+        expect.objectContaining({ connectorId: 'connector-1' }),
+        externalId,
+      );
       expect(mockTransitionState).toHaveBeenCalledWith(
         'action-op-1',
         OperationState.COMPLETED,
@@ -262,7 +271,10 @@ describe('CredentialActionService', () => {
       expect(mockCreateOperation).toHaveBeenCalledWith(
         expect.objectContaining({ type: OPERATION_TYPE.CREDENTIAL_REJECT }),
       );
-      expect(mockRejectOffer).toHaveBeenCalledWith(externalId);
+      expect(mockRejectOffer).toHaveBeenCalledWith(
+        expect.objectContaining({ connectorId: 'connector-1' }),
+        externalId,
+      );
       expect(mockTransitionState).toHaveBeenCalledWith(
         'action-op-1',
         OperationState.COMPLETED,

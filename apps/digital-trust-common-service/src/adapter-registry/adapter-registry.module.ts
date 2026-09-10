@@ -1,6 +1,7 @@
 import { CredentialPortsModule } from '@app/credential-ports';
 import { Module } from '@nestjs/common';
 
+import { EncryptionModule } from '../common/crypto/encryption.module';
 import { ConnectorCredentialModule } from '../connector-credential/connector-credential.module';
 import { TenantModule } from '../tenant/tenant.module';
 
@@ -12,7 +13,12 @@ import { AdapterRegistry } from './adapter-registry.service';
  * adapter for a tenant.
  */
 @Module({
-  imports: [CredentialPortsModule, TenantModule, ConnectorCredentialModule],
+  imports: [
+    CredentialPortsModule,
+    TenantModule,
+    ConnectorCredentialModule,
+    EncryptionModule,
+  ],
   providers: [AdapterRegistry],
   exports: [AdapterRegistry],
 })

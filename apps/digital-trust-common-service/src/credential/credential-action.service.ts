@@ -1,6 +1,7 @@
 import {
   AdapterError,
   AgentAdapter,
+  ConnectorContext,
   CredentialExchangeState,
 } from '@app/credential-ports';
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
@@ -98,11 +99,11 @@ export class CredentialActionService {
     });
 
     try {
-      const { adapter } = await this.adapterRegistry.resolve(tenantId);
+      const { adapter, context } = await this.adapterRegistry.resolve(tenantId);
       const outcome =
         action === 'accept'
-          ? await this.completeAccept(adapter, offer.externalId)
-          : await this.completeReject(adapter, offer.externalId);
+          ? await this.completeAccept(adapter, context, offer.externalId)
+          : await this.completeReject(adapter, context, offer.externalId);
 
       const completed = await this.operationService.transitionState(
         actionOperation.id,
@@ -141,9 +142,10 @@ export class CredentialActionService {
    */
   private async completeAccept(
     adapter: AgentAdapter,
+    context: ConnectorContext,
     externalId: string,
   ): Promise<ActionOutcome> {
-    const exchange = await adapter.acceptOffer(externalId);
+    const exchange = await adapter.acceptOffer(context, externalId);
     const synchronous = exchange.state === CredentialExchangeState.Done;
 
     return {
@@ -155,9 +157,10 @@ export class CredentialActionService {
   /** HolderPort.rejectOffer resolves with void, so a resolved call is always synchronous. */
   private async completeReject(
     adapter: AgentAdapter,
+    context: ConnectorContext,
     externalId: string,
   ): Promise<ActionOutcome> {
-    await adapter.rejectOffer(externalId);
+    await adapter.rejectOffer(context, externalId);
 
     return { state: OperationState.COMPLETED, result: {} };
   }
