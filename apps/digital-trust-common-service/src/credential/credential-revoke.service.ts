@@ -87,7 +87,7 @@ export class CredentialRevokeService {
     });
 
     try {
-      const { adapter } = await this.adapterRegistry.resolve(
+      const { adapter, context } = await this.adapterRegistry.resolve(
         tenantId,
         undefined,
         {
@@ -95,7 +95,7 @@ export class CredentialRevokeService {
         },
       );
 
-      const result = await adapter.revoke(credential.externalId);
+      const result = await adapter.revoke(context, credential.externalId);
 
       // RevocationPort exposes only a final boolean, with no intermediate
       // "pending ledger write" signal, so every resolved call is treated as

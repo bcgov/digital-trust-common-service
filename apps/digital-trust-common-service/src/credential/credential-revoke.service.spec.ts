@@ -105,6 +105,12 @@ describe('CredentialRevokeService', () => {
 
     mockResolve.mockResolvedValue({
       adapter: { revoke: mockRevoke },
+      context: {
+        connectorId,
+        tenantId,
+        endpointUrl: 'https://agent.example.com',
+        credentials: { apiKey: 'secret' },
+      },
     });
   });
 
@@ -167,7 +173,10 @@ describe('CredentialRevokeService', () => {
     expect(mockResolve).toHaveBeenCalledWith(tenantId, undefined, {
       connectorId,
     });
-    expect(mockRevoke).toHaveBeenCalledWith(externalId);
+    expect(mockRevoke).toHaveBeenCalledWith(
+      expect.objectContaining({ connectorId }),
+      externalId,
+    );
     expect(mockUpdateState).toHaveBeenCalledWith(
       credentialId,
       CredentialState.REVOKED,
