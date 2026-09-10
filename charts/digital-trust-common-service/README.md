@@ -231,6 +231,10 @@ Generate the JWKS payload with `npm run oidc:generate-keys > oidc-keys.json`, th
 | migrations.waitForDB | object | `{"enabled":false,"image":"busybox","tag":"1.36","timeoutSeconds":60}` | Optional init container that blocks the migration until the database (DB_HOST:DB_PORT from the app config) is reachable |
 | migrations.waitForDB.timeoutSeconds | int | `60` | Maximum seconds to wait for the database before failing with a clear error |
 | nameOverride | string | `""` | Override the chart name |
+| networkPolicy.collector.enabled | bool | `false` | Allow API/Worker egress to the OTLP collector |
+| networkPolicy.collector.namespaceSelector | object | `{}` | Namespace selector matching the collector's namespace |
+| networkPolicy.collector.podSelector | object | `{}` | Pod selector matching the collector pods. When both podSelector and namespaceSelector are empty, egress is allowed to any destination on the collector port, the same as the database and Keycloak rules. Set these in per-env values. |
+| networkPolicy.collector.port | int | `4318` | Collector port, matching `otel.protocol`'s default (http/protobuf on 4318) |
 | networkPolicy.database.enabled | bool | `true` | Allow API/Worker egress to PostgreSQL |
 | networkPolicy.database.namespaceSelector | object | `{}` | Namespace selector matching the database namespace |
 | networkPolicy.database.podSelector | object | `{}` | Pod selector matching the database pods. When both podSelector and namespaceSelector are empty, egress is allowed to any destination on the database port. Set these in per-env values. |
@@ -251,6 +255,13 @@ Generate the JWKS payload with `npm run oidc:generate-keys > oidc-keys.json`, th
 | oidcSigning.keys | string | `""` | RS256 JWKS document. Helm cannot generate one, so it is supplied by the caller: `node scripts/generate-oidc-keys.mjs oidc-keys.json` then `--set-file oidcSigning.keys=oidc-keys.json`. Left empty on upgrade, the keys already in the live Secret are kept. |
 | oidcSigning.mountPath | string | `"/etc/oidc"` | Mounted path inside the container |
 | oidcSigning.retainOnUninstall | bool | `true` | Keep the chart-managed Secret when the release is uninstalled |
+| otel.apiServiceName | string | `"digital-trust-common-service"` | OTEL_SERVICE_NAME reported by the API, so it is separable from the Worker in Grafana. |
+| otel.enabled | bool | `false` | Enable OTel export for the API and Worker. Rendering fails if this is true and `endpoint` is empty, rather than letting the SDK fall back to `localhost:4318` and silently drop telemetry. |
+| otel.endpoint | string | `""` | OTLP collector endpoint (e.g. `http://monitoring-collector-alloy:4318` once deployed). Left empty here — the chart names no organisation's collector; an overlay must supply this when `enabled` is true. |
+| otel.metricsExporter | string | `"otlp"` | OTEL_METRICS_EXPORTER for both the API and Worker. Logs are deliberately not configurable here — deployed, they go to stdout and Alloy ships them to Loki; see `.env.example`. |
+| otel.protocol | string | `"http/protobuf"` | OTLP protocol. `http/protobuf` on 4318 matches the platform's Alloy collector; a gRPC exporter needs both this and `networkPolicy.collector.port` changed to match. |
+| otel.tracesExporter | string | `"otlp"` | OTEL_TRACES_EXPORTER for both the API and Worker. |
+| otel.workerServiceName | string | `"digital-trust-common-service-worker"` | OTEL_SERVICE_NAME reported by the Worker, so it is separable from the API in Grafana. |
 | podAnnotations | object | `{}` | Annotations added to the API/Worker pods |
 | podLabels | object | `{}` | Labels added to the API/Worker pods |
 | podSecurityContext | object | `{}` | Pod security context. On BC Gov OpenShift the restricted-v2 SCC assigns UID/fsGroup/SELinux automatically; leave empty unless you must pin values. |

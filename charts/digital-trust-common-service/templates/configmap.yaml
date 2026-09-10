@@ -1,3 +1,6 @@
+{{- if and .Values.otel.enabled (not .Values.otel.endpoint) }}
+{{- fail "otel.enabled is set but otel.endpoint is empty. The SDK falls back to localhost:4318, finds nothing, and drops telemetry with no error — set otel.endpoint to the collector's OTLP endpoint in an overlay." }}
+{{- end }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
