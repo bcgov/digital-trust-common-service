@@ -25,6 +25,15 @@ resources:
   requests:
     cpu: 25m
 
+# Export traces and metrics to the platform collector, so every preview
+# exercises the path to it rather than leaving it untested until a release.
+# apiServiceName/workerServiceName are injected per-PR by pr-deploy.yml:
+# previews share a namespace and a NODE_ENV with dev, so without a distinct
+# service name their telemetry is indistinguishable from dev's in the backend.
+otel:
+  enabled: true
+  endpoint: http://monitoring-collector-alloy:4318
+
 config:
   NODE_ENV: development
   LOG_LEVEL: debug
@@ -55,6 +64,10 @@ networkPolicy:
   enabled: true
   keycloak:
     enabled: true
+  collector:
+    enabled: true
+    # See the note in values-dev.yaml: empty selectors permit egress to any
+    # destination on 4318 until the collector's labels are confirmed.
 
 connectorEncryption:
   existingSecret: ""

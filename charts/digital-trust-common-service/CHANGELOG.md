@@ -57,6 +57,11 @@ and this chart adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.h
   `service.version` from the deployed image tag, so a trace can be tied to a
   build. `networkPolicy.collector` adds the matching egress rule to the OTLP
   collector for the API and Worker.
+- The dev and PR environment overlays enable OTel export to the platform
+  collector and its egress rule, so preview deploys exercise the path to the
+  collector rather than leaving it untested until a release. PR deploys report
+  a per-PR `OTEL_SERVICE_NAME` (injected by `pr-deploy.yml`), since previews
+  share a namespace and a `NODE_ENV` with dev.
 
 ### Fixed
 
