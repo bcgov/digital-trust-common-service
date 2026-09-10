@@ -44,7 +44,7 @@ function encodeJwtSegment(value: Record<string, unknown>): string {
 }
 
 /** JWT-shaped mock AT so OIDC switchTenant can decode tenant_id / roles. */
-function mockSwitchedAccessToken(tenantId: string | undefined): string {
+export function mockSwitchedAccessToken(tenantId: string | undefined): string {
   return [
     encodeJwtSegment({ alg: 'none', typ: 'JWT' }),
     encodeJwtSegment({

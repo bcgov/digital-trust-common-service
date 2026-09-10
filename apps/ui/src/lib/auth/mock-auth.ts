@@ -93,6 +93,11 @@ export function createMockAuthClient(): AuthClient {
       setSession(null);
       return Promise.resolve();
     },
+    // Nothing but the local session exists in mock mode, so this is logout.
+    clearSession: () => {
+      setSession(null);
+      return Promise.resolve();
+    },
     // Mock login never leaves the app, so there is no redirect to complete.
     // Reaching /auth/callback in mock mode just means someone typed the URL.
     completeLogin: () => Promise.resolve(null),
