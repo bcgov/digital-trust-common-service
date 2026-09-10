@@ -6,6 +6,7 @@ import {
   BadRequestException,
   ConflictException,
   NotFoundException,
+  NotImplementedException,
 } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 
@@ -291,6 +292,39 @@ describe('CredentialDefinitionService', () => {
       expect(mockCreate).not.toHaveBeenCalled();
       expect(mockEmit).not.toHaveBeenCalled();
     });
+
+    it('fails closed rather than creating when the resolved validator refuses to validate', async () => {
+      // CredentialFormat.Mdl now has a registered validator (MdlFormatValidator),
+      // but that validator is an explicit post-MVP stub that throws
+      // NotImplementedException instead of returning issues. The create flow
+      // must propagate that failure rather than treat a thrown error as "no
+      // issues found" and create the definition anyway.
+      const tenantId = mockCredentialDefinition.tenantId;
+      const dto: CreateCredentialDefinitionDto = {
+        name: mockCredentialDefinition.name,
+        format: CredentialDefinitionFormat.MDL,
+        schemaDefinition: mockCredentialDefinition.schemaDefinition,
+        externalId: mockCredentialDefinition.externalId,
+        connectorType: mockCredentialDefinition.connectorType,
+        metadata: mockCredentialDefinition.metadata,
+      };
+
+      mockFindByTenantAndNameAndFormat.mockResolvedValue(null);
+      mockHas.mockReturnValue(true);
+      mockValidateSchema.mockImplementation(() => {
+        throw new NotImplementedException(
+          'mDL schema validation is not yet implemented',
+        );
+      });
+
+      await expect(service.create(tenantId, dto, auth)).rejects.toThrow(
+        NotImplementedException,
+      );
+      expect(mockHas).toHaveBeenCalledWith(CredentialFormat.Mdl);
+      expect(mockResolve).toHaveBeenCalledWith(CredentialFormat.Mdl);
+      expect(mockCreate).not.toHaveBeenCalled();
+      expect(mockEmit).not.toHaveBeenCalled();
+    });
   });
 
   describe('toPortCredentialFormat', () => {
@@ -308,8 +342,8 @@ describe('CredentialDefinitionService', () => {
 
     it('returns undefined for a format the port layer does not implement', () => {
       // W3C_VC's stored value ('w3c-vc') does not match the port layer's
-      // JsonLd value ('jsonld'), so it stays unmapped until CA-08/CA-03
-      // reconcile the two enums.
+      // JsonLd value ('jsonld'), so it stays unmapped until a follow-up
+      // change reconciles the two enums.
       expect(
         toPortCredentialFormat(CredentialDefinitionFormat.W3C_VC),
       ).toBeUndefined();

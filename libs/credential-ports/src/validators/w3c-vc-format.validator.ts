@@ -43,7 +43,7 @@ function isNonEmptyStringArray(value: unknown): value is readonly string[] {
   return (
     Array.isArray(value) &&
     value.length > 0 &&
-    value.every((item) => typeof item === 'string')
+    value.every((item) => typeof item === 'string' && item.trim().length > 0)
   );
 }
 
@@ -167,11 +167,15 @@ function validateCredentialSubject(
 /**
  * Reads a schema's credentialSubject map after validateSchema has already
  * confirmed it is well-formed. Returns undefined when it is not, so callers
- * can short-circuit instead of guessing at a malformed schema's intent.
+ * can short-circuit instead of guessing at a malformed schema's intent. A
+ * Map is used rather than a plain object because field names come straight
+ * from the caller-controlled schema; a plain object keyed by an untrusted
+ * name like `__proto__` would pollute Object.prototype instead of merely
+ * adding an entry.
  */
 function readValidCredentialSubject(
   schema: Readonly<Record<string, unknown>>,
-): Record<string, { type: ClaimType }> | undefined {
+): ReadonlyMap<string, { type: ClaimType }> | undefined {
   const credentialSubject = schema.credentialSubject;
 
   if (
@@ -181,14 +185,14 @@ function readValidCredentialSubject(
     return undefined;
   }
 
-  const result: Record<string, { type: ClaimType }> = {};
+  const result = new Map<string, { type: ClaimType }>();
 
   for (const [name, declaration] of Object.entries(credentialSubject)) {
     if (!isPlainObject(declaration) || !isClaimType(declaration.type)) {
       return undefined;
     }
 
-    result[name] = { type: declaration.type };
+    result.set(name, { type: declaration.type });
   }
 
   return result;
@@ -247,7 +251,7 @@ export class W3cVcFormatValidator implements FormatValidator {
     const seenNames = new Set<string>();
 
     for (const attribute of attributes) {
-      const declaration = credentialSubject[attribute.name];
+      const declaration = credentialSubject.get(attribute.name);
 
       if (seenNames.has(attribute.name)) {
         issues.push({
@@ -259,7 +263,7 @@ export class W3cVcFormatValidator implements FormatValidator {
       } else if (!declaration) {
         issues.push({
           field: attribute.name,
-          expected: `one of: ${Object.keys(credentialSubject).join(', ')}`,
+          expected: `one of: ${[...credentialSubject.keys()].join(', ')}`,
           actual: attribute.name,
           message: `Attribute '${attribute.name}' is not declared in the W3C VC credentialSubject schema`,
         });
@@ -275,7 +279,7 @@ export class W3cVcFormatValidator implements FormatValidator {
       seenNames.add(attribute.name);
     }
 
-    for (const name of Object.keys(credentialSubject)) {
+    for (const name of credentialSubject.keys()) {
       if (!seenNames.has(name)) {
         issues.push({
           field: name,

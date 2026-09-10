@@ -100,31 +100,35 @@ function validateClaims(claims: unknown): FormatValidationIssue[] {
 /**
  * Reads a schema's claims map after validateSchema has already confirmed it
  * is well-formed. Returns undefined when it is not, so callers can
- * short-circuit instead of guessing at a malformed schema's intent.
+ * short-circuit instead of guessing at a malformed schema's intent. A Map is
+ * used rather than a plain object because claim names come straight from
+ * the caller-controlled schema; a plain object keyed by an untrusted name
+ * like `__proto__` would pollute Object.prototype instead of merely adding
+ * an entry.
  */
 function readValidClaims(
   schema: Readonly<Record<string, unknown>>,
-): Record<string, ClaimDeclaration> | undefined {
+): ReadonlyMap<string, ClaimDeclaration> | undefined {
   const claims = schema.claims;
 
   if (!isPlainObject(claims) || Object.keys(claims).length === 0) {
     return undefined;
   }
 
-  const result: Record<string, ClaimDeclaration> = {};
+  const result = new Map<string, ClaimDeclaration>();
 
   for (const [name, declaration] of Object.entries(claims)) {
     if (!isPlainObject(declaration) || !isClaimType(declaration.type)) {
       return undefined;
     }
 
-    result[name] = {
+    result.set(name, {
       type: declaration.type,
       disclosable:
         typeof declaration.disclosable === 'boolean'
           ? declaration.disclosable
           : undefined,
-    };
+    });
   }
 
   return result;
@@ -184,7 +188,7 @@ export class SdJwtFormatValidator implements FormatValidator {
     const seenNames = new Set<string>();
 
     for (const attribute of attributes) {
-      const declaration = claims[attribute.name];
+      const declaration = claims.get(attribute.name);
 
       if (seenNames.has(attribute.name)) {
         issues.push({
@@ -196,7 +200,7 @@ export class SdJwtFormatValidator implements FormatValidator {
       } else if (!declaration) {
         issues.push({
           field: attribute.name,
-          expected: `one of: ${Object.keys(claims).join(', ')}`,
+          expected: `one of: ${[...claims.keys()].join(', ')}`,
           actual: attribute.name,
           message: `Claim '${attribute.name}' is not declared in the SD-JWT schema`,
         });
@@ -212,7 +216,7 @@ export class SdJwtFormatValidator implements FormatValidator {
       seenNames.add(attribute.name);
     }
 
-    for (const name of Object.keys(claims)) {
+    for (const name of claims.keys()) {
       if (!seenNames.has(name)) {
         issues.push({
           field: name,
