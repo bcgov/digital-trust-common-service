@@ -37,10 +37,10 @@ export class CredentialRepository {
   }
 
   /**
-   * Tenant-scoped lookup backing the revoke endpoint (CA-07). The tenant
-   * filter lives in the WHERE clause rather than a post-load comparison so
-   * another tenant's credential id is indistinguishable from a missing row,
-   * matching OperationRepository.findByIdForTenant.
+   * Tenant-scoped lookup backing the revoke endpoint. The tenant filter
+   * lives in the WHERE clause rather than a post-load comparison so another
+   * tenant's credential id is indistinguishable from a missing row, matching
+   * OperationRepository.findByIdForTenant.
    */
   public async findByIdForTenant(
     id: string,

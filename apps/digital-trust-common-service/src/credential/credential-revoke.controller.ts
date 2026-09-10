@@ -36,9 +36,9 @@ import { TenantStatusGuard } from '../tenant/tenant-status.guard';
 import { CredentialRevokeService } from './credential-revoke.service';
 
 /**
- * Issuer-side credential revocation (CA-07). `:credentialId` is the
- * persisted Credential record id — see `docs/openapi.yaml`, not the
- * Operation id used by CA-05's accept/reject routes.
+ * Issuer-side credential revocation. `:credentialId` is the persisted
+ * Credential record id — see `docs/openapi.yaml`, not the Operation id used
+ * by the accept/reject routes.
  */
 @SkipAutoAudit()
 @ApiTags('Credentials')
@@ -73,7 +73,9 @@ export class CredentialRevokeController {
     type: OperationResponseDto,
   })
   @ApiBadRequestResponse({
-    description: "Credential's format does not support revocation",
+    description:
+      "Credential's format does not support revocation, or it has no " +
+      'adapter-assigned identifier to revoke',
   })
   @ApiNotFoundResponse({ description: 'Credential not found' })
   public async revoke(

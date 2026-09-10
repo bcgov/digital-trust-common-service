@@ -15,7 +15,7 @@ import { OPERATION_TYPE } from '../operation/operation-type.constants';
 import { Operation, OperationState } from '../operation/operation.entity';
 import { OperationService } from '../operation/operation.service';
 
-import { Credential, CredentialState } from './credential.entity';
+import { CredentialState } from './credential.entity';
 import { CredentialRepository } from './credential.repository';
 
 /**
@@ -31,9 +31,9 @@ const REVOCABLE_FORMATS: ReadonlySet<CredentialDefinitionFormat> = new Set([
 ]);
 
 /**
- * Backs POST /tenants/:tenantId/credentials/:credentialId/revoke (CA-07).
+ * Backs POST /tenants/:tenantId/credentials/:credentialId/revoke.
  *
- * `credentialId` is the persisted Credential record id (contrast with CA-05's
+ * `credentialId` is the persisted Credential record id (contrast with the
  * accept/reject routes, which key off the Operation id) — see
  * `docs/openapi.yaml`.
  */
