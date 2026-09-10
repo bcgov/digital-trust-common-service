@@ -41,6 +41,7 @@ import { TenantStatusChangeModule } from './tenant/tenant-status-change.module';
 import { TenantModule } from './tenant/tenant.module';
 import { OidcTenantUserAdapter } from './tenant-user/oidc-tenant-user.adapter';
 import { TenantUserModule } from './tenant-user/tenant-user.module';
+import { TractionModule } from './traction/traction.module';
 import { OidcUpstreamFederationAdapter } from './upstream-oidc/oidc-upstream-federation.adapter';
 import { UpstreamOidcModule } from './upstream-oidc/oidc-upstream.module';
 import { VerificationProfileModule } from './verification-profile/verification-profile.module';
@@ -98,6 +99,7 @@ import { VerificationProfileModule } from './verification-profile/verification-p
     TenantModule,
     TenantStatusChangeModule,
     TenantUserModule,
+    TractionModule,
     UpstreamOidcModule,
     VerificationProfileModule,
     ConnectionModule,

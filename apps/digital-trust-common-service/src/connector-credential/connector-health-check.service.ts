@@ -1,6 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 
 import { assertSafeConnectorUrl } from '../common/assert-safe-connector-url';
+import {
+  buildTractionTokenRequestBody,
+  buildTractionTokenUrl,
+} from '../common/traction-token-request';
 import { ConnectorType } from '../connection/connection.entity';
 
 import { ConnectorCredentialsDto } from './dto/create-connector-credential.dto';
@@ -28,8 +32,6 @@ export class ConnectorHealthCheckService {
     endpointUrl: string,
     credentials: ConnectorCredentialsDto,
   ): Promise<ConnectorHealthCheckResult> {
-    await assertSafeConnectorUrl(endpointUrl);
-
     switch (connectorType) {
       case ConnectorType.TRACTION:
         return await this.checkTraction(endpointUrl, credentials);
@@ -42,6 +44,8 @@ export class ConnectorHealthCheckService {
     endpointUrl: string,
     credentials: ConnectorCredentialsDto,
   ): Promise<ConnectorHealthCheckResult> {
+    await assertSafeConnectorUrl(endpointUrl);
+
     const start = Date.now();
 
     if (!credentials.tractionTenantId) {
@@ -53,12 +57,19 @@ export class ConnectorHealthCheckService {
     }
 
     try {
+      // codeql[js/request-forgery]: endpointUrl is validated immediately
+      // above by assertSafeConnectorUrl (https-only, DNS-checked against
+      // private/loopback/reserved ranges); tractionTenantId is
+      // percent-encoded by buildTractionTokenUrl so it can only affect the
+      // path on that already-validated host.
       const response = await fetch(
-        `${endpointUrl}/multitenancy/tenant/${credentials.tractionTenantId}/token`,
+        buildTractionTokenUrl(endpointUrl, credentials.tractionTenantId),
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ api_key: credentials.apiKey }),
+          body: JSON.stringify(
+            buildTractionTokenRequestBody(credentials.apiKey),
+          ),
           signal: AbortSignal.timeout(HEALTH_CHECK_TIMEOUT_MS),
           redirect: 'manual',
         },
@@ -76,9 +87,14 @@ export class ConnectorHealthCheckService {
     endpointUrl: string,
     credentials: ConnectorCredentialsDto,
   ): Promise<ConnectorHealthCheckResult> {
+    await assertSafeConnectorUrl(endpointUrl);
+
     const start = Date.now();
 
     try {
+      // codeql[js/request-forgery]: endpointUrl is validated immediately
+      // above by assertSafeConnectorUrl (https-only, DNS-checked against
+      // private/loopback/reserved ranges).
       const response = await fetch(`${endpointUrl}/health`, {
         headers: { Authorization: `Bearer ${credentials.apiKey}` },
         signal: AbortSignal.timeout(HEALTH_CHECK_TIMEOUT_MS),

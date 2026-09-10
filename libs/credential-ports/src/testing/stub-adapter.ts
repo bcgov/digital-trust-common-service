@@ -14,6 +14,7 @@ import { RevocationResult } from '../dto/revocation-result.dto';
 import { ConnectorType } from '../enums/connector-type.enum';
 import { CredentialFormat } from '../enums/credential-format.enum';
 import { AgentAdapter, SupportedFormats } from '../ports/agent-adapter';
+import { ConnectorContext } from '../ports/connector-context';
 
 /**
  * Reference AgentAdapter for tests and default wiring; every method rejects with
@@ -30,6 +31,7 @@ export class StubAdapter implements AgentAdapter {
   ];
 
   public offerCredential(
+    _context: ConnectorContext,
     _req: OfferCredentialRequest,
   ): Promise<CredentialExchange> {
     return Promise.reject(
@@ -39,13 +41,17 @@ export class StubAdapter implements AgentAdapter {
     );
   }
 
-  public getExchange(_id: string): Promise<CredentialExchange> {
+  public getExchange(
+    _context: ConnectorContext,
+    _id: string,
+  ): Promise<CredentialExchange> {
     return Promise.reject(
       new NotImplementedException('StubAdapter.getExchange not implemented'),
     );
   }
 
   public requestPresentation(
+    _context: ConnectorContext,
     _req: PresentationRequest,
   ): Promise<PresentationExchange> {
     return Promise.reject(
@@ -55,7 +61,10 @@ export class StubAdapter implements AgentAdapter {
     );
   }
 
-  public getPresentation(_id: string): Promise<PresentationExchange> {
+  public getPresentation(
+    _context: ConnectorContext,
+    _id: string,
+  ): Promise<PresentationExchange> {
     return Promise.reject(
       new NotImplementedException(
         'StubAdapter.getPresentation not implemented',
@@ -63,19 +72,28 @@ export class StubAdapter implements AgentAdapter {
     );
   }
 
-  public acceptOffer(_exchangeId: string): Promise<CredentialExchange> {
+  public acceptOffer(
+    _context: ConnectorContext,
+    _exchangeId: string,
+  ): Promise<CredentialExchange> {
     return Promise.reject(
       new NotImplementedException('StubAdapter.acceptOffer not implemented'),
     );
   }
 
-  public rejectOffer(_exchangeId: string): Promise<void> {
+  public rejectOffer(
+    _context: ConnectorContext,
+    _exchangeId: string,
+  ): Promise<void> {
     return Promise.reject(
       new NotImplementedException('StubAdapter.rejectOffer not implemented'),
     );
   }
 
-  public createInvitation(_opts: InvitationOptions): Promise<Invitation> {
+  public createInvitation(
+    _context: ConnectorContext,
+    _opts: InvitationOptions,
+  ): Promise<Invitation> {
     return Promise.reject(
       new NotImplementedException(
         'StubAdapter.createInvitation not implemented',
@@ -83,7 +101,10 @@ export class StubAdapter implements AgentAdapter {
     );
   }
 
-  public acceptInvitation(_url: string): Promise<Connection> {
+  public acceptInvitation(
+    _context: ConnectorContext,
+    _url: string,
+  ): Promise<Connection> {
     return Promise.reject(
       new NotImplementedException(
         'StubAdapter.acceptInvitation not implemented',
@@ -91,25 +112,34 @@ export class StubAdapter implements AgentAdapter {
     );
   }
 
-  public list(_filters: ConnectionFilters): Promise<Connection[]> {
+  public list(
+    _context: ConnectorContext,
+    _filters: ConnectionFilters,
+  ): Promise<Connection[]> {
     return Promise.reject(
       new NotImplementedException('StubAdapter.list not implemented'),
     );
   }
 
-  public getById(_id: string): Promise<Connection> {
+  public getById(_context: ConnectorContext, _id: string): Promise<Connection> {
     return Promise.reject(
       new NotImplementedException('StubAdapter.getById not implemented'),
     );
   }
 
-  public revoke(_credentialId: string): Promise<RevocationResult> {
+  public revoke(
+    _context: ConnectorContext,
+    _credentialId: string,
+  ): Promise<RevocationResult> {
     return Promise.reject(
       new NotImplementedException('StubAdapter.revoke not implemented'),
     );
   }
 
-  public batchRevoke(_ids: readonly string[]): Promise<RevocationResult[]> {
+  public batchRevoke(
+    _context: ConnectorContext,
+    _ids: readonly string[],
+  ): Promise<RevocationResult[]> {
     return Promise.reject(
       new NotImplementedException('StubAdapter.batchRevoke not implemented'),
     );

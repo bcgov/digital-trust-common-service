@@ -34,7 +34,11 @@ export interface AdapterCapabilities {
 }
 
 /**
- * Combines issuer, verifier, holder, connection, and revocation one-shot port semantics.
+ * Combines issuer, verifier, holder, connection, and revocation one-shot port
+ * semantics. Every operation method additionally takes a ConnectorContext
+ * identifying which tenant's connector to address — an AgentAdapter instance
+ * is a singleton shared across tenants, so it never resolves or caches
+ * connector identity on its own.
  */
 export interface AgentAdapter
   extends
