@@ -45,6 +45,9 @@ export {
   validatePresentationRequest,
 } from './validators/credential.validators';
 export { AnonCredsFormatValidator } from './validators/anoncreds-format.validator';
+export { SdJwtFormatValidator } from './validators/sd-jwt-format.validator';
+export { W3cVcFormatValidator } from './validators/w3c-vc-format.validator';
+export { MdlFormatValidator } from './validators/mdl-format.validator';
 export { FormatValidatorRegistry } from './validators/format-validator.registry';
 
 // Ports (abstract classes — runtime values usable as DI tokens)

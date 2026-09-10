@@ -300,9 +300,18 @@ describe('CredentialDefinitionService', () => {
       );
     });
 
+    it('maps the mDL format to the port-layer enum value', () => {
+      expect(toPortCredentialFormat(CredentialDefinitionFormat.MDL)).toBe(
+        CredentialFormat.Mdl,
+      );
+    });
+
     it('returns undefined for a format the port layer does not implement', () => {
+      // W3C_VC's stored value ('w3c-vc') does not match the port layer's
+      // JsonLd value ('jsonld'), so it stays unmapped until CA-08/CA-03
+      // reconcile the two enums.
       expect(
-        toPortCredentialFormat(CredentialDefinitionFormat.MDL),
+        toPortCredentialFormat(CredentialDefinitionFormat.W3C_VC),
       ).toBeUndefined();
     });
   });

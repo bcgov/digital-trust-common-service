@@ -3,4 +3,5 @@ export enum CredentialFormat {
   AnonCreds = 'anoncreds',
   JsonLd = 'jsonld',
   SdJwtVc = 'sd-jwt-vc',
+  Mdl = 'mdl',
 }
