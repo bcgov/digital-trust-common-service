@@ -155,8 +155,17 @@ Create the name of the service account to use
 Fully-qualified container image reference.
 Uses image.tag, falling back to the chart appVersion. Registry is optional.
 */}}
+{{/*
+Image tag for the API, Worker and migration containers. Shared with the OTel
+resource attributes so the `service.version` reported on a trace cannot drift
+from the image actually deployed.
+*/}}
+{{- define "digital-trust-common-service.imageTag" -}}
+{{- .Values.image.tag | default .Chart.AppVersion -}}
+{{- end }}
+
 {{- define "digital-trust-common-service.image" -}}
-{{- $tag := .Values.image.tag | default .Chart.AppVersion -}}
+{{- $tag := include "digital-trust-common-service.imageTag" . -}}
 {{- if .Values.image.registry -}}
 {{- printf "%s/%s:%s" .Values.image.registry .Values.image.repository $tag -}}
 {{- else -}}

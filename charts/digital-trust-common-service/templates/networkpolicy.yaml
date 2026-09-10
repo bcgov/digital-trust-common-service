@@ -134,7 +134,51 @@ spec:
         - protocol: TCP
           port: {{ .Values.networkPolicy.keycloak.port }}
 {{- end }}
-{{- if and .Values.networkPolicy.dnsEgress.enabled (or .Values.networkPolicy.database.enabled .Values.networkPolicy.keycloak.enabled) }}
+{{- if .Values.networkPolicy.collector.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "digital-trust-common-service.fullname" . }}-egress-collector
+  labels:
+    {{- include "digital-trust-common-service.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app.kubernetes.io/component
+        operator: In
+        values:
+          - api
+          - worker
+    {{- if $baseSelector }}
+    matchLabels:
+      {{- toYaml $baseSelector | nindent 6 }}
+    {{- end }}
+  policyTypes:
+    - Egress
+  egress:
+    - {{- if or .Values.networkPolicy.collector.namespaceSelector .Values.networkPolicy.collector.podSelector }}
+      to:
+        {{- if .Values.networkPolicy.collector.namespaceSelector }}
+        - namespaceSelector:
+            matchLabels:
+              {{- toYaml .Values.networkPolicy.collector.namespaceSelector | nindent 14 }}
+          {{- with .Values.networkPolicy.collector.podSelector }}
+          podSelector:
+            matchLabels:
+              {{- toYaml . | nindent 14 }}
+          {{- end }}
+        {{- else if .Values.networkPolicy.collector.podSelector }}
+        - podSelector:
+            matchLabels:
+              {{- toYaml .Values.networkPolicy.collector.podSelector | nindent 14 }}
+        {{- end }}
+      {{- end }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.networkPolicy.collector.port }}
+{{- end }}
+{{- if and .Values.networkPolicy.dnsEgress.enabled (or .Values.networkPolicy.database.enabled .Values.networkPolicy.keycloak.enabled .Values.networkPolicy.collector.enabled) }}
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy

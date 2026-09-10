@@ -53,9 +53,27 @@ spec:
           {{- end }}
           envFrom:
             {{- include "digital-trust-common-service.envFrom" . | nindent 12 }}
-          {{- with .Values.extraEnv }}
+          {{- if or .Values.extraEnv .Values.otel.enabled }}
           env:
+            {{- with .Values.extraEnv }}
             {{- toYaml . | nindent 12 }}
+            {{- end }}
+            {{- if .Values.otel.enabled }}
+            - name: OTEL_ENABLED
+              value: "true"
+            - name: OTEL_SERVICE_NAME
+              value: {{ .Values.otel.workerServiceName | quote }}
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: {{ .Values.otel.endpoint | quote }}
+            - name: OTEL_EXPORTER_OTLP_PROTOCOL
+              value: {{ .Values.otel.protocol | quote }}
+            - name: OTEL_TRACES_EXPORTER
+              value: {{ .Values.otel.tracesExporter | quote }}
+            - name: OTEL_METRICS_EXPORTER
+              value: {{ .Values.otel.metricsExporter | quote }}
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: {{ printf "service.version=%s" (include "digital-trust-common-service.imageTag" .) | quote }}
+            {{- end }}
           {{- end }}
           {{- with .Values.worker.livenessProbe }}
           livenessProbe:

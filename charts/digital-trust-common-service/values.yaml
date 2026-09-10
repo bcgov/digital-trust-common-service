@@ -351,6 +351,35 @@ worker:
   # -- Affinity for Worker pods
   affinity: {}
 
+# OpenTelemetry export. Off by default so the chart never opens exporter
+# connections without an operator opting in and pointing it at a collector;
+# see `.env.example` for the full variable contract this mirrors.
+otel:
+  # -- Enable OTel export for the API and Worker. Rendering fails if this is
+  # true and `endpoint` is empty, rather than letting the SDK fall back to
+  # `localhost:4318` and silently drop telemetry.
+  enabled: false
+  # -- OTLP collector endpoint (e.g. `http://monitoring-collector-alloy:4318`
+  # once deployed). Left empty here — the chart names no organisation's
+  # collector; an overlay must supply this when `enabled` is true.
+  endpoint: ""
+  # -- OTLP protocol. `http/protobuf` on 4318 matches the platform's Alloy
+  # collector; a gRPC exporter needs both this and `networkPolicy.collector.port`
+  # changed to match.
+  protocol: http/protobuf
+  # -- OTEL_SERVICE_NAME reported by the API, so it is separable from the
+  # Worker in Grafana.
+  apiServiceName: digital-trust-common-service
+  # -- OTEL_SERVICE_NAME reported by the Worker, so it is separable from the
+  # API in Grafana.
+  workerServiceName: digital-trust-common-service-worker
+  # -- OTEL_TRACES_EXPORTER for both the API and Worker.
+  tracesExporter: otlp
+  # -- OTEL_METRICS_EXPORTER for both the API and Worker. Logs are
+  # deliberately not configurable here — deployed, they go to stdout and Alloy
+  # ships them to Loki; see `.env.example`.
+  metricsExporter: otlp
+
 # -- Non-secret application configuration, rendered into a ConfigMap and injected
 # as environment variables into all containers.
 config:
@@ -502,6 +531,18 @@ networkPolicy:
     namespaceSelector: {}
     # -- Pod selector matching the Keycloak pods
     podSelector: {}
+  collector:
+    # -- Allow API/Worker egress to the OTLP collector
+    enabled: false
+    # -- Collector port, matching `otel.protocol`'s default (http/protobuf on 4318)
+    port: 4318
+    # -- Pod selector matching the collector pods.
+    # When both podSelector and namespaceSelector are empty, egress is allowed
+    # to any destination on the collector port, the same as the database and
+    # Keycloak rules. Set these in per-env values.
+    podSelector: {}
+    # -- Namespace selector matching the collector's namespace
+    namespaceSelector: {}
 
 # -- Extra volumes for the API/Worker pods
 volumes: []
