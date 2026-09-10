@@ -3,7 +3,7 @@
 This is the cardinality contract for the metrics digital-trust-common-service
 exports today. It exists so a later ticket that wants to add a metric, or a
 label to an existing one, has a number and a rule to be judged against instead
-of a feeling. See [OB-04](https://github.com/bcgov/digital-trust-common-service/issues/97).
+of a feeling.
 
 **No instruments are defined in application code.** Every metric below comes
 from OpenTelemetry auto-instrumentation (`@opentelemetry/auto-instrumentations-node`,
