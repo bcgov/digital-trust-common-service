@@ -1,4 +1,5 @@
 import {
+  ClaimType,
   describeValue,
   isClaimType,
   matchesClaimType,
@@ -90,6 +91,15 @@ describe('claim-type.util', () => {
 
     it('rejects malformed JSON for a non-string claim', () => {
       expect(matchesClaimType('{not json', 'number')).toBe(false);
+    });
+
+    it('rejects an unrecognized claim type via the exhaustive default branch', () => {
+      // ClaimType is a closed union in normal use (isClaimType() guards every
+      // caller), but matchesClaimType still defends against an invalid type
+      // slipping through, e.g. via an unchecked cast.
+      expect(matchesClaimType('42', 'integer' as unknown as ClaimType)).toBe(
+        false,
+      );
     });
   });
 });

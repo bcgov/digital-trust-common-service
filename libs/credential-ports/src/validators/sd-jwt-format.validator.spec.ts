@@ -149,5 +149,18 @@ describe('SdJwtFormatValidator', () => {
       expect(issues).toHaveLength(1);
       expect(issues[0].field).toBe('claims');
     });
+
+    it('short-circuits when the claims map is non-empty but a declaration is invalid', () => {
+      // Distinct from the missing/empty-claims case above: claims here is a
+      // non-empty object, but one entry's declared type is unsupported, so
+      // readValidClaims must still refuse to build a usable claims map.
+      const issues = validator.validateAttributes(
+        SCHEMA_WITH_INVALID_CLAIM_TYPE,
+        VALID_ATTRIBUTES,
+      );
+
+      expect(issues).toHaveLength(1);
+      expect(issues[0].field).toBe('claims');
+    });
   });
 });

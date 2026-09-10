@@ -177,5 +177,19 @@ describe('W3cVcFormatValidator', () => {
       expect(issues).toHaveLength(1);
       expect(issues[0].field).toBe('credentialSubject');
     });
+
+    it('short-circuits when credentialSubject is non-empty but a field is invalid', () => {
+      // Distinct from the missing-credentialSubject case above:
+      // credentialSubject here is a non-empty object, but one field's
+      // declared type is unsupported, so readValidCredentialSubject must
+      // still refuse to build a usable field map.
+      const issues = validator.validateAttributes(
+        SCHEMA_WITH_INVALID_CREDENTIAL_SUBJECT_FIELD,
+        VALID_ATTRIBUTES,
+      );
+
+      expect(issues).toHaveLength(1);
+      expect(issues[0].field).toBe('credentialSubject');
+    });
   });
 });
