@@ -26,10 +26,13 @@ export class ConnectionResponseDto {
   @Expose({ name: 'external_connection_id' })
   @ApiProperty({
     name: 'external_connection_id',
-    description: 'The external connection ID',
+    description:
+      'The external connection ID. Null until the connection.create job completes.',
     example: 'ext-conn-123',
+    required: false,
+    nullable: true,
   })
-  public externalConnectionId!: string;
+  public externalConnectionId?: string | null;
 
   @Expose({ name: 'their_label' })
   @ApiProperty({
@@ -111,4 +114,41 @@ export class ConnectionResponseDto {
     dto.updatedAt = connection.updatedAt;
     return dto;
   }
+}
+
+export class ConnectionsPaginationDto {
+  @Expose({ name: 'next_cursor' })
+  @ApiProperty({
+    name: 'next_cursor',
+    description: 'Cursor to fetch the next page, or null if there is none',
+    example: null,
+    nullable: true,
+  })
+  public nextCursor!: string | null;
+
+  @Expose({ name: 'has_more' })
+  @ApiProperty({
+    name: 'has_more',
+    description: 'Whether more results are available beyond this page',
+    example: false,
+  })
+  public hasMore!: boolean;
+
+  public static from(
+    nextCursor: string | null,
+    hasMore: boolean,
+  ): ConnectionsPaginationDto {
+    const dto = new ConnectionsPaginationDto();
+    dto.nextCursor = nextCursor;
+    dto.hasMore = hasMore;
+    return dto;
+  }
+}
+
+export class PaginatedConnectionsResponseDto {
+  @ApiProperty({ type: [ConnectionResponseDto] })
+  public data!: ConnectionResponseDto[];
+
+  @ApiProperty({ type: ConnectionsPaginationDto })
+  public pagination!: ConnectionsPaginationDto;
 }

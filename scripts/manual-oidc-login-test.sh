@@ -2,25 +2,41 @@
 #
 # Manual OIDC authorization_code + PKCE login test helper.
 #
-# Automates steps 1-3 (and 5) of the manual test flow: bootstrap a
-# platform-admin machine client, register a custom authorization_code login
-# client, and invite a real tenant user. Step 4 (the actual Keycloak login)
-# is interactive and cannot be scripted headlessly, so this prints the
-# authorize URL and pauses for you to paste back the `code` from the
-# browser's redirect, then exchanges it for tokens.
+# Logs in as a real, seeded Keycloak user through the seeded UI SPA client
+# (`dtsc-ui`, public/PKCE, tenant `acme-corp` only - see
+# `UI_SPA_CLIENT_ID`/`UI_SPA_TENANT_SLUG` in `dev-seed.data.ts`) and exchanges
+# the resulting code for tokens. The login is interactive and cannot be
+# scripted headlessly, so this prints the authorize URL and pauses for you to
+# paste back the `code` from the browser's redirect.
+#
+# A custom client registered through `POST /tenants/:tenantId/clients`
+# cannot be used here instead: `CreateOAuthClientDto.scopes` only accepts
+# `ASSIGNABLE_OAUTH_CLIENT_SCOPES` (tenant-permission scopes), which
+# deliberately excludes `openid`/`offline_access` - those are only ever set
+# on a client via the seed's direct repository write. Without `openid` in the
+# client's own scope allowlist, oidc-provider's `check_scope` step rejects any
+# authorization request that includes it. `npm run seed` must have been run
+# first (creates `dtsc-ui` and pre-invites `owner@acme-corp.example.test` /
+# `admin@acme-corp.example.test` / `member@acme-corp.example.test`, claimed
+# on first login by email match).
 #
 # Usage:
-#   TENANT_ID=<uuid> ./scripts/manual-oidc-login-test.sh
+#   TENANT_ID=<acme-corp-uuid> ./scripts/manual-oidc-login-test.sh
 #
 # Env vars:
 #   BASE_URL           default https://app.localhost
-#   TENANT_ID          required - an existing tenant id (see `docker compose
-#                      exec db psql ...` or GET /api/v1/tenants with any
-#                      existing token)
-#   INVITE_EMAIL       default tester@example.test
-#   INVITE_ROLE        default owner
-#   REDIRECT_URI       default https://app.localhost/manual-callback
-#   REQUESTED_SCOPE    default "openid offline_access tenants:admin"
+#   TENANT_ID          required - the acme-corp tenant id (see `docker
+#                      compose exec db psql ...` or GET /api/v1/tenants with
+#                      any existing token), used only for the sanity-check
+#                      call at the end
+#   LOGIN_EMAIL        default owner@acme-corp.example.test - must be one of
+#                      the pre-invited acme-corp emails above
+#   LOGIN_PASSWORD     default acme-owner - the matching Keycloak password
+#                      from keycloak/config/realm.json
+#   REDIRECT_URI       default https://app.localhost/auth/callback - must
+#                      match the seeded `dtsc-ui` redirect URI exactly
+#   REQUESTED_SCOPE    default "openid profile email tenant offline_access"
+#                      (the full set `dtsc-ui` is seeded to allow)
 #   RESOURCE           default https://digital-trust-common-service (RFC 8707
 #                      resource indicator - required for oidc-provider to
 #                      issue a JWT access token instead of an opaque one;
@@ -32,11 +48,12 @@
 set -euo pipefail
 
 BASE_URL="${BASE_URL:-https://app.localhost}"
-TENANT_ID="${TENANT_ID:?Set TENANT_ID to an existing tenant id, e.g. from GET ${BASE_URL}/api/v1/tenants}"
-INVITE_EMAIL="${INVITE_EMAIL:-tester@example.test}"
-INVITE_ROLE="${INVITE_ROLE:-owner}"
-REDIRECT_URI="${REDIRECT_URI:-https://app.localhost/manual-callback}"
-REQUESTED_SCOPE="${REQUESTED_SCOPE:-openid offline_access tenants:admin}"
+TENANT_ID="${TENANT_ID:?Set TENANT_ID to the acme-corp tenant id, e.g. from GET ${BASE_URL}/api/v1/tenants}"
+LOGIN_CLIENT_ID='dtsc-ui'
+LOGIN_EMAIL="${LOGIN_EMAIL:-owner@acme-corp.example.test}"
+LOGIN_PASSWORD="${LOGIN_PASSWORD:-acme-owner}"
+REDIRECT_URI="${REDIRECT_URI:-https://app.localhost/auth/callback}"
+REQUESTED_SCOPE="${REQUESTED_SCOPE:-openid profile email tenant offline_access}"
 RESOURCE="${RESOURCE:-https://digital-trust-common-service}"
 
 for bin in curl jq node; do
@@ -47,76 +64,7 @@ curl_json() {
   curl -sk "$@"
 }
 
-echo "== Step 1: Create bootstrap platform-admin client (client_credentials) =="
-BOOTSTRAP_CLIENT=$(curl_json "${BASE_URL}/api/v1/oauth-clients" -X POST \
-  -H 'Content-Type: application/json' \
-  -d "$(jq -n --arg tenantId "$TENANT_ID" '{
-    tenantId: $tenantId,
-    name: "manual-test-bootstrap",
-    scopes: ["tenants:admin"],
-    roles: ["platform-admin"],
-    grantTypes: ["client_credentials"]
-  }')")
-echo "$BOOTSTRAP_CLIENT" | jq .
-
-BOOTSTRAP_CLIENT_ID=$(echo "$BOOTSTRAP_CLIENT" | jq -r '.client.clientId')
-BOOTSTRAP_CLIENT_SECRET=$(echo "$BOOTSTRAP_CLIENT" | jq -r '.clientSecret')
-
-if [[ "$BOOTSTRAP_CLIENT_ID" == "null" || -z "$BOOTSTRAP_CLIENT_ID" ]]; then
-  echo "Failed to create bootstrap client (see response above)." >&2
-  exit 1
-fi
-
-echo
-echo "== Step 1b: Mint a client_credentials token for the bootstrap client =="
-BOOTSTRAP_TOKEN_RESPONSE=$(curl_json "${BASE_URL}/oidc/token" -X POST \
-  -u "${BOOTSTRAP_CLIENT_ID}:${BOOTSTRAP_CLIENT_SECRET}" \
-  -d grant_type=client_credentials)
-echo "$BOOTSTRAP_TOKEN_RESPONSE" | jq .
-
-BOOTSTRAP_TOKEN=$(echo "$BOOTSTRAP_TOKEN_RESPONSE" | jq -r '.access_token')
-if [[ "$BOOTSTRAP_TOKEN" == "null" || -z "$BOOTSTRAP_TOKEN" ]]; then
-  echo "Failed to mint bootstrap token (see response above)." >&2
-  exit 1
-fi
-
-echo
-echo "== Step 2: Register the custom authorization_code login client =="
-LOGIN_CLIENT=$(curl_json "${BASE_URL}/api/v1/oauth-clients" -X POST \
-  -H 'Content-Type: application/json' \
-  -d "$(jq -n --arg tenantId "$TENANT_ID" --arg redirectUri "$REDIRECT_URI" '{
-    tenantId: $tenantId,
-    name: "manual-login-client",
-    scopes: ["openid", "offline_access", "tenants:admin"],
-    grantTypes: ["authorization_code", "refresh_token"],
-    redirectUris: [$redirectUri]
-  }')")
-echo "$LOGIN_CLIENT" | jq .
-
-LOGIN_CLIENT_ID=$(echo "$LOGIN_CLIENT" | jq -r '.client.clientId')
-LOGIN_CLIENT_SECRET=$(echo "$LOGIN_CLIENT" | jq -r '.clientSecret')
-
-if [[ "$LOGIN_CLIENT_ID" == "null" || -z "$LOGIN_CLIENT_ID" ]]; then
-  echo "Failed to create login client (see response above)." >&2
-  exit 1
-fi
-
-echo
-echo "== Step 3: Invite a real tenant user (${INVITE_ROLE}) =="
-INVITE_RESPONSE=$(curl_json "${BASE_URL}/api/v1/tenants/${TENANT_ID}/users" -X POST \
-  -H "Authorization: Bearer ${BOOTSTRAP_TOKEN}" \
-  -H 'Content-Type: application/json' \
-  -d "$(jq -n --arg email "$INVITE_EMAIL" --arg role "$INVITE_ROLE" '{email: $email, role: $role}')")
-echo "$INVITE_RESPONSE" | jq .
-
-INVITE_STATUS=$(echo "$INVITE_RESPONSE" | jq -r '.status // empty')
-if [[ "$INVITE_STATUS" != "invited" ]]; then
-  echo "NOTE: invite may have failed or the user already exists (see response above)." >&2
-  echo "If it's a 409 Conflict because ${INVITE_EMAIL} already exists for this tenant, that's fine - continuing." >&2
-fi
-
-echo
-echo "== Step 4: Generate a PKCE pair =="
+echo "== Step 1: Generate a PKCE pair =="
 PKCE_JSON=$(node -e "
 const c = require('crypto');
 const v = c.randomBytes(32).toString('base64url');
@@ -138,14 +86,16 @@ ENCODED_RESOURCE=$(node -e "console.log(encodeURIComponent(process.argv[1]))" "$
 AUTHORIZE_URL="${BASE_URL}/oidc/auth?client_id=${LOGIN_CLIENT_ID}&response_type=code&redirect_uri=${REDIRECT_URI}&scope=${ENCODED_SCOPE}&code_challenge=${CHALLENGE}&code_challenge_method=S256&state=${STATE}&resource=${ENCODED_RESOURCE}&prompt=consent"
 
 echo
+echo "== Step 2: Log in via Keycloak =="
 echo "======================================================================"
-echo "Open this URL in a browser and log in as: ${INVITE_EMAIL}"
+echo "Open this URL in a browser and log in as: ${LOGIN_EMAIL} / ${LOGIN_PASSWORD}"
 echo
 echo "${AUTHORIZE_URL}"
 echo
-echo "After login you'll land on ${REDIRECT_URI}?code=...&state=... (a 404"
-echo "page is expected - just copy the 'code' query param value from the"
-echo "address bar). Codes are short-lived, so do this promptly."
+echo "After login you'll land on ${REDIRECT_URI}?code=...&state=... (the SPA"
+echo "route may 404 if the UI isn't running - that's fine, just copy the"
+echo "'code' query param value from the address bar). Codes are short-lived,"
+echo "so do this promptly."
 echo "======================================================================"
 echo
 read -r -p "Paste the 'code' value here: " AUTH_CODE
@@ -156,10 +106,10 @@ if [[ -z "$AUTH_CODE" ]]; then
 fi
 
 echo
-echo "== Step 5: Exchange the code for tokens =="
+echo "== Step 3: Exchange the code for tokens (public client - no secret) =="
 TOKEN_RESPONSE=$(curl_json "${BASE_URL}/oidc/token" -X POST \
-  -u "${LOGIN_CLIENT_ID}:${LOGIN_CLIENT_SECRET}" \
   -d grant_type=authorization_code \
+  -d "client_id=${LOGIN_CLIENT_ID}" \
   -d "code=${AUTH_CODE}" \
   -d "redirect_uri=${REDIRECT_URI}" \
   -d "code_verifier=${VERIFIER}" \
@@ -179,14 +129,12 @@ curl_json "${BASE_URL}/api/v1/tenants/${TENANT_ID}" \
 
 echo
 echo "Done. Useful values for further manual testing:"
-echo "  BOOTSTRAP_CLIENT_ID=${BOOTSTRAP_CLIENT_ID}"
 echo "  LOGIN_CLIENT_ID=${LOGIN_CLIENT_ID}"
-echo "  LOGIN_CLIENT_SECRET=${LOGIN_CLIENT_SECRET}"
 echo "  USER_ACCESS_TOKEN=${USER_ACCESS_TOKEN}"
 REFRESH_TOKEN=$(echo "$TOKEN_RESPONSE" | jq -r '.refresh_token // empty')
 if [[ -n "$REFRESH_TOKEN" ]]; then
   echo "  REFRESH_TOKEN=${REFRESH_TOKEN}"
   echo
   echo "Refresh with:"
-  echo "  curl -sk ${BASE_URL}/oidc/token -X POST -u '${LOGIN_CLIENT_ID}:${LOGIN_CLIENT_SECRET}' -d grant_type=refresh_token -d refresh_token=${REFRESH_TOKEN}"
+  echo "  curl -sk ${BASE_URL}/oidc/token -X POST -d grant_type=refresh_token -d client_id=${LOGIN_CLIENT_ID} -d refresh_token=${REFRESH_TOKEN}"
 fi

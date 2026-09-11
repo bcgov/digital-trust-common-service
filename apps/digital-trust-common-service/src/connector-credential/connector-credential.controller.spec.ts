@@ -195,9 +195,13 @@ describe('ConnectorCredentialController', () => {
     it('should delete a connector credential', async () => {
       mockDelete.mockResolvedValue(undefined);
 
-      await controller.delete(mockCredential.id, auth);
+      await controller.delete(mockCredential.tenantId, mockCredential.id, auth);
 
-      expect(mockDelete).toHaveBeenCalledWith(mockCredential.id, auth);
+      expect(mockDelete).toHaveBeenCalledWith(
+        mockCredential.tenantId,
+        mockCredential.id,
+        auth,
+      );
     });
   });
 

@@ -22,8 +22,15 @@ export interface Connection {
   readonly externalId?: string;
   readonly state: ConnectionState;
   readonly alias?: string;
+  readonly protocol?: string;
   // Label provided by the other party.
   readonly theirLabel?: string;
+  // The invitation message id that established this connection, when the
+  // adapter can report one. Lets a caller correlate this connection back to
+  // an invitation it created before the adapter had assigned this
+  // connection an id of its own (e.g. an out-of-band invitation has no
+  // associated connection record until the other party responds to it).
+  readonly invitationId?: string;
   // ISO-8601 timestamps.
   readonly createdAt: string;
   readonly updatedAt: string;
