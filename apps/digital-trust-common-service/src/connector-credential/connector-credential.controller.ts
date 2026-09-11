@@ -163,10 +163,11 @@ export class ConnectorCredentialController {
     description: 'Active credential records still reference this connector',
   })
   public async delete(
+    @Param('tenantId', ParseUUIDPipe) tenantId: string,
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentAuth() auth: AuthContext,
   ): Promise<void> {
-    return await this.credentialService.delete(id, auth);
+    return await this.credentialService.delete(tenantId, id, auth);
   }
 
   @Post(':id/test')
