@@ -435,7 +435,7 @@ describe('ConnectorCredentialService', () => {
       mockExistsByConnectorId.mockResolvedValue(false);
       mockDelete.mockResolvedValue(undefined);
 
-      await service.delete(mockCredential.id, auth);
+      await service.delete(mockCredential.tenantId, mockCredential.id, auth);
 
       expect(mockExistsByConnectorId).toHaveBeenCalledWith(mockCredential.id);
       expect(mockDelete).toHaveBeenCalledWith(mockCredential.id);
@@ -445,9 +445,9 @@ describe('ConnectorCredentialService', () => {
       mockFindById.mockResolvedValue(mockCredential);
       mockExistsByConnectorId.mockResolvedValue(true);
 
-      await expect(service.delete(mockCredential.id, auth)).rejects.toThrow(
-        ConflictException,
-      );
+      await expect(
+        service.delete(mockCredential.tenantId, mockCredential.id, auth),
+      ).rejects.toThrow(ConflictException);
 
       expect(mockDelete).not.toHaveBeenCalled();
     });
@@ -455,9 +455,23 @@ describe('ConnectorCredentialService', () => {
     it('should throw NotFoundException if credential not found during delete', async () => {
       mockFindById.mockResolvedValue(null);
 
-      await expect(service.delete('nonexistent', auth)).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(
+        service.delete(mockCredential.tenantId, 'nonexistent', auth),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('should throw NotFoundException when the path tenantId does not match the credential', async () => {
+      mockFindById.mockResolvedValue(mockCredential);
+
+      await expect(
+        service.delete(
+          'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+          mockCredential.id,
+          auth,
+        ),
+      ).rejects.toThrow(NotFoundException);
+
+      expect(mockDelete).not.toHaveBeenCalled();
     });
   });
 

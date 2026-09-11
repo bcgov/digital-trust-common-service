@@ -22,6 +22,7 @@ export interface Connection {
   readonly externalId?: string;
   readonly state: ConnectionState;
   readonly alias?: string;
+  readonly protocol?: string;
   // Label provided by the other party.
   readonly theirLabel?: string;
   // ISO-8601 timestamps.

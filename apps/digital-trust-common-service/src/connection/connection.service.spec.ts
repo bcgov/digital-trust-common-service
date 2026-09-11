@@ -1,9 +1,15 @@
 import { TenantAccessDeniedException } from '@app/auth';
-import { ConflictException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 
+import { AdapterRegistry } from '../adapter-registry/adapter-registry.service';
 import { AuditAction } from '../audit-log/audit-log.entity';
 import { DomainAuditService } from '../audit-log/domain-audit.service';
+import { EncryptionService } from '../common/crypto/encryption.service';
+import { ConnectorCredential } from '../connector-credential/connector-credential.entity';
+import { OPERATION_TYPE } from '../operation/operation-type.constants';
+import { Operation, OperationState } from '../operation/operation.entity';
+import { OperationService } from '../operation/operation.service';
 
 import {
   Connection,
@@ -25,6 +31,13 @@ describe('ConnectionService', () => {
   let mockUpdate: jest.Mock;
   let mockDelete: jest.Mock;
   let mockEmit: jest.Mock;
+  let mockResolve: jest.Mock;
+  let mockDecrypt: jest.Mock;
+  let mockCreateOperation: jest.Mock;
+  let mockTransitionState: jest.Mock;
+  let mockCreateInvitation: jest.Mock;
+  let mockGetById: jest.Mock;
+  let mockList: jest.Mock;
 
   const mockConnection: Connection = {
     id: '123e4567-e89b-12d3-a456-426614174000',
@@ -41,6 +54,31 @@ describe('ConnectionService', () => {
     updatedAt: new Date(),
   };
 
+  const mockConnector: ConnectorCredential = {
+    id: '123e4567-e89b-12d3-a456-426614174002',
+    tenantId: mockConnection.tenantId,
+    connectorType: ConnectorType.TRACTION,
+    credentialsEncrypted: Buffer.from('ciphertext'),
+    endpointUrl: 'https://traction.example.test',
+    active: true,
+    keyVersion: 1,
+    tenant: undefined as any,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+
+  const mockOperation: Operation = {
+    id: '123e4567-e89b-12d3-a456-426614174003',
+    tenantId: mockConnection.tenantId,
+    type: OPERATION_TYPE.CONNECTION_CREATE,
+    state: OperationState.PENDING,
+    request: { method: 'POST', path: '/api/v1/connections', body: {} },
+    expiresAt: new Date(),
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    tenant: undefined as any,
+  };
+
   const auth = {
     sub: 'user-1',
     tokenType: 'user' as const,
@@ -55,6 +93,12 @@ describe('ConnectionService', () => {
     iat: 1,
   };
 
+  const mockAdapter = {
+    createInvitation: undefined as unknown,
+    getById: undefined as unknown,
+    list: undefined as unknown,
+  };
+
   beforeEach(async () => {
     mockCreate = jest.fn();
     mockFindById = jest.fn();
@@ -64,6 +108,17 @@ describe('ConnectionService', () => {
     mockUpdate = jest.fn();
     mockDelete = jest.fn();
     mockEmit = jest.fn().mockResolvedValue(undefined);
+    mockResolve = jest.fn();
+    mockDecrypt = jest.fn();
+    mockCreateOperation = jest.fn();
+    mockTransitionState = jest.fn();
+    mockCreateInvitation = jest.fn();
+    mockGetById = jest.fn();
+    mockList = jest.fn();
+
+    mockAdapter.createInvitation = mockCreateInvitation;
+    mockAdapter.getById = mockGetById;
+    mockAdapter.list = mockList;
 
     const mockRepository = {
       create: mockCreate,
@@ -86,6 +141,21 @@ describe('ConnectionService', () => {
           provide: DomainAuditService,
           useValue: { emit: mockEmit },
         },
+        {
+          provide: AdapterRegistry,
+          useValue: { resolve: mockResolve },
+        },
+        {
+          provide: EncryptionService,
+          useValue: { decrypt: mockDecrypt },
+        },
+        {
+          provide: OperationService,
+          useValue: {
+            createOperation: mockCreateOperation,
+            transitionState: mockTransitionState,
+          },
+        },
       ],
     }).compile();
 
@@ -97,35 +167,44 @@ describe('ConnectionService', () => {
   });
 
   describe('create', () => {
-    it('should create a new connection if it does not already exist', async () => {
-      const dto: CreateConnectionDto = {
-        tenantId: mockConnection.tenantId,
-        externalConnectionId: mockConnection.externalConnectionId,
-        theirLabel: mockConnection.theirLabel,
-        theirDid: mockConnection.theirDid,
-        state: mockConnection.state,
-        connectorType: mockConnection.connectorType,
-        protocol: mockConnection.protocol,
-        metadata: mockConnection.metadata,
-      };
+    const dto: CreateConnectionDto = {
+      protocol: mockConnection.protocol,
+      alias: 'acme-partner',
+      label: 'Acme Corp',
+      metadata: { key: 'value' },
+    };
 
-      mockFindByExternalConnectionId.mockResolvedValue(null);
+    beforeEach(() => {
+      mockResolve.mockResolvedValue({
+        adapter: mockAdapter,
+        connector: mockConnector,
+        format: undefined,
+      });
       mockCreate.mockResolvedValue(mockConnection);
-
-      const result = await service.create(dto, auth);
-
-      expect(mockFindByExternalConnectionId).toHaveBeenCalledWith(
-        dto.externalConnectionId,
+      mockCreateOperation.mockResolvedValue(mockOperation);
+      mockDecrypt.mockReturnValue({ apiKey: 'secret' });
+      mockFindById.mockResolvedValue({ ...mockConnection });
+      mockUpdate.mockImplementation((connection) =>
+        Promise.resolve(connection),
       );
+    });
+
+    it('resolves the connector, creates the connection invited, calls the adapter inline, and returns the completed connection', async () => {
+      mockCreateInvitation.mockResolvedValue({
+        invitationId: 'invi-msg-1',
+        invitationUrl: 'https://traction.example.test/invite',
+        connectionId: 'traction-conn-1',
+      });
+
+      const result = await service.create(mockConnection.tenantId, dto, auth);
+
+      expect(mockResolve).toHaveBeenCalledWith(mockConnection.tenantId);
       expect(mockCreate).toHaveBeenCalledWith({
-        tenantId: dto.tenantId,
-        externalConnectionId: dto.externalConnectionId,
-        theirLabel: dto.theirLabel,
-        theirDid: dto.theirDid,
-        state: dto.state,
-        connectorType: dto.connectorType,
+        tenantId: mockConnection.tenantId,
+        connectorType: mockConnector.connectorType,
         protocol: dto.protocol,
-        metadata: dto.metadata || {},
+        state: ConnectionState.INVITED,
+        metadata: dto.metadata,
       });
       expect(mockEmit).toHaveBeenCalledWith({
         tenantId: mockConnection.tenantId,
@@ -133,107 +212,460 @@ describe('ConnectionService', () => {
         resourceType: 'connection',
         resourceId: mockConnection.id,
       });
-      expect(result).toEqual(mockConnection);
-    });
-
-    it('should throw ConflictException if connection already exists', async () => {
-      const dto: CreateConnectionDto = {
+      expect(mockCreateOperation).toHaveBeenCalledWith({
         tenantId: mockConnection.tenantId,
-        externalConnectionId: mockConnection.externalConnectionId,
-        state: mockConnection.state,
-        connectorType: mockConnection.connectorType,
-        protocol: mockConnection.protocol,
-      };
-
-      mockFindByExternalConnectionId.mockResolvedValue(mockConnection);
-
-      await expect(service.create(dto, auth)).rejects.toThrow(
-        ConflictException,
+        type: OPERATION_TYPE.CONNECTION_CREATE,
+        request: {
+          method: 'POST',
+          path: `/api/v1/tenants/${mockConnection.tenantId}/connections`,
+          body: dto,
+        },
+      });
+      expect(mockTransitionState).toHaveBeenNthCalledWith(
+        1,
+        mockOperation.id,
+        OperationState.PROCESSING,
       );
-      expect(mockEmit).not.toHaveBeenCalled();
+      expect(mockDecrypt).toHaveBeenCalledWith(
+        mockConnector.credentialsEncrypted,
+        mockConnector.keyVersion,
+      );
+      expect(mockCreateInvitation).toHaveBeenCalledWith(
+        {
+          connectorId: mockConnector.id,
+          tenantId: mockConnection.tenantId,
+          endpointUrl: mockConnector.endpointUrl,
+          credentials: { apiKey: 'secret' },
+        },
+        {
+          alias: dto.alias,
+          label: dto.label,
+          goalCode: dto.goalCode,
+          multiUse: dto.multiUse,
+        },
+      );
+      expect(mockUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          externalConnectionId: 'traction-conn-1',
+          metadata: expect.objectContaining({
+            invitationUrl: 'https://traction.example.test/invite',
+            invitationId: 'invi-msg-1',
+          }),
+        }),
+      );
+      expect(mockTransitionState).toHaveBeenNthCalledWith(
+        2,
+        mockOperation.id,
+        OperationState.COMPLETED,
+        {
+          connectionId: mockConnection.id,
+          externalConnectionId: 'invi-msg-1',
+          invitationUrl: 'https://traction.example.test/invite',
+        },
+      );
+      expect(result).toEqual(
+        expect.objectContaining({ externalConnectionId: 'traction-conn-1' }),
+      );
     });
 
-    it('rejects create when body tenant does not match the token', async () => {
-      const dto: CreateConnectionDto = {
-        tenantId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
-        externalConnectionId: mockConnection.externalConnectionId,
-        state: mockConnection.state,
-        connectorType: mockConnection.connectorType,
-        protocol: mockConnection.protocol,
-      };
-
-      await expect(service.create(dto, auth)).rejects.toThrow(
-        TenantAccessDeniedException,
-      );
+    it('rejects create when the path tenant does not match the token', async () => {
+      await expect(
+        service.create('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', dto, auth),
+      ).rejects.toThrow(TenantAccessDeniedException);
       expect(mockCreate).not.toHaveBeenCalled();
+    });
+
+    it('marks the connection abandoned and the operation failed when the adapter call fails', async () => {
+      const error = new Error('connector unavailable');
+      mockCreateInvitation.mockRejectedValue(error);
+
+      await expect(
+        service.create(mockConnection.tenantId, dto, auth),
+      ).rejects.toThrow(error);
+
+      expect(mockUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({ state: ConnectionState.ABANDONED }),
+      );
+      expect(mockTransitionState).toHaveBeenNthCalledWith(
+        2,
+        mockOperation.id,
+        OperationState.FAILED,
+        expect.objectContaining({ code: 'CONNECTION_CREATE_FAILED' }),
+      );
+    });
+
+    it('throws NotFoundException if the connection row disappeared before the invitation result could be applied', async () => {
+      mockCreateInvitation.mockResolvedValue({
+        invitationId: 'traction-conn-1',
+        invitationUrl: 'https://traction.example.test/invite',
+      });
+      mockFindById.mockResolvedValue(null);
+
+      await expect(
+        service.create(mockConnection.tenantId, dto, auth),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 
   describe('findById', () => {
-    it('should find a connection by id', async () => {
-      mockFindById.mockResolvedValue(mockConnection);
-
-      const result = await service.findById(mockConnection.id, auth);
-
-      expect(mockFindById).toHaveBeenCalledWith(mockConnection.id);
-      expect(result).toEqual(mockConnection);
+    beforeEach(() => {
+      mockResolve.mockResolvedValue({
+        adapter: mockAdapter,
+        connector: mockConnector,
+        format: undefined,
+      });
+      mockDecrypt.mockReturnValue({ apiKey: 'secret' });
+      mockUpdate.mockImplementation((connection) =>
+        Promise.resolve(connection),
+      );
     });
 
     it('should throw NotFoundException if connection not found', async () => {
       mockFindById.mockResolvedValue(null);
 
-      await expect(service.findById(mockConnection.id, auth)).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(
+        service.findById(mockConnection.tenantId, mockConnection.id, auth),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('returns NotFoundException when the path tenant does not match the connection', async () => {
+      mockFindById.mockResolvedValue(mockConnection);
+
+      await expect(
+        service.findById(
+          'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+          mockConnection.id,
+          auth,
+        ),
+      ).rejects.toThrow(NotFoundException);
     });
 
     it('returns NotFoundException for cross-tenant resource access', async () => {
       mockFindById.mockResolvedValue(mockConnection);
 
       await expect(
-        service.findById(mockConnection.id, {
+        service.findById(mockConnection.tenantId, mockConnection.id, {
           ...auth,
           tenantId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
         }),
       ).rejects.toThrow(NotFoundException);
     });
-  });
 
-  describe('findByExternalConnectionId', () => {
-    it('should find a connection by external connection id', async () => {
-      mockFindByExternalConnectionId.mockResolvedValue(mockConnection);
+    it('returns the persisted connection unchanged when there is no external connection id yet', async () => {
+      const invited = { ...mockConnection, externalConnectionId: undefined };
+      mockFindById.mockResolvedValue(invited);
 
-      const result = await service.findByExternalConnectionId(
-        mockConnection.externalConnectionId,
+      const result = await service.findById(
+        mockConnection.tenantId,
+        invited.id,
         auth,
       );
 
-      expect(mockFindByExternalConnectionId).toHaveBeenCalledWith(
+      expect(mockResolve).not.toHaveBeenCalled();
+      expect(result).toEqual(invited);
+    });
+
+    it('syncs the connection state and their-label from the connector', async () => {
+      mockFindById.mockResolvedValue({ ...mockConnection });
+      mockGetById.mockResolvedValue({
+        id: mockConnection.externalConnectionId,
+        state: 'completed',
+        theirLabel: 'Bob',
+        createdAt: mockConnection.createdAt.toISOString(),
+        updatedAt: mockConnection.updatedAt.toISOString(),
+      });
+
+      const result = await service.findById(
+        mockConnection.tenantId,
+        mockConnection.id,
+        auth,
+      );
+
+      expect(mockResolve).toHaveBeenCalledWith(mockConnection.tenantId);
+      expect(mockDecrypt).toHaveBeenCalledWith(
+        mockConnector.credentialsEncrypted,
+        mockConnector.keyVersion,
+      );
+      expect(mockGetById).toHaveBeenCalledWith(
+        {
+          connectorId: mockConnector.id,
+          tenantId: mockConnection.tenantId,
+          endpointUrl: mockConnector.endpointUrl,
+          credentials: { apiKey: 'secret' },
+        },
         mockConnection.externalConnectionId,
       );
+      expect(mockUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          state: ConnectionState.COMPLETED,
+          theirLabel: 'Bob',
+        }),
+      );
+      expect(result).toEqual(
+        expect.objectContaining({
+          state: ConnectionState.COMPLETED,
+          theirLabel: 'Bob',
+        }),
+      );
+    });
+
+    it('skips the repository update when the connector reports no change', async () => {
+      mockFindById.mockResolvedValue({ ...mockConnection });
+      mockGetById.mockResolvedValue({
+        id: mockConnection.externalConnectionId,
+        state: 'active',
+        theirLabel: mockConnection.theirLabel,
+        createdAt: mockConnection.createdAt.toISOString(),
+        updatedAt: mockConnection.updatedAt.toISOString(),
+      });
+
+      const result = await service.findById(
+        mockConnection.tenantId,
+        mockConnection.id,
+        auth,
+      );
+
+      expect(mockUpdate).not.toHaveBeenCalled();
       expect(result).toEqual(mockConnection);
     });
 
-    it('should throw NotFoundException if connection not found', async () => {
-      mockFindByExternalConnectionId.mockResolvedValue(null);
+    it('returns the persisted connection when the connector cannot be reached', async () => {
+      mockFindById.mockResolvedValue({ ...mockConnection });
+      mockGetById.mockRejectedValue(new Error('connector unavailable'));
 
-      await expect(
-        service.findByExternalConnectionId(
-          mockConnection.externalConnectionId,
-          auth,
-        ),
-      ).rejects.toThrow(NotFoundException);
+      const result = await service.findById(
+        mockConnection.tenantId,
+        mockConnection.id,
+        auth,
+      );
+
+      expect(mockUpdate).not.toHaveBeenCalled();
+      expect(result).toEqual(mockConnection);
     });
   });
 
   describe('findByTenantId', () => {
-    it('should find connections by tenant id', async () => {
-      mockFindByTenantId.mockResolvedValue([mockConnection]);
+    beforeEach(() => {
+      mockResolve.mockResolvedValue({
+        adapter: mockAdapter,
+        connector: mockConnector,
+        format: undefined,
+      });
+      mockDecrypt.mockReturnValue({ apiKey: 'secret' });
+      mockUpdate.mockImplementation((connection) =>
+        Promise.resolve(connection),
+      );
+    });
+
+    it('syncs every connection with a single list() call to the connector', async () => {
+      mockFindByTenantId.mockResolvedValue([{ ...mockConnection }]);
+      mockList.mockResolvedValue([
+        {
+          id: mockConnection.externalConnectionId,
+          state: 'completed',
+          theirLabel: 'Bob',
+          createdAt: mockConnection.createdAt.toISOString(),
+          updatedAt: mockConnection.updatedAt.toISOString(),
+        },
+      ]);
 
       const result = await service.findByTenantId(mockConnection.tenantId);
 
       expect(mockFindByTenantId).toHaveBeenCalledWith(mockConnection.tenantId);
-      expect(result).toEqual([mockConnection]);
+      expect(mockResolve).toHaveBeenCalledWith(mockConnection.tenantId);
+      expect(mockList).toHaveBeenCalledWith(
+        {
+          connectorId: mockConnector.id,
+          tenantId: mockConnection.tenantId,
+          endpointUrl: mockConnector.endpointUrl,
+          credentials: { apiKey: 'secret' },
+        },
+        {},
+      );
+      expect(mockUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          state: ConnectionState.COMPLETED,
+          theirLabel: 'Bob',
+        }),
+      );
+      expect(result).toEqual({
+        data: [
+          expect.objectContaining({
+            state: ConnectionState.COMPLETED,
+            theirLabel: 'Bob',
+          }),
+        ],
+        pagination: { next_cursor: null, has_more: false },
+      });
+    });
+
+    it('leaves a connection unchanged when the connector list does not report it', async () => {
+      mockFindByTenantId.mockResolvedValue([{ ...mockConnection }]);
+      mockList.mockResolvedValue([]);
+
+      const result = await service.findByTenantId(mockConnection.tenantId);
+
+      expect(mockUpdate).not.toHaveBeenCalled();
+      expect(mockCreate).not.toHaveBeenCalled();
+      expect(result).toEqual({
+        data: [mockConnection],
+        pagination: { next_cursor: null, has_more: false },
+      });
+    });
+
+    it('imports a connector-side connection that has no local row yet', async () => {
+      mockFindByTenantId.mockResolvedValue([]);
+      mockList.mockResolvedValue([
+        {
+          id: 'traction-conn-new',
+          state: 'active',
+          theirLabel: 'Carol',
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-01T00:00:00.000Z',
+        },
+      ]);
+      mockCreate.mockImplementation((connection) =>
+        Promise.resolve({ ...mockConnection, ...connection, id: 'new-id' }),
+      );
+
+      const result = await service.findByTenantId(mockConnection.tenantId);
+
+      expect(mockCreate).toHaveBeenCalledWith({
+        tenantId: mockConnection.tenantId,
+        connectorType: mockConnector.connectorType,
+        protocol: ConnectionProtocol.DIDCOMM_V1,
+        state: ConnectionState.ACTIVE,
+        theirLabel: 'Carol',
+        externalConnectionId: 'traction-conn-new',
+        metadata: {},
+      });
+      expect(mockEmit).toHaveBeenCalledWith({
+        tenantId: mockConnection.tenantId,
+        action: AuditAction.CREATE,
+        resourceType: 'connection',
+        resourceId: 'new-id',
+      });
+      expect(result).toEqual({
+        data: [
+          expect.objectContaining({
+            id: 'new-id',
+            externalConnectionId: 'traction-conn-new',
+            theirLabel: 'Carol',
+          }),
+        ],
+        pagination: { next_cursor: null, has_more: false },
+      });
+    });
+
+    it('falls back to the existing row when a concurrent call already imported it', async () => {
+      mockFindByTenantId.mockResolvedValue([]);
+      mockList.mockResolvedValue([
+        {
+          id: 'traction-conn-new',
+          state: 'active',
+          theirLabel: 'Carol',
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-01T00:00:00.000Z',
+        },
+      ]);
+      mockCreate.mockRejectedValue(new Error('duplicate key value'));
+      const raceWinner = {
+        ...mockConnection,
+        id: 'raced-id',
+        externalConnectionId: 'traction-conn-new',
+      };
+      mockFindByExternalConnectionId.mockResolvedValue(raceWinner);
+
+      const result = await service.findByTenantId(mockConnection.tenantId);
+
+      expect(mockFindByExternalConnectionId).toHaveBeenCalledWith(
+        'traction-conn-new',
+      );
+      expect(mockEmit).not.toHaveBeenCalled();
+      expect(result).toEqual({
+        data: [raceWinner],
+        pagination: { next_cursor: null, has_more: false },
+      });
+    });
+
+    it('propagates the create failure when no row was imported concurrently', async () => {
+      mockFindByTenantId.mockResolvedValue([]);
+      mockList.mockResolvedValue([
+        {
+          id: 'traction-conn-new',
+          state: 'active',
+          theirLabel: 'Carol',
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-01T00:00:00.000Z',
+        },
+      ]);
+      const error = new Error('constraint violation');
+      mockCreate.mockRejectedValue(error);
+      mockFindByExternalConnectionId.mockResolvedValue(null);
+
+      await expect(
+        service.findByTenantId(mockConnection.tenantId),
+      ).rejects.toThrow(error);
+    });
+
+    it('returns the persisted connections when the connector cannot be reached', async () => {
+      mockFindByTenantId.mockResolvedValue([{ ...mockConnection }]);
+      mockList.mockRejectedValue(new Error('connector unavailable'));
+
+      const result = await service.findByTenantId(mockConnection.tenantId);
+
+      expect(mockUpdate).not.toHaveBeenCalled();
+      expect(result).toEqual({
+        data: [mockConnection],
+        pagination: { next_cursor: null, has_more: false },
+      });
+    });
+
+    it('paginates the reconciled list and returns an opaque next_cursor', async () => {
+      const older = {
+        ...mockConnection,
+        id: 'conn-older',
+        externalConnectionId: 'ext-older',
+        createdAt: new Date('2026-01-01T00:00:00.000Z'),
+      };
+      const newer = {
+        ...mockConnection,
+        id: 'conn-newer',
+        externalConnectionId: 'ext-newer',
+        createdAt: new Date('2026-01-02T00:00:00.000Z'),
+      };
+      mockFindByTenantId.mockResolvedValue([older, newer]);
+      mockList.mockResolvedValue([]);
+
+      const result = await service.findByTenantId(mockConnection.tenantId, {
+        limit: 1,
+      });
+
+      expect(result.data).toEqual([older]);
+      expect(result.pagination.has_more).toBe(true);
+      expect(typeof result.pagination.next_cursor).toBe('string');
+
+      const nextPage = await service.findByTenantId(mockConnection.tenantId, {
+        limit: 1,
+        cursor: result.pagination.next_cursor ?? undefined,
+      });
+
+      expect(nextPage.data).toEqual([newer]);
+      expect(nextPage.pagination).toEqual({
+        next_cursor: null,
+        has_more: false,
+      });
+    });
+
+    it('rejects a malformed pagination cursor', async () => {
+      mockFindByTenantId.mockResolvedValue([{ ...mockConnection }]);
+      mockList.mockResolvedValue([]);
+
+      await expect(
+        service.findByTenantId(mockConnection.tenantId, {
+          cursor: 'not-a-valid-cursor',
+        }),
+      ).rejects.toThrow(BadRequestException);
     });
   });
 
@@ -250,38 +682,10 @@ describe('ConnectionService', () => {
         mockConnection.tenantId,
         mockConnection.state,
       );
-      expect(result).toEqual([mockConnection]);
-    });
-  });
-
-  describe('update', () => {
-    it('should update a connection', async () => {
-      const dto: Partial<CreateConnectionDto> = {
-        state: ConnectionState.COMPLETED,
-      };
-
-      mockFindById.mockResolvedValue(mockConnection);
-      mockUpdate.mockResolvedValue({ ...mockConnection, ...dto });
-
-      const result = await service.update(mockConnection.id, dto, auth);
-
-      expect(mockFindById).toHaveBeenCalledWith(mockConnection.id);
-      expect(mockUpdate).toHaveBeenCalled();
-      expect(mockEmit).toHaveBeenCalledWith({
-        tenantId: mockConnection.tenantId,
-        action: AuditAction.UPDATE,
-        resourceType: 'connection',
-        resourceId: mockConnection.id,
+      expect(result).toEqual({
+        data: [mockConnection],
+        pagination: { next_cursor: null, has_more: false },
       });
-      expect(result.state).toEqual(ConnectionState.COMPLETED);
-    });
-
-    it('should throw NotFoundException if connection not found on update', async () => {
-      mockFindById.mockResolvedValue(null);
-
-      await expect(service.update(mockConnection.id, {}, auth)).rejects.toThrow(
-        NotFoundException,
-      );
     });
   });
 
@@ -289,7 +693,7 @@ describe('ConnectionService', () => {
     it('should delete a connection', async () => {
       mockFindById.mockResolvedValue(mockConnection);
 
-      await service.delete(mockConnection.id, auth);
+      await service.delete(mockConnection.tenantId, mockConnection.id, auth);
 
       expect(mockFindById).toHaveBeenCalledWith(mockConnection.id);
       expect(mockDelete).toHaveBeenCalledWith(mockConnection.id);
@@ -304,9 +708,9 @@ describe('ConnectionService', () => {
     it('should throw NotFoundException if connection not found on delete', async () => {
       mockFindById.mockResolvedValue(null);
 
-      await expect(service.delete(mockConnection.id, auth)).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(
+        service.delete(mockConnection.tenantId, mockConnection.id, auth),
+      ).rejects.toThrow(NotFoundException);
       expect(mockEmit).not.toHaveBeenCalled();
     });
   });
