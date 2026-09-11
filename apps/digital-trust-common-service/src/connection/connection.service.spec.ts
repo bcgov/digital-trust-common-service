@@ -484,6 +484,48 @@ describe('ConnectionService', () => {
       });
     });
 
+    it('links a pending connection to its connector record by invitationId once assigned, instead of importing a duplicate', async () => {
+      const pending = {
+        ...mockConnection,
+        externalConnectionId: null,
+        state: ConnectionState.INVITED,
+        theirLabel: undefined,
+        metadata: { invitationId: 'invi-msg-1' },
+      };
+      mockFindByTenantId.mockResolvedValue([pending]);
+      mockList.mockResolvedValue([
+        {
+          id: 'traction-conn-1',
+          state: 'active',
+          theirLabel: 'Bob',
+          invitationId: 'invi-msg-1',
+          createdAt: mockConnection.createdAt.toISOString(),
+          updatedAt: mockConnection.updatedAt.toISOString(),
+        },
+      ]);
+
+      const result = await service.findByTenantId(mockConnection.tenantId);
+
+      expect(mockCreate).not.toHaveBeenCalled();
+      expect(mockUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          externalConnectionId: 'traction-conn-1',
+          state: ConnectionState.ACTIVE,
+          theirLabel: 'Bob',
+        }),
+      );
+      expect(result).toEqual({
+        data: [
+          expect.objectContaining({
+            externalConnectionId: 'traction-conn-1',
+            state: ConnectionState.ACTIVE,
+            theirLabel: 'Bob',
+          }),
+        ],
+        pagination: { next_cursor: null, has_more: false },
+      });
+    });
+
     it('imports a connector-side connection that has no local row yet', async () => {
       mockFindByTenantId.mockResolvedValue([]);
       mockList.mockResolvedValue([
