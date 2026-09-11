@@ -5,7 +5,6 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { AdapterRegistry } from '../adapter-registry/adapter-registry.service';
 import { AuditAction } from '../audit-log/audit-log.entity';
 import { DomainAuditService } from '../audit-log/domain-audit.service';
-import { EncryptionService } from '../common/crypto/encryption.service';
 import { ConnectorCredential } from '../connector-credential/connector-credential.entity';
 import { OPERATION_TYPE } from '../operation/operation-type.constants';
 import { Operation, OperationState } from '../operation/operation.entity';
@@ -33,7 +32,6 @@ describe('ConnectionService', () => {
   let mockDelete: jest.Mock;
   let mockEmit: jest.Mock;
   let mockResolve: jest.Mock;
-  let mockDecrypt: jest.Mock;
   let mockCreateOperation: jest.Mock;
   let mockTransitionState: jest.Mock;
   let mockCreateInvitation: jest.Mock;
@@ -66,6 +64,13 @@ describe('ConnectionService', () => {
     tenant: undefined as any,
     createdAt: new Date(),
     updatedAt: new Date(),
+  };
+
+  const mockContext = {
+    connectorId: mockConnector.id,
+    tenantId: mockConnection.tenantId,
+    endpointUrl: mockConnector.endpointUrl,
+    credentials: { apiKey: 'secret' },
   };
 
   const mockOperation: Operation = {
@@ -111,7 +116,6 @@ describe('ConnectionService', () => {
     mockDelete = jest.fn();
     mockEmit = jest.fn().mockResolvedValue(undefined);
     mockResolve = jest.fn();
-    mockDecrypt = jest.fn();
     mockCreateOperation = jest.fn();
     mockTransitionState = jest.fn();
     mockCreateInvitation = jest.fn();
@@ -149,10 +153,6 @@ describe('ConnectionService', () => {
           useValue: { resolve: mockResolve },
         },
         {
-          provide: EncryptionService,
-          useValue: { decrypt: mockDecrypt },
-        },
-        {
           provide: OperationService,
           useValue: {
             createOperation: mockCreateOperation,
@@ -181,11 +181,11 @@ describe('ConnectionService', () => {
       mockResolve.mockResolvedValue({
         adapter: mockAdapter,
         connector: mockConnector,
+        context: mockContext,
         format: undefined,
       });
       mockCreate.mockResolvedValue(mockConnection);
       mockCreateOperation.mockResolvedValue(mockOperation);
-      mockDecrypt.mockReturnValue({ apiKey: 'secret' });
       mockFindById.mockResolvedValue({ ...mockConnection });
       mockUpdate.mockImplementation((connection) =>
         Promise.resolve(connection),
@@ -229,24 +229,12 @@ describe('ConnectionService', () => {
         mockOperation.id,
         OperationState.PROCESSING,
       );
-      expect(mockDecrypt).toHaveBeenCalledWith(
-        mockConnector.credentialsEncrypted,
-        mockConnector.keyVersion,
-      );
-      expect(mockCreateInvitation).toHaveBeenCalledWith(
-        {
-          connectorId: mockConnector.id,
-          tenantId: mockConnection.tenantId,
-          endpointUrl: mockConnector.endpointUrl,
-          credentials: { apiKey: 'secret' },
-        },
-        {
-          alias: dto.alias,
-          label: dto.label,
-          goalCode: dto.goalCode,
-          multiUse: dto.multiUse,
-        },
-      );
+      expect(mockCreateInvitation).toHaveBeenCalledWith(mockContext, {
+        alias: dto.alias,
+        label: dto.label,
+        goalCode: dto.goalCode,
+        multiUse: dto.multiUse,
+      });
       expect(mockUpdate).toHaveBeenCalledWith(
         expect.objectContaining({
           externalConnectionId: 'traction-conn-1',
@@ -315,9 +303,9 @@ describe('ConnectionService', () => {
       mockResolve.mockResolvedValue({
         adapter: mockAdapter,
         connector: mockConnector,
+        context: mockContext,
         format: undefined,
       });
-      mockDecrypt.mockReturnValue({ apiKey: 'secret' });
       mockUpdate.mockImplementation((connection) =>
         Promise.resolve(connection),
       );
@@ -385,17 +373,8 @@ describe('ConnectionService', () => {
       );
 
       expect(mockResolve).toHaveBeenCalledWith(mockConnection.tenantId);
-      expect(mockDecrypt).toHaveBeenCalledWith(
-        mockConnector.credentialsEncrypted,
-        mockConnector.keyVersion,
-      );
       expect(mockGetById).toHaveBeenCalledWith(
-        {
-          connectorId: mockConnector.id,
-          tenantId: mockConnection.tenantId,
-          endpointUrl: mockConnector.endpointUrl,
-          credentials: { apiKey: 'secret' },
-        },
+        mockContext,
         mockConnection.externalConnectionId,
       );
       expect(mockUpdate).toHaveBeenCalledWith(
@@ -452,9 +431,9 @@ describe('ConnectionService', () => {
       mockResolve.mockResolvedValue({
         adapter: mockAdapter,
         connector: mockConnector,
+        context: mockContext,
         format: undefined,
       });
-      mockDecrypt.mockReturnValue({ apiKey: 'secret' });
       mockUpdate.mockImplementation((connection) =>
         Promise.resolve(connection),
       );
@@ -476,15 +455,7 @@ describe('ConnectionService', () => {
 
       expect(mockFindByTenantId).toHaveBeenCalledWith(mockConnection.tenantId);
       expect(mockResolve).toHaveBeenCalledWith(mockConnection.tenantId);
-      expect(mockList).toHaveBeenCalledWith(
-        {
-          connectorId: mockConnector.id,
-          tenantId: mockConnection.tenantId,
-          endpointUrl: mockConnector.endpointUrl,
-          credentials: { apiKey: 'secret' },
-        },
-        {},
-      );
+      expect(mockList).toHaveBeenCalledWith(mockContext, {});
       expect(mockUpdate).toHaveBeenCalledWith(
         expect.objectContaining({
           state: ConnectionState.COMPLETED,

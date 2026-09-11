@@ -2,7 +2,6 @@ import type { AuthContext } from '@app/auth';
 import {
   ConnectionState as AdapterConnectionState,
   type Connection as AdapterConnection,
-  type ConnectorContext,
   type Invitation,
 } from '@app/credential-ports';
 import {
@@ -21,7 +20,6 @@ import {
   assertTenantAccess,
 } from '../common/assert-tenant-access';
 import { API_BASE_PATH } from '../common/constants/api-version.constants';
-import { EncryptionService } from '../common/crypto/encryption.service';
 import { OPERATION_TYPE } from '../operation/operation-type.constants';
 import { OperationState } from '../operation/operation.entity';
 import { OperationService } from '../operation/operation.service';
@@ -81,7 +79,6 @@ export class ConnectionService {
     private readonly connectionRepository: ConnectionRepository,
     private readonly domainAudit: DomainAuditService,
     private readonly adapterRegistry: AdapterRegistry,
-    private readonly encryptionService: EncryptionService,
     private readonly operationService: OperationService,
   ) {}
 
@@ -103,7 +100,8 @@ export class ConnectionService {
   ): Promise<Connection> {
     assertTenantAccess(auth, tenantId);
 
-    const { adapter, connector } = await this.adapterRegistry.resolve(tenantId);
+    const { adapter, connector, context } =
+      await this.adapterRegistry.resolve(tenantId);
 
     const created = await this.connectionRepository.create({
       tenantId,
@@ -136,17 +134,6 @@ export class ConnectionService {
     );
 
     try {
-      const credentials = this.encryptionService.decrypt<
-        Record<string, unknown>
-      >(connector.credentialsEncrypted, connector.keyVersion);
-
-      const context: ConnectorContext = {
-        connectorId: connector.id,
-        tenantId,
-        endpointUrl: connector.endpointUrl,
-        credentials,
-      };
-
       const invitation = await adapter.createInvitation(context, {
         alias: dto.alias,
         label: dto.label,
@@ -255,20 +242,9 @@ export class ConnectionService {
     }
 
     try {
-      const { adapter, connector } = await this.adapterRegistry.resolve(
+      const { adapter, context } = await this.adapterRegistry.resolve(
         connection.tenantId,
       );
-
-      const credentials = this.encryptionService.decrypt<
-        Record<string, unknown>
-      >(connector.credentialsEncrypted, connector.keyVersion);
-
-      const context: ConnectorContext = {
-        connectorId: connector.id,
-        tenantId: connection.tenantId,
-        endpointUrl: connector.endpointUrl,
-        credentials,
-      };
 
       const remote: AdapterConnection = await adapter.getById(
         context,
@@ -347,21 +323,10 @@ export class ConnectionService {
     let connectorType: ConnectorType;
 
     try {
-      const { adapter, connector } =
+      const { adapter, connector, context } =
         await this.adapterRegistry.resolve(tenantId);
 
       connectorType = connector.connectorType;
-
-      const credentials = this.encryptionService.decrypt<
-        Record<string, unknown>
-      >(connector.credentialsEncrypted, connector.keyVersion);
-
-      const context: ConnectorContext = {
-        connectorId: connector.id,
-        tenantId,
-        endpointUrl: connector.endpointUrl,
-        credentials,
-      };
 
       remote = await adapter.list(context, {});
     } catch (error) {
