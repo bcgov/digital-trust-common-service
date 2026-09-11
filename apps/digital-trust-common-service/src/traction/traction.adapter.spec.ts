@@ -131,7 +131,6 @@ describe('TractionAdapter', () => {
       expect(result).toEqual({
         invitationId: 'invi-msg-1',
         invitationUrl: 'https://traction.example.com?oob=abc123',
-        connectionId: 'oob-1',
       });
       expect(mockGetToken).toHaveBeenCalledWith(context);
       expect(mockRequest).toHaveBeenCalledWith({
@@ -327,6 +326,7 @@ describe('TractionAdapter', () => {
               state: 'active',
               alias: 'test',
               their_label: 'jamie',
+              invitation_msg_id: 'invi-msg-1',
               created_at: '2026-09-08T23:05:07.503811Z',
               updated_at: '2026-09-08T23:05:07.638608Z',
             },
@@ -348,6 +348,7 @@ describe('TractionAdapter', () => {
           alias: 'test',
           protocol: 'didcomm-v1',
           theirLabel: 'jamie',
+          invitationId: 'invi-msg-1',
           createdAt: '2026-09-08T23:05:07.503811Z',
           updatedAt: '2026-09-08T23:05:07.638608Z',
         },
