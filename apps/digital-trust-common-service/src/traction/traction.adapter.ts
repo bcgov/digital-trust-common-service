@@ -245,6 +245,23 @@ export class TractionAdapter implements AgentAdapter, OnModuleInit {
     }
   }
 
+  public async deleteById(
+    context: ConnectorContext,
+    id: string,
+  ): Promise<void> {
+    const token = await this.tokenManager.getToken(context);
+
+    try {
+      await this.httpClient.request({
+        method: 'DELETE',
+        url: `${context.endpointUrl}/connections/${id}`,
+        headers: { Authorization: `Bearer ${token}` },
+      });
+    } catch (error) {
+      throw this.mapHttpError(error, context);
+    }
+  }
+
   public revoke(
     _context: ConnectorContext,
     _credentialId: string,

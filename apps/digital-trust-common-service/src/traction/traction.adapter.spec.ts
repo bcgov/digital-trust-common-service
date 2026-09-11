@@ -423,4 +423,38 @@ describe('TractionAdapter', () => {
       );
     });
   });
+
+  describe('deleteById', () => {
+    const context = {
+      connectorId: 'connector-1',
+      tenantId: 'tenant-1',
+      endpointUrl: 'https://traction.example.com',
+      credentials: { apiKey: 'key-1', tractionTenantId: 'traction-tenant-1' },
+    };
+
+    it('deletes a connection on the connector', async () => {
+      mockRequest.mockResolvedValue({ data: {} });
+
+      await adapter.deleteById(context, 'conn-1');
+
+      expect(mockGetToken).toHaveBeenCalledWith(context);
+      expect(mockRequest).toHaveBeenCalledWith({
+        method: 'DELETE',
+        url: 'https://traction.example.com/connections/conn-1',
+        headers: { Authorization: 'Bearer token-1' },
+      });
+    });
+
+    it('maps a 5xx response to ConnectorUnavailableError', async () => {
+      const axiosError = Object.assign(new Error('Bad Gateway'), {
+        isAxiosError: true,
+        response: { status: 502 },
+      });
+      mockRequest.mockRejectedValue(axiosError);
+
+      await expect(adapter.deleteById(context, 'conn-1')).rejects.toThrow(
+        ConnectorUnavailableError,
+      );
+    });
+  });
 });
