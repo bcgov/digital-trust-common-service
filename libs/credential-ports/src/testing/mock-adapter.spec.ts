@@ -169,6 +169,15 @@ describe('MockAdapter', () => {
     await expect(
       adapter.list(context, { state: ConnectionState.Active, alias: 'Acme' }),
     ).resolves.toEqual([acceptedConnection]);
+
+    await adapter.deleteById(context, acceptedConnection.id);
+
+    await expect(
+      adapter.getById(context, acceptedConnection.id),
+    ).rejects.toBeInstanceOf(ValidationError);
+    await expect(
+      adapter.list(context, { state: ConnectionState.Active, alias: 'Acme' }),
+    ).resolves.toEqual([]);
   });
 
   it('should reject methods from every port when configured for failure', async () => {
