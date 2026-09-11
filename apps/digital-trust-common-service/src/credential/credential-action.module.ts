@@ -9,25 +9,31 @@ import { TenantStatusModule } from '../tenant/tenant-status.module';
 
 import { CredentialActionController } from './credential-action.controller';
 import { CredentialActionService } from './credential-action.service';
+import { CredentialRevokeController } from './credential-revoke.controller';
+import { CredentialRevokeService } from './credential-revoke.service';
+import { CredentialModule } from './credential.module';
 
 /**
- * Hosts the holder accept/reject endpoints. Deliberately separate from
- * `CredentialModule`: this feature only ever touches the `Operation` entity
- * (see `CredentialActionService`), not the `Credential` entity, and importing
- * `AdapterRegistryModule` here would otherwise create a module import cycle
- * through `AdapterRegistryModule -> ConnectorCredentialModule ->
- * CredentialModule`.
+ * Hosts the holder accept/reject endpoints and the issuer revocation
+ * endpoint. Deliberately separate from the bare `CredentialModule`:
+ * `AdapterRegistryModule -> ConnectorCredentialModule -> CredentialModule`
+ * already forms a chain, so importing `AdapterRegistryModule` directly into
+ * `CredentialModule` would create a cycle. This module sits alongside both,
+ * importing `CredentialModule` (for `CredentialRepository`, used by the
+ * revocation endpoint) and `AdapterRegistryModule` without either importing
+ * back into it.
  */
 @Module({
   imports: [
     AdapterRegistryModule,
     AuditLogModule,
     AuthModule,
+    CredentialModule,
     OperationModule,
     TenantStatusModule,
     RateLimitModule,
   ],
-  controllers: [CredentialActionController],
-  providers: [CredentialActionService],
+  controllers: [CredentialActionController, CredentialRevokeController],
+  providers: [CredentialActionService, CredentialRevokeService],
 })
 export class CredentialActionModule {}
