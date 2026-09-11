@@ -50,4 +50,13 @@ export abstract class ConnectionPort {
     context: ConnectorContext,
     id: string,
   ): Promise<Connection>;
+
+  /**
+   * Deletes one connection by id on the given connector.
+   * May reject with ConnectorUnavailableError, TimeoutError, or ValidationError.
+   */
+  public abstract deleteById(
+    context: ConnectorContext,
+    id: string,
+  ): Promise<void>;
 }

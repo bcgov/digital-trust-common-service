@@ -532,12 +532,26 @@ export class ConnectionService {
     }
   }
 
+  /**
+   * Deletes a connection locally and, when it has been linked to a
+   * connector-side connection, on the connector too — otherwise the next
+   * syncAllWithAdapter() would re-import it from the connector's list()
+   * since the connector never learned it was deleted. A connection still
+   * pending correlation (no externalConnectionId yet) has nothing to delete
+   * on the connector side.
+   */
   public async delete(
     tenantId: string,
     id: string,
     auth: AuthContext,
   ): Promise<void> {
     const connection = await this.findById(tenantId, id, auth);
+
+    if (connection.externalConnectionId) {
+      const { adapter, context } = await this.adapterRegistry.resolve(tenantId);
+
+      await adapter.deleteById(context, connection.externalConnectionId);
+    }
 
     await this.connectionRepository.delete(id);
 

@@ -36,6 +36,7 @@ describe('ConnectionService', () => {
   let mockCreateInvitation: jest.Mock;
   let mockGetById: jest.Mock;
   let mockList: jest.Mock;
+  let mockDeleteById: jest.Mock;
 
   const mockConnection: Connection = {
     id: '123e4567-e89b-12d3-a456-426614174000',
@@ -102,6 +103,7 @@ describe('ConnectionService', () => {
     createInvitation: undefined as unknown,
     getById: undefined as unknown,
     list: undefined as unknown,
+    deleteById: undefined as unknown,
   };
 
   beforeEach(async () => {
@@ -119,10 +121,12 @@ describe('ConnectionService', () => {
     mockCreateInvitation = jest.fn();
     mockGetById = jest.fn();
     mockList = jest.fn();
+    mockDeleteById = jest.fn();
 
     mockAdapter.createInvitation = mockCreateInvitation;
     mockAdapter.getById = mockGetById;
     mockAdapter.list = mockList;
+    mockAdapter.deleteById = mockDeleteById;
 
     const mockRepository = {
       create: mockCreate,
@@ -703,12 +707,23 @@ describe('ConnectionService', () => {
   });
 
   describe('delete', () => {
-    it('should delete a connection', async () => {
+    it('should delete a connection on the connector when it has an external connection id', async () => {
       mockFindById.mockResolvedValue(mockConnection);
+      mockResolve.mockResolvedValue({
+        adapter: mockAdapter,
+        connector: mockConnector,
+        context: mockContext,
+        format: undefined,
+      });
 
       await service.delete(mockConnection.tenantId, mockConnection.id, auth);
 
       expect(mockFindById).toHaveBeenCalledWith(mockConnection.id);
+      expect(mockResolve).toHaveBeenCalledWith(mockConnection.tenantId);
+      expect(mockDeleteById).toHaveBeenCalledWith(
+        mockContext,
+        mockConnection.externalConnectionId,
+      );
       expect(mockDelete).toHaveBeenCalledWith(mockConnection.id);
       expect(mockEmit).toHaveBeenCalledWith({
         tenantId: mockConnection.tenantId,
@@ -716,6 +731,17 @@ describe('ConnectionService', () => {
         resourceType: 'connection',
         resourceId: mockConnection.id,
       });
+    });
+
+    it('skips the connector call for a connection with no external connection id yet', async () => {
+      const pending = { ...mockConnection, externalConnectionId: null };
+      mockFindById.mockResolvedValue(pending);
+
+      await service.delete(pending.tenantId, pending.id, auth);
+
+      expect(mockResolve).not.toHaveBeenCalled();
+      expect(mockDeleteById).not.toHaveBeenCalled();
+      expect(mockDelete).toHaveBeenCalledWith(pending.id);
     });
 
     it('should throw NotFoundException if connection not found on delete', async () => {
