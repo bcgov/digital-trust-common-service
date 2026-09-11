@@ -8,6 +8,8 @@ describe('operation type constants', () => {
     expect(Object.values(OPERATION_TYPE)).toEqual([
       'credential.offer',
       'credential.offer-batch',
+      'credential.accept',
+      'credential.reject',
       'credential.revoke',
       'credential.revoke-batch',
       'presentation.request',
@@ -18,6 +20,8 @@ describe('operation type constants', () => {
   it.each([
     [OPERATION_TYPE.CREDENTIAL_OFFER, false],
     [OPERATION_TYPE.CREDENTIAL_OFFER_BATCH, true],
+    [OPERATION_TYPE.CREDENTIAL_ACCEPT, false],
+    [OPERATION_TYPE.CREDENTIAL_REJECT, false],
     [OPERATION_TYPE.CREDENTIAL_REVOKE, false],
     [OPERATION_TYPE.CREDENTIAL_REVOKE_BATCH, true],
     [OPERATION_TYPE.PRESENTATION_REQUEST, false],

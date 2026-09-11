@@ -11,6 +11,8 @@
 export const OPERATION_TYPE = {
   CREDENTIAL_OFFER: 'credential.offer',
   CREDENTIAL_OFFER_BATCH: 'credential.offer-batch',
+  CREDENTIAL_ACCEPT: 'credential.accept',
+  CREDENTIAL_REJECT: 'credential.reject',
   CREDENTIAL_REVOKE: 'credential.revoke',
   CREDENTIAL_REVOKE_BATCH: 'credential.revoke-batch',
   PRESENTATION_REQUEST: 'presentation.request',

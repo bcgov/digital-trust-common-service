@@ -1,5 +1,6 @@
 import {
   AgentAdapter,
+  ConnectorContext,
   ConnectorUnavailableError,
   CredentialFormat,
   FormatNotSupportedError,
@@ -8,6 +9,7 @@ import {
 import { ForbiddenException, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
+import { EncryptionService } from '../common/crypto/encryption.service';
 import { ConnectorType } from '../connection/connection.entity';
 import { ConnectorCredential } from '../connector-credential/connector-credential.entity';
 import { ConnectorCredentialService } from '../connector-credential/connector-credential.service';
@@ -50,6 +52,7 @@ export class AdapterRegistry {
     private readonly tenantService: TenantService,
     private readonly connectorCredentialService: ConnectorCredentialService,
     private readonly configService: ConfigService,
+    private readonly encryptionService: EncryptionService,
   ) {}
 
   /**
@@ -114,10 +117,12 @@ export class AdapterRegistry {
     // unregistered connector can never succeed, so fail without a round trip.
     if (override) {
       const adapter = this.getByConnectorType(override);
+      const connector = await this.findSoleActiveConnector(tenantId, override);
 
       return {
         adapter,
-        connector: await this.findSoleActiveConnector(tenantId, override),
+        connector,
+        context: this.buildContext(connector),
         format: this.selectFormat(adapter, format),
       };
     }
@@ -137,7 +142,28 @@ export class AdapterRegistry {
     return {
       adapter,
       connector,
+      context: this.buildContext(connector),
       format: this.selectFormat(adapter, format),
+    };
+  }
+
+  /**
+   * Decrypts the connector's stored credentials into the untyped bag the
+   * port layer expects. Adapters never resolve a connector or decrypt
+   * credentials themselves — every port method call is addressed through
+   * this context instead, per `ConnectorContext`'s contract.
+   */
+  private buildContext(connector: ConnectorCredential): ConnectorContext {
+    const credentials = this.encryptionService.decrypt<Record<string, unknown>>(
+      connector.credentialsEncrypted,
+      connector.keyVersion,
+    );
+
+    return {
+      connectorId: connector.id,
+      tenantId: connector.tenantId,
+      endpointUrl: connector.endpointUrl,
+      credentials,
     };
   }
 
