@@ -41,6 +41,10 @@ const OOB_PROTOCOL_VERSION = '1.1';
 interface TractionCreateInvitationResponse {
   readonly invi_msg_id: string;
   readonly invitation_url: string;
+  // ACA-Py's out-of-band record id. Purely internal OOB bookkeeping — it
+  // never appears on the resulting connection record, so it is not a valid
+  // stand-in for a connection id (unlike invi_msg_id, which the eventual
+  // connection record echoes back as invitation_msg_id).
   readonly oob_id: string;
 }
 
@@ -55,12 +59,15 @@ interface TractionReceiveInvitationResponse {
 
 // ACA-Py connection record (GET /connections, GET /connections/{id}). Its
 // `state` values (invitation, request, response, active, completed, error,
-// ...) are the same vocabulary as our ConnectionState enum.
+// ...) are the same vocabulary as our ConnectionState enum. `invitation_msg_id`
+// echoes back the `invi_msg_id` from the create-invitation call that
+// produced this connection, when it originated from one.
 interface TractionConnectionRecord {
   readonly connection_id: string;
   readonly state: string;
   readonly alias?: string;
   readonly their_label?: string;
+  readonly invitation_msg_id?: string;
   readonly created_at: string;
   readonly updated_at: string;
 }
@@ -167,7 +174,6 @@ export class TractionAdapter implements AgentAdapter, OnModuleInit {
       return {
         invitationId: response.data.invi_msg_id,
         invitationUrl: response.data.invitation_url,
-        connectionId: response.data.oob_id,
       };
     } catch (error) {
       throw this.mapHttpError(error, context);
@@ -318,6 +324,7 @@ export class TractionAdapter implements AgentAdapter, OnModuleInit {
       alias: record.alias,
       protocol: 'didcomm-v1',
       theirLabel: record.their_label,
+      invitationId: record.invitation_msg_id,
       createdAt: record.created_at,
       updatedAt: record.updated_at,
     };

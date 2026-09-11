@@ -190,7 +190,14 @@ export class ConnectionService {
       );
     }
 
-    connection.externalConnectionId = invitation.connectionId;
+    // Traction's out-of-band invitation flow has no connection record yet at
+    // creation time, so invitation.connectionId is typically absent here;
+    // externalConnectionId stays null until syncAllWithAdapter correlates
+    // this connection to one by invitationId (see applyRemoteConnectionState).
+    if (invitation.connectionId) {
+      connection.externalConnectionId = invitation.connectionId;
+    }
+
     connection.metadata = {
       ...connection.metadata,
       invitationUrl: invitation.invitationUrl,
@@ -263,10 +270,12 @@ export class ConnectionService {
   }
 
   /**
-   * Persists a connection's state and their-label when the connector's view
-   * differs from what we last stored, otherwise returns it unchanged. Shared
-   * by syncWithAdapter (one connection, fetched by id) and
-   * syncAllWithAdapter (every connection for a tenant, fetched with one
+   * Persists a connection's state, their-label, and external connection id
+   * when the connector's view differs from what we last stored, otherwise
+   * returns it unchanged. Also links a pending connection (no
+   * externalConnectionId yet) to the connector record matched for it by
+   * invitationId. Shared by syncWithAdapter (one connection, fetched by id)
+   * and syncAllWithAdapter (every connection for a tenant, fetched with one
    * list() call) so the diffing rule lives in exactly one place.
    */
   private async applyRemoteConnectionState(
@@ -277,13 +286,15 @@ export class ConnectionService {
 
     if (
       connection.state === state &&
-      connection.theirLabel === remote.theirLabel
+      connection.theirLabel === remote.theirLabel &&
+      connection.externalConnectionId === remote.id
     ) {
       return connection;
     }
 
     connection.state = state;
     connection.theirLabel = remote.theirLabel;
+    connection.externalConnectionId = remote.id;
 
     return await this.connectionRepository.update(connection);
   }
@@ -339,32 +350,55 @@ export class ConnectionService {
     }
 
     const remoteById = new Map(remote.map((entry) => [entry.id, entry]));
+    const remoteByInvitationId = new Map(
+      remote
+        .filter(
+          (entry): entry is AdapterConnection & { invitationId: string } =>
+            Boolean(entry.invitationId),
+        )
+        .map((entry) => [entry.invitationId, entry]),
+    );
+
+    const matchedRemoteIds = new Set<string>();
 
     const synced = await Promise.all(
       connections.map(async (connection) => {
-        const match =
-          connection.externalConnectionId &&
-          remoteById.get(connection.externalConnectionId);
+        // Once the connector has assigned this connection an id, match on
+        // it directly. Until then (see applyInvitationResult), correlate by
+        // the invitation that created it instead — the only identifier
+        // Traction's out-of-band flow reports up front.
+        const match = connection.externalConnectionId
+          ? remoteById.get(connection.externalConnectionId)
+          : this.matchByInvitationId(connection, remoteByInvitationId);
 
-        return match
-          ? this.applyRemoteConnectionState(connection, match)
-          : connection;
+        if (!match) {
+          return connection;
+        }
+
+        matchedRemoteIds.add(match.id);
+
+        return this.applyRemoteConnectionState(connection, match);
       }),
-    );
-
-    const knownExternalIds = new Set(
-      connections
-        .map((connection) => connection.externalConnectionId)
-        .filter((id): id is string => Boolean(id)),
     );
 
     const discovered = await Promise.all(
       remote
-        .filter((entry) => !knownExternalIds.has(entry.id))
+        .filter((entry) => !matchedRemoteIds.has(entry.id))
         .map((entry) => this.createFromRemote(tenantId, connectorType, entry)),
     );
 
     return [...synced, ...discovered];
+  }
+
+  private matchByInvitationId(
+    connection: Connection,
+    remoteByInvitationId: Map<string, AdapterConnection>,
+  ): AdapterConnection | undefined {
+    const invitationId = connection.metadata?.invitationId;
+
+    return typeof invitationId === 'string'
+      ? remoteByInvitationId.get(invitationId)
+      : undefined;
   }
 
   /**
