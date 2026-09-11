@@ -1,52 +1,50 @@
 import { Expose } from 'class-transformer';
 import {
+  IsBoolean,
   IsEnum,
+  IsObject,
   IsOptional,
   IsString,
-  IsUUID,
   MaxLength,
-  IsObject,
 } from 'class-validator';
 
-import {
-  ConnectorType,
-  ConnectionState,
-  ConnectionProtocol,
-} from '../connection.entity';
+import { ConnectionProtocol } from '../connection.entity';
 
+/**
+ * The connector itself is not caller-selected: create() resolves the
+ * tenant's connector via AdapterRegistry, and their_label/their_did/
+ * external_connection_id/state are populated by the connection.create
+ * worker once the connector-side invitation exists, not supplied up front.
+ * tenantId itself is a path parameter (POST /tenants/{tenantId}/connections),
+ * not a body field.
+ */
 export class CreateConnectionDto {
-  @Expose({ name: 'tenant_id' })
-  @IsUUID()
-  public tenantId!: string;
-
-  @Expose({ name: 'external_connection_id' })
-  @IsString()
-  @MaxLength(255)
-  public externalConnectionId!: string;
-
-  @Expose({ name: 'their_label' })
-  @IsOptional()
-  @IsString()
-  @MaxLength(255)
-  public theirLabel?: string;
-
-  @Expose({ name: 'their_did' })
-  @IsOptional()
-  @IsString()
-  @MaxLength(255)
-  public theirDid?: string;
-
-  @Expose()
-  @IsEnum(ConnectionState)
-  public state!: ConnectionState;
-
-  @Expose({ name: 'connector_type' })
-  @IsEnum(ConnectorType)
-  public connectorType!: ConnectorType;
-
   @Expose()
   @IsEnum(ConnectionProtocol)
   public protocol!: ConnectionProtocol;
+
+  @Expose()
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  public alias?: string;
+
+  @Expose()
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  public label?: string;
+
+  @Expose({ name: 'goal_code' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  public goalCode?: string;
+
+  @Expose({ name: 'multi_use' })
+  @IsOptional()
+  @IsBoolean()
+  public multiUse?: boolean;
 
   @Expose()
   @IsOptional()
