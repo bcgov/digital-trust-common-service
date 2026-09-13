@@ -112,4 +112,28 @@ describe('routing', () => {
     renderAt('/definitely-not-a-page');
     expect(await screen.findByText('404')).toBeInTheDocument();
   });
+
+  /**
+   * The dashboard is the active tenant's overview: the address carries the
+   * tenant, so /dashboard only forwards there and leaves no entry behind.
+   */
+  it('forwards /dashboard to the active tenant', async () => {
+    const user = userEvent.setup();
+    const router = renderAt('/dashboard');
+
+    await user.click(await screen.findByRole('button', { name: /sign in/i }));
+
+    // Three lazy chunks in a row (shell, tenant layout, overview) before the
+    // heading can appear.
+    expect(
+      await screen.findByRole(
+        'heading',
+        { name: 'Acme Ministry' },
+        { timeout: 4000 },
+      ),
+    ).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe(
+      `/tenants/${mockTenants[0]?.id}`,
+    );
+  });
 });
