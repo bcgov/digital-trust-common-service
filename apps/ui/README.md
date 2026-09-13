@@ -106,6 +106,8 @@ One setting is load-bearing rather than optional (`docs/DEVELOPER.md` carries
 the full reasoning): `oidcScopes` in the runtime config must stay within the
 set every role holds. The provider rejects, rather than trims, a request for
 scopes the user's role lacks, and `readonly` carries no API scopes at all.
+The SPA needs no API scopes there: the provider stamps the signed-in user's
+role scopes on the access token itself, at login and on every refresh.
 
 The SPA sends no RFC 8707 `resource` parameter. It is the provider's
 `useGrantedResource` that makes the access token an API-audience JWT rather

@@ -387,16 +387,24 @@ The client the SPA uses:
 | Grants | `authorization_code`, `refresh_token` | `refresh_token` is what keeps the session past the 5-minute access token. |
 | Redirect URI | `<origin of OIDC_ISSUER>/auth/callback` | `https://app.localhost/auth/callback` locally. The seed derives the origin from `OIDC_ISSUER` because the front door serves the SPA and `/oidc` on one origin, so the same seed registers the right URIs in a PR environment. |
 | Post-logout URI | `<origin of OIDC_ISSUER>/login` | Validated separately from the login redirect. |
-| Scopes | `openid profile email tenant offline_access` | The set **every** role holds — see the caveat below. |
+| Scopes | `openid profile email tenant offline_access` | Identity scopes only, the set **every** role holds. The SPA never requests API scopes: the provider derives them from the user's role — see the caveat below. |
 | Tenant | `acme-corp` locally (seed); the operator tenant in a hosted environment (bootstrap) | Interactive login is tenant-scoped through the client (see below). |
 
 Two constraints worth knowing before changing any of that:
 
-- **Scopes are all-or-nothing per role.** The interaction handler *rejects*
-  a sign-in that requests scopes the user's role lacks rather than trimming
-  them, and `readonly` carries no API scopes at all. So adding e.g.
-  `tenants:admin` to `oidcScopes` in the SPA's runtime config locks out every
-  user below that role.
+- **API scopes come from the role, not from the request.** The interaction
+  handler *rejects* a sign-in that requests scopes the user's role lacks
+  rather than trimming them, and `readonly` carries no API scopes at all — so
+  the SPA requests identity scopes only, and adding e.g. `tenants:admin` to
+  `oidcScopes` in the SPA's runtime config would lock out every user below
+  that role. What puts API scopes on the token is the provider: as it signs a
+  user's access-token JWT it stamps the effective scopes of the user's role
+  (the tenant's override included) onto the `scope` claim — at login, on
+  every refresh, and on a tenant switch. An owner's token carries
+  `tenants:admin`, a `readonly` user signs in with none, and a role change
+  reaches the token at the next refresh. Only the signed JWT carries the
+  derived scopes; the token response's own `scope` parameter still lists what
+  was requested.
 - **The API-JWT decision is the provider's, not the SPA's.** A browser client
   cannot send an RFC 8707 `resource` on the token request — oidc-client-ts
   appends it to the authorize URL only, and that is not where oidc-provider
@@ -772,12 +780,16 @@ Generated `client_id` values are prefixed `dtcs_`. The plaintext `client_secret`
 
 Assigned scopes must be in the published catalog, present in `OIDC_SCOPES`, and a subset of the caller's effective scopes (`tenants:admin` expands to all Level 2 + Level 3). `platform-admin` bypasses the caller-subset check.
 
-**User-token scope resolution:** the `role_scope` seed is consumed at grant
-creation (`OidcInteractionController` and `POST /api/v1/auth/switch-tenant`)
-so user JWTs carry the scopes for the active tenant role. `extraTokenClaims`
-stamps `tenant_id`, `tenant_role`, and `roles: [<tenant_user.role>]`.
-Client-credentials tokens continue to take scopes from `oauth_client.scopes`
-at registration.
+**User-token scope resolution:** the provider derives a user token's API
+scopes from the role at every issuance — login, refresh, and
+`POST /api/v1/auth/switch-tenant` — by resolving `role_scope` (and the
+tenant's `tenant_role_scope` override) for the token's `tenant_role` and
+`tenant_id` as it signs the JWT, so user JWTs carry the scopes of the
+*current* role for the active tenant. The interaction handler also checks an
+API scope a client explicitly requests against the same mapping and rejects a
+request the role does not cover. `extraTokenClaims` stamps `tenant_id`,
+`tenant_role`, and `roles: [<tenant_user.role>]`. Client-credentials tokens
+continue to take scopes from `oauth_client.scopes` at registration.
 
 ### Migration from placeholder scopes
 
