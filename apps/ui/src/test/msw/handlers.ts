@@ -104,14 +104,19 @@ export const handlers = [
       ? HttpResponse.json(tenant)
       : new HttpResponse(null, { status: 404 });
   }),
-  // Bare array: mirrors the implemented endpoint.
-  http.get(`${API_BASE_PATH}/tenants/:id/credential-definitions`, () =>
-    HttpResponse.json(mockCredentialDefinitions),
+  // Bare array: mirrors the implemented endpoint. Scoped by tenant like the
+  // API, so another tenant's overview never shows Acme's figures.
+  http.get(
+    `${API_BASE_PATH}/tenants/:id/credential-definitions`,
+    ({ params }) =>
+      HttpResponse.json(
+        mockCredentialDefinitions.filter((d) => d.tenant_id === params.id),
+      ),
   ),
   // Envelope: mirrors the spec shape, so both list shapes stay exercised.
-  http.get(`${API_BASE_PATH}/tenants/:id/connections`, () =>
+  http.get(`${API_BASE_PATH}/tenants/:id/connections`, ({ params }) =>
     HttpResponse.json({
-      data: mockConnections,
+      data: mockConnections.filter((c) => c.tenant_id === params.id),
       pagination: { next_cursor: null, has_more: false },
     }),
   ),

@@ -135,5 +135,6 @@ describe('routing', () => {
     expect(router.state.location.pathname).toBe(
       `/tenants/${mockTenants[0]?.id}`,
     );
+    expect(router.state.historyAction).toBe('REPLACE');
   });
 });
