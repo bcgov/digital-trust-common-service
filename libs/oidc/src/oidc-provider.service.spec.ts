@@ -9,7 +9,9 @@ import {
   buildLogoutSource,
   buildOidcConfiguration,
   resolveRefreshTokenTtl,
+  resolveUserAccessTokenScope,
 } from './oidc-provider.service';
+import type { OidcRoleScopePort } from './ports/oidc-role-scope.port';
 import type { OidcTenantUserPort } from './ports/oidc-tenant-user.port';
 
 jest.mock('argon2', () => ({
@@ -91,6 +93,8 @@ describe('buildOidcConfiguration', () => {
 
   let adapterFactory: OidcAdapterFactory;
   let tenantUserService: OidcTenantUserPort;
+  let findScopesForRole: jest.Mock;
+  let roleScopeService: OidcRoleScopePort;
 
   beforeEach(() => {
     adapterFactory = { forModel: jest.fn() } as unknown as OidcAdapterFactory;
@@ -98,6 +102,8 @@ describe('buildOidcConfiguration', () => {
       forModel: jest.fn(),
       findById: jest.fn(),
     } as unknown as OidcTenantUserPort;
+    findScopesForRole = jest.fn().mockResolvedValue([]);
+    roleScopeService = { findScopesForRole };
   });
 
   it('wires the adapter, jwks and cookie keys through unchanged', () => {
@@ -106,6 +112,7 @@ describe('buildOidcConfiguration', () => {
       jwks,
       adapterFactory,
       tenantUserService,
+      roleScopeService,
     );
 
     expect(configuration.adapter).toBe(adapterFactory.forModel);
@@ -119,6 +126,7 @@ describe('buildOidcConfiguration', () => {
       jwks,
       adapterFactory,
       tenantUserService,
+      roleScopeService,
     );
 
     expect(configuration.scopes).toEqual(['openid', 'credentials:offer']);
@@ -130,6 +138,7 @@ describe('buildOidcConfiguration', () => {
       jwks,
       adapterFactory,
       tenantUserService,
+      roleScopeService,
     );
 
     expect(configuration.ttl).toMatchObject({
@@ -150,6 +159,7 @@ describe('buildOidcConfiguration', () => {
         jwks,
         adapterFactory,
         tenantUserService,
+        roleScopeService,
       );
 
       expect(typeof configuration.ttl?.RefreshToken).toBe('function');
@@ -161,6 +171,7 @@ describe('buildOidcConfiguration', () => {
         jwks,
         adapterFactory,
         tenantUserService,
+        roleScopeService,
       );
       const ttlFn = configuration.ttl?.RefreshToken as (
         ctx: unknown,
@@ -177,6 +188,7 @@ describe('buildOidcConfiguration', () => {
         jwks,
         adapterFactory,
         tenantUserService,
+        roleScopeService,
       );
       const ttlFn = configuration.ttl?.RefreshToken as (
         ctx: unknown,
@@ -195,6 +207,7 @@ describe('buildOidcConfiguration', () => {
         jwks,
         adapterFactory,
         tenantUserService,
+        roleScopeService,
       );
 
       expect(configuration.extraClientMetadata?.properties).toContain(
@@ -280,6 +293,7 @@ describe('buildOidcConfiguration', () => {
       jwks,
       adapterFactory,
       tenantUserService,
+      roleScopeService,
     );
 
     expect(configuration.ttl).toMatchObject({
@@ -294,6 +308,7 @@ describe('buildOidcConfiguration', () => {
       jwks,
       adapterFactory,
       tenantUserService,
+      roleScopeService,
     );
 
     expect(
@@ -310,6 +325,7 @@ describe('buildOidcConfiguration', () => {
       jwks,
       adapterFactory,
       tenantUserService,
+      roleScopeService,
     );
 
     expect(configuration.features?.clientCredentials?.enabled).toBe(true);
@@ -324,6 +340,7 @@ describe('buildOidcConfiguration', () => {
       jwks,
       adapterFactory,
       tenantUserService,
+      roleScopeService,
     );
     const resourceIndicators = configuration.features?.resourceIndicators;
 
@@ -362,6 +379,7 @@ describe('buildOidcConfiguration', () => {
       jwks,
       adapterFactory,
       tenantUserService,
+      roleScopeService,
     );
 
     expect(
@@ -381,6 +399,7 @@ describe('buildOidcConfiguration', () => {
       jwks,
       adapterFactory,
       tenantUserService,
+      roleScopeService,
     );
     const { defaultResource } =
       configuration.features?.resourceIndicators ?? {};
@@ -403,6 +422,7 @@ describe('buildOidcConfiguration', () => {
       jwks,
       adapterFactory,
       tenantUserService,
+      roleScopeService,
     );
     const resourceServerInfo =
       await configuration.features?.resourceIndicators?.getResourceServerInfo?.(
@@ -423,6 +443,7 @@ describe('buildOidcConfiguration', () => {
       jwks,
       adapterFactory,
       tenantUserService,
+      roleScopeService,
     );
 
     expect(() =>
@@ -440,6 +461,7 @@ describe('buildOidcConfiguration', () => {
       jwks,
       adapterFactory,
       tenantUserService,
+      roleScopeService,
     );
 
     expect(configuration.extraClientMetadata?.properties).toEqual([
@@ -457,6 +479,7 @@ describe('buildOidcConfiguration', () => {
         jwks,
         adapterFactory,
         tenantUserService,
+        roleScopeService,
       );
 
       const claims = await configuration.extraTokenClaims?.(
@@ -481,6 +504,7 @@ describe('buildOidcConfiguration', () => {
         jwks,
         adapterFactory,
         tenantUserService,
+        roleScopeService,
       );
 
       const claims = await configuration.extraTokenClaims?.(
@@ -499,6 +523,7 @@ describe('buildOidcConfiguration', () => {
         jwks,
         adapterFactory,
         tenantUserService,
+        roleScopeService,
       );
 
       const claims = await configuration.extraTokenClaims?.(
@@ -526,6 +551,7 @@ describe('buildOidcConfiguration', () => {
         jwks,
         adapterFactory,
         tenantUserService,
+        roleScopeService,
       );
 
       const claims = await configuration.extraTokenClaims?.(
@@ -541,6 +567,137 @@ describe('buildOidcConfiguration', () => {
         tenant_role: 'member',
         roles: ['member'],
       });
+    });
+  });
+
+  describe('role scopes on user tokens', () => {
+    const allowedScopes = [
+      'openid',
+      'offline_access',
+      'tenants:admin',
+      'credentials:offer',
+      'credentials:verify',
+    ];
+    const userToken = { accountId: 'user-id-123' };
+    const ownerPayload = () => ({
+      scope: 'openid offline_access',
+      tenant_role: 'owner',
+      tenant_id: 'tenant-1',
+    });
+
+    it('unions the role scopes into the scope claim of a user token', async () => {
+      findScopesForRole.mockResolvedValue(['tenants:admin']);
+
+      const scope = await resolveUserAccessTokenScope(
+        userToken,
+        ownerPayload(),
+        roleScopeService,
+        allowedScopes,
+      );
+
+      expect(scope).toBe('openid offline_access tenants:admin');
+    });
+
+    // The tenant matters: a tenant's override of a role replaces the platform
+    // default, and it is keyed by the tenant the token is for.
+    it('resolves the role scopes for the tenant on the payload', async () => {
+      await resolveUserAccessTokenScope(
+        userToken,
+        ownerPayload(),
+        roleScopeService,
+        allowedScopes,
+      );
+
+      expect(findScopesForRole).toHaveBeenCalledWith('owner', 'tenant-1');
+    });
+
+    it('leaves a machine token untouched', async () => {
+      const scope = await resolveUserAccessTokenScope(
+        {},
+        { scope: 'credentials:offer', tenant_id: 'tenant-1' },
+        roleScopeService,
+        allowedScopes,
+      );
+
+      expect(scope).toBeUndefined();
+      expect(findScopesForRole).not.toHaveBeenCalled();
+    });
+
+    // extraTokenClaims stamps no claims for a user who is no longer active,
+    // and that absence is what keeps such a token free of role scopes too.
+    it('leaves the payload untouched when no tenant_role claim was stamped', async () => {
+      const scope = await resolveUserAccessTokenScope(
+        userToken,
+        { scope: 'openid offline_access' },
+        roleScopeService,
+        allowedScopes,
+      );
+
+      expect(scope).toBeUndefined();
+      expect(findScopesForRole).not.toHaveBeenCalled();
+    });
+
+    it('adds nothing for a role with no scopes', async () => {
+      findScopesForRole.mockResolvedValue([]);
+
+      const scope = await resolveUserAccessTokenScope(
+        userToken,
+        { ...ownerPayload(), tenant_role: 'readonly' },
+        roleScopeService,
+        allowedScopes,
+      );
+
+      expect(scope).toBeUndefined();
+    });
+
+    it('keeps existing scopes first and drops duplicates', async () => {
+      findScopesForRole.mockResolvedValue([
+        'credentials:offer',
+        'credentials:verify',
+      ]);
+
+      const scope = await resolveUserAccessTokenScope(
+        userToken,
+        { ...ownerPayload(), scope: 'openid credentials:verify' },
+        roleScopeService,
+        allowedScopes,
+      );
+
+      expect(scope).toBe('openid credentials:verify credentials:offer');
+    });
+
+    it('drops role scopes outside the server-wide allowlist', async () => {
+      findScopesForRole.mockResolvedValue(['tenants:admin', 'audit:read']);
+
+      const scope = await resolveUserAccessTokenScope(
+        userToken,
+        ownerPayload(),
+        roleScopeService,
+        allowedScopes,
+      );
+
+      expect(scope).toBe('openid offline_access tenants:admin');
+    });
+
+    it('wires the resolver into formats.customizers.jwt and mutates the payload', async () => {
+      findScopesForRole.mockResolvedValue(['tenants:admin']);
+      const configuration = buildOidcConfiguration(
+        { ...config, scopes: allowedScopes },
+        jwks,
+        adapterFactory,
+        tenantUserService,
+        roleScopeService,
+      );
+      const parts = { payload: ownerPayload() };
+
+      const result = await configuration.formats?.customizers?.jwt?.(
+        {} as never,
+        userToken as never,
+        parts,
+      );
+
+      expect(parts.payload.scope).toBe('openid offline_access tenants:admin');
+      expect(result).toBe(parts);
     });
   });
 
@@ -563,6 +720,7 @@ describe('buildOidcConfiguration', () => {
         jwks,
         adapterFactory,
         tenantUserService,
+        roleScopeService,
       );
 
       const account = await configuration.findAccount?.(
@@ -591,6 +749,7 @@ describe('buildOidcConfiguration', () => {
         jwks,
         adapterFactory,
         tenantUserService,
+        roleScopeService,
       );
 
       const account = await configuration.findAccount?.(
@@ -619,6 +778,7 @@ describe('buildOidcConfiguration', () => {
         jwks,
         adapterFactory,
         tenantUserService,
+        roleScopeService,
       );
 
       const account = await configuration.findAccount?.(
@@ -717,6 +877,7 @@ describe('OidcProviderService', () => {
   let oidcModelRepository: { findOne: jest.Mock };
   let service: OidcProviderService;
   let tenantUserService: OidcTenantUserPort;
+  let roleScopeService: OidcRoleScopePort;
   let upstreamFederation: { finalizeUpstreamSessionForOidcSession: jest.Mock };
 
   const jwks: OidcJwks = { keys: [{ kid: 'test-key', kty: 'RSA' }] };
@@ -751,6 +912,7 @@ describe('OidcProviderService', () => {
       forModel: jest.fn(),
       findById: jest.fn(),
     } as unknown as OidcTenantUserPort;
+    roleScopeService = { findScopesForRole: jest.fn().mockResolvedValue([]) };
 
     service = new OidcProviderService(
       oidcConfigService as never,
@@ -759,6 +921,7 @@ describe('OidcProviderService', () => {
       oidcModelRepository as never,
       upstreamFederation,
       tenantUserService,
+      roleScopeService,
     );
   });
 

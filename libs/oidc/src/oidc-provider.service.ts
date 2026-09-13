@@ -11,8 +11,13 @@ import type { OidcConfig } from './oidc-config.service';
 import { OidcConfigService } from './oidc-config.service';
 import type { OidcJwks } from './oidc-keys.service';
 import { OidcKeysService } from './oidc-keys.service';
+import { OIDC_ROLE_SCOPE_PORT } from './ports/oidc-role-scope.port';
+import type { OidcRoleScopePort } from './ports/oidc-role-scope.port';
 import { OIDC_TENANT_USER_PORT } from './ports/oidc-tenant-user.port';
-import type { OidcTenantUserPort } from './ports/oidc-tenant-user.port';
+import type {
+  OidcTenantUserPort,
+  OidcTenantUserRole,
+} from './ports/oidc-tenant-user.port';
 import { OIDC_UPSTREAM_FEDERATION_PORT } from './ports/oidc-upstream-federation.port';
 
 type SavedOidcSession = {
@@ -99,6 +104,84 @@ export function resolveRefreshTokenTtl(
   return ttlSeconds;
 }
 
+/** The slice of an oidc-provider AccessToken the role-scope hook reads. */
+export interface UserScopeToken {
+  accountId?: string;
+}
+
+/**
+ * Resolves the `scope` claim for a JWT access token about to be signed: the
+ * scopes oidc-provider granted, plus the effective scopes of the user's role.
+ * Returns undefined when there is nothing to add, so the payload is left
+ * exactly as built.
+ *
+ * Why here and not on the Grant: a browser client asks for identity scopes
+ * only, and oidc-provider intersects the Grant with what was requested at
+ * every step (authorization code, token, refresh), so role scopes added to
+ * the Grant never reach a token the client did not ask for. The JWT
+ * customizer is the one hook that runs after the payload is built, and it
+ * runs on every issuance — login, refresh, tenant switch — which is what lets
+ * a role change reach the token at the next refresh without a new login.
+ *
+ * Only user tokens are touched. `tenant_role` and `tenant_id` are the claims
+ * extraTokenClaims stamped moments earlier from the same tenant_user row, so
+ * reading them (rather than looking the user up again) keeps the role and
+ * scope claims from ever disagreeing, and an inactive user — for whom no
+ * claims were stamped — gets no scopes. A client_credentials token has no
+ * accountId and no tenant_role, so it fails both checks; no `kind` or client
+ * check is needed on top of that.
+ */
+export async function resolveUserAccessTokenScope(
+  token: UserScopeToken,
+  payload: Record<string, unknown>,
+  roleScopeService: OidcRoleScopePort,
+  allowedScopes: readonly string[],
+): Promise<string | undefined> {
+  const { accountId } = token;
+  const role = payload.tenant_role;
+  const tenantId = payload.tenant_id;
+
+  if (
+    typeof accountId !== 'string' ||
+    accountId.length === 0 ||
+    typeof role !== 'string' ||
+    typeof tenantId !== 'string'
+  ) {
+    return undefined;
+  }
+
+  // The claim was written from a tenant_user row's role in this same
+  // issuance, so the cast only restates what extraTokenClaims already knew.
+  const roleScopes = await roleScopeService.findScopesForRole(
+    role as OidcTenantUserRole,
+    tenantId,
+  );
+
+  // Every scope a token carries is expected to be in the server-wide
+  // allowlist — client metadata and the resource server's scopes are both
+  // checked against it — so keep that true for scopes arriving via the role
+  // tables, which are validated against the catalog only.
+  const allowed = new Set(allowedScopes);
+  const granted =
+    typeof payload.scope === 'string'
+      ? payload.scope.split(/\s+/).filter(Boolean)
+      : [];
+  const scopes = new Set(granted);
+  const before = scopes.size;
+
+  for (const scope of roleScopes) {
+    if (allowed.has(scope)) {
+      scopes.add(scope);
+    }
+  }
+
+  if (scopes.size === before) {
+    return undefined;
+  }
+
+  return [...scopes].join(' ');
+}
+
 /**
  * The interstitial oidc-provider renders mid-logout, replacing a default that
  * is neither ours nor safe to leave in place.
@@ -149,6 +232,7 @@ export function buildOidcConfiguration(
   jwks: OidcJwks,
   adapterFactory: OidcAdapterFactory,
   tenantUserService: OidcTenantUserPort,
+  roleScopeService: OidcRoleScopePort,
 ): Configuration {
   return {
     adapter: adapterFactory.forModel,
@@ -211,6 +295,31 @@ export function buildOidcConfiguration(
       }
 
       return claims;
+    },
+    formats: {
+      // Deep-merged with oidc-provider's defaults, so the opaque-token entropy
+      // setting is untouched. `ctx` is the request's async-local store and is
+      // absent when a token is minted outside a provider request (the tenant
+      // switch), so the hook never reads it. Only the signed JWT carries the
+      // derived scopes: the stored token row and the token response's `scope`
+      // parameter still show what the client asked for, and neither is used
+      // for authorization — JwtGuard verifies the JWT itself.
+      customizers: {
+        jwt: async (_ctx, token, jwt) => {
+          const scope = await resolveUserAccessTokenScope(
+            token as UserScopeToken,
+            jwt.payload,
+            roleScopeService,
+            config.scopes,
+          );
+
+          if (scope !== undefined) {
+            jwt.payload.scope = scope;
+          }
+
+          return jwt;
+        },
+      },
     },
     features: {
       clientCredentials: { enabled: true },
@@ -356,6 +465,8 @@ export class OidcProviderService implements OnModuleInit {
     private readonly upstreamFederation: UpstreamSessionFinalizer,
     @Inject(OIDC_TENANT_USER_PORT)
     private readonly tenantUserService: OidcTenantUserPort,
+    @Inject(OIDC_ROLE_SCOPE_PORT)
+    private readonly roleScopeService: OidcRoleScopePort,
   ) {}
 
   private async finalizePendingUpstreamSession(
@@ -406,6 +517,7 @@ export class OidcProviderService implements OnModuleInit {
         jwks,
         this.adapterFactory,
         this.tenantUserService,
+        this.roleScopeService,
       ),
     );
 

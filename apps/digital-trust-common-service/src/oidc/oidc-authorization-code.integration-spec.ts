@@ -4,6 +4,7 @@ import { createServer } from 'http';
 import { tmpdir } from 'os';
 import { join } from 'path';
 
+import { ASSIGNABLE_OAUTH_CLIENT_SCOPES } from '@app/auth';
 import { AppDataSource } from '@app/database/data-source';
 import { buildSslConfig } from '@app/database/ssl.util';
 import { DEFAULT_JWT_AUDIENCE, OidcMountService } from '@app/oidc';
@@ -401,12 +402,13 @@ describe('OIDC authorization_code grant (integration)', () => {
    * tenant_id/tenant_role, and without `prompt=consent` the provider silently
    * drops `offline_access` (check_scope.js) and issues no refresh token.
    */
-  const startPublicClientSession = async () => {
+  const startPublicClientSession = async (options: { scope?: string } = {}) => {
     const { code, codeVerifier } = await completeAuthorizationCodeFlow(
       `rp-state-${randomUUID()}`,
       {
         clientId: publicClientId,
-        scope: 'openid offline_access tenant credentials:verify',
+        scope:
+          options.scope ?? 'openid offline_access tenant credentials:verify',
         prompt: 'consent',
       },
     );
@@ -419,6 +421,42 @@ describe('OIDC authorization_code grant (integration)', () => {
 
     return response.body as Record<string, unknown>;
   };
+
+  /**
+   * What the SPA itself asks for: identity scopes and nothing else. Any API
+   * scope on a token minted from this request can only have come from the
+   * provider deriving it from the user's role.
+   */
+  const IDENTITY_SCOPES = 'openid offline_access tenant';
+
+  /**
+   * Swaps the federated identity's role in the client's tenant. Login and
+   * every token after it read the row live, so this is how a test signs in
+   * as, or is promoted to, another role without a second identity. Callers
+   * restore 'member' in a finally block, as the fixture expects.
+   */
+  const setFederatedUserRole = async (role: string) => {
+    await dataSource.query(
+      `UPDATE tenant_user SET role = $1::tenant_user_role
+        WHERE tenant_id = $2 AND external_user_id = $3`,
+      [role, tenantId, federatedExternalUserId],
+    );
+  };
+
+  const scopesOf = (claims: { scope?: unknown }): string[] =>
+    typeof claims.scope === 'string'
+      ? claims.scope.split(/\s+/).filter(Boolean)
+      : [];
+
+  const refreshWithoutClientAuth = (
+    refreshClientId: string,
+    refreshToken: string,
+  ) =>
+    request(app.getHttpServer()).post('/oidc/token').type('form').send({
+      grant_type: 'refresh_token',
+      client_id: refreshClientId,
+      refresh_token: refreshToken,
+    });
 
   beforeAll(async () => {
     keysDir = mkdtempSync(join(tmpdir(), 'oidc-auth-code-it-'));
@@ -653,12 +691,7 @@ describe('OIDC authorization_code grant (integration)', () => {
     expect(accessTokenClaims.tenant_id).toBe(tenantId);
     expect(accessTokenClaims.tenant_role).toBe('member');
 
-    const grantedScopes =
-      typeof accessTokenClaims.scope === 'string'
-        ? accessTokenClaims.scope.split(/\s+/).filter(Boolean)
-        : [];
-
-    expect(grantedScopes).toContain('credentials:verify');
+    expect(scopesOf(accessTokenClaims)).toContain('credentials:verify');
   });
 
   /**
@@ -702,15 +735,10 @@ describe('OIDC authorization_code grant (integration)', () => {
   it('keeps issuing API-audience JWTs to a public client across a refresh', async () => {
     const tokenBody = await startPublicClientSession();
 
-    const refreshResponse = await request(app.getHttpServer())
-      .post('/oidc/token')
-      .type('form')
-      .send({
-        grant_type: 'refresh_token',
-        client_id: publicClientId,
-        refresh_token: tokenBody.refresh_token as string,
-      })
-      .expect(200);
+    const refreshResponse = await refreshWithoutClientAuth(
+      publicClientId,
+      tokenBody.refresh_token as string,
+    ).expect(200);
 
     const refreshed = refreshResponse.body as Record<string, unknown>;
 
@@ -767,6 +795,138 @@ describe('OIDC authorization_code grant (integration)', () => {
         // test in this suite runs the identical flow to completion, so the
         // override is the only difference.
       ).rejects.toThrow(/403 \/oidc\/interaction/);
+    } finally {
+      await dataSource.query(
+        `DELETE FROM tenant_role_scope WHERE tenant_id = $1`,
+        [tenantId],
+      );
+    }
+  });
+
+  /**
+   * The SPA asks for identity scopes only, so nothing it requests could put
+   * an API scope on its token. The provider derives those from the role as it
+   * signs the JWT; the token response's own `scope` still reports only what
+   * was requested, which is why the claim and the parameter are asserted
+   * separately.
+   */
+  it("stamps an owner's role scopes on a token that requested identity scopes only", async () => {
+    await setFederatedUserRole('owner');
+
+    try {
+      const tokenBody = await startPublicClientSession({
+        scope: IDENTITY_SCOPES,
+      });
+
+      const claims = await verifyTokenAgainstJwks(
+        app.getHttpServer(),
+        tokenBody.access_token as string,
+      );
+
+      expect(claims.tenant_role).toBe('owner');
+      expect(scopesOf(claims)).toContain('tenants:admin');
+      expect(scopesOf(tokenBody)).not.toContain('tenants:admin');
+      expect(tokenBody.refresh_token).toEqual(expect.any(String));
+    } finally {
+      await setFederatedUserRole('member');
+    }
+  });
+
+  // The role with no scopes must still be able to sign in: the derivation
+  // adds nothing rather than failing, and the identity scopes stay.
+  it('stamps no API scopes for a readonly user', async () => {
+    await setFederatedUserRole('readonly');
+
+    try {
+      const tokenBody = await startPublicClientSession({
+        scope: IDENTITY_SCOPES,
+      });
+
+      const claims = await verifyTokenAgainstJwks(
+        app.getHttpServer(),
+        tokenBody.access_token as string,
+      );
+      const scopes = scopesOf(claims);
+
+      expect(claims.tenant_role).toBe('readonly');
+      expect(scopes).toContain('openid');
+      expect(
+        scopes.filter((scope) =>
+          (ASSIGNABLE_OAUTH_CLIENT_SCOPES as readonly string[]).includes(scope),
+        ),
+      ).toEqual([]);
+    } finally {
+      await setFederatedUserRole('member');
+    }
+  });
+
+  /**
+   * A refresh re-runs the derivation against the row as it is now, so a
+   * promotion reaches the token without a new login. The rotated refresh
+   * token is spent once more at the end to show the chain is intact.
+   */
+  it('re-derives role scopes from the current role on refresh', async () => {
+    try {
+      const tokenBody = await startPublicClientSession({
+        scope: IDENTITY_SCOPES,
+      });
+      const loginScopes = scopesOf(
+        await verifyTokenAgainstJwks(
+          app.getHttpServer(),
+          tokenBody.access_token as string,
+        ),
+      );
+
+      expect(loginScopes).toEqual(
+        expect.arrayContaining(['credentials:offer', 'credentials:verify']),
+      );
+      expect(loginScopes).not.toContain('tenants:admin');
+
+      await setFederatedUserRole('owner');
+
+      const refreshResponse = await refreshWithoutClientAuth(
+        publicClientId,
+        tokenBody.refresh_token as string,
+      ).expect(200);
+      const refreshed = refreshResponse.body as Record<string, unknown>;
+      const refreshedClaims = await verifyTokenAgainstJwks(
+        app.getHttpServer(),
+        refreshed.access_token as string,
+      );
+
+      expect(refreshedClaims.tenant_role).toBe('owner');
+      expect(scopesOf(refreshedClaims)).toContain('tenants:admin');
+
+      await refreshWithoutClientAuth(
+        publicClientId,
+        refreshed.refresh_token as string,
+      ).expect(200);
+    } finally {
+      await setFederatedUserRole('member');
+    }
+  });
+
+  it('resolves role scopes through the tenant override at issuance', async () => {
+    await dataSource.query(
+      `INSERT INTO tenant_role_scope (tenant_id, role, scopes)
+       VALUES ($1, 'member'::tenant_user_role, $2::text[])
+       ON CONFLICT (tenant_id, role) DO UPDATE SET scopes = EXCLUDED.scopes`,
+      [tenantId, ['credentials:offer']],
+    );
+
+    try {
+      const tokenBody = await startPublicClientSession({
+        scope: IDENTITY_SCOPES,
+      });
+      const scopes = scopesOf(
+        await verifyTokenAgainstJwks(
+          app.getHttpServer(),
+          tokenBody.access_token as string,
+        ),
+      );
+
+      expect(scopes).toContain('credentials:offer');
+      expect(scopes).not.toContain('credentials:verify');
     } finally {
       await dataSource.query(
         `DELETE FROM tenant_role_scope WHERE tenant_id = $1`,
