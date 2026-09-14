@@ -8,6 +8,9 @@ import { VerifierPort } from './ports/verifier.port';
 import { StubAdapter } from './testing/stub-adapter';
 import { AnonCredsFormatValidator } from './validators/anoncreds-format.validator';
 import { FormatValidatorRegistry } from './validators/format-validator.registry';
+import { MdlFormatValidator } from './validators/mdl-format.validator';
+import { SdJwtFormatValidator } from './validators/sd-jwt-format.validator';
+import { W3cVcFormatValidator } from './validators/w3c-vc-format.validator';
 
 /**
  * Provides fail-closed default bindings for all credential port contracts,
@@ -24,6 +27,9 @@ import { FormatValidatorRegistry } from './validators/format-validator.registry'
     { provide: RevocationPort, useExisting: StubAdapter },
     FormatValidatorRegistry,
     AnonCredsFormatValidator,
+    SdJwtFormatValidator,
+    W3cVcFormatValidator,
+    MdlFormatValidator,
   ],
   exports: [
     IssuerPort,
@@ -38,9 +44,15 @@ export class CredentialPortsModule implements OnModuleInit {
   public constructor(
     private readonly formatValidatorRegistry: FormatValidatorRegistry,
     private readonly anonCredsFormatValidator: AnonCredsFormatValidator,
+    private readonly sdJwtFormatValidator: SdJwtFormatValidator,
+    private readonly w3cVcFormatValidator: W3cVcFormatValidator,
+    private readonly mdlFormatValidator: MdlFormatValidator,
   ) {}
 
   public onModuleInit(): void {
     this.formatValidatorRegistry.register(this.anonCredsFormatValidator);
+    this.formatValidatorRegistry.register(this.sdJwtFormatValidator);
+    this.formatValidatorRegistry.register(this.w3cVcFormatValidator);
+    this.formatValidatorRegistry.register(this.mdlFormatValidator);
   }
 }

@@ -43,7 +43,18 @@ The Digital Credential Common Service acts as a unified gateway for Digital Cred
    cp .env.example .env
    ```
 
-3. **Start the application**
+3. **Generate a local OIDC signing key**
+   ```bash
+   # Docker-only workflow
+   docker compose run --build --rm --no-deps app node scripts/generate-oidc-keys.mjs oidc-keys.json
+   mv oidc-keys.json config/oidc-keys.json
+   ```
+
+   The generated key is gitignored and must not be committed. If Node 24 is
+   installed locally, you can instead run
+   `node scripts/generate-oidc-keys.mjs config/oidc-keys.json`.
+
+4. **Start the application**
    ```bash
    # With Docker Compose (recommended)
    docker compose up
@@ -51,6 +62,10 @@ The Digital Credential Common Service acts as a unified gateway for Digital Cred
    # Or locally with npm
    npm run start:dev
    ```
+
+   After the first Compose start, follow
+   [Export and trust the Caddy local CA](docs/DEVELOPER.md#export-and-trust-the-caddy-local-ca)
+   before opening `https://app.localhost` in a browser.
 
 The application will be available at `http://localhost:3000`
 

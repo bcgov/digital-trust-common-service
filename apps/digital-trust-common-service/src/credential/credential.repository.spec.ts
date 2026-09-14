@@ -69,6 +69,13 @@ describe('CredentialRepository', () => {
     });
   });
 
+  it('findByIdForTenant queries tenant + id', async () => {
+    await repository.findByIdForTenant('cred-1', 't1');
+    expect(mockRepo.findOne).toHaveBeenCalledWith({
+      where: { id: 'cred-1', tenantId: 't1' },
+    });
+  });
+
   it('findByProfile filters by issuance profile', async () => {
     await repository.findByProfile('t1', 'ip-1');
     expect(mockRepo.find).toHaveBeenCalledWith({

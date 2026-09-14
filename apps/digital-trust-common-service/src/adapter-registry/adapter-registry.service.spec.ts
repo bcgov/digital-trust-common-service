@@ -9,6 +9,7 @@ import { ForbiddenException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Test, TestingModule } from '@nestjs/testing';
 
+import { EncryptionService } from '../common/crypto/encryption.service';
 import { ConnectorType } from '../connection/connection.entity';
 import { ConnectorCredential } from '../connector-credential/connector-credential.entity';
 import { ConnectorCredentialService } from '../connector-credential/connector-credential.service';
@@ -32,6 +33,8 @@ function buildConnector(overrides: Partial<ConnectorCredential> = {}) {
     tenantId: TENANT_A,
     connectorType: ConnectorType.TRACTION,
     endpointUrl: 'https://traction.example.com',
+    credentialsEncrypted: Buffer.from('ciphertext'),
+    keyVersion: 1,
     active: true,
     ...overrides,
   } as ConnectorCredential;
@@ -42,12 +45,16 @@ describe('AdapterRegistry', () => {
   let tenantService: { findById: jest.Mock };
   let connectorService: { findByTenant: jest.Mock };
   let configService: { get: jest.Mock };
+  let encryptionService: { decrypt: jest.Mock };
   let adapter: MockAdapter;
 
   beforeEach(async () => {
     tenantService = { findById: jest.fn() };
     connectorService = { findByTenant: jest.fn() };
     configService = { get: jest.fn().mockReturnValue(undefined) };
+    encryptionService = {
+      decrypt: jest.fn().mockReturnValue({ apiKey: 'secret' }),
+    };
     adapter = new MockAdapter({
       connectorType: PortConnectorType.Traction,
       supportedFormats: [CredentialFormat.AnonCreds],
@@ -59,6 +66,7 @@ describe('AdapterRegistry', () => {
         { provide: TenantService, useValue: tenantService },
         { provide: ConnectorCredentialService, useValue: connectorService },
         { provide: ConfigService, useValue: configService },
+        { provide: EncryptionService, useValue: encryptionService },
       ],
     }).compile();
 
@@ -138,6 +146,21 @@ describe('AdapterRegistry', () => {
 
       expect(resolved.format).toBe(CredentialFormat.AnonCreds);
       expect(resolved.adapter).toBe(adapter);
+    });
+
+    it('builds a ConnectorContext from the decrypted connector credentials', async () => {
+      const resolved = await registry.resolve(TENANT_A);
+
+      expect(encryptionService.decrypt).toHaveBeenCalledWith(
+        resolved.connector.credentialsEncrypted,
+        resolved.connector.keyVersion,
+      );
+      expect(resolved.context).toEqual({
+        connectorId: CONNECTOR_A,
+        tenantId: TENANT_A,
+        endpointUrl: 'https://traction.example.com',
+        credentials: { apiKey: 'secret' },
+      });
     });
 
     it('should resolve a supported format', async () => {

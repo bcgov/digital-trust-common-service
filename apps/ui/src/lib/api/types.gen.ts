@@ -2109,10 +2109,13 @@ export interface components {
             /**
              * @description Operation type. Known values:
              *     `credential.offer`, `credential.offer-batch`,
+             *     `credential.accept`, `credential.reject`,
              *     `credential.revoke`, `credential.revoke-batch`,
              *     `presentation.request`, `connection.create`
              * @example credential.offer
              * @example credential.offer-batch
+             * @example credential.accept
+             * @example credential.reject
              * @example credential.revoke
              * @example credential.revoke-batch
              * @example presentation.request

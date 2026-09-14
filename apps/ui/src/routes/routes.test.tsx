@@ -1,7 +1,12 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { http, HttpResponse } from 'msw';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 import { describe, expect, it } from 'vitest';
+
+import { API_BASE_PATH } from '@/lib/api/constants';
+import { mockTenants } from '@/test/msw/handlers';
+import { server } from '@/test/msw/server';
 
 import { routes } from './routes';
 
@@ -47,6 +52,44 @@ describe('routing', () => {
   });
 
   /**
+   * A session that can no longer be refreshed is cleared in this tab only:
+   * after a tenant switch elsewhere the provider session is alive, so the
+   * way back is sign-in with the destination kept, not a full logout.
+   */
+  it('bounces to sign-in, keeping the destination, when the session cannot be refreshed', async () => {
+    // A page no earlier test has cached in RootLayout's shared QueryClient,
+    // so the request is actually made. The id matches the mock user's tenant.
+    const tenantId = mockTenants[0]?.id ?? '';
+    server.use(
+      http.get(
+        `${API_BASE_PATH}/tenants/:id`,
+        () => new HttpResponse(null, { status: 401 }),
+      ),
+    );
+    const user = userEvent.setup();
+    const router = renderAt(`/tenants/${tenantId}`);
+
+    await user.click(await screen.findByRole('button', { name: /sign in/i }));
+
+    // Longer than the default: the page chunk loads lazily, then two 401
+    // round trips (the request and its retry after a refresh) precede the
+    // bounce.
+    await waitFor(
+      () => {
+        expect(router.state.location.pathname).toBe('/login');
+      },
+      { timeout: 4000 },
+    );
+
+    server.resetHandlers();
+    await user.click(await screen.findByRole('button', { name: /sign in/i }));
+
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe(`/tenants/${tenantId}`);
+    });
+  });
+
+  /**
    * The OIDC redirect arrives before any session exists, so the callback must
    * sit outside RequireAuth. Guarded, it would bounce to /login and strip the
    * authorization code from the URL — making every sign-in fail.
@@ -68,5 +111,30 @@ describe('routing', () => {
   it('renders the 404 page for unknown routes', async () => {
     renderAt('/definitely-not-a-page');
     expect(await screen.findByText('404')).toBeInTheDocument();
+  });
+
+  /**
+   * The dashboard is the active tenant's overview: the address carries the
+   * tenant, so /dashboard only forwards there and leaves no entry behind.
+   */
+  it('forwards /dashboard to the active tenant', async () => {
+    const user = userEvent.setup();
+    const router = renderAt('/dashboard');
+
+    await user.click(await screen.findByRole('button', { name: /sign in/i }));
+
+    // Three lazy chunks in a row (shell, tenant layout, overview) before the
+    // heading can appear.
+    expect(
+      await screen.findByRole(
+        'heading',
+        { name: 'Acme Ministry' },
+        { timeout: 4000 },
+      ),
+    ).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe(
+      `/tenants/${mockTenants[0]?.id}`,
+    );
+    expect(router.state.historyAction).toBe('REPLACE');
   });
 });

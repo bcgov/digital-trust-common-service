@@ -76,4 +76,19 @@ describe('CredentialPortsModule', () => {
 
     expect(registry.has(CredentialFormat.AnonCreds)).toBe(true);
   });
+
+  it('registers every format validator this library ships', () => {
+    const registry = module.get<FormatValidatorRegistry>(
+      FormatValidatorRegistry,
+    );
+
+    expect(registry.list().sort()).toEqual(
+      [
+        CredentialFormat.AnonCreds,
+        CredentialFormat.JsonLd,
+        CredentialFormat.Mdl,
+        CredentialFormat.SdJwtVc,
+      ].sort(),
+    );
+  });
 });

@@ -1,6 +1,8 @@
 import { http, HttpResponse } from 'msw';
 
 import { API_BASE_PATH } from '@/lib/api/constants';
+import type { Connection } from '@/lib/api/resources/connections';
+import type { CredentialDefinition } from '@/lib/api/resources/credential-definitions';
 import type { Tenant } from '@/lib/api/resources/tenants';
 import { MOCK_AUTH_TENANTS } from '@/lib/auth/mock-auth';
 
@@ -34,6 +36,43 @@ export const mockTenants: Tenant[] = [
   },
 ];
 
+// Two definitions and one connection, so a count can only match one fixture.
+export const mockCredentialDefinitions: CredentialDefinition[] = [
+  {
+    id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    tenant_id: '11111111-1111-4111-8111-111111111111',
+    name: 'Employee badge',
+    format: 'anoncreds',
+    connector_type: 'traction',
+    is_active: true,
+    created_at: '2026-04-01T10:00:00.000Z',
+    updated_at: '2026-04-01T10:00:00.000Z',
+  },
+  {
+    id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+    tenant_id: '11111111-1111-4111-8111-111111111111',
+    name: 'Visitor pass',
+    format: 'anoncreds',
+    connector_type: 'traction',
+    is_active: true,
+    created_at: '2026-04-02T10:00:00.000Z',
+    updated_at: '2026-04-02T10:00:00.000Z',
+  },
+];
+
+export const mockConnections: Connection[] = [
+  {
+    id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+    tenant_id: '11111111-1111-4111-8111-111111111111',
+    their_label: 'Alice',
+    state: 'active',
+    connector_type: 'traction',
+    protocol: 'didcomm-v1',
+    created_at: '2026-05-01T10:00:00.000Z',
+    updated_at: '2026-05-01T10:00:00.000Z',
+  },
+];
+
 function encodeJwtSegment(value: Record<string, unknown>): string {
   const json = JSON.stringify(value);
   const base64 =
@@ -44,7 +83,7 @@ function encodeJwtSegment(value: Record<string, unknown>): string {
 }
 
 /** JWT-shaped mock AT so OIDC switchTenant can decode tenant_id / roles. */
-function mockSwitchedAccessToken(tenantId: string | undefined): string {
+export function mockSwitchedAccessToken(tenantId: string | undefined): string {
   return [
     encodeJwtSegment({ alg: 'none', typ: 'JWT' }),
     encodeJwtSegment({
@@ -65,6 +104,22 @@ export const handlers = [
       ? HttpResponse.json(tenant)
       : new HttpResponse(null, { status: 404 });
   }),
+  // Bare array: mirrors the implemented endpoint. Scoped by tenant like the
+  // API, so another tenant's overview never shows Acme's figures.
+  http.get(
+    `${API_BASE_PATH}/tenants/:id/credential-definitions`,
+    ({ params }) =>
+      HttpResponse.json(
+        mockCredentialDefinitions.filter((d) => d.tenant_id === params.id),
+      ),
+  ),
+  // Envelope: mirrors the spec shape, so both list shapes stay exercised.
+  http.get(`${API_BASE_PATH}/tenants/:id/connections`, ({ params }) =>
+    HttpResponse.json({
+      data: mockConnections.filter((c) => c.tenant_id === params.id),
+      pagination: { next_cursor: null, has_more: false },
+    }),
+  ),
   // Same fixture the mock auth client serves, so the two stay in lockstep.
   http.get(`${API_BASE_PATH}/auth/tenants`, () =>
     HttpResponse.json(MOCK_AUTH_TENANTS),

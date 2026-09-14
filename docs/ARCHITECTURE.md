@@ -1671,16 +1671,22 @@ Client → API Pod → Traction/Credo Agent Service
 
 ### Key Metrics
 
-| Metric | Type | Labels |
-|--------|------|--------|
-| `http_requests_total` | Counter | method, route, status, tenant_id |
-| `http_request_duration_seconds` | Histogram | method, route, tenant_id |
-| `credential_operations_total` | Counter | type, state, format, tenant_id |
-| `operations_pending_count` | Gauge | tenant_id |
-| `adapter_calls_total` | Counter | adapter, method, success |
-| `adapter_call_duration_seconds` | Histogram | adapter, method |
-| `webhook_deliveries_total` | Counter | tenant_id, status |
-| `pgboss_queue_depth` | Gauge | queue_name |
+Metrics today come entirely from OpenTelemetry auto-instrumentation — no
+`getMeter`, counter, or histogram exists in application code. The full
+catalog (exact Prometheus names, dimensions, bounds, and the cardinality
+budget) lives in [observability-metrics.md](./observability-metrics.md), not
+here, so it can be kept current independent of this document and cited by
+later metrics tickets. In short: HTTP server/client request duration, DB
+operation duration and connection-pool gauges, and Node.js/V8 runtime
+metrics (event loop delay, GC, heap).
+
+**No metric carries `tenant_id` or any other unbounded identifier.** Tenant
+count is unbounded and every label multiplies series count; tenant identity
+stays on spans and logs (`tenant.id`), where it's already available for
+correlation — see [Trace Context Propagation](#trace-context-propagation).
+Business metrics (credential operations, pending-operation counts, adapter
+calls, webhook deliveries, pg-boss queue depth) are not yet instrumented;
+when they are, they must follow the same rule.
 
 ### Health Endpoints
 

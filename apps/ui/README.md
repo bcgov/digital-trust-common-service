@@ -143,6 +143,7 @@ src/
   lib/api/       axios client (Bearer + 401 single-flight refresh), generated
                  types, per-resource modules, TanStack Query hooks
   lib/auth/      AuthClient seam: mock (default) and oidc (PKCE, real provider)
+  lib/tenant/    active tenant: memberships query + the switch (navigate, reset cache)
   lib/config.ts  runtime config: fetches and validates /config.json before mount
   components/ui/ shadcn-managed primitives (add via `npx shadcn add <name>`)
   test/          Vitest setup + MSW handlers
