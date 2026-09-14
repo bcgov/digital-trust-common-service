@@ -690,8 +690,29 @@ describe('ConnectionService', () => {
   });
 
   describe('findByTenantIdAndState', () => {
-    it('should find connections by tenant id and state', async () => {
+    beforeEach(() => {
+      mockResolve.mockResolvedValue({
+        adapter: mockAdapter,
+        connector: mockConnector,
+        context: mockContext,
+        format: undefined,
+      });
+      mockUpdate.mockImplementation((connection) =>
+        Promise.resolve(connection),
+      );
+    });
+
+    it('finds connections by tenant id and state, reconciled with the connector', async () => {
       mockFindByTenantIdAndState.mockResolvedValue([mockConnection]);
+      mockList.mockResolvedValue([
+        {
+          id: mockConnection.externalConnectionId,
+          state: 'active',
+          theirLabel: mockConnection.theirLabel,
+          createdAt: mockConnection.createdAt.toISOString(),
+          updatedAt: mockConnection.updatedAt.toISOString(),
+        },
+      ]);
 
       const result = await service.findByTenantIdAndState(
         mockConnection.tenantId,
@@ -702,6 +723,49 @@ describe('ConnectionService', () => {
         mockConnection.tenantId,
         mockConnection.state,
       );
+      expect(mockList).toHaveBeenCalledWith(mockContext, {});
+      expect(result).toEqual({
+        data: [mockConnection],
+        pagination: { next_cursor: null, has_more: false },
+      });
+    });
+
+    it('excludes a connection that the connector reports has moved out of the requested state', async () => {
+      mockFindByTenantIdAndState.mockResolvedValue([{ ...mockConnection }]);
+      mockList.mockResolvedValue([
+        {
+          id: mockConnection.externalConnectionId,
+          state: 'completed',
+          theirLabel: mockConnection.theirLabel,
+          createdAt: mockConnection.createdAt.toISOString(),
+          updatedAt: mockConnection.updatedAt.toISOString(),
+        },
+      ]);
+
+      const result = await service.findByTenantIdAndState(
+        mockConnection.tenantId,
+        mockConnection.state,
+      );
+
+      expect(mockUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({ state: ConnectionState.COMPLETED }),
+      );
+      expect(result).toEqual({
+        data: [],
+        pagination: { next_cursor: null, has_more: false },
+      });
+    });
+
+    it('returns the persisted connections when the connector cannot be reached', async () => {
+      mockFindByTenantIdAndState.mockResolvedValue([{ ...mockConnection }]);
+      mockList.mockRejectedValue(new Error('connector unavailable'));
+
+      const result = await service.findByTenantIdAndState(
+        mockConnection.tenantId,
+        mockConnection.state,
+      );
+
+      expect(mockUpdate).not.toHaveBeenCalled();
       expect(result).toEqual({
         data: [mockConnection],
         pagination: { next_cursor: null, has_more: false },
@@ -745,6 +809,24 @@ describe('ConnectionService', () => {
       expect(mockResolve).not.toHaveBeenCalled();
       expect(mockDeleteById).not.toHaveBeenCalled();
       expect(mockDelete).toHaveBeenCalledWith(pending.id);
+    });
+
+    it('aborts the local delete when the connector call fails', async () => {
+      mockFindById.mockResolvedValue(mockConnection);
+      mockResolve.mockResolvedValue({
+        adapter: mockAdapter,
+        connector: mockConnector,
+        context: mockContext,
+        format: undefined,
+      });
+      const error = new Error('connector unavailable');
+      mockDeleteById.mockRejectedValue(error);
+
+      await expect(
+        service.delete(mockConnection.tenantId, mockConnection.id, auth),
+      ).rejects.toThrow(error);
+      expect(mockDelete).not.toHaveBeenCalled();
+      expect(mockEmit).not.toHaveBeenCalled();
     });
 
     it('should throw NotFoundException if connection not found on delete', async () => {

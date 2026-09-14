@@ -451,6 +451,15 @@ export class ConnectionService {
     }
   }
 
+  /**
+   * Same connector reconciliation as findByTenantId, scoped to a single
+   * state. The initial fetch is filtered at the database, but the filter is
+   * re-applied after syncAllWithAdapter: reconciling can move a connection
+   * into or out of the requested state (or discover a connector-side
+   * connection already in it), so filtering only before syncing would let
+   * this endpoint drift out of step with the connector's current view in
+   * exactly the way findByTenantId does not.
+   */
   public async findByTenantIdAndState(
     tenantId: string,
     state: ConnectionState,
@@ -460,8 +469,12 @@ export class ConnectionService {
       tenantId,
       state,
     );
+    const reconciled = await this.syncAllWithAdapter(tenantId, connections);
+    const filtered = reconciled.filter(
+      (connection) => connection.state === state,
+    );
 
-    return this.paginate(connections, options);
+    return this.paginate(filtered, options);
   }
 
   /**

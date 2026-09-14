@@ -456,5 +456,17 @@ describe('TractionAdapter', () => {
         ConnectorUnavailableError,
       );
     });
+
+    it('treats a 404 response as already deleted rather than an error', async () => {
+      const axiosError = Object.assign(new Error('Not Found'), {
+        isAxiosError: true,
+        response: { status: 404 },
+      });
+      mockRequest.mockRejectedValue(axiosError);
+
+      await expect(
+        adapter.deleteById(context, 'conn-1'),
+      ).resolves.toBeUndefined();
+    });
   });
 });
