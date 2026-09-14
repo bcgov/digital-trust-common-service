@@ -23,8 +23,10 @@ const appConfigSchema = z.object({
   // Scopes requested at sign-in. Keep to the set every role holds: `readonly`
   // users carry no API scopes, and the provider's interaction handler rejects
   // (rather than trims) a request for scopes the user's role lacks — so adding
-  // e.g. `tenants:admin` here locks those users out. The floor is as firm as
-  // the ceiling: without `openid` this is not an OIDC request, without
+  // e.g. `tenants:admin` here locks those users out. API scopes are not
+  // needed here anyway: the provider derives them from the user's role as it
+  // signs the access token, at login and on every refresh. The floor is as
+  // firm as the ceiling: without `openid` this is not an OIDC request, without
   // `tenant` the claims the UI is built around never arrive, and without
   // `offline_access` there is no refresh token and the session dies at the
   // first access-token expiry.
