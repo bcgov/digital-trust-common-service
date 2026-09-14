@@ -176,6 +176,42 @@ series go stale when the pods are removed, so this is a churn and
 active-series consideration rather than unbounded growth, but a preview-heavy
 week costs multiples of the steady-state figure.
 
+## Selecting one deployment
+
+A namespace runs dev alongside every open PR preview, so almost any useful query
+needs to name one of them. The label that does this is **different in each
+backend**, because a different collector owns each signal.
+
+| signal | backend | selector |
+| --- | --- | --- |
+| metrics | Mimir | `{job="pr-401-digital-trust-common-service"}` |
+| traces | Tempo | `{resource.service.name="pr-401-digital-trust-common-service"}` |
+| logs | Loki | `{instance="pr-401-digital-trust-common-service"}` |
+
+Metrics and traces both derive theirs from `OTEL_SERVICE_NAME`, which the chart
+sets per environment and `pr-deploy.yml` makes per-PR, so the value is the same
+in both and only the label name differs.
+
+Logs are labelled by Alloy from Kubernetes pod metadata instead, and carry two
+useful identifiers:
+
+- `instance` — `app.kubernetes.io/instance`, the Helm release. Groups everything
+  in one deployment, so the API and its UI share a value.
+- `workload` — the owning Deployment or StatefulSet, with the ReplicaSet hash
+  stripped so it survives rollouts. Separates the API
+  (`digital-trust-common-service`) from its UI
+  (`digital-trust-common-service-ui`).
+
+Do **not** reach for `app` to tell deployments apart. It is
+`app.kubernetes.io/name`, which identifies the *application* and is identical for
+dev and every preview — one value covering all of them. `pod` does distinguish
+them, but it changes on every rollout, so it works in an ad-hoc query and not in
+a saved one or a dashboard variable.
+
+`instance` and `workload` were added to the platform Alloy configuration on
+2026-09-14; before that, `pod` really was the only option. The change is
+forward-only, so log streams ingested earlier do not carry them.
+
 ## Findings
 
 Verifying against a running stack surfaced items the original spec's
