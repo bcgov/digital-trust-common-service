@@ -8,11 +8,16 @@ import { Repository } from 'typeorm';
 import { OidcAdapterFactory } from './adapters/oidc-adapter.factory';
 import { OidcModel } from './entities/oidc-model.entity';
 import type { OidcConfig } from './oidc-config.service';
-import { OidcConfigService } from './oidc-config.service';
+import { OidcConfigService, OIDC_PROTOCOL_SCOPES } from './oidc-config.service';
 import type { OidcJwks } from './oidc-keys.service';
 import { OidcKeysService } from './oidc-keys.service';
+import { OIDC_ROLE_SCOPE_PORT } from './ports/oidc-role-scope.port';
+import type { OidcRoleScopePort } from './ports/oidc-role-scope.port';
 import { OIDC_TENANT_USER_PORT } from './ports/oidc-tenant-user.port';
-import type { OidcTenantUserPort } from './ports/oidc-tenant-user.port';
+import type {
+  OidcTenantUserPort,
+  OidcTenantUserRole,
+} from './ports/oidc-tenant-user.port';
 import { OIDC_UPSTREAM_FEDERATION_PORT } from './ports/oidc-upstream-federation.port';
 
 type SavedOidcSession = {
@@ -99,6 +104,73 @@ export function resolveRefreshTokenTtl(
   return ttlSeconds;
 }
 
+/** The slice of an oidc-provider AccessToken the role-scope hook reads. */
+export interface UserScopeToken {
+  accountId?: string;
+}
+
+/** What the hook keeps from the grant, and what it may add from the role. */
+export interface UserScopeRules {
+  /** OIDC protocol and claims scopes, kept on the token as granted. */
+  identityScopes: readonly string[];
+  /** The server-wide allowlist role scopes are filtered through. */
+  allowedScopes: readonly string[];
+}
+
+/**
+ * The `scope` claim for a JWT access token about to be signed: the identity
+ * scopes oidc-provider granted plus the allowlisted scopes of the current
+ * role. The role is the upper limit, so any other granted scope is dropped
+ * and a demotion reaches the token at the next refresh.
+ *
+ * A JWT customizer rather than the Grant because oidc-provider intersects the
+ * Grant with the requested scopes at every step, and the SPA never requests
+ * API scopes. `tenant_role` / `tenant_id` come from the payload, where
+ * extraTokenClaims just stamped them from the same tenant_user row; a user
+ * token without them keeps no API scope. Machine tokens (no accountId) are
+ * left alone. Returns undefined when unchanged, '' when nothing remains.
+ */
+export async function resolveUserAccessTokenScope(
+  token: UserScopeToken,
+  payload: Record<string, unknown>,
+  roleScopeService: OidcRoleScopePort,
+  rules: UserScopeRules,
+): Promise<string | undefined> {
+  const { accountId } = token;
+  const role = payload.tenant_role;
+  const tenantId = payload.tenant_id;
+
+  if (typeof accountId !== 'string' || accountId.length === 0) {
+    return undefined;
+  }
+
+  // No membership claims stamped: trust nothing the grant carried.
+  const roleScopes =
+    typeof role === 'string' && typeof tenantId === 'string'
+      ? await roleScopeService.findScopesForRole(
+          role as OidcTenantUserRole,
+          tenantId,
+        )
+      : [];
+
+  // Role scopes are validated against the catalog only, hence the allowlist.
+  const identity = new Set(rules.identityScopes);
+  const allowed = new Set(rules.allowedScopes);
+  const granted =
+    typeof payload.scope === 'string'
+      ? payload.scope.split(/\s+/).filter(Boolean)
+      : [];
+  const scopes = new Set([
+    ...granted.filter((scope) => identity.has(scope)),
+    ...roleScopes.filter((scope) => allowed.has(scope)),
+  ]);
+  const unchanged =
+    scopes.size === granted.length &&
+    granted.every((scope) => scopes.has(scope));
+
+  return unchanged ? undefined : [...scopes].join(' ');
+}
+
 /**
  * The interstitial oidc-provider renders mid-logout, replacing a default that
  * is neither ours nor safe to leave in place.
@@ -149,7 +221,19 @@ export function buildOidcConfiguration(
   jwks: OidcJwks,
   adapterFactory: OidcAdapterFactory,
   tenantUserService: OidcTenantUserPort,
+  roleScopeService: OidcRoleScopePort,
 ): Configuration {
+  const claims = {
+    openid: ['sub'],
+    profile: ['name'],
+    email: ['email'],
+    tenant: ['tenant_id', 'tenant_role'],
+  };
+  const scopeRules: UserScopeRules = {
+    identityScopes: [...OIDC_PROTOCOL_SCOPES, ...Object.keys(claims)],
+    allowedScopes: config.scopes,
+  };
+
   return {
     adapter: adapterFactory.forModel,
     jwks,
@@ -161,12 +245,7 @@ export function buildOidcConfiguration(
       // will also apply to AU-02's (#35) authorization_code clients.
       required: () => true,
     },
-    claims: {
-      openid: ['sub'],
-      profile: ['name'],
-      email: ['email'],
-      tenant: ['tenant_id', 'tenant_role'],
-    },
+    claims,
     scopes: config.scopes,
     extraClientMetadata: {
       properties: [
@@ -211,6 +290,29 @@ export function buildOidcConfiguration(
       }
 
       return claims;
+    },
+    formats: {
+      // Deep-merged with the defaults. `ctx` is absent on the tenant-switch
+      // path, so the hook never reads it. Only the signed JWT carries the
+      // derived scopes; the stored row and token response keep the granted set.
+      customizers: {
+        jwt: async (_ctx, token, jwt) => {
+          const scope = await resolveUserAccessTokenScope(
+            token as UserScopeToken,
+            jwt.payload,
+            roleScopeService,
+            scopeRules,
+          );
+
+          if (scope !== undefined) {
+            // Empty means every API scope was dropped: no claim, as the
+            // provider itself does.
+            jwt.payload.scope = scope.length > 0 ? scope : undefined;
+          }
+
+          return jwt;
+        },
+      },
     },
     features: {
       clientCredentials: { enabled: true },
@@ -356,6 +458,8 @@ export class OidcProviderService implements OnModuleInit {
     private readonly upstreamFederation: UpstreamSessionFinalizer,
     @Inject(OIDC_TENANT_USER_PORT)
     private readonly tenantUserService: OidcTenantUserPort,
+    @Inject(OIDC_ROLE_SCOPE_PORT)
+    private readonly roleScopeService: OidcRoleScopePort,
   ) {}
 
   private async finalizePendingUpstreamSession(
@@ -406,6 +510,7 @@ export class OidcProviderService implements OnModuleInit {
         jwks,
         this.adapterFactory,
         this.tenantUserService,
+        this.roleScopeService,
       ),
     );
 

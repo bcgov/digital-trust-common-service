@@ -41,8 +41,13 @@ export {
   buildOidcConfiguration,
   applyClientSecretHashComparator,
   resolveRefreshTokenTtl,
+  resolveUserAccessTokenScope,
 } from './oidc-provider.service';
-export type { ClientExtraMetadata } from './oidc-provider.service';
+export type {
+  ClientExtraMetadata,
+  UserScopeRules,
+  UserScopeToken,
+} from './oidc-provider.service';
 export { OidcMountService } from './oidc-mount.service';
 export { OidcPurgeRepository } from './oidc-purge.repository';
 export type { PurgeModelCount } from './oidc-purge.repository';

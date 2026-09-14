@@ -210,10 +210,12 @@ export function uiSpaPostLogoutRedirectUris(origin: string): string[] {
 }
 
 /**
- * Only the claim-releasing scopes every role holds. `readonly` ships with no
- * API scopes at all, and the interaction controller rejects (rather than
- * trims) a request for scopes the user's role lacks — so asking for e.g.
- * `tenants:admin` here would break sign-in for lower-privileged users.
+ * Identity scopes only, and only the ones every role holds. The SPA never
+ * asks for API scopes: the provider derives them from the signed-in user's
+ * role as it signs each access token. The interaction controller still
+ * rejects (rather than trims) a request for scopes the user's role lacks —
+ * `readonly` ships with none — so asking for e.g. `tenants:admin` here would
+ * break sign-in for lower-privileged users.
  */
 export const UI_SPA_SCOPES = [
   'openid',

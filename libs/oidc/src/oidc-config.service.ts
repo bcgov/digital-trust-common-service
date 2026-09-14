@@ -105,6 +105,14 @@ const DEFAULT_SCOPES = [
   'logs:read',
   'audit:read',
 ];
+
+/**
+ * OIDC protocol scopes `getScopes()` always keeps in the allowlist. The
+ * provider's role-scope hook leaves them on a user token as granted and treats
+ * every other allowlisted scope as an API scope the current role has to hold.
+ */
+export const OIDC_PROTOCOL_SCOPES = ['openid', 'offline_access'] as const;
+
 const DEFAULT_GRANT_TYPES = ['client_credentials'];
 // Grants the provider is wired to serve today. `refresh_token` is included
 // because oidc-provider issues and consumes refresh tokens on its own, with
@@ -275,10 +283,9 @@ export class OidcConfigService {
    */
   private getScopes(): string[] {
     const configured = this.getCsv('OIDC_SCOPES', DEFAULT_SCOPES);
-    const required = ['openid', 'offline_access'];
 
     return [
-      ...required.filter((scope) => !configured.includes(scope)),
+      ...OIDC_PROTOCOL_SCOPES.filter((scope) => !configured.includes(scope)),
       ...configured,
     ];
   }
