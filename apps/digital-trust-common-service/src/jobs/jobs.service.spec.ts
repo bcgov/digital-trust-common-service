@@ -129,6 +129,29 @@ describe('JobsService', () => {
     expect(send).toHaveBeenCalledWith('test-job', { requestId: 'req-1' });
   });
 
+  it('should not overwrite a domain tenantId already present on the job data', async () => {
+    // e.g. AuditWriteJobData/TenantStatusChangeJobData carry a tenantId
+    // that identifies the tenant the job is *about*, which is not
+    // necessarily the same tenant as the request's correlation context
+    // (a platform-admin action, for instance).
+    getRequestContext.mockReturnValueOnce({
+      requestId: 'req-1',
+      tenantId: 'context-tenant',
+    });
+    send.mockResolvedValue('job-789');
+
+    await service.publish('test-job', {
+      tenantId: 'domain-tenant',
+      foo: 'bar',
+    });
+
+    expect(send).toHaveBeenCalledWith('test-job', {
+      tenantId: 'domain-tenant',
+      foo: 'bar',
+      requestId: 'req-1',
+    });
+  });
+
   it('should schedule a recurring cron for a queue', async () => {
     await service.schedule('audit.partition-maintain', '0 3 * * *', {});
 
