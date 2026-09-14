@@ -107,12 +107,11 @@ const DEFAULT_SCOPES = [
 ];
 
 /**
- * The two scopes `getScopes()` always keeps in the allowlist, whatever an
- * operator configures. They are protocol scopes rather than API permissions:
- * the provider's role-scope hook leaves them on a user token as granted and
- * treats every other allowlisted scope as one the current role has to hold.
+ * OIDC protocol scopes `getScopes()` always keeps in the allowlist. The
+ * provider's role-scope hook leaves them on a user token as granted and treats
+ * every other allowlisted scope as an API scope the current role has to hold.
  */
-export const PROTOCOL_SCOPES = ['openid', 'offline_access'] as const;
+export const OIDC_PROTOCOL_SCOPES = ['openid', 'offline_access'] as const;
 
 const DEFAULT_GRANT_TYPES = ['client_credentials'];
 // Grants the provider is wired to serve today. `refresh_token` is included
@@ -286,7 +285,7 @@ export class OidcConfigService {
     const configured = this.getCsv('OIDC_SCOPES', DEFAULT_SCOPES);
 
     return [
-      ...PROTOCOL_SCOPES.filter((scope) => !configured.includes(scope)),
+      ...OIDC_PROTOCOL_SCOPES.filter((scope) => !configured.includes(scope)),
       ...configured,
     ];
   }

@@ -8,7 +8,7 @@ import { Repository } from 'typeorm';
 import { OidcAdapterFactory } from './adapters/oidc-adapter.factory';
 import { OidcModel } from './entities/oidc-model.entity';
 import type { OidcConfig } from './oidc-config.service';
-import { OidcConfigService, PROTOCOL_SCOPES } from './oidc-config.service';
+import { OidcConfigService, OIDC_PROTOCOL_SCOPES } from './oidc-config.service';
 import type { OidcJwks } from './oidc-keys.service';
 import { OidcKeysService } from './oidc-keys.service';
 import { OIDC_ROLE_SCOPE_PORT } from './ports/oidc-role-scope.port';
@@ -110,35 +110,17 @@ export interface UserScopeToken {
 }
 
 /**
- * Resolves the `scope` claim for a JWT access token about to be signed: the
- * non-API scopes oidc-provider granted (the protocol scopes, and any identity
- * scope the token was issued with), plus exactly the effective scopes of the
- * user's current role. Returns undefined when that leaves the claim as built,
- * and an empty string when nothing at all remains.
+ * The `scope` claim for a JWT access token about to be signed: the non-API
+ * scopes oidc-provider granted plus exactly the current role's scopes. The
+ * role is the upper limit, so a scope the Grant still carries is dropped once
+ * the role loses it and a demotion reaches the token at the next refresh.
  *
- * The role is the upper limit, not an addition. An API scope the Grant or the
- * refresh token still carries — from a login that asked for it, or from the
- * tokens a tenant switch mints — is copied onto every refreshed token before
- * this hook runs, so it is dropped here once the role no longer holds it. A
- * demotion therefore reaches the token as surely as a promotion.
- *
- * Why here and not on the Grant: a browser client asks for identity scopes
- * only, and oidc-provider intersects the Grant with what was requested at
- * every step (authorization code, token, refresh), so role scopes added to
- * the Grant never reach a token the client did not ask for. The JWT
- * customizer is the one hook that runs after the payload is built, and it
- * runs on every issuance — login, refresh, tenant switch — which is what lets
- * a role change reach the token at the next refresh without a new login.
- *
- * Only user tokens are touched. `tenant_role` and `tenant_id` are the claims
- * extraTokenClaims stamped moments earlier from the same tenant_user row, so
- * reading them (rather than looking the user up again) keeps the role and
- * scope claims from ever disagreeing. A user token with no such claims — none
- * are stamped for a user who is no longer active — keeps no API scope at all;
- * the provider already refuses to issue for such a user (`findAccount`), so
- * this only makes the invariant local to the hook. A client_credentials token
- * has no accountId, so it is left alone; no `kind` or client check is needed
- * on top of that.
+ * A JWT customizer rather than the Grant because oidc-provider intersects the
+ * Grant with the requested scopes at every step, and the SPA never requests
+ * API scopes. `tenant_role` / `tenant_id` come from the payload, where
+ * extraTokenClaims just stamped them from the same tenant_user row; a user
+ * token without them keeps no API scope. Machine tokens (no accountId) are
+ * left alone. Returns undefined when unchanged, '' when nothing remains.
  */
 export async function resolveUserAccessTokenScope(
   token: UserScopeToken,
@@ -154,10 +136,7 @@ export async function resolveUserAccessTokenScope(
     return undefined;
   }
 
-  // The claims were written from a tenant_user row's role in this same
-  // issuance, so the cast only restates what extraTokenClaims already knew.
-  // No claims means no active membership was resolved, and then nothing the
-  // grant still carries is trusted either.
+  // No membership claims stamped: trust nothing the grant carried.
   const roleScopes =
     typeof role === 'string' && typeof tenantId === 'string'
       ? await roleScopeService.findScopesForRole(
@@ -166,11 +145,9 @@ export async function resolveUserAccessTokenScope(
         )
       : [];
 
-  // Every scope a token carries is expected to be in the server-wide
-  // allowlist — client metadata and the resource server's scopes are both
-  // checked against it — so keep that true for scopes arriving via the role
-  // tables, which are validated against the catalog only.
-  const protocolScopes = new Set<string>(PROTOCOL_SCOPES);
+  // Role scopes are validated against the catalog only; keep the token within
+  // the server-wide allowlist like every other source.
+  const protocolScopes = new Set<string>(OIDC_PROTOCOL_SCOPES);
   const apiScopes = new Set(
     allowedScopes.filter((scope) => !protocolScopes.has(scope)),
   );
@@ -304,13 +281,9 @@ export function buildOidcConfiguration(
       return claims;
     },
     formats: {
-      // Deep-merged with oidc-provider's defaults, so the opaque-token entropy
-      // setting is untouched. `ctx` is the request's async-local store and is
-      // absent when a token is minted outside a provider request (the tenant
-      // switch), so the hook never reads it. Only the signed JWT carries the
-      // derived scopes: the stored token row and the token response's `scope`
-      // parameter still show what the client asked for, and neither is used
-      // for authorization — JwtGuard verifies the JWT itself.
+      // Deep-merged with the defaults. `ctx` is absent on the tenant-switch
+      // path, so the hook never reads it. Only the signed JWT carries the
+      // derived scopes; the stored row and token response keep the granted set.
       customizers: {
         jwt: async (_ctx, token, jwt) => {
           const scope = await resolveUserAccessTokenScope(
@@ -321,8 +294,8 @@ export function buildOidcConfiguration(
           );
 
           if (scope !== undefined) {
-            // Empty means every API scope was dropped: leave no claim rather
-            // than an empty one, which is also what oidc-provider itself does.
+            // Empty means every API scope was dropped: no claim, as the
+            // provider itself does.
             jwt.payload.scope = scope.length > 0 ? scope : undefined;
           }
 

@@ -422,19 +422,12 @@ describe('OIDC authorization_code grant (integration)', () => {
     return response.body as Record<string, unknown>;
   };
 
-  /**
-   * What the SPA itself asks for: identity scopes and nothing else. Any API
-   * scope on a token minted from this request can only have come from the
-   * provider deriving it from the user's role.
-   */
+  // What the SPA itself requests: any API scope on such a token came from
+  // the role.
   const IDENTITY_SCOPES = 'openid offline_access tenant';
 
-  /**
-   * Swaps the federated identity's role, in the client's tenant unless told
-   * otherwise. Login and every token after it read the row live, so this is
-   * how a test signs in as, or is moved to, another role without a second
-   * identity. Callers restore the fixture's role in a finally block.
-   */
+  // Changes the federated identity's role, in the client's tenant by default.
+  // Every issuance reads the row live; callers restore it in a finally block.
   const setFederatedUserRole = async (
     role: string,
     membershipTenantId: string = tenantId,
@@ -806,13 +799,8 @@ describe('OIDC authorization_code grant (integration)', () => {
     }
   });
 
-  /**
-   * The SPA asks for identity scopes only, so nothing it requests could put
-   * an API scope on its token. The provider derives those from the role as it
-   * signs the JWT; the token response's own `scope` still reports only what
-   * was requested, which is why the claim and the parameter are asserted
-   * separately.
-   */
+  // The SPA requests identity scopes only, so any API scope came from the
+  // role; the token response's own `scope` still reports what was requested.
   it("stamps an owner's role scopes on a token that requested identity scopes only", async () => {
     await setFederatedUserRole('owner');
 
@@ -863,11 +851,8 @@ describe('OIDC authorization_code grant (integration)', () => {
     }
   });
 
-  /**
-   * A refresh re-runs the derivation against the row as it is now, so a
-   * promotion reaches the token without a new login. The rotated refresh
-   * token is spent once more at the end to show the chain is intact.
-   */
+  // A refresh re-derives from the row as it is now; the rotated refresh token
+  // is spent once more to show the chain is intact.
   it('adds the scopes of a new role on refresh after a promotion', async () => {
     try {
       const tokenBody = await startPublicClientSession({
@@ -938,12 +923,8 @@ describe('OIDC authorization_code grant (integration)', () => {
     }
   });
 
-  /**
-   * The mirror image of the promotion case, and the one an add-only hook
-   * would miss: the Grant and refresh token still carry `credentials:verify`
-   * from a login that asked for it, and the provider copies it onto every
-   * refreshed token before the hook runs. The role has to be the limit.
-   */
+  // The Grant still carries `credentials:verify` from a login that asked for
+  // it, and a refresh copies it onto the new token before the hook runs.
   it('drops a granted API scope on refresh after a demotion', async () => {
     try {
       const tokenBody = await startPublicClientSession();
@@ -979,12 +960,8 @@ describe('OIDC authorization_code grant (integration)', () => {
     }
   });
 
-  /**
-   * A tenant switch mints a Grant and refresh token that hold the role's
-   * scopes outright, so this is where a stale privilege would otherwise live
-   * longest: an admin demoted in the switched-to tenant must lose those
-   * scopes at the next refresh, not when the refresh token expires.
-   */
+  // A tenant switch mints a Grant holding the role's scopes outright, so a
+  // demotion there must reach the next refresh, not the refresh token's expiry.
   it('drops the scopes of a switched tenant on refresh after a demotion there', async () => {
     const { code: authorizationCode, codeVerifier } =
       await completeAuthorizationCodeFlow(`rp-state-${randomUUID()}`);

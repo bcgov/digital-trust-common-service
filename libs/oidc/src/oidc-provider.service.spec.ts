@@ -585,7 +585,7 @@ describe('buildOidcConfiguration', () => {
       tenant_id: 'tenant-1',
     });
 
-    it("adds the current role's scopes to a token granted only protocol scopes", async () => {
+    it("adds the current role's scopes to a token granted only OIDC protocol scopes", async () => {
       findScopesForRole.mockResolvedValue(['tenants:admin']);
 
       const scope = await resolveUserAccessTokenScope(
@@ -651,7 +651,7 @@ describe('buildOidcConfiguration', () => {
       expect(scope).toBeUndefined();
     });
 
-    it('keeps the protocol scopes first and rebuilds the API scopes from the role', async () => {
+    it('keeps the OIDC protocol scopes first and rebuilds the API scopes from the role', async () => {
       findScopesForRole.mockResolvedValue([
         'credentials:offer',
         'credentials:verify',
