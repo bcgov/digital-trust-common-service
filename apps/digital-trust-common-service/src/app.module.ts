@@ -1,4 +1,5 @@
 import { AuthModule } from '@app/auth';
+import { RequestContextModule } from '@app/common/context/request-context.module';
 import { TenantSpanInterceptor } from '@app/common/telemetry/tenant-span.interceptor';
 import { DatabaseModule } from '@app/database';
 import {
@@ -69,6 +70,7 @@ import { VerificationProfileModule } from './verification-profile/verification-p
     IssuanceProfileModule,
     JobsModule,
     OAuthClientModule,
+    RequestContextModule,
     OidcModule.forRoot({
       imports: [
         OAuthClientModule,
