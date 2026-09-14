@@ -105,10 +105,7 @@ const DEFAULT_SCOPES = [
   'logs:read',
   'audit:read',
 ];
-const DEFAULT_GRANT_TYPES = ['client_credentials'];
-// Grants the provider is wired to serve today. `refresh_token` is included
-// because oidc-provider issues and consumes refresh tokens on its own, with
-// no account lookup involved — but note this only holds because
+
 /**
  * The two scopes `getScopes()` always keeps in the allowlist, whatever an
  * operator configures. They are protocol scopes rather than API permissions:
@@ -117,6 +114,10 @@ const DEFAULT_GRANT_TYPES = ['client_credentials'];
  */
 export const PROTOCOL_SCOPES = ['openid', 'offline_access'] as const;
 
+const DEFAULT_GRANT_TYPES = ['client_credentials'];
+// Grants the provider is wired to serve today. `refresh_token` is included
+// because oidc-provider issues and consumes refresh tokens on its own, with
+// no account lookup involved — but note this only holds because
 // `getScopes()` guarantees `offline_access` is in the scope allowlist, which
 // is what actually causes the library to register the grant.
 // `authorization_code` is serviceable as of AU-02: `findAccount` resolves

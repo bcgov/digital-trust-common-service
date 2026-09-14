@@ -623,17 +623,18 @@ describe('buildOidcConfiguration', () => {
       expect(findScopesForRole).not.toHaveBeenCalled();
     });
 
-    // extraTokenClaims stamps no claims for a user who is no longer active,
-    // and that absence is what keeps such a token free of role scopes too.
-    it('leaves the payload untouched when no tenant_role claim was stamped', async () => {
+    // extraTokenClaims stamps no claims for a user who is no longer active.
+    // The provider refuses to issue for such a user anyway (findAccount), but
+    // the hook does not lean on that: no membership, no API scope.
+    it('strips the API scopes when no membership claims were stamped', async () => {
       const scope = await resolveUserAccessTokenScope(
         userToken,
-        { scope: 'openid offline_access' },
+        { scope: 'openid offline_access credentials:verify' },
         roleScopeService,
         allowedScopes,
       );
 
-      expect(scope).toBeUndefined();
+      expect(scope).toBe('openid offline_access');
       expect(findScopesForRole).not.toHaveBeenCalled();
     });
 

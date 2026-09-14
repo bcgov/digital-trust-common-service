@@ -111,9 +111,10 @@ export interface UserScopeToken {
 
 /**
  * Resolves the `scope` claim for a JWT access token about to be signed: the
- * protocol scopes oidc-provider granted, plus exactly the effective scopes of
- * the user's current role. Returns undefined when that leaves the claim as
- * built, and an empty string when nothing at all remains.
+ * non-API scopes oidc-provider granted (the protocol scopes, and any identity
+ * scope the token was issued with), plus exactly the effective scopes of the
+ * user's current role. Returns undefined when that leaves the claim as built,
+ * and an empty string when nothing at all remains.
  *
  * The role is the upper limit, not an addition. An API scope the Grant or the
  * refresh token still carries — from a login that asked for it, or from the
@@ -132,10 +133,12 @@ export interface UserScopeToken {
  * Only user tokens are touched. `tenant_role` and `tenant_id` are the claims
  * extraTokenClaims stamped moments earlier from the same tenant_user row, so
  * reading them (rather than looking the user up again) keeps the role and
- * scope claims from ever disagreeing, and an inactive user — for whom no
- * claims were stamped — gets no scopes. A client_credentials token has no
- * accountId and no tenant_role, so it fails both checks; no `kind` or client
- * check is needed on top of that.
+ * scope claims from ever disagreeing. A user token with no such claims — none
+ * are stamped for a user who is no longer active — keeps no API scope at all;
+ * the provider already refuses to issue for such a user (`findAccount`), so
+ * this only makes the invariant local to the hook. A client_credentials token
+ * has no accountId, so it is left alone; no `kind` or client check is needed
+ * on top of that.
  */
 export async function resolveUserAccessTokenScope(
   token: UserScopeToken,
@@ -147,21 +150,21 @@ export async function resolveUserAccessTokenScope(
   const role = payload.tenant_role;
   const tenantId = payload.tenant_id;
 
-  if (
-    typeof accountId !== 'string' ||
-    accountId.length === 0 ||
-    typeof role !== 'string' ||
-    typeof tenantId !== 'string'
-  ) {
+  if (typeof accountId !== 'string' || accountId.length === 0) {
     return undefined;
   }
 
-  // The claim was written from a tenant_user row's role in this same
+  // The claims were written from a tenant_user row's role in this same
   // issuance, so the cast only restates what extraTokenClaims already knew.
-  const roleScopes = await roleScopeService.findScopesForRole(
-    role as OidcTenantUserRole,
-    tenantId,
-  );
+  // No claims means no active membership was resolved, and then nothing the
+  // grant still carries is trusted either.
+  const roleScopes =
+    typeof role === 'string' && typeof tenantId === 'string'
+      ? await roleScopeService.findScopesForRole(
+          role as OidcTenantUserRole,
+          tenantId,
+        )
+      : [];
 
   // Every scope a token carries is expected to be in the server-wide
   // allowlist — client metadata and the resource server's scopes are both
