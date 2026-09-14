@@ -785,9 +785,10 @@ Assigned scopes must be in the published catalog, present in `OIDC_SCOPES`, and 
 scopes from the role at every issuance — login, refresh, and
 `POST /api/v1/auth/switch-tenant` — by resolving `role_scope` (and the
 tenant's `tenant_role_scope` override) for the token's `tenant_role` and
-`tenant_id` as it signs the JWT, so a user JWT's API scopes are exactly those
-of the *current* role for the active tenant: a scope the Grant still holds from
-login or from a tenant switch is dropped once the role loses it, and only the
+`tenant_id` as it signs the JWT, so a user JWT's API scopes are exactly the
+`OIDC_SCOPES`-allowlisted scopes of the *current* role for the active tenant: a
+scope the Grant still holds from login or a tenant switch is dropped once the
+role loses it, and only the
 non-API scopes (`openid`, `offline_access`, and any identity scope the token
 was issued with) are kept as granted. The interaction handler also checks an
 API scope a client explicitly requests against the same mapping and rejects a

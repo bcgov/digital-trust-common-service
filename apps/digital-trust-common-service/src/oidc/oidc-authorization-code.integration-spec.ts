@@ -815,7 +815,9 @@ describe('OIDC authorization_code grant (integration)', () => {
       );
 
       expect(claims.tenant_role).toBe('owner');
-      expect(scopesOf(claims)).toContain('tenants:admin');
+      expect(scopesOf(claims)).toEqual(
+        expect.arrayContaining(['openid', 'offline_access', 'tenants:admin']),
+      );
       expect(scopesOf(tokenBody)).not.toContain('tenants:admin');
       expect(tokenBody.refresh_token).toEqual(expect.any(String));
     } finally {

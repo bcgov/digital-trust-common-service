@@ -45,6 +45,7 @@ export {
 } from './oidc-provider.service';
 export type {
   ClientExtraMetadata,
+  UserScopeRules,
   UserScopeToken,
 } from './oidc-provider.service';
 export { OidcMountService } from './oidc-mount.service';

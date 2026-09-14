@@ -578,6 +578,16 @@ describe('buildOidcConfiguration', () => {
       'credentials:offer',
       'credentials:verify',
     ];
+    const scopeRules = {
+      identityScopes: [
+        'openid',
+        'offline_access',
+        'profile',
+        'email',
+        'tenant',
+      ],
+      allowedScopes,
+    };
     const userToken = { accountId: 'user-id-123' };
     const ownerPayload = () => ({
       scope: 'openid offline_access',
@@ -592,7 +602,7 @@ describe('buildOidcConfiguration', () => {
         userToken,
         ownerPayload(),
         roleScopeService,
-        allowedScopes,
+        scopeRules,
       );
 
       expect(scope).toBe('openid offline_access tenants:admin');
@@ -605,7 +615,7 @@ describe('buildOidcConfiguration', () => {
         userToken,
         ownerPayload(),
         roleScopeService,
-        allowedScopes,
+        scopeRules,
       );
 
       expect(findScopesForRole).toHaveBeenCalledWith('owner', 'tenant-1');
@@ -616,7 +626,7 @@ describe('buildOidcConfiguration', () => {
         {},
         { scope: 'credentials:offer', tenant_id: 'tenant-1' },
         roleScopeService,
-        allowedScopes,
+        scopeRules,
       );
 
       expect(scope).toBeUndefined();
@@ -631,7 +641,7 @@ describe('buildOidcConfiguration', () => {
         userToken,
         { scope: 'openid offline_access credentials:verify' },
         roleScopeService,
-        allowedScopes,
+        scopeRules,
       );
 
       expect(scope).toBe('openid offline_access');
@@ -645,7 +655,7 @@ describe('buildOidcConfiguration', () => {
         userToken,
         { ...ownerPayload(), tenant_role: 'readonly' },
         roleScopeService,
-        allowedScopes,
+        scopeRules,
       );
 
       expect(scope).toBeUndefined();
@@ -661,7 +671,7 @@ describe('buildOidcConfiguration', () => {
         userToken,
         { ...ownerPayload(), scope: 'openid credentials:verify' },
         roleScopeService,
-        allowedScopes,
+        scopeRules,
       );
 
       expect(scope).toBe('openid credentials:offer credentials:verify');
@@ -680,7 +690,7 @@ describe('buildOidcConfiguration', () => {
           scope: 'openid offline_access credentials:verify',
         },
         roleScopeService,
-        allowedScopes,
+        scopeRules,
       );
 
       expect(scope).toBe('openid offline_access');
@@ -695,7 +705,7 @@ describe('buildOidcConfiguration', () => {
         userToken,
         { ...ownerPayload(), tenant_role: 'readonly', scope: 'tenants:admin' },
         roleScopeService,
-        allowedScopes,
+        scopeRules,
       );
 
       expect(scope).toBe('');
@@ -708,10 +718,42 @@ describe('buildOidcConfiguration', () => {
         userToken,
         ownerPayload(),
         roleScopeService,
-        allowedScopes,
+        scopeRules,
       );
 
       expect(scope).toBe('openid offline_access tenants:admin');
+    });
+
+    // Neither an identity scope nor held by the role: dropped, whatever the
+    // deployment allowlist says about it.
+    it('drops a granted scope that is neither identity nor held by the role', async () => {
+      findScopesForRole.mockResolvedValue(['tenants:admin']);
+
+      const scope = await resolveUserAccessTokenScope(
+        userToken,
+        { ...ownerPayload(), scope: 'openid stale:scope' },
+        roleScopeService,
+        scopeRules,
+      );
+
+      expect(scope).toBe('openid tenants:admin');
+    });
+
+    it('keeps granted identity scopes as they are', async () => {
+      findScopesForRole.mockResolvedValue([]);
+
+      const scope = await resolveUserAccessTokenScope(
+        userToken,
+        {
+          ...ownerPayload(),
+          tenant_role: 'readonly',
+          scope: 'openid profile email tenant offline_access',
+        },
+        roleScopeService,
+        scopeRules,
+      );
+
+      expect(scope).toBeUndefined();
     });
 
     it('wires the resolver into formats.customizers.jwt and mutates the payload', async () => {

@@ -109,11 +109,19 @@ export interface UserScopeToken {
   accountId?: string;
 }
 
+/** What the hook keeps from the grant, and what it may add from the role. */
+export interface UserScopeRules {
+  /** OIDC protocol and claims scopes, kept on the token as granted. */
+  identityScopes: readonly string[];
+  /** The server-wide allowlist role scopes are filtered through. */
+  allowedScopes: readonly string[];
+}
+
 /**
- * The `scope` claim for a JWT access token about to be signed: the non-API
- * scopes oidc-provider granted plus exactly the current role's scopes. The
- * role is the upper limit, so a scope the Grant still carries is dropped once
- * the role loses it and a demotion reaches the token at the next refresh.
+ * The `scope` claim for a JWT access token about to be signed: the identity
+ * scopes oidc-provider granted plus the allowlisted scopes of the current
+ * role. The role is the upper limit, so any other granted scope is dropped
+ * and a demotion reaches the token at the next refresh.
  *
  * A JWT customizer rather than the Grant because oidc-provider intersects the
  * Grant with the requested scopes at every step, and the SPA never requests
@@ -126,7 +134,7 @@ export async function resolveUserAccessTokenScope(
   token: UserScopeToken,
   payload: Record<string, unknown>,
   roleScopeService: OidcRoleScopePort,
-  allowedScopes: readonly string[],
+  rules: UserScopeRules,
 ): Promise<string | undefined> {
   const { accountId } = token;
   const role = payload.tenant_role;
@@ -145,19 +153,16 @@ export async function resolveUserAccessTokenScope(
         )
       : [];
 
-  // Role scopes are validated against the catalog only; keep the token within
-  // the server-wide allowlist like every other source.
-  const protocolScopes = new Set<string>(OIDC_PROTOCOL_SCOPES);
-  const apiScopes = new Set(
-    allowedScopes.filter((scope) => !protocolScopes.has(scope)),
-  );
+  // Role scopes are validated against the catalog only, hence the allowlist.
+  const identity = new Set(rules.identityScopes);
+  const allowed = new Set(rules.allowedScopes);
   const granted =
     typeof payload.scope === 'string'
       ? payload.scope.split(/\s+/).filter(Boolean)
       : [];
   const scopes = new Set([
-    ...granted.filter((scope) => !apiScopes.has(scope)),
-    ...roleScopes.filter((scope) => apiScopes.has(scope)),
+    ...granted.filter((scope) => identity.has(scope)),
+    ...roleScopes.filter((scope) => allowed.has(scope)),
   ]);
   const unchanged =
     scopes.size === granted.length &&
@@ -218,6 +223,17 @@ export function buildOidcConfiguration(
   tenantUserService: OidcTenantUserPort,
   roleScopeService: OidcRoleScopePort,
 ): Configuration {
+  const claims = {
+    openid: ['sub'],
+    profile: ['name'],
+    email: ['email'],
+    tenant: ['tenant_id', 'tenant_role'],
+  };
+  const scopeRules: UserScopeRules = {
+    identityScopes: [...OIDC_PROTOCOL_SCOPES, ...Object.keys(claims)],
+    allowedScopes: config.scopes,
+  };
+
   return {
     adapter: adapterFactory.forModel,
     jwks,
@@ -229,12 +245,7 @@ export function buildOidcConfiguration(
       // will also apply to AU-02's (#35) authorization_code clients.
       required: () => true,
     },
-    claims: {
-      openid: ['sub'],
-      profile: ['name'],
-      email: ['email'],
-      tenant: ['tenant_id', 'tenant_role'],
-    },
+    claims,
     scopes: config.scopes,
     extraClientMetadata: {
       properties: [
@@ -290,7 +301,7 @@ export function buildOidcConfiguration(
             token as UserScopeToken,
             jwt.payload,
             roleScopeService,
-            config.scopes,
+            scopeRules,
           );
 
           if (scope !== undefined) {
