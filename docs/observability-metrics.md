@@ -5,6 +5,12 @@ exports today. It exists so a later ticket that wants to add a metric, or a
 label to an existing one, has a number and a rule to be judged against instead
 of a feeling.
 
+Figures here are verified against both the local `otel-lgtm` stack and the
+deployed Alloy/Mimir path in `4a9599-dev`. The two label metrics differently,
+so a query valid in one returns nothing in the other — see
+[Resource attributes differ between local and deployed](#resource-attributes-differ-between-local-and-deployed)
+before writing one.
+
 **No instruments are defined in application code.** Every metric below comes
 from OpenTelemetry auto-instrumentation (`@opentelemetry/auto-instrumentations-node`,
 which bundles `instrumentation-http`, `instrumentation-pg`, and
@@ -57,20 +63,52 @@ instrumentation package that emits it.
 | `v8js_memory_heap_space_physical_size_bytes` | `v8js.memory.heap.space.physical_size` | UpDownCounter | `v8js_heap_space_name` (11) |
 | `v8js_resource_active` | `v8js.resource.active` | Gauge | `v8js_resource_type` (fixed set of libuv handle types, e.g. `TCPSocketWrap`, `Timeout`) |
 
-Every series above also carries a small fixed set of resource attributes —
-`service_name`, `deployment_environment_name` and `host_name` — the same
-values on every series from one process, so they don't multiply cardinality
-per request. The rest of the resource (`host_id`, `host_arch`, `process_*`,
-`telemetry_sdk_*`) is not copied onto each metric: the Prometheus OTLP
-receiver puts it on a single `target_info` series and you join it in at
-query time. That keeps the per-series label set small, and it means a query
-filtering on, say, `process_pid` needs that join rather than a plain
-selector.
+### Resource attributes differ between local and deployed
 
-`host_name` is worth knowing about specifically: on OpenShift it's the pod
-name, so it changes on every restart or rollout. That's expected Prometheus
-churn, not a per-tenant leak, but it means historical queries across a
-deployment need to aggregate away `host_name` rather than pin to it.
+**How the resource reaches Prometheus depends on which collector is in front
+of it, and the two we run do it differently.** This changes what you can put
+in a selector, so it is worth reading before writing a query.
+
+Deployed, a series carries its identity in `job` and nothing else from the
+resource:
+
+```text
+http_server_request_duration_seconds_count{
+  job="digital-trust-common-service",
+  http_route="/health/live", http_request_method="GET",
+  http_response_status_code="200",
+  network_protocol_version="1.1", url_scheme="http"
+}
+```
+
+Alloy's `otelcol.exporter.prometheus` maps `service.name` onto `job` and puts
+the entire rest of the resource — `deployment_environment_name`, `host_name`,
+`host_arch`, `process_*`, `telemetry_sdk_*`, `service_version` — on a single
+`target_info` series that you join in at query time. There is **no
+`service_name` label deployed at all**.
+
+Locally, the `grafana/otel-lgtm` image's embedded collector promotes resource
+attributes onto every series instead, so `service_name`,
+`deployment_environment_name` and `host_name` are all directly selectable
+there.
+
+Neither is a misconfiguration and we own neither behaviour. Do not "fix" the
+deployed side by turning on resource-to-telemetry conversion in Alloy: that
+copies *every* resource attribute onto *every* series, including
+`process_command_args` and `process_executable_path`, which is exactly the
+per-series label bloat the `target_info` split exists to avoid.
+
+Practical consequences:
+
+- **Filter on `job` deployed, `service_name` locally.** A query written
+  against one returns nothing at all against the other — silently, since an
+  empty result looks identical to "no traffic".
+- `host_name` is on `target_info` deployed, so pod-name churn across restarts
+  does **not** create new series per rollout. Locally it is a per-series
+  label, and there it does.
+- Anything filtering on `deployment_environment_name` or `process_pid` needs a
+  `target_info` join deployed. In practice environments are already separated
+  by writing to different backends, so the join is rarely what you want.
 
 ## Series-count estimate
 
@@ -100,6 +138,44 @@ None of this is unbounded: the only user-influenced input is which of the 58
 route templates and which statement verbs get exercised, both fixed sets
 enumerable from the codebase — not from request content.
 
+### Verified against the deployed backend
+
+Measured in Mimir against `4a9599-dev`, with the dev pod exporting through
+Alloy under light traffic:
+
+| | series |
+| --- | --- |
+| total, one instance (`{job="digital-trust-common-service"}`) | 297 |
+| runtime (`nodejs_*`, `v8js_*`) | 117 |
+| `http_server_*` | 51 (3 route/method/status combinations x 17 rows) |
+
+The per-process runtime estimate above (109) is close but slightly low —
+`v8js_resource_active` reports more libuv handle types in the deployed pod
+than the four seen locally. The budgeting model holds; only the label set
+described in the previous section was wrong.
+
+### Preview environments multiply the whole set
+
+Each PR preview deploys with its own `OTEL_SERVICE_NAME`, so it becomes its
+own `job` and carries a **complete** copy of the catalog above. Observed with
+two previews live alongside dev:
+
+```text
+297  job=digital-trust-common-service
+322  job=pr-398-digital-trust-common-service
+322  job=pr-401-digital-trust-common-service
+---
+941  total
+```
+
+So the deployed cost is roughly `300 x (1 + open previews)` per environment,
+not 300. This is the dominant growth term in dev by a wide margin — larger
+than any single metric's dimensions — and it is invisible from the local
+stack, which only ever runs one instance. Previews are short-lived and their
+series go stale when the pods are removed, so this is a churn and
+active-series consideration rather than unbounded growth, but a preview-heavy
+week costs multiples of the steady-state figure.
+
 ## Findings
 
 Verifying against a running stack surfaced items the original spec's
@@ -127,7 +203,9 @@ starting list didn't anticipate. Recorded here so they aren't rediscovered:
    inflates the effective `db_operation_name` cardinality by half again
    without adding any real information; it's a data-quality wrinkle worth being aware of when
    reading the dashboard, not a fix this ticket makes (no code changes —
-   see Non-goals).
+   see Non-goals). **Confirmed deployed**: the same nine values for six real
+   verbs appear in Mimir, so this is a property of the instrumentation and the
+   SQL we write, not of the local stack.
 3. **Unmatched routes have no `http_route` label at all**, rather than a
    placeholder value. A request to a path with no matching controller (a
    404) is grouped only by method and status, with `http_route` absent from
@@ -143,7 +221,39 @@ starting list didn't anticipate. Recorded here so they aren't rediscovered:
    several), but means per-endpoint OIDC latency isn't visible from this
    metric alone.
 
-## OTLP export confirmed from environment alone
+## OTLP export confirmed end to end
+
+Deployed, the full path is exercised: the app exports over OTLP to the
+namespace's Alloy, which forwards metrics to Mimir via
+`prometheus.remote_write` and traces to Tempo. Confirmed on 2026-09-14 against
+`4a9599-dev`, with Alloy reporting accepted OTLP metric points and spans and no
+refusals, and every metric in the catalog above queryable in Mimir under
+`job="digital-trust-common-service"`.
+
+Reaching the collector at all required two NetworkPolicy fixes in the platform
+GitOps repository — Alloy had no ingress policy for its OTLP receivers, and
+Tempo's dev and test policies had never rendered. See #324. Neither is a change
+this repository makes, but a future environment reporting no telemetry should
+rule them out before suspecting the application.
+
+To reproduce against the deployed backend, querying Mimir through the
+`metrics-dev` Grafana datasource:
+
+```promql
+# every metric exported by this service, with its series count
+count by (__name__) ({job="digital-trust-common-service"})
+
+# total active series for one instance
+count({job="digital-trust-common-service"})
+
+# every instance reporting, dev and any live PR previews
+count by (job) ({job=~".*digital-trust-common-service.*"})
+
+# resource attributes, which live here rather than on each series
+target_info{job="digital-trust-common-service"}
+```
+
+## OTLP export confirmed from environment alone (local)
 
 No code change was needed. `OTEL_METRICS_EXPORTER=otlp` and
 `OTEL_EXPORTER_OTLP_ENDPOINT` (both in `.env.example`, both already read by
@@ -179,3 +289,16 @@ delay in its "Runtime & pipeline health" row; its panel queries were the
 starting point for the catalog above and still resolve against the names
 documented here. See [Local Observability Stack](./DEVELOPER.md#local-observability-stack)
 for how to start the stack and confirm metrics locally.
+
+**That dashboard is local-only, and deliberately so.** Its panels filter on
+`service_name`, which does not exist in the deployed backend, so importing it
+against `metrics-dev` renders every panel empty. The deployed equivalent is
+provisioned separately into the shared Grafana's "Services" folder from the
+platform GitOps repository, with the same panels rewritten against `job`.
+
+The two cannot currently be one file. Merging them would mean either a query
+form valid in both — there isn't one, since the label differs rather than the
+value — or promoting resource attributes in Alloy, which costs the per-series
+label bloat described above. Keeping two, each correct for its backend, is the
+cheaper trade; this section exists so the divergence is found here rather than
+in an empty dashboard.
