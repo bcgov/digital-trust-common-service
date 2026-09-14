@@ -1,4 +1,3 @@
-import { ConfigService } from '@nestjs/config';
 import { LoggerOptions } from 'typeorm';
 
 /**
@@ -34,12 +33,14 @@ function isLogLevel(value: string): value is LogLevel {
  * statements and migrations — without the per-query flood. `true` and `false`
  * keep working as before.
  *
+ * Takes the raw value rather than a ConfigService so the migration CLI's
+ * DataSource, which reads `process.env` directly, can share it — the same shape
+ * as `buildSslConfig`.
+ *
  * @throws if a named level is not one TypeORM understands, rather than silently
  * dropping it and leaving an operator to wonder why nothing is logged.
  */
-export function parseDbLogging(config: ConfigService): LoggerOptions {
-  const raw = config.get<string>('DB_LOGGING');
-
+export function parseDbLogging(raw: string | undefined): LoggerOptions {
   if (raw === undefined || raw.trim() === '' || raw.trim() === 'false') {
     return false;
   }
@@ -60,7 +61,7 @@ export function parseDbLogging(config: ConfigService): LoggerOptions {
   if (unknown.length > 0) {
     throw new Error(
       `DB_LOGGING contains unknown level(s) ${unknown.join(', ')}. ` +
-        `Use "true", "false", or a comma-separated list of: ${LOG_LEVELS.join(', ')}.`,
+        `Use "true", "false", "all", or a comma-separated list of: ${LOG_LEVELS.join(', ')}.`,
     );
   }
 

@@ -49,7 +49,7 @@ function buildPoolConfig(config: ConfigService): {
         autoLoadEntities: true,
         synchronize: false,
         migrationsRun: false,
-        logging: parseDbLogging(config),
+        logging: parseDbLogging(config.get<string>('DB_LOGGING')),
         // Bound the node-postgres pool explicitly (driver default is 10).
         // This is not a pod's whole connection budget: pg-boss opens a second,
         // independent pool of its own (PGBOSS_POOL_MAX, see PgBossService), so
