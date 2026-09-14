@@ -241,8 +241,10 @@ starting list didn't anticipate. Recorded here so they aren't rediscovered:
    without adding any real information; it's a data-quality wrinkle worth being aware of when
    reading the dashboard, not a fix this ticket makes (no code changes —
    see Non-goals). **Confirmed deployed**: the same nine values for six real
-   verbs appear in Mimir, so this is a property of the instrumentation and the
-   SQL we write, not of the local stack.
+   verbs appear in Mimir. The SQL is not ours to reformat either — most of it
+   comes from pg-boss, whose `dist/plans.js` is written this way throughout,
+   including the `BEGIN;` one. A metrics View now normalizes the attribute at
+   the SDK instead; see `libs/common/src/telemetry/db-operation-name.ts`.
 3. **Unmatched routes have no `http_route` label at all**, rather than a
    placeholder value. A request to a path with no matching controller (a
    404) is grouped only by method and status, with `http_route` absent from
