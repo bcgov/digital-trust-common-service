@@ -62,6 +62,11 @@ and this chart adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.h
   collector rather than leaving it untested until a release. PR deploys report
   a per-PR `OTEL_SERVICE_NAME` (injected by `pr-deploy.yml`), since previews
   share a namespace and a `NODE_ENV` with dev.
+- `networkPolicy.collector` is now implied by `otel.enabled`, so turning OTel on
+  cannot leave the exporter blocked. The database and Keycloak rules already
+  isolate the pods' egress, and a missing collector rule dropped every span and
+  metric with no error anywhere. This mirrors how `dnsEgress` is derived from
+  the other egress rules for the same reason.
 
 ### Fixed
 
