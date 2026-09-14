@@ -258,6 +258,16 @@ export class TractionAdapter implements AgentAdapter, OnModuleInit {
         headers: { Authorization: `Bearer ${token}` },
       });
     } catch (error) {
+      // A connection Traction no longer knows about (already deleted there
+      // directly, or by a previous delete attempt that failed after the
+      // connector-side call succeeded) is already the caller's desired end
+      // state, not a failure — treat it the same as a successful delete so
+      // ConnectionService.delete() can still remove its local row instead of
+      // being permanently stuck on a connection it can never clear.
+      if (axios.isAxiosError(error) && error.response?.status === 404) {
+        return;
+      }
+
       throw this.mapHttpError(error, context);
     }
   }
