@@ -110,6 +110,13 @@ export class JobsService implements ShutdownParticipant, OnModuleInit {
    * the request that enqueued it. Jobs enqueued outside a
    * request (cron schedules, startup tasks) have no active context, so
    * `data` passes through unchanged.
+   *
+   * Never overwrites a `requestId`/`tenantId` the caller already set —
+   * several job data shapes (e.g. `AuditWriteJobData`,
+   * `TenantStatusChangeJobData`) carry a domain `tenantId` that identifies
+   * the tenant the job is about, which is not necessarily the same tenant
+   * as the request's correlation context (e.g. a platform-admin action).
+   * Clobbering it here would misattribute the job.
    */
   private withRequestContext(data: object | null): object | null {
     const context = this.requestContext.get();
@@ -117,10 +124,14 @@ export class JobsService implements ShutdownParticipant, OnModuleInit {
       return data;
     }
 
+    const base = (data ?? {}) as Record<string, unknown>;
+
     return {
-      ...data,
-      requestId: context.requestId,
-      ...(context.tenantId ? { tenantId: context.tenantId } : {}),
+      ...(context.tenantId && !('tenantId' in base)
+        ? { tenantId: context.tenantId }
+        : {}),
+      ...('requestId' in base ? {} : { requestId: context.requestId }),
+      ...base,
     };
   }
 
