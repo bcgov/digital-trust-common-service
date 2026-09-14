@@ -216,3 +216,69 @@ tests:
     asserts:
       - hasDocuments:
           count: 0
+
+  # Regression guard: the database and Keycloak egress rules isolate the pods'
+  # egress, so enabling OTel without also enabling this rule silently blocked the
+  # exporter. The rule is now derived from otel.enabled, the same way dnsEgress is
+  # derived from the other egress rules.
+  - it: renders the collector egress policy when OTel is enabled without the explicit switch
+    templates:
+      - templates/networkpolicy.yaml
+    set:
+      upstreamFederation:
+        existingSecret:
+          name: dtsc-ci-oidc-client
+      frontend:
+        enabled: false
+      otel:
+        enabled: true
+        endpoint: http://example:4318
+      networkPolicy:
+        ingress:
+          enabled: false
+        database:
+          enabled: false
+        dnsEgress:
+          enabled: false
+        collector:
+          enabled: false
+    asserts:
+      - hasDocuments:
+          count: 1
+      - isKind:
+          of: NetworkPolicy
+      - equal:
+          path: metadata.name
+          value: RELEASE-NAME-digital-trust-common-service-egress-collector
+      - equal:
+          path: spec.egress[0].ports[0].port
+          value: 4318
+
+  - it: renders the DNS egress policy when OTel alone pulls in the collector rule
+    templates:
+      - templates/networkpolicy.yaml
+    set:
+      upstreamFederation:
+        existingSecret:
+          name: dtsc-ci-oidc-client
+      frontend:
+        enabled: false
+      otel:
+        enabled: true
+        endpoint: http://example:4318
+      networkPolicy:
+        ingress:
+          enabled: false
+        database:
+          enabled: false
+        keycloak:
+          enabled: false
+        collector:
+          enabled: false
+    asserts:
+      - hasDocuments:
+          count: 2
+      - equal:
+          path: metadata.name
+          value: RELEASE-NAME-digital-trust-common-service-egress-dns
+        documentIndex: 1
