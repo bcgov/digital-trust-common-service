@@ -231,7 +231,7 @@ Generate the JWKS payload with `npm run oidc:generate-keys > oidc-keys.json`, th
 | migrations.waitForDB | object | `{"enabled":false,"image":"busybox","tag":"1.36","timeoutSeconds":60}` | Optional init container that blocks the migration until the database (DB_HOST:DB_PORT from the app config) is reachable |
 | migrations.waitForDB.timeoutSeconds | int | `60` | Maximum seconds to wait for the database before failing with a clear error |
 | nameOverride | string | `""` | Override the chart name |
-| networkPolicy.collector.enabled | bool | `false` | Allow API/Worker egress to the OTLP collector |
+| networkPolicy.collector.enabled | bool | `false` | Allow API/Worker egress to the OTLP collector. Implied by `otel.enabled`: the database and Keycloak rules already isolate the pods' egress, so without this rule the SDK's exporter is blocked and telemetry is dropped with no error. Rendered whenever either this or `otel.enabled` is true, the same way `dnsEgress` is derived from the other egress rules. |
 | networkPolicy.collector.namespaceSelector | object | `{}` | Namespace selector matching the collector's namespace |
 | networkPolicy.collector.podSelector | object | `{}` | Pod selector matching the collector pods. When both podSelector and namespaceSelector are empty, egress is allowed to any destination on the collector port, the same as the database and Keycloak rules. Set these in per-env values. |
 | networkPolicy.collector.port | int | `4318` | Collector port, matching `otel.protocol`'s default (http/protobuf on 4318) |

@@ -134,7 +134,7 @@ spec:
         - protocol: TCP
           port: {{ .Values.networkPolicy.keycloak.port }}
 {{- end }}
-{{- if .Values.networkPolicy.collector.enabled }}
+{{- if or .Values.networkPolicy.collector.enabled .Values.otel.enabled }}
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -178,7 +178,7 @@ spec:
         - protocol: TCP
           port: {{ .Values.networkPolicy.collector.port }}
 {{- end }}
-{{- if and .Values.networkPolicy.dnsEgress.enabled (or .Values.networkPolicy.database.enabled .Values.networkPolicy.keycloak.enabled .Values.networkPolicy.collector.enabled) }}
+{{- if and .Values.networkPolicy.dnsEgress.enabled (or .Values.networkPolicy.database.enabled .Values.networkPolicy.keycloak.enabled .Values.networkPolicy.collector.enabled .Values.otel.enabled) }}
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy

@@ -532,7 +532,11 @@ networkPolicy:
     # -- Pod selector matching the Keycloak pods
     podSelector: {}
   collector:
-    # -- Allow API/Worker egress to the OTLP collector
+    # -- Allow API/Worker egress to the OTLP collector. Implied by `otel.enabled`:
+    # the database and Keycloak rules already isolate the pods' egress, so without
+    # this rule the SDK's exporter is blocked and telemetry is dropped with no
+    # error. Rendered whenever either this or `otel.enabled` is true, the same way
+    # `dnsEgress` is derived from the other egress rules.
     enabled: false
     # -- Collector port, matching `otel.protocol`'s default (http/protobuf on 4318)
     port: 4318
