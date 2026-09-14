@@ -585,7 +585,7 @@ describe('buildOidcConfiguration', () => {
       tenant_id: 'tenant-1',
     });
 
-    it('unions the role scopes into the scope claim of a user token', async () => {
+    it("adds the current role's scopes to a token granted only protocol scopes", async () => {
       findScopesForRole.mockResolvedValue(['tenants:admin']);
 
       const scope = await resolveUserAccessTokenScope(
@@ -650,7 +650,7 @@ describe('buildOidcConfiguration', () => {
       expect(scope).toBeUndefined();
     });
 
-    it('keeps existing scopes first and drops duplicates', async () => {
+    it('keeps the protocol scopes first and rebuilds the API scopes from the role', async () => {
       findScopesForRole.mockResolvedValue([
         'credentials:offer',
         'credentials:verify',
@@ -663,7 +663,41 @@ describe('buildOidcConfiguration', () => {
         allowedScopes,
       );
 
-      expect(scope).toBe('openid credentials:verify credentials:offer');
+      expect(scope).toBe('openid credentials:offer credentials:verify');
+    });
+
+    // The role is the upper limit: a scope the Grant still carries from a
+    // login that asked for it goes once the role no longer holds it.
+    it('drops a granted API scope the current role no longer holds', async () => {
+      findScopesForRole.mockResolvedValue([]);
+
+      const scope = await resolveUserAccessTokenScope(
+        userToken,
+        {
+          ...ownerPayload(),
+          tenant_role: 'readonly',
+          scope: 'openid offline_access credentials:verify',
+        },
+        roleScopeService,
+        allowedScopes,
+      );
+
+      expect(scope).toBe('openid offline_access');
+    });
+
+    // A tenant switch mints tokens whose scope is the role's scopes alone, so
+    // a demotion there can leave nothing at all.
+    it('returns an empty scope when only API scopes were granted and the role holds none', async () => {
+      findScopesForRole.mockResolvedValue([]);
+
+      const scope = await resolveUserAccessTokenScope(
+        userToken,
+        { ...ownerPayload(), tenant_role: 'readonly', scope: 'tenants:admin' },
+        roleScopeService,
+        allowedScopes,
+      );
+
+      expect(scope).toBe('');
     });
 
     it('drops role scopes outside the server-wide allowlist', async () => {
@@ -698,6 +732,32 @@ describe('buildOidcConfiguration', () => {
 
       expect(parts.payload.scope).toBe('openid offline_access tenants:admin');
       expect(result).toBe(parts);
+    });
+
+    it('removes the scope claim through the hook when nothing remains', async () => {
+      findScopesForRole.mockResolvedValue([]);
+      const configuration = buildOidcConfiguration(
+        { ...config, scopes: allowedScopes },
+        jwks,
+        adapterFactory,
+        tenantUserService,
+        roleScopeService,
+      );
+      const parts = {
+        payload: {
+          ...ownerPayload(),
+          tenant_role: 'readonly',
+          scope: 'tenants:admin',
+        },
+      };
+
+      await configuration.formats?.customizers?.jwt?.(
+        {} as never,
+        userToken as never,
+        parts,
+      );
+
+      expect(parts.payload.scope).toBeUndefined();
     });
   });
 

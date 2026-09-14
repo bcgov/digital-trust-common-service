@@ -430,16 +430,19 @@ describe('OIDC authorization_code grant (integration)', () => {
   const IDENTITY_SCOPES = 'openid offline_access tenant';
 
   /**
-   * Swaps the federated identity's role in the client's tenant. Login and
-   * every token after it read the row live, so this is how a test signs in
-   * as, or is promoted to, another role without a second identity. Callers
-   * restore 'member' in a finally block, as the fixture expects.
+   * Swaps the federated identity's role, in the client's tenant unless told
+   * otherwise. Login and every token after it read the row live, so this is
+   * how a test signs in as, or is moved to, another role without a second
+   * identity. Callers restore the fixture's role in a finally block.
    */
-  const setFederatedUserRole = async (role: string) => {
+  const setFederatedUserRole = async (
+    role: string,
+    membershipTenantId: string = tenantId,
+  ) => {
     await dataSource.query(
       `UPDATE tenant_user SET role = $1::tenant_user_role
         WHERE tenant_id = $2 AND external_user_id = $3`,
-      [role, tenantId, federatedExternalUserId],
+      [role, membershipTenantId, federatedExternalUserId],
     );
   };
 
@@ -865,7 +868,7 @@ describe('OIDC authorization_code grant (integration)', () => {
    * promotion reaches the token without a new login. The rotated refresh
    * token is spent once more at the end to show the chain is intact.
    */
-  it('re-derives role scopes from the current role on refresh', async () => {
+  it('adds the scopes of a new role on refresh after a promotion', async () => {
     try {
       const tokenBody = await startPublicClientSession({
         scope: IDENTITY_SCOPES,
@@ -932,6 +935,118 @@ describe('OIDC authorization_code grant (integration)', () => {
         `DELETE FROM tenant_role_scope WHERE tenant_id = $1`,
         [tenantId],
       );
+    }
+  });
+
+  /**
+   * The mirror image of the promotion case, and the one an add-only hook
+   * would miss: the Grant and refresh token still carry `credentials:verify`
+   * from a login that asked for it, and the provider copies it onto every
+   * refreshed token before the hook runs. The role has to be the limit.
+   */
+  it('drops a granted API scope on refresh after a demotion', async () => {
+    try {
+      const tokenBody = await startPublicClientSession();
+      const loginScopes = scopesOf(
+        await verifyTokenAgainstJwks(
+          app.getHttpServer(),
+          tokenBody.access_token as string,
+        ),
+      );
+
+      expect(loginScopes).toContain('credentials:verify');
+
+      await setFederatedUserRole('readonly');
+
+      const refreshResponse = await refreshWithoutClientAuth(
+        publicClientId,
+        tokenBody.refresh_token as string,
+      ).expect(200);
+      const refreshedClaims = await verifyTokenAgainstJwks(
+        app.getHttpServer(),
+        (refreshResponse.body as Record<string, unknown>)
+          .access_token as string,
+      );
+
+      expect(refreshedClaims.tenant_role).toBe('readonly');
+      expect(
+        scopesOf(refreshedClaims).filter((scope) =>
+          (ASSIGNABLE_OAUTH_CLIENT_SCOPES as readonly string[]).includes(scope),
+        ),
+      ).toEqual([]);
+    } finally {
+      await setFederatedUserRole('member');
+    }
+  });
+
+  /**
+   * A tenant switch mints a Grant and refresh token that hold the role's
+   * scopes outright, so this is where a stale privilege would otherwise live
+   * longest: an admin demoted in the switched-to tenant must lose those
+   * scopes at the next refresh, not when the refresh token expires.
+   */
+  it('drops the scopes of a switched tenant on refresh after a demotion there', async () => {
+    const { code: authorizationCode, codeVerifier } =
+      await completeAuthorizationCodeFlow(`rp-state-${randomUUID()}`);
+
+    const tokenResponse = await request(app.getHttpServer())
+      .post('/oidc/token')
+      .set('Authorization', buildBasicAuthHeader(clientId, clientSecret))
+      .type('form')
+      .send({
+        grant_type: 'authorization_code',
+        code: authorizationCode,
+        redirect_uri: redirectUri,
+        code_verifier: codeVerifier,
+      })
+      .expect(200);
+    const loginToken = (tokenResponse.body as { access_token: string })
+      .access_token;
+
+    const switchResponse = await request(app.getHttpServer())
+      .post(`${API_BASE_PATH}/auth/switch-tenant`)
+      .set('Authorization', `Bearer ${loginToken}`)
+      .send({ tenant_id: secondTenantId })
+      .expect(200);
+    const switched = switchResponse.body as {
+      access_token: string;
+      refresh_token: string;
+    };
+    const switchedClaims = await verifyTokenAgainstJwks(
+      app.getHttpServer(),
+      switched.access_token,
+      process.env.OIDC_ISSUER,
+    );
+
+    expect(scopesOf(switchedClaims)).toContain('users:manage');
+
+    try {
+      await setFederatedUserRole('readonly', secondTenantId);
+
+      const refreshResponse = await request(app.getHttpServer())
+        .post('/oidc/token')
+        .set('Authorization', buildBasicAuthHeader(clientId, clientSecret))
+        .type('form')
+        .send({
+          grant_type: 'refresh_token',
+          refresh_token: switched.refresh_token,
+        })
+        .expect(200);
+      const refreshedClaims = await verifyTokenAgainstJwks(
+        app.getHttpServer(),
+        (refreshResponse.body as { access_token: string }).access_token,
+        process.env.OIDC_ISSUER,
+      );
+
+      expect(refreshedClaims.tenant_id).toBe(secondTenantId);
+      expect(refreshedClaims.tenant_role).toBe('readonly');
+      expect(
+        scopesOf(refreshedClaims).filter((scope) =>
+          (ASSIGNABLE_OAUTH_CLIENT_SCOPES as readonly string[]).includes(scope),
+        ),
+      ).toEqual([]);
+    } finally {
+      await setFederatedUserRole('admin', secondTenantId);
     }
   });
 

@@ -402,9 +402,10 @@ Two constraints worth knowing before changing any of that:
   (the tenant's override included) onto the `scope` claim — at login, on
   every refresh, and on a tenant switch. An owner's token carries
   `tenants:admin`, a `readonly` user signs in with none, and a role change
-  reaches the token at the next refresh. Only the signed JWT carries the
-  derived scopes; the token response's own `scope` parameter still lists what
-  was requested.
+  reaches the token at the next refresh in both directions: the role is the
+  upper limit, so a scope it no longer holds is dropped even though the Grant
+  still carries it. Only the signed JWT carries the derived scopes; the token
+  response's own `scope` parameter still lists what was requested.
 - **The API-JWT decision is the provider's, not the SPA's.** A browser client
   cannot send an RFC 8707 `resource` on the token request — oidc-client-ts
   appends it to the authorize URL only, and that is not where oidc-provider
@@ -784,8 +785,11 @@ Assigned scopes must be in the published catalog, present in `OIDC_SCOPES`, and 
 scopes from the role at every issuance — login, refresh, and
 `POST /api/v1/auth/switch-tenant` — by resolving `role_scope` (and the
 tenant's `tenant_role_scope` override) for the token's `tenant_role` and
-`tenant_id` as it signs the JWT, so user JWTs carry the scopes of the
-*current* role for the active tenant. The interaction handler also checks an
+`tenant_id` as it signs the JWT, so a user JWT's API scopes are exactly those
+of the *current* role for the active tenant: a scope the Grant still holds from
+login or from a tenant switch is dropped once the role loses it, and only the
+protocol scopes (`openid`, `offline_access`) are kept as granted. The
+interaction handler also checks an
 API scope a client explicitly requests against the same mapping and rejects a
 request the role does not cover. `extraTokenClaims` stamps `tenant_id`,
 `tenant_role`, and `roles: [<tenant_user.role>]`. Client-credentials tokens

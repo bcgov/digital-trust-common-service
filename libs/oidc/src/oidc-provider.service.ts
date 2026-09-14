@@ -8,7 +8,7 @@ import { Repository } from 'typeorm';
 import { OidcAdapterFactory } from './adapters/oidc-adapter.factory';
 import { OidcModel } from './entities/oidc-model.entity';
 import type { OidcConfig } from './oidc-config.service';
-import { OidcConfigService } from './oidc-config.service';
+import { OidcConfigService, PROTOCOL_SCOPES } from './oidc-config.service';
 import type { OidcJwks } from './oidc-keys.service';
 import { OidcKeysService } from './oidc-keys.service';
 import { OIDC_ROLE_SCOPE_PORT } from './ports/oidc-role-scope.port';
@@ -111,9 +111,15 @@ export interface UserScopeToken {
 
 /**
  * Resolves the `scope` claim for a JWT access token about to be signed: the
- * scopes oidc-provider granted, plus the effective scopes of the user's role.
- * Returns undefined when there is nothing to add, so the payload is left
- * exactly as built.
+ * protocol scopes oidc-provider granted, plus exactly the effective scopes of
+ * the user's current role. Returns undefined when that leaves the claim as
+ * built, and an empty string when nothing at all remains.
+ *
+ * The role is the upper limit, not an addition. An API scope the Grant or the
+ * refresh token still carries — from a login that asked for it, or from the
+ * tokens a tenant switch mints — is copied onto every refreshed token before
+ * this hook runs, so it is dropped here once the role no longer holds it. A
+ * demotion therefore reaches the token as surely as a promotion.
  *
  * Why here and not on the Grant: a browser client asks for identity scopes
  * only, and oidc-provider intersects the Grant with what was requested at
@@ -161,25 +167,23 @@ export async function resolveUserAccessTokenScope(
   // allowlist — client metadata and the resource server's scopes are both
   // checked against it — so keep that true for scopes arriving via the role
   // tables, which are validated against the catalog only.
-  const allowed = new Set(allowedScopes);
+  const protocolScopes = new Set<string>(PROTOCOL_SCOPES);
+  const apiScopes = new Set(
+    allowedScopes.filter((scope) => !protocolScopes.has(scope)),
+  );
   const granted =
     typeof payload.scope === 'string'
       ? payload.scope.split(/\s+/).filter(Boolean)
       : [];
-  const scopes = new Set(granted);
-  const before = scopes.size;
+  const scopes = new Set([
+    ...granted.filter((scope) => !apiScopes.has(scope)),
+    ...roleScopes.filter((scope) => apiScopes.has(scope)),
+  ]);
+  const unchanged =
+    scopes.size === granted.length &&
+    granted.every((scope) => scopes.has(scope));
 
-  for (const scope of roleScopes) {
-    if (allowed.has(scope)) {
-      scopes.add(scope);
-    }
-  }
-
-  if (scopes.size === before) {
-    return undefined;
-  }
-
-  return [...scopes].join(' ');
+  return unchanged ? undefined : [...scopes].join(' ');
 }
 
 /**
@@ -314,7 +318,9 @@ export function buildOidcConfiguration(
           );
 
           if (scope !== undefined) {
-            jwt.payload.scope = scope;
+            // Empty means every API scope was dropped: leave no claim rather
+            // than an empty one, which is also what oidc-provider itself does.
+            jwt.payload.scope = scope.length > 0 ? scope : undefined;
           }
 
           return jwt;
