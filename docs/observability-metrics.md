@@ -103,9 +103,10 @@ Practical consequences:
 - **Filter on `job` deployed, `service_name` locally.** A query written
   against one returns nothing at all against the other — silently, since an
   empty result looks identical to "no traffic".
-- `host_name` is on `target_info` deployed, so pod-name churn across restarts
-  does **not** create new series per rollout. Locally it is a per-series
-  label, and there it does.
+- `host_name` is on `target_info` deployed, so a rollout adds **one** new
+  `target_info` series rather than churning every metric the process exports —
+  three over a recent 24 hours here, one per pod generation. Locally it is a
+  per-series label, so the same rollout churns all of them.
 - Anything filtering on `deployment_environment_name` or `process_pid` needs a
   `target_info` join deployed. In practice environments are already separated
   by writing to different backends, so the join is rarely what you want.
