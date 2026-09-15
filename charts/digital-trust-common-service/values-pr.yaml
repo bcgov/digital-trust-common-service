@@ -38,7 +38,9 @@ config:
   NODE_ENV: development
   LOG_LEVEL: debug
   DB_HOST: digital-trust-common-service-pr-db
-  DB_LOGGING: "true"
+  # Failed statements and migrations, not every query: `true` made the
+  # readiness probe's `SELECT 1` roughly 70% of this environment's log volume.
+  DB_LOGGING: "error,warn,migration"
   # Two replicas share the PR database, so cap each pod's pools to keep the
   # total well under the primary's max_connections. A pod opens both, so its
   # ceiling is DB_POOL_MAX + PGBOSS_POOL_MAX = 8, i.e. 16 across the two

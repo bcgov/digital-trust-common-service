@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
+import { parseDbLogging } from './logging.util';
 import { parsePoolInt } from './pool.util';
 import { buildSslConfig } from './ssl.util';
 
@@ -48,7 +49,7 @@ function buildPoolConfig(config: ConfigService): {
         autoLoadEntities: true,
         synchronize: false,
         migrationsRun: false,
-        logging: config.get<string>('DB_LOGGING') === 'true',
+        logging: parseDbLogging(config.get<string>('DB_LOGGING')),
         // Bound the node-postgres pool explicitly (driver default is 10).
         // This is not a pod's whole connection budget: pg-boss opens a second,
         // independent pool of its own (PGBOSS_POOL_MAX, see PgBossService), so

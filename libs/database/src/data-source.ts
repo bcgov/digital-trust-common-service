@@ -1,5 +1,6 @@
 import { DataSource } from 'typeorm';
 
+import { parseDbLogging } from './logging.util';
 import { InitialExtensions1783630501649 } from './migrations/000001_initial-extensions';
 import { CreateTenantEntity1784231917556 } from './migrations/000002_create-tenant-entity';
 import { CreateTenantUserEntity1784241747468 } from './migrations/000003_create-tenant-user-entity';
@@ -35,6 +36,10 @@ export const AppDataSource = new DataSource({
   username: process.env.DB_USERNAME,
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME,
+  // The migration Job runs through this DataSource, not DatabaseModule, so it
+  // needs its own wiring for DB_LOGGING — otherwise asking for `migration`
+  // logging would silently do nothing where migrations actually run.
+  logging: parseDbLogging(process.env.DB_LOGGING),
   entities: ['dist/**/*.entity.js'],
   migrations: [
     InitialExtensions1783630501649,

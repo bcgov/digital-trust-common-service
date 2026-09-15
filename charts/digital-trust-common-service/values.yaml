@@ -390,6 +390,10 @@ config:
   DB_PORT: "5432"
   DB_NAME: dc_common_service
   DB_SYNCHRONIZE: "false"
+  # TypeORM statement logging: "true", "false", or a comma-separated list of
+  # levels (query, schema, error, warn, info, log, migration). "true" logs every
+  # statement, which is dominated by the readiness probe in a deployed
+  # environment; "error,warn" keeps failures visible without the flood.
   DB_LOGGING: "false"
   SWAGGER_ENABLED: "true"
   SWAGGER_JSON_ENABLED: "true"
