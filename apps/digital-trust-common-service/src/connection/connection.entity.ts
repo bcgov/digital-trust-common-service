@@ -59,11 +59,19 @@ export class Connection {
   public tenant!: Tenant;
 
   @ApiProperty({
-    description: 'The external connection ID',
+    description:
+      'The external connection ID assigned by the connector once the invitation is created. Null until the connection.create job completes.',
     example: 'ext-conn-123',
+    required: false,
+    nullable: true,
   })
-  @Column({ name: 'external_connection_id', type: 'varchar', length: 255 })
-  public externalConnectionId!: string;
+  @Column({
+    name: 'external_connection_id',
+    type: 'varchar',
+    length: 255,
+    nullable: true,
+  })
+  public externalConnectionId?: string | null;
 
   @ApiProperty({
     description: 'The label of the other party',

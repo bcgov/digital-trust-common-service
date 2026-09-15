@@ -231,8 +231,17 @@ export class ConnectorCredentialService {
     return updated;
   }
 
-  public async delete(id: string, auth: AuthContext): Promise<void> {
-    await this.findById(id, auth);
+  public async delete(
+    tenantId: string,
+    id: string,
+    auth: AuthContext,
+  ): Promise<void> {
+    const credential = await this.findById(id, auth);
+    const notFound = `Connector credential with ID '${id}' was not found.`;
+
+    if (credential.tenantId !== tenantId) {
+      throw new NotFoundException(notFound);
+    }
 
     const hasDependents =
       await this.credentialUsageRepository.existsByConnectorId(id);

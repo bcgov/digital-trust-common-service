@@ -2,6 +2,9 @@ import { JwtGuard, ScopeGuard, TenantGuard, type AuthContext } from '@app/auth';
 import { CanActivate } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 
+import { OperationResponseDto } from '../operation/dto/operation-response.dto';
+import { OPERATION_TYPE } from '../operation/operation-type.constants';
+import { Operation, OperationState } from '../operation/operation.entity';
 import { TenantTierRateLimitGuard } from '../rate-limit/tenant-tier-rate-limit.guard';
 import { TenantStatusGuard } from '../tenant/tenant-status.guard';
 
@@ -27,10 +30,8 @@ describe('ConnectionController', () => {
 
   let mockCreate: jest.Mock;
   let mockFindById: jest.Mock;
-  let mockFindByExternalConnectionId: jest.Mock;
   let mockFindByTenantId: jest.Mock;
   let mockFindByTenantIdAndState: jest.Mock;
-  let mockUpdate: jest.Mock;
   let mockDelete: jest.Mock;
 
   const mockConnection: Connection = {
@@ -62,22 +63,34 @@ describe('ConnectionController', () => {
     iat: 1,
   };
 
+  const mockOperation: Operation = {
+    id: '123e4567-e89b-12d3-a456-426614174003',
+    tenantId: mockConnection.tenantId,
+    type: OPERATION_TYPE.CONNECTION_CREATE,
+    state: OperationState.COMPLETED,
+    request: { method: 'POST', path: '/api/v1/connections', body: {} },
+    result: {
+      connection_id: mockConnection.id,
+      invitation_url: 'https://traction.example.test/invite',
+    },
+    expiresAt: new Date(),
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    tenant: undefined as any,
+  };
+
   beforeEach(async () => {
     mockCreate = jest.fn();
     mockFindById = jest.fn();
-    mockFindByExternalConnectionId = jest.fn();
     mockFindByTenantId = jest.fn();
     mockFindByTenantIdAndState = jest.fn();
-    mockUpdate = jest.fn();
     mockDelete = jest.fn();
 
     const mockService = {
       create: mockCreate,
       findById: mockFindById,
-      findByExternalConnectionId: mockFindByExternalConnectionId,
       findByTenantId: mockFindByTenantId,
       findByTenantIdAndState: mockFindByTenantIdAndState,
-      update: mockUpdate,
       delete: mockDelete,
     };
 
@@ -110,24 +123,27 @@ describe('ConnectionController', () => {
   });
 
   describe('POST /connections', () => {
-    it('should create a new connection', async () => {
+    it('should create a connection and return the completed operation', async () => {
       const dto: CreateConnectionDto = {
-        tenantId: mockConnection.tenantId,
-        externalConnectionId: mockConnection.externalConnectionId,
-        theirLabel: mockConnection.theirLabel,
-        theirDid: mockConnection.theirDid,
-        state: mockConnection.state,
-        connectorType: mockConnection.connectorType,
         protocol: mockConnection.protocol,
+        alias: 'acme-partner',
         metadata: mockConnection.metadata,
       };
 
-      mockCreate.mockResolvedValue(mockConnection);
+      mockCreate.mockResolvedValue(mockOperation);
 
-      const result = await controller.create(dto, auth);
+      const result = await controller.create(
+        mockConnection.tenantId,
+        dto,
+        auth,
+      );
 
-      expect(mockCreate).toHaveBeenCalledWith(dto, auth);
-      expect(result).toEqual(ConnectionResponseDto.fromEntity(mockConnection));
+      expect(mockCreate).toHaveBeenCalledWith(
+        mockConnection.tenantId,
+        dto,
+        auth,
+      );
+      expect(result).toEqual(OperationResponseDto.fromEntity(mockOperation));
     });
   });
 
@@ -135,24 +151,15 @@ describe('ConnectionController', () => {
     it('should find a connection by id', async () => {
       mockFindById.mockResolvedValue(mockConnection);
 
-      const result = await controller.findById(mockConnection.id, auth);
-
-      expect(mockFindById).toHaveBeenCalledWith(mockConnection.id, auth);
-      expect(result).toEqual(ConnectionResponseDto.fromEntity(mockConnection));
-    });
-  });
-
-  describe('GET /connections/external/:externalConnectionId', () => {
-    it('should find a connection by external connection id', async () => {
-      mockFindByExternalConnectionId.mockResolvedValue(mockConnection);
-
-      const result = await controller.findByExternalConnectionId(
-        mockConnection.externalConnectionId,
+      const result = await controller.findById(
+        mockConnection.tenantId,
+        mockConnection.id,
         auth,
       );
 
-      expect(mockFindByExternalConnectionId).toHaveBeenCalledWith(
-        mockConnection.externalConnectionId,
+      expect(mockFindById).toHaveBeenCalledWith(
+        mockConnection.tenantId,
+        mockConnection.id,
         auth,
       );
       expect(result).toEqual(ConnectionResponseDto.fromEntity(mockConnection));
@@ -161,46 +168,66 @@ describe('ConnectionController', () => {
 
   describe('GET /connections/tenant/:tenantId', () => {
     it('should find connections by tenant id', async () => {
-      mockFindByTenantId.mockResolvedValue([mockConnection]);
-
-      const result = await controller.findByTenantId(mockConnection.tenantId);
-
-      expect(mockFindByTenantId).toHaveBeenCalledWith(mockConnection.tenantId);
-      expect(result).toEqual([
-        ConnectionResponseDto.fromEntity(mockConnection),
-      ]);
-    });
-
-    it('should find connections by tenant id and state when state is provided', async () => {
-      mockFindByTenantIdAndState.mockResolvedValue([mockConnection]);
+      mockFindByTenantId.mockResolvedValue({
+        data: [mockConnection],
+        pagination: { next_cursor: null, has_more: false },
+      });
 
       const result = await controller.findByTenantId(
         mockConnection.tenantId,
-        ConnectionState.ACTIVE,
+        {},
       );
+
+      expect(mockFindByTenantId).toHaveBeenCalledWith(mockConnection.tenantId, {
+        limit: undefined,
+        cursor: undefined,
+      });
+      expect(result).toEqual({
+        data: [ConnectionResponseDto.fromEntity(mockConnection)],
+        pagination: { nextCursor: null, hasMore: false },
+      });
+    });
+
+    it('should find connections by tenant id and state when state is provided', async () => {
+      mockFindByTenantIdAndState.mockResolvedValue({
+        data: [mockConnection],
+        pagination: { next_cursor: null, has_more: false },
+      });
+
+      const result = await controller.findByTenantId(mockConnection.tenantId, {
+        state: ConnectionState.ACTIVE,
+      });
 
       expect(mockFindByTenantIdAndState).toHaveBeenCalledWith(
         mockConnection.tenantId,
         ConnectionState.ACTIVE,
+        { limit: undefined, cursor: undefined },
       );
-      expect(result).toEqual([
-        ConnectionResponseDto.fromEntity(mockConnection),
-      ]);
+      expect(result).toEqual({
+        data: [ConnectionResponseDto.fromEntity(mockConnection)],
+        pagination: { nextCursor: null, hasMore: false },
+      });
     });
-  });
 
-  describe('PATCH /connections/:id', () => {
-    it('should update a connection', async () => {
-      const dto: Partial<CreateConnectionDto> = {
-        state: ConnectionState.COMPLETED,
-      };
+    it('passes cursor and limit through to the service', async () => {
+      mockFindByTenantId.mockResolvedValue({
+        data: [],
+        pagination: { next_cursor: 'opaque-cursor', has_more: true },
+      });
 
-      mockUpdate.mockResolvedValue({ ...mockConnection, ...dto });
+      const result = await controller.findByTenantId(mockConnection.tenantId, {
+        cursor: 'previous-cursor',
+        limit: 5,
+      });
 
-      const result = await controller.update(mockConnection.id, dto, auth);
-
-      expect(mockUpdate).toHaveBeenCalledWith(mockConnection.id, dto, auth);
-      expect(result.state).toEqual(ConnectionState.COMPLETED);
+      expect(mockFindByTenantId).toHaveBeenCalledWith(mockConnection.tenantId, {
+        limit: 5,
+        cursor: 'previous-cursor',
+      });
+      expect(result.pagination).toEqual({
+        nextCursor: 'opaque-cursor',
+        hasMore: true,
+      });
     });
   });
 
@@ -208,9 +235,13 @@ describe('ConnectionController', () => {
     it('should delete a connection', async () => {
       mockDelete.mockResolvedValue(undefined);
 
-      await controller.delete(mockConnection.id, auth);
+      await controller.delete(mockConnection.tenantId, mockConnection.id, auth);
 
-      expect(mockDelete).toHaveBeenCalledWith(mockConnection.id, auth);
+      expect(mockDelete).toHaveBeenCalledWith(
+        mockConnection.tenantId,
+        mockConnection.id,
+        auth,
+      );
     });
   });
 });

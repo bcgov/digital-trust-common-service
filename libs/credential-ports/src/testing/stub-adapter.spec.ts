@@ -97,6 +97,12 @@ describe('StubAdapter', () => {
     );
   });
 
+  it('should reject deleteById', async () => {
+    await expect(
+      stub.deleteById(context, 'connection-id'),
+    ).rejects.toBeInstanceOf(NotImplementedException);
+  });
+
   it('should reject revoke', async () => {
     await expect(stub.revoke(context, 'credential-id')).rejects.toBeInstanceOf(
       NotImplementedException,

@@ -1,3 +1,5 @@
+import { TENANT_SUPERUSER_SCOPE } from '@app/auth';
+
 import {
   ConnectionProtocol,
   ConnectionState,
@@ -23,7 +25,13 @@ import {
   VerificationProfileStatus,
 } from '../verification-profile/verification-profile.entity';
 
+/**
+ * Includes `tenants:admin` so the dev integration client can exercise
+ * superuser-only endpoints locally (e.g. `POST /tenants/:id/connectors`),
+ * unlike the `admin` tenant-user role it otherwise mirrors.
+ */
 export const ADMIN_SCOPES = [
+  TENANT_SUPERUSER_SCOPE,
   'credentials:offer',
   'credentials:verify',
   'connections:manage',
