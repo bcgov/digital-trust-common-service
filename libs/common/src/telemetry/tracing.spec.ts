@@ -102,6 +102,16 @@ describe('tracing', () => {
     expect(constructors.nodeSdk).toHaveBeenCalledWith({
       instrumentations: [['instrumentations']],
       resource: 'resource',
+      views: [
+        {
+          instrumentName: 'db.client.operation.duration',
+          // jest.resetModules() gives tracing.ts its own copy of the module, so
+          // match on shape; the test below proves the wired one normalizes.
+          attributesProcessors: [
+            expect.objectContaining({ process: expect.any(Function) }),
+          ],
+        },
+      ],
       serviceName: 'test-service',
     });
     expect(sdk.start).toHaveBeenCalledTimes(1);
@@ -109,6 +119,30 @@ describe('tracing', () => {
     await shutdownTelemetry();
 
     expect(sdk.shutdown).toHaveBeenCalledTimes(1);
+  });
+
+  it('registers a view that normalizes db.operation.name', () => {
+    process.env.OTEL_ENABLED = 'true';
+    const { constructors } = mockTelemetryDependencies();
+
+    loadTracing();
+
+    const options = constructors.nodeSdk.mock.calls[0][0] as {
+      views: {
+        instrumentName: string;
+        attributesProcessors: {
+          process: (a: Record<string, unknown>) => Record<string, unknown>;
+        }[];
+      }[];
+    };
+    const [view] = options.views;
+
+    expect(view.instrumentName).toBe('db.client.operation.duration');
+    expect(
+      view.attributesProcessors[0].process({ 'db.operation.name': 'SELECT\n' }),
+    ).toEqual({
+      'db.operation.name': 'SELECT',
+    });
   });
 
   it('loads telemetry configuration before checking whether telemetry is enabled', () => {
@@ -122,6 +156,16 @@ describe('tracing', () => {
     expect(constructors.nodeSdk).toHaveBeenCalledWith({
       instrumentations: [['instrumentations']],
       resource: 'resource',
+      views: [
+        {
+          instrumentName: 'db.client.operation.duration',
+          // jest.resetModules() gives tracing.ts its own copy of the module, so
+          // match on shape; the test below proves the wired one normalizes.
+          attributesProcessors: [
+            expect.objectContaining({ process: expect.any(Function) }),
+          ],
+        },
+      ],
       serviceName: 'env-service',
     });
     expect(sdk.start).toHaveBeenCalledTimes(1);
@@ -141,6 +185,16 @@ describe('tracing', () => {
     expect(constructors.nodeSdk).toHaveBeenCalledWith({
       instrumentations: [['instrumentations']],
       resource: 'resource',
+      views: [
+        {
+          instrumentName: 'db.client.operation.duration',
+          // jest.resetModules() gives tracing.ts its own copy of the module, so
+          // match on shape; the test below proves the wired one normalizes.
+          attributesProcessors: [
+            expect.objectContaining({ process: expect.any(Function) }),
+          ],
+        },
+      ],
       serviceName: undefined,
     });
   });

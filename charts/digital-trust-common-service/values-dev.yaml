@@ -56,7 +56,9 @@ config:
   # Bare hostname only — DB_PORT defaults to 5432 separately, do not append ":5432" here.
   DB_HOST: digital-trust-common-service-db
   DB_NAME: dc_common_service
-  DB_LOGGING: "true"
+  # Failed statements and migrations, not every query: `true` made the
+  # readiness probe's `SELECT 1` roughly 70% of this environment's log volume.
+  DB_LOGGING: "error,warn,migration"
 
 secret:
   # DB_USERNAME / DB_PASSWORD (and any signing/HMAC secrets the app reads).

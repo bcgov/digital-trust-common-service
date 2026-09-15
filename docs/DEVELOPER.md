@@ -66,7 +66,9 @@ DB_PORT=5432                       # PostgreSQL default port
 DB_USERNAME=postgres               # Database user
 DB_PASSWORD=postgres               # Database password
 DB_NAME=dc_common_service          # Database name
-DB_LOGGING=false                   # Enable/disable SQL query logging
+DB_LOGGING=false                   # SQL logging: true, false, all, or a comma-separated
+                                   # list of TypeORM levels (query, schema, error, warn,
+                                   # info, log, migration). "true" logs every statement.
 
 # Database SSL (optional)
 DB_SSL=false                       # Enable SSL connection

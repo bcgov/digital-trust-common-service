@@ -125,8 +125,8 @@ sees the routes and statuses actual traffic exercises. Verified locally
 
 Per unique `db_operation_name`: 12 rows (10 buckets + count + sum). Bounded
 by the statement verbs the codebase issues — verified locally as `SELECT`,
-`INSERT`, `UPDATE`, `DELETE`, `CREATE`, `WITH`, plus the newline-suffixed
-duplicates below.
+`INSERT`, `UPDATE`, `DELETE`, `CREATE`, `WITH` and `BEGIN`, so seven verbs
+once the normalization below collapses the whitespace variants, or 84 rows.
 
 Runtime metrics (`nodejs_*`, `v8js_*`) are fixed per process regardless of
 traffic: 7 event-loop-delay gauges + 2 event-loop-time rows + 1 utilization +
@@ -234,15 +234,22 @@ starting list didn't anticipate. Recorded here so they aren't rediscovered:
    newline, common in multi-line template-literal SQL) produces
    `SELECT\n` as a distinct series from a query written `` `SELECT ...` ``
    on one line, which produces `SELECT`. Verified locally: nine distinct
-   `db_operation_name` values for six real verbs — `SELECT`, `INSERT`,
-   `UPDATE`, `DELETE`, `CREATE` and `WITH`, plus `SELECT\n`, `WITH\n` and
-   `BEGIN;\n` as separate series for functionally identical operations. That
-   inflates the effective `db_operation_name` cardinality by half again
-   without adding any real information; it's a data-quality wrinkle worth being aware of when
-   reading the dashboard, not a fix this ticket makes (no code changes —
-   see Non-goals). **Confirmed deployed**: the same nine values for six real
-   verbs appear in Mimir, so this is a property of the instrumentation and the
-   SQL we write, not of the local stack.
+   `db_operation_name` values for seven real verbs — `SELECT`, `INSERT`,
+   `UPDATE`, `DELETE`, `CREATE`, `WITH` and `BEGIN`, with `SELECT\n`,
+   `WITH\n` and `BEGIN;\n` reported as separate series for functionally
+   identical operations, and confirmed deployed with the same nine values in
+   Mimir. `BEGIN` was only ever observed as `BEGIN;\n`, so the duplication
+   was `SELECT\n` and `WITH\n`: nine values carrying what seven do, at 12
+   rows each, and any dashboard panel grouping by it split.
+
+   **Fixed.** Reformatting the SQL was never an option: most of these come from
+   pg-boss, whose `dist/plans.js` is written as multi-line template literals
+   throughout, and `BEGIN;` is its transaction start. A metrics View on
+   `db.client.operation.duration` normalizes the attribute at the SDK instead,
+   which holds regardless of who wrote the SQL — see
+   `libs/common/src/telemetry/db-operation-name.ts`. Trailing semicolons are
+   stripped with it, so `BEGIN;` and `BEGIN` collapse. Series recorded before
+   the fix age out of Mimir rather than disappearing.
 3. **Unmatched routes have no `http_route` label at all**, rather than a
    placeholder value. A request to a path with no matching controller (a
    404) is grouped only by method and status, with `http_route` absent from

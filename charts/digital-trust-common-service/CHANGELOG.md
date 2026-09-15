@@ -70,6 +70,12 @@ and this chart adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.h
 
 ### Fixed
 
+- `DB_LOGGING` accepts TypeORM log levels, not just a boolean, and the dev and
+  PR overlays now request `error,warn,migration` instead of `true`. Logging every
+  statement meant the readiness probe's `SELECT 1` was roughly 70% of those
+  environments' log volume — and those lines are not JSON, so they defeated log
+  parsing as well as burying everything else.
+
 - The migration Job's default command pointed at a `migrate.js` that does not
   exist; it now runs the TypeORM CLI against the compiled DataSource, the
   same thing `npm run migrate:up` does.

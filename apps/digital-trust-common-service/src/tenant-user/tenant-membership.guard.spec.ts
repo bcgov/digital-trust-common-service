@@ -22,10 +22,13 @@ describe('TenantMembershipGuard', () => {
   let guard: TenantMembershipGuard;
   let reflector: Reflector;
   let scopeAuthorizationService: ScopeAuthorizationService;
-  let mockFindByTenantAndExternalUserId: jest.Mock;
+  let mockFindByTenantAndId: jest.Mock;
+
+  // A user token's subject is the caller's own tenant_user row id.
+  const tenantUserId = '123e4567-e89b-12d3-a456-426614174000';
 
   const baseAuth: AuthContext = {
-    sub: 'keycloak-user-123',
+    sub: tenantUserId,
     tokenType: 'user',
     clientId: null,
     tenantId: 'tenant-a',
@@ -39,7 +42,7 @@ describe('TenantMembershipGuard', () => {
   };
 
   const mockTenantUser: TenantUser = {
-    id: '123e4567-e89b-12d3-a456-426614174000',
+    id: tenantUserId,
     tenantId: 'tenant-a',
     externalUserId: 'keycloak-user-123',
     email: 'user@example.com',
@@ -74,10 +77,10 @@ describe('TenantMembershipGuard', () => {
   beforeEach(() => {
     reflector = new Reflector();
     scopeAuthorizationService = new ScopeAuthorizationService();
-    mockFindByTenantAndExternalUserId = jest.fn();
+    mockFindByTenantAndId = jest.fn();
 
     const tenantUserRepository = {
-      findByTenantAndExternalUserId: mockFindByTenantAndExternalUserId,
+      findByTenantAndId: mockFindByTenantAndId,
     } as unknown as TenantUserRepository;
 
     guard = new TenantMembershipGuard(
@@ -93,7 +96,7 @@ describe('TenantMembershipGuard', () => {
     await expect(guard.canActivate(context)).rejects.toThrow(
       AuthenticationRequiredException,
     );
-    expect(mockFindByTenantAndExternalUserId).not.toHaveBeenCalled();
+    expect(mockFindByTenantAndId).not.toHaveBeenCalled();
   });
 
   it('allows platform-admin callers without a TenantUser lookup', async () => {
@@ -103,26 +106,26 @@ describe('TenantMembershipGuard', () => {
     );
 
     await expect(guard.canActivate(context)).resolves.toBe(true);
-    expect(mockFindByTenantAndExternalUserId).not.toHaveBeenCalled();
+    expect(mockFindByTenantAndId).not.toHaveBeenCalled();
   });
 
   it('allows when no @RequireTenantRoles(...) is configured', async () => {
     const { context } = createContext(baseAuth, undefined);
 
     await expect(guard.canActivate(context)).resolves.toBe(true);
-    expect(mockFindByTenantAndExternalUserId).not.toHaveBeenCalled();
+    expect(mockFindByTenantAndId).not.toHaveBeenCalled();
   });
 
   it('allows when route has no tenantId param', async () => {
     const { context } = createContext(baseAuth, [TenantUserRole.OWNER], {});
 
     await expect(guard.canActivate(context)).resolves.toBe(true);
-    expect(mockFindByTenantAndExternalUserId).not.toHaveBeenCalled();
+    expect(mockFindByTenantAndId).not.toHaveBeenCalled();
   });
 
   it('throws InsufficientTenantRoleException when the caller is not a tenant member', async () => {
     const { context } = createContext(baseAuth, [TenantUserRole.OWNER]);
-    mockFindByTenantAndExternalUserId.mockResolvedValue(null);
+    mockFindByTenantAndId.mockResolvedValue(null);
 
     await expect(guard.canActivate(context)).rejects.toThrow(
       InsufficientTenantRoleException,
@@ -131,9 +134,33 @@ describe('TenantMembershipGuard', () => {
 
   it("throws InsufficientTenantRoleException when the caller's role is not allowed", async () => {
     const { context } = createContext(baseAuth, [TenantUserRole.OWNER]);
-    mockFindByTenantAndExternalUserId.mockResolvedValue({
+    mockFindByTenantAndId.mockResolvedValue({
       ...mockTenantUser,
       role: TenantUserRole.MEMBER,
+    });
+
+    await expect(guard.canActivate(context)).rejects.toThrow(
+      InsufficientTenantRoleException,
+    );
+  });
+
+  it('throws InsufficientTenantRoleException for a machine token without a lookup', async () => {
+    const { context } = createContext(
+      { ...baseAuth, sub: 'client:svc', tokenType: 'client', clientId: 'svc' },
+      [TenantUserRole.OWNER],
+    );
+
+    await expect(guard.canActivate(context)).rejects.toThrow(
+      InsufficientTenantRoleException,
+    );
+    expect(mockFindByTenantAndId).not.toHaveBeenCalled();
+  });
+
+  it('throws InsufficientTenantRoleException when the membership is not active', async () => {
+    const { context } = createContext(baseAuth, [TenantUserRole.ADMIN]);
+    mockFindByTenantAndId.mockResolvedValue({
+      ...mockTenantUser,
+      status: TenantUserStatus.INVITED,
     });
 
     await expect(guard.canActivate(context)).rejects.toThrow(
@@ -146,10 +173,10 @@ describe('TenantMembershipGuard', () => {
       TenantUserRole.OWNER,
       TenantUserRole.ADMIN,
     ]);
-    mockFindByTenantAndExternalUserId.mockResolvedValue(mockTenantUser);
+    mockFindByTenantAndId.mockResolvedValue(mockTenantUser);
 
     await expect(guard.canActivate(context)).resolves.toBe(true);
-    expect(mockFindByTenantAndExternalUserId).toHaveBeenCalledWith(
+    expect(mockFindByTenantAndId).toHaveBeenCalledWith(
       'tenant-a',
       baseAuth.sub,
     );
