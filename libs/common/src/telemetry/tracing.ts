@@ -19,13 +19,20 @@ if (process.env.OTEL_ENABLED === 'true') {
     // eslint-disable-next-line @typescript-eslint/no-require-imports -- defer runtime cost until the env guard is confirmed.
     require('@opentelemetry/sdk-node') as typeof import('@opentelemetry/sdk-node');
 
-  const { ATTR_DEPLOYMENT_ENVIRONMENT_NAME } =
+  const {
+    ATTR_DEPLOYMENT_ENVIRONMENT_NAME,
+    METRIC_DB_CLIENT_OPERATION_DURATION,
+  } =
     // eslint-disable-next-line @typescript-eslint/no-require-imports -- defer runtime cost until the env guard is confirmed.
     require('@opentelemetry/semantic-conventions') as typeof import('@opentelemetry/semantic-conventions');
 
   const { IncomingMessage } =
     // eslint-disable-next-line @typescript-eslint/no-require-imports -- defer runtime cost until the env guard is confirmed.
     require('node:http') as typeof import('node:http');
+
+  const { dbOperationNameProcessor } =
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- defer runtime cost until the env guard is confirmed.
+    require('./db-operation-name') as typeof import('./db-operation-name');
 
   sdk = new NodeSDKCtor({
     instrumentations: [
@@ -48,6 +55,15 @@ if (process.env.OTEL_ENABLED === 'true') {
       }),
     ),
     serviceName: process.env.OTEL_SERVICE_NAME,
+    // instrumentation-pg slices db.operation.name to the first space, so SQL
+    // with a newline after the verb reports a separate series for the same
+    // operation. See db-operation-name.ts.
+    views: [
+      {
+        instrumentName: METRIC_DB_CLIENT_OPERATION_DURATION,
+        attributesProcessors: [dbOperationNameProcessor],
+      },
+    ],
   });
 
   sdk.start();
