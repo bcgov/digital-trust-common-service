@@ -26,15 +26,18 @@ export type TenantScopedRequest = AuthenticatedRequest & {
 
 /**
  * Enforces DB-level TenantUser.role membership for tenant-user management
- * routes (AU-09).
+ * routes.
  *
  * `TenantGuard` only validates the JWT `tenant_id` claim against the route;
  * it has no notion of the caller's *role* within that tenant. This guard
- * closes that gap by looking up the caller's own TenantUser row (matched
- * via `AuthContext.sub`) and checking its role against
- * `@RequireTenantRoles(...)`.
+ * closes that gap by looking up the caller's own TenantUser row and checking
+ * its role against `@RequireTenantRoles(...)`. On a user token `sub` is the
+ * `tenant_user` id (the OIDC provider's `findAccount` stamps it), so the row
+ * is looked up by id, scoped to the route tenant.
  *
  * - platform-admin -> bypass (no TenantUser row required).
+ * - Machine (client_credentials) tokens have no membership -> rejected before
+ *   any lookup.
  * - No `@RequireTenantRoles(...)` on the handler/class -> no-op allow.
  * - Otherwise the caller must have an active TenantUser row for the route
  *   tenant whose role is one of the required roles; the resolved row is
@@ -84,11 +87,19 @@ export class TenantMembershipGuard implements CanActivate {
       return true;
     }
 
-    const callerTenantUser =
-      await this.tenantUserRepository.findByTenantAndExternalUserId(
-        tenantId,
-        auth.sub,
+    // Only a user token names a tenant_user row. A machine token's subject is
+    // not a uuid, so the id lookup would fail with a cast error rather than 403.
+    if (auth.tokenType !== 'user') {
+      throw new InsufficientTenantRoleException(
+        'Only tenant users can hold a tenant role',
+        { requiredTenantRoles: roles },
       );
+    }
+
+    const callerTenantUser = await this.tenantUserRepository.findByTenantAndId(
+      tenantId,
+      auth.sub,
+    );
 
     if (
       !callerTenantUser ||
