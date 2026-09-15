@@ -7,7 +7,7 @@ const ATTR = 'db.operation.name';
 
 describe('db-operation-name', () => {
   describe('normalizeDbOperationName', () => {
-    // The nine values observed in Mimir for six real verbs.
+    // The nine values observed in Mimir for seven real verbs.
     it.each([
       ['SELECT', 'SELECT'],
       ['SELECT\n', 'SELECT'],
@@ -22,7 +22,7 @@ describe('db-operation-name', () => {
       expect(normalizeDbOperationName(input)).toBe(expected);
     });
 
-    it('should collapse the observed nine values to six distinct verbs', () => {
+    it('should collapse the observed nine values to seven distinct verbs', () => {
       const observed = [
         'BEGIN;\n',
         'CREATE',

@@ -11,10 +11,11 @@ import { ATTR_DB_OPERATION_NAME } from '@opentelemetry/semantic-conventions';
  *
  * Most of ours come from pg-boss, whose `dist/plans.js` is written that way
  * throughout, so this cannot be fixed by reformatting our own SQL. Deployed, it
- * produced nine `db_operation_name` values for six real verbs — `SELECT`,
- * `INSERT`, `UPDATE`, `DELETE`, `CREATE` and `WITH`, plus `SELECT\n`, `WITH\n`
- * and `BEGIN;\n` — inflating the dimension by half with no added information,
- * and splitting dashboard panels that group by it.
+ * produced nine `db_operation_name` values for seven real verbs — `SELECT`,
+ * `INSERT`, `UPDATE`, `DELETE`, `CREATE`, `WITH` and `BEGIN`, with `SELECT\n`,
+ * `WITH\n` and `BEGIN;\n` reported separately (`BEGIN` only ever appeared as
+ * `BEGIN;\n`) — nine values carrying what seven do, and splitting dashboard
+ * panels that group by it.
  *
  * Trailing semicolons are stripped for the same reason: `BEGIN;` and `BEGIN`
  * are the same operation.
