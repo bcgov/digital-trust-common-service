@@ -11,12 +11,15 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { ApiError } from '@/lib/api/errors';
 import { useTenant } from '@/lib/api/queries/tenants';
 import { useAuth } from '@/lib/auth/context';
+import { hasScope, USERS_MANAGE_SCOPE } from '@/lib/auth/scopes';
 import { replaceTenantInPath } from '@/lib/tenant/active-tenant';
 import { cn } from '@/lib/utils';
 
-const TABS = [
+// A tab whose section the token cannot use is left out; the page behind it
+// still handles a 403 in case the token is stale.
+const TABS: { to: string; label: string; end?: boolean; scope?: string }[] = [
   { to: '.', label: 'Overview', end: true },
-  { to: 'users', label: 'Users' },
+  { to: 'users', label: 'Users', scope: USERS_MANAGE_SCOPE },
   { to: 'connections', label: 'Connections' },
   { to: 'credentials', label: 'Credentials' },
   { to: 'audit-logs', label: 'Audit logs' },
@@ -28,6 +31,7 @@ export function TenantLayout() {
   const { tenantId } = useParams();
   const location = useLocation();
   const { user } = useAuth();
+  const tabs = TABS.filter((tab) => !tab.scope || hasScope(user, tab.scope));
 
   // Every API call is scoped to the token's tenant, so a URL naming another
   // one can only 404. Land on the same section of the tenant the user is
@@ -71,7 +75,7 @@ export function TenantLayout() {
       </div>
 
       <nav aria-label="Tenant sections" className="flex gap-1 border-b">
-        {TABS.map(({ to, label, end }) => (
+        {tabs.map(({ to, label, end }) => (
           <NavLink
             key={to}
             to={to}
