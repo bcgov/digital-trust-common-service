@@ -35,6 +35,7 @@ describe('ConnectionService', () => {
   let mockCreateOperation: jest.Mock;
   let mockTransitionState: jest.Mock;
   let mockCreateInvitation: jest.Mock;
+  let mockAcceptInvitation: jest.Mock;
   let mockGetById: jest.Mock;
   let mockList: jest.Mock;
   let mockDeleteById: jest.Mock;
@@ -102,6 +103,7 @@ describe('ConnectionService', () => {
 
   const mockAdapter = {
     createInvitation: undefined as unknown,
+    acceptInvitation: undefined as unknown,
     getById: undefined as unknown,
     list: undefined as unknown,
     deleteById: undefined as unknown,
@@ -121,11 +123,13 @@ describe('ConnectionService', () => {
     mockCreateOperation = jest.fn();
     mockTransitionState = jest.fn();
     mockCreateInvitation = jest.fn();
+    mockAcceptInvitation = jest.fn();
     mockGetById = jest.fn();
     mockList = jest.fn();
     mockDeleteById = jest.fn();
 
     mockAdapter.createInvitation = mockCreateInvitation;
+    mockAdapter.acceptInvitation = mockAcceptInvitation;
     mockAdapter.getById = mockGetById;
     mockAdapter.list = mockList;
     mockAdapter.deleteById = mockDeleteById;
@@ -194,9 +198,16 @@ describe('ConnectionService', () => {
       mockUpdate.mockImplementation((connection) =>
         Promise.resolve(connection),
       );
+      mockTransitionState.mockImplementation((id, state, result) =>
+        Promise.resolve({
+          ...mockOperation,
+          state,
+          result: result ?? null,
+        }),
+      );
     });
 
-    it('resolves the connector, creates the connection invited, calls the adapter inline, and returns the completed connection', async () => {
+    it('resolves the connector, creates the connection invited, calls the adapter inline, and returns the completed operation', async () => {
       mockCreateInvitation.mockResolvedValue({
         invitationId: 'invi-msg-1',
         invitationUrl: 'https://traction.example.test/invite',
@@ -253,13 +264,65 @@ describe('ConnectionService', () => {
         mockOperation.id,
         OperationState.COMPLETED,
         {
-          connectionId: mockConnection.id,
-          externalConnectionId: 'invi-msg-1',
-          invitationUrl: 'https://traction.example.test/invite',
+          connection_id: mockConnection.id,
+          invitation_url: 'https://traction.example.test/invite',
         },
       );
       expect(result).toEqual(
-        expect.objectContaining({ externalConnectionId: 'traction-conn-1' }),
+        expect.objectContaining({ state: OperationState.COMPLETED }),
+      );
+    });
+
+    it('accepts an invitation, adopts the remote connection state, and returns the completed operation', async () => {
+      const acceptDto: CreateConnectionDto = {
+        protocol: mockConnection.protocol,
+        invitationUrl: 'https://example.com/invitations/abc123',
+      };
+      const remote = {
+        id: 'traction-conn-2',
+        state: 'active',
+        theirLabel: 'Bob',
+        createdAt: mockConnection.createdAt.toISOString(),
+        updatedAt: mockConnection.updatedAt.toISOString(),
+      };
+      mockAcceptInvitation.mockResolvedValue(remote);
+
+      const result = await service.create(
+        mockConnection.tenantId,
+        acceptDto,
+        auth,
+      );
+
+      expect(mockCreate).toHaveBeenCalledWith({
+        tenantId: mockConnection.tenantId,
+        connectorType: mockConnector.connectorType,
+        protocol: acceptDto.protocol,
+        state: ConnectionState.REQUESTED,
+        metadata: {},
+      });
+      expect(mockCreateInvitation).not.toHaveBeenCalled();
+      expect(mockAcceptInvitation).toHaveBeenCalledWith(
+        mockContext,
+        acceptDto.invitationUrl,
+      );
+      expect(mockUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          state: ConnectionState.ACTIVE,
+          theirLabel: 'Bob',
+          externalConnectionId: 'traction-conn-2',
+        }),
+      );
+      expect(mockTransitionState).toHaveBeenNthCalledWith(
+        2,
+        mockOperation.id,
+        OperationState.COMPLETED,
+        {
+          connection_id: mockConnection.id,
+          state: ConnectionState.ACTIVE,
+        },
+      );
+      expect(result).toEqual(
+        expect.objectContaining({ state: OperationState.COMPLETED }),
       );
     });
 
@@ -270,13 +333,11 @@ describe('ConnectionService', () => {
       expect(mockCreate).not.toHaveBeenCalled();
     });
 
-    it('marks the connection abandoned and the operation failed when the adapter call fails', async () => {
+    it('marks the connection abandoned and returns the failed operation when the adapter call fails', async () => {
       const error = new Error('connector unavailable');
       mockCreateInvitation.mockRejectedValue(error);
 
-      await expect(
-        service.create(mockConnection.tenantId, dto, auth),
-      ).rejects.toThrow(error);
+      const result = await service.create(mockConnection.tenantId, dto, auth);
 
       expect(mockUpdate).toHaveBeenCalledWith(
         expect.objectContaining({ state: ConnectionState.ABANDONED }),
@@ -285,20 +346,34 @@ describe('ConnectionService', () => {
         2,
         mockOperation.id,
         OperationState.FAILED,
-        expect.objectContaining({ code: 'CONNECTION_CREATE_FAILED' }),
+        expect.objectContaining({
+          code: 'CONNECTION_CREATE_FAILED',
+          message: error.message,
+        }),
+      );
+      expect(result).toEqual(
+        expect.objectContaining({ state: OperationState.FAILED }),
       );
     });
 
-    it('throws NotFoundException if the connection row disappeared before the invitation result could be applied', async () => {
+    it('returns the failed operation if the connection row disappeared before the invitation result could be applied', async () => {
       mockCreateInvitation.mockResolvedValue({
         invitationId: 'traction-conn-1',
         invitationUrl: 'https://traction.example.test/invite',
       });
       mockFindById.mockResolvedValue(null);
 
-      await expect(
-        service.create(mockConnection.tenantId, dto, auth),
-      ).rejects.toThrow(NotFoundException);
+      const result = await service.create(mockConnection.tenantId, dto, auth);
+
+      expect(mockTransitionState).toHaveBeenNthCalledWith(
+        2,
+        mockOperation.id,
+        OperationState.FAILED,
+        expect.objectContaining({ code: 'CONNECTION_CREATE_FAILED' }),
+      );
+      expect(result).toEqual(
+        expect.objectContaining({ state: OperationState.FAILED }),
+      );
     });
   });
 

@@ -2,6 +2,9 @@ import { JwtGuard, ScopeGuard, TenantGuard, type AuthContext } from '@app/auth';
 import { CanActivate } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 
+import { OperationResponseDto } from '../operation/dto/operation-response.dto';
+import { OPERATION_TYPE } from '../operation/operation-type.constants';
+import { Operation, OperationState } from '../operation/operation.entity';
 import { TenantTierRateLimitGuard } from '../rate-limit/tenant-tier-rate-limit.guard';
 import { TenantStatusGuard } from '../tenant/tenant-status.guard';
 
@@ -60,6 +63,22 @@ describe('ConnectionController', () => {
     iat: 1,
   };
 
+  const mockOperation: Operation = {
+    id: '123e4567-e89b-12d3-a456-426614174003',
+    tenantId: mockConnection.tenantId,
+    type: OPERATION_TYPE.CONNECTION_CREATE,
+    state: OperationState.COMPLETED,
+    request: { method: 'POST', path: '/api/v1/connections', body: {} },
+    result: {
+      connection_id: mockConnection.id,
+      invitation_url: 'https://traction.example.test/invite',
+    },
+    expiresAt: new Date(),
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    tenant: undefined as any,
+  };
+
   beforeEach(async () => {
     mockCreate = jest.fn();
     mockFindById = jest.fn();
@@ -104,14 +123,14 @@ describe('ConnectionController', () => {
   });
 
   describe('POST /connections', () => {
-    it('should create a connection and return the completed result', async () => {
+    it('should create a connection and return the completed operation', async () => {
       const dto: CreateConnectionDto = {
         protocol: mockConnection.protocol,
         alias: 'acme-partner',
         metadata: mockConnection.metadata,
       };
 
-      mockCreate.mockResolvedValue(mockConnection);
+      mockCreate.mockResolvedValue(mockOperation);
 
       const result = await controller.create(
         mockConnection.tenantId,
@@ -124,7 +143,7 @@ describe('ConnectionController', () => {
         dto,
         auth,
       );
-      expect(result).toEqual(ConnectionResponseDto.fromEntity(mockConnection));
+      expect(result).toEqual(OperationResponseDto.fromEntity(mockOperation));
     });
   });
 
