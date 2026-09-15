@@ -1,7 +1,9 @@
 import type { AuthContext } from '@app/auth';
 import {
+  type AgentAdapter,
   ConnectionState as AdapterConnectionState,
   type Connection as AdapterConnection,
+  type ConnectorContext,
   type Invitation,
 } from '@app/credential-ports';
 import {
@@ -20,7 +22,7 @@ import {
 } from '../common/assert-tenant-access';
 import { API_BASE_PATH } from '../common/constants/api-version.constants';
 import { OPERATION_TYPE } from '../operation/operation-type.constants';
-import { OperationState } from '../operation/operation.entity';
+import { Operation, OperationState } from '../operation/operation.entity';
 import { OperationService } from '../operation/operation.service';
 
 import {
@@ -96,7 +98,7 @@ export class ConnectionService {
     tenantId: string,
     dto: CreateConnectionDto,
     auth: AuthContext,
-  ): Promise<Connection> {
+  ): Promise<Operation> {
     assertTenantAccess(auth, tenantId);
 
     const { adapter, connector, context } =
@@ -106,7 +108,9 @@ export class ConnectionService {
       tenantId,
       connectorType: connector.connectorType,
       protocol: dto.protocol,
-      state: ConnectionState.INVITED,
+      state: dto.invitationUrl
+        ? ConnectionState.REQUESTED
+        : ConnectionState.INVITED,
       metadata: dto.metadata ?? {},
     });
 
@@ -133,30 +137,30 @@ export class ConnectionService {
     );
 
     try {
-      const invitation = await adapter.createInvitation(context, {
-        alias: dto.alias,
-        label: dto.label,
-        goalCode: dto.goalCode,
-        multiUse: dto.multiUse,
-      });
+      const result = dto.invitationUrl
+        ? await this.acceptInvitation(
+            created,
+            adapter,
+            context,
+            dto.invitationUrl,
+          )
+        : await this.createInvitation(created, adapter, context, dto);
 
-      const updated = await this.applyInvitationResult(created.id, invitation);
-
-      await this.operationService.transitionState(
+      return await this.operationService.transitionState(
         operation.id,
         OperationState.COMPLETED,
-        {
-          connectionId: created.id,
-          externalConnectionId: invitation.invitationId,
-          invitationUrl: invitation.invitationUrl,
-        },
+        result,
       );
-
-      return updated;
     } catch (error) {
       await this.markAbandoned(created.id);
 
-      await this.operationService.transitionState(
+      this.logger.warn(
+        `connection.create failed for connection '${created.id}': ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+
+      return await this.operationService.transitionState(
         operation.id,
         OperationState.FAILED,
         {
@@ -167,15 +171,54 @@ export class ConnectionService {
               : `Connector invitation could not be created for connection '${created.id}'.`,
         },
       );
-
-      this.logger.warn(
-        `connection.create failed for connection '${created.id}': ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
-
-      throw error;
     }
+  }
+
+  /**
+   * Create-invitation mode: generates a new invitation on the connector and
+   * links it to the local connection row. The result carries invitation_url
+   * for the caller to hand to the other party.
+   */
+  private async createInvitation(
+    created: Connection,
+    adapter: AgentAdapter,
+    context: ConnectorContext,
+    dto: CreateConnectionDto,
+  ): Promise<Record<string, unknown>> {
+    const invitation = await adapter.createInvitation(context, {
+      alias: dto.alias,
+      label: dto.label,
+      goalCode: dto.goalCode,
+      multiUse: dto.multiUse,
+    });
+
+    await this.applyInvitationResult(created.id, invitation);
+
+    return {
+      connection_id: created.id,
+      invitation_url: invitation.invitationUrl,
+    };
+  }
+
+  /**
+   * Accept-invitation mode: accepts another party's invitation URL on the
+   * connector and adopts its reported connection state onto the local row.
+   * The result carries connection_id + state so the caller can poll or fetch
+   * the connection without a separate list() round trip.
+   */
+  private async acceptInvitation(
+    created: Connection,
+    adapter: AgentAdapter,
+    context: ConnectorContext,
+    invitationUrl: string,
+  ): Promise<Record<string, unknown>> {
+    const remote = await adapter.acceptInvitation(context, invitationUrl);
+    const updated = await this.applyRemoteConnectionState(created, remote);
+
+    return {
+      connection_id: updated.id,
+      state: updated.state,
+    };
   }
 
   private async applyInvitationResult(

@@ -5,6 +5,7 @@ import {
   IsObject,
   IsOptional,
   IsString,
+  IsUrl,
   MaxLength,
 } from 'class-validator';
 
@@ -17,11 +18,19 @@ import { ConnectionProtocol } from '../connection.entity';
  * worker once the connector-side invitation exists, not supplied up front.
  * tenantId itself is a path parameter (POST /tenants/{tenantId}/connections),
  * not a body field.
+ *
+ * Two modes, selected by whether invitationUrl is present: omitted creates a
+ * new invitation; provided accepts an existing invitation from another party.
  */
 export class CreateConnectionDto {
   @Expose()
   @IsEnum(ConnectionProtocol)
   public protocol!: ConnectionProtocol;
+
+  @Expose({ name: 'invitation_url' })
+  @IsOptional()
+  @IsUrl()
+  public invitationUrl?: string;
 
   @Expose()
   @IsOptional()

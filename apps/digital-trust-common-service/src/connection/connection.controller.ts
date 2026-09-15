@@ -21,7 +21,6 @@ import {
 } from '@nestjs/common';
 import {
   ApiBody,
-  ApiCreatedResponse,
   ApiForbiddenResponse,
   ApiOkResponse,
   ApiNotFoundResponse,
@@ -31,6 +30,7 @@ import {
 
 import { SkipAutoAudit } from '../audit-log/skip-auto-audit.decorator';
 import { API_VERSION } from '../common/constants/api-version.constants';
+import { OperationResponseDto } from '../operation/dto/operation-response.dto';
 import { TenantTierRateLimitGuard } from '../rate-limit/tenant-tier-rate-limit.guard';
 import { TenantStatusGuard } from '../tenant/tenant-status.guard';
 
@@ -62,20 +62,29 @@ export class ConnectionController {
   public constructor(private readonly connectionService: ConnectionService) {}
 
   @Post()
-  @ApiCreatedResponse({
-    description: 'Connection created successfully',
-    type: ConnectionResponseDto,
+  @ApiOkResponse({
+    description: 'Invitation created or accepted (synchronous operation)',
+    type: OperationResponseDto,
   })
   @ApiBody({
-    description: 'Connection creation request',
+    description:
+      'Connection creation or acceptance request. Omit invitation_url to ' +
+      'create a new invitation, or provide it to accept an existing one.',
     type: CreateConnectionDto,
     examples: {
-      example1: {
-        summary: 'Create a new connection',
+      create: {
+        summary: 'Create a new invitation',
         value: {
           protocol: 'didcomm-v2',
           alias: 'acme-partner',
           metadata: { key: 'value' },
+        },
+      },
+      accept: {
+        summary: 'Accept an existing invitation',
+        value: {
+          protocol: 'didcomm-v2',
+          invitation_url: 'https://example.com/invitations/abc123',
         },
       },
     },
@@ -84,10 +93,10 @@ export class ConnectionController {
     @Param('tenantId', ParseUUIDPipe) tenantId: string,
     @Body() dto: CreateConnectionDto,
     @CurrentAuth() auth: AuthContext,
-  ): Promise<ConnectionResponseDto> {
-    const connection = await this.connectionService.create(tenantId, dto, auth);
+  ): Promise<OperationResponseDto> {
+    const operation = await this.connectionService.create(tenantId, dto, auth);
 
-    return ConnectionResponseDto.fromEntity(connection);
+    return OperationResponseDto.fromEntity(operation);
   }
 
   @Get()
