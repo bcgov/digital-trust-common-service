@@ -54,9 +54,20 @@ function decodeJwtPayload(token: string): Record<string, unknown> {
   }
 }
 
-function toAuthUserFromProfile(
-  profile: UserProfile | Record<string, unknown>,
-): AuthUser {
+function toScopes(payload: Record<string, unknown>): string[] {
+  return typeof payload.scope === 'string'
+    ? payload.scope.split(' ').filter(Boolean)
+    : [];
+}
+
+/**
+ * Identity and role come from the profile. API scopes live only on the access
+ * token JWT: the id_token never carries them, and oidc-client-ts's `user.scope`
+ * is the token response parameter (what was requested), not the claim the
+ * provider derives from the role. An opaque token yields none: fail closed.
+ */
+function toAuthUser(user: User): AuthUser {
+  const { profile } = user;
   return {
     sub: typeof profile.sub === 'string' ? profile.sub : '',
     name: typeof profile.name === 'string' ? profile.name : undefined,
@@ -64,11 +75,8 @@ function toAuthUserFromProfile(
     tenantId:
       typeof profile.tenant_id === 'string' ? profile.tenant_id : undefined,
     roles: toRoles(profile),
+    scopes: toScopes(decodeJwtPayload(user.access_token)),
   };
-}
-
-function toAuthUser(user: User): AuthUser {
-  return toAuthUserFromProfile(user.profile);
 }
 
 /**

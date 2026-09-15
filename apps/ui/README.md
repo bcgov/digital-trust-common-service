@@ -147,6 +147,7 @@ src/
   lib/auth/      AuthClient seam: mock (default) and oidc (PKCE, real provider)
   lib/tenant/    active tenant: memberships query + the switch (navigate, reset cache)
   lib/config.ts  runtime config: fetches and validates /config.json before mount
+  components/    app pieces: BCDS dialogs, status badges, the tenant switcher
   components/ui/ shadcn-managed primitives (add via `npx shadcn add <name>`)
   test/          Vitest setup + MSW handlers
 public/
@@ -164,6 +165,14 @@ Conventions worth knowing:
 - Endpoint paths live only in `lib/api/resources/*` — the implemented API is
   flat while the spec nests under `/tenants/{id}/…`; convergence should touch
   only those modules.
+- Privileged UI (tabs, quick actions, admin pages) is gated on the access
+  token's `scope` claim through `lib/auth/scopes.ts`, never on role names; the
+  API stays authoritative, so pages still handle a 403 (a token lags a role
+  change by one refresh).
+- BCDS overlays and fields are react-aria: `onPress` / `isDisabled`, and a
+  controlled `isOpen` / `onOpenChange`. An open modal hides the rest of the
+  page from the accessibility tree, so tests query outside it with
+  `{ hidden: true }` or wait for it to close.
 - Theming is a token bridge: `src/index.css` maps shadcn's theme variables
   (`--primary`, `--border`, …) onto `@bcgov/design-tokens` by `var()`
   reference. Style new work with the shadcn-side tokens (`bg-primary`,

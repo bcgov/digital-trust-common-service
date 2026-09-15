@@ -73,7 +73,10 @@ export const routes: RouteObject[] = [
                   },
                   {
                     path: 'users',
-                    element: <PlaceholderPage title="Users" issue={86} />,
+                    lazy: lazyPage(
+                      () => import('@/pages/TenantUsersPage'),
+                      'TenantUsersPage',
+                    ),
                   },
                   {
                     path: 'connections',

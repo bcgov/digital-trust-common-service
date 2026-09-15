@@ -8,6 +8,8 @@ export interface AuthUser {
   /** Active tenant (switchable via POST /api/v1/auth/switch-tenant). */
   tenantId?: string;
   roles: string[];
+  /** From the access token's `scope` claim. `tenants:admin` implies all. */
+  scopes: string[];
 }
 
 /**

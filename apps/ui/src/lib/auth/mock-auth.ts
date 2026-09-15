@@ -29,12 +29,24 @@ export const MOCK_AUTH_TENANTS: AuthTenant[] = [
   },
 ];
 
+// The slice of the seeded role -> scope table the UI gates on. An owner's
+// token carries only `tenants:admin`, which stands in for every other scope.
+const MOCK_ROLE_SCOPES: Record<string, string[]> = {
+  owner: ['tenants:admin'],
+  admin: ['users:manage'],
+};
+
+function scopesForRoles(roles: string[]): string[] {
+  return roles.flatMap((role) => MOCK_ROLE_SCOPES[role] ?? []);
+}
+
 const MOCK_USER: AuthUser = {
   sub: 'mock-user',
   name: 'Mock User',
   email: 'mock.user@example.com',
   tenantId: MOCK_AUTH_TENANTS[0]?.id,
   roles: ['owner'],
+  scopes: scopesForRoles(['owner']),
 };
 
 const SIGNED_OUT: AuthState = { status: 'unauthenticated', user: null };
@@ -48,7 +60,12 @@ function readSession(): MockSession | null {
   const raw = sessionStorage.getItem(STORAGE_KEY);
   if (!raw) return null;
   try {
-    return JSON.parse(raw) as MockSession;
+    const session = JSON.parse(raw) as MockSession;
+    // A session stored before scopes existed lacks the field.
+    return {
+      ...session,
+      user: { ...session.user, scopes: session.user.scopes ?? [] },
+    };
   } catch {
     return null;
   }
@@ -125,11 +142,13 @@ export function createMockAuthClient(): AuthClient {
         );
       }
 
+      const roles = membership ? [membership.role] : session.user.roles;
       setSession({
         user: {
           ...session.user,
           tenantId,
-          roles: membership ? [membership.role] : session.user.roles,
+          roles,
+          scopes: scopesForRoles(roles),
         },
         accessToken: `mock-token-${crypto.randomUUID()}`,
       });
