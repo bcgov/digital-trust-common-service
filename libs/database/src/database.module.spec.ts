@@ -17,26 +17,29 @@ describe('DatabaseModule', () => {
     expect(DatabaseModule).toBeDefined();
   });
 
+  const buildConfig = (overrides: Record<string, string> = {}) => {
+    const values: Record<string, string> = {
+      DB_USERNAME: 'postgres',
+      DB_PASSWORD: 'postgres',
+      DB_NAME: 'dc_common_service',
+      ...overrides,
+    };
+    return {
+      get: (key: string, fallback?: string) =>
+        key in values ? values[key] : fallback,
+      getOrThrow: (key: string) => values[key],
+    } as unknown as ConfigService;
+  };
+
+  const getFactory = () => {
+    const call = (TypeOrmModule.forRootAsync as jest.Mock).mock.calls[0][0];
+    return call.useFactory as (config: ConfigService) => {
+      extra: unknown;
+      logging: unknown;
+    };
+  };
+
   describe('useFactory pool configuration', () => {
-    const buildConfig = (overrides: Record<string, string> = {}) => {
-      const values: Record<string, string> = {
-        DB_USERNAME: 'postgres',
-        DB_PASSWORD: 'postgres',
-        DB_NAME: 'dc_common_service',
-        ...overrides,
-      };
-      return {
-        get: (key: string, fallback?: string) =>
-          key in values ? values[key] : fallback,
-        getOrThrow: (key: string) => values[key],
-      } as unknown as ConfigService;
-    };
-
-    const getFactory = () => {
-      const call = (TypeOrmModule.forRootAsync as jest.Mock).mock.calls[0][0];
-      return call.useFactory as (config: ConfigService) => { extra: unknown };
-    };
-
     it('bounds the connection pool with explicit defaults', () => {
       const options = getFactory()(buildConfig());
       expect(options.extra).toEqual({
@@ -77,6 +80,21 @@ describe('DatabaseModule', () => {
       expect(() => getFactory()(buildConfig({ DB_POOL_MAX: '0' }))).toThrow(
         /DB_POOL_MAX/,
       );
+    });
+  });
+
+  // parseDbLogging has its own spec; these pin the wiring instead — that the
+  // factory reads DB_LOGGING under that name and passes the parsed result
+  // through, rather than collapsing it back to a boolean.
+  describe('useFactory statement logging', () => {
+    it('passes DB_LOGGING levels through as an array', () => {
+      const options = getFactory()(buildConfig({ DB_LOGGING: 'error,warn' }));
+      expect(options.logging).toEqual(['error', 'warn']);
+    });
+
+    it('leaves statement logging off when DB_LOGGING is unset', () => {
+      const options = getFactory()(buildConfig());
+      expect(options.logging).toBe(false);
     });
   });
 });
