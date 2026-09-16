@@ -312,7 +312,9 @@ describe('TenantUsersPage', () => {
     renderPage(await signedIn());
 
     expect(
-      await screen.findByText('Showing the first 100 members.'),
+      await screen.findByText(
+        'Showing the first 100 users. Members and invitations past that are not listed.',
+      ),
     ).toBeInTheDocument();
   });
 
@@ -325,5 +327,33 @@ describe('TenantUsersPage', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(
       /failed to load users/i,
     );
+  });
+
+  it('hides the owner role from a caller without tenants:admin', async () => {
+    const user = userEvent.setup();
+    const client = await signedIn();
+    const state = client.getState();
+    const asAdmin = {
+      ...state,
+      user: state.user && {
+        ...state.user,
+        roles: ['admin'],
+        scopes: ['users:manage'],
+      },
+    };
+    client.getState = () => asAdmin;
+    renderPage(client);
+    await screen.findByText('Ada Admin');
+
+    await user.click(screen.getByRole('button', { name: 'Invite user' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Invite user' });
+    await user.click(within(dialog).getByRole('button', { name: /role/i }));
+
+    expect(
+      await screen.findByRole('option', { name: /admin/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('option', { name: /owner/i }),
+    ).not.toBeInTheDocument();
   });
 });

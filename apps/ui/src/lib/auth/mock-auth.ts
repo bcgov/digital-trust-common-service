@@ -61,10 +61,14 @@ function readSession(): MockSession | null {
   if (!raw) return null;
   try {
     const session = JSON.parse(raw) as MockSession;
-    // A session stored before scopes existed lacks the field.
+    // A session stored before scopes existed lacks the field; its role says
+    // what they would have been.
     return {
       ...session,
-      user: { ...session.user, scopes: session.user.scopes ?? [] },
+      user: {
+        ...session.user,
+        scopes: session.user.scopes ?? scopesForRoles(session.user.roles),
+      },
     };
   } catch {
     return null;

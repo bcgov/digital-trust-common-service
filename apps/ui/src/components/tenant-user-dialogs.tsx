@@ -7,17 +7,19 @@ import {
   Modal,
   Select,
   TextField,
-} from "@bcgov/design-system-react-components";
-import { useState, type FormEvent, type ReactNode } from "react";
+} from '@bcgov/design-system-react-components';
+import { useState, type FormEvent, type ReactNode } from 'react';
 
-import { ApiError } from "@/lib/api/errors";
+import { ApiError } from '@/lib/api/errors';
 import {
   useInviteTenantUser,
   useRemoveTenantUser,
   useUpdateTenantUserRole,
-} from "@/lib/api/queries/tenant-users";
-import type { TenantRole, TenantUser } from "@/lib/api/resources/tenant-users";
-import { TENANT_ROLES } from "@/lib/tenant/roles";
+} from '@/lib/api/queries/tenant-users';
+import type { TenantRole, TenantUser } from '@/lib/api/resources/tenant-users';
+import { useAuth } from '@/lib/auth/context';
+import { hasScope, TENANT_ADMIN_SCOPE } from '@/lib/auth/scopes';
+import { TENANT_ROLES } from '@/lib/tenant/roles';
 
 // BCDS dialogs are react-aria: `onPress` not `onClick`, `isDisabled` not
 // `disabled`, and the overlay is driven by `isOpen` / `onOpenChange`. Each
@@ -29,7 +31,7 @@ interface DialogProps {
 }
 
 function describeError(error: unknown, conflict?: string): string {
-  if (!(error instanceof ApiError)) return "Something went wrong. Try again.";
+  if (!(error instanceof ApiError)) return 'Something went wrong. Try again.';
   if (error.status === 409 && conflict) return conflict;
   return error.message;
 }
@@ -56,17 +58,30 @@ const ROLE_ITEMS = [...TENANT_ROLES];
 function RoleSelect({
   value,
   onChange,
+  current,
 }: {
   value: TenantRole;
   onChange: (role: TenantRole) => void;
+  /** The role the person holds now, so an owner still shows as one. */
+  current?: TenantRole;
 }) {
+  const { user } = useAuth();
+  // Only an owner hands out the owner role. The API is expected to hold the
+  // same line; this keeps the option out of reach in the meantime.
+  const canGrantOwner =
+    hasScope(user, TENANT_ADMIN_SCOPE) || current === 'owner';
+  const items = canGrantOwner
+    ? ROLE_ITEMS
+    : ROLE_ITEMS.filter((role) => role.id !== 'owner');
+
   return (
     <Select
       label="Role"
-      items={ROLE_ITEMS}
+      description="What each role may do follows the platform defaults unless this tenant has customised its roles."
+      items={items}
       selectedKey={value}
       onSelectionChange={(key) => {
-        if (typeof key === "string") onChange(key as TenantRole);
+        if (typeof key === 'string') onChange(key as TenantRole);
       }}
     />
   );
@@ -137,8 +152,8 @@ function FormActions({
 }
 
 export function InviteTenantUserDialog({ tenantId, onClose }: DialogProps) {
-  const [email, setEmail] = useState("");
-  const [role, setRole] = useState<TenantRole>("member");
+  const [email, setEmail] = useState('');
+  const [role, setRole] = useState<TenantRole>('member');
   const invite = useInviteTenantUser(tenantId);
 
   return (
@@ -182,7 +197,7 @@ export function ChangeTenantUserRoleDialog({
   user,
   onClose,
 }: DialogProps & { user: TenantUser }) {
-  const current = user.role ?? "member";
+  const current = user.role ?? 'member';
   const [role, setRole] = useState<TenantRole>(current);
   const update = useUpdateTenantUserRole(tenantId);
 
@@ -206,7 +221,7 @@ export function ChangeTenantUserRoleDialog({
       <p className="text-sm text-muted-foreground">
         Change the role of {user.email}.
       </p>
-      <RoleSelect value={role} onChange={setRole} />
+      <RoleSelect value={role} onChange={setRole} current={current} />
       <MutationError error={update.error} />
     </FormDialog>
   );
@@ -218,10 +233,10 @@ export function RemoveTenantUserDialog({
   onClose,
 }: DialogProps & { user: TenantUser }) {
   const remove = useRemoveTenantUser(tenantId);
-  const invited = user.status === "invited";
-  const title = invited ? "Cancel invitation" : "Remove member";
-  const who = user.display_name ?? user.email ?? "This user";
-  const email = user.email ?? "this address";
+  const invited = user.status === 'invited';
+  const title = invited ? 'Cancel invitation' : 'Remove member';
+  const who = user.display_name ?? user.email ?? 'This user';
+  const email = user.email ?? 'this address';
 
   return (
     <Modal
@@ -237,7 +252,7 @@ export function RemoveTenantUserDialog({
         title={title}
         buttons={[
           <Button key="keep" variant="secondary" onPress={onClose}>
-            {invited ? "Keep invitation" : "Cancel"}
+            {invited ? 'Keep invitation' : 'Cancel'}
           </Button>,
           <Button
             key="confirm"

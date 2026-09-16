@@ -112,4 +112,17 @@ describe('mock auth client', () => {
     expect(client.getState().user?.scopes).toEqual(['users:manage']);
     expect(client.getAccessToken()).not.toBe(before);
   });
+
+  it('derives scopes for a session stored before they existed', () => {
+    sessionStorage.setItem(
+      'dtsc-ui:mock-auth',
+      JSON.stringify({
+        user: { sub: 'mock-user', roles: ['admin'] },
+        accessToken: 'mock-token-old',
+      }),
+    );
+    const client = createMockAuthClient();
+
+    expect(client.getState().user?.scopes).toEqual(['users:manage']);
+  });
 });

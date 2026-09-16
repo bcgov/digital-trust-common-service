@@ -218,11 +218,6 @@ export function TenantUsersPage() {
             admin has to do that.
           </p>
         )}
-        {data?.pagination.has_more && (
-          <p className="text-sm text-muted-foreground">
-            Showing the first {PAGE_SIZE} members.
-          </p>
-        )}
       </section>
 
       <section className="flex flex-col gap-2">
@@ -260,6 +255,13 @@ export function TenantUsersPage() {
           </TableBody>
         </Table>
       </section>
+
+      {data?.pagination.has_more && (
+        <p className="text-sm text-muted-foreground">
+          Showing the first {PAGE_SIZE} users. Members and invitations past that
+          are not listed.
+        </p>
+      )}
 
       {tenantId && dialog?.kind === 'invite' && (
         <InviteTenantUserDialog tenantId={tenantId} onClose={closeDialog} />
