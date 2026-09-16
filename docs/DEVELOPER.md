@@ -153,22 +153,6 @@ same-origin front door that mirrors the production topology (SPA + `/oidc` +
   server on port `5173` (see [Serving the UI through Caddy](#serving-the-ui-through-caddy))
 - `https://keycloak.localhost` -> Keycloak in Docker on port `8080`
 
-> **Migrating from `oidc.localhost`** (renamed in #181): the checked-in realm
-> only imports on first Keycloak start, so existing local stacks keep the old
-> redirect URIs. Either reset just the Keycloak services and volume:
->
-> ```bash
-> docker compose rm -sf keycloak keycloak-db
-> docker volume rm $(docker volume ls -q --filter name=keycloak-db-data)
-> ```
->
-> (avoid `docker compose down -v` here — it removes *every* project volume,
-> including your Postgres data and the Caddy CA) — or update the
-> `dtsc-oidc-provider` client's redirect URIs/web origins in the admin
-> console. Also set `OIDC_ISSUER=https://app.localhost/oidc` in your `.env`,
-> and on macOS/Windows replace the `oidc.localhost` hosts entry with
-> `app.localhost`.
-
 #### Start the local HTTPS stack
 
 Keycloak, Caddy and the API are all unprofiled, because the API performs
@@ -367,9 +351,15 @@ the seed has to know the subject to create active rows for it.
 The realm's `admin` account (`admin@example.com`, password `admin`) has no
 seeded row: the login callback creates one on the fly with the `readonly`
 role, which holds no API scopes. A Keycloak volume created before these
-accounts existed keeps the realm it first imported; reset it with the
-`docker compose rm -sf keycloak keycloak-db` steps in the `oidc.localhost`
-note above to pick them up.
+accounts existed keeps the realm it first imported; reset it to pick them up:
+
+```bash
+docker compose rm -sf keycloak keycloak-db
+docker volume rm $(docker volume ls -q --filter name=keycloak-db-data)
+```
+
+(avoid `docker compose down -v` here — it removes *every* project volume,
+including your Postgres data and the Caddy CA.)
 
 Likewise, a database seeded before these invitations existed still holds
 active `dev-acme-corp-*` rows at these emails. The seed leaves them alone, and
@@ -797,14 +787,6 @@ API scope a client explicitly requests against the same mapping and rejects a
 request the role does not cover. `extraTokenClaims` stamps `tenant_id`,
 `tenant_role`, and `roles: [<tenant_user.role>]`. Client-credentials tokens
 continue to take scopes from `oauth_client.scopes` at registration.
-
-### Migration from placeholder scopes
-
-AU-04 replaces early placeholder scope names (`read:credentials`, `write:credentials`, `read:connections`, `write:connections`) with the architecture catalog above. After upgrading:
-
-1. Run migrations (`000013_create-role-scopes`).
-2. Update `OIDC_SCOPES` in `.env` if you override the default allowlist.
-3. Re-seed or update existing `oauth_client.scopes` rows to use the new names — clients registered with placeholder scopes will fail token requests until updated.
 
 The server-wide allowlist is configured via `OIDC_SCOPES` (see `.env.example`). Every scope granted to an `oauth_client` must appear in that allowlist.
 
