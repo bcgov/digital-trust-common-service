@@ -1,4 +1,5 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import type { EntityManager } from 'typeorm';
 
 import { TenantService } from '../tenant/tenant.service';
 
@@ -164,6 +165,7 @@ export class OperationService {
     id: string,
     state: OperationState,
     result?: OperationResult,
+    manager?: EntityManager,
   ): Promise<Operation> {
     const operation = await this.operations.findById(id);
 
@@ -186,6 +188,66 @@ export class OperationService {
       tenant.config,
     );
 
-    return this.operations.save(operation);
+    return this.operations.save(operation, manager);
+  }
+
+  /**
+   * Guarded counterpart to transitionState for callers where the same
+   * logical transition can be delivered more than once concurrently (the
+   * protocol.state-change worker, given pg-boss's at-least-once delivery).
+   * `fromStates` — the full set of states a forward move into `state` could
+   * legitimately come from, via state-mapping.ts's `operationStatesBelow()`
+   * — is enforced by the database at write time (OperationRepository.
+   * transitionIfForward's `WHERE state IN (...)`), not by a value this call
+   * read moments earlier. Returns null when another delivery already won (or
+   * the operation has moved on since), so the caller must skip any audit,
+   * domain event, or webhook dispatch for this call rather than re-firing
+   * them.
+   */
+  public async transitionStateIfForward(
+    id: string,
+    state: OperationState,
+    fromStates: OperationState[],
+    result?: OperationResult,
+    manager?: EntityManager,
+  ): Promise<Operation | null> {
+    const operation = await this.operations.findById(id);
+
+    if (!operation) {
+      throw new NotFoundException('Operation not found');
+    }
+
+    const tenant = await this.tenants.findById(operation.tenantId);
+    const expiresAt = this.computeExpiresAt(
+      state,
+      operation.createdAt,
+      operation.viewedAt,
+      tenant.config,
+    );
+
+    const won = await this.operations.transitionIfForward(
+      id,
+      operation.tenantId,
+      fromStates,
+      {
+        state,
+        expiresAt,
+        ...(result !== undefined ? { result } : {}),
+      },
+      manager,
+    );
+
+    if (!won) {
+      return null;
+    }
+
+    operation.state = state;
+    operation.expiresAt = expiresAt;
+
+    if (result !== undefined) {
+      operation.result = result;
+    }
+
+    return operation;
   }
 }

@@ -2239,7 +2239,7 @@ export interface components {
             external_id?: string | null;
             format?: components["schemas"]["CredentialFormat"];
             /** @enum {string} */
-            state?: "offered" | "issued" | "revoked" | "expired";
+            state?: "offered" | "issued" | "revoked" | "expired" | "failed";
             /**
              * Format: uuid
              * @description The offer operation that created this credential
@@ -2289,7 +2289,7 @@ export interface components {
              * @description The queue this job belonged to
              * @enum {string}
              */
-            queue: "credential.state-update" | "webhook.dispatch" | "audit.write" | "credential.bulk-item";
+            queue: "protocol.state-change" | "webhook.dispatch" | "audit.write" | "credential.bulk-item";
             /**
              * Format: date-time
              * @description Timestamp of the final failure (after all retries exhausted)
@@ -4013,7 +4013,7 @@ export interface operations {
                 cursor?: components["parameters"]["Cursor"];
                 /** @description Number of items per page */
                 limit?: components["parameters"]["Limit"];
-                state?: "offered" | "issued" | "revoked" | "expired";
+                state?: "offered" | "issued" | "revoked" | "expired" | "failed";
                 issuance_profile_id?: string;
                 connection_id?: string;
                 format?: components["schemas"]["CredentialFormat"];

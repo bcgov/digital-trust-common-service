@@ -3,27 +3,37 @@ import {
   CredentialExchangeState,
 } from '@app/credential-ports';
 import { NotFoundException } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Test, TestingModule } from '@nestjs/testing';
+import { DataSource, EntityManager } from 'typeorm';
 
 import { AdapterRegistry } from '../adapter-registry/adapter-registry.service';
 import { AuditAction } from '../audit-log/audit-log.entity';
 import { DomainAuditService } from '../audit-log/domain-audit.service';
+import { JobsService } from '../jobs/jobs.service';
 import { OPERATION_TYPE } from '../operation/operation-type.constants';
 import { Operation, OperationState } from '../operation/operation.entity';
 import { OperationRepository } from '../operation/operation.repository';
 import { OperationService } from '../operation/operation.service';
+import { operationStatesBelow } from '../protocol-state-change/state-mapping';
 
 import { CredentialActionService } from './credential-action.service';
 
 describe('CredentialActionService', () => {
   let service: CredentialActionService;
   let mockFindByIdForTenant: jest.Mock;
+  let mockFindById: jest.Mock;
   let mockCreateOperation: jest.Mock;
   let mockTransitionState: jest.Mock;
+  let mockTransitionStateIfForward: jest.Mock;
   let mockResolve: jest.Mock;
   let mockEmit: jest.Mock;
   let mockAcceptOffer: jest.Mock;
   let mockRejectOffer: jest.Mock;
+  let mockEventEmit: jest.Mock;
+  let mockSendInTransaction: jest.Mock;
+  let mockTransaction: jest.Mock;
+  const mockManager = {} as EntityManager;
 
   const tenantId = '123e4567-e89b-12d3-a456-426614174001';
   const exchangeId = '123e4567-e89b-12d3-a456-426614174000';
@@ -68,25 +78,37 @@ describe('CredentialActionService', () => {
 
   beforeEach(async () => {
     mockFindByIdForTenant = jest.fn();
+    mockFindById = jest.fn();
     mockCreateOperation = jest.fn();
     mockTransitionState = jest.fn();
+    mockTransitionStateIfForward = jest.fn();
     mockResolve = jest.fn();
     mockEmit = jest.fn().mockResolvedValue(undefined);
     mockAcceptOffer = jest.fn();
     mockRejectOffer = jest.fn();
+    mockEventEmit = jest.fn();
+    mockSendInTransaction = jest.fn().mockResolvedValue('job-1');
+    mockTransaction = jest.fn(
+      async (callback: (manager: EntityManager) => Promise<unknown>) =>
+        callback(mockManager),
+    );
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         CredentialActionService,
         {
           provide: OperationRepository,
-          useValue: { findByIdForTenant: mockFindByIdForTenant },
+          useValue: {
+            findByIdForTenant: mockFindByIdForTenant,
+            findById: mockFindById,
+          },
         },
         {
           provide: OperationService,
           useValue: {
             createOperation: mockCreateOperation,
             transitionState: mockTransitionState,
+            transitionStateIfForward: mockTransitionStateIfForward,
           },
         },
         {
@@ -96,6 +118,18 @@ describe('CredentialActionService', () => {
         {
           provide: DomainAuditService,
           useValue: { emit: mockEmit },
+        },
+        {
+          provide: EventEmitter2,
+          useValue: { emit: mockEventEmit },
+        },
+        {
+          provide: JobsService,
+          useValue: { sendInTransaction: mockSendInTransaction },
+        },
+        {
+          provide: DataSource,
+          useValue: { transaction: mockTransaction },
         },
       ],
     }).compile();
@@ -159,7 +193,7 @@ describe('CredentialActionService', () => {
       const completedOperation = buildActionOperation({
         state: OperationState.COMPLETED,
       });
-      mockTransitionState.mockResolvedValue(completedOperation);
+      mockTransitionStateIfForward.mockResolvedValue(completedOperation);
 
       const result = await service.accept(tenantId, exchangeId);
 
@@ -177,11 +211,14 @@ describe('CredentialActionService', () => {
         expect.objectContaining({ connectorId: 'connector-1' }),
         externalId,
       );
-      expect(mockTransitionState).toHaveBeenCalledWith(
+      expect(mockTransitionStateIfForward).toHaveBeenCalledWith(
         'action-op-1',
         OperationState.COMPLETED,
+        operationStatesBelow(OperationState.COMPLETED),
         expect.objectContaining({ id: 'exch-1', state: 'done' }),
+        mockManager,
       );
+      expect(mockFindById).not.toHaveBeenCalled();
       expect(mockEmit).toHaveBeenCalledWith(
         expect.objectContaining({
           tenantId,
@@ -190,10 +227,101 @@ describe('CredentialActionService', () => {
           resourceId: exchangeId,
         }),
       );
+      expect(mockEventEmit).toHaveBeenCalledWith('credential.accepted', {
+        tenantId,
+        externalId,
+      });
+      expect(mockSendInTransaction).toHaveBeenCalledWith(
+        mockManager,
+        'webhook.dispatch',
+        expect.objectContaining({
+          tenantId,
+          event: 'credential.accepted',
+          resourceId: externalId,
+        }),
+      );
       expect(result).toBe(completedOperation);
     });
 
-    it('stays pending when the adapter has not confirmed yet', async () => {
+    it('does not regress or re-publish when the protocol worker already completed the action operation first', async () => {
+      mockFindByIdForTenant.mockResolvedValue(buildOffer());
+      mockCreateOperation.mockResolvedValue(buildActionOperation());
+      mockAcceptOffer.mockResolvedValue({
+        id: 'exch-1',
+        state: CredentialExchangeState.Done,
+        format: 'anoncreds',
+        attributes: [],
+        createdAt: '2024-01-01T00:00:00.000Z',
+        updatedAt: '2024-01-01T00:00:01.000Z',
+      });
+      // The guarded write loses: the protocol.state-change worker already
+      // correlated and completed this same actionOperation first.
+      mockTransitionStateIfForward.mockResolvedValue(null);
+      const alreadyCompleted = buildActionOperation({
+        state: OperationState.COMPLETED,
+      });
+      mockFindById.mockResolvedValue(alreadyCompleted);
+
+      const result = await service.accept(tenantId, exchangeId);
+
+      expect(mockFindById).toHaveBeenCalledWith('action-op-1');
+      expect(mockSendInTransaction).not.toHaveBeenCalled();
+      expect(mockEventEmit).not.toHaveBeenCalled();
+      expect(mockEmit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId,
+          action: AuditAction.HOLD,
+          resourceType: 'credential',
+          resourceId: exchangeId,
+          metadata: { action: 'accept', state: OperationState.COMPLETED },
+        }),
+      );
+      expect(result).toBe(alreadyCompleted);
+    });
+
+    it('throws 404 if the action operation vanished after losing the race', async () => {
+      mockFindByIdForTenant.mockResolvedValue(buildOffer());
+      mockCreateOperation.mockResolvedValue(buildActionOperation());
+      mockAcceptOffer.mockResolvedValue({
+        id: 'exch-1',
+        state: CredentialExchangeState.Done,
+        format: 'anoncreds',
+        attributes: [],
+        createdAt: '2024-01-01T00:00:00.000Z',
+        updatedAt: '2024-01-01T00:00:01.000Z',
+      });
+      mockTransitionStateIfForward.mockResolvedValue(null);
+      mockFindById.mockResolvedValue(null);
+
+      await expect(service.accept(tenantId, exchangeId)).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+    });
+
+    it('rolls back the state transition and propagates the error when the webhook-dispatch enqueue fails, instead of leaving a COMPLETED operation with no durable notification', async () => {
+      mockFindByIdForTenant.mockResolvedValue(buildOffer());
+      mockCreateOperation.mockResolvedValue(buildActionOperation());
+      mockAcceptOffer.mockResolvedValue({
+        id: 'exch-1',
+        state: CredentialExchangeState.Done,
+        format: 'anoncreds',
+        attributes: [],
+        createdAt: '2024-01-01T00:00:00.000Z',
+        updatedAt: '2024-01-01T00:00:01.000Z',
+      });
+      mockTransitionStateIfForward.mockResolvedValue(
+        buildActionOperation({ state: OperationState.COMPLETED }),
+      );
+      mockSendInTransaction.mockRejectedValue(new Error('queue unavailable'));
+
+      await expect(service.accept(tenantId, exchangeId)).rejects.toThrow(
+        'queue unavailable',
+      );
+      expect(mockEmit).not.toHaveBeenCalled();
+      expect(mockEventEmit).not.toHaveBeenCalled();
+    });
+
+    it('stays pending when the adapter has not confirmed yet, and does not emit a domain event', async () => {
       mockFindByIdForTenant.mockResolvedValue(buildOffer());
       mockCreateOperation.mockResolvedValue(buildActionOperation());
       mockAcceptOffer.mockResolvedValue({
@@ -204,21 +332,25 @@ describe('CredentialActionService', () => {
         createdAt: '2024-01-01T00:00:00.000Z',
         updatedAt: '2024-01-01T00:00:01.000Z',
       });
-      mockTransitionState.mockResolvedValue(
+      mockTransitionStateIfForward.mockResolvedValue(
         buildActionOperation({ state: OperationState.PROCESSING }),
       );
 
       const result = await service.accept(tenantId, exchangeId);
 
-      expect(mockTransitionState).toHaveBeenCalledWith(
+      expect(mockTransitionStateIfForward).toHaveBeenCalledWith(
         'action-op-1',
         OperationState.PROCESSING,
+        operationStatesBelow(OperationState.PROCESSING),
         null,
+        mockManager,
       );
       expect(result.state).toBe(OperationState.PROCESSING);
+      expect(mockEventEmit).not.toHaveBeenCalled();
+      expect(mockSendInTransaction).not.toHaveBeenCalled();
     });
 
-    it('transitions to failed on an AdapterError rather than throwing', async () => {
+    it('transitions to failed on an AdapterError rather than throwing, without emitting a domain event', async () => {
       mockFindByIdForTenant.mockResolvedValue(buildOffer());
       mockCreateOperation.mockResolvedValue(buildActionOperation());
       mockAcceptOffer.mockRejectedValue(
@@ -228,16 +360,58 @@ describe('CredentialActionService', () => {
         state: OperationState.FAILED,
         result: { code: 'CONNECTOR_UNAVAILABLE', message: 'Connector down' },
       });
-      mockTransitionState.mockResolvedValue(failedOperation);
+      mockTransitionStateIfForward.mockResolvedValue(failedOperation);
 
       const result = await service.accept(tenantId, exchangeId);
 
-      expect(mockTransitionState).toHaveBeenCalledWith(
+      expect(mockTransitionStateIfForward).toHaveBeenCalledWith(
         'action-op-1',
         OperationState.FAILED,
+        operationStatesBelow(OperationState.FAILED),
         { code: 'CONNECTOR_UNAVAILABLE', message: 'Connector down' },
       );
+      expect(mockFindById).not.toHaveBeenCalled();
       expect(result).toBe(failedOperation);
+      expect(mockEventEmit).not.toHaveBeenCalled();
+      expect(mockSendInTransaction).not.toHaveBeenCalled();
+    });
+
+    it('does not regress an already-completed operation to failed when the protocol worker won first', async () => {
+      mockFindByIdForTenant.mockResolvedValue(buildOffer());
+      mockCreateOperation.mockResolvedValue(buildActionOperation());
+      mockAcceptOffer.mockRejectedValue(
+        new ConnectorUnavailableError('Connector down'),
+      );
+      mockTransitionStateIfForward.mockResolvedValue(null);
+      const alreadyCompleted = buildActionOperation({
+        state: OperationState.COMPLETED,
+        result: { id: 'exch-1', state: 'done' },
+      });
+      mockFindById.mockResolvedValue(alreadyCompleted);
+
+      const result = await service.accept(tenantId, exchangeId);
+
+      expect(mockFindById).toHaveBeenCalledWith('action-op-1');
+      expect(mockEmit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          metadata: { action: 'accept', state: OperationState.COMPLETED },
+        }),
+      );
+      expect(result).toBe(alreadyCompleted);
+    });
+
+    it('throws 404 if the action operation vanished after losing the failure race', async () => {
+      mockFindByIdForTenant.mockResolvedValue(buildOffer());
+      mockCreateOperation.mockResolvedValue(buildActionOperation());
+      mockAcceptOffer.mockRejectedValue(
+        new ConnectorUnavailableError('Connector down'),
+      );
+      mockTransitionStateIfForward.mockResolvedValue(null);
+      mockFindById.mockResolvedValue(null);
+
+      await expect(service.accept(tenantId, exchangeId)).rejects.toThrow(
+        NotFoundException,
+      );
     });
 
     it('propagates an unexpected (non-adapter) error', async () => {
@@ -248,7 +422,7 @@ describe('CredentialActionService', () => {
       await expect(service.accept(tenantId, exchangeId)).rejects.toThrow(
         'boom',
       );
-      expect(mockTransitionState).not.toHaveBeenCalled();
+      expect(mockTransitionStateIfForward).not.toHaveBeenCalled();
     });
   });
 
@@ -264,7 +438,7 @@ describe('CredentialActionService', () => {
         state: OperationState.COMPLETED,
         result: {},
       });
-      mockTransitionState.mockResolvedValue(completedOperation);
+      mockTransitionStateIfForward.mockResolvedValue(completedOperation);
 
       const result = await service.reject(tenantId, exchangeId);
 
@@ -275,10 +449,25 @@ describe('CredentialActionService', () => {
         expect.objectContaining({ connectorId: 'connector-1' }),
         externalId,
       );
-      expect(mockTransitionState).toHaveBeenCalledWith(
+      expect(mockTransitionStateIfForward).toHaveBeenCalledWith(
         'action-op-1',
         OperationState.COMPLETED,
+        operationStatesBelow(OperationState.COMPLETED),
         {},
+        mockManager,
+      );
+      expect(mockEventEmit).toHaveBeenCalledWith('credential.rejected', {
+        tenantId,
+        externalId,
+      });
+      expect(mockSendInTransaction).toHaveBeenCalledWith(
+        mockManager,
+        'webhook.dispatch',
+        expect.objectContaining({
+          tenantId,
+          event: 'credential.rejected',
+          resourceId: externalId,
+        }),
       );
       expect(result).toBe(completedOperation);
     });
@@ -296,10 +485,16 @@ describe('CredentialActionService', () => {
         state: OperationState.FAILED,
         result: { code: 'CONNECTOR_UNAVAILABLE', message: 'Connector down' },
       });
-      mockTransitionState.mockResolvedValue(failedOperation);
+      mockTransitionStateIfForward.mockResolvedValue(failedOperation);
 
       const result = await service.reject(tenantId, exchangeId);
 
+      expect(mockTransitionStateIfForward).toHaveBeenCalledWith(
+        'action-op-1',
+        OperationState.FAILED,
+        operationStatesBelow(OperationState.FAILED),
+        { code: 'CONNECTOR_UNAVAILABLE', message: 'Connector down' },
+      );
       expect(result).toBe(failedOperation);
     });
   });

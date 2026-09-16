@@ -618,7 +618,7 @@ sequenceDiagram
     Note over Traction: Holder accepts offer...
 
     Traction->>API: Webhook callback (state: credential_issued)
-    API->>PG: pgboss.send('credential.state-update', {topic, payload, tenant_id})
+    API->>PG: pgboss.send('protocol.state-change', {topic, payload, tenant_id})
     API-->>Traction: 200 OK
     PG->>Worker: Poll + process state update
     Worker->>PG: UPDATE Operation (state: completed, result: {...})
@@ -824,7 +824,7 @@ sequenceDiagram
     Note over Traction: Later — holder accepts...
 
     Traction->>API: POST /webhooks/traction (state: credential_issued)
-    API->>DB: pgboss.send('credential.state-update', {topic, payload, tenant_id})
+    API->>DB: pgboss.send('protocol.state-change', {topic, payload, tenant_id})
     API-->>Traction: 200 OK
     DB->>DB: pg-boss worker picks up job
     Note over DB: ME-02 worker processes state update
@@ -841,8 +841,8 @@ sequenceDiagram
 When Traction sends a webhook, CT-06 enqueues it immediately. The ME-02 worker then correlates it to the correct Operation via `external_id`:
 
 1. Traction webhook arrives with `credential_exchange_id` = "abc-123"
-2. CT-06 enqueues to pg-boss `credential.state-update` queue → returns 200 to Traction
-3. ME-02 worker picks up job, queries: `SELECT * FROM operations WHERE external_id = 'abc-123'`
+2. Enqueues to pg-boss `protocol.state-change` queue → returns 200 to Traction
+3. The worker selects the newest in-flight Operation for this tenant, external ID, and topic-allowed operation type
 4. Updates Operation state + result JSONB
 5. Updates Credential record state (offered → issued)
 6. Recalculates `expires_at` based on new state
@@ -853,7 +853,7 @@ When Traction sends a webhook, CT-06 enqueues it immediately. The ME-02 worker t
 ```mermaid
 graph LR
     subgraph "Queues"
-        CSU[credential.state-update]
+        CSU[protocol.state-change]
         BLK[credential.bulk-item]
         WDQ[webhook.dispatch]
         EML[email.send]
