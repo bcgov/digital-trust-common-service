@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import type { EntityManager } from 'typeorm';
 
 import { AuditAction, AuditActorType } from './audit-log.entity';
 import { AuditWriteWorker } from './audit-write.worker';
@@ -21,17 +22,29 @@ export class DomainAuditService {
 
   public constructor(private readonly auditWriteWorker: AuditWriteWorker) {}
 
-  public async emit(input: DomainAuditEmitInput): Promise<void> {
+  /**
+   * Pass `manager` when the mutation this audits is itself running inside a
+   * transaction, so the audit-write enqueue commits or rolls back with it
+   * atomically instead of publishing independently — see
+   * AuditWriteWorker.enqueue.
+   */
+  public async emit(
+    input: DomainAuditEmitInput,
+    manager?: EntityManager,
+  ): Promise<void> {
     try {
-      await this.auditWriteWorker.enqueue({
-        tenantId: input.tenantId,
-        actorId: 'system',
-        actorType: AuditActorType.SYSTEM,
-        action: input.action,
-        resourceType: input.resourceType,
-        resourceId: input.resourceId,
-        metadata: input.metadata ?? {},
-      });
+      await this.auditWriteWorker.enqueue(
+        {
+          tenantId: input.tenantId,
+          actorId: 'system',
+          actorType: AuditActorType.SYSTEM,
+          action: input.action,
+          resourceType: input.resourceType,
+          resourceId: input.resourceId,
+          metadata: input.metadata ?? {},
+        },
+        manager,
+      );
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.warn(

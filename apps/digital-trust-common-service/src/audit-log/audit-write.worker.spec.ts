@@ -1,6 +1,7 @@
 import { ConfigService } from '@nestjs/config';
 import { Test, TestingModule } from '@nestjs/testing';
 import type { Job } from 'pg-boss';
+import type { EntityManager } from 'typeorm';
 
 import { JobsService } from '../jobs/jobs.service';
 
@@ -12,11 +13,13 @@ describe('AuditWriteWorker', () => {
   let worker: AuditWriteWorker;
   let mockRegisterWorker: jest.Mock;
   let mockPublish: jest.Mock;
+  let mockSendInTransaction: jest.Mock;
   let mockWrite: jest.Mock;
 
   beforeEach(async () => {
     mockRegisterWorker = jest.fn().mockResolvedValue('worker-1');
     mockPublish = jest.fn().mockResolvedValue('job-1');
+    mockSendInTransaction = jest.fn().mockResolvedValue('job-1');
     mockWrite = jest.fn().mockResolvedValue({});
 
     const module: TestingModule = await Test.createTestingModule({
@@ -27,6 +30,7 @@ describe('AuditWriteWorker', () => {
           useValue: {
             registerWorker: mockRegisterWorker,
             publish: mockPublish,
+            sendInTransaction: mockSendInTransaction,
           },
         },
         {
@@ -163,5 +167,26 @@ describe('AuditWriteWorker', () => {
 
     await expect(worker.enqueue(payload)).resolves.toBe('job-1');
     expect(mockPublish).toHaveBeenCalledWith('audit.write', payload);
+    expect(mockSendInTransaction).not.toHaveBeenCalled();
+  });
+
+  it('enqueues audit.write jobs through the given manager, e.g. inside a caller-owned transaction', async () => {
+    const payload: AuditWriteJobData = {
+      tenantId: '123e4567-e89b-12d3-a456-426614174001',
+      actorId: 'system',
+      actorType: AuditActorType.SYSTEM,
+      action: AuditAction.CREATE,
+      resourceType: 'tenant',
+      resourceId: '123e4567-e89b-12d3-a456-426614174001',
+    };
+    const manager = {} as EntityManager;
+
+    await expect(worker.enqueue(payload, manager)).resolves.toBe('job-1');
+    expect(mockSendInTransaction).toHaveBeenCalledWith(
+      manager,
+      'audit.write',
+      payload,
+    );
+    expect(mockPublish).not.toHaveBeenCalled();
   });
 });
