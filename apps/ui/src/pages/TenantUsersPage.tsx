@@ -35,7 +35,11 @@ import { ApiError } from '@/lib/api/errors';
 import { useTenantUsers } from '@/lib/api/queries/tenant-users';
 import type { TenantUser } from '@/lib/api/resources/tenant-users';
 import { useAuth } from '@/lib/auth/context';
-import { hasScope, USERS_MANAGE_SCOPE } from '@/lib/auth/scopes';
+import {
+  hasScope,
+  TENANT_ADMIN_SCOPE,
+  USERS_MANAGE_SCOPE,
+} from '@/lib/auth/scopes';
 import { roleLabel } from '@/lib/tenant/roles';
 
 // The API's page cap. A tenant with more members than this is rare enough
@@ -149,6 +153,11 @@ export function TenantUsersPage() {
   const members = rows.filter((row) => row.status !== 'invited');
   const invitations = rows.filter((row) => row.status === 'invited');
   const isSelf = (row: TenantUser) => row.id === user?.sub;
+  // Nobody edits their own row, and only an owner touches an owner's. The API
+  // is expected to hold the same line; this keeps the actions out of reach.
+  const canActOn = (row: TenantUser) =>
+    !isSelf(row) &&
+    (row.role !== 'owner' || hasScope(user, TENANT_ADMIN_SCOPE));
   const closeDialog = () => setDialog(null);
   const actionsFor = (row: TenantUser) => (
     <RowActions
@@ -206,7 +215,7 @@ export function TenantUsersPage() {
                   {formatDate(member.created_at)}
                 </TableCell>
                 <TableCell className="text-right">
-                  {!isSelf(member) && actionsFor(member)}
+                  {canActOn(member) && actionsFor(member)}
                 </TableCell>
               </TableRow>
             ))}
@@ -248,7 +257,7 @@ export function TenantUsersPage() {
                   {formatDate(invitation.created_at)}
                 </TableCell>
                 <TableCell className="text-right">
-                  {actionsFor(invitation)}
+                  {canActOn(invitation) && actionsFor(invitation)}
                 </TableCell>
               </TableRow>
             ))}

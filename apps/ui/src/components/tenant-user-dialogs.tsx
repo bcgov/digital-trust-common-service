@@ -58,19 +58,15 @@ const ROLE_ITEMS = [...TENANT_ROLES];
 function RoleSelect({
   value,
   onChange,
-  current,
 }: {
   value: TenantRole;
   onChange: (role: TenantRole) => void;
-  /** The role the person holds now, so an owner still shows as one. */
-  current?: TenantRole;
 }) {
   const { user } = useAuth();
-  // Only an owner hands out the owner role. The API is expected to hold the
-  // same line; this keeps the option out of reach in the meantime.
-  const canGrantOwner =
-    hasScope(user, TENANT_ADMIN_SCOPE) || current === 'owner';
-  const items = canGrantOwner
+  // Only an owner hands out the owner role (and only an owner reaches an
+  // owner's row). The API is expected to hold the same line; this keeps the
+  // option out of reach in the meantime.
+  const items = hasScope(user, TENANT_ADMIN_SCOPE)
     ? ROLE_ITEMS
     : ROLE_ITEMS.filter((role) => role.id !== 'owner');
 
@@ -221,7 +217,7 @@ export function ChangeTenantUserRoleDialog({
       <p className="text-sm text-muted-foreground">
         Change the role of {user.email}.
       </p>
-      <RoleSelect value={role} onChange={setRole} current={current} />
+      <RoleSelect value={role} onChange={setRole} />
       <MutationError error={update.error} />
     </FormDialog>
   );

@@ -356,4 +356,51 @@ describe('TenantUsersPage', () => {
       screen.queryByRole('option', { name: /owner/i }),
     ).not.toBeInTheDocument();
   });
+
+  it('offers no actions on an owner row to a caller without tenants:admin', async () => {
+    server.use(
+      http.get(usersPath, () =>
+        HttpResponse.json({
+          data: [
+            ...mockTenantUsers,
+            {
+              id: '99999999-9999-4999-8999-999999999999',
+              tenant_id: tenantId,
+              email: 'olive@example.com',
+              display_name: 'Olive Owner',
+              role: 'owner',
+              status: 'active',
+              created_at: '2026-05-01T10:00:00.000Z',
+            },
+          ],
+          pagination: { next_cursor: null, has_more: false },
+        }),
+      ),
+    );
+    const client = await signedIn();
+    const state = client.getState();
+    const asAdmin = {
+      ...state,
+      user: state.user && {
+        ...state.user,
+        roles: ['admin'],
+        scopes: ['users:manage'],
+      },
+    };
+    client.getState = () => asAdmin;
+    renderPage(client);
+    const { members } = await tables();
+    await within(members).findByText('Olive Owner');
+
+    expect(
+      within(members).getByRole('button', {
+        name: 'Actions for ada@example.com',
+      }),
+    ).toBeInTheDocument();
+    expect(
+      within(members).queryByRole('button', {
+        name: 'Actions for olive@example.com',
+      }),
+    ).not.toBeInTheDocument();
+  });
 });
