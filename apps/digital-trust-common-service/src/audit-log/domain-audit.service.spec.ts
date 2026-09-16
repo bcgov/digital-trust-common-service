@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import type { EntityManager } from 'typeorm';
 
 import { AuditAction } from './audit-log.entity';
 import { AuditWriteWorker } from './audit-write.worker';
@@ -38,6 +39,30 @@ describe('DomainAuditService', () => {
         resourceType: 'tenant',
         actorId: 'system',
       }),
+      undefined,
+    );
+  });
+
+  it('forwards an explicit manager through to the enqueue, e.g. inside a caller-owned transaction', async () => {
+    const manager = {} as EntityManager;
+
+    await service.emit(
+      {
+        tenantId: '123e4567-e89b-12d3-a456-426614174001',
+        action: AuditAction.CREATE,
+        resourceType: 'tenant',
+        resourceId: '123e4567-e89b-12d3-a456-426614174001',
+      },
+      manager,
+    );
+
+    expect(mockEnqueue).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: AuditAction.CREATE,
+        resourceType: 'tenant',
+        actorId: 'system',
+      }),
+      manager,
     );
   });
 

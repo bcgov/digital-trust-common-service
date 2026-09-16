@@ -22,6 +22,7 @@ export enum CredentialState {
   ISSUED = 'issued',
   REVOKED = 'revoked',
   EXPIRED = 'expired',
+  FAILED = 'failed',
 }
 
 @Entity({ name: 'credential' })

@@ -23,6 +23,7 @@ describe('ConnectionService', () => {
   let mockFindByTenantId: jest.Mock;
   let mockFindByTenantIdAndState: jest.Mock;
   let mockUpdate: jest.Mock;
+  let mockUpdateStateIfForward: jest.Mock;
   let mockDelete: jest.Mock;
   let mockEmit: jest.Mock;
 
@@ -62,6 +63,7 @@ describe('ConnectionService', () => {
     mockFindByTenantId = jest.fn();
     mockFindByTenantIdAndState = jest.fn();
     mockUpdate = jest.fn();
+    mockUpdateStateIfForward = jest.fn();
     mockDelete = jest.fn();
     mockEmit = jest.fn().mockResolvedValue(undefined);
 
@@ -72,6 +74,7 @@ describe('ConnectionService', () => {
       findByTenantId: mockFindByTenantId,
       findByTenantIdAndState: mockFindByTenantIdAndState,
       update: mockUpdate,
+      updateStateIfForward: mockUpdateStateIfForward,
       delete: mockDelete,
     };
 
@@ -307,6 +310,90 @@ describe('ConnectionService', () => {
       await expect(service.delete(mockConnection.id, auth)).rejects.toThrow(
         NotFoundException,
       );
+      expect(mockEmit).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('applyProtocolStateIfForward', () => {
+    it('mutates and audits the connection when the guarded update wins', async () => {
+      mockUpdateStateIfForward.mockResolvedValue(true);
+      const connection = {
+        ...mockConnection,
+        state: ConnectionState.RESPONDED,
+      };
+
+      const result = await service.applyProtocolStateIfForward(
+        connection,
+        ConnectionState.ACTIVE,
+        [ConnectionState.RESPONDED],
+      );
+
+      expect(mockUpdateStateIfForward).toHaveBeenCalledWith(
+        connection.id,
+        connection.tenantId,
+        ConnectionState.ACTIVE,
+        [ConnectionState.RESPONDED],
+        undefined,
+      );
+      expect(result).toBe(connection);
+      expect(result?.state).toBe(ConnectionState.ACTIVE);
+      expect(mockEmit).toHaveBeenCalledWith(
+        {
+          tenantId: connection.tenantId,
+          action: AuditAction.UPDATE,
+          resourceType: 'connection',
+          resourceId: connection.id,
+        },
+        undefined,
+      );
+    });
+
+    it('forwards an explicit manager through to the guarded write, e.g. inside a caller-owned transaction', async () => {
+      mockUpdateStateIfForward.mockResolvedValue(true);
+      const connection = {
+        ...mockConnection,
+        state: ConnectionState.RESPONDED,
+      };
+      const manager = {} as Parameters<
+        ConnectionService['applyProtocolStateIfForward']
+      >[3];
+
+      await service.applyProtocolStateIfForward(
+        connection,
+        ConnectionState.ACTIVE,
+        [ConnectionState.RESPONDED],
+        manager,
+      );
+
+      expect(mockUpdateStateIfForward).toHaveBeenCalledWith(
+        connection.id,
+        connection.tenantId,
+        ConnectionState.ACTIVE,
+        [ConnectionState.RESPONDED],
+        manager,
+      );
+      expect(mockEmit).toHaveBeenCalledWith(
+        {
+          tenantId: connection.tenantId,
+          action: AuditAction.UPDATE,
+          resourceType: 'connection',
+          resourceId: connection.id,
+        },
+        manager,
+      );
+    });
+
+    it('returns null and skips the audit when another delivery already won the race', async () => {
+      mockUpdateStateIfForward.mockResolvedValue(false);
+      const connection = { ...mockConnection, state: ConnectionState.ACTIVE };
+
+      const result = await service.applyProtocolStateIfForward(
+        connection,
+        ConnectionState.ACTIVE,
+        [ConnectionState.RESPONDED],
+      );
+
+      expect(result).toBeNull();
       expect(mockEmit).not.toHaveBeenCalled();
     });
   });
