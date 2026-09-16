@@ -1,22 +1,23 @@
 import {
   AlertDialog,
   Button,
+  ButtonGroup,
   Dialog,
   InlineAlert,
   Modal,
   Select,
   TextField,
-} from '@bcgov/design-system-react-components';
-import { useState, type FormEvent, type ReactNode } from 'react';
+} from "@bcgov/design-system-react-components";
+import { useState, type FormEvent, type ReactNode } from "react";
 
-import { ApiError } from '@/lib/api/errors';
+import { ApiError } from "@/lib/api/errors";
 import {
   useInviteTenantUser,
   useRemoveTenantUser,
   useUpdateTenantUserRole,
-} from '@/lib/api/queries/tenant-users';
-import type { TenantRole, TenantUser } from '@/lib/api/resources/tenant-users';
-import { TENANT_ROLES } from '@/lib/tenant/roles';
+} from "@/lib/api/queries/tenant-users";
+import type { TenantRole, TenantUser } from "@/lib/api/resources/tenant-users";
+import { TENANT_ROLES } from "@/lib/tenant/roles";
 
 // BCDS dialogs are react-aria: `onPress` not `onClick`, `isDisabled` not
 // `disabled`, and the overlay is driven by `isOpen` / `onOpenChange`. Each
@@ -28,7 +29,7 @@ interface DialogProps {
 }
 
 function describeError(error: unknown, conflict?: string): string {
-  if (!(error instanceof ApiError)) return 'Something went wrong. Try again.';
+  if (!(error instanceof ApiError)) return "Something went wrong. Try again.";
   if (error.status === 409 && conflict) return conflict;
   return error.message;
 }
@@ -65,21 +66,26 @@ function RoleSelect({
       items={ROLE_ITEMS}
       selectedKey={value}
       onSelectionChange={(key) => {
-        if (typeof key === 'string') onChange(key as TenantRole);
+        if (typeof key === "string") onChange(key as TenantRole);
       }}
     />
   );
 }
 
+// The same chrome AlertDialog ships (title row, body, button row) built on the
+// empty Dialog, so a form dialog looks like the confirmation dialogs. The
+// title row leaves room on the right for the Dialog's own close button.
 function FormDialog({
   label,
   onClose,
   onSubmit,
+  actions,
   children,
 }: {
   label: string;
   onClose: () => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  actions: ReactNode;
   children: ReactNode;
 }) {
   return (
@@ -91,9 +97,18 @@ function FormDialog({
       }}
     >
       <Dialog aria-label={label}>
-        <form onSubmit={onSubmit} className="flex flex-col gap-4">
-          <h2 className="text-lg font-semibold">{label}</h2>
-          {children}
+        <form onSubmit={onSubmit}>
+          <div className="border-b px-6 py-4 pr-14">
+            <h2 className="text-xl font-bold">{label}</h2>
+          </div>
+          <div className="flex flex-col gap-4 border-b px-6 py-4">
+            {children}
+          </div>
+          <div className="px-6 py-4">
+            <ButtonGroup alignment="end" orientation="horizontal">
+              {actions}
+            </ButtonGroup>
+          </div>
         </form>
       </Dialog>
     </Modal>
@@ -110,20 +125,20 @@ function FormActions({
   onClose: () => void;
 }) {
   return (
-    <div className="flex justify-end gap-2">
+    <>
       <Button variant="secondary" onPress={onClose}>
         Cancel
       </Button>
       <Button type="submit" isDisabled={isDisabled}>
         {submitLabel}
       </Button>
-    </div>
+    </>
   );
 }
 
 export function InviteTenantUserDialog({ tenantId, onClose }: DialogProps) {
-  const [email, setEmail] = useState('');
-  const [role, setRole] = useState<TenantRole>('member');
+  const [email, setEmail] = useState("");
+  const [role, setRole] = useState<TenantRole>("member");
   const invite = useInviteTenantUser(tenantId);
 
   return (
@@ -134,6 +149,13 @@ export function InviteTenantUserDialog({ tenantId, onClose }: DialogProps) {
         event.preventDefault();
         invite.mutate({ email: email.trim(), role }, { onSuccess: onClose });
       }}
+      actions={
+        <FormActions
+          submitLabel="Invite"
+          isDisabled={invite.isPending}
+          onClose={onClose}
+        />
+      }
     >
       <TextField
         label="Email"
@@ -151,11 +173,6 @@ export function InviteTenantUserDialog({ tenantId, onClose }: DialogProps) {
         error={invite.error}
         conflict="Someone with this email already belongs to this tenant or has a pending invitation."
       />
-      <FormActions
-        submitLabel="Invite"
-        isDisabled={invite.isPending}
-        onClose={onClose}
-      />
     </FormDialog>
   );
 }
@@ -165,7 +182,7 @@ export function ChangeTenantUserRoleDialog({
   user,
   onClose,
 }: DialogProps & { user: TenantUser }) {
-  const current = user.role ?? 'member';
+  const current = user.role ?? "member";
   const [role, setRole] = useState<TenantRole>(current);
   const update = useUpdateTenantUserRole(tenantId);
 
@@ -178,17 +195,19 @@ export function ChangeTenantUserRoleDialog({
         if (!user.id) return;
         update.mutate({ userId: user.id, role }, { onSuccess: onClose });
       }}
+      actions={
+        <FormActions
+          submitLabel="Save"
+          isDisabled={update.isPending || role === current}
+          onClose={onClose}
+        />
+      }
     >
       <p className="text-sm text-muted-foreground">
         Change the role of {user.email}.
       </p>
       <RoleSelect value={role} onChange={setRole} />
       <MutationError error={update.error} />
-      <FormActions
-        submitLabel="Save"
-        isDisabled={update.isPending || role === current}
-        onClose={onClose}
-      />
     </FormDialog>
   );
 }
@@ -199,10 +218,10 @@ export function RemoveTenantUserDialog({
   onClose,
 }: DialogProps & { user: TenantUser }) {
   const remove = useRemoveTenantUser(tenantId);
-  const invited = user.status === 'invited';
-  const title = invited ? 'Cancel invitation' : 'Remove member';
-  const who = user.display_name ?? user.email ?? 'This user';
-  const email = user.email ?? 'this address';
+  const invited = user.status === "invited";
+  const title = invited ? "Cancel invitation" : "Remove member";
+  const who = user.display_name ?? user.email ?? "This user";
+  const email = user.email ?? "this address";
 
   return (
     <Modal
@@ -218,7 +237,7 @@ export function RemoveTenantUserDialog({
         title={title}
         buttons={[
           <Button key="keep" variant="secondary" onPress={onClose}>
-            {invited ? 'Keep invitation' : 'Cancel'}
+            {invited ? "Keep invitation" : "Cancel"}
           </Button>,
           <Button
             key="confirm"
