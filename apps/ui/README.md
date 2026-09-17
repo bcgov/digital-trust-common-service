@@ -155,7 +155,8 @@ src/
   lib/config.ts  runtime config: fetches and validates /config.json before mount
   components/    app pieces: BCDS dialogs, status badges, the tenant switcher
   components/ui/ shadcn-managed primitives (add via `npx shadcn add <name>`)
-  test/          Vitest setup + MSW handlers (also mock mode's API, via msw/browser.ts)
+  mocks/         MSW handlers: the test suite's fixtures, and mock mode's API
+  test/          Vitest setup + render helpers
 public/
   config.json    runtime config defaults (served by Vite in dev, copied into dist/)
 ```
