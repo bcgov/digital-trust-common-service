@@ -34,7 +34,8 @@ every URL in the app is relative and one build works in every environment.
 The one baked-in value is `VITE_AUTH_MODE`, a build variant rather than
 configuration (it decides which auth client ships); hosted images are built
 with `oidc`. Everything that differs between deployments is
-[runtime configuration](#runtime-configuration).
+[runtime configuration](#runtime-configuration). The default `mock` auth mode
+never touches the proxy — see [Auth](#auth).
 
 ### Same-origin HTTPS via Caddy (#181)
 
@@ -90,8 +91,13 @@ Two implementations sit behind one `AuthClient` seam in `src/lib/auth/`,
 selected by `VITE_AUTH_MODE`:
 
 - **`mock` (default)** — the Sign in button creates a fake session in
-  `sessionStorage`. No backend auth required, and `oidc-client-ts` never
-  reaches the entry chunk (`oidc-auth` is imported on demand).
+  `sessionStorage`, and `oidc-client-ts` never reaches the entry chunk
+  (`oidc-auth` is imported on demand). No backend is contacted: an MSW service
+  worker answers every `/api` call from the test suite's handlers
+  (`src/test/msw/handlers.ts`), because a real API would 401 the fake token
+  and sign the mock user out. A call with no handler fails as `NOT_MOCKED`;
+  writes succeed but do not persist. A hard reload (Ctrl+Shift+R) bypasses
+  service workers — reload normally to get the mocks back.
 - **`oidc`** — real Authorization Code + PKCE against this origin's `/oidc`
   provider, which federates to Keycloak internally. The SPA never talks to
   Keycloak and never holds a client secret: it is registered as a public
@@ -149,7 +155,7 @@ src/
   lib/config.ts  runtime config: fetches and validates /config.json before mount
   components/    app pieces: BCDS dialogs, status badges, the tenant switcher
   components/ui/ shadcn-managed primitives (add via `npx shadcn add <name>`)
-  test/          Vitest setup + MSW handlers
+  test/          Vitest setup + MSW handlers (also mock mode's API, via msw/browser.ts)
 public/
   config.json    runtime config defaults (served by Vite in dev, copied into dist/)
 ```
@@ -165,6 +171,8 @@ Conventions worth knowing:
 - Endpoint paths live only in `lib/api/resources/*` — the implemented API is
   flat while the spec nests under `/tenants/{id}/…`; convergence should touch
   only those modules.
+- A new endpoint needs a handler in `src/test/msw/handlers.ts`: the suite
+  errors on an unhandled request, and mock mode has nothing else to serve.
 - Privileged UI (tabs, quick actions, admin pages) is gated on the access
   token's `scope` claim through `lib/auth/scopes.ts`, never on role names; the
   API stays authoritative, so pages still handle a 403 (a token lags a role
