@@ -98,8 +98,27 @@ describe('TenantUserController', () => {
 
       const result = await controller.create(tenantId, dto);
 
-      expect(mockInvite).toHaveBeenCalledWith(tenantId, dto);
+      expect(mockInvite).toHaveBeenCalledWith(tenantId, dto, undefined);
       expect(result).toEqual(TenantUserResponseDto.fromEntity(mockTenantUser));
+    });
+
+    it("forwards the caller's own TenantUser row for the owner-only check", async () => {
+      const tenantId = mockTenantUser.tenantId;
+      const dto: InviteTenantUserDto = {
+        email: 'new-owner@example.com',
+        role: TenantUserRole.OWNER,
+      };
+      const callerTenantUser = {
+        ...mockTenantUser,
+        id: '999e4567-e89b-12d3-a456-426614174003',
+        role: TenantUserRole.ADMIN,
+      };
+
+      mockInvite.mockResolvedValue(mockTenantUser);
+
+      await controller.create(tenantId, dto, callerTenantUser);
+
+      expect(mockInvite).toHaveBeenCalledWith(tenantId, dto, callerTenantUser);
     });
   });
 
@@ -169,7 +188,7 @@ describe('TenantUserController', () => {
       );
     });
 
-    it("forwards the caller's own TenantUser id for the self-role-change check", async () => {
+    it("forwards the caller's own TenantUser row for the self-role-change and owner-only checks", async () => {
       const tenantId = mockTenantUser.tenantId;
       const userId = '999e4567-e89b-12d3-a456-426614174002';
       const dto = { role: TenantUserRole.MEMBER };
@@ -193,7 +212,7 @@ describe('TenantUserController', () => {
         tenantId,
         userId,
         dto,
-        callerTenantUser.id,
+        callerTenantUser,
       );
       expect(result).toEqual(
         TenantUserResponseDto.fromEntity(updatedTenantUser),
@@ -220,7 +239,26 @@ describe('TenantUserController', () => {
 
       await controller.delete(tenantId, userId);
 
-      expect(mockDelete).toHaveBeenCalledWith(tenantId, userId);
+      expect(mockDelete).toHaveBeenCalledWith(tenantId, userId, undefined);
+    });
+
+    it("forwards the caller's own TenantUser row for the owner-only check", async () => {
+      const tenantId = mockTenantUser.tenantId;
+      const userId = '999e4567-e89b-12d3-a456-426614174002';
+      const callerTenantUser = {
+        ...mockTenantUser,
+        id: '999e4567-e89b-12d3-a456-426614174003',
+        role: TenantUserRole.ADMIN,
+      };
+      mockDelete.mockResolvedValue(undefined);
+
+      await controller.delete(tenantId, userId, callerTenantUser);
+
+      expect(mockDelete).toHaveBeenCalledWith(
+        tenantId,
+        userId,
+        callerTenantUser,
+      );
     });
 
     it('should throw NotFoundException if tenant user not found', async () => {
@@ -229,7 +267,7 @@ describe('TenantUserController', () => {
       mockDelete.mockRejectedValue(new Error('Tenant user not found'));
 
       await expect(controller.delete(tenantId, userId)).rejects.toThrow();
-      expect(mockDelete).toHaveBeenCalledWith(tenantId, userId);
+      expect(mockDelete).toHaveBeenCalledWith(tenantId, userId, undefined);
     });
   });
 });
