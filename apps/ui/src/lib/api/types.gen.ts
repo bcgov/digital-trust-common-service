@@ -375,7 +375,14 @@ export interface paths {
         /** List tenant members */
         get: operations["listTenantUsers"];
         put?: never;
-        /** Invite a user to the tenant */
+        /**
+         * Invite a user to the tenant
+         * @description Creates a pending tenant user record for the given email address. The user is
+         *     linked to a real identity on first login.
+         *
+         *     Owners and admins may both invite, but only an owner may invite another
+         *     `owner`; an admin doing so gets a 403.
+         */
         post: operations["inviteUser"];
         delete?: never;
         options?: never;
@@ -397,11 +404,19 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** Remove user from tenant */
+        /**
+         * Remove user from tenant
+         * @description Only an owner may remove a row that holds the `owner` role; an admin doing so
+         *     gets a 403.
+         */
         delete: operations["removeTenantUser"];
         options?: never;
         head?: never;
-        /** Update user role */
+        /**
+         * Update user role
+         * @description Only an owner may grant the `owner` role or modify a row that already holds
+         *     it; an admin doing either gets a 403. Nobody may change their own role.
+         */
         patch: operations["updateTenantUser"];
         trace?: never;
     };

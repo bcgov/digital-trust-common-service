@@ -53,8 +53,14 @@ export class TenantUserService {
   public async invite(
     tenantId: string,
     dto: InviteTenantUserDto,
+    callerTenantUser?: TenantUser,
     manager?: EntityManager,
   ): Promise<TenantUser> {
+    this.assertMayManageOwner(
+      callerTenantUser,
+      dto.role === TenantUserRole.OWNER,
+    );
+
     const existing = await this.tenantUserRepository.findByTenantAndEmail(
       tenantId,
       dto.email,
@@ -234,7 +240,7 @@ export class TenantUserService {
     tenantId: string,
     id: string,
     dto: UpdateTenantUserDto,
-    callerTenantUserId?: string,
+    callerTenantUser?: TenantUser,
   ): Promise<TenantUser> {
     const tenantUser = await this.tenantUserRepository.findByTenantAndId(
       tenantId,
@@ -245,7 +251,13 @@ export class TenantUserService {
       throw new NotFoundException(`Tenant user '${id}' was not found.`);
     }
 
-    if (dto.role !== undefined && callerTenantUserId === id) {
+    this.assertMayManageOwner(
+      callerTenantUser,
+      dto.role === TenantUserRole.OWNER ||
+        tenantUser.role === TenantUserRole.OWNER,
+    );
+
+    if (dto.role !== undefined && callerTenantUser?.id === id) {
       throw new ForbiddenException(
         'Cannot change your own role; ask another tenant owner or admin to do this.',
       );
@@ -296,7 +308,11 @@ export class TenantUserService {
     return updated;
   }
 
-  public async delete(tenantId: string, id: string): Promise<void> {
+  public async delete(
+    tenantId: string,
+    id: string,
+    callerTenantUser?: TenantUser,
+  ): Promise<void> {
     const tenantUser = await this.tenantUserRepository.findByTenantAndId(
       tenantId,
       id,
@@ -305,6 +321,11 @@ export class TenantUserService {
     if (!tenantUser) {
       throw new NotFoundException(`Tenant user '${id}' was not found.`);
     }
+
+    this.assertMayManageOwner(
+      callerTenantUser,
+      tenantUser.role === TenantUserRole.OWNER,
+    );
 
     if (tenantUser.role === TenantUserRole.OWNER) {
       const ownerCount = await this.tenantUserRepository.countByTenantAndRole(
@@ -325,5 +346,30 @@ export class TenantUserService {
       resourceType: 'tenant_user',
       resourceId: id,
     });
+  }
+
+  /**
+   * Only an owner grants or revokes `owner`. TenantMembershipGuard admits
+   * owners and admins alike, so without this an admin could invite an address
+   * they control as `owner` — or demote/remove an existing one — and end up
+   * with `tenants:admin`.
+   *
+   * An undefined caller is a platform admin (the guard bypasses them before
+   * stamping a row) or an internal call such as seeding a new tenant's first
+   * owner; both keep their existing freedom here.
+   */
+  private assertMayManageOwner(
+    callerTenantUser: TenantUser | undefined,
+    touchesOwner: boolean,
+  ): void {
+    if (
+      touchesOwner &&
+      callerTenantUser &&
+      callerTenantUser.role !== TenantUserRole.OWNER
+    ) {
+      throw new ForbiddenException(
+        'Only an owner can grant the owner role or act on an owner.',
+      );
+    }
   }
 }
