@@ -78,7 +78,9 @@ describe('createRequestIdMiddleware', () => {
     middleware(req, res, jest.fn());
 
     const [, generatedId] = setHeader.mock.calls[0] as [string, string];
-    expect(generatedId.length).toBeLessThan(129);
+    expect(generatedId).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+    );
   });
 
   it('takes the first value when the header is duplicated', () => {
