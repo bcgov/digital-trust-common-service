@@ -53,24 +53,25 @@ describe('AppController (e2e)', () => {
     return request(app.getHttpServer())
       .get('/')
       .expect(200)
+      .expect('x-request-id', /.+/)
       .expect('Hello World!');
   });
 
-  it('/health/live (GET) stays on a stable, unversioned path (AG-01 D5)', () => {
+  it('/health/live (GET) stays on a stable, unversioned path', () => {
     return request(app.getHttpServer())
       .get('/health/live')
       .expect(200)
       .expect({ status: 'ok' });
   });
 
-  it('api/docs (GET) Swagger UI stays reachable on a stable, unversioned path (AG-01 D5)', () => {
+  it('api/docs (GET) Swagger UI stays reachable on a stable, unversioned path', () => {
     // swagger-ui-express serves the UI HTML directly at the setup path, so
     // this is a deterministic 200 (not a redirect) — pinned to catch a
     // regression if the global prefix ever starts swallowing the docs mount.
     return request(app.getHttpServer()).get('/api/docs').expect(200);
   });
 
-  it('/admin/operations/stats (GET) 404s without the mandatory /api/v1 version segment (AG-01 D2)', () => {
+  it('/admin/operations/stats (GET) 404s without the mandatory /api/v1 version segment', () => {
     // Intent: versioning is explicit (no defaultVersion), so a business route
     // requested without the /api/v1 segment must resolve to NO route -> 404.
     // If this ever returns something else, suspect a newly-added catch-all,
