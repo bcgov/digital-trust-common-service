@@ -1,3 +1,4 @@
+import { RequestContextModule } from '@app/common/context/request-context.module';
 import { PgBossModule } from '@app/pg-boss';
 import { Global, Module } from '@nestjs/common';
 import { EventEmitterModule } from '@nestjs/event-emitter';
@@ -10,6 +11,7 @@ import { JobsService } from './jobs.service';
 @Module({
   imports: [
     PgBossModule,
+    RequestContextModule,
     ShutdownModule,
     EventEmitterModule.forRoot({
       wildcard: false,

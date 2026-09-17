@@ -1,3 +1,4 @@
+import { RequestContextService } from '@app/common/context/request-context.service';
 import { PgBossService } from '@app/pg-boss';
 import { QUEUE_DEFINITIONS, fromTypeOrm } from '@app/pg-boss';
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
@@ -30,6 +31,7 @@ export class JobsService implements ShutdownParticipant, OnModuleInit {
     private readonly shutdownRegistry: ShutdownRegistry,
     private readonly config: ConfigService,
     private readonly eventEmitter: EventEmitter2,
+    private readonly requestContext: RequestContextService,
   ) {}
 
   public async onModuleInit(): Promise<void> {
@@ -69,7 +71,7 @@ export class JobsService implements ShutdownParticipant, OnModuleInit {
   }
 
   public publish(name: string, data: object | null): Promise<string | null> {
-    return this.bossService.boss.send(name, data);
+    return this.bossService.boss.send(name, this.withRequestContext(data));
   }
 
   /**
@@ -93,9 +95,42 @@ export class JobsService implements ShutdownParticipant, OnModuleInit {
     queueName: string,
     data: object | null,
   ): Promise<string | null> {
-    return this.bossService.boss.send(queueName, data, {
-      db: fromTypeOrm(manager),
-    });
+    return this.bossService.boss.send(
+      queueName,
+      this.withRequestContext(data),
+      {
+        db: fromTypeOrm(manager),
+      },
+    );
+  }
+
+  /**
+   * Merges the active request's correlation identifiers into outgoing job
+   * data, so a worker processing this job later can log/trace it against
+   * the request that enqueued it. Jobs enqueued outside a
+   * request (cron schedules, startup tasks) have no active context, so
+   * `data` passes through unchanged.
+   *
+   * Never overwrites a `requestId`/`tenantId` the caller already set —
+   * several job data shapes (e.g. `AuditWriteJobData`,
+   * `TenantStatusChangeJobData`) carry a domain `tenantId` that identifies
+   * the tenant the job is about, which is not necessarily the same tenant
+   * as the request's correlation context (e.g. a platform-admin action).
+   * Clobbering it here would misattribute the job.
+   */
+  private withRequestContext(data: object | null): object | null {
+    const context = this.requestContext.get();
+    if (!context) {
+      return data;
+    }
+
+    const base = (data ?? {}) as Record<string, unknown>;
+
+    return {
+      ...(context.tenantId ? { tenantId: context.tenantId } : {}),
+      requestId: context.requestId,
+      ...base,
+    };
   }
 
   public defaultWorkOptions(): WorkOptions {
