@@ -73,10 +73,7 @@ export class ProtocolStateChangeService {
       let transitioned = operationOutcome.transitioned;
       const operationType = operationOutcome.operationType;
 
-      if (
-        operationOutcome.operationType === null ||
-        operationOutcome.transitioned
-      ) {
+      if (operationType === null || transitioned) {
         if (data.topic === 'connections') {
           transitioned =
             (await this.applyConnectionOutcome(data, outcome, manager)) ||

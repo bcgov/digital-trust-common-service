@@ -106,26 +106,63 @@ export class CredentialActionService {
       await this.operationRepository.findByExternalIdForTenant(
         tenantId,
         offer.externalId,
-        [OPERATION_TYPE.CREDENTIAL_ACCEPT, OPERATION_TYPE.CREDENTIAL_REJECT],
+        [
+          action === 'accept'
+            ? OPERATION_TYPE.CREDENTIAL_ACCEPT
+            : OPERATION_TYPE.CREDENTIAL_REJECT,
+        ],
       );
 
     if (inFlightAction) {
       return inFlightAction;
     }
 
-    const actionOperation = await this.operationService.createOperation({
-      tenantId,
-      type:
-        action === 'accept'
-          ? OPERATION_TYPE.CREDENTIAL_ACCEPT
-          : OPERATION_TYPE.CREDENTIAL_REJECT,
-      request: {
-        method: 'POST',
-        path: `${API_BASE_PATH}/tenants/${tenantId}/credentials/${exchangeId}/${action}`,
-        body: {},
-      },
-      externalId: offer.externalId,
-    });
+    // The check above is not an atomic claim: two concurrent requests can
+    // both observe no in-flight row and both reach this insert. The
+    // `uq_operation_inflight_holder_action` partial unique index (see its
+    // migration) is what actually enforces "at most one in-flight
+    // credential.accept/credential.reject Operation per tenant/externalId"
+    // — the loser's INSERT fails with a unique violation (23505) rather
+    // than silently creating the duplicate this check was meant to prevent.
+    let actionOperation: Operation;
+
+    try {
+      actionOperation = await this.operationService.createOperation({
+        tenantId,
+        type:
+          action === 'accept'
+            ? OPERATION_TYPE.CREDENTIAL_ACCEPT
+            : OPERATION_TYPE.CREDENTIAL_REJECT,
+        request: {
+          method: 'POST',
+          path: `${API_BASE_PATH}/tenants/${tenantId}/credentials/${exchangeId}/${action}`,
+          body: {},
+        },
+        externalId: offer.externalId,
+      });
+    } catch (error) {
+      const pgCode = (error as { driverError?: { code?: string } }).driverError
+        ?.code;
+
+      if (pgCode !== '23505') {
+        throw error;
+      }
+
+      // Lost the race: a concurrent call already claimed the single
+      // in-flight holder-action slot this index allows for this offer.
+      // Return that winner instead of surfacing the constraint violation.
+      const winner = await this.operationRepository.findByExternalIdForTenant(
+        tenantId,
+        offer.externalId,
+        [OPERATION_TYPE.CREDENTIAL_ACCEPT, OPERATION_TYPE.CREDENTIAL_REJECT],
+      );
+
+      if (!winner) {
+        throw error;
+      }
+
+      return winner;
+    }
 
     try {
       const { adapter, context } = await this.adapterRegistry.resolve(tenantId);

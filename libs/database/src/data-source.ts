@@ -28,6 +28,7 @@ import { AddCredentialDefinitionActive1788353244312 } from './migrations/000024_
 import { AddCredentialDefinitionActiveUniqueIndex1788885810789 } from './migrations/000025_add-credential-definition-active-unique-index';
 import { CreateRateLimitHitsTable1788897010000 } from './migrations/000026_create-rate-limit-hits-table';
 import { AddCredentialStateFailed1789510285355 } from './migrations/000027_add-credential-state-failed';
+import { AddOperationInflightHolderActionUniqueIndex1789677721725 } from './migrations/000028_add-operation-inflight-holder-action-unique-index';
 import { buildSslConfig } from './ssl.util';
 
 export const AppDataSource = new DataSource({
@@ -70,6 +71,7 @@ export const AppDataSource = new DataSource({
     AddCredentialDefinitionActiveUniqueIndex1788885810789,
     CreateRateLimitHitsTable1788897010000,
     AddCredentialStateFailed1789510285355,
+    AddOperationInflightHolderActionUniqueIndex1789677721725,
   ],
   ssl: buildSslConfig(
     process.env.DB_SSL,

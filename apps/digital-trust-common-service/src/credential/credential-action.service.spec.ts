@@ -259,11 +259,66 @@ describe('CredentialActionService', () => {
       expect(mockFindByExternalIdForTenant).toHaveBeenCalledWith(
         tenantId,
         externalId,
-        [OPERATION_TYPE.CREDENTIAL_ACCEPT, OPERATION_TYPE.CREDENTIAL_REJECT],
+        [OPERATION_TYPE.CREDENTIAL_ACCEPT],
       );
       expect(mockCreateOperation).not.toHaveBeenCalled();
       expect(mockResolve).not.toHaveBeenCalled();
       expect(result).toBe(existingInFlight);
+    });
+
+    it('returns the concurrent winner when createOperation loses the atomic claim (unique violation)', async () => {
+      mockFindByIdForTenant.mockResolvedValue(buildOffer());
+      const winner = buildActionOperation({
+        id: 'action-op-winner',
+        state: OperationState.PROCESSING,
+      });
+      // Pre-check observes no in-flight row (the race window), the insert
+      // then loses the uq_operation_inflight_holder_action constraint to a
+      // concurrent request, and the recovery lookup finds that winner.
+      mockFindByExternalIdForTenant
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(winner);
+      mockCreateOperation.mockRejectedValue(
+        Object.assign(new Error('duplicate key value'), {
+          driverError: { code: '23505' },
+        }),
+      );
+
+      const result = await service.accept(tenantId, exchangeId);
+
+      expect(mockFindByExternalIdForTenant).toHaveBeenNthCalledWith(
+        2,
+        tenantId,
+        externalId,
+        [OPERATION_TYPE.CREDENTIAL_ACCEPT, OPERATION_TYPE.CREDENTIAL_REJECT],
+      );
+      expect(mockResolve).not.toHaveBeenCalled();
+      expect(result).toBe(winner);
+    });
+
+    it('propagates a createOperation error that is not a unique violation', async () => {
+      mockFindByIdForTenant.mockResolvedValue(buildOffer());
+      const dbError = new Error('connection terminated');
+      mockCreateOperation.mockRejectedValue(dbError);
+
+      await expect(service.accept(tenantId, exchangeId)).rejects.toBe(dbError);
+      expect(mockFindByExternalIdForTenant).toHaveBeenCalledTimes(1);
+      expect(mockResolve).not.toHaveBeenCalled();
+    });
+
+    it('propagates the original unique-violation error when no winner can be found', async () => {
+      mockFindByIdForTenant.mockResolvedValue(buildOffer());
+      const raceError = Object.assign(new Error('duplicate key value'), {
+        driverError: { code: '23505' },
+      });
+      mockFindByExternalIdForTenant
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(null);
+      mockCreateOperation.mockRejectedValue(raceError);
+
+      await expect(service.accept(tenantId, exchangeId)).rejects.toBe(
+        raceError,
+      );
     });
 
     it('does not regress or re-publish when the protocol worker already completed the action operation first', async () => {
