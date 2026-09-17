@@ -92,6 +92,27 @@ export class CredentialActionService {
       );
     }
 
+    // findByExternalIdForTenant's recency ordering (see its own doc comment)
+    // only disambiguates which *protocol* an externalId belongs to; it does
+    // not uniquely correlate a webhook back to one of several sibling
+    // accept/reject Operations for the same offer. Without this check, a
+    // concurrent call or a client retry would create a second
+    // CREDENTIAL_ACCEPT/REJECT Operation for the same externalId, and the
+    // protocol.state-change worker would only ever complete the newest one —
+    // leaving the older sibling PENDING/PROCESSING forever. Reusing an
+    // already in-flight holder-action Operation for this offer instead of
+    // creating a new one keeps that correlation one-to-one.
+    const inFlightAction =
+      await this.operationRepository.findByExternalIdForTenant(
+        tenantId,
+        offer.externalId,
+        [OPERATION_TYPE.CREDENTIAL_ACCEPT, OPERATION_TYPE.CREDENTIAL_REJECT],
+      );
+
+    if (inFlightAction) {
+      return inFlightAction;
+    }
+
     const actionOperation = await this.operationService.createOperation({
       tenantId,
       type:

@@ -207,7 +207,12 @@ export class ProtocolStateChangeService {
    * can't be found (e.g. this externalId never had one, or a data
    * inconsistency), there is no offer Operation to resolve and nothing more
    * to do here — the action Operation's own transition above already
-   * succeeded and stands on its own.
+   * succeeded and stands on its own. `credential.operationId` is resolved
+   * through a tenant-scoped lookup (findByIdForTenant) rather than trusted
+   * on its own: the FK only guarantees the row exists, not that its
+   * tenant_id matches this webhook's tenant, so a malformed or cross-tenant
+   * link is treated the same as a missing offer Operation — a no-op — not
+   * followed.
    */
   private async settleRelatedOfferOperation(
     data: ProtocolStateChangeJobData,
@@ -223,8 +228,23 @@ export class ProtocolStateChangeService {
       return;
     }
 
-    await this.operationService.transitionStateIfForward(
+    // credential.operationId is a bare FK: it guarantees the offer
+    // Operation row exists, not that its tenant_id actually matches this
+    // credential/webhook's tenant. Resolve it through the same tenant-scoped
+    // lookup the action-operation path uses (findByIdForTenant) before
+    // transitioning it, so malformed or cross-tenant data can't let this
+    // webhook mutate another tenant's offer Operation.
+    const offerOperation = await this.operationRepository.findByIdForTenant(
       credential.operationId,
+      data.tenantId,
+    );
+
+    if (!offerOperation) {
+      return;
+    }
+
+    await this.operationService.transitionStateIfForward(
+      offerOperation.id,
       outcome.operationState,
       operationStatesBelow(outcome.operationState),
       outcome.operationState === OperationState.FAILED
@@ -381,6 +401,28 @@ export class ProtocolStateChangeService {
         ...counts,
       },
       manager,
+    );
+
+    // settleBatchParent runs from inside applyOperationOutcome, which is
+    // called for the *child* operation's own transition — the batch
+    // parent's completion here never passes back through process()'s
+    // single webhook-dispatch call above. Without this, a consumer polling
+    // the batch operation's own id would never be notified that the batch
+    // itself finished, breaking the "every actual transition is dispatched"
+    // contract documented on that call. Enqueued in the same transaction,
+    // same durability rationale as every other guarded write in this file.
+    // No in-process EventEmitter2.emit: this isn't one of the six named
+    // domain events, and in-process listeners are keyed on those exact
+    // strings.
+    await this.jobsService.sendInTransaction(
+      manager,
+      JOB_QUEUES.WEBHOOK_DISPATCH,
+      {
+        tenantId,
+        event: `operation.batch.${finalState}`,
+        resourceId: batchId,
+        occurredAt: new Date().toISOString(),
+      },
     );
   }
 }

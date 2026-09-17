@@ -23,6 +23,7 @@ describe('CredentialActionService', () => {
   let service: CredentialActionService;
   let mockFindByIdForTenant: jest.Mock;
   let mockFindById: jest.Mock;
+  let mockFindByExternalIdForTenant: jest.Mock;
   let mockCreateOperation: jest.Mock;
   let mockTransitionState: jest.Mock;
   let mockTransitionStateIfForward: jest.Mock;
@@ -79,6 +80,7 @@ describe('CredentialActionService', () => {
   beforeEach(async () => {
     mockFindByIdForTenant = jest.fn();
     mockFindById = jest.fn();
+    mockFindByExternalIdForTenant = jest.fn().mockResolvedValue(null);
     mockCreateOperation = jest.fn();
     mockTransitionState = jest.fn();
     mockTransitionStateIfForward = jest.fn();
@@ -101,6 +103,7 @@ describe('CredentialActionService', () => {
           useValue: {
             findByIdForTenant: mockFindByIdForTenant,
             findById: mockFindById,
+            findByExternalIdForTenant: mockFindByExternalIdForTenant,
           },
         },
         {
@@ -241,6 +244,26 @@ describe('CredentialActionService', () => {
         }),
       );
       expect(result).toBe(completedOperation);
+    });
+
+    it('reuses an already in-flight holder-action operation instead of creating a duplicate', async () => {
+      mockFindByIdForTenant.mockResolvedValue(buildOffer());
+      const existingInFlight = buildActionOperation({
+        id: 'action-op-existing',
+        state: OperationState.PROCESSING,
+      });
+      mockFindByExternalIdForTenant.mockResolvedValue(existingInFlight);
+
+      const result = await service.accept(tenantId, exchangeId);
+
+      expect(mockFindByExternalIdForTenant).toHaveBeenCalledWith(
+        tenantId,
+        externalId,
+        [OPERATION_TYPE.CREDENTIAL_ACCEPT, OPERATION_TYPE.CREDENTIAL_REJECT],
+      );
+      expect(mockCreateOperation).not.toHaveBeenCalled();
+      expect(mockResolve).not.toHaveBeenCalled();
+      expect(result).toBe(existingInFlight);
     });
 
     it('does not regress or re-publish when the protocol worker already completed the action operation first', async () => {

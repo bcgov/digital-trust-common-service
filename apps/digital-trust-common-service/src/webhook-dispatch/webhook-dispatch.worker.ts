@@ -22,9 +22,11 @@ const UUID_RE =
  *
  * This is a stub, not a delivery implementation: there is no tenant webhook
  * subscription model, signing secret, or HTTP delivery client yet — that is
- * a separate follow-up ticket. Every job is validated, logged, and
+ * a separate follow-up ticket. A validly-shaped job is logged and
  * acknowledged (so it never retries or dead-letters), but no webhook request
- * is actually sent to a tenant.
+ * is actually sent to a tenant. A malformed job (assertValidPayload throws)
+ * is rejected instead and still follows pg-boss's normal retry/dead-letter
+ * behavior.
  */
 @Injectable()
 export class WebhookDispatchWorker implements OnModuleInit {

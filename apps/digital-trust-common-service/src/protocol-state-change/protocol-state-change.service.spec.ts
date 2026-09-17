@@ -72,6 +72,7 @@ describe('ProtocolStateChangeService', () => {
     Pick<
       OperationRepository,
       | 'findByExternalIdForTenant'
+      | 'findByIdForTenant'
       | 'lockBatchParent'
       | 'countByBatchGroupedByState'
       | 'claimBatchSettlement'
@@ -98,6 +99,9 @@ describe('ProtocolStateChangeService', () => {
   beforeEach(async () => {
     operationRepository = {
       findByExternalIdForTenant: jest.fn().mockResolvedValue(null),
+      findByIdForTenant: jest
+        .fn()
+        .mockImplementation((id: string) => Promise.resolve(operation({ id }))),
       lockBatchParent: jest.fn().mockResolvedValue(undefined),
       countByBatchGroupedByState: jest.fn(),
       claimBatchSettlement: jest.fn(),
@@ -341,6 +345,10 @@ describe('ProtocolStateChangeService', () => {
 
       await service.process(baseData({ protocolState: 'abandoned' }));
 
+      expect(operationRepository.findByIdForTenant).toHaveBeenCalledWith(
+        'offer-op-1',
+        TENANT_ID,
+      );
       expect(operationService.transitionStateIfForward).toHaveBeenCalledWith(
         'reject-op-1',
         OperationState.FAILED,
@@ -350,6 +358,35 @@ describe('ProtocolStateChangeService', () => {
       );
       expect(operationService.transitionStateIfForward).toHaveBeenCalledWith(
         'offer-op-1',
+        OperationState.FAILED,
+        operationStatesBelow(OperationState.FAILED),
+        { code: 'ISSUE_CREDENTIAL_FAILED', message: 'abandoned' },
+        mockManager,
+      );
+    });
+
+    it('does not settle the offer operation when Credential.operationId does not belong to this tenant (cross-tenant FK safety)', async () => {
+      const rejectOp = operation({
+        id: 'reject-op-1',
+        type: OPERATION_TYPE.CREDENTIAL_REJECT,
+      });
+      operationRepository.findByExternalIdForTenant.mockResolvedValue(rejectOp);
+      credentialRepository.findByExternalId.mockResolvedValue(
+        credential({ operationId: 'offer-op-1' }),
+      );
+      operationRepository.findByIdForTenant.mockResolvedValue(null);
+
+      await service.process(baseData({ protocolState: 'abandoned' }));
+
+      expect(operationRepository.findByIdForTenant).toHaveBeenCalledWith(
+        'offer-op-1',
+        TENANT_ID,
+      );
+      expect(operationService.transitionStateIfForward).toHaveBeenCalledTimes(
+        1,
+      );
+      expect(operationService.transitionStateIfForward).toHaveBeenCalledWith(
+        'reject-op-1',
         OperationState.FAILED,
         operationStatesBelow(OperationState.FAILED),
         { code: 'ISSUE_CREDENTIAL_FAILED', message: 'abandoned' },
@@ -565,6 +602,15 @@ describe('ProtocolStateChangeService', () => {
         expect.any(Object),
         mockManager,
       );
+      expect(jobsService.sendInTransaction).toHaveBeenCalledWith(
+        mockManager,
+        'webhook.dispatch',
+        expect.objectContaining({
+          tenantId: TENANT_ID,
+          event: 'operation.batch.completed',
+          resourceId: 'batch-1',
+        }),
+      );
     });
 
     it('settles the parent as failed when any sibling failed', async () => {
@@ -585,6 +631,15 @@ describe('ProtocolStateChangeService', () => {
         TENANT_ID,
         OperationState.FAILED,
         mockManager,
+      );
+      expect(jobsService.sendInTransaction).toHaveBeenCalledWith(
+        mockManager,
+        'webhook.dispatch',
+        expect.objectContaining({
+          tenantId: TENANT_ID,
+          event: 'operation.batch.failed',
+          resourceId: 'batch-1',
+        }),
       );
     });
 
@@ -650,6 +705,11 @@ describe('ProtocolStateChangeService', () => {
         'batch-1',
         expect.anything(),
         expect.anything(),
+      );
+      expect(jobsService.sendInTransaction).not.toHaveBeenCalledWith(
+        mockManager,
+        'webhook.dispatch',
+        expect.objectContaining({ event: 'operation.batch.completed' }),
       );
     });
   });
