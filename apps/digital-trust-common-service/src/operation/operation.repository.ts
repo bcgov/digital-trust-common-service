@@ -248,20 +248,35 @@ export class OperationRepository {
    * accurate instead of racing a stale snapshot. Must be called with the
    * same manager/transaction the recount and settlement update run in, or
    * the lock does nothing (it would be released before they run).
+   *
+   * `tenantId` is also part of the WHERE clause: this is a system-triggered
+   * settlement path with no AuthContext, driven only by a child operation's
+   * `batchId`, so the lock (and the recount/claim that follow it) must not
+   * rely on that `batchId` having been resolved through a tenant-scoped read
+   * moments earlier — a cross-tenant or malformed batchId link must not
+   * lock, count, or settle another tenant's parent operation.
    */
   public async lockBatchParent(
     batchId: string,
+    tenantId: string,
     manager: EntityManager,
   ): Promise<void> {
     await manager
       .createQueryBuilder(Operation, 'op')
       .setLock('pessimistic_write')
       .where('op.id = :batchId', { batchId })
+      .andWhere('op.tenant_id = :tenantId', { tenantId })
       .getOne();
   }
 
+  /**
+   * `tenantId` scopes the recount to the caller's own tenant, same rationale
+   * as `lockBatchParent`: a child operation's `batchId` alone must not be
+   * trusted to only ever reference siblings within the caller's tenant.
+   */
   public async countByBatchGroupedByState(
     batchId: string,
+    tenantId: string,
     manager?: EntityManager,
   ): Promise<BatchStateCounts> {
     const rows = await (manager ?? this.repo.manager)
@@ -269,6 +284,7 @@ export class OperationRepository {
       .select('op.state', 'state')
       .addSelect('COUNT(*)', 'count')
       .where('op.batch_id = :batchId', { batchId })
+      .andWhere('op.tenant_id = :tenantId', { tenantId })
       .groupBy('op.state')
       .getRawMany<{ state: OperationState; count: string }>();
 
@@ -291,19 +307,23 @@ export class OperationRepository {
    * settlement: several sibling child operations can hit their own terminal
    * state at roughly the same time, each concluding "all children are done,"
    * so the state transition here is conditioned on the parent still being
-   * `processing` (`WHERE id = :batchId AND state = 'processing'`). Only the
-   * caller that flips the row wins and should proceed to finalize the
-   * parent via OperationService.transitionState; the rest see affected = 0
-   * and must not also emit the batch-completion event/audit.
+   * `processing` (`WHERE id = :batchId AND tenant_id = :tenantId AND state =
+   * 'processing'`). Only the caller that flips the row wins and should
+   * proceed to finalize the parent via OperationService.transitionState; the
+   * rest see affected = 0 and must not also emit the batch-completion
+   * event/audit. `tenantId` is included in the guard for the same reason as
+   * `lockBatchParent`: a cross-tenant or malformed batchId link must not be
+   * able to settle another tenant's parent operation.
    */
   public async claimBatchSettlement(
     batchId: string,
+    tenantId: string,
     state: OperationState,
     manager?: EntityManager,
   ): Promise<boolean> {
     const result = await (manager ?? this.repo.manager).update(
       Operation,
-      { id: batchId, state: OperationState.PROCESSING },
+      { id: batchId, tenantId, state: OperationState.PROCESSING },
       { state },
     );
 

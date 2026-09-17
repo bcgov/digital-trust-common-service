@@ -167,10 +167,69 @@ export class ProtocolStateChangeService {
     }
 
     if (operation.batchId) {
-      await this.settleBatchParent(operation.batchId, manager);
+      await this.settleBatchParent(operation.batchId, data.tenantId, manager);
+    }
+
+    // findByExternalIdForTenant resolves the *most recently created*
+    // in-flight Operation sharing this externalId (see its own doc): once a
+    // holder-initiated accept/reject has created its own Operation
+    // (CredentialActionService), that Operation — not the original
+    // credential.offer one — is what this webhook lands on from here on.
+    // But the offer Operation is the one returned by the 202 response and
+    // referenced by Credential.operationId, i.e. what a polling client
+    // actually holds; left alone, it would stay pending/processing forever
+    // even though the exchange has now concluded. Mirror the same terminal
+    // outcome onto it too, once the action Operation itself has actually
+    // reached one.
+    if (
+      (operation.type === OPERATION_TYPE.CREDENTIAL_ACCEPT ||
+        operation.type === OPERATION_TYPE.CREDENTIAL_REJECT) &&
+      (outcome.operationState === OperationState.COMPLETED ||
+        outcome.operationState === OperationState.FAILED)
+    ) {
+      await this.settleRelatedOfferOperation(data, outcome, manager);
     }
 
     return { transitioned: true, operationType: operation.type };
+  }
+
+  /**
+   * Guarded the same way as the action Operation's own transition
+   * (transitionStateIfForward + operationStatesBelow), so a duplicate or
+   * out-of-order webhook delivery can't double-apply or regress the offer
+   * Operation either — it is just as reachable by pg-boss's at-least-once
+   * delivery as the action Operation is. Best-effort: if the Credential row
+   * can't be found (e.g. this externalId never had one, or a data
+   * inconsistency), there is no offer Operation to resolve and nothing more
+   * to do here — the action Operation's own transition above already
+   * succeeded and stands on its own.
+   */
+  private async settleRelatedOfferOperation(
+    data: ProtocolStateChangeJobData,
+    outcome: ProtocolOutcome,
+    manager: EntityManager,
+  ): Promise<void> {
+    const credential = await this.credentialRepository.findByExternalId(
+      data.tenantId,
+      data.externalId,
+    );
+
+    if (!credential) {
+      return;
+    }
+
+    await this.operationService.transitionStateIfForward(
+      credential.operationId,
+      outcome.operationState,
+      operationStatesBelow(outcome.operationState),
+      outcome.operationState === OperationState.FAILED
+        ? {
+            code: `${data.topic.toUpperCase()}_FAILED`,
+            message: data.protocolState,
+          }
+        : data.payload,
+      manager,
+    );
   }
 
   private async applyCredentialOutcome(
@@ -265,15 +324,24 @@ export class ProtocolStateChangeService {
    * unlocked recount can leave the parent stuck `processing` forever. Also
    * guarded by claimBatchSettlement so only the sibling that wins the lock
    * ordering *and* still finds the parent `processing` actually settles it.
+   *
+   * `tenantId` — the child operation's own tenant, not read back from the
+   * parent — is threaded through the lock, recount, and claim so a
+   * cross-tenant or malformed `batchId` link can never lock, count, or
+   * settle another tenant's parent operation. This is a system-triggered
+   * path with no AuthContext, so that boundary has to be enforced here
+   * rather than assumed from wherever the batchId originated.
    */
   private async settleBatchParent(
     batchId: string,
+    tenantId: string,
     manager: EntityManager,
   ): Promise<void> {
-    await this.operationRepository.lockBatchParent(batchId, manager);
+    await this.operationRepository.lockBatchParent(batchId, tenantId, manager);
 
     const counts = await this.operationRepository.countByBatchGroupedByState(
       batchId,
+      tenantId,
       manager,
     );
     const inFlight =
@@ -290,6 +358,7 @@ export class ProtocolStateChangeService {
 
     const claimed = await this.operationRepository.claimBatchSettlement(
       batchId,
+      tenantId,
       finalState,
       manager,
     );

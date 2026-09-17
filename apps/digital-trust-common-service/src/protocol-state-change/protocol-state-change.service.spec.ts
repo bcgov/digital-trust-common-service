@@ -202,7 +202,7 @@ describe('ProtocolStateChangeService', () => {
 
   it('overrides credential.issued to credential.accepted when confirming a holder-initiated accept', async () => {
     const op = operation({ type: OPERATION_TYPE.CREDENTIAL_ACCEPT });
-    const cred = credential();
+    const cred = credential({ operationId: 'offer-op-1' });
     operationRepository.findByExternalIdForTenant.mockResolvedValue(op);
     credentialRepository.findByExternalId.mockResolvedValue(cred);
 
@@ -223,6 +223,17 @@ describe('ProtocolStateChangeService', () => {
         tenantId: TENANT_ID,
         event: 'credential.accepted',
       }),
+    );
+    // Regression: the original credential.offer Operation — the one
+    // returned by the 202 response and referenced by Credential.operationId
+    // — must also settle, since findByExternalIdForTenant resolved this
+    // newer CREDENTIAL_ACCEPT Operation instead of it.
+    expect(operationService.transitionStateIfForward).toHaveBeenCalledWith(
+      'offer-op-1',
+      OperationState.COMPLETED,
+      operationStatesBelow(OperationState.COMPLETED),
+      { raw: true },
+      mockManager,
     );
   });
 
@@ -315,6 +326,79 @@ describe('ProtocolStateChangeService', () => {
 
     expect(fromStates).not.toContain(CredentialState.ISSUED);
     expect(fromStates).toEqual([CredentialState.OFFERED]);
+  });
+
+  describe('settling the related offer operation for a holder-initiated accept/reject', () => {
+    it('mirrors a failed reject operation onto the original offer operation via Credential.operationId (regression)', async () => {
+      const rejectOp = operation({
+        id: 'reject-op-1',
+        type: OPERATION_TYPE.CREDENTIAL_REJECT,
+      });
+      operationRepository.findByExternalIdForTenant.mockResolvedValue(rejectOp);
+      credentialRepository.findByExternalId.mockResolvedValue(
+        credential({ operationId: 'offer-op-1' }),
+      );
+
+      await service.process(baseData({ protocolState: 'abandoned' }));
+
+      expect(operationService.transitionStateIfForward).toHaveBeenCalledWith(
+        'reject-op-1',
+        OperationState.FAILED,
+        operationStatesBelow(OperationState.FAILED),
+        { code: 'ISSUE_CREDENTIAL_FAILED', message: 'abandoned' },
+        mockManager,
+      );
+      expect(operationService.transitionStateIfForward).toHaveBeenCalledWith(
+        'offer-op-1',
+        OperationState.FAILED,
+        operationStatesBelow(OperationState.FAILED),
+        { code: 'ISSUE_CREDENTIAL_FAILED', message: 'abandoned' },
+        mockManager,
+      );
+    });
+
+    it('does not attempt to settle an offer operation when the resolved Operation is itself the offer', async () => {
+      operationRepository.findByExternalIdForTenant.mockResolvedValue(
+        operation({ type: OPERATION_TYPE.CREDENTIAL_OFFER }),
+      );
+      credentialRepository.findByExternalId.mockResolvedValue(
+        credential({ operationId: 'op-1' }),
+      );
+
+      await service.process(baseData());
+
+      expect(operationService.transitionStateIfForward).toHaveBeenCalledTimes(
+        1,
+      );
+    });
+
+    it('does not settle the offer operation while the action operation is still processing (non-terminal)', async () => {
+      operationRepository.findByExternalIdForTenant.mockResolvedValue(
+        operation({ type: OPERATION_TYPE.CREDENTIAL_ACCEPT }),
+      );
+      credentialRepository.findByExternalId.mockResolvedValue(
+        credential({ operationId: 'offer-op-1' }),
+      );
+
+      await service.process(baseData({ protocolState: 'offer-sent' }));
+
+      expect(operationService.transitionStateIfForward).toHaveBeenCalledTimes(
+        1,
+      );
+    });
+
+    it('is a best-effort no-op when no Credential is linked to the externalId', async () => {
+      operationRepository.findByExternalIdForTenant.mockResolvedValue(
+        operation({ type: OPERATION_TYPE.CREDENTIAL_ACCEPT }),
+      );
+      credentialRepository.findByExternalId.mockResolvedValue(null);
+
+      await service.process(baseData());
+
+      expect(operationService.transitionStateIfForward).toHaveBeenCalledTimes(
+        1,
+      );
+    });
   });
 
   it('only updates the operation for present_proof (no credential lookup)', async () => {
@@ -466,10 +550,12 @@ describe('ProtocolStateChangeService', () => {
 
       expect(operationRepository.lockBatchParent).toHaveBeenCalledWith(
         'batch-1',
+        TENANT_ID,
         mockManager,
       );
       expect(operationRepository.claimBatchSettlement).toHaveBeenCalledWith(
         'batch-1',
+        TENANT_ID,
         OperationState.COMPLETED,
         mockManager,
       );
@@ -496,6 +582,7 @@ describe('ProtocolStateChangeService', () => {
 
       expect(operationRepository.claimBatchSettlement).toHaveBeenCalledWith(
         'batch-1',
+        TENANT_ID,
         OperationState.FAILED,
         mockManager,
       );

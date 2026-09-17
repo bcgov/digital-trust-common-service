@@ -126,7 +126,7 @@ export class CredentialActionService {
       // would regress an already-completed operation back to PROCESSING, or
       // overwrite it and re-publish a duplicate credential.accepted/
       // credential.rejected for a synchronous result. transitionStateIfForward
-      // guards the write with the same `WHERE state IN (...)` CAS the
+      // guards the write with the same `WHERE state IN (...)` query the
       // protocol worker itself uses, so only the caller that actually wins
       // proceeds to enqueue/emit.
       //

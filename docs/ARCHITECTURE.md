@@ -601,7 +601,7 @@ sequenceDiagram
     participant API as NestJS API
     participant PG as PostgreSQL + pg-boss
     participant Worker as State Worker
-    participant WebhookW as Webhook Worker
+    participant WebhookW as Webhook Worker (stub)
     participant Traction
 
     Client->>API: POST /credentials/offer
@@ -625,7 +625,8 @@ sequenceDiagram
     Worker->>PG: UPDATE Credential (state: issued, issued_at: now())
     Worker->>PG: pgboss.send webhook.dispatch
     PG->>WebhookW: Poll + process dispatch job
-    WebhookW->>Client: POST tenant webhook URL (signed)
+    Note over WebhookW,Client: PLANNED — WebhookDispatchWorker currently only<br/>validates and acknowledges the job; it does not yet deliver.<br/>No tenant subscription, signing, or HTTP delivery exists.
+    WebhookW-->>Client: POST tenant webhook URL (signed) [not yet implemented]
 
     Note over Client: Or poll for result...
     Client->>API: GET /operations/{operation_id}

@@ -125,17 +125,18 @@ describe('OperationRepository', () => {
   });
 
   describe('claimBatchSettlement', () => {
-    it('claims settlement via a guarded update from processing to the given state', async () => {
+    it('claims settlement via a guarded update from processing to the given state, scoped to the tenant', async () => {
       mockManagerUpdate.mockResolvedValue({ affected: 1 });
 
       const claimed = await repository.claimBatchSettlement(
         'batch-1',
+        't1',
         OperationState.COMPLETED,
       );
 
       expect(mockManagerUpdate).toHaveBeenCalledWith(
         Operation,
-        { id: 'batch-1', state: OperationState.PROCESSING },
+        { id: 'batch-1', tenantId: 't1', state: OperationState.PROCESSING },
         { state: OperationState.COMPLETED },
       );
       expect(claimed).toBe(true);
@@ -146,6 +147,7 @@ describe('OperationRepository', () => {
 
       const claimed = await repository.claimBatchSettlement(
         'batch-1',
+        't1',
         OperationState.FAILED,
       );
 
@@ -160,13 +162,14 @@ describe('OperationRepository', () => {
 
       const claimed = await repository.claimBatchSettlement(
         'batch-1',
+        't1',
         OperationState.COMPLETED,
         txManager,
       );
 
       expect(txUpdate).toHaveBeenCalledWith(
         Operation,
-        { id: 'batch-1', state: OperationState.PROCESSING },
+        { id: 'batch-1', tenantId: 't1', state: OperationState.PROCESSING },
         { state: OperationState.COMPLETED },
       );
       expect(mockManagerUpdate).not.toHaveBeenCalled();
@@ -370,32 +373,39 @@ describe('OperationRepository', () => {
   });
 
   describe('lockBatchParent', () => {
-    it('locks the parent row with a pessimistic write lock through the given manager', async () => {
+    it('locks the parent row scoped to the tenant with a pessimistic write lock through the given manager', async () => {
       queryBuilder.getOne.mockResolvedValue({ id: 'batch-1' });
       const txCreateQueryBuilder = jest.fn().mockReturnValue(queryBuilder);
       const txManager = {
         createQueryBuilder: txCreateQueryBuilder,
       } as unknown as EntityManager;
 
-      await repository.lockBatchParent('batch-1', txManager);
+      await repository.lockBatchParent('batch-1', 't1', txManager);
 
       expect(txCreateQueryBuilder).toHaveBeenCalledWith(Operation, 'op');
       expect(queryBuilder.setLock).toHaveBeenCalledWith('pessimistic_write');
       expect(queryBuilder.where).toHaveBeenCalledWith('op.id = :batchId', {
         batchId: 'batch-1',
       });
+      expect(queryBuilder.andWhere).toHaveBeenCalledWith(
+        'op.tenant_id = :tenantId',
+        { tenantId: 't1' },
+      );
       expect(queryBuilder.getOne).toHaveBeenCalled();
     });
   });
 
   describe('countByBatchGroupedByState', () => {
-    it('returns all states defaulted to zero and fills from rows', async () => {
+    it('returns all states defaulted to zero and fills from rows, scoped to the tenant', async () => {
       queryBuilder.getRawMany.mockResolvedValue([
         { state: OperationState.COMPLETED, count: '3' },
         { state: OperationState.FAILED, count: '2' },
       ]);
 
-      const counts = await repository.countByBatchGroupedByState('batch-1');
+      const counts = await repository.countByBatchGroupedByState(
+        'batch-1',
+        't1',
+      );
 
       expect(counts).toEqual({
         [OperationState.PENDING]: 0,
@@ -409,6 +419,10 @@ describe('OperationRepository', () => {
           batchId: 'batch-1',
         },
       );
+      expect(queryBuilder.andWhere).toHaveBeenCalledWith(
+        'op.tenant_id = :tenantId',
+        { tenantId: 't1' },
+      );
       expect(queryBuilder.groupBy).toHaveBeenCalledWith('op.state');
     });
 
@@ -419,7 +433,7 @@ describe('OperationRepository', () => {
         createQueryBuilder: txCreateQueryBuilder,
       } as unknown as EntityManager;
 
-      await repository.countByBatchGroupedByState('batch-1', txManager);
+      await repository.countByBatchGroupedByState('batch-1', 't1', txManager);
 
       expect(txCreateQueryBuilder).toHaveBeenCalledWith(Operation, 'op');
     });
