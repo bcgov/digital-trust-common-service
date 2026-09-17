@@ -127,10 +127,8 @@ export class JobsService implements ShutdownParticipant, OnModuleInit {
     const base = (data ?? {}) as Record<string, unknown>;
 
     return {
-      ...(context.tenantId && !('tenantId' in base)
-        ? { tenantId: context.tenantId }
-        : {}),
-      ...('requestId' in base ? {} : { requestId: context.requestId }),
+      ...(context.tenantId ? { tenantId: context.tenantId } : {}),
+      requestId: context.requestId,
       ...base,
     };
   }
