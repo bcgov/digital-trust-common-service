@@ -6,8 +6,8 @@ import { describe, expect, it } from 'vitest';
 import { API_BASE_PATH } from '@/lib/api/constants';
 import { createMockAuthClient, MOCK_AUTH_TENANTS } from '@/lib/auth/mock-auth';
 import type { AuthClient } from '@/lib/auth/types';
-import { mockTenantUsers } from '@/test/msw/handlers';
-import { server } from '@/test/msw/server';
+import { mockTenantUsers } from '@/mocks/handlers';
+import { server } from '@/mocks/server';
 import { renderWithAuth } from '@/test/render-with-auth';
 
 import { TenantUsersPage } from './TenantUsersPage';

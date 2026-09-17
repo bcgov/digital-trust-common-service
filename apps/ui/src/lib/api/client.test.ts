@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { apiClient, setAuthHandlers } from './client';
 import { API_BASE_PATH } from './constants';
 import { ApiError } from './errors';
-import { server } from '@/test/msw/server';
+import { server } from '@/mocks/server';
 
 describe('apiClient auth interceptors', () => {
   it('attaches the bearer token from the auth seam', async () => {

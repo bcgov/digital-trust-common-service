@@ -36,7 +36,7 @@ async function bootstrap() {
   // Literal check, not `env`, so an oidc build drops the branch and MSW.
   if (import.meta.env.VITE_AUTH_MODE !== 'oidc') {
     try {
-      const { startMockApi } = await import('@/test/msw/browser');
+      const { startMockApi } = await import('@/mocks/browser');
       await startMockApi();
     } catch (cause) {
       console.error('Mock API failed to start', cause);

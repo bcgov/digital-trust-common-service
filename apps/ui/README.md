@@ -93,8 +93,8 @@ selected by `VITE_AUTH_MODE`:
 - **`mock` (default)** — the Sign in button creates a fake session in
   `sessionStorage`, and `oidc-client-ts` never reaches the entry chunk
   (`oidc-auth` is imported on demand). No backend is contacted: an MSW service
-  worker answers every `/api` call from the test suite's handlers
-  (`src/test/msw/handlers.ts`), because a real API would 401 the fake token
+  worker answers every `/api` call from the same handlers the test suite uses
+  (`src/mocks/handlers.ts`), because a real API would 401 the fake token
   and sign the mock user out. A call with no handler fails as `NOT_MOCKED`;
   writes succeed but do not persist. A hard reload (Ctrl+Shift+R) bypasses
   service workers — reload normally to get the mocks back.
@@ -171,7 +171,7 @@ Conventions worth knowing:
 - Endpoint paths live only in `lib/api/resources/*` — the implemented API is
   flat while the spec nests under `/tenants/{id}/…`; convergence should touch
   only those modules.
-- A new endpoint needs a handler in `src/test/msw/handlers.ts`: the suite
+- A new endpoint needs a handler in `src/mocks/handlers.ts`: the suite
   errors on an unhandled request, and mock mode has nothing else to serve.
 - Privileged UI (tabs, quick actions, admin pages) is gated on the access
   token's `scope` claim through `lib/auth/scopes.ts`, never on role names; the
