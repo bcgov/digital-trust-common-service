@@ -73,14 +73,19 @@ export class ProtocolStateChangeService {
       let transitioned = operationOutcome.transitioned;
       const operationType = operationOutcome.operationType;
 
-      if (data.topic === 'connections') {
-        transitioned =
-          (await this.applyConnectionOutcome(data, outcome, manager)) ||
-          transitioned;
-      } else {
-        transitioned =
-          (await this.applyCredentialOutcome(data, outcome, manager)) ||
-          transitioned;
+      if (
+        operationOutcome.operationType === null ||
+        operationOutcome.transitioned
+      ) {
+        if (data.topic === 'connections') {
+          transitioned =
+            (await this.applyConnectionOutcome(data, outcome, manager)) ||
+            transitioned;
+        } else {
+          transitioned =
+            (await this.applyCredentialOutcome(data, outcome, manager)) ||
+            transitioned;
+        }
       }
 
       if (!transitioned) {
