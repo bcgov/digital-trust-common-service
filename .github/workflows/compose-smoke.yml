@@ -3,7 +3,7 @@ name: Compose smoke
 # The rest of CI never reads docker-compose.yml: the test job stands Postgres
 # up through Actions `services:` and sets DB_* as workflow env, so it never
 # reads .env, .env.example, or starts Keycloak, Caddy and the containerized
-# app. This job runs the documented clean-clone quick start verbatim instead.
+# app. This job runs the documented clean-clone quick start instead.
 on:
   pull_request:
     paths:
@@ -26,8 +26,7 @@ permissions:
 jobs:
   smoke:
     runs-on: ubuntu-latest
-    # A cold run is ~12 minutes: the image build, the migrate build, the app
-    # build and boot, then seed. The cap is here so a stack that never
+    # A cold run is ~6 minutes. The cap is here so a stack that never
     # converges cannot hold a runner for the 6-hour default.
     timeout-minutes: 30
     steps:
@@ -47,88 +46,37 @@ jobs:
             node scripts/generate-oidc-keys.mjs oidc-keys.json
           mv oidc-keys.json config/oidc-keys.json
 
+      # Asserts most of the stack on its own: compose waits for migrate to
+      # complete and for app to report healthy, and app only gets there once
+      # upstream OIDC discovery against Keycloak has succeeded.
       - name: Start the stack
         run: docker compose up -d
 
-      # The containerized app gets this from the caddy-ca volume; curl on the
-      # runner needs its own copy. Exporting it here also covers the command
-      # docs/DEVELOPER.md tells developers to run.
-      - name: Export Caddy's root certificate
+      # Not covered by the above: the app is reached directly on :3000 there,
+      # never through Caddy's app.localhost front door.
+      - name: Check the front door
         run: |
           docker compose cp \
             caddy:/data/caddy/pki/authorities/local/root.crt \
             ./caddy/root.crt
-
-      # --resolve sidesteps .localhost name resolution on the runner, and
-      # --cacert rather than -k so a broken CA export fails here too.
-      - name: Wait for the stack to answer
-        shell: bash
-        run: |
-          set -euo pipefail
-          wait_for() {
-            local name=$1 deadline=$(( SECONDS + 300 ))
-            shift
-            until "$@" >/dev/null 2>&1; do
-              if (( SECONDS > deadline )); then
-                echo "::error::timed out waiting for ${name}"
-                return 1
-              fi
-              sleep 5
-            done
-            echo "ok: ${name}"
-          }
-
-          wait_for 'app /health/live' \
-            curl -fsS http://localhost:3000/health/live
-
-          wait_for 'keycloak discovery through caddy' \
-            curl -fsS --cacert ./caddy/root.crt \
-            --resolve keycloak.localhost:443:127.0.0.1 \
-            https://keycloak.localhost/realms/digital-trust-common-service/.well-known/openid-configuration
-
-          wait_for 'app /health/live through caddy' \
-            curl -fsS --cacert ./caddy/root.crt \
+          curl -fsS --cacert ./caddy/root.crt \
             --resolve app.localhost:443:127.0.0.1 \
             https://app.localhost/health/live
 
-      # Both fail quietly: compose reports the stack up either way.
-      - name: Assert migrate and seed exited 0
+      # The one service nothing else gates, so the only one that fails quietly.
+      - name: Check the seed succeeded
         shell: bash
         run: |
           set -euo pipefail
-          assert_exit() {
-            local svc=$1 cid status code deadline=$(( SECONDS + 300 ))
-            cid=$(docker compose ps -aq "$svc")
-            if [ -z "$cid" ]; then
-              echo "::error::${svc} container was never created"
-              return 1
-            fi
-            while true; do
-              status=$(docker inspect -f '{{.State.Status}}' "$cid")
-              if [ "$status" = exited ]; then break; fi
-              if (( SECONDS > deadline )); then
-                echo "::error::${svc} is still ${status} after 5 minutes"
-                return 1
-              fi
-              sleep 5
-            done
-            code=$(docker inspect -f '{{.State.ExitCode}}' "$cid")
-            if [ "$code" != 0 ]; then
-              echo "::error::${svc} exited with ${code}"
-              return 1
-            fi
-            echo "ok: ${svc} exited 0"
-          }
-
-          assert_exit migrate
-          assert_exit seed
+          timeout 300 docker compose wait seed
+          code=$(docker inspect -f '{{.State.ExitCode}}' "$(docker compose ps -aq seed)")
+          if [ "$code" != 0 ]; then
+            echo "::error::seed exited with ${code}"
+            exit 1
+          fi
 
       - name: Dump stack state
         if: failure()
         run: |
           docker compose ps -a
           docker compose logs --no-color --timestamps
-
-      - name: Tear down
-        if: always()
-        run: docker compose down -v --remove-orphans
