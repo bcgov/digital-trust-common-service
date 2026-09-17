@@ -1,35 +1,34 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen } from '@testing-library/react';
+import { screen } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
-import { createMemoryRouter, RouterProvider } from 'react-router';
 import { describe, expect, it } from 'vitest';
 
 import { API_BASE_PATH } from '@/lib/api/constants';
+import { createMockAuthClient } from '@/lib/auth/mock-auth';
+import type { AuthClient } from '@/lib/auth/types';
 import { mockConnections, mockTenants } from '@/test/msw/handlers';
 import { server } from '@/test/msw/server';
+import { renderWithAuth } from '@/test/render-with-auth';
 
 import { TenantOverviewPage } from './TenantOverviewPage';
 
 const tenantId = mockTenants[0]?.id ?? '';
 
-function renderOverview() {
-  const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
-  });
-  const router = createMemoryRouter(
+async function signedIn(): Promise<AuthClient> {
+  const client = createMockAuthClient();
+  await client.login();
+  return client;
+}
+
+function renderOverview(client: AuthClient) {
+  renderWithAuth(
     [{ path: '/tenants/:tenantId', element: <TenantOverviewPage /> }],
-    { initialEntries: [`/tenants/${tenantId}`] },
-  );
-  render(
-    <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
-    </QueryClientProvider>,
+    { client, initialEntries: [`/tenants/${tenantId}`] },
   );
 }
 
 describe('TenantOverviewPage', () => {
   it('counts definitions from a bare array and connections from an envelope', async () => {
-    renderOverview();
+    renderOverview(await signedIn());
 
     expect(await screen.findByText('2')).toBeInTheDocument();
     expect(await screen.findByText('1')).toBeInTheDocument();
@@ -44,7 +43,7 @@ describe('TenantOverviewPage', () => {
         }),
       ),
     );
-    renderOverview();
+    renderOverview(await signedIn());
 
     expect(await screen.findByText('1+')).toBeInTheDocument();
   });
@@ -58,7 +57,7 @@ describe('TenantOverviewPage', () => {
         ),
       ),
     );
-    renderOverview();
+    renderOverview(await signedIn());
 
     expect(
       await screen.findByText('Not available for your role.'),
@@ -73,7 +72,7 @@ describe('TenantOverviewPage', () => {
         () => new HttpResponse(null, { status: 500 }),
       ),
     );
-    renderOverview();
+    renderOverview(await signedIn());
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
       /failed to load/i,
@@ -81,14 +80,14 @@ describe('TenantOverviewPage', () => {
   });
 
   it('stubs the figure the API cannot provide yet', async () => {
-    renderOverview();
+    renderOverview(await signedIn());
 
     expect(await screen.findByText('Recent operations')).toBeInTheDocument();
     expect(screen.getByText('Coming soon.')).toBeInTheDocument();
   });
 
   it('links each quick action to the tenant section that owns it', async () => {
-    renderOverview();
+    renderOverview(await signedIn());
 
     expect(
       await screen.findByRole('link', { name: 'Issue credential' }),
@@ -103,8 +102,26 @@ describe('TenantOverviewPage', () => {
   });
 
   it('keeps the tenant details', async () => {
-    renderOverview();
+    renderOverview(await signedIn());
 
     expect(await screen.findByText('acme-ministry')).toBeInTheDocument();
+  });
+
+  it('leaves out a quick action the token cannot use', async () => {
+    const client = await signedIn();
+    const state = client.getState();
+    const stripped = {
+      ...state,
+      user: state.user && { ...state.user, roles: ['member'], scopes: [] },
+    };
+    client.getState = () => stripped;
+    renderOverview(client);
+
+    expect(
+      await screen.findByRole('link', { name: 'Issue credential' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('link', { name: 'Manage users' }),
+    ).not.toBeInTheDocument();
   });
 });

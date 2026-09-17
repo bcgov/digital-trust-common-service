@@ -2,7 +2,7 @@ import { ErrorResponse, WebStorageStateStore, type User } from 'oidc-client-ts';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { AppConfig } from '@/lib/config';
-import { mockSwitchedAccessToken } from '@/test/msw/handlers';
+import { mockAccessToken, mockSwitchedAccessToken } from '@/test/msw/handlers';
 
 import { AuthProviderError } from './errors';
 import { createOidcAuthClient } from './oidc-auth';
@@ -257,7 +257,26 @@ describe('oidc auth client', () => {
         email: 'ada@example.test',
         tenantId: 'tenant-1',
         roles: ['admin'],
+        scopes: [],
       });
+    });
+
+    it('reads API scopes from the access token, not the profile', async () => {
+      mocks.manager.getUser.mockResolvedValue(
+        makeUser(
+          { tenant_role: 'admin' },
+          { access_token: mockAccessToken({ scope: 'openid users:manage' }) },
+        ),
+      );
+      const client = createOidcAuthClient(config);
+
+      await vi.waitFor(() =>
+        expect(client.getState().status).toBe('authenticated'),
+      );
+      expect(client.getState().user?.scopes).toEqual([
+        'openid',
+        'users:manage',
+      ]);
     });
 
     /**
@@ -430,6 +449,7 @@ describe('oidc auth client', () => {
       expect(stored.id_token).toBe(loginIdToken);
       expect(stored.access_token).not.toBe('login-access-token');
       expect(client.getState().user?.tenantId).toBe(targetTenantId);
+      expect(client.getState().user?.scopes).toContain('users:manage');
     });
 
     it('still signs out through the provider after a tenant switch', async () => {

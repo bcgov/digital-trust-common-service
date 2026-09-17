@@ -9,7 +9,8 @@ import { RequireAuth } from './require-auth';
 
 function renderGuardedAt(status: AuthStatus, path = '/dashboard') {
   const value: AuthContextValue = {
-    user: status === 'authenticated' ? { sub: 'u1', roles: [] } : null,
+    user:
+      status === 'authenticated' ? { sub: 'u1', roles: [], scopes: [] } : null,
     status,
     isAuthenticated: status === 'authenticated',
     isLoading: status === 'loading',

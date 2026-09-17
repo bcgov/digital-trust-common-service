@@ -1,5 +1,5 @@
 # Same-origin front door for local dev: SPA + /oidc + /api on one HTTPS
-# origin, mirroring the production topology (IN-15 / #160).
+# origin, mirroring the production topology.
 app.localhost {
     tls internal
 
