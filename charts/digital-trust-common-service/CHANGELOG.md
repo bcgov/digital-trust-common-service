@@ -9,6 +9,13 @@ and this chart adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.h
 
 ### Added
 
+- `otel.logsExporter` (default `none`), rendered as `OTEL_LOGS_EXPORTER` into
+  the API and Worker. Previously omitted on the assumption that leaving it
+  unset meant logs were not exported; the OpenTelemetry SDK defaults it to
+  `otlp`, so the pino instrumentation was posting every log line to the
+  collector's `/v1/logs` in addition to stdout, which Alloy already ships to
+  Loki. Setting it to `none` explicitly removes the duplicate path and leaves
+  trace correlation intact.
 - Initial Helm chart for deploying digital-trust-common-service to BC Gov OpenShift.
 - API Deployment with templated resources, a liveness/startup probe on
   `/health/live` and a readiness probe on `/health/ready`.
