@@ -18,7 +18,8 @@ which bundles `instrumentation-http`, `instrumentation-pg`, and
 [tracing.ts](../libs/common/src/telemetry/tracing.ts). There is no `getMeter`,
 counter, or histogram anywhere in the codebase. Business metrics (credential
 operations, queue depth) are later, separate tickets and must cite the rule
-below rather than re-litigate it.
+below rather than re-litigate it — see [Business metrics](#business-metrics)
+for what is planned and what it is expected to cost.
 
 **Metrics are operator-facing only.** The tenant-facing Grafana instance
 (see [tenant-observability-design.md](./tenant-observability-design.md)) is
@@ -36,6 +37,101 @@ them could identify one even if they were, per the labelling rule.
 2. **Low-cardinality dimensions only**: operation type, outcome/status,
    adapter, protocol, route template, classified error code — never a raw
    identifier (operation id, connection id, credential id, user id).
+
+## Business metrics
+
+Everything in the catalog below measures plumbing: how many HTTP requests
+arrived, how long database statements took, how busy the runtime is. All of
+it can look completely healthy while the service is failing at its job —
+every request returning `200 OK` while not a single credential has been
+issued for hours, because the agent is rejecting them further down.
+
+Nothing counts the work itself. That is what business metrics are for, and
+none exist yet.
+
+### They are one step of four
+
+A counter on its own does not tell you very much. It is useful because it
+starts a path that ends somewhere actionable:
+
+| Step | Signal | Answers |
+| --- | --- | --- |
+| 1. Notice | a business counter, plus an alert | "issuance failures are up" |
+| 2. Attribute | logs | "it is concentrated in one tenant" |
+| 3. Diagnose | a trace from that tenant | "here is exactly what failed" |
+| 4. Act | — | fix it, or contact the tenant |
+
+Step 1 is the part that does not exist. Without it nothing ever prompts
+anyone to start at step 2, and a tenant can fail every operation for days
+unnoticed.
+
+This is also the reason rule 1 above exists. "Which tenant?" is answered at
+step 2, from logs, at the moment someone investigates — not by storing a
+separate copy of every counter for every tenant, forever, on the chance that
+somebody asks. Step 3 already works: `TenantSpanInterceptor` puts `tenant.id`
+on every span.
+
+> **Step 2's mechanism is not settled.** Alloy routes each log line to its own
+> Loki tenant (`stage.tenant`, with `auth_enabled: true`), so tenant logs are
+> held in separate partitions rather than distinguished by a label within one
+> stream. Aggregating across tenants to see where something is concentrated
+> therefore needs a multi-tenant query scope, and it has not been confirmed
+> which operator-facing scope provides that, or whether `tenant_id` survives
+> routing as a queryable field. Resolve this before relying on step 2 — see
+> [tenant-observability-design.md](./tenant-observability-design.md).
+
+### Candidates
+
+None of these are committed. Each needs an operator question attached — some
+sentence a person would ask, where a different answer leads to a different
+action — and a candidate nobody has a question for should not ship.
+
+Dimension values are taken from sets that already exist in the codebase, so
+none of them can grow with traffic or tenant count:
+
+| Candidate | Dimensions | Series |
+| --- | --- | --- |
+| credential operation outcome | operation type (8 declared) x outcome (2) | 16 |
+| adapter call outcome | adapter (2) x port method (12) x outcome or error class (6) | 144 |
+| job queue depth | queue (4 registered) | 4 |
+
+That is **about 164 series at worst**, against the roughly 3,000 estimated
+below — near enough 5%. The sets behind each number are `OPERATION_TYPE`,
+`OperationState`, `ConnectorType`, the five port interfaces in
+`libs/credential-ports/src/ports/`, and the five adapter error classes in
+`libs/credential-ports/src/errors/`. Re-count them before building, since
+three of the five are still growing.
+
+### What exists to measure, and what does not
+
+Four of the eight declared operation types are constructed in code today:
+`credential.offer`, `credential.accept`, `credential.reject`, and
+`credential.revoke`. The other four — `credential.offer-batch`,
+`credential.revoke-batch`, `presentation.request`, and `connection.create` —
+are declared but never created, and `operation-type.constants.ts` notes that
+they arrive in later slices.
+
+Note this describes operations, not features: `connection/` and
+`verification-profile/` exist as modules. What is absent is any `Operation`
+record of those types.
+
+### Coverage rule
+
+A counter instrumented against today's four operation types will silently
+under-report once the other four land. That is worse than having no counter,
+because the number still looks authoritative while being wrong, and nothing
+about it appears broken.
+
+So, alongside the labelling rules above:
+
+**New values must be covered.** A change that adds a value to
+`OPERATION_TYPE`, a port method, or an adapter error class must either extend
+the business metric dimensions to match, or record in the PR why that value
+is deliberately excluded. Like the labelling rules, this is enforced at
+review rather than re-decided per ticket.
+
+This is the rule most easily missed, because the change that breaks it is a
+feature change with nothing obviously to do with metrics.
 
 ## Metric catalog
 
