@@ -195,6 +195,41 @@ describe('createLoggerModuleParams', () => {
     }).not.toThrow();
   });
 
+  it('falls back to JSON with a warning when pino-pretty is unavailable', () => {
+    const stream = new InMemoryStream();
+
+    // doMock registers in the mock registry, which outlives isolateModules.
+    // Without this cleanup every later LOG_PRETTY test silently gets the
+    // throwing stub and asserts against JSON it did not ask for.
+    try {
+      jest.isolateModules(() => {
+        jest.doMock('pino-pretty', () => {
+          throw new Error("Cannot find module 'pino-pretty'");
+        });
+
+        const { createLoggerModuleParams: create } =
+          // eslint-disable-next-line @typescript-eslint/no-require-imports
+          require('./logger.config') as typeof import('./logger.config');
+        const pinoHttp = create(config('info', { LOG_PRETTY: 'true' }), stream)
+          .pinoHttp as { logger: PinoLogger };
+
+        pinoHttp.logger.info({ context: 'FallbackLogger' }, 'structured');
+      });
+    } finally {
+      jest.dontMock('pino-pretty');
+      jest.resetModules();
+    }
+
+    expect(stream.records()).toMatchObject([
+      {
+        level: 'warn',
+        message:
+          'LOG_PRETTY is enabled but pino-pretty is not installed; falling back to JSON output',
+      },
+      { context: 'FallbackLogger', message: 'structured' },
+    ]);
+  });
+
   it('renders pretty output when LOG_PRETTY is true', () => {
     const { logger, stream } = createLogger('info', { LOG_PRETTY: 'true' });
 
