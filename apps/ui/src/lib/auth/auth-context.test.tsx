@@ -13,8 +13,9 @@ import { AuthProvider } from './auth-context';
 import type { AuthState } from './types';
 
 /**
- * Stands in for the OIDC client holding an expired access token: still
- * authenticated, because expiry is the ordinary state between refreshes.
+ * Stand-in for either AuthClient. That an expired OIDC token still reads as
+ * authenticated is asserted in oidc-auth.test.ts; what is covered here is the
+ * wiring from there to the api client's 401 handler.
  */
 function createFakeAuthClient() {
   const listeners = new Set<() => void>();
@@ -84,7 +85,7 @@ describe('AuthProvider', () => {
     client = createFakeAuthClient();
   });
 
-  it('keeps the shell mounted when an expired token is refreshed', async () => {
+  it('keeps the shell mounted while a rejected token is refreshed', async () => {
     client.refresh.mockImplementation(() => {
       client.setAccessToken('fresh');
       return Promise.resolve('fresh');
