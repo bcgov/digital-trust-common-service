@@ -108,6 +108,64 @@ interfaces in `libs/credential-ports/src/ports/`, and the five adapter error
 classes in `libs/credential-ports/src/errors/`. Re-count them before
 building, since three of the six are still growing.
 
+### Choosing an instrument
+
+Everything in this service is auto-instrumented today — there is no
+`createCounter` or `createHistogram` anywhere in the codebase, and no meter is
+obtained from `@opentelemetry/api` (1.9.1) outside the SDK. Business metrics
+will be the first manual instrumentation here, so there is no in-repo example
+to copy and the choice has to be made from first principles each time.
+
+The meter exposes seven instruments. Brief descriptions follow; the official
+documentation linked at the end of this section carries the full semantics and
+code examples, and is the right place to go when deciding a specific case.
+
+**Synchronous** — called inline, at the moment the thing happens:
+
+| Instrument | What it records | Typical use |
+| --- | --- | --- |
+| `Counter` | Positive deltas only; never decreases. | Issuances, failures, retries. The default for business metrics. |
+| `UpDownCounter` | Deltas that may be positive or negative. | In-flight requests, queue enqueue/dequeue deltas. |
+| `Histogram` | Individual measurements, bucketed to give a distribution. | Durations, payload sizes. Expensive — see below. |
+| `Gauge` | The current value, at a moment you already have in hand. | An event-driven reading where a callback would be awkward. |
+
+**Asynchronous (observable)** — you register a callback, and the SDK invokes
+it on each export:
+
+| Instrument | What it records | Typical use |
+| --- | --- | --- |
+| `ObservableCounter` | The absolute cumulative total; the SDK derives the delta. | A monotonic total owned elsewhere, readable only in full. |
+| `ObservableUpDownCounter` | The absolute current total, which may fall. | Pool size, resident item counts. Sums across dimensions. |
+| `ObservableGauge` | The current value, read on demand. | Queue depth, connection pool utilisation. Does not sum. |
+
+Two decisions carry more weight than the rest:
+
+**Sync vs. observable.** If the value only exists as a point-in-time reading —
+queue depth being the obvious case, since nothing "happens" when a queue is 40
+deep — an observable is the only correct choice. Incrementing a counter on
+every enqueue and decrementing on every dequeue to track depth will drift the
+moment a job is lost.
+
+**A histogram is not a counter with extra detail.** Per the series estimate
+below, each histogram costs roughly 17 series per dimension combination — 15
+buckets plus `_count` and `_sum`, at the default duration boundaries — where a
+counter costs one. The adapter call outcome candidate is 144 series as a
+counter and would be about 2,400 as a histogram, which on its own would exceed
+the entire business metric budget. Reach for a histogram only when the
+distribution genuinely changes a decision; if the question is "how many
+failed", a counter answers it for a fraction of the cost.
+
+Naming follows OTel semantic conventions — dotted, lowercase, with a unit
+suffix where one applies — the same convention the auto-instrumented table
+below already uses.
+
+For detail, semantics and examples beyond the summary above:
+
+- [Metric instruments](https://opentelemetry.io/docs/concepts/signals/metrics/) — concepts and the full instrument list
+- [Instrument selection guidelines](https://opentelemetry.io/docs/specs/otel/metrics/supplementary-guidelines/) — the spec's own decision guidance, including sync vs. async
+- [Metrics naming conventions](https://opentelemetry.io/docs/specs/semconv/general/metrics/) — naming and units
+- [OpenTelemetry JS instrumentation](https://opentelemetry.io/docs/languages/js/instrumentation/) — the Node API surface
+
 ### What exists to measure, and what does not
 
 Four of the eight declared operation types are constructed in code today:
