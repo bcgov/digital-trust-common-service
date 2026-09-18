@@ -3,7 +3,7 @@ import {
   CredentialExchangeState,
 } from '@app/credential-ports';
 import { JOB_QUEUES } from '@app/pg-boss';
-import { NotFoundException } from '@nestjs/common';
+import { ConflictException, NotFoundException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Test, TestingModule } from '@nestjs/testing';
 import { DataSource, EntityManager } from 'typeorm';
@@ -335,10 +335,36 @@ describe('CredentialActionService', () => {
       expect(mockFindLatestByExternalIdAndTypeForTenant).toHaveBeenCalledWith(
         tenantId,
         externalId,
-        OPERATION_TYPE.CREDENTIAL_ACCEPT,
+        [OPERATION_TYPE.CREDENTIAL_ACCEPT, OPERATION_TYPE.CREDENTIAL_REJECT],
       );
       expect(mockResolve).not.toHaveBeenCalled();
       expect(result).toBe(winner);
+    });
+
+    it('returns 409 when the concurrent winner claimed the opposite holder action', async () => {
+      mockFindByIdForTenant.mockResolvedValue(buildOffer());
+      const oppositeWinner = buildActionOperation({
+        id: 'action-op-reject-winner',
+        type: OPERATION_TYPE.CREDENTIAL_REJECT,
+        state: OperationState.PROCESSING,
+      });
+      // uq_operation_inflight_holder_action is shared across accept and
+      // reject, so this accept() call can lose the race to a concurrent
+      // reject() for the same offer.
+      mockFindByExternalIdForTenant.mockResolvedValueOnce(null);
+      mockFindLatestByExternalIdAndTypeForTenant.mockResolvedValue(
+        oppositeWinner,
+      );
+      mockCreateOperation.mockRejectedValue(
+        Object.assign(new Error('duplicate key value'), {
+          driverError: { code: '23505' },
+        }),
+      );
+
+      await expect(service.accept(tenantId, exchangeId)).rejects.toThrow(
+        ConflictException,
+      );
+      expect(mockResolve).not.toHaveBeenCalled();
     });
 
     it('retries the adapter call when the unique-violation winner is itself still PENDING', async () => {

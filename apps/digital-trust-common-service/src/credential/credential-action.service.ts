@@ -5,7 +5,12 @@ import {
   CredentialExchangeState,
 } from '@app/credential-ports';
 import { JOB_QUEUES } from '@app/pg-boss';
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { DataSource } from 'typeorm';
 
@@ -171,20 +176,42 @@ export class CredentialActionService {
       // in-flight holder-action slot this index allows for this offer.
       // Return that winner instead of surfacing the constraint violation.
       // findByExternalIdForTenant excludes terminal states and would miss a
-      // winner that has already completed/failed by now, and it isn't
-      // scoped to this action alone — findLatestByExternalIdAndTypeForTenant
-      // finds the winner regardless of state and only for this action type.
+      // winner that has already completed/failed by now.
+      //
+      // uq_operation_inflight_holder_action's uniqueness scope is shared
+      // across credential.accept and credential.reject (not one index per
+      // type), so the concurrent winner that caused this violation may be
+      // of either type — searching only this request's own type would miss
+      // an opposite-action winner entirely and rethrow a genuine conflict
+      // as a raw 500.
       const winner =
         await this.operationRepository.findLatestByExternalIdAndTypeForTenant(
           tenantId,
           offer.externalId,
-          action === 'accept'
-            ? OPERATION_TYPE.CREDENTIAL_ACCEPT
-            : OPERATION_TYPE.CREDENTIAL_REJECT,
+          [OPERATION_TYPE.CREDENTIAL_ACCEPT, OPERATION_TYPE.CREDENTIAL_REJECT],
         );
 
       if (!winner) {
         throw error;
+      }
+
+      const requestedType =
+        action === 'accept'
+          ? OPERATION_TYPE.CREDENTIAL_ACCEPT
+          : OPERATION_TYPE.CREDENTIAL_REJECT;
+
+      if (winner.type !== requestedType) {
+        // The concurrent winner claimed the *other* holder action for this
+        // same offer — accept and reject are mutually exclusive, so this is
+        // a real conflict, not a duplicate of this request that can be
+        // resolved by just handing the winner back.
+        throw new ConflictException(
+          `Credential offer '${exchangeId}' was already ${
+            winner.type === OPERATION_TYPE.CREDENTIAL_ACCEPT
+              ? 'accepted'
+              : 'rejected'
+          }`,
+        );
       }
 
       // Same recovery as the pre-check above: a winner still PENDING never

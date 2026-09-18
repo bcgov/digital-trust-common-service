@@ -380,6 +380,12 @@ describe('CredentialRevokeService', () => {
       expect.objectContaining({ revoked: true }),
       mockManager,
     );
+    // Same row-lock order as ProtocolStateChangeService.process() (Operation
+    // before Credential) — reversing it is how two concurrent transactions
+    // touching both rows would deadlock instead of one cleanly losing.
+    expect(
+      mockTransitionStateIfForward.mock.invocationCallOrder[0],
+    ).toBeLessThan(mockUpdateStateIfForward.mock.invocationCallOrder[0]);
     expect(mockSendInTransaction).toHaveBeenCalledWith(
       mockManager,
       JOB_QUEUES.WEBHOOK_DISPATCH,
@@ -494,6 +500,9 @@ describe('CredentialRevokeService', () => {
     const result = await service.revoke(tenantId, credentialId);
 
     expect(mockFindById).toHaveBeenCalledWith('revoke-op-1');
+    // The Operation guard is checked first now, so a loss must never even
+    // attempt the Credential row.
+    expect(mockUpdateStateIfForward).not.toHaveBeenCalled();
     expect(mockSendInTransaction).not.toHaveBeenCalled();
     expect(mockEventEmit).not.toHaveBeenCalled();
     expect(mockEmit).toHaveBeenCalledWith(
@@ -502,6 +511,27 @@ describe('CredentialRevokeService', () => {
       }),
     );
     expect(result).toBe(alreadyCompleted);
+  });
+
+  it('rolls back the Operation transition when the credential is no longer revocable despite winning its own guard', async () => {
+    mockFindByIdForTenant.mockResolvedValue(buildCredential());
+    mockCreateOperation.mockResolvedValue(buildOperation());
+    mockRevoke.mockResolvedValue({
+      credentialId: externalId,
+      revoked: true,
+      revokedAt: '2024-01-02T00:00:00.000Z',
+    });
+    mockTransitionStateIfForward.mockResolvedValue(
+      buildOperation({ state: OperationState.COMPLETED }),
+    );
+    mockUpdateStateIfForward.mockResolvedValue(false);
+
+    await expect(service.revoke(tenantId, credentialId)).rejects.toThrow(
+      /not in a revocable state/,
+    );
+
+    expect(mockSendInTransaction).not.toHaveBeenCalled();
+    expect(mockEventEmit).not.toHaveBeenCalled();
   });
 
   it('does not regress an already-completed operation to failed when the protocol worker won the failure race first', async () => {
