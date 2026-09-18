@@ -49,6 +49,19 @@ describe('TenantUserService', () => {
     updatedAt: new Date(),
   };
 
+  // Both roles pass TenantMembershipGuard, so the owner-only rules are the
+  // only thing separating them.
+  const ownerCaller: TenantUser = {
+    ...mockTenantUser,
+    id: '123e4567-e89b-12d3-a456-426614174010',
+    role: TenantUserRole.OWNER,
+  };
+  const adminCaller: TenantUser = {
+    ...mockTenantUser,
+    id: '123e4567-e89b-12d3-a456-426614174011',
+    role: TenantUserRole.ADMIN,
+  };
+
   beforeEach(async () => {
     mockCreate = jest.fn();
     mockFindById = jest.fn();
@@ -170,7 +183,7 @@ describe('TenantUserService', () => {
       mockFindByTenantAndEmail.mockResolvedValue(null);
       mockCreate.mockResolvedValue(invited);
 
-      const result = await service.invite(tenantId, dto, manager);
+      const result = await service.invite(tenantId, dto, undefined, manager);
 
       expect(mockFindByTenantAndEmail).toHaveBeenCalledWith(
         tenantId,
@@ -187,6 +200,65 @@ describe('TenantUserService', () => {
         manager,
       );
       expect(mockEmit).not.toHaveBeenCalled();
+      expect(result).toEqual(invited);
+    });
+
+    it('should throw ForbiddenException when an admin invites an owner', async () => {
+      const tenantId = mockTenantUser.tenantId;
+      const dto: InviteTenantUserDto = {
+        email: 'new-owner@example.com',
+        role: TenantUserRole.OWNER,
+      };
+
+      await expect(service.invite(tenantId, dto, adminCaller)).rejects.toThrow(
+        ForbiddenException,
+      );
+      expect(mockFindByTenantAndEmail).not.toHaveBeenCalled();
+      expect(mockCreate).not.toHaveBeenCalled();
+      expect(mockEmit).not.toHaveBeenCalled();
+    });
+
+    it('should let an owner invite another owner', async () => {
+      const tenantId = mockTenantUser.tenantId;
+      const dto: InviteTenantUserDto = {
+        email: 'new-owner@example.com',
+        role: TenantUserRole.OWNER,
+      };
+      const invited = {
+        ...mockTenantUser,
+        email: dto.email,
+        role: dto.role,
+        status: TenantUserStatus.INVITED,
+      };
+
+      mockFindByTenantAndEmail.mockResolvedValue(null);
+      mockCreate.mockResolvedValue(invited);
+
+      const result = await service.invite(tenantId, dto, ownerCaller);
+
+      expect(mockCreate).toHaveBeenCalled();
+      expect(result).toEqual(invited);
+    });
+
+    it('should let an admin invite a non-owner', async () => {
+      const tenantId = mockTenantUser.tenantId;
+      const dto: InviteTenantUserDto = {
+        email: 'new-admin@example.com',
+        role: TenantUserRole.ADMIN,
+      };
+      const invited = {
+        ...mockTenantUser,
+        email: dto.email,
+        role: dto.role,
+        status: TenantUserStatus.INVITED,
+      };
+
+      mockFindByTenantAndEmail.mockResolvedValue(null);
+      mockCreate.mockResolvedValue(invited);
+
+      const result = await service.invite(tenantId, dto, adminCaller);
+
+      expect(mockCreate).toHaveBeenCalled();
       expect(result).toEqual(invited);
     });
   });
@@ -470,32 +542,113 @@ describe('TenantUserService', () => {
     });
 
     it('should throw ForbiddenException when the caller attempts to change their own role', async () => {
-      const tenantId = mockTenantUser.tenantId;
-      const id = mockTenantUser.id;
-      const dto = { role: TenantUserRole.ADMIN };
+      const tenantId = adminCaller.tenantId;
+      const dto = { role: TenantUserRole.MEMBER };
 
-      mockFindByTenantAndId.mockResolvedValue(mockTenantUser);
+      mockFindByTenantAndId.mockResolvedValue(adminCaller);
 
-      await expect(service.update(tenantId, id, dto, id)).rejects.toThrow(
-        ForbiddenException,
-      );
+      await expect(
+        service.update(tenantId, adminCaller.id, dto, adminCaller),
+      ).rejects.toThrow(ForbiddenException);
       expect(mockCountByTenantAndRole).not.toHaveBeenCalled();
       expect(mockUpdate).not.toHaveBeenCalled();
     });
 
     it('allows a caller to update their own non-role fields', async () => {
-      const tenantId = mockTenantUser.tenantId;
-      const id = mockTenantUser.id;
+      const tenantId = adminCaller.tenantId;
       const dto = { displayName: 'My New Name' };
       const updatedTenantUser = {
-        ...mockTenantUser,
+        ...adminCaller,
         displayName: dto.displayName,
       };
 
-      mockFindByTenantAndId.mockResolvedValue(mockTenantUser);
+      mockFindByTenantAndId.mockResolvedValue({ ...adminCaller });
       mockUpdate.mockResolvedValue(updatedTenantUser);
 
-      const result = await service.update(tenantId, id, dto, id);
+      const result = await service.update(
+        tenantId,
+        adminCaller.id,
+        dto,
+        adminCaller,
+      );
+
+      expect(mockUpdate).toHaveBeenCalled();
+      expect(result).toEqual(updatedTenantUser);
+    });
+
+    it('should throw ForbiddenException when an admin grants the owner role', async () => {
+      const tenantId = mockTenantUser.tenantId;
+      const member = { ...mockTenantUser, role: TenantUserRole.MEMBER };
+      const dto = { role: TenantUserRole.OWNER };
+
+      mockFindByTenantAndId.mockResolvedValue(member);
+
+      await expect(
+        service.update(tenantId, member.id, dto, adminCaller),
+      ).rejects.toThrow(ForbiddenException);
+      expect(mockCountByTenantAndRole).not.toHaveBeenCalled();
+      expect(mockUpdate).not.toHaveBeenCalled();
+      expect(mockEmit).not.toHaveBeenCalled();
+    });
+
+    it('should throw ForbiddenException when an admin revokes the owner role', async () => {
+      const tenantId = mockTenantUser.tenantId;
+      const owner = { ...mockTenantUser, role: TenantUserRole.OWNER };
+      const dto = { role: TenantUserRole.ADMIN };
+
+      mockFindByTenantAndId.mockResolvedValue(owner);
+
+      await expect(
+        service.update(tenantId, owner.id, dto, adminCaller),
+      ).rejects.toThrow(ForbiddenException);
+      expect(mockCountByTenantAndRole).not.toHaveBeenCalled();
+      expect(mockUpdate).not.toHaveBeenCalled();
+      expect(mockEmit).not.toHaveBeenCalled();
+    });
+
+    it("should throw ForbiddenException when an admin edits an owner's other fields", async () => {
+      const tenantId = mockTenantUser.tenantId;
+      const owner = { ...mockTenantUser, role: TenantUserRole.OWNER };
+      const dto = { status: TenantUserStatus.DISABLED };
+
+      mockFindByTenantAndId.mockResolvedValue(owner);
+
+      await expect(
+        service.update(tenantId, owner.id, dto, adminCaller),
+      ).rejects.toThrow(ForbiddenException);
+      expect(mockUpdate).not.toHaveBeenCalled();
+    });
+
+    it('should let an owner grant the owner role', async () => {
+      const tenantId = mockTenantUser.tenantId;
+      const member = { ...mockTenantUser, role: TenantUserRole.MEMBER };
+      const dto = { role: TenantUserRole.OWNER };
+      const updatedTenantUser = { ...member, ...dto };
+
+      mockFindByTenantAndId.mockResolvedValue(member);
+      mockUpdate.mockResolvedValue(updatedTenantUser);
+
+      const result = await service.update(
+        tenantId,
+        member.id,
+        dto,
+        ownerCaller,
+      );
+
+      expect(mockUpdate).toHaveBeenCalled();
+      expect(result).toEqual(updatedTenantUser);
+    });
+
+    it('should let a platform admin grant the owner role', async () => {
+      const tenantId = mockTenantUser.tenantId;
+      const member = { ...mockTenantUser, role: TenantUserRole.MEMBER };
+      const dto = { role: TenantUserRole.OWNER };
+      const updatedTenantUser = { ...member, ...dto };
+
+      mockFindByTenantAndId.mockResolvedValue(member);
+      mockUpdate.mockResolvedValue(updatedTenantUser);
+
+      const result = await service.update(tenantId, member.id, dto);
 
       expect(mockUpdate).toHaveBeenCalled();
       expect(result).toEqual(updatedTenantUser);
@@ -622,6 +775,46 @@ describe('TenantUserService', () => {
         TenantUserRole.OWNER,
       );
       expect(mockDelete).toHaveBeenCalledWith(owner.id);
+      expect(mockEmit).toHaveBeenCalled();
+    });
+
+    it('should throw ForbiddenException when an admin removes an owner', async () => {
+      const tenantId = mockTenantUser.tenantId;
+      const owner = { ...mockTenantUser, role: TenantUserRole.OWNER };
+
+      mockFindByTenantAndId.mockResolvedValue(owner);
+
+      await expect(
+        service.delete(tenantId, owner.id, adminCaller),
+      ).rejects.toThrow(ForbiddenException);
+      expect(mockCountByTenantAndRole).not.toHaveBeenCalled();
+      expect(mockDelete).not.toHaveBeenCalled();
+      expect(mockEmit).not.toHaveBeenCalled();
+    });
+
+    it('should let an owner remove another owner', async () => {
+      const tenantId = mockTenantUser.tenantId;
+      const owner = { ...mockTenantUser, role: TenantUserRole.OWNER };
+
+      mockFindByTenantAndId.mockResolvedValue(owner);
+      mockCountByTenantAndRole.mockResolvedValue(2);
+
+      await service.delete(tenantId, owner.id, ownerCaller);
+
+      expect(mockDelete).toHaveBeenCalledWith(owner.id);
+      expect(mockEmit).toHaveBeenCalled();
+    });
+
+    it('should let an admin remove a non-owner', async () => {
+      const tenantId = mockTenantUser.tenantId;
+      const member = { ...mockTenantUser, role: TenantUserRole.MEMBER };
+
+      mockFindByTenantAndId.mockResolvedValue(member);
+
+      await service.delete(tenantId, member.id, adminCaller);
+
+      expect(mockCountByTenantAndRole).not.toHaveBeenCalled();
+      expect(mockDelete).toHaveBeenCalledWith(member.id);
       expect(mockEmit).toHaveBeenCalled();
     });
   });

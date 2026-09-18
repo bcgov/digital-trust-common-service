@@ -99,10 +99,12 @@ export class TenantService {
         const saved = await this.tenants.update(tenant, manager);
 
         // Platform admins create tenants on behalf of a requestor; link that
-        // requestor as the tenant's initial owner so they can manage it.
+        // requestor as the tenant's initial owner so they can manage it. There
+        // is no tenant-level caller yet, so the owner-only rule does not apply.
         const owner = await this.tenantUserService.invite(
           saved.id,
           { email: dto.ownerEmail, role: TenantUserRole.OWNER },
+          undefined,
           manager,
         );
 

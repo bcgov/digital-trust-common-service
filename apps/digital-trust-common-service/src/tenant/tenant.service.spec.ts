@@ -152,6 +152,7 @@ describe('TenantService', () => {
           email: dto.ownerEmail,
           role: TenantUserRole.OWNER,
         },
+        undefined,
         mockManager,
       );
       expect(mockEmit).toHaveBeenCalledWith({
@@ -238,6 +239,7 @@ describe('TenantService', () => {
       expect(mockInvite).toHaveBeenCalledWith(
         mockTenant.id,
         { email: dto.ownerEmail, role: TenantUserRole.OWNER },
+        undefined,
         mockManager,
       );
       expect(mockEmit).not.toHaveBeenCalled();

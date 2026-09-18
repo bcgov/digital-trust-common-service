@@ -69,7 +69,7 @@ export class TenantUserController {
   @ApiOperation({
     summary: 'Invite a user to the tenant',
     description:
-      'Creates a pending tenant user record for the given email address. The user is linked to a real identity on first login.',
+      'Creates a pending tenant user record for the given email address. The user is linked to a real identity on first login. Only an owner may invite another owner.',
   })
   @ApiCreatedResponse({
     description: 'User invited',
@@ -80,7 +80,7 @@ export class TenantUserController {
   })
   @ApiForbiddenResponse({
     description:
-      'Caller lacks the required scope, or is not an owner/admin of this tenant',
+      'Caller lacks the required scope, is not an owner/admin of this tenant, or is an admin inviting an owner',
   })
   @ApiUnauthorizedResponse({ description: 'Authentication is required' })
   @ApiBody({
@@ -99,8 +99,13 @@ export class TenantUserController {
   public async create(
     @Param('tenantId', ParseUUIDPipe) tenantId: string,
     @Body() dto: InviteTenantUserDto,
+    @CurrentTenantUser() callerTenantUser?: TenantUser,
   ): Promise<TenantUserResponseDto> {
-    const created = await this.tenantUserService.invite(tenantId, dto);
+    const created = await this.tenantUserService.invite(
+      tenantId,
+      dto,
+      callerTenantUser,
+    );
     return TenantUserResponseDto.fromEntity(created);
   }
 
@@ -136,6 +141,11 @@ export class TenantUserController {
   }
 
   @Patch(':userId')
+  @ApiOperation({
+    summary: 'Update user role',
+    description:
+      "Only an owner may grant the owner role or change an owner's row.",
+  })
   @ApiOkResponse({
     description: 'Tenant user updated successfully',
     type: TenantUserResponseDto,
@@ -146,7 +156,7 @@ export class TenantUserController {
   })
   @ApiForbiddenResponse({
     description:
-      'Caller lacks the required scope, is not an owner/admin of this tenant, or is attempting to change their own role',
+      'Caller lacks the required scope, is not an owner/admin of this tenant, is an admin acting on an owner or granting the owner role, or is attempting to change their own role',
   })
   @ApiUnauthorizedResponse({ description: 'Authentication is required' })
   @ApiBody({
@@ -178,13 +188,17 @@ export class TenantUserController {
       tenantId,
       userId,
       dto,
-      callerTenantUser?.id,
+      callerTenantUser,
     );
     return TenantUserResponseDto.fromEntity(updated);
   }
 
   @Delete(':userId')
   @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({
+    summary: 'Remove user from tenant',
+    description: 'Only an owner may remove another owner.',
+  })
   @ApiNoContentResponse({ description: 'Tenant user deleted successfully' })
   @ApiNotFoundResponse({ description: 'Tenant user not found' })
   @ApiConflictResponse({
@@ -192,13 +206,18 @@ export class TenantUserController {
   })
   @ApiForbiddenResponse({
     description:
-      'Caller lacks the required scope, or is not an owner/admin of this tenant',
+      'Caller lacks the required scope, is not an owner/admin of this tenant, or is an admin removing an owner',
   })
   @ApiUnauthorizedResponse({ description: 'Authentication is required' })
   public async delete(
     @Param('tenantId', ParseUUIDPipe) tenantId: string,
     @Param('userId', ParseUUIDPipe) userId: string,
+    @CurrentTenantUser() callerTenantUser?: TenantUser,
   ): Promise<void> {
-    return await this.tenantUserService.delete(tenantId, userId);
+    return await this.tenantUserService.delete(
+      tenantId,
+      userId,
+      callerTenantUser,
+    );
   }
 }

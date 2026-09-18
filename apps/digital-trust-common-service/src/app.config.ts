@@ -1,3 +1,5 @@
+import { RequestContextTenantInterceptor } from '@app/common/context/request-context-tenant.interceptor';
+import { RequestContextService } from '@app/common/context/request-context.service';
 import {
   ClassSerializerInterceptor,
   INestApplication,
@@ -10,6 +12,7 @@ import type { Express } from 'express';
 
 import { API_PREFIX } from './common/constants/api-version.constants';
 import { DeprecationInterceptor } from './common/interceptors/deprecation.interceptor';
+import { createRequestIdMiddleware } from './common/middleware/request-id.middleware';
 
 /**
  * Applies the global prefix/versioning setup (and other cross-cutting
@@ -29,6 +32,12 @@ export function configureApp(app: INestApplication): void {
   // for every caller instead of the real client IP.
   const expressInstance = app.getHttpAdapter().getInstance() as Express;
   expressInstance.set('trust proxy', true);
+
+  // Raw `app.use()`, registered first, so every request — including
+  // `health` and `oidc`, which sit outside the `/api` prefix below — gets a
+  // correlation id and runs inside the `RequestContextService` store that
+  // the logger and adapter instrumentation read from.
+  app.use(createRequestIdMiddleware(app.get(RequestContextService)));
 
   app.useGlobalPipes(
     new ValidationPipe({
@@ -59,5 +68,6 @@ export function configureApp(app: INestApplication): void {
   app.useGlobalInterceptors(
     new DeprecationInterceptor(reflector),
     new ClassSerializerInterceptor(reflector),
+    new RequestContextTenantInterceptor(app.get(RequestContextService)),
   );
 }

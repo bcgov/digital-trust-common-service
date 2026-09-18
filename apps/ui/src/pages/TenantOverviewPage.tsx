@@ -15,14 +15,15 @@ import type { Page } from '@/lib/api/pagination';
 import { useConnections } from '@/lib/api/queries/connections';
 import { useCredentialDefinitions } from '@/lib/api/queries/credential-definitions';
 import { useTenant } from '@/lib/api/queries/tenants';
+import { useAuth } from '@/lib/auth/context';
+import { hasScope, USERS_MANAGE_SCOPE } from '@/lib/auth/scopes';
 
-// Each action lands on the tenant section that owns it. No role gating yet:
-// the token carries no API scopes to gate on, and every target is still a
-// placeholder, so nothing privileged is reachable from here.
-const QUICK_ACTIONS = [
+// Each action lands on the tenant section that owns it. An action the token
+// cannot use is left out; the page behind it still handles a 403.
+const QUICK_ACTIONS: { label: string; to: string; scope?: string }[] = [
   { label: 'Issue credential', to: 'credentials' },
   { label: 'Verify presentation', to: 'credentials' },
-  { label: 'Manage users', to: 'users' },
+  { label: 'Manage users', to: 'users', scope: USERS_MANAGE_SCOPE },
 ];
 
 interface StatCardProps {
@@ -72,9 +73,14 @@ function StatCard({ title, query }: StatCardProps) {
 
 export function TenantOverviewPage() {
   const { tenantId } = useParams();
+  const { user } = useAuth();
   const { data: tenant, isLoading, error } = useTenant(tenantId);
   const definitions = useCredentialDefinitions(tenantId);
   const connections = useConnections(tenantId, { state: 'active', limit: 100 });
+
+  const quickActions = QUICK_ACTIONS.filter(
+    (action) => !action.scope || hasScope(user, action.scope),
+  );
 
   if (isLoading) {
     return <Skeleton className="h-40 w-full max-w-lg" />;
@@ -100,7 +106,7 @@ export function TenantOverviewPage() {
       <section className="flex flex-col gap-2">
         <h2 className="text-base font-medium">Quick actions</h2>
         <div className="flex flex-wrap gap-2">
-          {QUICK_ACTIONS.map(({ label, to }) => (
+          {quickActions.map(({ label, to }) => (
             <Button key={label} asChild variant="outline">
               <Link to={to}>{label}</Link>
             </Button>

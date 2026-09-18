@@ -1,3 +1,4 @@
+import { RequestContextService } from '@app/common/context/request-context.service';
 import { PgBossService } from '@app/pg-boss';
 import { ConfigService } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';
@@ -18,6 +19,7 @@ describe('JobsService', () => {
   const schedule = jest.fn().mockResolvedValue(undefined);
   const stopService = jest.fn().mockResolvedValue(undefined);
   const emit = jest.fn();
+  const getRequestContext = jest.fn().mockReturnValue(undefined);
 
   const mockPgBossService = {
     stop: stopService,
@@ -56,6 +58,10 @@ describe('JobsService', () => {
         {
           provide: EventEmitter2,
           useValue: { emit },
+        },
+        {
+          provide: RequestContextService,
+          useValue: { get: getRequestContext },
         },
       ],
     }).compile();
@@ -96,6 +102,54 @@ describe('JobsService', () => {
     await service.publish('test-job', null);
 
     expect(send).toHaveBeenCalledWith('test-job', null);
+  });
+
+  it('should merge request-id and tenant-id into published job data when a request context is active', async () => {
+    getRequestContext.mockReturnValueOnce({
+      requestId: 'req-1',
+      tenantId: 'tenant-1',
+    });
+    send.mockResolvedValue('job-789');
+
+    await service.publish('test-job', { foo: 'bar' });
+
+    expect(send).toHaveBeenCalledWith('test-job', {
+      foo: 'bar',
+      requestId: 'req-1',
+      tenantId: 'tenant-1',
+    });
+  });
+
+  it('should merge only the request id when no tenant id is on the context', async () => {
+    getRequestContext.mockReturnValueOnce({ requestId: 'req-1' });
+    send.mockResolvedValue('job-789');
+
+    await service.publish('test-job', null);
+
+    expect(send).toHaveBeenCalledWith('test-job', { requestId: 'req-1' });
+  });
+
+  it('should not overwrite a domain tenantId already present on the job data', async () => {
+    // e.g. AuditWriteJobData/TenantStatusChangeJobData carry a tenantId
+    // that identifies the tenant the job is *about*, which is not
+    // necessarily the same tenant as the request's correlation context
+    // (a platform-admin action, for instance).
+    getRequestContext.mockReturnValueOnce({
+      requestId: 'req-1',
+      tenantId: 'context-tenant',
+    });
+    send.mockResolvedValue('job-789');
+
+    await service.publish('test-job', {
+      tenantId: 'domain-tenant',
+      foo: 'bar',
+    });
+
+    expect(send).toHaveBeenCalledWith('test-job', {
+      tenantId: 'domain-tenant',
+      foo: 'bar',
+      requestId: 'req-1',
+    });
   });
 
   it('should schedule a recurring cron for a queue', async () => {

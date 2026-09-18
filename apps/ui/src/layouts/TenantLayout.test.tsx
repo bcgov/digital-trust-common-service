@@ -56,4 +56,39 @@ describe('TenantLayout', () => {
     expect(router.state.historyAction).toBe('REPLACE');
     expect(await screen.findByText('connections content')).toBeInTheDocument();
   });
+
+  it('shows the Users tab to a token that can manage users', async () => {
+    const client = createMockAuthClient();
+    await client.login();
+    renderWithAuth(routes, {
+      client,
+      initialEntries: [`/tenants/${activeTenantId}`],
+    });
+
+    expect(
+      await screen.findByRole('link', { name: 'Users' }),
+    ).toBeInTheDocument();
+  });
+
+  it('leaves the Users tab out for a token without the scope', async () => {
+    const client = createMockAuthClient();
+    await client.login();
+    const state = client.getState();
+    const stripped = {
+      ...state,
+      user: state.user && { ...state.user, roles: ['member'], scopes: [] },
+    };
+    client.getState = () => stripped;
+    renderWithAuth(routes, {
+      client,
+      initialEntries: [`/tenants/${activeTenantId}`],
+    });
+
+    expect(
+      await screen.findByRole('link', { name: 'Overview' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('link', { name: 'Users' }),
+    ).not.toBeInTheDocument();
+  });
 });

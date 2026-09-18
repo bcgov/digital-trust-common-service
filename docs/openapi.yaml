@@ -823,6 +823,12 @@ paths:
     post:
       operationId: inviteUser
       summary: Invite a user to the tenant
+      description: |
+        Creates a pending tenant user record for the given email address. The user is
+        linked to a real identity on first login.
+
+        Owners and admins may both invite, but only an owner may invite another
+        `owner`; an admin doing so gets a 403.
       tags: [Tenant Users]
       parameters:
         - $ref: "#/components/parameters/IdempotencyKey"
@@ -883,6 +889,9 @@ paths:
     patch:
       operationId: updateTenantUser
       summary: Update user role
+      description: |
+        Only an owner may grant the `owner` role or modify a row that already holds
+        it; an admin doing either gets a 403. Nobody may change their own role.
       tags: [Tenant Users]
       requestBody:
         required: true
@@ -923,6 +932,9 @@ paths:
     delete:
       operationId: removeTenantUser
       summary: Remove user from tenant
+      description: |
+        Only an owner may remove a row that holds the `owner` role; an admin doing so
+        gets a 403.
       tags: [Tenant Users]
       responses:
         "204":
