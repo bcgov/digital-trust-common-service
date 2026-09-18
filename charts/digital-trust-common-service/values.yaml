@@ -375,10 +375,17 @@ otel:
   workerServiceName: digital-trust-common-service-worker
   # -- OTEL_TRACES_EXPORTER for both the API and Worker.
   tracesExporter: otlp
-  # -- OTEL_METRICS_EXPORTER for both the API and Worker. Logs are
-  # deliberately not configurable here — deployed, they go to stdout and Alloy
-  # ships them to Loki; see `.env.example`.
+  # -- OTEL_METRICS_EXPORTER for both the API and Worker.
   metricsExporter: otlp
+  # -- OTEL_LOGS_EXPORTER for both the API and Worker. `none` on purpose, and
+  # it must be set explicitly: deployed, logs go to stdout and Alloy ships them
+  # to Loki, but leaving this unset does not mean "off" — the SDK's own default
+  # is `otlp`, so it builds a logger provider and the pino instrumentation
+  # posts every log line to the collector's `/v1/logs` as well. That is the
+  # same lines twice, over the wire and through Alloy, for no added signal.
+  # Trace correlation is unaffected: `trace_id` and `span_id` come from the
+  # instrumentation's pino mixin, not from log sending.
+  logsExporter: none
 
 # -- Non-secret application configuration, rendered into a ConfigMap and injected
 # as environment variables into all containers.

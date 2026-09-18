@@ -54,6 +54,14 @@ tests:
             name: OTEL_METRICS_EXPORTER
             value: otlp
         template: templates/deployment.yaml
+      # Explicit `none`, not omitted: the SDK default is `otlp`, which would
+      # send every pino line to the collector on top of stdout.
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OTEL_LOGS_EXPORTER
+            value: none
+        template: templates/deployment.yaml
 
   - it: renders the OTel variables in the Worker deployment when enabled
     set:
@@ -77,6 +85,14 @@ tests:
           content:
             name: OTEL_SERVICE_NAME
             value: digital-trust-common-service-worker
+        template: templates/worker/deployment.yaml
+      # Explicit `none`, not omitted: the SDK default is `otlp`, which would
+      # send every pino line to the collector on top of stdout.
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OTEL_LOGS_EXPORTER
+            value: none
         template: templates/worker/deployment.yaml
 
   - it: gives the API and Worker different OTEL_SERVICE_NAME values
