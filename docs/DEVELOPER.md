@@ -438,9 +438,20 @@ builds and boots, then `seed` runs once `app` reports healthy. That ordering is
 deliberate — all three share one bind-mounted `dist/`, and `deleteOutDir` means
 overlapping builds wipe each other's output mid-write.
 
+`app` also waits on `keycloak-ready`, a one-shot service that polls until
+Keycloak is serving the realm. The app discovers Keycloak in `onModuleInit`, so
+starting before the realm is up kills it — and `nest start --watch` keeps the
+container running afterwards, which surfaces as a permanently unhealthy `app`
+rather than a crash.
+
 For the same reason, apply a new migration against an already-running stack
 with `docker compose exec app npm run migrate:up`, not `docker compose up
 migrate` — the named service would rebuild and wipe the running app's `dist/`.
+
+CI smoke-tests this whole path on pull requests that touch the stack's own
+files (`docker-compose.yml`, `.env.example`, `Dockerfile`, `caddy/`, `keycloak/`,
+`config/`) — `compose-smoke.yml` runs the quick start from a clean checkout and
+fails if the stack does not come up. Nothing else in CI reads `docker-compose.yml`.
 
 **Useful commands:**
 ```bash

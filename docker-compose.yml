@@ -42,6 +42,11 @@ services:
       # `deleteOutDir` makes overlapping builds wipe each other mid-write.
       migrate:
         condition: service_completed_successfully
+      # The app discovers Keycloak in onModuleInit and dies if the realm is
+      # not being served yet. `keycloak: started` is not enough — the server
+      # takes another ~25s to listen.
+      keycloak-ready:
+        condition: service_completed_successfully
     # Without this the container reports `Up` as soon as `tsc --watch` starts,
     # whether or not Nest ever booted — a failed start looks healthy.
     healthcheck:
@@ -180,6 +185,21 @@ services:
     depends_on:
       keycloak-db:
         condition: service_healthy
+
+  # Polls until Keycloak serves the realm, then exits — the same one-shot gate
+  # idea as caddy-ca. A healthcheck on keycloak itself would need the image to
+  # ship curl or wget, and it ships neither.
+  keycloak-ready:
+    image: alpine:3
+    command:
+      - sh
+      - -c
+      - |
+        url=http://keycloak:8080/realms/digital-trust-common-service/.well-known/openid-configuration
+        until wget -q -O /dev/null "$$url"; do sleep 2; done
+    depends_on:
+      keycloak:
+        condition: service_started
 
   keycloak-db:
     image: postgres:15-alpine

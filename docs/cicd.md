@@ -7,12 +7,14 @@ This document describes the continuous integration and delivery pipeline for dig
 | Event | Workflows / Jobs Activated |
 |-------|---------------------------|
 | `pull_request` | ci-checks (lint, build, test, helm) |
+| `pull_request` touching the compose stack | compose-smoke (path-filtered; see below) |
 | `push` to `main` | ci-checks → publish-image → deploy-dev → notify-teams |
 | `push` tag `v*` | ci-checks → publish-image → publish-chart → notify-teams |
 
 **How it works:**
 
 - **Pull requests** run CI checks in this pipeline; no notifications are sent. Non-draft PRs additionally publish PR-scoped preview images (`pr-<N>`, `pr-<N>-<short-sha>`) and may deploy an ephemeral review environment via the separate `pr-deploy.yml` workflow — see [PR Environments](#pr-environments).
+- **Compose stack changes** additionally run `compose-smoke.yml`, which copies `.env.example` to `.env` unedited, generates OIDC signing keys, brings the stack up, then checks the Caddy front door answers and that `seed` exited 0. Compose covers the rest on its own: `app` only reports healthy once migrations have completed and upstream OIDC discovery against Keycloak has succeeded, and `seed` is the one service nothing else gates. Nothing else in CI reads `docker-compose.yml` or `.env`. Path-filtered to `docker-compose.yml`, `.env.example`, `Dockerfile`, `caddy/**`, `keycloak/**`, `config/**` and the key-generation script, and deliberately **not** a required check: a path-filtered workflow that does not run reports nothing, which would block every PR that leaves those files alone.
 - **Pushes to `main`** (merge commits) run CI checks, then build and publish a multi-arch container image to GHCR, then deploy it to the dev environment via `helm upgrade`, then notify the team via Teams.
 - **Version tags** (`v1.2.3`, `v2.0.0`, etc.) run CI checks, publish the container image with semver tags, package and publish the Helm chart as an OCI artifact, then notify the team.
 
