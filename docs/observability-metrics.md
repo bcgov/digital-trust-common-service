@@ -18,7 +18,8 @@ which bundles `instrumentation-http`, `instrumentation-pg`, and
 [tracing.ts](../libs/common/src/telemetry/tracing.ts). There is no `getMeter`,
 counter, or histogram anywhere in the codebase. Business metrics (credential
 operations, queue depth) are later, separate tickets and must cite the rule
-below rather than re-litigate it.
+below rather than re-litigate it — see [Business metrics](#business-metrics)
+for what is planned and what it is expected to cost.
 
 **Metrics are operator-facing only.** The tenant-facing Grafana instance
 (see [tenant-observability-design.md](./tenant-observability-design.md)) is
@@ -36,6 +37,166 @@ them could identify one even if they were, per the labelling rule.
 2. **Low-cardinality dimensions only**: operation type, outcome/status,
    adapter, protocol, route template, classified error code — never a raw
    identifier (operation id, connection id, credential id, user id).
+
+## Business metrics
+
+Everything in the catalog below measures plumbing: how many HTTP requests
+arrived, how long database statements took, how busy the runtime is. All of
+it can look completely healthy while the service is failing at its job —
+every request returning `200 OK` while not a single credential has been
+issued for hours, because the agent is rejecting them further down.
+
+Nothing counts the work itself. That is what business metrics are for, and
+none exist yet.
+
+### They are one step of four
+
+A counter on its own does not tell you very much. It is useful because it
+starts a path that ends somewhere actionable:
+
+| Step | Signal | Answers |
+| --- | --- | --- |
+| 1. Notice | a business counter, plus an alert | "issuance failures are up" |
+| 2. Attribute | logs | "it is concentrated in one tenant" |
+| 3. Diagnose | a trace from that tenant | "here is exactly what failed" |
+| 4. Act | — | fix it, or contact the tenant |
+
+Step 1 is the part that does not exist. Without it nothing ever prompts
+anyone to start at step 2, and a tenant can fail every operation for days
+unnoticed.
+
+This is also the reason rule 1 above exists. "Which tenant?" is answered at
+step 2, from logs, at the moment someone investigates — not by storing a
+separate copy of every counter for every tenant, forever, on the chance that
+somebody asks. Step 3 already works: `TenantSpanInterceptor` puts `tenant.id`
+on every span.
+
+> **Step 2's mechanism is not settled, and is not deployed.** Today Loki runs
+> `auth_enabled: false` — everything lands under the single `fake` tenant —
+> and Alloy runs `static_labels` + `label_keep` only. The per-tenant routing
+> described below is the *target* design, not current behaviour.
+>
+> Under that target, Alloy would route each log line to its own Loki tenant
+> (`stage.tenant`, with `auth_enabled: true`), so tenant logs would be held in
+> separate partitions rather than distinguished by a label within one stream.
+> Aggregating across tenants to see where something is concentrated would then
+> need a multi-tenant query scope, and it has not been confirmed which
+> operator-facing scope provides that, or whether `tenant_id` survives routing
+> as a queryable field. Resolve both the rollout and that question before
+> relying on step 2 — see
+> [tenant-observability-design.md](./tenant-observability-design.md).
+
+### Candidates
+
+None of these are committed. Each needs an operator question attached — some
+sentence a person would ask, where a different answer leads to a different
+action — and a candidate nobody has a question for should not ship.
+
+Dimension values are taken from sets that already exist in the codebase, so
+none of them can grow with traffic or tenant count:
+
+| Candidate | Dimensions | Series |
+| --- | --- | --- |
+| credential operation outcome | operation type (8 declared) x outcome (2) | 16 |
+| adapter call outcome | adapter (2) x port method (12) x outcome or error class (6) | 144 |
+| job queue depth | queue (9 registered) | 9 |
+
+That is **about 169 series at worst**, against the roughly 3,000 estimated
+below — near enough 5%. The sets behind each number are `OPERATION_TYPE`,
+`OperationState`, `ConnectorType`, `QUEUE_DEFINITIONS`, the five port
+interfaces in `libs/credential-ports/src/ports/`, and the five adapter error
+classes in `libs/credential-ports/src/errors/`. Re-count them before
+building, since three of the six are still growing.
+
+### Choosing an instrument
+
+Everything in this service is auto-instrumented today — there is no
+`createCounter` or `createHistogram` anywhere in the codebase, and no meter is
+obtained from `@opentelemetry/api` (1.9.1) outside the SDK. Business metrics
+will be the first manual instrumentation here, so there is no in-repo example
+to copy and the choice has to be made from first principles each time.
+
+The meter exposes seven instruments. Brief descriptions follow; the official
+documentation linked at the end of this section carries the full semantics and
+code examples, and is the right place to go when deciding a specific case.
+
+**Synchronous** — called inline, at the moment the thing happens:
+
+| Instrument | What it records | Typical use |
+| --- | --- | --- |
+| `Counter` | Positive deltas only; never decreases. | Issuances, failures, retries. The default for business metrics. |
+| `UpDownCounter` | Deltas that may be positive or negative. | In-flight requests, queue enqueue/dequeue deltas. |
+| `Histogram` | Individual measurements, bucketed to give a distribution. | Durations, payload sizes. Expensive — see below. |
+| `Gauge` | The current value, at a moment you already have in hand. | An event-driven reading where a callback would be awkward. |
+
+**Asynchronous (observable)** — you register a callback, and the SDK invokes
+it on each export:
+
+| Instrument | What it records | Typical use |
+| --- | --- | --- |
+| `ObservableCounter` | The absolute cumulative total; the SDK derives the delta. | A monotonic total owned elsewhere, readable only in full. |
+| `ObservableUpDownCounter` | The absolute current total, which may fall. | Pool size, resident item counts. Sums across dimensions. |
+| `ObservableGauge` | The current value, read on demand. | Queue depth, connection pool utilisation. Does not sum. |
+
+Two decisions carry more weight than the rest:
+
+**Sync vs. observable.** If the value only exists as a point-in-time reading —
+queue depth being the obvious case, since nothing "happens" when a queue is 40
+deep — an observable is the only correct choice. Incrementing a counter on
+every enqueue and decrementing on every dequeue to track depth will drift the
+moment a job is lost.
+
+**A histogram is not a counter with extra detail.** Per the series estimate
+below, each histogram costs roughly 17 series per dimension combination — 15
+buckets plus `_count` and `_sum`, at the default duration boundaries — where a
+counter costs one. The adapter call outcome candidate is 144 series as a
+counter and would be about 2,400 as a histogram, which on its own would exceed
+the entire business metric budget. Reach for a histogram only when the
+distribution genuinely changes a decision; if the question is "how many
+failed", a counter answers it for a fraction of the cost.
+
+Naming follows OTel semantic conventions — dotted, lowercase, with a unit
+suffix where one applies — the same convention the auto-instrumented table
+below already uses.
+
+For detail, semantics and examples beyond the summary above:
+
+- [Metric instruments](https://opentelemetry.io/docs/concepts/signals/metrics/) — concepts and the full instrument list
+- [Instrument selection guidelines](https://opentelemetry.io/docs/specs/otel/metrics/supplementary-guidelines/) — the spec's own decision guidance, including sync vs. async
+- [Metrics naming conventions](https://opentelemetry.io/docs/specs/semconv/general/metrics/) — naming and units
+- [OpenTelemetry JS instrumentation](https://opentelemetry.io/docs/languages/js/instrumentation/) — the Node API surface
+
+### What exists to measure, and what does not
+
+Four of the eight declared operation types are constructed in code today:
+`credential.offer`, `credential.accept`, `credential.reject`, and
+`credential.revoke`. The other four — `credential.offer-batch`,
+`credential.revoke-batch`, `presentation.request`, and `connection.create` —
+are declared but never created, and `operation-type.constants.ts` notes that
+they arrive in later slices.
+
+Note this describes operations, not features: `connection/` and
+`verification-profile/` exist as modules. What is absent is any `Operation`
+record of those types.
+
+### Coverage rule
+
+A counter instrumented against today's four operation types will silently
+under-report once the other four land. That is worse than having no counter,
+because the number still looks authoritative while being wrong, and nothing
+about it appears broken.
+
+So, alongside the labelling rules above:
+
+**New values must be covered.** A change that adds a value to
+`OPERATION_TYPE`, a port method, an adapter error class, or
+`QUEUE_DEFINITIONS` must either extend the business metric dimensions to
+match, or record in the PR why that value is deliberately excluded. Like the
+labelling rules, this is enforced at review rather than re-decided per
+ticket.
+
+This is the rule most easily missed, because the change that breaks it is a
+feature change with nothing obviously to do with metrics.
 
 ## Metric catalog
 
