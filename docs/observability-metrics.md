@@ -71,13 +71,19 @@ separate copy of every counter for every tenant, forever, on the chance that
 somebody asks. Step 3 already works: `TenantSpanInterceptor` puts `tenant.id`
 on every span.
 
-> **Step 2's mechanism is not settled.** Alloy routes each log line to its own
-> Loki tenant (`stage.tenant`, with `auth_enabled: true`), so tenant logs are
-> held in separate partitions rather than distinguished by a label within one
-> stream. Aggregating across tenants to see where something is concentrated
-> therefore needs a multi-tenant query scope, and it has not been confirmed
-> which operator-facing scope provides that, or whether `tenant_id` survives
-> routing as a queryable field. Resolve this before relying on step 2 — see
+> **Step 2's mechanism is not settled, and is not deployed.** Today Loki runs
+> `auth_enabled: false` — everything lands under the single `fake` tenant —
+> and Alloy runs `static_labels` + `label_keep` only. The per-tenant routing
+> described below is the *target* design, not current behaviour.
+>
+> Under that target, Alloy would route each log line to its own Loki tenant
+> (`stage.tenant`, with `auth_enabled: true`), so tenant logs would be held in
+> separate partitions rather than distinguished by a label within one stream.
+> Aggregating across tenants to see where something is concentrated would then
+> need a multi-tenant query scope, and it has not been confirmed which
+> operator-facing scope provides that, or whether `tenant_id` survives routing
+> as a queryable field. Resolve both the rollout and that question before
+> relying on step 2 — see
 > [tenant-observability-design.md](./tenant-observability-design.md).
 
 ### Candidates
@@ -93,14 +99,14 @@ none of them can grow with traffic or tenant count:
 | --- | --- | --- |
 | credential operation outcome | operation type (8 declared) x outcome (2) | 16 |
 | adapter call outcome | adapter (2) x port method (12) x outcome or error class (6) | 144 |
-| job queue depth | queue (4 registered) | 4 |
+| job queue depth | queue (9 registered) | 9 |
 
-That is **about 164 series at worst**, against the roughly 3,000 estimated
+That is **about 169 series at worst**, against the roughly 3,000 estimated
 below — near enough 5%. The sets behind each number are `OPERATION_TYPE`,
-`OperationState`, `ConnectorType`, the five port interfaces in
-`libs/credential-ports/src/ports/`, and the five adapter error classes in
-`libs/credential-ports/src/errors/`. Re-count them before building, since
-three of the five are still growing.
+`OperationState`, `ConnectorType`, `QUEUE_DEFINITIONS`, the five port
+interfaces in `libs/credential-ports/src/ports/`, and the five adapter error
+classes in `libs/credential-ports/src/errors/`. Re-count them before
+building, since three of the six are still growing.
 
 ### What exists to measure, and what does not
 
@@ -125,10 +131,11 @@ about it appears broken.
 So, alongside the labelling rules above:
 
 **New values must be covered.** A change that adds a value to
-`OPERATION_TYPE`, a port method, or an adapter error class must either extend
-the business metric dimensions to match, or record in the PR why that value
-is deliberately excluded. Like the labelling rules, this is enforced at
-review rather than re-decided per ticket.
+`OPERATION_TYPE`, a port method, an adapter error class, or
+`QUEUE_DEFINITIONS` must either extend the business metric dimensions to
+match, or record in the PR why that value is deliberately excluded. Like the
+labelling rules, this is enforced at review rather than re-decided per
+ticket.
 
 This is the rule most easily missed, because the change that breaks it is a
 feature change with nothing obviously to do with metrics.
