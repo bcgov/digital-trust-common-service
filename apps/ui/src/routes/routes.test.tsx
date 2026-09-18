@@ -5,8 +5,8 @@ import { createMemoryRouter, RouterProvider } from 'react-router';
 import { describe, expect, it } from 'vitest';
 
 import { API_BASE_PATH } from '@/lib/api/constants';
-import { mockTenants } from '@/test/msw/handlers';
-import { server } from '@/test/msw/server';
+import { mockTenants } from '@/mocks/handlers';
+import { server } from '@/mocks/server';
 
 import { routes } from './routes';
 

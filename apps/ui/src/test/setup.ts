@@ -4,7 +4,7 @@ import { afterAll, afterEach, beforeAll } from 'vitest';
 
 import { setAuthHandlers } from '@/lib/api/client';
 
-import { server } from './msw/server';
+import { server } from '@/mocks/server';
 
 // jsdom's CSS parser chokes on the modern syntax in the style-injected BCDS
 // react-components CSS (fine in real browsers). Filter exactly that message

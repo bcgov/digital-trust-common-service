@@ -7,6 +7,9 @@ import type { TenantUser } from '@/lib/api/resources/tenant-users';
 import type { Tenant } from '@/lib/api/resources/tenants';
 import { MOCK_AUTH_TENANTS } from '@/lib/auth/mock-auth';
 
+// Also bundled into the mock-mode browser build (browser.ts): keep vitest and
+// node-only imports out of this file.
+
 export const mockTenants: Tenant[] = [
   {
     id: '11111111-1111-4111-8111-111111111111',

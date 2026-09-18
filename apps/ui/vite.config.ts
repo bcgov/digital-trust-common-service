@@ -1,9 +1,11 @@
+import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import path from 'node:path';
 
 import babel from '@rolldown/plugin-babel';
 import tailwindcss from '@tailwindcss/vite';
 import react, { reactCompilerPreset } from '@vitejs/plugin-react';
-import { loadEnv } from 'vite';
+import { loadEnv, type Plugin } from 'vite';
 import { defineConfig } from 'vitest/config';
 
 // Dev-server proxy mirrors the production Caddy reverse proxy (see
@@ -11,6 +13,29 @@ import { defineConfig } from 'vitest/config';
 // and /api, /oidc, /health are forwarded to the API. Because of this, every
 // URL in the app is relative — no VITE_API_URL exists.
 const PROXIED_PATHS = ['/api', '/oidc', '/health'];
+
+// Serves MSW's service worker script from the installed package, so it always
+// matches the library and no generated copy is committed under public/.
+function mswWorkerScript(): Plugin {
+  const fileName = 'mockServiceWorker.js';
+  const source = readFileSync(
+    createRequire(import.meta.url).resolve(`msw/${fileName}`),
+    'utf8',
+  );
+
+  return {
+    name: 'msw-worker-script',
+    configureServer(server) {
+      server.middlewares.use(`/${fileName}`, (_req, res) => {
+        res.setHeader('Content-Type', 'text/javascript');
+        res.end(source);
+      });
+    },
+    generateBundle() {
+      this.emitFile({ type: 'asset', fileName, source });
+    },
+  };
+}
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, import.meta.dirname, '');
@@ -21,6 +46,8 @@ export default defineConfig(({ mode }) => {
       react(),
       babel({ presets: [reactCompilerPreset()] }),
       tailwindcss(),
+      // Mock mode only (see main.tsx): an oidc image never ships the worker.
+      env.VITE_AUTH_MODE !== 'oidc' && mswWorkerScript(),
     ],
     resolve: {
       alias: {

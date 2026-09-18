@@ -3,7 +3,7 @@ import { render, screen } from '@testing-library/react';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 import { describe, expect, it } from 'vitest';
 
-import { mockTenants } from '@/test/msw/handlers';
+import { mockTenants } from '@/mocks/handlers';
 
 import { TenantsPage } from './TenantsPage';
 
