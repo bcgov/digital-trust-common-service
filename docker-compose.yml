@@ -25,6 +25,10 @@ services:
       # Container-mode values; .env stays correct for the host workflow.
       DB_HOST: db
       LOG_LEVEL: ${LOG_LEVEL:-info}
+      # Compose is local development only, so default to readable output even
+      # for a .env predating LOG_PRETTY. Set LOG_PRETTY=false to see the JSON
+      # that Alloy actually parses.
+      LOG_PRETTY: ${LOG_PRETTY:-true}
       NODE_EXTRA_CA_CERTS: /caddy-ca/root.crt
       # .env carries http://localhost:4318 so the default workflow (the API on
       # the host) works unedited. In compose the collector is a sibling

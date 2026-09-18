@@ -184,21 +184,120 @@ describe('createLoggerModuleParams', () => {
     expect(() => logger.info(payload, 'circular')).not.toThrow();
     expect(stream.records()[0]).toMatchObject({ message: 'circular' });
   });
+
+  it('leaves output as JSON when LOG_PRETTY is unset', () => {
+    const { logger, stream } = createLogger('info');
+
+    logger.info({ context: 'JsonLogger' }, 'structured');
+
+    expect(() => {
+      JSON.parse(stream.lines()[0]);
+    }).not.toThrow();
+  });
+
+  it('falls back to JSON with a warning when pino-pretty is unavailable', () => {
+    const stream = new InMemoryStream();
+
+    // doMock registers in the mock registry, which outlives isolateModules.
+    // Without this cleanup every later LOG_PRETTY test silently gets the
+    // throwing stub and asserts against JSON it did not ask for.
+    try {
+      jest.isolateModules(() => {
+        jest.doMock('pino-pretty', () => {
+          throw new Error("Cannot find module 'pino-pretty'");
+        });
+
+        const { createLoggerModuleParams: create } =
+          // eslint-disable-next-line @typescript-eslint/no-require-imports
+          require('./logger.config') as typeof import('./logger.config');
+        const pinoHttp = create(config('info', { LOG_PRETTY: 'true' }), stream)
+          .pinoHttp as { logger: PinoLogger };
+
+        pinoHttp.logger.info({ context: 'FallbackLogger' }, 'structured');
+      });
+    } finally {
+      jest.dontMock('pino-pretty');
+      jest.resetModules();
+    }
+
+    expect(stream.records()).toMatchObject([
+      {
+        level: 'warn',
+        message:
+          'LOG_PRETTY is enabled but pino-pretty is not installed; falling back to JSON output',
+      },
+      { context: 'FallbackLogger', message: 'structured' },
+    ]);
+  });
+
+  it('renders pretty output when LOG_PRETTY is true', () => {
+    const { logger, stream } = createLogger('info', { LOG_PRETTY: 'true' });
+
+    logger.info({ context: 'PrettyLogger' }, 'human readable');
+
+    const output = stripAnsi(stream.chunks.join(''));
+
+    expect(output).toContain('LOG:');
+    expect(output).toContain('[PrettyLogger] human readable');
+    expect(() => {
+      JSON.parse(output);
+    }).toThrow();
+  });
+
+  it('keeps redaction intact in pretty output', () => {
+    const { logger, stream } = createLogger('info', { LOG_PRETTY: 'true' });
+
+    logger.info(
+      { access_token: 'upstream-access-token', context: 'PrettyLogger' },
+      'redacted',
+    );
+
+    const output = stripAnsi(stream.chunks.join(''));
+
+    expect(output).not.toContain('upstream-access-token');
+    expect(output).toContain('[Redacted]');
+  });
+
+  it('ignores LOG_PRETTY values other than true', () => {
+    const { logger, stream } = createLogger('info', { LOG_PRETTY: 'yes' });
+
+    logger.info({ context: 'JsonLogger' }, 'structured');
+
+    expect(() => {
+      JSON.parse(stream.lines()[0]);
+    }).not.toThrow();
+  });
 });
 
-function createLogger(logLevel: string | undefined): {
+const ANSI_PATTERN = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 'g');
+
+/**
+ * pino-pretty colourises when the environment advertises colour support, which
+ * CI does. Strip the escapes so assertions match the text either way.
+ */
+function stripAnsi(value: string): string {
+  return value.replace(ANSI_PATTERN, '');
+}
+
+function createLogger(
+  logLevel: string | undefined,
+  extras?: Record<string, string>,
+): {
   logger: PinoLogger;
   stream: InMemoryStream;
 } {
   const stream = new InMemoryStream();
-  const params = createLoggerModuleParams(config(logLevel), stream);
+  const params = createLoggerModuleParams(config(logLevel, extras), stream);
   const pinoHttp = params.pinoHttp as { logger: PinoLogger };
 
   return { logger: pinoHttp.logger, stream };
 }
 
-function config(logLevel: string | undefined): ConfigService {
+function config(
+  logLevel: string | undefined,
+  extras: Record<string, string> = {},
+): ConfigService {
   return {
-    get: (key: string) => (key === 'LOG_LEVEL' ? logLevel : undefined),
+    get: (key: string) => (key === 'LOG_LEVEL' ? logLevel : extras[key]),
   } as ConfigService;
 }
