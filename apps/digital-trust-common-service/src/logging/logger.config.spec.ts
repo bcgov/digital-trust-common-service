@@ -235,7 +235,7 @@ describe('createLoggerModuleParams', () => {
 
     logger.info({ context: 'PrettyLogger' }, 'human readable');
 
-    const output = stream.chunks.join('');
+    const output = stripAnsi(stream.chunks.join(''));
 
     expect(output).toContain('LOG:');
     expect(output).toContain('[PrettyLogger] human readable');
@@ -252,8 +252,10 @@ describe('createLoggerModuleParams', () => {
       'redacted',
     );
 
-    expect(stream.chunks.join('')).not.toContain('upstream-access-token');
-    expect(stream.chunks.join('')).toContain('[Redacted]');
+    const output = stripAnsi(stream.chunks.join(''));
+
+    expect(output).not.toContain('upstream-access-token');
+    expect(output).toContain('[Redacted]');
   });
 
   it('ignores LOG_PRETTY values other than true', () => {
@@ -266,6 +268,16 @@ describe('createLoggerModuleParams', () => {
     }).not.toThrow();
   });
 });
+
+const ANSI_PATTERN = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 'g');
+
+/**
+ * pino-pretty colourises when the environment advertises colour support, which
+ * CI does. Strip the escapes so assertions match the text either way.
+ */
+function stripAnsi(value: string): string {
+  return value.replace(ANSI_PATTERN, '');
+}
 
 function createLogger(
   logLevel: string | undefined,
