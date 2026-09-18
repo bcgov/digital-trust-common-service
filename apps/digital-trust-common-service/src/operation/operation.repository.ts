@@ -113,18 +113,27 @@ export class OperationRepository {
    * would turn an already-succeeded concurrent action into a spurious
    * duplicate-key error for the caller that lost the race.
    *
-   * Scoped to a single `type` (the caller's own requested action), not both
-   * accept and reject (or, for revocation, not any other topic sharing the
-   * externalId), so a caller that lost the insert race can never be handed
-   * back a different type's Operation.
+   * `type` accepts every type the violated index's own `WHERE type IN (...)`
+   * predicate shares a uniqueness scope with — `uq_operation_inflight_holder_action`
+   * covers both credential.accept and credential.reject together, so a
+   * caller that lost that race may have lost to *either* type, not
+   * necessarily its own. Passing only the caller's own requested type here
+   * would silently miss that winner and misreport a genuine conflict as
+   * "no winner found". The caller is responsible for checking the returned
+   * Operation's own `type` before treating it as interchangeable with what
+   * it asked for.
    */
   public findLatestByExternalIdAndTypeForTenant(
     tenantId: string,
     externalId: string,
-    type: string,
+    type: string | readonly string[],
   ): Promise<Operation | null> {
     return this.repo.findOne({
-      where: { tenantId, externalId, type },
+      where: {
+        tenantId,
+        externalId,
+        type: typeof type === 'string' ? type : In(type),
+      },
       order: { createdAt: 'DESC' },
     });
   }

@@ -154,6 +154,21 @@ describe('OperationRepository', () => {
     });
   });
 
+  it('findLatestByExternalIdAndTypeForTenant accepts multiple types sharing one unique-index scope', async () => {
+    await repository.findLatestByExternalIdAndTypeForTenant('t1', 'ext-1', [
+      'credential.accept',
+      'credential.reject',
+    ]);
+    expect(mockRepo.findOne).toHaveBeenCalledWith({
+      where: {
+        tenantId: 't1',
+        externalId: 'ext-1',
+        type: In(['credential.accept', 'credential.reject']),
+      },
+      order: { createdAt: 'DESC' },
+    });
+  });
+
   describe('claimBatchSettlement', () => {
     it('claims settlement via a guarded update from processing to the given state, scoped to the tenant', async () => {
       mockManagerUpdate.mockResolvedValue({ affected: 1 });

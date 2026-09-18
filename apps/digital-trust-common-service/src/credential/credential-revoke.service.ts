@@ -280,36 +280,17 @@ export class CredentialRevokeService {
       // webhook.dispatch, and the enqueue rolling back with the state write
       // on failure means a pg-boss insert failure can't leave the operation
       // durably COMPLETED with no corresponding notification.
+      //
+      // Operation is locked/updated before Credential here, same order as
+      // ProtocolStateChangeService.process() (Operation outcome applied
+      // before Credential outcome). A concurrent synchronous revoke and a
+      // revocation_registry webhook for the same credential both touch
+      // these two rows; locking them in opposite orders is exactly how two
+      // transactions deadlock, each holding one row and waiting on the
+      // other — Postgres would abort one with a deadlock error instead of
+      // either side ever losing the guard cleanly.
       const { operation: current, won } = await this.dataSource.transaction(
         async (manager) => {
-          // Checked, not discarded: if the credential is no longer in a
-          // state this revoke can move forward from (already REVOKED by a
-          // concurrent winner, most likely the protocol worker above), the
-          // Operation must not be reported COMPLETED here either — that
-          // would assert the credential was revoked by this call when it
-          // never actually changed.
-          const credentialUpdated =
-            await this.credentialRepository.updateStateIfForward(
-              credentialId,
-              tenantId,
-              CredentialState.REVOKED,
-              credentialStatesBelow(CredentialState.REVOKED),
-              { revokedAt },
-              manager,
-            );
-
-          if (!credentialUpdated) {
-            const existing = await this.operationRepository.findById(
-              operation.id,
-            );
-
-            if (!existing) {
-              throw new NotFoundException('Operation not found');
-            }
-
-            return { operation: existing, won: false };
-          }
-
           const updated = await this.operationService.transitionStateIfForward(
             operation.id,
             OperationState.COMPLETED,
@@ -328,6 +309,29 @@ export class CredentialRevokeService {
             }
 
             return { operation: existing, won: false };
+          }
+
+          // Checked, not discarded: if the credential is no longer in a
+          // state this revoke can move forward from (already REVOKED by a
+          // concurrent winner), the Operation write above must not commit
+          // either — throwing here rolls it back too, since the Operation
+          // has already won its own guard and can no longer be reported
+          // back as a clean loss.
+          const credentialUpdated =
+            await this.credentialRepository.updateStateIfForward(
+              credentialId,
+              tenantId,
+              CredentialState.REVOKED,
+              credentialStatesBelow(CredentialState.REVOKED),
+              { revokedAt },
+              manager,
+            );
+
+          if (!credentialUpdated) {
+            throw new Error(
+              `Credential '${credentialId}' was not in a revocable state ` +
+                `despite Operation '${operation.id}' winning its own guard`,
+            );
           }
 
           await this.jobsService.sendInTransaction(
