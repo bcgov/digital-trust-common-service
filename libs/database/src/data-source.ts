@@ -27,6 +27,9 @@ import { AddOauthClientPublic1787900000000 } from './migrations/000023_add-oauth
 import { AddCredentialDefinitionActive1788353244312 } from './migrations/000024_add-credential-definition-active';
 import { AddCredentialDefinitionActiveUniqueIndex1788885810789 } from './migrations/000025_add-credential-definition-active-unique-index';
 import { CreateRateLimitHitsTable1788897010000 } from './migrations/000026_create-rate-limit-hits-table';
+import { AddCredentialStateFailed1789510285355 } from './migrations/000027_add-credential-state-failed';
+import { AddOperationInflightHolderActionUniqueIndex1789677721725 } from './migrations/000028_add-operation-inflight-holder-action-unique-index';
+import { AddOperationInflightRevokeUniqueIndex1789751397831 } from './migrations/000029_add-operation-inflight-revoke-unique-index';
 import { buildSslConfig } from './ssl.util';
 
 export const AppDataSource = new DataSource({
@@ -68,6 +71,9 @@ export const AppDataSource = new DataSource({
     AddCredentialDefinitionActive1788353244312,
     AddCredentialDefinitionActiveUniqueIndex1788885810789,
     CreateRateLimitHitsTable1788897010000,
+    AddCredentialStateFailed1789510285355,
+    AddOperationInflightHolderActionUniqueIndex1789677721725,
+    AddOperationInflightRevokeUniqueIndex1789751397831,
   ],
   ssl: buildSslConfig(
     process.env.DB_SSL,

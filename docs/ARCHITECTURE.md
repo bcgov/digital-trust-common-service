@@ -601,7 +601,7 @@ sequenceDiagram
     participant API as NestJS API
     participant PG as PostgreSQL + pg-boss
     participant Worker as State Worker
-    participant WebhookW as Webhook Worker
+    participant WebhookW as Webhook Worker (stub)
     participant Traction
 
     Client->>API: POST /credentials/offer
@@ -618,14 +618,15 @@ sequenceDiagram
     Note over Traction: Holder accepts offer...
 
     Traction->>API: Webhook callback (state: credential_issued)
-    API->>PG: pgboss.send('credential.state-update', {topic, payload, tenant_id})
+    API->>PG: pgboss.send('protocol.state-change', {topic, payload, tenant_id})
     API-->>Traction: 200 OK
     PG->>Worker: Poll + process state update
     Worker->>PG: UPDATE Operation (state: completed, result: {...})
     Worker->>PG: UPDATE Credential (state: issued, issued_at: now())
     Worker->>PG: pgboss.send webhook.dispatch
     PG->>WebhookW: Poll + process dispatch job
-    WebhookW->>Client: POST tenant webhook URL (signed)
+    Note over WebhookW,Client: PLANNED — WebhookDispatchWorker currently only<br/>validates and acknowledges the job; it does not yet deliver.<br/>No tenant subscription, signing, or HTTP delivery exists.
+    WebhookW-->>Client: POST tenant webhook URL (signed) [not yet implemented]
 
     Note over Client: Or poll for result...
     Client->>API: GET /operations/{operation_id}
@@ -824,7 +825,7 @@ sequenceDiagram
     Note over Traction: Later — holder accepts...
 
     Traction->>API: POST /webhooks/traction (state: credential_issued)
-    API->>DB: pgboss.send('credential.state-update', {topic, payload, tenant_id})
+    API->>DB: pgboss.send('protocol.state-change', {topic, payload, tenant_id})
     API-->>Traction: 200 OK
     DB->>DB: pg-boss worker picks up job
     Note over DB: ME-02 worker processes state update
@@ -841,8 +842,8 @@ sequenceDiagram
 When Traction sends a webhook, CT-06 enqueues it immediately. The ME-02 worker then correlates it to the correct Operation via `external_id`:
 
 1. Traction webhook arrives with `credential_exchange_id` = "abc-123"
-2. CT-06 enqueues to pg-boss `credential.state-update` queue → returns 200 to Traction
-3. ME-02 worker picks up job, queries: `SELECT * FROM operations WHERE external_id = 'abc-123'`
+2. Enqueues to pg-boss `protocol.state-change` queue → returns 200 to Traction
+3. The worker selects the newest in-flight Operation for this tenant, external ID, and topic-allowed operation type
 4. Updates Operation state + result JSONB
 5. Updates Credential record state (offered → issued)
 6. Recalculates `expires_at` based on new state
@@ -853,7 +854,7 @@ When Traction sends a webhook, CT-06 enqueues it immediately. The ME-02 worker t
 ```mermaid
 graph LR
     subgraph "Queues"
-        CSU[credential.state-update]
+        CSU[protocol.state-change]
         BLK[credential.bulk-item]
         WDQ[webhook.dispatch]
         EML[email.send]

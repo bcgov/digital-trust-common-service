@@ -22,6 +22,7 @@ describe('OperationService', () => {
   let mockFindByIdForTenant: jest.Mock;
   let mockMarkFirstView: jest.Mock;
   let mockTenantFindById: jest.Mock;
+  let mockTransitionIfForward: jest.Mock;
 
   const createdAt = new Date('2024-01-01T00:00:00.000Z');
   const viewedAt = new Date('2024-01-02T00:00:00.000Z');
@@ -56,6 +57,7 @@ describe('OperationService', () => {
     mockFindByIdForTenant = jest.fn();
     mockMarkFirstView = jest.fn();
     mockTenantFindById = jest.fn();
+    mockTransitionIfForward = jest.fn();
     mockTenantFindById.mockResolvedValue({ id: 't1', config: {} });
 
     const mockRepository = {
@@ -64,6 +66,7 @@ describe('OperationService', () => {
       findById: mockFindById,
       findByIdForTenant: mockFindByIdForTenant,
       markFirstView: mockMarkFirstView,
+      transitionIfForward: mockTransitionIfForward,
     };
 
     const mockTenantService = {
@@ -521,6 +524,119 @@ describe('OperationService', () => {
       expect(result.result).toEqual({ code: 'AGENT_ERROR', message: 'boom' });
       // failed + not viewed → createdAt + 7d
       expect(result.expiresAt.getTime()).toBe(createdAt.getTime() + 7 * DAY_MS);
+    });
+
+    it('forwards an explicit manager through to the repository save, e.g. inside a caller-owned transaction', async () => {
+      const operation = buildOperation();
+      mockFindById.mockResolvedValue(operation);
+      mockSave.mockImplementation((op: Operation) => Promise.resolve(op));
+      const manager = {} as Parameters<OperationService['transitionState']>[3];
+
+      await service.transitionState(
+        'op-1',
+        OperationState.COMPLETED,
+        { id: 'exch-1' },
+        manager,
+      );
+
+      expect(mockSave).toHaveBeenCalledWith(operation, manager);
+    });
+  });
+
+  describe('transitionStateIfForward', () => {
+    it('throws NotFoundException when the operation is missing', async () => {
+      mockFindById.mockResolvedValue(null);
+
+      await expect(
+        service.transitionStateIfForward('missing', OperationState.COMPLETED, [
+          OperationState.PROCESSING,
+        ]),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('performs a guarded write and returns the reloaded operation when it wins', async () => {
+      const operation = buildOperation({ state: OperationState.PROCESSING });
+      const updatedAt = new Date('2024-01-03T00:00:00.000Z');
+      const updated = buildOperation({
+        state: OperationState.COMPLETED,
+        result: { code: 'OK' },
+        updatedAt,
+      });
+      mockFindById
+        .mockResolvedValueOnce(operation)
+        .mockResolvedValueOnce(updated);
+      mockTransitionIfForward.mockResolvedValue(true);
+
+      const result = await service.transitionStateIfForward(
+        'op-1',
+        OperationState.COMPLETED,
+        [OperationState.PROCESSING],
+        { code: 'OK' },
+      );
+
+      expect(mockTransitionIfForward).toHaveBeenCalledWith(
+        'op-1',
+        operation.tenantId,
+        [OperationState.PROCESSING],
+        {
+          state: OperationState.COMPLETED,
+          expiresAt: expect.any(Date),
+          result: { code: 'OK' },
+        },
+        undefined,
+      );
+      // Reloaded rather than mutated in memory, so the caller sees the
+      // database's own updated_at rather than the pre-write copy's.
+      expect(mockFindById).toHaveBeenNthCalledWith(2, 'op-1', undefined);
+      expect(result).toBe(updated);
+      expect(mockSave).not.toHaveBeenCalled();
+    });
+
+    it('forwards an explicit manager through to the guarded write and the reload, e.g. inside a caller-owned transaction', async () => {
+      const operation = buildOperation({ state: OperationState.PROCESSING });
+      const updated = buildOperation({ state: OperationState.COMPLETED });
+      mockFindById
+        .mockResolvedValueOnce(operation)
+        .mockResolvedValueOnce(updated);
+      mockTransitionIfForward.mockResolvedValue(true);
+      const manager = {} as Parameters<
+        OperationService['transitionStateIfForward']
+      >[4];
+
+      await service.transitionStateIfForward(
+        'op-1',
+        OperationState.COMPLETED,
+        [OperationState.PROCESSING],
+        { code: 'OK' },
+        manager,
+      );
+
+      expect(mockTransitionIfForward).toHaveBeenCalledWith(
+        'op-1',
+        operation.tenantId,
+        [OperationState.PROCESSING],
+        {
+          state: OperationState.COMPLETED,
+          expiresAt: expect.any(Date),
+          result: { code: 'OK' },
+        },
+        manager,
+      );
+      expect(mockFindById).toHaveBeenNthCalledWith(2, 'op-1', manager);
+    });
+
+    it('returns null without mutating the caller-visible state when another delivery already won', async () => {
+      const operation = buildOperation({ state: OperationState.PROCESSING });
+      mockFindById.mockResolvedValue(operation);
+      mockTransitionIfForward.mockResolvedValue(false);
+
+      const result = await service.transitionStateIfForward(
+        'op-1',
+        OperationState.COMPLETED,
+        [OperationState.PROCESSING],
+      );
+
+      expect(result).toBeNull();
     });
   });
 });
