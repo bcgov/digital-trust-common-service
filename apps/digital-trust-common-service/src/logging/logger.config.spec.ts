@@ -184,21 +184,73 @@ describe('createLoggerModuleParams', () => {
     expect(() => logger.info(payload, 'circular')).not.toThrow();
     expect(stream.records()[0]).toMatchObject({ message: 'circular' });
   });
+
+  it('leaves output as JSON when LOG_PRETTY is unset', () => {
+    const { logger, stream } = createLogger('info');
+
+    logger.info({ context: 'JsonLogger' }, 'structured');
+
+    expect(() => {
+      JSON.parse(stream.lines()[0]);
+    }).not.toThrow();
+  });
+
+  it('renders pretty output when LOG_PRETTY is true', () => {
+    const { logger, stream } = createLogger('info', { LOG_PRETTY: 'true' });
+
+    logger.info({ context: 'PrettyLogger' }, 'human readable');
+
+    const output = stream.chunks.join('');
+
+    expect(output).toContain('LOG:');
+    expect(output).toContain('[PrettyLogger] human readable');
+    expect(() => {
+      JSON.parse(output);
+    }).toThrow();
+  });
+
+  it('keeps redaction intact in pretty output', () => {
+    const { logger, stream } = createLogger('info', { LOG_PRETTY: 'true' });
+
+    logger.info(
+      { access_token: 'upstream-access-token', context: 'PrettyLogger' },
+      'redacted',
+    );
+
+    expect(stream.chunks.join('')).not.toContain('upstream-access-token');
+    expect(stream.chunks.join('')).toContain('[Redacted]');
+  });
+
+  it('ignores LOG_PRETTY values other than true', () => {
+    const { logger, stream } = createLogger('info', { LOG_PRETTY: 'yes' });
+
+    logger.info({ context: 'JsonLogger' }, 'structured');
+
+    expect(() => {
+      JSON.parse(stream.lines()[0]);
+    }).not.toThrow();
+  });
 });
 
-function createLogger(logLevel: string | undefined): {
+function createLogger(
+  logLevel: string | undefined,
+  extras?: Record<string, string>,
+): {
   logger: PinoLogger;
   stream: InMemoryStream;
 } {
   const stream = new InMemoryStream();
-  const params = createLoggerModuleParams(config(logLevel), stream);
+  const params = createLoggerModuleParams(config(logLevel, extras), stream);
   const pinoHttp = params.pinoHttp as { logger: PinoLogger };
 
   return { logger: pinoHttp.logger, stream };
 }
 
-function config(logLevel: string | undefined): ConfigService {
+function config(
+  logLevel: string | undefined,
+  extras: Record<string, string> = {},
+): ConfigService {
   return {
-    get: (key: string) => (key === 'LOG_LEVEL' ? logLevel : undefined),
+    get: (key: string) => (key === 'LOG_LEVEL' ? logLevel : extras[key]),
   } as ConfigService;
 }
