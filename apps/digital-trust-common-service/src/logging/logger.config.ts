@@ -3,7 +3,12 @@ import {
   nativeLoggerOptions,
   type Params as PinoLoggerModuleParams,
 } from 'nestjs-pino';
-import pino, { type DestinationStream, type LevelWithSilent } from 'pino';
+import pino, {
+  type DestinationStream,
+  type LevelWithSilent,
+  type LoggerOptions,
+} from 'pino';
+import type { PrettyOptions } from 'pino-pretty';
 
 const DEFAULT_LOG_LEVEL: LevelWithSilent = 'info';
 const SERVICE_NAME = 'digital-trust-common-service';
@@ -30,6 +35,22 @@ const VALID_LOG_LEVELS = new Set<LevelWithSilent>([
   'error',
   'fatal',
   'silent',
+]);
+
+// nestjs-pino's native preset renames pino's levels to match Nest's console
+// logger, so the emitted `level` is a string such as `log` or `verbose` rather
+// than a number. pino-pretty maps levels by number, so it renders both as
+// USERLVL; the prettifier below colours the label itself instead.
+const PRETTY_LEVEL_COLOURS = new Map<
+  string,
+  'blue' | 'gray' | 'green' | 'magenta' | 'red' | 'yellow'
+>([
+  ['verbose', 'gray'],
+  ['debug', 'blue'],
+  ['log', 'green'],
+  ['warn', 'yellow'],
+  ['error', 'red'],
+  ['fatal', 'magenta'],
 ]);
 
 const SENSITIVE_LOG_KEYS = [
@@ -92,7 +113,7 @@ export function createLoggerModuleParams(
       paths: buildRedactPaths(SENSITIVE_LOG_KEYS),
     },
   };
-  const logger = stream ? pino(pinoOptions, stream) : pino(pinoOptions);
+  const logger = createLogger(pinoOptions, configService, stream);
 
   if (configuredLevel !== undefined && configuredLevel !== level) {
     logger.warn(
@@ -128,6 +149,85 @@ function getLogLevel(configService: ConfigService): {
   }
 
   return { configuredLevel, level: DEFAULT_LOG_LEVEL };
+}
+
+function createLogger(
+  pinoOptions: LoggerOptions,
+  configService: ConfigService,
+  stream?: DestinationStream,
+): pino.Logger {
+  const jsonLogger = (): pino.Logger =>
+    stream ? pino(pinoOptions, stream) : pino(pinoOptions);
+
+  if (!isPrettyRequested(configService)) {
+    return jsonLogger();
+  }
+
+  // `stream` is the destination; LOG_PRETTY only changes how records are
+  // rendered onto it. Passing it through keeps the two concerns separate and
+  // lets tests capture prettified bytes.
+  const prettyStream = createPrettyStream(stream);
+
+  if (prettyStream === undefined) {
+    const logger = jsonLogger();
+    logger.warn(
+      'LOG_PRETTY is enabled but pino-pretty is not installed; falling back to JSON output',
+    );
+
+    return logger;
+  }
+
+  return pino(pinoOptions, prettyStream);
+}
+
+function isPrettyRequested(configService: ConfigService): boolean {
+  return (
+    configService.get<string>('LOG_PRETTY')?.trim().toLowerCase() === 'true'
+  );
+}
+
+// pino-pretty is a devDependency, so the production image — built with
+// `npm ci --omit=dev` — does not carry it. Loading it lazily means
+// LOG_PRETTY=true in a deployed environment degrades to JSON with a warning
+// instead of killing the process at boot.
+function createPrettyStream(
+  destination?: DestinationStream,
+): DestinationStream | undefined {
+  const prettyOptions: PrettyOptions = {
+    customPrettifiers: {
+      level: (value, _key, _log, extras) => {
+        if (typeof value !== 'string') {
+          return extras.label;
+        }
+
+        const label = value.toUpperCase();
+        const colour = PRETTY_LEVEL_COLOURS.get(value);
+
+        return colour === undefined ? label : extras.colors[colour](label);
+      },
+    },
+    // `context` and `message` are rendered by messageFormat; `pid` and
+    // `service` are fixed for a local process and only add noise. Everything
+    // else still prints, so redacted values stay visible as `[Redacted]`.
+    ignore: 'pid,service,context',
+    levelKey: 'level',
+    messageFormat: '{if context}[{context}] {end}{message}',
+    messageKey: 'message',
+    timestampKey: 'timestamp',
+    translateTime: 'SYS:HH:MM:ss.l',
+    ...(destination === undefined ? {} : { destination }),
+  };
+
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const prettyFactory = require('pino-pretty') as (
+      options: PrettyOptions,
+    ) => DestinationStream;
+
+    return prettyFactory(prettyOptions);
+  } catch {
+    return undefined;
+  }
 }
 
 function buildRedactPaths(keys: readonly string[]): string[] {

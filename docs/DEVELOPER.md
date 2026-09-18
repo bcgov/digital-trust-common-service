@@ -601,6 +601,28 @@ onwards:
 to `info` rather than failing startup. Locally it comes from `.env`; deployed it
 comes from the Helm ConfigMap, which already carries it in every overlay.
 
+#### Making them readable locally
+
+JSON one-liners are what Alloy parses, but they are hard to read while
+developing. Set `LOG_PRETTY=true` in `.env` to render them through pino-pretty
+instead:
+
+```
+[10:23:14.182] LOG: [NestFactory] Starting Nest application...
+[10:23:14.311] WARN: [Db] slow query
+    durationMs: 42
+```
+
+`docker compose` already defaults it on. Colour follows the terminal, so
+redirecting to a file gives plain text.
+
+This is local only. pino-pretty is a devDependency and the production image
+installs with `--omit=dev`, so it is not present there; setting `LOG_PRETTY`
+in a deployed environment logs one warning and stays on JSON. The Helm chart
+does not expose it. Set `LOG_PRETTY=false` when you need to see exactly what
+gets shipped — pretty output changes only the rendering, never the record, so
+redaction and `trace_id` injection behave identically either way.
+
 Sensitive values are redacted centrally in
 `apps/digital-trust-common-service/src/logging/logger.config.ts` — tokens,
 secrets, passwords, keys, cookies, and credential claim values. Redaction is a
