@@ -41,13 +41,11 @@ export class OidcTenantUserAdapter implements OidcTenantUserPort {
     );
   }
 
-  public async claimInvitedByEmail(
-    tenantId: string,
+  public async claimAllInvitedByEmail(
     email: string,
     externalUserId: string,
-  ): Promise<OidcTenantUserRecord | null> {
-    return await this.tenantUserService.claimInvitedByEmail(
-      tenantId,
+  ): Promise<OidcTenantUserRecord[]> {
+    return await this.tenantUserService.claimAllInvitedByEmail(
       email,
       externalUserId,
     );

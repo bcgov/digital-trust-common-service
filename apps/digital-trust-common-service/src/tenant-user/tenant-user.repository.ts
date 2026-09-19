@@ -166,29 +166,42 @@ export class TenantUserRepository {
   }
 
   /**
-   * Atomically claims a previously-invited tenant user by case-insensitive
-   * email match, linking it to `externalUserId` and marking it active,
-   * while preserving its existing role. The `status = invited` and
-   * `external_user_id IS NULL` conditions on the UPDATE make this a single
-   * atomic operation: only one concurrent caller can win the claim for a
-   * given row, and callers that don't match (already claimed, or no such
-   * invited row) get 0 affected rows back.
-   *
-   * Returns `null` if no matching invited row was found.
+   * Unclaimed invitations at this email, in any tenant, oldest first. The
+   * ordering decides which one wins when a tenant holds more than one.
    */
-  public async claimInvitedByEmail(
-    tenantId: string,
+  public async findUnclaimedInvitesByEmail(
     email: string,
-    externalUserId: string,
-  ): Promise<TenantUser | null> {
+  ): Promise<TenantUser[]> {
     const normalizedEmail = email.trim().toLowerCase();
 
+    return await this.repository
+      .createQueryBuilder('tenantUser')
+      .innerJoin('tenantUser.tenant', 'tenant', 'tenant.deleted_at IS NULL')
+      .where('LOWER(tenantUser.email) = :normalizedEmail', { normalizedEmail })
+      .andWhere('tenantUser.externalUserId IS NULL')
+      .andWhere('tenantUser.status = :invitedStatus', {
+        invitedStatus: TenantUserStatus.INVITED,
+      })
+      .orderBy('tenantUser.createdAt', 'ASC')
+      .addOrderBy('tenantUser.id', 'ASC')
+      .getMany();
+  }
+
+  /**
+   * Links one invitation to an external identity and activates it, keeping its
+   * invited role. The status and null-identity conditions make the UPDATE a
+   * compare-and-set, so concurrent logins cannot both claim the same row.
+   * Returns `null` when another caller got there first.
+   */
+  public async claimInvitedById(
+    id: string,
+    externalUserId: string,
+  ): Promise<TenantUser | null> {
     const result = await this.repository
       .createQueryBuilder()
       .update(TenantUser)
       .set({ externalUserId, status: TenantUserStatus.ACTIVE })
-      .where('tenant_id = :tenantId', { tenantId })
-      .andWhere('LOWER(email) = :normalizedEmail', { normalizedEmail })
+      .where('id = :id', { id })
       .andWhere('external_user_id IS NULL')
       .andWhere('status = :invitedStatus', {
         invitedStatus: TenantUserStatus.INVITED,
@@ -199,7 +212,7 @@ export class TenantUserRepository {
       return null;
     }
 
-    return await this.findByTenantAndExternalUserId(tenantId, externalUserId);
+    return await this.findById(id);
   }
 
   public async update(tenantUser: TenantUser): Promise<TenantUser> {
