@@ -206,34 +206,58 @@ export class TenantUserService {
   }
 
   /**
-   * Claims an invited tenant user (AU-06 follow-up) on first login: links
-   * a previously-invited, externalUserId-less row to the authenticated
-   * external identity and activates it, preserving its invited role.
-   * Returns `null` if no such invited row exists for this tenant/email.
+   * Claims every invitation waiting at this email on sign-in, in any tenant,
+   * activating each with the role it was invited at. Tenants where this
+   * identity already has a row are skipped: a second one would violate
+   * `uq_tenant_user_external_user` and fail the whole sign-in. That also
+   * settles two invitations in one tenant at addresses differing only in
+   * case, which `invite` permits — the oldest wins.
    */
-  public async claimInvitedByEmail(
-    tenantId: string,
+  public async claimAllInvitedByEmail(
     email: string,
     externalUserId: string,
-  ): Promise<TenantUser | null> {
-    const claimed = await this.tenantUserRepository.claimInvitedByEmail(
-      tenantId,
-      email,
-      externalUserId,
-    );
+  ): Promise<TenantUser[]> {
+    const invites =
+      await this.tenantUserRepository.findUnclaimedInvitesByEmail(email);
 
-    if (!claimed) {
-      return null;
+    if (invites.length === 0) {
+      return [];
     }
 
-    await this.domainAudit.emit({
-      tenantId: claimed.tenantId,
-      action: AuditAction.UPDATE,
-      resourceType: 'tenant_user',
-      resourceId: claimed.id,
-    });
+    const existing =
+      await this.tenantUserRepository.findByExternalUserId(externalUserId);
+    const takenTenantIds = new Set(existing.map((row) => row.tenantId));
 
-    return claimed;
+    const claimedRows: TenantUser[] = [];
+
+    for (const invite of invites) {
+      if (takenTenantIds.has(invite.tenantId)) {
+        continue;
+      }
+
+      const claimed = await this.tenantUserRepository.claimInvitedById(
+        invite.id,
+        externalUserId,
+      );
+
+      if (!claimed) {
+        continue;
+      }
+
+      takenTenantIds.add(claimed.tenantId);
+      claimedRows.push(claimed);
+
+      // One event per tenant: audit logs are per tenant, so a single event
+      // would land in the wrong one.
+      await this.domainAudit.emit({
+        tenantId: claimed.tenantId,
+        action: AuditAction.UPDATE,
+        resourceType: 'tenant_user',
+        resourceId: claimed.id,
+      });
+    }
+
+    return claimedRows;
   }
 
   public async update(

@@ -41,16 +41,18 @@ export interface OidcTenantUserPort {
     externalUserId: string,
   ): Promise<OidcTenantUserRecord[]>;
   /**
-   * Atomically claims a previously-invited tenant user (matched by
-   * case-insensitive email, with no `externalUserId` yet) by linking it to
-   * the given external identity and activating it, while preserving the
-   * invited role. Returns `null` if no matching invited row exists.
+   * Claims every unclaimed invitation at this email (matched case-insensitively,
+   * `externalUserId` still null), in any tenant, linking each to the given
+   * external identity and activating it with the role it was invited at.
+   * Returns the rows it changed, in no meaningful order; empty when there was
+   * nothing to claim. Invitations in soft-deleted tenants, and in tenants where
+   * this identity already has a row, are left alone. The rows carry no `tenant`
+   * relation.
    */
-  claimInvitedByEmail(
-    tenantId: string,
+  claimAllInvitedByEmail(
     email: string,
     externalUserId: string,
-  ): Promise<OidcTenantUserRecord | null>;
+  ): Promise<OidcTenantUserRecord[]>;
   create(input: OidcCreateTenantUserInput): Promise<OidcTenantUserRecord>;
 }
 

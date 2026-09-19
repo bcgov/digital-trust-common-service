@@ -124,8 +124,8 @@ export const UI_SPA_TENANT_SLUG = 'acme-corp';
 
 /**
  * One realm account in several tenants, so the tenant switcher has somewhere
- * to go locally. Seeded active under its pinned Keycloak id, since a login
- * only claims invitations when the user has no membership yet.
+ * to go locally without first having to accept an invitation. Seeded active
+ * under its pinned Keycloak id, which the seed has to know up front.
  */
 export const MULTI_TENANT_USER: {
   externalUserId: string;
