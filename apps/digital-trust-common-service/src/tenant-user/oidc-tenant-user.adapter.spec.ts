@@ -15,7 +15,7 @@ describe('OidcTenantUserAdapter', () => {
     findById: jest.Mock;
     findByTenantAndExternalUserId: jest.Mock;
     findActiveByExternalUserId: jest.Mock;
-    claimInvitedByEmail: jest.Mock;
+    claimAllInvitedByEmail: jest.Mock;
     create: jest.Mock;
   };
 
@@ -34,7 +34,7 @@ describe('OidcTenantUserAdapter', () => {
       findById: jest.fn(),
       findByTenantAndExternalUserId: jest.fn(),
       findActiveByExternalUserId: jest.fn().mockResolvedValue([membership]),
-      claimInvitedByEmail: jest.fn(),
+      claimAllInvitedByEmail: jest.fn(),
       create: jest.fn(),
     };
 

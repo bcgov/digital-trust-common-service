@@ -1355,4 +1355,149 @@ describe('OIDC authorization_code grant (integration)', () => {
     expect(body.error.code).toBe('TENANT_NOT_ACTIVE');
     expect(body.error.tenant_status).toBe('suspended');
   });
+
+  const insertInvitedMembership = async (
+    email: string,
+    role: string,
+    options: { softDelete?: boolean } = {},
+  ): Promise<string> => {
+    const rows = await dataSource.query<Array<{ id: string }>>(
+      `INSERT INTO tenant (name, slug, status)
+       VALUES ($1, $2, 'active')
+       RETURNING id`,
+      ['Invite tenant', `oidc-auth-code-it-invite-${randomUUID()}`],
+    );
+    const inviteTenantId = rows[0].id;
+
+    await dataSource.query(
+      `INSERT INTO tenant_user (
+        tenant_id,
+        external_user_id,
+        email,
+        display_name,
+        role,
+        status,
+        created_at,
+        updated_at
+      ) VALUES ($1, NULL, $2, $3, $4, 'invited', now(), now())`,
+      [inviteTenantId, email, 'Invited Federated User', role],
+    );
+
+    if (options.softDelete) {
+      await dataSource.query(
+        `UPDATE tenant SET deleted_at = now() WHERE id = $1`,
+        [inviteTenantId],
+      );
+    }
+
+    return inviteTenantId;
+  };
+
+  const membershipsOf = async (
+    membershipTenantId: string,
+  ): Promise<
+    Array<{ external_user_id: string | null; status: string; role: string }>
+  > =>
+    await dataSource.query(
+      `SELECT external_user_id, status, role
+       FROM tenant_user
+       WHERE tenant_id = $1
+       ORDER BY created_at, id`,
+      [membershipTenantId],
+    );
+
+  it('claims an invitation into a second tenant at login and makes it switchable', async () => {
+    // Cased differently on purpose: invite() stores the address verbatim, so
+    // the claim has to match on LOWER(email) or a real invitation is missed.
+    const invitedTenantId = await insertInvitedMembership(
+      'Federated.User@Example.com',
+      'owner',
+    );
+
+    const accessToken = await obtainUserAccessToken();
+
+    expect(await membershipsOf(invitedTenantId)).toEqual([
+      {
+        external_user_id: federatedExternalUserId,
+        status: 'active',
+        role: 'owner',
+      },
+    ]);
+
+    // The session still binds the membership held before the sweep.
+    const claims = await verifyTokenAgainstJwks(
+      app.getHttpServer(),
+      accessToken,
+    );
+    expect(claims.tenant_id).toBe(tenantId);
+
+    const memberships = await request(app.getHttpServer())
+      .get(`${API_BASE_PATH}/auth/tenants`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    const listed = memberships.body as Array<{ id: string; role: string }>;
+    expect(listed.find((row) => row.id === invitedTenantId)?.role).toBe(
+      'owner',
+    );
+
+    const switched = await request(app.getHttpServer())
+      .post(`${API_BASE_PATH}/auth/switch-tenant`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ tenant_id: invitedTenantId })
+      .expect(200);
+
+    const switchedClaims = await verifyTokenAgainstJwks(
+      app.getHttpServer(),
+      (switched.body as { access_token: string }).access_token,
+    );
+    expect(switchedClaims.tenant_id).toBe(invitedTenantId);
+    expect(switchedClaims.tenant_role).toBe('owner');
+  });
+
+  it('leaves invitations a claim cannot safely take', async () => {
+    const deletedTenantId = await insertInvitedMembership(
+      'federated.user@example.com',
+      'admin',
+      { softDelete: true },
+    );
+
+    // Two invitations in one tenant differing only in case — legal, because
+    // uq_tenant_user_tenant_email is case-sensitive. Claiming both would put
+    // one external_user_id on two rows of the same tenant.
+    const duplicateTenantId = await insertInvitedMembership(
+      'federated.user@example.com',
+      'member',
+    );
+    await dataSource.query(
+      `INSERT INTO tenant_user (
+        tenant_id,
+        external_user_id,
+        email,
+        display_name,
+        role,
+        status,
+        created_at,
+        updated_at
+      ) VALUES ($1, NULL, $2, $3, 'admin', 'invited', now(), now())`,
+      [duplicateTenantId, 'FEDERATED.USER@EXAMPLE.COM', 'Duplicate Invite'],
+    );
+
+    // Sign-in succeeds rather than failing on the uniqueness constraint.
+    await obtainUserAccessToken();
+
+    expect(await membershipsOf(deletedTenantId)).toEqual([
+      { external_user_id: null, status: 'invited', role: 'admin' },
+    ]);
+
+    const duplicates = await membershipsOf(duplicateTenantId);
+    expect(duplicates).toEqual([
+      {
+        external_user_id: federatedExternalUserId,
+        status: 'active',
+        role: 'member',
+      },
+      { external_user_id: null, status: 'invited', role: 'admin' },
+    ]);
+  });
 });
