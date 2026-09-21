@@ -2,7 +2,7 @@ import { ErrorResponse, WebStorageStateStore, type User } from 'oidc-client-ts';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { AppConfig } from '@/lib/config';
-import { mockAccessToken, mockSwitchedAccessToken } from '@/test/msw/handlers';
+import { mockAccessToken, mockSwitchedAccessToken } from '@/mocks/handlers';
 
 import { AuthProviderError } from './errors';
 import { createOidcAuthClient } from './oidc-auth';

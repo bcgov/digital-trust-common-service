@@ -313,9 +313,9 @@ running, open
 
 #### Signing in for real
 
-The SPA ships in **mock** auth mode by default: a fake local session, no
-backend auth required. To exercise the real Authorization Code + PKCE flow,
-set in `apps/ui/.env`:
+The SPA ships in **mock** auth mode by default: a fake local session, with
+`/api` answered from fixtures in the browser (MSW). To exercise the real
+Authorization Code + PKCE flow and the real API, set in `apps/ui/.env`:
 
 ```env
 VITE_AUTH_MODE=oidc
@@ -1373,7 +1373,7 @@ toolchain — it is not part of the root install, the NestJS build, the root
 ESLint config, or the root Jest run (all of which explicitly ignore it).
 
 ```bash
-# Terminal 1: backend (either way)
+# Terminal 1: backend (either way) — oidc mode only
 docker compose up
 # or: npm run start:dev
 
@@ -1386,9 +1386,10 @@ npm run dev          # http://localhost:5173
 The Vite dev server proxies `/api`, `/oidc` and `/health` to the backend
 (`VITE_PROXY_TARGET` in `apps/ui/.env`, default `http://localhost:3000`),
 mirroring the production Caddy reverse proxy — the SPA uses relative URLs only.
-Sign-in defaults to **mock mode** (`VITE_AUTH_MODE=mock`); the real
-Authorization Code + PKCE flow needs `VITE_AUTH_MODE=oidc` and the Caddy
-front door — see [Signing in for real](#signing-in-for-real). That switch is
+Sign-in defaults to **mock mode** (`VITE_AUTH_MODE=mock` — fixtures only, no
+backend); the real Authorization Code + PKCE flow needs `VITE_AUTH_MODE=oidc`
+and the Caddy front door — see
+[Signing in for real](#signing-in-for-real). That switch is
 the only `VITE_*` value that matters: settings that differ between
 deployments (the OIDC client id and scopes) are read at runtime from
 `/config.json` — `apps/ui/public/config.json` locally, the chart's

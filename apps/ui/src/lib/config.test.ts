@@ -1,7 +1,7 @@
 import { http, HttpResponse } from 'msw';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { server } from '@/test/msw/server';
+import { server } from '@/mocks/server';
 
 import { APP_CONFIG_PATH } from './config';
 
