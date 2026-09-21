@@ -129,6 +129,32 @@ export class IssuanceProfileRepository {
     await this.repository.update(id, { status });
   }
 
+  /**
+   * Atomically moves a profile from `fromStatus` to `toStatus`, scoped to
+   * the tenant. The `status = fromStatus` condition on the UPDATE makes this
+   * a single atomic operation, mirroring
+   * `TenantUserRepository.claimInvitedByEmail`: only one concurrent caller
+   * can win the transition, and a caller racing against an already-moved
+   * profile gets 0 affected rows back instead of silently overwriting it.
+   */
+  public async transitionStatus(
+    tenantId: string,
+    id: string,
+    fromStatus: IssuanceProfileStatus,
+    toStatus: IssuanceProfileStatus,
+  ): Promise<boolean> {
+    const result = await this.repository
+      .createQueryBuilder()
+      .update(IssuanceProfile)
+      .set({ status: toStatus })
+      .where('id = :id', { id })
+      .andWhere('tenant_id = :tenantId', { tenantId })
+      .andWhere('status = :fromStatus', { fromStatus })
+      .execute();
+
+    return (result.affected ?? 0) > 0;
+  }
+
   public async save(profile: IssuanceProfile): Promise<IssuanceProfile> {
     return await this.repository.save(profile);
   }

@@ -1281,8 +1281,16 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/IssuanceProfile"
+        "400":
+          description: >-
+            The profile's connector no longer exists, is inactive, or its
+            adapter no longer resolves
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "409":
-          description: Profile is not in draft status or validation failed
+          description: Profile is not in draft status
           content:
             application/json:
               schema:
@@ -1303,6 +1311,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/IssuanceProfile"
+        "409":
+          description: Profile is not in published status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   # ─── Verification Profiles ──────────────────────────────────────────
   /api/v1/tenants/{tenantId}/profiles/verification:

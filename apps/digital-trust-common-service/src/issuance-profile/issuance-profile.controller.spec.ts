@@ -31,6 +31,8 @@ describe('IssuanceProfileController', () => {
   let mockFindById: jest.Mock;
   let mockFindByTenantId: jest.Mock;
   let mockUpdate: jest.Mock;
+  let mockPublish: jest.Mock;
+  let mockDeprecate: jest.Mock;
 
   const auth: AuthContext = {
     sub: 'user-1',
@@ -81,12 +83,16 @@ describe('IssuanceProfileController', () => {
     mockFindById = jest.fn();
     mockFindByTenantId = jest.fn();
     mockUpdate = jest.fn();
+    mockPublish = jest.fn();
+    mockDeprecate = jest.fn();
 
     const mockService = {
       create: mockCreate,
       findById: mockFindById,
       findByTenantId: mockFindByTenantId,
       update: mockUpdate,
+      publish: mockPublish,
+      deprecate: mockDeprecate,
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -226,6 +232,42 @@ describe('IssuanceProfileController', () => {
 
       expect(mockUpdate).toHaveBeenCalledWith(tenantId, id, dto, auth);
       expect(result).toEqual(IssuanceProfileResponseDto.fromEntity(updated));
+    });
+  });
+
+  describe('POST /tenants/:tenantId/profiles/issuance/:id/publish', () => {
+    it('publishes a profile', async () => {
+      const tenantId = mockProfile.tenantId;
+      const id = mockProfile.id;
+      const published = {
+        ...mockProfile,
+        status: IssuanceProfileStatus.PUBLISHED,
+      };
+
+      mockPublish.mockResolvedValue(published);
+
+      const result = await controller.publish(tenantId, id, auth);
+
+      expect(mockPublish).toHaveBeenCalledWith(tenantId, id, auth);
+      expect(result).toEqual(IssuanceProfileResponseDto.fromEntity(published));
+    });
+  });
+
+  describe('POST /tenants/:tenantId/profiles/issuance/:id/deprecate', () => {
+    it('deprecates a profile', async () => {
+      const tenantId = mockProfile.tenantId;
+      const id = mockProfile.id;
+      const deprecated = {
+        ...mockProfile,
+        status: IssuanceProfileStatus.DEPRECATED,
+      };
+
+      mockDeprecate.mockResolvedValue(deprecated);
+
+      const result = await controller.deprecate(tenantId, id, auth);
+
+      expect(mockDeprecate).toHaveBeenCalledWith(tenantId, id, auth);
+      expect(result).toEqual(IssuanceProfileResponseDto.fromEntity(deprecated));
     });
   });
 });

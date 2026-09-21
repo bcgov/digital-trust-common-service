@@ -42,6 +42,7 @@ describe('IssuanceProfileService', () => {
   let mockEmit: jest.Mock;
   let mockCredentialDefinitionFindById: jest.Mock;
   let mockResolve: jest.Mock;
+  let mockTransitionStatus: jest.Mock;
 
   const tenantId = '123e4567-e89b-12d3-a456-426614174001';
 
@@ -124,6 +125,7 @@ describe('IssuanceProfileService', () => {
     mockResolve = jest
       .fn()
       .mockResolvedValue({ connector: { id: mockConnectorId } });
+    mockTransitionStatus = jest.fn().mockResolvedValue(true);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -136,6 +138,7 @@ describe('IssuanceProfileService', () => {
             findByNameAndVersion: mockFindByNameAndVersion,
             findPage: mockFindPage,
             save: mockSave,
+            transitionStatus: mockTransitionStatus,
           },
         },
         {
@@ -493,6 +496,119 @@ describe('IssuanceProfileService', () => {
         service.update(tenantId, mockProfile.id, { description: 'nope' }, auth),
       ).rejects.toThrow(ConflictException);
       expect(mockSave).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('publish', () => {
+    it('publishes a draft profile with a healthy connector', async () => {
+      mockFindById.mockResolvedValue({ ...mockProfile });
+
+      const result = await service.publish(tenantId, mockProfile.id, auth);
+
+      expect(mockResolve).toHaveBeenCalledWith(
+        tenantId,
+        CredentialFormat.AnonCreds,
+        { connectorId: mockConnectorId },
+      );
+      expect(mockTransitionStatus).toHaveBeenCalledWith(
+        tenantId,
+        mockProfile.id,
+        IssuanceProfileStatus.DRAFT,
+        IssuanceProfileStatus.PUBLISHED,
+      );
+      expect(mockEmit).toHaveBeenCalledWith({
+        tenantId: mockProfile.tenantId,
+        action: AuditAction.UPDATE,
+        resourceType: 'issuance_profile',
+        resourceId: mockProfile.id,
+      });
+      expect(result).toEqual(mockProfile);
+    });
+
+    it('throws ConflictException when the profile is not in draft status', async () => {
+      mockFindById.mockResolvedValue({
+        ...mockProfile,
+        status: IssuanceProfileStatus.PUBLISHED,
+      });
+
+      await expect(
+        service.publish(tenantId, mockProfile.id, auth),
+      ).rejects.toThrow(ConflictException);
+      expect(mockTransitionStatus).not.toHaveBeenCalled();
+    });
+
+    it('throws BadRequestException when the connector was removed', async () => {
+      mockFindById.mockResolvedValue({ ...mockProfile, connectorId: null });
+
+      await expect(
+        service.publish(tenantId, mockProfile.id, auth),
+      ).rejects.toThrow(BadRequestException);
+      expect(mockResolve).not.toHaveBeenCalled();
+      expect(mockTransitionStatus).not.toHaveBeenCalled();
+    });
+
+    it('throws BadRequestException when the connector no longer resolves', async () => {
+      mockFindById.mockResolvedValue({ ...mockProfile });
+      mockResolve.mockRejectedValue(new FormatNotSupportedError('anoncreds'));
+
+      await expect(
+        service.publish(tenantId, mockProfile.id, auth),
+      ).rejects.toThrow(BadRequestException);
+      expect(mockTransitionStatus).not.toHaveBeenCalled();
+    });
+
+    it('throws ConflictException when the transition loses a race', async () => {
+      mockFindById.mockResolvedValue({ ...mockProfile });
+      mockTransitionStatus.mockResolvedValue(false);
+
+      await expect(
+        service.publish(tenantId, mockProfile.id, auth),
+      ).rejects.toThrow(ConflictException);
+    });
+  });
+
+  describe('deprecate', () => {
+    const publishedProfile = {
+      ...mockProfile,
+      status: IssuanceProfileStatus.PUBLISHED,
+    };
+
+    it('deprecates a published profile', async () => {
+      mockFindById.mockResolvedValue({ ...publishedProfile });
+
+      const result = await service.deprecate(tenantId, mockProfile.id, auth);
+
+      expect(mockTransitionStatus).toHaveBeenCalledWith(
+        tenantId,
+        mockProfile.id,
+        IssuanceProfileStatus.PUBLISHED,
+        IssuanceProfileStatus.DEPRECATED,
+      );
+      expect(mockEmit).toHaveBeenCalledWith({
+        tenantId: publishedProfile.tenantId,
+        action: AuditAction.UPDATE,
+        resourceType: 'issuance_profile',
+        resourceId: publishedProfile.id,
+      });
+      expect(result).toEqual(publishedProfile);
+    });
+
+    it('throws ConflictException when the profile is not in published status', async () => {
+      mockFindById.mockResolvedValue({ ...mockProfile });
+
+      await expect(
+        service.deprecate(tenantId, mockProfile.id, auth),
+      ).rejects.toThrow(ConflictException);
+      expect(mockTransitionStatus).not.toHaveBeenCalled();
+    });
+
+    it('throws ConflictException when the transition loses a race', async () => {
+      mockFindById.mockResolvedValue({ ...publishedProfile });
+      mockTransitionStatus.mockResolvedValue(false);
+
+      await expect(
+        service.deprecate(tenantId, mockProfile.id, auth),
+      ).rejects.toThrow(ConflictException);
     });
   });
 });
