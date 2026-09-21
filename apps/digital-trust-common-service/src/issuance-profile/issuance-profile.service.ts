@@ -364,13 +364,14 @@ export class IssuanceProfileService {
       );
     }
 
-    await this.assertConnectorHealthy(profile);
+    const connectorId = await this.assertConnectorHealthy(profile);
 
     const transitioned = await this.issuanceProfileRepository.transitionStatus(
       tenantId,
       id,
       IssuanceProfileStatus.DRAFT,
       IssuanceProfileStatus.PUBLISHED,
+      connectorId,
     );
 
     if (!transitioned) {
@@ -440,10 +441,16 @@ export class IssuanceProfileService {
    * resolves. `connectorId` is passed explicitly rather than left
    * undefined, so this does not fall back to a different connector the
    * profile was never bound to.
+   *
+   * Returns the validated connector id so the caller can pin the guarded
+   * status transition to it via `transitionStatus`'s `expectedConnectorId`,
+   * closing the window between this check and that update: a connector
+   * change or removal in between makes the guard no longer match instead
+   * of silently publishing against an unrevalidated connector.
    */
   private async assertConnectorHealthy(
     profile: IssuanceProfile,
-  ): Promise<void> {
+  ): Promise<string> {
     if (!profile.connectorId) {
       throw new BadRequestException(
         `Issuance profile '${profile.id}' cannot be published because its connector no longer exists.`,
@@ -455,5 +462,7 @@ export class IssuanceProfileService {
       profile.format,
       profile.connectorId,
     );
+
+    return profile.connectorId;
   }
 }

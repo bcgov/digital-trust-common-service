@@ -259,6 +259,41 @@ describe('IssuanceProfileRepository', () => {
         ),
       ).resolves.toBe(false);
     });
+
+    it('adds a connector_id guard when expectedConnectorId is provided', async () => {
+      mockQueryBuilder.execute.mockResolvedValue({ affected: 1 });
+
+      await expect(
+        repository.transitionStatus(
+          't1',
+          'ip-1',
+          IssuanceProfileStatus.DRAFT,
+          IssuanceProfileStatus.PUBLISHED,
+          'connector-1',
+        ),
+      ).resolves.toBe(true);
+
+      expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
+        'connector_id = :expectedConnectorId',
+        { expectedConnectorId: 'connector-1' },
+      );
+    });
+
+    it('omits the connector_id guard when expectedConnectorId is not provided', async () => {
+      mockQueryBuilder.execute.mockResolvedValue({ affected: 1 });
+
+      await repository.transitionStatus(
+        't1',
+        'ip-1',
+        IssuanceProfileStatus.DRAFT,
+        IssuanceProfileStatus.PUBLISHED,
+      );
+
+      expect(mockQueryBuilder.andWhere).not.toHaveBeenCalledWith(
+        'connector_id = :expectedConnectorId',
+        expect.anything(),
+      );
+    });
   });
 
   it('save persists an existing profile', async () => {

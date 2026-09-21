@@ -515,6 +515,7 @@ describe('IssuanceProfileService', () => {
         mockProfile.id,
         IssuanceProfileStatus.DRAFT,
         IssuanceProfileStatus.PUBLISHED,
+        mockConnectorId,
       );
       expect(mockEmit).toHaveBeenCalledWith({
         tenantId: mockProfile.tenantId,
@@ -564,6 +565,22 @@ describe('IssuanceProfileService', () => {
       await expect(
         service.publish(tenantId, mockProfile.id, auth),
       ).rejects.toThrow(ConflictException);
+    });
+
+    it('throws ConflictException when the connector changes between the health check and the transition', async () => {
+      mockFindById.mockResolvedValue({ ...mockProfile });
+      mockTransitionStatus.mockResolvedValue(false);
+
+      await expect(
+        service.publish(tenantId, mockProfile.id, auth),
+      ).rejects.toThrow(ConflictException);
+      expect(mockTransitionStatus).toHaveBeenCalledWith(
+        tenantId,
+        mockProfile.id,
+        IssuanceProfileStatus.DRAFT,
+        IssuanceProfileStatus.PUBLISHED,
+        mockConnectorId,
+      );
     });
   });
 
