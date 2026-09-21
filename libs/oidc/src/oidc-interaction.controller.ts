@@ -381,8 +381,9 @@ export class OidcInteractionController {
       /*
        * Bind to the oldest membership held *before* the sweep, so a
        * newly-claimed older invitation cannot move a returning user into a
-       * different tenant. Claimed rows come back unordered, so a first login
-       * looks the client's tenant up by id rather than taking the first.
+       * different tenant. A first login binds the claim in the client's own
+       * tenant, the one this interaction is scoped to, rather than whichever
+       * invitation happens to be oldest.
        */
       const priorMemberships =
         await this.tenantUserService.findActiveByExternalUserId(claims.sub);

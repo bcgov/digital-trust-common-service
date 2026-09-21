@@ -559,6 +559,30 @@ describe('TenantUserService', () => {
       expect(mockEmit).not.toHaveBeenCalled();
     });
 
+    it('gives up on a tenant whose claim was lost rather than trying the next row', async () => {
+      // Walking on to the second invitation would put this identity on two
+      // rows of one tenant, which is the constraint violation the guard is
+      // there to prevent.
+      mockFindUnclaimedInvitesByEmail.mockResolvedValue([
+        invite('invite-1', 'tenant-a'),
+        invite('invite-2', 'tenant-a'),
+      ]);
+      mockFindByExternalUserId.mockResolvedValue([]);
+      mockClaimInvitedById.mockResolvedValue(null);
+
+      const result = await service.claimAllInvitedByEmail(
+        mockTenantUser.email,
+        externalUserId,
+      );
+
+      expect(result).toEqual([]);
+      expect(mockClaimInvitedById).toHaveBeenCalledTimes(1);
+      expect(mockClaimInvitedById).toHaveBeenCalledWith(
+        'invite-1',
+        externalUserId,
+      );
+    });
+
     it('returns early when nothing is waiting', async () => {
       mockFindUnclaimedInvitesByEmail.mockResolvedValue([]);
 

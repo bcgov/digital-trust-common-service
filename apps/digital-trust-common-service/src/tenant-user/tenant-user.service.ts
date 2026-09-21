@@ -210,6 +210,12 @@ export class TenantUserService {
         continue;
       }
 
+      // One attempt per tenant, win or lose: a concurrent login claiming this
+      // invitation first would otherwise send us on to the next one in the
+      // same tenant, which is the violation this guard exists to prevent.
+      // Whatever is left over is swept up at the next sign-in.
+      takenTenantIds.add(invite.tenantId);
+
       const claimed = await this.tenantUserRepository.claimInvitedById(
         invite.id,
         externalUserId,
@@ -219,7 +225,6 @@ export class TenantUserService {
         continue;
       }
 
-      takenTenantIds.add(claimed.tenantId);
       claimedRows.push(claimed);
 
       // One event per tenant: audit logs are per tenant, so a single event

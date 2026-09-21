@@ -81,6 +81,15 @@ describe('OIDC authorization_code grant (integration)', () => {
   let publicClientId: string;
   let federatedExternalUserId: string;
 
+  /**
+   * Tenants holding invitation fixtures, torn down after the suite. Unlike the
+   * other fixtures, whose rows are pinned to a per-run external user id and so
+   * are inert on the next run, an unclaimed invitation is matched by email —
+   * the next run's login would sweep it up and gain a membership nobody in
+   * that run created.
+   */
+  const invitedFixtureTenantIds: string[] = [];
+
   const clientSecret = 'authorization-code-secret-value';
   const redirectUri = 'https://oidc.localhost/callback';
   const postLogoutRedirectUri = 'https://oidc.localhost/login';
@@ -625,6 +634,13 @@ describe('OIDC authorization_code grant (integration)', () => {
   afterAll(async () => {
     if (app) {
       await app.close();
+    }
+
+    if (dataSource?.isInitialized && invitedFixtureTenantIds.length > 0) {
+      // tenant_user cascades on the tenant FK.
+      await dataSource.query(`DELETE FROM tenant WHERE id = ANY($1::uuid[])`, [
+        invitedFixtureTenantIds,
+      ]);
     }
 
     if (dataSource?.isInitialized) {
@@ -1368,6 +1384,7 @@ describe('OIDC authorization_code grant (integration)', () => {
       ['Invite tenant', `oidc-auth-code-it-invite-${randomUUID()}`],
     );
     const inviteTenantId = rows[0].id;
+    invitedFixtureTenantIds.push(inviteTenantId);
 
     await dataSource.query(
       `INSERT INTO tenant_user (

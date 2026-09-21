@@ -1171,8 +1171,8 @@ describe('OidcInteractionController', () => {
       });
 
       mockTenantUserService.findActiveByExternalUserId.mockResolvedValue([]);
-      // Client tenant deliberately last: claimed rows come back in no
-      // meaningful order, so the binding has to look it up by tenant.
+      // Client tenant deliberately last, where taking the first claimed row
+      // would miss it: the binding has to pick the interaction's own tenant.
       mockTenantUserService.claimAllInvitedByEmail.mockResolvedValue([
         {
           id: 'elsewhere',
