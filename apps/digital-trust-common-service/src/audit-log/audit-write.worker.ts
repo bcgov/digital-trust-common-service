@@ -2,6 +2,7 @@ import { JOB_QUEUES } from '@app/pg-boss';
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Job } from 'pg-boss';
+import type { EntityManager } from 'typeorm';
 
 import { JobsService } from '../jobs/jobs.service';
 
@@ -50,9 +51,26 @@ export class AuditWriteWorker implements OnModuleInit {
     this.logger.debug(`Wrote audit log from job ${job.id}`);
   }
 
-  /** Helper for producers / tests to enqueue an audit.write job. */
-  public enqueue(data: AuditWriteJobData): Promise<string | null> {
-    return this.jobsService.publish(JOB_QUEUES.AUDIT_WRITE, data);
+  /**
+   * Helper for producers / tests to enqueue an audit.write job. Pass the
+   * caller's `manager` when the audit is being emitted alongside a guarded
+   * state write inside a transaction (e.g. protocol-state-change.service.ts),
+   * so the enqueue commits or rolls back atomically with that write instead
+   * of publishing independently via pg-boss's own connection — otherwise a
+   * later rollback of the caller's transaction could leave behind an audit
+   * record for a state change that never actually took effect.
+   */
+  public enqueue(
+    data: AuditWriteJobData,
+    manager?: EntityManager,
+  ): Promise<string | null> {
+    return manager
+      ? this.jobsService.sendInTransaction(
+          manager,
+          JOB_QUEUES.AUDIT_WRITE,
+          data,
+        )
+      : this.jobsService.publish(JOB_QUEUES.AUDIT_WRITE, data);
   }
 
   private assertValidPayload(

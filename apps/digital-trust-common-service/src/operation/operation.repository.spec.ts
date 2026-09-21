@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { EntityManager, In, Repository } from 'typeorm';
 
 import { Operation, OperationState } from './operation.entity';
 import { OperationRepository } from './operation.repository';
@@ -9,6 +9,9 @@ describe('OperationRepository', () => {
   let repository: OperationRepository;
   let mockRepo: jest.Mocked<Partial<Repository<Operation>>>;
   let mockManagerQuery: jest.Mock;
+  let mockManagerSave: jest.Mock;
+  let mockManagerUpdate: jest.Mock;
+  let mockManagerFindOne: jest.Mock;
   let queryBuilder: {
     select: jest.Mock;
     addSelect: jest.Mock;
@@ -17,6 +20,7 @@ describe('OperationRepository', () => {
     groupBy: jest.Mock;
     orderBy: jest.Mock;
     take: jest.Mock;
+    setLock: jest.Mock;
     getMany: jest.Mock;
     getRawMany: jest.Mock;
     getOne: jest.Mock;
@@ -31,6 +35,7 @@ describe('OperationRepository', () => {
       groupBy: jest.fn().mockReturnThis(),
       orderBy: jest.fn().mockReturnThis(),
       take: jest.fn().mockReturnThis(),
+      setLock: jest.fn().mockReturnThis(),
       getMany: jest.fn(),
       getRawMany: jest.fn(),
       getOne: jest.fn(),
@@ -44,6 +49,10 @@ describe('OperationRepository', () => {
       createQueryBuilder: jest.fn().mockReturnValue(queryBuilder),
       manager: {
         query: (mockManagerQuery = jest.fn()),
+        save: (mockManagerSave = jest.fn()),
+        update: (mockManagerUpdate = jest.fn()),
+        findOne: (mockManagerFindOne = jest.fn()),
+        createQueryBuilder: jest.fn().mockReturnValue(queryBuilder),
       } as unknown as Repository<Operation>['manager'],
     };
 
@@ -70,23 +79,204 @@ describe('OperationRepository', () => {
     });
   });
 
-  it('save delegates to repo.save', async () => {
+  it('save delegates to repo.manager.save when no manager is given', async () => {
     const entity = { id: 'op-1' } as Operation;
-    (mockRepo.save as jest.Mock).mockResolvedValue(entity);
+    mockManagerSave.mockResolvedValue(entity);
 
     await expect(repository.save(entity)).resolves.toBe(entity);
-    expect(mockRepo.save).toHaveBeenCalledWith(entity);
+    expect(mockManagerSave).toHaveBeenCalledWith(entity);
+  });
+
+  it('save delegates to the given manager, e.g. inside a transaction', async () => {
+    const entity = { id: 'op-1' } as Operation;
+    const txSave = jest.fn().mockResolvedValue(entity);
+    const txManager = {
+      save: txSave,
+    } as unknown as Parameters<OperationRepository['save']>[1];
+
+    await expect(repository.save(entity, txManager)).resolves.toBe(entity);
+    expect(txSave).toHaveBeenCalledWith(entity);
+    expect(mockManagerSave).not.toHaveBeenCalled();
   });
 
   it('findById queries by id', async () => {
     await repository.findById('op-1');
-    expect(mockRepo.findOne).toHaveBeenCalledWith({ where: { id: 'op-1' } });
+    expect(mockManagerFindOne).toHaveBeenCalledWith(Operation, {
+      where: { id: 'op-1' },
+    });
+  });
+
+  it('findById queries through the given manager, e.g. inside a transaction', async () => {
+    const txFindOne = jest.fn();
+    const txManager = {
+      findOne: txFindOne,
+    } as unknown as Parameters<OperationRepository['findById']>[1];
+
+    await repository.findById('op-1', txManager);
+
+    expect(txFindOne).toHaveBeenCalledWith(Operation, {
+      where: { id: 'op-1' },
+    });
+    expect(mockManagerFindOne).not.toHaveBeenCalled();
   });
 
   it('findByIdForTenant queries by id and tenantId together', async () => {
     await repository.findByIdForTenant('op-1', 't1');
     expect(mockRepo.findOne).toHaveBeenCalledWith({
       where: { id: 'op-1', tenantId: 't1' },
+    });
+  });
+
+  it('findByExternalIdForTenant queries by tenantId/externalId, scoped to in-flight states, newest first, and to the given operation types', async () => {
+    await repository.findByExternalIdForTenant('t1', 'ext-1', [
+      'credential.offer',
+    ]);
+    expect(mockRepo.findOne).toHaveBeenCalledWith({
+      where: {
+        tenantId: 't1',
+        externalId: 'ext-1',
+        type: In(['credential.offer']),
+        state: In([OperationState.PENDING, OperationState.PROCESSING]),
+      },
+      order: { createdAt: 'DESC' },
+    });
+  });
+
+  it('findLatestByExternalIdAndTypeForTenant queries by tenantId/externalId/type with no state filter, newest first', async () => {
+    await repository.findLatestByExternalIdAndTypeForTenant(
+      't1',
+      'ext-1',
+      'credential.accept',
+    );
+    expect(mockRepo.findOne).toHaveBeenCalledWith({
+      where: { tenantId: 't1', externalId: 'ext-1', type: 'credential.accept' },
+      order: { createdAt: 'DESC' },
+    });
+  });
+
+  it('findLatestByExternalIdAndTypeForTenant accepts multiple types sharing one unique-index scope', async () => {
+    await repository.findLatestByExternalIdAndTypeForTenant('t1', 'ext-1', [
+      'credential.accept',
+      'credential.reject',
+    ]);
+    expect(mockRepo.findOne).toHaveBeenCalledWith({
+      where: {
+        tenantId: 't1',
+        externalId: 'ext-1',
+        type: In(['credential.accept', 'credential.reject']),
+      },
+      order: { createdAt: 'DESC' },
+    });
+  });
+
+  describe('claimBatchSettlement', () => {
+    it('claims settlement via a guarded update from processing to the given state, scoped to the tenant', async () => {
+      mockManagerUpdate.mockResolvedValue({ affected: 1 });
+
+      const claimed = await repository.claimBatchSettlement(
+        'batch-1',
+        't1',
+        OperationState.COMPLETED,
+      );
+
+      expect(mockManagerUpdate).toHaveBeenCalledWith(
+        Operation,
+        { id: 'batch-1', tenantId: 't1', state: OperationState.PROCESSING },
+        { state: OperationState.COMPLETED },
+      );
+      expect(claimed).toBe(true);
+    });
+
+    it('returns false when no row matched (already settled by another caller)', async () => {
+      mockManagerUpdate.mockResolvedValue({ affected: 0 });
+
+      const claimed = await repository.claimBatchSettlement(
+        'batch-1',
+        't1',
+        OperationState.FAILED,
+      );
+
+      expect(claimed).toBe(false);
+    });
+
+    it('runs the update through the given manager, e.g. inside a transaction', async () => {
+      const txUpdate = jest.fn().mockResolvedValue({ affected: 1 });
+      const txManager = {
+        update: txUpdate,
+      } as unknown as EntityManager;
+
+      const claimed = await repository.claimBatchSettlement(
+        'batch-1',
+        't1',
+        OperationState.COMPLETED,
+        txManager,
+      );
+
+      expect(txUpdate).toHaveBeenCalledWith(
+        Operation,
+        { id: 'batch-1', tenantId: 't1', state: OperationState.PROCESSING },
+        { state: OperationState.COMPLETED },
+      );
+      expect(mockManagerUpdate).not.toHaveBeenCalled();
+      expect(claimed).toBe(true);
+    });
+  });
+
+  describe('transitionIfForward', () => {
+    it('updates via a guarded write scoped to the given tenant and prior states', async () => {
+      mockManagerUpdate.mockResolvedValue({ affected: 1 });
+      const expiresAt = new Date();
+
+      const won = await repository.transitionIfForward(
+        'op-1',
+        't1',
+        [OperationState.PENDING],
+        { state: OperationState.PROCESSING, expiresAt },
+      );
+
+      expect(mockManagerUpdate).toHaveBeenCalledWith(
+        Operation,
+        { id: 'op-1', tenantId: 't1', state: In([OperationState.PENDING]) },
+        { state: OperationState.PROCESSING, expiresAt },
+      );
+      expect(won).toBe(true);
+    });
+
+    it('returns false when no row matched (already transitioned by another caller, or a cross-tenant id)', async () => {
+      mockManagerUpdate.mockResolvedValue({ affected: 0 });
+
+      const won = await repository.transitionIfForward(
+        'op-1',
+        't1',
+        [OperationState.PENDING],
+        { state: OperationState.PROCESSING, expiresAt: new Date() },
+      );
+
+      expect(won).toBe(false);
+    });
+
+    it('runs the update through the given manager, e.g. inside a transaction', async () => {
+      const txUpdate = jest.fn().mockResolvedValue({ affected: 1 });
+      const txManager = {
+        update: txUpdate,
+      } as unknown as EntityManager;
+      const expiresAt = new Date();
+
+      const won = await repository.transitionIfForward(
+        'op-1',
+        't1',
+        [OperationState.PENDING],
+        { state: OperationState.PROCESSING, expiresAt },
+        txManager,
+      );
+
+      expect(txUpdate).toHaveBeenCalledWith(
+        Operation,
+        { id: 'op-1', tenantId: 't1', state: In([OperationState.PENDING]) },
+        { state: OperationState.PROCESSING, expiresAt },
+      );
+      expect(mockManagerUpdate).not.toHaveBeenCalled();
+      expect(won).toBe(true);
     });
   });
 
@@ -227,14 +417,40 @@ describe('OperationRepository', () => {
     });
   });
 
+  describe('lockBatchParent', () => {
+    it('locks the parent row scoped to the tenant with a pessimistic write lock through the given manager', async () => {
+      queryBuilder.getOne.mockResolvedValue({ id: 'batch-1' });
+      const txCreateQueryBuilder = jest.fn().mockReturnValue(queryBuilder);
+      const txManager = {
+        createQueryBuilder: txCreateQueryBuilder,
+      } as unknown as EntityManager;
+
+      await repository.lockBatchParent('batch-1', 't1', txManager);
+
+      expect(txCreateQueryBuilder).toHaveBeenCalledWith(Operation, 'op');
+      expect(queryBuilder.setLock).toHaveBeenCalledWith('pessimistic_write');
+      expect(queryBuilder.where).toHaveBeenCalledWith('op.id = :batchId', {
+        batchId: 'batch-1',
+      });
+      expect(queryBuilder.andWhere).toHaveBeenCalledWith(
+        'op.tenant_id = :tenantId',
+        { tenantId: 't1' },
+      );
+      expect(queryBuilder.getOne).toHaveBeenCalled();
+    });
+  });
+
   describe('countByBatchGroupedByState', () => {
-    it('returns all states defaulted to zero and fills from rows', async () => {
+    it('returns all states defaulted to zero and fills from rows, scoped to the tenant', async () => {
       queryBuilder.getRawMany.mockResolvedValue([
         { state: OperationState.COMPLETED, count: '3' },
         { state: OperationState.FAILED, count: '2' },
       ]);
 
-      const counts = await repository.countByBatchGroupedByState('batch-1');
+      const counts = await repository.countByBatchGroupedByState(
+        'batch-1',
+        't1',
+      );
 
       expect(counts).toEqual({
         [OperationState.PENDING]: 0,
@@ -248,7 +464,23 @@ describe('OperationRepository', () => {
           batchId: 'batch-1',
         },
       );
+      expect(queryBuilder.andWhere).toHaveBeenCalledWith(
+        'op.tenant_id = :tenantId',
+        { tenantId: 't1' },
+      );
       expect(queryBuilder.groupBy).toHaveBeenCalledWith('op.state');
+    });
+
+    it('reads through the given manager, e.g. inside a transaction', async () => {
+      queryBuilder.getRawMany.mockResolvedValue([]);
+      const txCreateQueryBuilder = jest.fn().mockReturnValue(queryBuilder);
+      const txManager = {
+        createQueryBuilder: txCreateQueryBuilder,
+      } as unknown as EntityManager;
+
+      await repository.countByBatchGroupedByState('batch-1', 't1', txManager);
+
+      expect(txCreateQueryBuilder).toHaveBeenCalledWith(Operation, 'op');
     });
   });
 

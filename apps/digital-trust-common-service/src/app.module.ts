@@ -34,6 +34,7 @@ import { createLoggerModuleParams } from './logging/logger.config';
 import { OAuthClientLookupAdapter } from './oauth-client/oauth-client-lookup.adapter';
 import { OAuthClientModule } from './oauth-client/oauth-client.module';
 import { OperationModule } from './operation/operation.module';
+import { ProtocolStateChangeModule } from './protocol-state-change/protocol-state-change.module';
 import { RateLimitModule } from './rate-limit/rate-limit.module';
 import { RoleScopeModule } from './role-scope/role-scope.module';
 import { RoleScopeRepository } from './role-scope/role-scope.repository';
@@ -47,6 +48,7 @@ import { TractionModule } from './traction/traction.module';
 import { OidcUpstreamFederationAdapter } from './upstream-oidc/oidc-upstream-federation.adapter';
 import { UpstreamOidcModule } from './upstream-oidc/oidc-upstream.module';
 import { VerificationProfileModule } from './verification-profile/verification-profile.module';
+import { WebhookDispatchModule } from './webhook-dispatch/webhook-dispatch.module';
 
 @Module({
   imports: [
@@ -97,6 +99,7 @@ import { VerificationProfileModule } from './verification-profile/verification-p
     }),
     AuthModule,
     OperationModule,
+    ProtocolStateChangeModule,
     RateLimitModule,
     RoleScopeModule,
     ShutdownModule,
@@ -106,6 +109,7 @@ import { VerificationProfileModule } from './verification-profile/verification-p
     TractionModule,
     UpstreamOidcModule,
     VerificationProfileModule,
+    WebhookDispatchModule,
     ConnectionModule,
     ConnectorCredentialModule,
     CredentialModule,

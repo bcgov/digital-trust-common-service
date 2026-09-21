@@ -1653,7 +1653,7 @@ paths:
           in: query
           schema:
             type: string
-            enum: [offered, issued, revoked, expired]
+            enum: [offered, issued, revoked, expired, failed]
         - name: issuance_profile_id
           in: query
           schema:
@@ -4169,7 +4169,7 @@ components:
           $ref: "#/components/schemas/CredentialFormat"
         state:
           type: string
-          enum: [offered, issued, revoked, expired]
+          enum: [offered, issued, revoked, expired, failed]
         operation_id:
           type: string
           format: uuid
@@ -4244,7 +4244,7 @@ components:
           description: pg-boss job UUID
         queue:
           type: string
-          enum: [credential.state-update, webhook.dispatch, audit.write, credential.bulk-item]
+          enum: [protocol.state-change, webhook.dispatch, audit.write, credential.bulk-item]
           description: The queue this job belonged to
         failed_at:
           type: string

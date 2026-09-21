@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { EntityManager, In, Repository } from 'typeorm';
 
 import { Operation, OperationResult, OperationState } from './operation.entity';
 
@@ -39,12 +39,17 @@ export class OperationRepository {
     return this.repo.create(data);
   }
 
-  public save(entity: Operation): Promise<Operation> {
-    return this.repo.save(entity);
+  public save(entity: Operation, manager?: EntityManager): Promise<Operation> {
+    return (manager ?? this.repo.manager).save(entity);
   }
 
-  public findById(id: string): Promise<Operation | null> {
-    return this.repo.findOne({ where: { id } });
+  public findById(
+    id: string,
+    manager?: EntityManager,
+  ): Promise<Operation | null> {
+    return (manager ?? this.repo.manager).findOne(Operation, {
+      where: { id },
+    });
   }
 
   /**
@@ -58,6 +63,79 @@ export class OperationRepository {
     tenantId: string,
   ): Promise<Operation | null> {
     return this.repo.findOne({ where: { id, tenantId } });
+  }
+
+  /**
+   * Tenant-scoped lookup used by the protocol.state-change worker to
+   * correlate an inbound agent event back to the Operation it originated
+   * from. Filters on tenantId in the WHERE clause, same rationale as
+   * findByIdForTenant: another tenant's externalId must be indistinguishable
+   * from a missing row.
+   *
+   * externalId is not unique on its own, and not only within one protocol: a
+   * credential offer and its later accept/reject Operation share the same
+   * agent exchange id (same topic, resolved by recency below), but a
+   * CredentialRevoke Operation also reuses that same externalId (a
+   * *different* topic). `types` — the Operation types the caller's topic can
+   * legitimately produce, see state-mapping.ts's `TOPIC_OPERATION_TYPES` —
+   * is enforced in the WHERE clause so a same-externalId row from an
+   * unrelated protocol is never a candidate at all, rather than merely the
+   * most recent in-flight row across every protocol. Scoping to
+   * PENDING/PROCESSING and taking the most recently created match among the
+   * (now topic-scoped) candidates picks the Operation that's actually still
+   * in flight — any already-terminal row wouldn't pass
+   * isForwardOperationTransition anyway, so narrowing here doesn't change
+   * outcomes, only disambiguates.
+   */
+  public findByExternalIdForTenant(
+    tenantId: string,
+    externalId: string,
+    types: readonly string[],
+  ): Promise<Operation | null> {
+    return this.repo.findOne({
+      where: {
+        tenantId,
+        externalId,
+        type: In(types),
+        state: In([OperationState.PENDING, OperationState.PROCESSING]),
+      },
+      order: { createdAt: 'DESC' },
+    });
+  }
+
+  /**
+   * Recovery lookup for a unique-violation on `uq_operation_inflight_holder_action`
+   * or `uq_operation_inflight_revoke`: unlike findByExternalIdForTenant above,
+   * this is not disambiguating between
+   * in-flight candidates — it is finding the concurrent winner that *caused*
+   * the violation, which may already have moved past PENDING/PROCESSING to a
+   * terminal state by the time this runs. Excluding terminal states here
+   * would turn an already-succeeded concurrent action into a spurious
+   * duplicate-key error for the caller that lost the race.
+   *
+   * `type` accepts every type the violated index's own `WHERE type IN (...)`
+   * predicate shares a uniqueness scope with — `uq_operation_inflight_holder_action`
+   * covers both credential.accept and credential.reject together, so a
+   * caller that lost that race may have lost to *either* type, not
+   * necessarily its own. Passing only the caller's own requested type here
+   * would silently miss that winner and misreport a genuine conflict as
+   * "no winner found". The caller is responsible for checking the returned
+   * Operation's own `type` before treating it as interchangeable with what
+   * it asked for.
+   */
+  public findLatestByExternalIdAndTypeForTenant(
+    tenantId: string,
+    externalId: string,
+    type: string | readonly string[],
+  ): Promise<Operation | null> {
+    return this.repo.findOne({
+      where: {
+        tenantId,
+        externalId,
+        type: typeof type === 'string' ? type : In(type),
+      },
+      order: { createdAt: 'DESC' },
+    });
   }
 
   /**
@@ -112,6 +190,42 @@ export class OperationRepository {
     });
   }
 
+  /**
+   * Guarded counterpart to a plain state write, for callers where the same
+   * logical transition can arrive more than once concurrently (the
+   * protocol.state-change worker, given pg-boss's at-least-once delivery).
+   * `fromStates` is the full set of valid prior states — see
+   * state-mapping.ts's `operationStatesBelow()` — so the UPDATE only matches
+   * a row that the database still considers not-yet-transitioned at write
+   * time, not whatever state a caller's earlier read happened to see.
+   * `tenantId` is also part of that WHERE clause: this is a system-triggered
+   * write with no AuthContext, so the guard must not rely solely on the
+   * caller having resolved `id` through a tenant-scoped read moments earlier
+   * — the mutation itself enforces the tenant boundary. Returns whether
+   * this call's UPDATE actually matched a row; a duplicate or losing
+   * delivery (or a cross-tenant id) gets `false` and must not repeat any
+   * side effects.
+   */
+  public async transitionIfForward(
+    id: string,
+    tenantId: string,
+    fromStates: OperationState[],
+    patch: {
+      state: OperationState;
+      result?: OperationResult;
+      expiresAt: Date;
+    },
+    manager?: EntityManager,
+  ): Promise<boolean> {
+    const result = await (manager ?? this.repo.manager).update(
+      Operation,
+      { id, tenantId, state: In(fromStates) },
+      patch,
+    );
+
+    return (result.affected ?? 0) > 0;
+  }
+
   public async updateResult(
     id: string,
     result: OperationResult,
@@ -160,14 +274,57 @@ export class OperationRepository {
       .getMany();
   }
 
+  /**
+   * Serializes concurrent sibling completions on the batch parent row before
+   * `countByBatchGroupedByState`/`claimBatchSettlement` run: under READ
+   * COMMITTED, two siblings finishing at nearly the same time can each count
+   * the *other* sibling's not-yet-committed update as still in flight, both
+   * see `inFlight > 0`, and both return without settling the parent — since
+   * nothing else revisits the batch, it is left `processing` forever. A
+   * `SELECT ... FOR UPDATE` on the parent row blocks a second concurrent
+   * caller until the first commits (or rolls back); once unblocked, its own
+   * subsequent count is a fresh READ COMMITTED read that reflects every
+   * sibling update the first caller already committed, so the recount is
+   * accurate instead of racing a stale snapshot. Must be called with the
+   * same manager/transaction the recount and settlement update run in, or
+   * the lock does nothing (it would be released before they run).
+   *
+   * `tenantId` is also part of the WHERE clause: this is a system-triggered
+   * settlement path with no AuthContext, driven only by a child operation's
+   * `batchId`, so the lock (and the recount/claim that follow it) must not
+   * rely on that `batchId` having been resolved through a tenant-scoped read
+   * moments earlier — a cross-tenant or malformed batchId link must not
+   * lock, count, or settle another tenant's parent operation.
+   */
+  public async lockBatchParent(
+    batchId: string,
+    tenantId: string,
+    manager: EntityManager,
+  ): Promise<void> {
+    await manager
+      .createQueryBuilder(Operation, 'op')
+      .setLock('pessimistic_write')
+      .where('op.id = :batchId', { batchId })
+      .andWhere('op.tenant_id = :tenantId', { tenantId })
+      .getOne();
+  }
+
+  /**
+   * `tenantId` scopes the recount to the caller's own tenant, same rationale
+   * as `lockBatchParent`: a child operation's `batchId` alone must not be
+   * trusted to only ever reference siblings within the caller's tenant.
+   */
   public async countByBatchGroupedByState(
     batchId: string,
+    tenantId: string,
+    manager?: EntityManager,
   ): Promise<BatchStateCounts> {
-    const rows = await this.repo
-      .createQueryBuilder('op')
+    const rows = await (manager ?? this.repo.manager)
+      .createQueryBuilder(Operation, 'op')
       .select('op.state', 'state')
       .addSelect('COUNT(*)', 'count')
       .where('op.batch_id = :batchId', { batchId })
+      .andWhere('op.tenant_id = :tenantId', { tenantId })
       .groupBy('op.state')
       .getRawMany<{ state: OperationState; count: string }>();
 
@@ -183,6 +340,34 @@ export class OperationRepository {
     }
 
     return counts;
+  }
+
+  /**
+   * Optimistic guard for the protocol.state-change worker's batch-parent
+   * settlement: several sibling child operations can hit their own terminal
+   * state at roughly the same time, each concluding "all children are done,"
+   * so the state transition here is conditioned on the parent still being
+   * `processing` (`WHERE id = :batchId AND tenant_id = :tenantId AND state =
+   * 'processing'`). Only the caller that flips the row wins and should
+   * proceed to finalize the parent via OperationService.transitionState; the
+   * rest see affected = 0 and must not also emit the batch-completion
+   * event/audit. `tenantId` is included in the guard for the same reason as
+   * `lockBatchParent`: a cross-tenant or malformed batchId link must not be
+   * able to settle another tenant's parent operation.
+   */
+  public async claimBatchSettlement(
+    batchId: string,
+    tenantId: string,
+    state: OperationState,
+    manager?: EntityManager,
+  ): Promise<boolean> {
+    const result = await (manager ?? this.repo.manager).update(
+      Operation,
+      { id: batchId, tenantId, state: OperationState.PROCESSING },
+      { state },
+    );
+
+    return (result.affected ?? 0) > 0;
   }
 
   /**
