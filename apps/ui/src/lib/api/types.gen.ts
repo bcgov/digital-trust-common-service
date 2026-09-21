@@ -3452,10 +3452,6 @@ export interface operations {
     listIssuanceProfiles: {
         parameters: {
             query?: {
-                /** @description Opaque pagination cursor from a previous response */
-                cursor?: components["parameters"]["Cursor"];
-                /** @description Number of items per page */
-                limit?: components["parameters"]["Limit"];
                 status?: components["schemas"]["ProfileStatus"];
                 format?: components["schemas"]["CredentialFormat"];
                 name?: string;
@@ -3469,15 +3465,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Paginated issuance profile list */
+            /** @description Issuance profile list */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PaginatedResponse"] & {
-                        data?: components["schemas"]["IssuanceProfile"][];
-                    };
+                    "application/json": components["schemas"]["IssuanceProfile"][];
                 };
             };
         };

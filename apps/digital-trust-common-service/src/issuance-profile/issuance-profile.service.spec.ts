@@ -9,6 +9,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
+import { QueryFailedError } from 'typeorm';
 
 import { AdapterRegistry } from '../adapter-registry/adapter-registry.service';
 import { AuditAction } from '../audit-log/audit-log.entity';
@@ -256,12 +257,14 @@ describe('IssuanceProfileService', () => {
     });
 
     it('skips the attribute subset check for formats without checkable schema data', async () => {
-      const sdJwtDefinition: CredentialDefinition = {
+      // MDL maps to a port-layer format (unlike SD-JWT/W3C VC), so this
+      // also exercises the format-mapped connector-resolution path.
+      const mdlDefinition: CredentialDefinition = {
         ...mockCredentialDefinition,
-        format: CredentialDefinitionFormat.SD_JWT,
+        format: CredentialDefinitionFormat.MDL,
         schemaDefinition: {},
       };
-      mockCredentialDefinitionFindById.mockResolvedValue(sdJwtDefinition);
+      mockCredentialDefinitionFindById.mockResolvedValue(mdlDefinition);
       mockFindByNameAndVersion.mockResolvedValue(null);
       mockCreate.mockResolvedValue(mockProfile);
 
@@ -272,6 +275,72 @@ describe('IssuanceProfileService', () => {
 
       await expect(service.create(tenantId, badDto, auth)).resolves.toEqual(
         mockProfile,
+      );
+      expect(mockResolve).toHaveBeenCalledWith(tenantId, CredentialFormat.Mdl, {
+        connectorId: undefined,
+      });
+    });
+
+    it.each([
+      CredentialDefinitionFormat.SD_JWT,
+      CredentialDefinitionFormat.W3C_VC,
+    ])(
+      'throws BadRequestException for %s, which has no port-layer format mapping',
+      async (format) => {
+        const definitionWithUnmappedFormat: CredentialDefinition = {
+          ...mockCredentialDefinition,
+          format,
+          schemaDefinition: {},
+        };
+        mockCredentialDefinitionFindById.mockResolvedValue(
+          definitionWithUnmappedFormat,
+        );
+        mockFindByNameAndVersion.mockResolvedValue(null);
+
+        await expect(service.create(tenantId, dto, auth)).rejects.toThrow(
+          BadRequestException,
+        );
+        expect(mockResolve).not.toHaveBeenCalled();
+        expect(mockCreate).not.toHaveBeenCalled();
+      },
+    );
+
+    it('translates a losing unique-constraint race into ConflictException', async () => {
+      mockFindByNameAndVersion.mockResolvedValue(null);
+      const constraintViolation = new QueryFailedError(
+        'INSERT INTO "issuance_profile" ...',
+        [],
+        new Error('duplicate key value violates unique constraint') as Error &
+          Record<string, unknown>,
+      );
+      Object.assign(
+        constraintViolation.driverError as Record<string, unknown>,
+        {
+          code: '23505',
+          constraint: 'uq_issuance_profile_tenant_name_version',
+        },
+      );
+      mockCreate.mockRejectedValue(constraintViolation);
+
+      await expect(service.create(tenantId, dto, auth)).rejects.toThrow(
+        ConflictException,
+      );
+    });
+
+    it('rethrows a QueryFailedError from an unrelated constraint', async () => {
+      mockFindByNameAndVersion.mockResolvedValue(null);
+      const otherViolation = new QueryFailedError(
+        'INSERT INTO "issuance_profile" ...',
+        [],
+        new Error('some other db error') as Error & Record<string, unknown>,
+      );
+      Object.assign(otherViolation.driverError as Record<string, unknown>, {
+        code: '23503',
+      });
+      mockCreate.mockRejectedValue(otherViolation);
+
+      await expect(service.create(tenantId, dto, auth)).rejects.toThrow(
+        otherViolation,
       );
     });
   });

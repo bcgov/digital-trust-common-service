@@ -6,6 +6,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { QueryFailedError } from 'typeorm';
 
 import { AdapterRegistry } from '../adapter-registry/adapter-registry.service';
 import { AuditAction } from '../audit-log/audit-log.entity';
@@ -78,7 +79,7 @@ export class IssuanceProfileService {
       dto.connectorId,
     );
 
-    const created = await this.issuanceProfileRepository.create({
+    const created = await this.createProfile({
       tenantId,
       name: dto.name,
       version: dto.version,
@@ -101,6 +102,44 @@ export class IssuanceProfileService {
     });
 
     return created;
+  }
+
+  /**
+   * Inserts the profile, translating a losing race on the
+   * `uq_issuance_profile_tenant_name_version` constraint into the same 409
+   * the upfront findByNameAndVersion() check raises. That check is a
+   * read-then-insert and cannot itself close the race between two
+   * concurrent creates for the same (tenant, name, version); the database
+   * constraint is the actual source of truth.
+   */
+  private async createProfile(
+    profile: Partial<IssuanceProfile>,
+  ): Promise<IssuanceProfile> {
+    try {
+      return await this.issuanceProfileRepository.create(profile);
+    } catch (error) {
+      if (this.isUniqueConstraintViolation(error)) {
+        throw new ConflictException(
+          'Issuance profile with this name and version already exists for this tenant.',
+        );
+      }
+
+      throw error;
+    }
+  }
+
+  private isUniqueConstraintViolation(error: unknown): boolean {
+    if (!(error instanceof QueryFailedError)) {
+      return false;
+    }
+
+    const driverError = error.driverError as
+      { code?: string; constraint?: string } | undefined;
+
+    return (
+      driverError?.code === '23505' &&
+      driverError?.constraint === 'uq_issuance_profile_tenant_name_version'
+    );
   }
 
   /**
@@ -145,6 +184,12 @@ export class IssuanceProfileService {
    * is omitted, so that fallback is not duplicated here. AdapterError
    * (FormatNotSupportedError, ConnectorUnavailableError) is treated as a
    * client-input problem, not a server error.
+   *
+   * A format the port layer does not know (no toPortCredentialFormat
+   * mapping) is rejected explicitly rather than passed through as
+   * `undefined`: AdapterRegistry.resolve() treats an undefined format as
+   * "nothing to check", which would silently bind the profile to a
+   * connector that never advertised support for it.
    */
   private async resolveConnector(
     tenantId: string,
@@ -152,6 +197,12 @@ export class IssuanceProfileService {
     connectorId?: string,
   ): Promise<string> {
     const portFormat = toPortCredentialFormat(format);
+
+    if (!portFormat) {
+      throw new BadRequestException(
+        `Credential format '${format}' does not yet support connector compatibility validation.`,
+      );
+    }
 
     try {
       const resolved = await this.adapterRegistry.resolve(

@@ -1196,8 +1196,6 @@ paths:
       summary: List issuance profiles
       tags: [Issuance Profiles]
       parameters:
-        - $ref: "#/components/parameters/Cursor"
-        - $ref: "#/components/parameters/Limit"
         - name: status
           in: query
           schema:
@@ -1212,18 +1210,13 @@ paths:
             type: string
       responses:
         "200":
-          description: Paginated issuance profile list
+          description: Issuance profile list
           content:
             application/json:
               schema:
-                allOf:
-                  - $ref: "#/components/schemas/PaginatedResponse"
-                  - type: object
-                    properties:
-                      data:
-                        type: array
-                        items:
-                          $ref: "#/components/schemas/IssuanceProfile"
+                type: array
+                items:
+                  $ref: "#/components/schemas/IssuanceProfile"
 
   /api/v1/tenants/{tenantId}/profiles/issuance/{profileId}:
     parameters:
