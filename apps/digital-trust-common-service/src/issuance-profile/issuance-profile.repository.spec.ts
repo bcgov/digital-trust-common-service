@@ -2,6 +2,8 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 
+import { CredentialDefinitionFormat } from '../credential-definition/credential-definition.entity';
+
 import {
   IssuanceProfile,
   IssuanceProfileStatus,
@@ -74,6 +76,31 @@ describe('IssuanceProfileRepository', () => {
     await repository.findByNameAndVersion('t1', 'drivers-license', '1.0');
     expect(mockRepo.findOne).toHaveBeenCalledWith({
       where: { tenantId: 't1', name: 'drivers-license', version: '1.0' },
+    });
+  });
+
+  it('findByTenantWithFilters combines all provided filters', async () => {
+    await repository.findByTenantWithFilters('t1', {
+      status: IssuanceProfileStatus.DRAFT,
+      format: CredentialDefinitionFormat.ANONCREDS,
+      name: 'drivers-license',
+    });
+    expect(mockRepo.find).toHaveBeenCalledWith({
+      where: {
+        tenantId: 't1',
+        status: IssuanceProfileStatus.DRAFT,
+        format: CredentialDefinitionFormat.ANONCREDS,
+        name: 'drivers-license',
+      },
+      order: { createdAt: 'ASC' },
+    });
+  });
+
+  it('findByTenantWithFilters omits undefined filters', async () => {
+    await repository.findByTenantWithFilters('t1', {});
+    expect(mockRepo.find).toHaveBeenCalledWith({
+      where: { tenantId: 't1' },
+      order: { createdAt: 'ASC' },
     });
   });
 

@@ -2,10 +2,18 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 
+import { CredentialDefinitionFormat } from '../credential-definition/credential-definition.entity';
+
 import {
   IssuanceProfile,
   IssuanceProfileStatus,
 } from './issuance-profile.entity';
+
+export interface IssuanceProfileFilters {
+  readonly status?: IssuanceProfileStatus;
+  readonly format?: CredentialDefinitionFormat;
+  readonly name?: string;
+}
 
 @Injectable()
 export class IssuanceProfileRepository {
@@ -35,6 +43,21 @@ export class IssuanceProfileRepository {
   public async findPublished(tenantId: string): Promise<IssuanceProfile[]> {
     return await this.repository.find({
       where: { tenantId, status: IssuanceProfileStatus.PUBLISHED },
+      order: { createdAt: 'ASC' },
+    });
+  }
+
+  public async findByTenantWithFilters(
+    tenantId: string,
+    filters: IssuanceProfileFilters,
+  ): Promise<IssuanceProfile[]> {
+    return await this.repository.find({
+      where: {
+        tenantId,
+        ...(filters.status !== undefined ? { status: filters.status } : {}),
+        ...(filters.format !== undefined ? { format: filters.format } : {}),
+        ...(filters.name !== undefined ? { name: filters.name } : {}),
+      },
       order: { createdAt: 'ASC' },
     });
   }
