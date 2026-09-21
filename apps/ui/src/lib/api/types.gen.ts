@@ -3510,6 +3510,16 @@ export interface operations {
                     "application/json": components["schemas"]["IssuanceProfile"];
                 };
             };
+            /** @description Credential definition not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            409: components["responses"]["Conflict"];
             422: components["responses"]["ValidationError"];
         };
     };
