@@ -3535,6 +3535,7 @@ components:
         connector_id:
           type: string
           format: uuid
+          nullable: true
         format:
           $ref: "#/components/schemas/CredentialFormat"
         attribute_schema:

@@ -1901,7 +1901,7 @@ export interface components {
             /** Format: uuid */
             credential_definition_id?: string;
             /** Format: uuid */
-            connector_id?: string;
+            connector_id?: string | null;
             format?: components["schemas"]["CredentialFormat"];
             /** @description Declares attributes the consumer must supply */
             attribute_schema?: Record<string, never>;
