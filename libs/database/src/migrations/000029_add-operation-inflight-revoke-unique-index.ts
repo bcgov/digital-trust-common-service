@@ -15,30 +15,6 @@ export const migrationName = 'AddOperationInflightRevokeUniqueIndex';
  */
 export class AddOperationInflightRevokeUniqueIndex1789751397831 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
-    // Same repair rationale as 000028: fail out older duplicate in-flight
-    // rows first so CREATE UNIQUE INDEX doesn't fail against pre-existing data.
-    await queryRunner.query(`
-      WITH ranked AS (
-        SELECT id,
-               ROW_NUMBER() OVER (
-                 PARTITION BY tenant_id, external_id
-                 ORDER BY created_at DESC, id DESC
-               ) AS rn
-        FROM operation
-        WHERE type = 'credential.revoke'
-          AND state IN ('pending', 'processing')
-      )
-      UPDATE operation
-      SET state = 'failed',
-          result = jsonb_build_object(
-            'code', 'SUPERSEDED_DUPLICATE',
-            'message', 'Superseded by a newer in-flight revoke operation for the same credential'
-          )
-      FROM ranked
-      WHERE operation.id = ranked.id
-        AND ranked.rn > 1;
-    `);
-
     await queryRunner.query(`
       CREATE UNIQUE INDEX uq_operation_inflight_revoke
       ON operation (tenant_id, external_id)
