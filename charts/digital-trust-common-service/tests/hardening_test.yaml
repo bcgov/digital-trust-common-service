@@ -37,3 +37,18 @@ tests:
           path: spec.template.spec.containers[0].startupProbe.failureThreshold
           value: 30
         template: templates/deployment.yaml
+
+  # OidcConfigService throws at startup in production if this is missing, so
+  # a ConfigMap wiring change that silently drops it should fail here.
+  - it: renders APP_PUBLIC_URL into the application ConfigMap
+    set:
+      upstreamFederation:
+        existingSecret:
+          name: dtsc-ci-oidc-client
+      config:
+        APP_PUBLIC_URL: https://app.example.com
+    asserts:
+      - equal:
+          path: data.APP_PUBLIC_URL
+          value: https://app.example.com
+        template: templates/configmap.yaml
