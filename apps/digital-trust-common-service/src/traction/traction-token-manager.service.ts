@@ -9,7 +9,7 @@ import { assertSafeConnectorUrl } from '../common/assert-safe-connector-url';
 import {
   buildTractionTokenRequestBody,
   buildTractionTokenUrl,
-} from '../common/traction-token-request';
+} from '../common/traction-request';
 
 import { TractionHttpClient } from './traction-http-client.service';
 

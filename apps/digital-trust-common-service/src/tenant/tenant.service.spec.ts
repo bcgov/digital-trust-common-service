@@ -667,6 +667,7 @@ describe('TenantService', () => {
       );
 
       expect(mockFindConnectorCredentialById).toHaveBeenCalledWith(
+        id,
         connectorId,
         auth,
       );
