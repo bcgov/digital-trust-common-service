@@ -292,7 +292,9 @@ is. As built:
   correct when they land. `isKnownOperationType` routes anything else to the
   `unclassified` bucket rather than dropping it.
 - **Adapter error classes.** The outcome label is `AdapterError.code`, which
-  each class already declares, so a new error class is covered by existing.
+  every class already declares, so a new error class arrives with its own
+  outcome value and needs no change here. An error that is not an
+  `AdapterError` has no code to read and is counted as `unknown`.
 
 That leaves `QUEUE_DEFINITIONS`, which is reviewer-enforced, because the queue
 depth candidate is not built.
