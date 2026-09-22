@@ -87,5 +87,11 @@ tracer.startActiveSpan('second-request', (span) => {
 
 logger.info({ context: 'Probe' }, 'after spans ended');
 
-process.stdout.write(`\n__PROBE__${JSON.stringify(records)}__PROBE__\n`);
-process.exit(0);
+// Writes to the parent's pipe are asynchronous, so exiting on the next line
+// can cut the payload off mid-JSON and fail the spec's parse intermittently.
+// The exit itself stays explicit: the spec calls execFileSync without a
+// timeout, which blocks Jest's own, so a process that never exits would hang
+// the run rather than fail it.
+process.stdout.write(`\n__PROBE__${JSON.stringify(records)}__PROBE__\n`, () => {
+  process.exit(0);
+});
