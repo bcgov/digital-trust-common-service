@@ -190,15 +190,15 @@ export const UI_SPA_CALLBACK_PATH = '/auth/callback';
 export const UI_SPA_POST_LOGOUT_PATH = '/login';
 
 /**
- * The SPA's origin, derived from the provider's issuer. The front door
- * serves the SPA and mounts the provider under `/oidc` on one origin — Caddy
- * locally, the frontend Deployment in Kubernetes — so the issuer's origin is
- * the SPA's origin wherever the seed runs: `https://app.localhost` locally,
- * the PR route in a PR environment. Deriving it is what makes the registered
- * redirect URIs right in every environment rather than in one.
+ * The SPA's origin, taken from APP_PUBLIC_URL. The front door serves the
+ * SPA and mounts the provider under `/oidc` on that same origin — Caddy
+ * locally, the frontend Deployment in Kubernetes — so this is the SPA's
+ * origin wherever the seed runs: `https://app.localhost` locally, the PR
+ * route in a PR environment. Normalizing through `URL` here is what makes
+ * the registered redirect URIs right in every environment rather than one.
  */
-export function uiSpaOrigin(issuer: string): string {
-  return new URL(issuer).origin;
+export function uiSpaOrigin(publicUrl: string): string {
+  return new URL(publicUrl).origin;
 }
 
 export function uiSpaRedirectUris(origin: string): string[] {

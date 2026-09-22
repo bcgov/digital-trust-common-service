@@ -107,7 +107,7 @@ describe('DevSeedService', () => {
   // Default (get() -> undefined) is the hosted-preview path: random secrets.
   const config = { get: jest.fn() };
   const oidcConfig = {
-    getConfig: jest.fn(() => ({ issuer: 'https://app.localhost/oidc' })),
+    getConfig: jest.fn(() => ({ publicUrl: 'https://app.localhost' })),
   };
 
   // The seed's advisory lock is taken on the transaction's manager.
@@ -332,11 +332,11 @@ describe('DevSeedService', () => {
    * client. The provider matches them exactly, so a PR environment seeded
    * with the local origin refuses every sign-in with invalid_redirect_uri;
    * the front door puts the SPA and /oidc on one origin, which is what makes
-   * the issuer's origin the right one everywhere.
+   * APP_PUBLIC_URL the right one everywhere.
    */
-  it("registers the SPA client's redirect URIs on the issuer's origin", async () => {
+  it("registers the SPA client's redirect URIs on APP_PUBLIC_URL's origin", async () => {
     oidcConfig.getConfig.mockReturnValueOnce({
-      issuer: 'https://pr-42.apps.example.test/oidc',
+      publicUrl: 'https://pr-42.apps.example.test',
     });
 
     await service.run();
@@ -353,7 +353,7 @@ describe('DevSeedService', () => {
   // A re-seed after the route changed must not leave the old origin behind.
   it("replaces an existing SPA client's redirect URIs on re-seed", async () => {
     oidcConfig.getConfig.mockReturnValueOnce({
-      issuer: 'https://pr-42.apps.example.test/oidc',
+      publicUrl: 'https://pr-42.apps.example.test',
     });
     oauthClientRepo.findByClientId.mockImplementation((clientId: string) =>
       Promise.resolve(

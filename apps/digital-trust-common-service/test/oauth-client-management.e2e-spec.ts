@@ -89,7 +89,7 @@ describe('OAuth client management (e2e)', () => {
 
   const previousEnv = {
     OIDC_KEYS_PATH: process.env.OIDC_KEYS_PATH,
-    OIDC_ISSUER: process.env.OIDC_ISSUER,
+    APP_PUBLIC_URL: process.env.APP_PUBLIC_URL,
     OIDC_COOKIE_KEYS: process.env.OIDC_COOKIE_KEYS,
     JWT_JWKS_URI: process.env.JWT_JWKS_URI,
   };
@@ -98,7 +98,7 @@ describe('OAuth client management (e2e)', () => {
     listenPort = await getFreePort();
     keysDir = mkdtempSync(join(tmpdir(), 'oauth-client-e2e-'));
     process.env.OIDC_KEYS_PATH = join(keysDir, 'oidc-keys.json');
-    process.env.OIDC_ISSUER = `http://127.0.0.1:${listenPort}/oidc`;
+    process.env.APP_PUBLIC_URL = `http://127.0.0.1:${listenPort}`;
     process.env.OIDC_COOKIE_KEYS = 'oauth-client-e2e-cookie-key';
     process.env.JWT_JWKS_URI = `http://127.0.0.1:${listenPort}/oidc/jwks`;
 
@@ -196,15 +196,15 @@ describe('OAuth client management (e2e)', () => {
     }
 
     process.env.OIDC_KEYS_PATH = previousEnv.OIDC_KEYS_PATH;
-    process.env.OIDC_ISSUER = previousEnv.OIDC_ISSUER;
+    process.env.APP_PUBLIC_URL = previousEnv.APP_PUBLIC_URL;
     process.env.OIDC_COOKIE_KEYS = previousEnv.OIDC_COOKIE_KEYS;
     process.env.JWT_JWKS_URI = previousEnv.JWT_JWKS_URI;
 
     if (previousEnv.OIDC_KEYS_PATH === undefined) {
       delete process.env.OIDC_KEYS_PATH;
     }
-    if (previousEnv.OIDC_ISSUER === undefined) {
-      delete process.env.OIDC_ISSUER;
+    if (previousEnv.APP_PUBLIC_URL === undefined) {
+      delete process.env.APP_PUBLIC_URL;
     }
     if (previousEnv.OIDC_COOKIE_KEYS === undefined) {
       delete process.env.OIDC_COOKIE_KEYS;
@@ -222,7 +222,7 @@ describe('OAuth client management (e2e)', () => {
       adminClientId,
       adminClientSecret,
       'tenants:admin',
-      process.env.OIDC_ISSUER,
+      `${process.env.APP_PUBLIC_URL}/oidc`,
     );
 
     return token.accessToken;
@@ -244,7 +244,7 @@ describe('OAuth client management (e2e)', () => {
       offerOnlyClientId,
       offerOnlyClientSecret,
       'credentials:offer',
-      process.env.OIDC_ISSUER,
+      `${process.env.APP_PUBLIC_URL}/oidc`,
     );
 
     const response = await request(app.getHttpServer())
@@ -266,7 +266,7 @@ describe('OAuth client management (e2e)', () => {
       otherTenantClientId,
       otherTenantClientSecret,
       'clients:manage',
-      process.env.OIDC_ISSUER,
+      `${process.env.APP_PUBLIC_URL}/oidc`,
     );
 
     const response = await request(app.getHttpServer())
@@ -324,7 +324,7 @@ describe('OAuth client management (e2e)', () => {
       created.client.client_id,
       created.client_secret,
       'credentials:offer',
-      process.env.OIDC_ISSUER,
+      `${process.env.APP_PUBLIC_URL}/oidc`,
     );
 
     const rotateResponse = await request(app.getHttpServer())
@@ -354,7 +354,7 @@ describe('OAuth client management (e2e)', () => {
       created.client.client_id,
       rotated.client_secret,
       'credentials:offer',
-      process.env.OIDC_ISSUER,
+      `${process.env.APP_PUBLIC_URL}/oidc`,
     );
 
     await request(app.getHttpServer())
@@ -379,7 +379,7 @@ describe('OAuth client management (e2e)', () => {
       otherTenantClientId,
       otherTenantClientSecret,
       'clients:manage',
-      process.env.OIDC_ISSUER,
+      `${process.env.APP_PUBLIC_URL}/oidc`,
     );
 
     const response = await request(app.getHttpServer())

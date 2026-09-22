@@ -336,7 +336,7 @@ export class DevSeedService {
     // The one per-environment fact about this client. The provider matches
     // redirect URIs exactly, so a PR environment seeded with the local
     // origin would refuse every sign-in with invalid_redirect_uri.
-    const origin = uiSpaOrigin(this.oidcConfig.getConfig().issuer);
+    const origin = uiSpaOrigin(this.oidcConfig.getConfig().publicUrl);
     const redirectUris = uiSpaRedirectUris(origin);
     const postLogoutRedirectUris = uiSpaPostLogoutRedirectUris(origin);
     // refresh_token is what keeps the SPA signed in past the 5-minute access
