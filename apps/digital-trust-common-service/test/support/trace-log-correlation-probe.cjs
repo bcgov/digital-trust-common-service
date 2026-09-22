@@ -21,12 +21,19 @@ const { join } = require('node:path');
 
 const DIST = join(__dirname, '..', '..', '..', '..', 'dist');
 
+// Every variable the SDK reads is pinned here rather than inherited, so the
+// probe observes the same configuration on a laptop as in CI. `tracing.ts`
+// loads dotenv, so without this a local `.env` reaches the SDK: a developer
+// with OTEL_TRACES_EXPORTER=none would get a no-op tracer provider, every span
+// non-recording and the trace fields gone — indistinguishable from the
+// regression this probe exists to catch. Whether the deployed exporter is set
+// correctly is a separate contract, asserted against the rendered chart in
+// charts/digital-trust-common-service/tests/otel_test.yaml.
+//
 // A batch span processor will not flush inside the lifetime of this process,
 // and the endpoint is unroutable regardless, so nothing leaves the machine.
-// Do not set OTEL_TRACES_EXPORTER=none: that registers a no-op tracer
-// provider, every span becomes non-recording, and the trace fields silently
-// disappear — which is the regression this probe exists to catch.
 process.env.OTEL_ENABLED = 'true';
+process.env.OTEL_TRACES_EXPORTER = 'otlp';
 process.env.OTEL_EXPORTER_OTLP_ENDPOINT = 'http://127.0.0.1:1';
 process.env.OTEL_SERVICE_NAME = 'digital-trust-common-service';
 
