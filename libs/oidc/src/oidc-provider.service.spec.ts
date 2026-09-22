@@ -87,6 +87,7 @@ describe('buildOidcConfiguration', () => {
     grantTypes: ['client_credentials', 'refresh_token'],
     audience: 'https://digital-trust-common-service',
     additionalAudiences: ['https://loki-gateway'],
+    publicUrl: 'https://public.example.com/oidc',
   };
 
   const jwks: OidcJwks = { keys: [{ kid: 'k1', kty: 'RSA' }] };
@@ -1001,6 +1002,7 @@ describe('OidcProviderService', () => {
         grantTypes: ['client_credentials', 'refresh_token'],
         audience: 'https://digital-trust-common-service',
         additionalAudiences: [],
+        publicUrl: 'https://public.example.com/oidc',
       } satisfies OidcConfig),
     };
     oidcKeysService = { ensureLoaded: jest.fn().mockResolvedValue(jwks) };

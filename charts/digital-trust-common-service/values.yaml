@@ -392,6 +392,11 @@ otel:
 config:
   NODE_ENV: production
   PORT: "3000"
+  # -- This app's own externally-reachable origin, no path (e.g.
+  # https://api.example.com). Required in production: OidcConfigService
+  # throws at startup if unset. The OIDC provider is mounted at
+  # `${APP_PUBLIC_URL}/oidc`.
+  APP_PUBLIC_URL: ""
   LOG_LEVEL: info
   DB_HOST: ""
   DB_PORT: "5432"
