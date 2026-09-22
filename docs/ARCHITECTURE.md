@@ -1657,6 +1657,8 @@ Client → API Pod → Traction/Credo Agent Service
   "service": "digital-trust-common-service",
   "trace_id": "abc123def456",
   "span_id": "789ghi",
+  "request_id": "req-uuid",
+  "source": "api",
   "tenant_id": "tenant-uuid",
   "operation_id": "op-uuid",
   "adapter": "traction",
@@ -1669,6 +1671,37 @@ Client → API Pod → Traction/Credo Agent Service
 - Request-scoped context via `AsyncLocalStorage` or OTel context
 - Sensitive fields (tokens, credential attributes, secrets) redacted automatically
 - Output to stdout — collected by platform log aggregator (Fluentd/Fluent Bit → Loki)
+
+#### Correlation fields
+
+`request_id` and `source` are attached to every line emitted while a request is
+open, and `tenant_id` and `operation_id` join them as soon as each is resolved.
+They come from a pino mixin reading the `AsyncLocalStorage` request context
+rather than from call sites, so a line carries them even when the code emitting
+it knows nothing about the request. Lines with no request context — startup and
+background workers — simply omit them rather than emitting empty values.
+
+#### Access log
+
+One line per request is emitted when the response finishes:
+
+| Field | Notes |
+| --- | --- |
+| `method` | HTTP method |
+| `route` | The matched route *pattern*, e.g. `/api/v1/tenants/:tenantId` |
+| `status_code` | Response status |
+| `duration_ms` | Time from request received to response finished |
+
+The line is built explicitly rather than by serializing the request and
+response, so headers, bodies, query strings, and credential attributes are
+never included — a field is present only because it is named above.
+
+`route` is the route pattern, never the request path. The path carries tenant
+and operation ids, and on an unmatched request it is arbitrary client input; an
+unmatched request is therefore logged with its method and status but no route.
+Liveness and readiness probes are not logged at all, since the kubelet polls
+them continuously. `health/status` is a diagnostic endpoint rather than a probe
+and stays logged.
 
 ### Key Metrics
 

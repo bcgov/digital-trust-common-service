@@ -1,10 +1,16 @@
 import { Writable } from 'node:stream';
 
+import { RequestContextService } from '@app/common/context/request-context.service';
 import { ConsoleLogger, Logger as NestLogger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
+import express from 'express';
 import { LoggerModule, Logger as PinoNestLogger } from 'nestjs-pino';
 import { type Logger as PinoLogger } from 'pino';
+import pinoHttp from 'pino-http';
+import request from 'supertest';
+
+import { createRequestIdMiddleware } from '../common/middleware/request-id.middleware';
 
 import { createLoggerModuleParams } from './logger.config';
 
@@ -30,6 +36,10 @@ class InMemoryStream extends Writable {
     );
   }
 }
+
+const REQUEST_ID = '11111111-1111-4111-8111-111111111111';
+const TENANT_ID = '22222222-2222-4222-8222-222222222222';
+const OPERATION_ID = '33333333-3333-4333-8333-333333333333';
 
 describe('createLoggerModuleParams', () => {
   afterEach(() => {
@@ -83,7 +93,11 @@ describe('createLoggerModuleParams', () => {
     const stream = new InMemoryStream();
 
     expect(() =>
-      createLoggerModuleParams(config('nonsense'), stream),
+      createLoggerModuleParams(
+        config('nonsense'),
+        new RequestContextService(),
+        stream,
+      ),
     ).not.toThrow();
 
     expect(stream.records()[0]).toMatchObject({
@@ -98,7 +112,13 @@ describe('createLoggerModuleParams', () => {
     const stream = new InMemoryStream();
     const testingModule = await Test.createTestingModule({
       imports: [
-        LoggerModule.forRoot(createLoggerModuleParams(config('info'), stream)),
+        LoggerModule.forRoot(
+          createLoggerModuleParams(
+            config('info'),
+            new RequestContextService(),
+            stream,
+          ),
+        ),
       ],
     }).compile();
 
@@ -210,8 +230,11 @@ describe('createLoggerModuleParams', () => {
         const { createLoggerModuleParams: create } =
           // eslint-disable-next-line @typescript-eslint/no-require-imports
           require('./logger.config') as typeof import('./logger.config');
-        const pinoHttp = create(config('info', { LOG_PRETTY: 'true' }), stream)
-          .pinoHttp as { logger: PinoLogger };
+        const pinoHttp = create(
+          config('info', { LOG_PRETTY: 'true' }),
+          new RequestContextService(),
+          stream,
+        ).pinoHttp as { logger: PinoLogger };
 
         pinoHttp.logger.info({ context: 'FallbackLogger' }, 'structured');
       });
@@ -269,6 +292,133 @@ describe('createLoggerModuleParams', () => {
   });
 });
 
+describe('request correlation fields', () => {
+  it('omits correlation fields when no request context is open', () => {
+    const { logger, stream } = createLogger('info');
+
+    logger.info('startup');
+
+    const record = stream.records()[0];
+    expect(record).not.toHaveProperty('request_id');
+    expect(record).not.toHaveProperty('source');
+    expect(record).not.toHaveProperty('tenant_id');
+    expect(record).not.toHaveProperty('operation_id');
+  });
+
+  it('attaches the request id and source to every line in a request', () => {
+    const { logger, requestContext, stream } = createLogger('info');
+
+    requestContext.run({ requestId: REQUEST_ID }, () => {
+      logger.info('first');
+      logger.info('second');
+    });
+
+    expect(stream.records()).toMatchObject([
+      { request_id: REQUEST_ID, source: 'api' },
+      { request_id: REQUEST_ID, source: 'api' },
+    ]);
+  });
+
+  it('attaches tenant and operation ids once they are resolved', () => {
+    const { logger, requestContext, stream } = createLogger('info');
+
+    requestContext.run({ requestId: REQUEST_ID }, () => {
+      logger.info('before resolution');
+      requestContext.setTenantId(TENANT_ID);
+      requestContext.setOperationId(OPERATION_ID);
+      logger.info('after resolution');
+    });
+
+    const [before, after] = stream.records();
+    expect(before).not.toHaveProperty('tenant_id');
+    expect(before).not.toHaveProperty('operation_id');
+    expect(after).toMatchObject({
+      operation_id: OPERATION_ID,
+      tenant_id: TENANT_ID,
+    });
+  });
+});
+
+describe('access log', () => {
+  it('emits one line per request with the route pattern, not the path', async () => {
+    const { app, stream } = createHttpApp();
+
+    await request(app).get(`/api/v1/tenants/${TENANT_ID}`).expect(200);
+
+    const accessLogs = await accessLogRecords(stream);
+    expect(accessLogs).toHaveLength(1);
+    expect(accessLogs[0]).toMatchObject({
+      method: 'GET',
+      route: '/api/v1/tenants/:tenantId',
+      status_code: 200,
+    });
+    expect(typeof accessLogs[0].duration_ms).toBe('number');
+  });
+
+  it('correlates the access log with the request it describes', async () => {
+    const { app, stream } = createHttpApp();
+
+    await request(app)
+      .get(`/api/v1/tenants/${TENANT_ID}`)
+      .set('X-Request-Id', REQUEST_ID)
+      .expect(200);
+
+    // The access log is written from a response-finish listener, so this also
+    // covers the request context surviving past the handler.
+    expect((await accessLogRecords(stream))[0]).toMatchObject({
+      request_id: REQUEST_ID,
+      source: 'api',
+    });
+  });
+
+  it('keeps headers and bodies out of the access log', async () => {
+    const { app, stream } = createHttpApp();
+
+    await request(app)
+      .get(`/api/v1/tenants/${TENANT_ID}`)
+      .set('Authorization', 'Bearer super-secret-token')
+      .set('Cookie', 'session=super-secret-session')
+      .expect(200);
+
+    const [accessLog] = await accessLogRecords(stream);
+    expect(accessLog).not.toHaveProperty('req');
+    expect(accessLog).not.toHaveProperty('res');
+    expect(JSON.stringify(accessLog)).not.toContain('super-secret');
+  });
+
+  it('records an unmatched request without echoing the path back', async () => {
+    const { app, stream } = createHttpApp();
+
+    await request(app).get('/api/v1/../../etc/passwd').expect(404);
+
+    const [accessLog] = await accessLogRecords(stream);
+    expect(accessLog).toMatchObject({ method: 'GET', status_code: 404 });
+    expect(accessLog).not.toHaveProperty('route');
+    expect(JSON.stringify(accessLog)).not.toContain('passwd');
+  });
+
+  it('does not log liveness and readiness probes', async () => {
+    const { app, stream } = createHttpApp();
+
+    await request(app).get('/health/live').expect(200);
+    await request(app).get('/health/ready').expect(200);
+
+    expect(await accessLogRecords(stream)).toHaveLength(0);
+  });
+
+  it('logs a server error as an error-level access log', async () => {
+    const { app, stream } = createHttpApp();
+
+    await request(app).get('/boom').expect(500);
+
+    expect((await accessLogRecords(stream))[0]).toMatchObject({
+      level: 'error',
+      message: 'request failed',
+      status_code: 500,
+    });
+  });
+});
+
 const ANSI_PATTERN = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 'g');
 
 /**
@@ -284,13 +434,19 @@ function createLogger(
   extras?: Record<string, string>,
 ): {
   logger: PinoLogger;
+  requestContext: RequestContextService;
   stream: InMemoryStream;
 } {
   const stream = new InMemoryStream();
-  const params = createLoggerModuleParams(config(logLevel, extras), stream);
+  const requestContext = new RequestContextService();
+  const params = createLoggerModuleParams(
+    config(logLevel, extras),
+    requestContext,
+    stream,
+  );
   const pinoHttp = params.pinoHttp as { logger: PinoLogger };
 
-  return { logger: pinoHttp.logger, stream };
+  return { logger: pinoHttp.logger, requestContext, stream };
 }
 
 function config(
@@ -300,4 +456,55 @@ function config(
   return {
     get: (key: string) => (key === 'LOG_LEVEL' ? logLevel : extras[key]),
   } as ConfigService;
+}
+
+/**
+ * Wires the logger the way `configureApp()` does — request-id middleware first
+ * so the context is open before pino-http registers its response listener.
+ */
+function createHttpApp(): {
+  app: express.Express;
+  stream: InMemoryStream;
+} {
+  const stream = new InMemoryStream();
+  const requestContext = new RequestContextService();
+  const params = createLoggerModuleParams(
+    config('info'),
+    requestContext,
+    stream,
+  );
+  const app = express();
+
+  app.use(createRequestIdMiddleware(requestContext));
+  app.use(pinoHttp(params.pinoHttp as Parameters<typeof pinoHttp>[0]));
+  app.get('/api/v1/tenants/:tenantId', (_req, res) => {
+    res.json({ ok: true });
+  });
+  app.get('/health/live', (_req, res) => {
+    res.json({ ok: true });
+  });
+  app.get('/health/ready', (_req, res) => {
+    res.json({ ok: true });
+  });
+  app.get('/boom', (_req, _res, next) => {
+    next(new Error('boom'));
+  });
+
+  return { app, stream };
+}
+
+// pino-http writes from a response-finish listener, which runs after supertest
+// has resolved. Yielding once lets that listener land before the assertion.
+async function accessLogRecords(
+  stream: InMemoryStream,
+): Promise<Array<Record<string, unknown>>> {
+  await new Promise((resolve) => setImmediate(resolve));
+
+  return stream
+    .records()
+    .filter(
+      (record) =>
+        record.message === 'request completed' ||
+        record.message === 'request failed',
+    );
 }

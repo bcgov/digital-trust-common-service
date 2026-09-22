@@ -1901,7 +1901,7 @@ export interface components {
             /** Format: uuid */
             credential_definition_id?: string;
             /** Format: uuid */
-            connector_id?: string;
+            connector_id?: string | null;
             format?: components["schemas"]["CredentialFormat"];
             /** @description Declares attributes the consumer must supply */
             attribute_schema?: Record<string, never>;
@@ -3452,13 +3452,13 @@ export interface operations {
     listIssuanceProfiles: {
         parameters: {
             query?: {
+                status?: components["schemas"]["ProfileStatus"];
+                format?: components["schemas"]["CredentialFormat"];
+                name?: string;
                 /** @description Opaque pagination cursor from a previous response */
                 cursor?: components["parameters"]["Cursor"];
                 /** @description Number of items per page */
                 limit?: components["parameters"]["Limit"];
-                status?: components["schemas"]["ProfileStatus"];
-                format?: components["schemas"]["CredentialFormat"];
-                name?: string;
             };
             header?: never;
             path: {
@@ -3510,6 +3510,16 @@ export interface operations {
                     "application/json": components["schemas"]["IssuanceProfile"];
                 };
             };
+            /** @description Credential definition not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            409: components["responses"]["Conflict"];
             422: components["responses"]["ValidationError"];
         };
     };
@@ -3597,7 +3607,16 @@ export interface operations {
                     "application/json": components["schemas"]["IssuanceProfile"];
                 };
             };
-            /** @description Profile is not in draft status or validation failed */
+            /** @description The profile's connector no longer exists, is inactive, or its adapter no longer resolves */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Profile is not in draft status */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -3628,6 +3647,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["IssuanceProfile"];
+                };
+            };
+            /** @description Profile is not in published status */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
