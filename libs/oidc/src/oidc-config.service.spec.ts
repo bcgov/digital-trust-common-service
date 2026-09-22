@@ -169,9 +169,10 @@ describe('OidcConfigService', () => {
   });
 
   describe('explicit configuration', () => {
-    it('strips trailing slashes from a configured issuer', async () => {
-      await buildModule({ OIDC_ISSUER: 'https://app.example.com/oidc/' });
+    it('strips trailing slashes from a configured public URL', async () => {
+      await buildModule({ APP_PUBLIC_URL: 'https://app.example.com/' });
 
+      expect(service.getConfig().publicUrl).toBe('https://app.example.com');
       expect(service.getConfig().issuer).toBe('https://app.example.com/oidc');
     });
 
@@ -293,18 +294,18 @@ describe('OidcConfigService', () => {
   });
 
   describe('production requirements', () => {
-    it('requires OIDC_ISSUER in production', async () => {
+    it('requires APP_PUBLIC_URL in production', async () => {
       await buildModule({ NODE_ENV: 'production' });
 
       expect(() => service.getConfig()).toThrow(
-        'OIDC_ISSUER must be configured in production.',
+        'APP_PUBLIC_URL must be configured in production.',
       );
     });
 
     it('requires OIDC_COOKIE_KEYS in production', async () => {
       await buildModule({
         NODE_ENV: 'production',
-        OIDC_ISSUER: 'https://app.example.com/oidc',
+        APP_PUBLIC_URL: 'https://app.example.com',
       });
 
       expect(() => service.getConfig()).toThrow(
@@ -315,7 +316,7 @@ describe('OidcConfigService', () => {
     it('rejects OIDC_COOKIE_KEYS that contain only empty entries', async () => {
       await buildModule({
         NODE_ENV: 'production',
-        OIDC_ISSUER: 'https://app.example.com/oidc',
+        APP_PUBLIC_URL: 'https://app.example.com',
         OIDC_COOKIE_KEYS: ' , , ',
       });
 
@@ -327,7 +328,7 @@ describe('OidcConfigService', () => {
     it('succeeds in production with all required values set', async () => {
       await buildModule({
         NODE_ENV: 'production',
-        OIDC_ISSUER: 'https://app.example.com/oidc',
+        APP_PUBLIC_URL: 'https://app.example.com',
         OIDC_COOKIE_KEYS: 'secret-one',
       });
 

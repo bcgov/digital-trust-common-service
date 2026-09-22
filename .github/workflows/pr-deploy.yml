@@ -217,7 +217,7 @@ jobs:
             --set "podAnnotations.deploy/image-sha=${HEAD_SHA}" \
             --set config.DB_NAME="${DB_NAME}" \
             --set route.host="${ROUTE_HOST}" \
-            --set config.OIDC_ISSUER="https://${ROUTE_HOST}/oidc" \
+            --set config.APP_PUBLIC_URL="https://${ROUTE_HOST}" \
             --set otel.apiServiceName="${RELEASE_NAME}" \
             --set otel.workerServiceName="${RELEASE_NAME}-worker" \
             "${EXTRA_ARGS[@]}" \

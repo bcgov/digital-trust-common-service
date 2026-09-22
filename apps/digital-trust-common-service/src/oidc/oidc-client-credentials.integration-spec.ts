@@ -49,7 +49,7 @@ describe('OIDC client_credentials grant (integration)', () => {
   beforeAll(async () => {
     keysDir = mkdtempSync(join(tmpdir(), 'oidc-it-'));
     process.env.OIDC_KEYS_PATH = join(keysDir, 'oidc-keys.json');
-    process.env.OIDC_ISSUER = 'http://localhost:3000/oidc';
+    process.env.APP_PUBLIC_URL = 'http://localhost:3000';
     process.env.OIDC_COOKIE_KEYS = 'integration-test-cookie-key';
 
     dataSource = new DataSource({
@@ -124,7 +124,7 @@ describe('OIDC client_credentials grant (integration)', () => {
       clientId,
       clientSecret,
       'credentials:offer',
-      process.env.OIDC_ISSUER,
+      `${process.env.APP_PUBLIC_URL}/oidc`,
     );
 
     expect(token.accessToken).toEqual(expect.any(String));

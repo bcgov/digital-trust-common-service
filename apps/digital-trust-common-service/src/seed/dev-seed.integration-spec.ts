@@ -208,8 +208,9 @@ describe('DevSeedService integration', () => {
     // from drifting into each other's shape, so pin both halves here.
     expect(rows[0]?.is_public).toBe(true);
     expect(rows[0]?.client_secret_hash).toBeNull();
-    // Whatever OIDC_ISSUER this run has: the redirect URIs must sit on its
-    // origin, or the provider rejects the SPA's callback in that environment.
+    // Whatever APP_PUBLIC_URL this run has: the redirect URIs must sit on
+    // its origin, or the provider rejects the SPA's callback in that
+    // environment.
     const origin = uiSpaOrigin(
       module.get(OidcConfigService).getConfig().issuer,
     );
