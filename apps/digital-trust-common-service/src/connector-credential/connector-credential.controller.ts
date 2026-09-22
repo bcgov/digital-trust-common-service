@@ -112,10 +112,15 @@ export class ConnectorCredentialController {
   })
   @ApiNotFoundResponse({ description: 'Connector not found' })
   public async findById(
+    @Param('tenantId', ParseUUIDPipe) tenantId: string,
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentAuth() auth: AuthContext,
   ): Promise<ConnectorCredentialResponseDto> {
-    const credential = await this.credentialService.findById(id, auth);
+    const credential = await this.credentialService.findById(
+      tenantId,
+      id,
+      auth,
+    );
     return this.toResponseDto(credential);
   }
 
@@ -147,11 +152,17 @@ export class ConnectorCredentialController {
     },
   })
   public async update(
+    @Param('tenantId', ParseUUIDPipe) tenantId: string,
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateConnectorCredentialDto,
     @CurrentAuth() auth: AuthContext,
   ): Promise<ConnectorCredentialResponseDto> {
-    const credential = await this.credentialService.update(id, dto, auth);
+    const credential = await this.credentialService.update(
+      tenantId,
+      id,
+      dto,
+      auth,
+    );
     return this.toResponseDto(credential);
   }
 
@@ -163,20 +174,22 @@ export class ConnectorCredentialController {
     description: 'Active credential records still reference this connector',
   })
   public async delete(
+    @Param('tenantId', ParseUUIDPipe) tenantId: string,
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentAuth() auth: AuthContext,
   ): Promise<void> {
-    return await this.credentialService.delete(id, auth);
+    return await this.credentialService.delete(tenantId, id, auth);
   }
 
   @Post(':id/test')
   @ApiOkResponse({ description: 'Connectivity test result' })
   @ApiNotFoundResponse({ description: 'Connector not found' })
   public async test(
+    @Param('tenantId', ParseUUIDPipe) tenantId: string,
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentAuth() auth: AuthContext,
   ): Promise<{ status: string; latencyMs: number; message?: string }> {
-    return await this.credentialService.testConnectivity(id, auth);
+    return await this.credentialService.testConnectivity(tenantId, id, auth);
   }
 
   private toResponseDto(

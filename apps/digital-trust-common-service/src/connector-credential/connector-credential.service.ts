@@ -1,4 +1,7 @@
+import { randomBytes } from 'crypto';
+
 import type { AuthContext } from '@app/auth';
+import { OidcConfigService } from '@app/oidc/config';
 import {
   BadRequestException,
   ConflictException,
@@ -13,10 +16,12 @@ import {
   assertResourceTenantOrNotFound,
   assertTenantAccess,
 } from '../common/assert-tenant-access';
+import { API_BASE_PATH } from '../common/constants/api-version.constants';
 import { EncryptionService } from '../common/crypto/encryption.service';
 import { ConnectorType } from '../connection/connection.entity';
 import { CredentialRepository } from '../credential/credential.repository';
 import { TenantService } from '../tenant/tenant.service';
+import { TractionWebhookRegistrar } from '../traction/traction-webhook-registrar.service';
 
 import { ConnectorCredential } from './connector-credential.entity';
 import { ConnectorCredentialRepository } from './connector-credential.repository';
@@ -36,6 +41,8 @@ export class ConnectorCredentialService {
     private readonly encryptionService: EncryptionService,
     private readonly healthCheckService: ConnectorHealthCheckService,
     private readonly credentialUsageRepository: CredentialRepository,
+    private readonly webhookRegistrar: TractionWebhookRegistrar,
+    private readonly oidcConfigService: OidcConfigService,
   ) {}
 
   public async create(
@@ -45,6 +52,13 @@ export class ConnectorCredentialService {
   ): Promise<ConnectorCredential> {
     assertTenantAccess(auth, tenantId);
     await this.tenantService.findById(tenantId);
+
+    if (
+      dto.connectorType === ConnectorType.TRACTION &&
+      !dto.credentials.webhookSecret
+    ) {
+      dto.credentials.webhookSecret = randomBytes(32).toString('hex');
+    }
 
     await this.assertHealthy(
       dto.connectorType,
@@ -56,7 +70,7 @@ export class ConnectorCredentialService {
       dto.credentials,
     );
 
-    return await this.credentialRepository.create({
+    const credential = await this.credentialRepository.create({
       tenantId,
       connectorType: dto.connectorType,
       credentialsEncrypted: encryptedCredentials.ciphertext,
@@ -64,6 +78,32 @@ export class ConnectorCredentialService {
       active: true,
       keyVersion: encryptedCredentials.keyVersion,
     } as ConnectorCredential);
+
+    if (dto.connectorType === ConnectorType.TRACTION) {
+      await this.webhookRegistrar.ensureWebhookRegistered(
+        {
+          connectorId: credential.id,
+          tenantId,
+          endpointUrl: credential.endpointUrl,
+          credentials: { ...dto.credentials },
+        },
+        this.buildWebhookUrl(credential.id),
+        dto.credentials.webhookSecret as string,
+      );
+    }
+
+    return credential;
+  }
+
+  /**
+   * The URL Traction calls back on. ACA-Py appends `/topic/{topic}/` to
+   * whatever URL is registered (see ConnectorWebhookController), so this is
+   * deliberately just the base connector webhook path with no topic segment.
+   */
+  private buildWebhookUrl(connectorId: string): string {
+    const origin = this.oidcConfigService.getConfig().publicUrl;
+
+    return `${origin}${API_BASE_PATH}/connectors/${connectorId}/webhooks`;
   }
 
   private async assertHealthy(
@@ -106,13 +146,14 @@ export class ConnectorCredentialService {
   }
 
   public async findById(
+    tenantId: string,
     id: string,
     auth?: AuthContext,
   ): Promise<ConnectorCredential> {
     const credential = await this.credentialRepository.findById(id);
     const notFound = `Connector credential with ID '${id}' was not found.`;
 
-    if (!credential) {
+    if (!credential || credential.tenantId !== tenantId) {
       throw new NotFoundException(notFound);
     }
 
@@ -169,12 +210,34 @@ export class ConnectorCredentialService {
     return credentials;
   }
 
+  /**
+   * Lookup for inbound webhook verification, where the caller (the connector
+   * provider, e.g. Traction or Credo) has no tenant JWT and thus no
+   * AuthContext for findById's tenant check — the connector id and its
+   * stored secret are themselves the credential presented. Returns null
+   * (never throws/404s) on any mismatch so the guard can respond identically
+   * whether the id doesn't exist or isn't active.
+   */
+  public async findActiveForWebhook(
+    id: string,
+  ): Promise<ConnectorCredential | null> {
+    const credential = await this.credentialRepository.findById(id);
+
+    if (!credential || !credential.active) {
+      return null;
+    }
+
+    await this.lazyRotateKeyIfNeeded(credential);
+    return credential;
+  }
+
   public async update(
+    tenantId: string,
     id: string,
     dto: UpdateConnectorCredentialDto,
     auth: AuthContext,
   ): Promise<ConnectorCredential> {
-    const existing = await this.findById(id, auth);
+    const existing = await this.findById(tenantId, id, auth);
 
     const updates: Partial<Omit<ConnectorCredential, 'tenant'>> = {};
     const endpointUrl = dto.endpointUrl ?? existing.endpointUrl;
@@ -231,8 +294,12 @@ export class ConnectorCredentialService {
     return updated;
   }
 
-  public async delete(id: string, auth: AuthContext): Promise<void> {
-    await this.findById(id, auth);
+  public async delete(
+    tenantId: string,
+    id: string,
+    auth: AuthContext,
+  ): Promise<void> {
+    await this.findById(tenantId, id, auth);
 
     const hasDependents =
       await this.credentialUsageRepository.existsByConnectorId(id);
@@ -265,10 +332,11 @@ export class ConnectorCredentialService {
   }
 
   public async testConnectivity(
+    tenantId: string,
     id: string,
     auth: AuthContext,
   ): Promise<{ status: string; latencyMs: number; message?: string }> {
-    const credential = await this.findById(id, auth);
+    const credential = await this.findById(tenantId, id, auth);
 
     const decrypted = this.encryptionService.decrypt<ConnectorCredentialsDto>(
       credential.credentialsEncrypted,

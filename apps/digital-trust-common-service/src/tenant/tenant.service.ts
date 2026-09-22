@@ -229,6 +229,7 @@ export class TenantService {
 
     if (dto.defaultConnector !== undefined && dto.defaultConnector !== null) {
       const credential = await this.connectorCredentialService.findById(
+        tenant.id,
         dto.defaultConnector,
         auth,
       );
