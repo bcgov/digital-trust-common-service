@@ -90,6 +90,7 @@ describe('trace-to-log correlation', () => {
   it('does not leave stale trace context on lines emitted after a span ends', () => {
     expect(find('after spans ended')).not.toHaveProperty('trace_id');
     expect(find('after spans ended')).not.toHaveProperty('span_id');
+    expect(find('after spans ended')).not.toHaveProperty('trace_flags');
   });
 
   it('keeps redaction intact on a correlated line', () => {
