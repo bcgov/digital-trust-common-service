@@ -1,3 +1,6 @@
+import type { IncomingMessage, ServerResponse } from 'node:http';
+
+import { RequestContextService } from '@app/common/context/request-context.service';
 import { ConfigService } from '@nestjs/config';
 import {
   nativeLoggerOptions,
@@ -26,6 +29,26 @@ const REDACTION_CENSOR = '[Redacted]';
 // primary defence for foreign payloads is not logging them at all: see the
 // redaction rules in docs/ARCHITECTURE.md.
 const MAX_REDACTION_DEPTH = 6;
+
+// `source` distinguishes where a line originated once several producers share
+// a Loki stream; see the label taxonomy in docs/ARCHITECTURE.md. Anything
+// emitted while a request context is open came in through the HTTP API.
+// Adapter and webhook lines carry their own value and are not set here.
+const REQUEST_LOG_SOURCE = 'api';
+
+// Liveness and readiness are polled continuously by the kubelet, so an access
+// log per probe is volume without signal. `health/status` is a human/monitoring
+// endpoint rather than a probe, so it stays logged.
+const UNLOGGED_PATHS = new Set(['/health/live', '/health/ready']);
+
+// The express-specific fields pino-http sees on the request. `route` is only
+// populated once a handler has matched, which is true by the time the access
+// log is emitted on response finish.
+interface RoutedRequest extends IncomingMessage {
+  baseUrl?: string;
+  originalUrl?: string;
+  route?: { path?: string };
+}
 
 const VALID_LOG_LEVELS = new Set<LevelWithSilent>([
   'trace',
@@ -97,17 +120,22 @@ const SENSITIVE_LOG_KEYS = [
 
 export function createLoggerModuleParams(
   configService: ConfigService,
+  requestContext: RequestContextService,
   stream?: DestinationStream,
 ): PinoLoggerModuleParams {
   const { level, configuredLevel } = getLogLevel(configService);
   const pinoOptions = {
     ...nativeLoggerOptions,
-    autoLogging: false,
     base: {
       pid: process.pid,
       service: SERVICE_NAME,
     },
     level,
+    // Correlation identifiers are attached here rather than threaded through
+    // call sites, so every line emitted during a request carries them —
+    // including lines from code that knows nothing about the request. Startup
+    // and worker lines run with no store and are unaffected.
+    mixin: createRequestContextMixin(requestContext),
     redact: {
       censor: REDACTION_CENSOR,
       paths: buildRedactPaths(SENSITIVE_LOG_KEYS),
@@ -125,9 +153,98 @@ export function createLoggerModuleParams(
   return {
     pinoHttp: {
       ...pinoOptions,
+      autoLogging: { ignore: isUnloggedPath },
+      customErrorMessage: () => 'request failed',
+      // Replacing the logged object entirely, rather than serializing `req`
+      // and `res`, is what keeps bodies, headers, and credential attributes
+      // out of the access log: nothing is included unless named here.
+      customErrorObject: (req, res, _error, value) =>
+        buildAccessLogObject(req, res, value),
+      // pino-http computes one level per response and reuses it for the error
+      // branch, so without this a 500 is logged at info.
+      customLogLevel: (_req, res, error) => {
+        if (error !== undefined || res.statusCode >= 500) {
+          return 'error';
+        }
+
+        return res.statusCode >= 400 ? 'warn' : 'info';
+      },
+      customSuccessMessage: () => 'request completed',
+      customSuccessObject: (req, res, value) =>
+        buildAccessLogObject(req, res, value),
+      // Without these, pino-http binds the serialized request and response to
+      // the child logger it creates per request, putting headers and the raw
+      // URL on every line logged during that request — not just the access
+      // log. Correlation comes from the mixin instead, so nothing is lost.
+      quietReqLogger: true,
+      quietResLogger: true,
+      // Suppressing pino-http's own request id keeps `request_id` coming from
+      // a single place. `genReqId` is typed as returning a string because it
+      // normally must; leaving `req.id` unset drops the binding entirely.
+      genReqId: (() => undefined) as unknown as () => string,
       logger,
     },
   };
+}
+
+function createRequestContextMixin(
+  requestContext: RequestContextService,
+): () => Record<string, string> {
+  return () => {
+    const store = requestContext.get();
+
+    if (store === undefined) {
+      return {};
+    }
+
+    return {
+      request_id: store.requestId,
+      source: REQUEST_LOG_SOURCE,
+      ...(store.tenantId === undefined ? {} : { tenant_id: store.tenantId }),
+      ...(store.operationId === undefined
+        ? {}
+        : { operation_id: store.operationId }),
+    };
+  };
+}
+
+function buildAccessLogObject(
+  req: IncomingMessage,
+  res: ServerResponse,
+  value: unknown,
+): Record<string, unknown> {
+  const { responseTime } = value as { responseTime?: number };
+  const route = resolveRoute(req);
+
+  return {
+    duration_ms: responseTime,
+    method: req.method,
+    ...(route === undefined ? {} : { route }),
+    status_code: res.statusCode,
+  };
+}
+
+// The matched route pattern, never the request path: the path carries tenant
+// and operation ids, and on an unmatched request it is arbitrary client input.
+// An unmatched request is therefore logged with its method and status but no
+// route, rather than with something unbounded.
+function resolveRoute(req: IncomingMessage): string | undefined {
+  const { baseUrl, route } = req as RoutedRequest;
+
+  if (typeof route?.path !== 'string') {
+    return undefined;
+  }
+
+  const resolved = `${typeof baseUrl === 'string' ? baseUrl : ''}${route.path}`;
+
+  return resolved === '' ? undefined : resolved;
+}
+
+function isUnloggedPath(req: IncomingMessage): boolean {
+  const { originalUrl } = req as RoutedRequest;
+  const path = (originalUrl ?? req.url ?? '').split('?')[0];
+
+  return UNLOGGED_PATHS.has(path);
 }
 
 function getLogLevel(configService: ConfigService): {

@@ -7,4 +7,7 @@
 export interface RequestContextStore {
   requestId: string;
   tenantId?: string;
+  // Only set for routes that address a specific operation, so it is absent on
+  // most lines rather than empty.
+  operationId?: string;
 }
