@@ -143,22 +143,58 @@ describe('IssuanceProfileController', () => {
   describe('GET /tenants/:tenantId/profiles/issuance', () => {
     it('lists profiles with the provided filters', async () => {
       const tenantId = mockProfile.tenantId;
-      mockFindByTenantId.mockResolvedValue([mockProfile]);
+      mockFindByTenantId.mockResolvedValue({
+        data: [mockProfile],
+        pagination: { next_cursor: null, has_more: false },
+      });
 
       const result = await controller.findByTenantId(tenantId, {
         status: IssuanceProfileStatus.DRAFT,
         format: undefined,
         name: undefined,
+        cursor: undefined,
+        limit: undefined,
       });
 
-      expect(mockFindByTenantId).toHaveBeenCalledWith(tenantId, {
-        status: IssuanceProfileStatus.DRAFT,
+      expect(mockFindByTenantId).toHaveBeenCalledWith(
+        tenantId,
+        {
+          status: IssuanceProfileStatus.DRAFT,
+          format: undefined,
+          name: undefined,
+        },
+        { limit: undefined, cursor: undefined },
+      );
+      expect(result).toEqual({
+        data: [IssuanceProfileResponseDto.fromEntity(mockProfile)],
+        pagination: { nextCursor: null, hasMore: false },
+      });
+    });
+
+    it('passes cursor and limit through to the service', async () => {
+      const tenantId = mockProfile.tenantId;
+      mockFindByTenantId.mockResolvedValue({
+        data: [],
+        pagination: { next_cursor: 'next-cursor', has_more: true },
+      });
+
+      const result = await controller.findByTenantId(tenantId, {
+        status: undefined,
         format: undefined,
         name: undefined,
+        cursor: 'prev-cursor',
+        limit: 5,
       });
-      expect(result).toEqual([
-        IssuanceProfileResponseDto.fromEntity(mockProfile),
-      ]);
+
+      expect(mockFindByTenantId).toHaveBeenCalledWith(
+        tenantId,
+        { status: undefined, format: undefined, name: undefined },
+        { limit: 5, cursor: 'prev-cursor' },
+      );
+      expect(result).toEqual({
+        data: [],
+        pagination: { nextCursor: 'next-cursor', hasMore: true },
+      });
     });
   });
 

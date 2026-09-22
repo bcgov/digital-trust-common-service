@@ -37,7 +37,11 @@ import { TenantTierRateLimitGuard } from '../rate-limit/tenant-tier-rate-limit.g
 import { TenantStatusGuard } from '../tenant/tenant-status.guard';
 
 import { CreateIssuanceProfileDto } from './dto/create-issuance-profile.dto';
-import { IssuanceProfileResponseDto } from './dto/issuance-profile-response.dto';
+import {
+  IssuanceProfileResponseDto,
+  IssuanceProfilesPaginationDto,
+  PaginatedIssuanceProfilesResponseDto,
+} from './dto/issuance-profile-response.dto';
 import { ListIssuanceProfilesQueryDto } from './dto/list-issuance-profiles-query.dto';
 import { UpdateIssuanceProfileDto } from './dto/update-issuance-profile.dto';
 import { IssuanceProfileStatus } from './issuance-profile.entity';
@@ -117,8 +121,8 @@ export class IssuanceProfileController {
 
   @Get()
   @ApiOkResponse({
-    description: 'List of issuance profiles for the tenant',
-    type: [IssuanceProfileResponseDto],
+    description: 'Paginated list of issuance profiles for the tenant',
+    type: PaginatedIssuanceProfilesResponseDto,
   })
   @ApiQuery({ name: 'status', required: false, enum: IssuanceProfileStatus })
   @ApiQuery({
@@ -127,22 +131,36 @@ export class IssuanceProfileController {
     enum: CredentialDefinitionFormat,
   })
   @ApiQuery({ name: 'name', required: false })
+  @ApiQuery({
+    name: 'cursor',
+    required: false,
+    description: 'Opaque pagination cursor from a previous response',
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    description: 'Page size (1-100, default 20)',
+  })
   public async findByTenantId(
     @Param('tenantId', ParseUUIDPipe) tenantId: string,
     @Query() query: ListIssuanceProfilesQueryDto,
-  ): Promise<IssuanceProfileResponseDto[]> {
-    const profiles = await this.issuanceProfileService.findByTenantId(
+  ): Promise<PaginatedIssuanceProfilesResponseDto> {
+    const page = await this.issuanceProfileService.findByTenantId(
       tenantId,
       {
         status: query.status,
         format: query.format,
         name: query.name,
       },
+      { limit: query.limit, cursor: query.cursor },
     );
 
-    return profiles.map((profile) =>
-      IssuanceProfileResponseDto.fromEntity(profile),
-    );
+    return {
+      data: page.data.map((profile) =>
+        IssuanceProfileResponseDto.fromEntity(profile),
+      ),
+      pagination: IssuanceProfilesPaginationDto.from(page.pagination),
+    };
   }
 
   @Get(':id')

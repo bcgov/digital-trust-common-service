@@ -79,29 +79,100 @@ describe('IssuanceProfileRepository', () => {
     });
   });
 
-  it('findByTenantWithFilters combines all provided filters', async () => {
-    await repository.findByTenantWithFilters('t1', {
-      status: IssuanceProfileStatus.DRAFT,
-      format: CredentialDefinitionFormat.ANONCREDS,
-      name: 'drivers-license',
-    });
-    expect(mockRepo.find).toHaveBeenCalledWith({
-      where: {
-        tenantId: 't1',
+  it('findPage builds a cursor-paginated query with all filters', async () => {
+    const items = [{ id: 'ip-1', createdAt: new Date('2024-01-01T00:00:00Z') }];
+    const qb = {
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      orderBy: jest.fn().mockReturnThis(),
+      addOrderBy: jest.fn().mockReturnThis(),
+      take: jest.fn().mockReturnThis(),
+      getMany: jest.fn().mockResolvedValue(items),
+    };
+    (
+      mockRepo as unknown as { createQueryBuilder: jest.Mock }
+    ).createQueryBuilder = jest.fn().mockReturnValue(qb);
+
+    const result = await repository.findPage(
+      't1',
+      {
         status: IssuanceProfileStatus.DRAFT,
         format: CredentialDefinitionFormat.ANONCREDS,
         name: 'drivers-license',
       },
-      order: { createdAt: 'ASC' },
+      {
+        limit: 10,
+        cursor: { createdAt: '2023-01-01T00:00:00.000Z', id: 'ip-0' },
+      },
+    );
+
+    expect(qb.where).toHaveBeenCalledWith('profile.tenant_id = :tenantId', {
+      tenantId: 't1',
+    });
+    expect(qb.andWhere).toHaveBeenCalledWith('profile.status = :status', {
+      status: IssuanceProfileStatus.DRAFT,
+    });
+    expect(qb.andWhere).toHaveBeenCalledWith('profile.format = :format', {
+      format: CredentialDefinitionFormat.ANONCREDS,
+    });
+    expect(qb.andWhere).toHaveBeenCalledWith('profile.name = :name', {
+      name: 'drivers-license',
+    });
+    expect(qb.andWhere).toHaveBeenCalledWith(
+      '(profile.created_at, profile.id) > (CAST(:cursorCreatedAt AS timestamptz), CAST(:cursorId AS uuid))',
+      { cursorCreatedAt: '2023-01-01T00:00:00.000Z', cursorId: 'ip-0' },
+    );
+    expect(qb.take).toHaveBeenCalledWith(11);
+    expect(result).toEqual({
+      items,
+      nextCursor: null,
+      hasMore: false,
     });
   });
 
-  it('findByTenantWithFilters omits undefined filters', async () => {
-    await repository.findByTenantWithFilters('t1', {});
-    expect(mockRepo.find).toHaveBeenCalledWith({
-      where: { tenantId: 't1' },
-      order: { createdAt: 'ASC' },
+  it('findPage reports hasMore and a nextCursor when extra rows are returned', async () => {
+    const items = [
+      { id: 'ip-1', createdAt: new Date('2024-01-01T00:00:00Z') },
+      { id: 'ip-2', createdAt: new Date('2024-01-02T00:00:00Z') },
+    ];
+    const qb = {
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      orderBy: jest.fn().mockReturnThis(),
+      addOrderBy: jest.fn().mockReturnThis(),
+      take: jest.fn().mockReturnThis(),
+      getMany: jest.fn().mockResolvedValue(items),
+    };
+    (
+      mockRepo as unknown as { createQueryBuilder: jest.Mock }
+    ).createQueryBuilder = jest.fn().mockReturnValue(qb);
+
+    const result = await repository.findPage('t1', {}, { limit: 1 });
+
+    expect(qb.take).toHaveBeenCalledWith(2);
+    expect(result).toEqual({
+      items: [items[0]],
+      nextCursor: { createdAt: '2024-01-01T00:00:00.000Z', id: 'ip-1' },
+      hasMore: true,
     });
+  });
+
+  it('findPage omits filters and cursor clauses when none are provided', async () => {
+    const qb = {
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      orderBy: jest.fn().mockReturnThis(),
+      addOrderBy: jest.fn().mockReturnThis(),
+      take: jest.fn().mockReturnThis(),
+      getMany: jest.fn().mockResolvedValue([]),
+    };
+    (
+      mockRepo as unknown as { createQueryBuilder: jest.Mock }
+    ).createQueryBuilder = jest.fn().mockReturnValue(qb);
+
+    await repository.findPage('t1', {}, { limit: 20 });
+
+    expect(qb.andWhere).not.toHaveBeenCalled();
   });
 
   it('updateStatus updates status by id', async () => {

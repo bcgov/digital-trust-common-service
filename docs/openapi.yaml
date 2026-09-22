@@ -1208,15 +1208,22 @@ paths:
           in: query
           schema:
             type: string
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
       responses:
         "200":
-          description: Issuance profile list
+          description: Paginated issuance profile list
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/IssuanceProfile"
+                allOf:
+                  - $ref: "#/components/schemas/PaginatedResponse"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/IssuanceProfile"
 
   /api/v1/tenants/{tenantId}/profiles/issuance/{profileId}:
     parameters:

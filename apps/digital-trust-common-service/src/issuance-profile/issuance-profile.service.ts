@@ -28,9 +28,18 @@ import {
   IssuanceProfileStatus,
 } from './issuance-profile.entity';
 import {
+  IssuanceProfileCursor,
   IssuanceProfileFilters,
   IssuanceProfileRepository,
 } from './issuance-profile.repository';
+
+export type PaginatedIssuanceProfiles = {
+  data: IssuanceProfile[];
+  pagination: {
+    next_cursor: string | null;
+    has_more: boolean;
+  };
+};
 
 @Injectable()
 export class IssuanceProfileService {
@@ -242,11 +251,46 @@ export class IssuanceProfileService {
   public async findByTenantId(
     tenantId: string,
     filters: IssuanceProfileFilters,
-  ): Promise<IssuanceProfile[]> {
-    return await this.issuanceProfileRepository.findByTenantWithFilters(
+    options: { limit?: number; cursor?: string | null } = {},
+  ): Promise<PaginatedIssuanceProfiles> {
+    const limit = options.limit ?? 20;
+    const cursor = options.cursor ? this.decodeCursor(options.cursor) : null;
+
+    const page = await this.issuanceProfileRepository.findPage(
       tenantId,
       filters,
+      { limit, cursor },
     );
+
+    return {
+      data: page.items,
+      pagination: {
+        next_cursor: page.nextCursor
+          ? this.encodeCursor(page.nextCursor)
+          : null,
+        has_more: page.hasMore,
+      },
+    };
+  }
+
+  public encodeCursor(cursor: IssuanceProfileCursor): string {
+    return Buffer.from(JSON.stringify(cursor), 'utf8').toString('base64url');
+  }
+
+  public decodeCursor(raw: string): IssuanceProfileCursor {
+    try {
+      const parsed = JSON.parse(
+        Buffer.from(raw, 'base64url').toString('utf8'),
+      ) as IssuanceProfileCursor;
+
+      if (!parsed?.createdAt || !parsed?.id) {
+        throw new Error('invalid cursor shape');
+      }
+
+      return parsed;
+    } catch {
+      throw new BadRequestException('Invalid pagination cursor.');
+    }
   }
 
   public async update(

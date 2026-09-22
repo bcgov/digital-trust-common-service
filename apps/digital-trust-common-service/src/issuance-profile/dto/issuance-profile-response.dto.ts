@@ -151,3 +151,40 @@ export class IssuanceProfileResponseDto {
     return dto;
   }
 }
+
+export class IssuanceProfilesPaginationDto {
+  @Expose({ name: 'next_cursor' })
+  @ApiProperty({
+    name: 'next_cursor',
+    description: 'Cursor to fetch the next page, or null if there is none',
+    example: null,
+    nullable: true,
+  })
+  public nextCursor!: string | null;
+
+  @Expose({ name: 'has_more' })
+  @ApiProperty({
+    name: 'has_more',
+    description: 'Whether more results are available beyond this page',
+    example: false,
+  })
+  public hasMore!: boolean;
+
+  public static from(pagination: {
+    next_cursor: string | null;
+    has_more: boolean;
+  }): IssuanceProfilesPaginationDto {
+    const dto = new IssuanceProfilesPaginationDto();
+    dto.nextCursor = pagination.next_cursor;
+    dto.hasMore = pagination.has_more;
+    return dto;
+  }
+}
+
+export class PaginatedIssuanceProfilesResponseDto {
+  @ApiProperty({ type: [IssuanceProfileResponseDto] })
+  public data!: IssuanceProfileResponseDto[];
+
+  @ApiProperty({ type: IssuanceProfilesPaginationDto })
+  public pagination!: IssuanceProfilesPaginationDto;
+}

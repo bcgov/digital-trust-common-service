@@ -37,7 +37,7 @@ describe('IssuanceProfileService', () => {
   let mockCreate: jest.Mock;
   let mockFindById: jest.Mock;
   let mockFindByNameAndVersion: jest.Mock;
-  let mockFindByTenantWithFilters: jest.Mock;
+  let mockFindPage: jest.Mock;
   let mockSave: jest.Mock;
   let mockEmit: jest.Mock;
   let mockCredentialDefinitionFindById: jest.Mock;
@@ -115,7 +115,7 @@ describe('IssuanceProfileService', () => {
     mockCreate = jest.fn();
     mockFindById = jest.fn();
     mockFindByNameAndVersion = jest.fn();
-    mockFindByTenantWithFilters = jest.fn();
+    mockFindPage = jest.fn();
     mockSave = jest.fn();
     mockEmit = jest.fn().mockResolvedValue(undefined);
     mockCredentialDefinitionFindById = jest
@@ -134,7 +134,7 @@ describe('IssuanceProfileService', () => {
             create: mockCreate,
             findById: mockFindById,
             findByNameAndVersion: mockFindByNameAndVersion,
-            findByTenantWithFilters: mockFindByTenantWithFilters,
+            findPage: mockFindPage,
             save: mockSave,
           },
         },
@@ -372,17 +372,97 @@ describe('IssuanceProfileService', () => {
   });
 
   describe('findByTenantId', () => {
-    it('delegates to the repository with the provided filters', async () => {
-      mockFindByTenantWithFilters.mockResolvedValue([mockProfile]);
+    it('delegates to the repository with the provided filters and default paging', async () => {
+      mockFindPage.mockResolvedValue({
+        items: [mockProfile],
+        nextCursor: null,
+        hasMore: false,
+      });
 
       const result = await service.findByTenantId(tenantId, {
         status: IssuanceProfileStatus.DRAFT,
       });
 
-      expect(mockFindByTenantWithFilters).toHaveBeenCalledWith(tenantId, {
-        status: IssuanceProfileStatus.DRAFT,
+      expect(mockFindPage).toHaveBeenCalledWith(
+        tenantId,
+        { status: IssuanceProfileStatus.DRAFT },
+        { limit: 20, cursor: null },
+      );
+      expect(result).toEqual({
+        data: [mockProfile],
+        pagination: { next_cursor: null, has_more: false },
       });
-      expect(result).toEqual([mockProfile]);
+    });
+
+    it('returns an empty page with no next cursor when there are no results', async () => {
+      mockFindPage.mockResolvedValue({
+        items: [],
+        nextCursor: null,
+        hasMore: false,
+      });
+
+      const result = await service.findByTenantId(tenantId, {}, {});
+
+      expect(result).toEqual({
+        data: [],
+        pagination: { next_cursor: null, has_more: false },
+      });
+    });
+
+    it('encodes the next cursor when more results are available', async () => {
+      mockFindPage.mockResolvedValue({
+        items: [mockProfile],
+        nextCursor: {
+          createdAt: mockProfile.createdAt.toISOString(),
+          id: mockProfile.id,
+        },
+        hasMore: true,
+      });
+
+      const result = await service.findByTenantId(tenantId, {}, { limit: 1 });
+
+      expect(mockFindPage).toHaveBeenCalledWith(
+        tenantId,
+        {},
+        { limit: 1, cursor: null },
+      );
+      expect(result.pagination.has_more).toBe(true);
+      expect(result.pagination.next_cursor).toEqual(
+        service.encodeCursor({
+          createdAt: mockProfile.createdAt.toISOString(),
+          id: mockProfile.id,
+        }),
+      );
+    });
+
+    it('decodes a cursor supplied by the caller and passes it to the repository', async () => {
+      const cursor = service.encodeCursor({
+        createdAt: '2024-01-01T00:00:00.000Z',
+        id: mockProfile.id,
+      });
+      mockFindPage.mockResolvedValue({
+        items: [],
+        nextCursor: null,
+        hasMore: false,
+      });
+
+      await service.findByTenantId(tenantId, {}, { cursor });
+
+      expect(mockFindPage).toHaveBeenCalledWith(
+        tenantId,
+        {},
+        {
+          limit: 20,
+          cursor: { createdAt: '2024-01-01T00:00:00.000Z', id: mockProfile.id },
+        },
+      );
+    });
+
+    it('rejects a malformed cursor with BadRequestException', async () => {
+      await expect(
+        service.findByTenantId(tenantId, {}, { cursor: 'not-base64url-json' }),
+      ).rejects.toThrow(BadRequestException);
+      expect(mockFindPage).not.toHaveBeenCalled();
     });
   });
 
