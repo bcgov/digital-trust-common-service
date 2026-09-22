@@ -212,7 +212,7 @@ describe('DevSeedService integration', () => {
     // its origin, or the provider rejects the SPA's callback in that
     // environment.
     const origin = uiSpaOrigin(
-      module.get(OidcConfigService).getConfig().issuer,
+      module.get(OidcConfigService).getConfig().publicUrl,
     );
     expect(rows[0]?.redirect_uris).toEqual(uiSpaRedirectUris(origin));
     expect(rows[0]?.post_logout_redirect_uris).toEqual(
