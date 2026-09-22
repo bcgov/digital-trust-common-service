@@ -338,4 +338,131 @@ export class IssuanceProfileService {
 
     return updated;
   }
+
+  /**
+   * Publishes a draft profile, making it eligible for issuance. `format`,
+   * `credential_definition_id`, and `attribute_schema` are already
+   * immutable once a profile leaves draft, since `update()` never permits
+   * changing them at any status.
+   *
+   * "Healthy connector" is interpreted as: the connector this profile was
+   * bound to at create time still exists, is active, and its adapter still
+   * resolves. There is no live connectivity/health-check port in this
+   * codebase, so this re-runs the same `AdapterRegistry.resolve` call
+   * `create()` used, rather than a network probe.
+   */
+  public async publish(
+    tenantId: string,
+    id: string,
+    auth: AuthContext,
+  ): Promise<IssuanceProfile> {
+    const profile = await this.findById(tenantId, id, auth);
+
+    if (profile.status !== IssuanceProfileStatus.DRAFT) {
+      throw new ConflictException(
+        `Issuance profile '${id}' cannot be published because it is not in draft status.`,
+      );
+    }
+
+    const connectorId = await this.assertConnectorHealthy(profile);
+
+    const transitioned = await this.issuanceProfileRepository.transitionStatus(
+      tenantId,
+      id,
+      IssuanceProfileStatus.DRAFT,
+      IssuanceProfileStatus.PUBLISHED,
+      connectorId,
+    );
+
+    if (!transitioned) {
+      throw new ConflictException(
+        `Issuance profile '${id}' cannot be published because it is not in draft status.`,
+      );
+    }
+
+    const published = await this.findById(tenantId, id, auth);
+
+    await this.domainAudit.emit({
+      tenantId: published.tenantId,
+      action: AuditAction.UPDATE,
+      resourceType: 'issuance_profile',
+      resourceId: published.id,
+    });
+
+    return published;
+  }
+
+  /**
+   * Deprecates a published profile. Blocking new issuance from a deprecated
+   * profile, and any effect on already-issued credentials, is out of scope
+   * here: neither concern is enforced by anything in this codebase yet.
+   */
+  public async deprecate(
+    tenantId: string,
+    id: string,
+    auth: AuthContext,
+  ): Promise<IssuanceProfile> {
+    const profile = await this.findById(tenantId, id, auth);
+
+    if (profile.status !== IssuanceProfileStatus.PUBLISHED) {
+      throw new ConflictException(
+        `Issuance profile '${id}' cannot be deprecated because it is not in published status.`,
+      );
+    }
+
+    const transitioned = await this.issuanceProfileRepository.transitionStatus(
+      tenantId,
+      id,
+      IssuanceProfileStatus.PUBLISHED,
+      IssuanceProfileStatus.DEPRECATED,
+    );
+
+    if (!transitioned) {
+      throw new ConflictException(
+        `Issuance profile '${id}' cannot be deprecated because it is not in published status.`,
+      );
+    }
+
+    const deprecated = await this.findById(tenantId, id, auth);
+
+    await this.domainAudit.emit({
+      tenantId: deprecated.tenantId,
+      action: AuditAction.UPDATE,
+      resourceType: 'issuance_profile',
+      resourceId: deprecated.id,
+    });
+
+    return deprecated;
+  }
+
+  /**
+   * Rejects publish when the profile's bound connector was removed
+   * (`connectorId` is null after an `ON DELETE SET NULL`) or no longer
+   * resolves. `connectorId` is passed explicitly rather than left
+   * undefined, so this does not fall back to a different connector the
+   * profile was never bound to.
+   *
+   * Returns the validated connector id so the caller can pin the guarded
+   * status transition to it via `transitionStatus`'s `expectedConnectorId`,
+   * closing the window between this check and that update: a connector
+   * change or removal in between makes the guard no longer match instead
+   * of silently publishing against an unrevalidated connector.
+   */
+  private async assertConnectorHealthy(
+    profile: IssuanceProfile,
+  ): Promise<string> {
+    if (!profile.connectorId) {
+      throw new BadRequestException(
+        `Issuance profile '${profile.id}' cannot be published because its connector no longer exists.`,
+      );
+    }
+
+    await this.resolveConnector(
+      profile.tenantId,
+      profile.format,
+      profile.connectorId,
+    );
+
+    return profile.connectorId;
+  }
 }

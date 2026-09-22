@@ -182,6 +182,120 @@ describe('IssuanceProfileRepository', () => {
     });
   });
 
+  describe('transitionStatus', () => {
+    let mockQueryBuilder: {
+      update: jest.Mock;
+      set: jest.Mock;
+      where: jest.Mock;
+      andWhere: jest.Mock;
+      execute: jest.Mock;
+    };
+
+    beforeEach(() => {
+      mockQueryBuilder = {
+        update: jest.fn().mockReturnThis(),
+        set: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        execute: jest.fn(),
+      };
+      (
+        mockRepo as unknown as {
+          createQueryBuilder: jest.Mock;
+        }
+      ).createQueryBuilder = jest.fn().mockReturnValue(mockQueryBuilder);
+    });
+
+    it('returns true when the guarded update affects a row', async () => {
+      mockQueryBuilder.execute.mockResolvedValue({ affected: 1 });
+
+      await expect(
+        repository.transitionStatus(
+          't1',
+          'ip-1',
+          IssuanceProfileStatus.DRAFT,
+          IssuanceProfileStatus.PUBLISHED,
+        ),
+      ).resolves.toBe(true);
+
+      expect(mockQueryBuilder.set).toHaveBeenCalledWith({
+        status: IssuanceProfileStatus.PUBLISHED,
+      });
+      expect(mockQueryBuilder.where).toHaveBeenCalledWith('id = :id', {
+        id: 'ip-1',
+      });
+      expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
+        'tenant_id = :tenantId',
+        { tenantId: 't1' },
+      );
+      expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
+        'status = :fromStatus',
+        { fromStatus: IssuanceProfileStatus.DRAFT },
+      );
+    });
+
+    it('returns false when no row matches the expected status', async () => {
+      mockQueryBuilder.execute.mockResolvedValue({ affected: 0 });
+
+      await expect(
+        repository.transitionStatus(
+          't1',
+          'ip-1',
+          IssuanceProfileStatus.DRAFT,
+          IssuanceProfileStatus.PUBLISHED,
+        ),
+      ).resolves.toBe(false);
+    });
+
+    it('returns false when the update reports no affected rows', async () => {
+      mockQueryBuilder.execute.mockResolvedValue({ affected: undefined });
+
+      await expect(
+        repository.transitionStatus(
+          't1',
+          'ip-1',
+          IssuanceProfileStatus.DRAFT,
+          IssuanceProfileStatus.PUBLISHED,
+        ),
+      ).resolves.toBe(false);
+    });
+
+    it('adds a connector_id guard when expectedConnectorId is provided', async () => {
+      mockQueryBuilder.execute.mockResolvedValue({ affected: 1 });
+
+      await expect(
+        repository.transitionStatus(
+          't1',
+          'ip-1',
+          IssuanceProfileStatus.DRAFT,
+          IssuanceProfileStatus.PUBLISHED,
+          'connector-1',
+        ),
+      ).resolves.toBe(true);
+
+      expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
+        'connector_id = :expectedConnectorId',
+        { expectedConnectorId: 'connector-1' },
+      );
+    });
+
+    it('omits the connector_id guard when expectedConnectorId is not provided', async () => {
+      mockQueryBuilder.execute.mockResolvedValue({ affected: 1 });
+
+      await repository.transitionStatus(
+        't1',
+        'ip-1',
+        IssuanceProfileStatus.DRAFT,
+        IssuanceProfileStatus.PUBLISHED,
+      );
+
+      expect(mockQueryBuilder.andWhere).not.toHaveBeenCalledWith(
+        'connector_id = :expectedConnectorId',
+        expect.anything(),
+      );
+    });
+  });
+
   it('save persists an existing profile', async () => {
     const entity = { id: 'ip-1' } as IssuanceProfile;
     (mockRepo.save as jest.Mock).mockResolvedValue(entity);

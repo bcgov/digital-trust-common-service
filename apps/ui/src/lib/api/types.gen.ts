@@ -3607,7 +3607,16 @@ export interface operations {
                     "application/json": components["schemas"]["IssuanceProfile"];
                 };
             };
-            /** @description Profile is not in draft status or validation failed */
+            /** @description The profile's connector no longer exists, is inactive, or its adapter no longer resolves */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Profile is not in draft status */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -3638,6 +3647,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["IssuanceProfile"];
+                };
+            };
+            /** @description Profile is not in published status */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };

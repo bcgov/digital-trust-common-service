@@ -217,4 +217,55 @@ export class IssuanceProfileController {
 
     return IssuanceProfileResponseDto.fromEntity(profile);
   }
+
+  @Post(':id/publish')
+  @ApiOkResponse({
+    description: 'Issuance profile published successfully',
+    type: IssuanceProfileResponseDto,
+  })
+  @ApiNotFoundResponse({ description: 'Issuance profile not found' })
+  @ApiBadRequestResponse({
+    description:
+      "The profile's connector no longer exists, is inactive, or its " +
+      'adapter no longer resolves',
+  })
+  @ApiConflictResponse({
+    description: 'Issuance profile is not in draft status',
+  })
+  public async publish(
+    @Param('tenantId', ParseUUIDPipe) tenantId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentAuth() auth: AuthContext,
+  ): Promise<IssuanceProfileResponseDto> {
+    const profile = await this.issuanceProfileService.publish(
+      tenantId,
+      id,
+      auth,
+    );
+
+    return IssuanceProfileResponseDto.fromEntity(profile);
+  }
+
+  @Post(':id/deprecate')
+  @ApiOkResponse({
+    description: 'Issuance profile deprecated successfully',
+    type: IssuanceProfileResponseDto,
+  })
+  @ApiNotFoundResponse({ description: 'Issuance profile not found' })
+  @ApiConflictResponse({
+    description: 'Issuance profile is not in published status',
+  })
+  public async deprecate(
+    @Param('tenantId', ParseUUIDPipe) tenantId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentAuth() auth: AuthContext,
+  ): Promise<IssuanceProfileResponseDto> {
+    const profile = await this.issuanceProfileService.deprecate(
+      tenantId,
+      id,
+      auth,
+    );
+
+    return IssuanceProfileResponseDto.fromEntity(profile);
+  }
 }
