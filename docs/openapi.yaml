@@ -1181,6 +1181,14 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/IssuanceProfile"
+        "404":
+          description: Credential definition not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          $ref: "#/components/responses/Conflict"
         "422":
           $ref: "#/components/responses/ValidationError"
     get:
@@ -1188,8 +1196,6 @@ paths:
       summary: List issuance profiles
       tags: [Issuance Profiles]
       parameters:
-        - $ref: "#/components/parameters/Cursor"
-        - $ref: "#/components/parameters/Limit"
         - name: status
           in: query
           schema:
@@ -1202,6 +1208,8 @@ paths:
           in: query
           schema:
             type: string
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
       responses:
         "200":
           description: Paginated issuance profile list
@@ -3534,6 +3542,7 @@ components:
         connector_id:
           type: string
           format: uuid
+          nullable: true
         format:
           $ref: "#/components/schemas/CredentialFormat"
         attribute_schema:

@@ -2,10 +2,29 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 
+import { CredentialDefinitionFormat } from '../credential-definition/credential-definition.entity';
+
 import {
   IssuanceProfile,
   IssuanceProfileStatus,
 } from './issuance-profile.entity';
+
+export interface IssuanceProfileFilters {
+  readonly status?: IssuanceProfileStatus;
+  readonly format?: CredentialDefinitionFormat;
+  readonly name?: string;
+}
+
+export type IssuanceProfileCursor = {
+  createdAt: string;
+  id: string;
+};
+
+export type IssuanceProfilePage = {
+  items: IssuanceProfile[];
+  nextCursor: IssuanceProfileCursor | null;
+  hasMore: boolean;
+};
 
 @Injectable()
 export class IssuanceProfileRepository {
@@ -37,6 +56,60 @@ export class IssuanceProfileRepository {
       where: { tenantId, status: IssuanceProfileStatus.PUBLISHED },
       order: { createdAt: 'ASC' },
     });
+  }
+
+  public async findPage(
+    tenantId: string,
+    filters: IssuanceProfileFilters,
+    options: {
+      limit: number;
+      cursor?: IssuanceProfileCursor | null;
+    },
+  ): Promise<IssuanceProfilePage> {
+    const qb = this.repository
+      .createQueryBuilder('profile')
+      .where('profile.tenant_id = :tenantId', { tenantId })
+      .orderBy('profile.created_at', 'ASC')
+      .addOrderBy('profile.id', 'ASC');
+
+    if (filters.status !== undefined) {
+      qb.andWhere('profile.status = :status', { status: filters.status });
+    }
+
+    if (filters.format !== undefined) {
+      qb.andWhere('profile.format = :format', { format: filters.format });
+    }
+
+    if (filters.name !== undefined) {
+      qb.andWhere('profile.name = :name', { name: filters.name });
+    }
+
+    if (options.cursor) {
+      // Use CAST(...) — TypeORM mishandles `:param::type` binding.
+      qb.andWhere(
+        '(profile.created_at, profile.id) > (CAST(:cursorCreatedAt AS timestamptz), CAST(:cursorId AS uuid))',
+        {
+          cursorCreatedAt: options.cursor.createdAt,
+          cursorId: options.cursor.id,
+        },
+      );
+    }
+
+    qb.take(options.limit + 1);
+
+    const rows = await qb.getMany();
+    const hasMore = rows.length > options.limit;
+    const items = hasMore ? rows.slice(0, options.limit) : rows;
+    const last = items[items.length - 1];
+    const nextCursor =
+      hasMore && last
+        ? {
+            createdAt: last.createdAt.toISOString(),
+            id: last.id,
+          }
+        : null;
+
+    return { items, nextCursor, hasMore };
   }
 
   public async findByNameAndVersion(
