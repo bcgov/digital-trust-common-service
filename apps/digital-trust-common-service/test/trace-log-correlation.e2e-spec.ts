@@ -47,7 +47,21 @@ describe('trace-to-log correlation', () => {
       );
     }
 
-    const output = execFileSync('node', [probe], { encoding: 'utf8' });
+    // The probe pins the telemetry variables it needs, but anything it does
+    // not pin still reaches the SDK — from the shell, and from a local `.env`,
+    // because tracing.ts imports `dotenv/config`. OTEL_SDK_DISABLED,
+    // OTEL_NODE_DISABLED_INSTRUMENTATIONS and OTEL_TRACES_SAMPLER each turn
+    // this suite red with nothing actually broken, and pinning them one at a
+    // time only waits for the next one. Hand the probe an environment with no
+    // OTEL_* in it and point dotenv at a file with nothing in it, so the only
+    // telemetry configuration that applies is what the probe sets itself.
+    const env: NodeJS.ProcessEnv = Object.fromEntries(
+      Object.entries(process.env).filter(([key]) => !key.startsWith('OTEL_')),
+    );
+
+    env.DOTENV_CONFIG_PATH = join(__dirname, 'support', 'empty.env');
+
+    const output = execFileSync('node', [probe], { encoding: 'utf8', env });
     const match = /__PROBE__(.*)__PROBE__/s.exec(output);
 
     if (!match) {

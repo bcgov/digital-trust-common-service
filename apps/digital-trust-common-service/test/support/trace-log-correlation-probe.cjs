@@ -21,14 +21,14 @@ const { join } = require('node:path');
 
 const DIST = join(__dirname, '..', '..', '..', '..', 'dist');
 
-// Every variable the SDK reads is pinned here rather than inherited, so the
-// probe observes the same configuration on a laptop as in CI. `tracing.ts`
-// loads dotenv, so without this a local `.env` reaches the SDK: a developer
-// with OTEL_TRACES_EXPORTER=none would get a no-op tracer provider, every span
-// non-recording and the trace fields gone — indistinguishable from the
-// regression this probe exists to catch. Whether the deployed exporter is set
-// correctly is a separate contract, asserted against the rendered chart in
-// charts/digital-trust-common-service/tests/otel_test.yaml.
+// The spec hands this process an environment with no OTEL_* in it and points
+// dotenv at an empty file, so the four below are the whole telemetry
+// configuration and the probe observes the same setup on a laptop as in CI.
+// Without that, a developer's own settings would decide the result: an
+// exporter or a sampler that yields non-recording spans looks exactly like the
+// regression this probe exists to catch. Whether the deployed pod is
+// configured correctly is a separate contract, asserted against the rendered
+// chart in charts/digital-trust-common-service/tests/otel_test.yaml.
 //
 // A batch span processor will not flush inside the lifetime of this process,
 // and the endpoint is unroutable regardless, so nothing leaves the machine.
