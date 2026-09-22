@@ -124,7 +124,7 @@ Adding, renaming, or removing an env var means updating all of these in the same
    tests need a default.
 9. For local same-origin routing changes, update the hostname fan-out together: `caddy/Caddyfile`,
   `docker-compose.yml` Keycloak hostname settings, `keycloak/config/realm.json` redirect URIs and
-  web origins, `.env.example` `OIDC_ISSUER`, `config/upstream-identity-federation.json`, and the
+  web origins, `.env.example` `APP_PUBLIC_URL`, `config/upstream-identity-federation.json`, and the
   hosts entries documented in `docs/DEVELOPER.md`.
 
 Adding or changing a mounted path (`CONNECTOR_ENCRYPTION_KEYS_PATH`, `OIDC_KEYS_PATH`,

@@ -74,6 +74,7 @@ describe('OIDC authorization_code grant (integration)', () => {
   let dataSource: DataSource;
   let keysDir: string;
   let listenPort: number;
+  let issuer: string;
   let tenantId: string;
   let secondTenantId: string;
   let clientId: string;
@@ -251,7 +252,6 @@ describe('OIDC authorization_code grant (integration)', () => {
     const scope = options.scope ?? 'openid offline_access credentials:verify';
     const codeVerifier = generatePkceVerifier();
     const codeChallenge = toS256CodeChallenge(codeVerifier);
-    const issuer = process.env.OIDC_ISSUER as string;
     const issuerBase = new URL(issuer);
     const browser = request.agent(app.getHttpServer());
 
@@ -459,7 +459,8 @@ describe('OIDC authorization_code grant (integration)', () => {
     listenPort = await getFreePort();
 
     process.env.OIDC_KEYS_PATH = join(keysDir, 'oidc-keys.json');
-    process.env.OIDC_ISSUER = `http://127.0.0.1:${listenPort}/oidc`;
+    process.env.APP_PUBLIC_URL = `http://127.0.0.1:${listenPort}`;
+    issuer = `${process.env.APP_PUBLIC_URL}/oidc`;
     process.env.JWT_JWKS_URI = `http://127.0.0.1:${listenPort}/oidc/jwks`;
     process.env.OIDC_COOKIE_KEYS = 'authorization-code-cookie-key';
     process.env.OIDC_GRANT_TYPES =
@@ -632,7 +633,7 @@ describe('OIDC authorization_code grant (integration)', () => {
 
     delete process.env.OIDC_GRANT_TYPES;
     delete process.env.OIDC_KEYS_PATH;
-    delete process.env.OIDC_ISSUER;
+    delete process.env.APP_PUBLIC_URL;
     delete process.env.JWT_JWKS_URI;
     delete process.env.OIDC_COOKIE_KEYS;
 
@@ -994,7 +995,7 @@ describe('OIDC authorization_code grant (integration)', () => {
     const switchedClaims = await verifyTokenAgainstJwks(
       app.getHttpServer(),
       switched.access_token,
-      process.env.OIDC_ISSUER,
+      issuer,
     );
 
     expect(scopesOf(switchedClaims)).toContain('users:manage');
@@ -1014,7 +1015,7 @@ describe('OIDC authorization_code grant (integration)', () => {
       const refreshedClaims = await verifyTokenAgainstJwks(
         app.getHttpServer(),
         (refreshResponse.body as { access_token: string }).access_token,
-        process.env.OIDC_ISSUER,
+        issuer,
       );
 
       expect(refreshedClaims.tenant_id).toBe(secondTenantId);
@@ -1049,7 +1050,6 @@ describe('OIDC authorization_code grant (integration)', () => {
   it('returns 400 when upstream callback fails', async () => {
     const codeVerifier = generatePkceVerifier();
     const codeChallenge = toS256CodeChallenge(codeVerifier);
-    const issuer = process.env.OIDC_ISSUER as string;
     const issuerBase = new URL(issuer);
     const browser = request.agent(app.getHttpServer());
 
@@ -1123,7 +1123,7 @@ describe('OIDC authorization_code grant (integration)', () => {
     const payload = await verifyTokenAgainstJwks(
       app.getHttpServer(),
       tokenBody.access_token,
-      process.env.OIDC_ISSUER,
+      issuer,
     );
 
     expect(payload.tenant_id).toBe(tenantId);
@@ -1170,7 +1170,7 @@ describe('OIDC authorization_code grant (integration)', () => {
     const newPayload = await verifyTokenAgainstJwks(
       app.getHttpServer(),
       switched.access_token,
-      process.env.OIDC_ISSUER,
+      issuer,
     );
 
     expect(newPayload.tenant_id).toBe(secondTenantId);
@@ -1211,7 +1211,7 @@ describe('OIDC authorization_code grant (integration)', () => {
     const refreshed = await verifyTokenAgainstJwks(
       app.getHttpServer(),
       (refreshResponse.body as { access_token: string }).access_token,
-      process.env.OIDC_ISSUER,
+      issuer,
     );
     expect(refreshed.tenant_id).toBe(secondTenantId);
   });

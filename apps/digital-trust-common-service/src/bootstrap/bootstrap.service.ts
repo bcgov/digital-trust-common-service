@@ -56,7 +56,7 @@ export class EnvironmentBootstrapService {
       ));
 
     // The front door serves the SPA and /oidc on one origin.
-    const origin = new URL(this.oidcConfig.getConfig().issuer).origin;
+    const origin = this.oidcConfig.getConfig().publicUrl;
     const redirectUris = [`${origin}${UI_CALLBACK_PATH}`];
     await this.upsertClient(UI_CLIENT_ID, {
       tenantId: tenant.id,

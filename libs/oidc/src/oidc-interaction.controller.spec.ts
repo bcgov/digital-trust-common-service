@@ -17,9 +17,9 @@ jest.mock('openid-client', () => ({
 
 import { IncomingMessage } from 'http';
 
-import { ConfigService } from '@nestjs/config';
 import { Test, TestingModule } from '@nestjs/testing';
 
+import { OidcConfigService } from './oidc-config.service';
 import { OidcInteractionController } from './oidc-interaction.controller';
 import { OidcProviderService } from './oidc-provider.service';
 import { OidcSessionRepository } from './oidc-session.repository';
@@ -70,8 +70,8 @@ describe('OidcInteractionController', () => {
     findActiveClient: jest.fn(),
   };
 
-  const mockConfigService = {
-    get: jest.fn(),
+  const mockOidcConfigService = {
+    getConfig: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -102,8 +102,8 @@ describe('OidcInteractionController', () => {
           useValue: mockClientLookup,
         },
         {
-          provide: ConfigService,
-          useValue: mockConfigService,
+          provide: OidcConfigService,
+          useValue: mockOidcConfigService,
         },
         {
           provide: OidcSessionRepository,
@@ -209,7 +209,9 @@ describe('OidcInteractionController', () => {
 
       mockProviderService.getProvider.mockReturnValue(mockProvider);
       mockUpstreamOidcService.getInteractionByUid.mockResolvedValue(null);
-      mockConfigService.get.mockReturnValue('http://localhost:3000/oidc');
+      mockOidcConfigService.getConfig.mockReturnValue({
+        issuer: 'http://localhost:3000/oidc',
+      });
       mockClientLookup.findActiveClient.mockResolvedValue({
         clientId: 'client-123',
         clientSecretHash: 'secret-hash',
@@ -262,7 +264,9 @@ describe('OidcInteractionController', () => {
 
       mockProviderService.getProvider.mockReturnValue(mockProvider);
       mockUpstreamOidcService.getInteractionByUid.mockResolvedValue(null);
-      mockConfigService.get.mockReturnValue('http://localhost:3000/oidc/');
+      mockOidcConfigService.getConfig.mockReturnValue({
+        issuer: 'http://localhost:3000/oidc/',
+      });
       mockClientLookup.findActiveClient.mockResolvedValue({
         clientId: 'client-123',
         clientSecretHash: 'secret-hash',
@@ -611,7 +615,9 @@ describe('OidcInteractionController', () => {
         mockInteraction,
       );
 
-      mockConfigService.get.mockReturnValue('http://localhost:3000/oidc');
+      mockOidcConfigService.getConfig.mockReturnValue({
+        issuer: 'http://localhost:3000/oidc',
+      });
 
       const mockReq = {
         headers: { host: 'localhost:3000' },
@@ -719,7 +725,9 @@ describe('OidcInteractionController', () => {
         mockInteraction,
       );
 
-      mockConfigService.get.mockReturnValue('http://localhost:3000/oidc/');
+      mockOidcConfigService.getConfig.mockReturnValue({
+        issuer: 'http://localhost:3000/oidc/',
+      });
 
       const mockReq = {
         headers: { host: 'localhost:3000' },
@@ -807,7 +815,9 @@ describe('OidcInteractionController', () => {
         mockInteraction,
       );
 
-      mockConfigService.get.mockReturnValue('http://localhost:3000/oidc');
+      mockOidcConfigService.getConfig.mockReturnValue({
+        issuer: 'http://localhost:3000/oidc',
+      });
 
       const mockReq = {
         headers: { host: 'localhost:3000' },
@@ -905,7 +915,9 @@ describe('OidcInteractionController', () => {
         mockInteraction,
       );
 
-      mockConfigService.get.mockReturnValue('http://localhost:3000/oidc');
+      mockOidcConfigService.getConfig.mockReturnValue({
+        issuer: 'http://localhost:3000/oidc',
+      });
 
       const mockReq = {
         headers: { host: 'localhost:3000' },
@@ -1002,7 +1014,9 @@ describe('OidcInteractionController', () => {
       mockUpstreamOidcService.consumeInteraction.mockResolvedValue(
         mockInteraction,
       );
-      mockConfigService.get.mockReturnValue('http://localhost:3000/oidc');
+      mockOidcConfigService.getConfig.mockReturnValue({
+        issuer: 'http://localhost:3000/oidc',
+      });
 
       const mockReq = {
         headers: { host: 'localhost:3000' },
@@ -1230,7 +1244,7 @@ describe('OidcInteractionController', () => {
       expect(mockRes.statusCode).toBe(200);
     });
 
-    it('should use default OIDC_ISSUER if not configured', async () => {
+    it('builds the interaction URL from the configured issuer', async () => {
       const mockInteraction = {
         id: 'interaction-123',
         state: 'state-123',
@@ -1285,8 +1299,10 @@ describe('OidcInteractionController', () => {
         mockInteraction,
       );
 
-      // ConfigService returns default value
-      mockConfigService.get.mockReturnValue('http://localhost:3000/oidc');
+      // OidcConfigService returns the configured issuer
+      mockOidcConfigService.getConfig.mockReturnValue({
+        issuer: 'http://localhost:3000/oidc',
+      });
 
       const mockReq = {
         headers: { host: 'localhost:3000' },
@@ -1310,10 +1326,7 @@ describe('OidcInteractionController', () => {
         mockRes,
       );
 
-      expect(mockConfigService.get).toHaveBeenCalledWith(
-        'OIDC_ISSUER',
-        'http://localhost:3000/oidc',
-      );
+      expect(mockOidcConfigService.getConfig).toHaveBeenCalled();
       expect(mockRes.setHeader).toHaveBeenCalledWith(
         'Location',
         'http://localhost:3000/oidc/interaction/interaction-uid',
@@ -1376,7 +1389,9 @@ describe('OidcInteractionController', () => {
         mockInteraction,
       );
 
-      mockConfigService.get.mockReturnValue('http://localhost:3000/oidc');
+      mockOidcConfigService.getConfig.mockReturnValue({
+        issuer: 'http://localhost:3000/oidc',
+      });
 
       const mockReq = {
         headers: {

@@ -10,7 +10,7 @@ export const DEFAULT_OIDC_KEYS_PATH = './config/oidc-keys.json';
 /**
  * Default JWT `aud` / RFC 8707 resource indicator for API access tokens.
  * Must be an absolute URI (oidc-provider rejects non-URI resource values).
- * Distinct from `OIDC_ISSUER` so the API audience stays stable across
- * environments (see AU-followup #164).
+ * Distinct from the OIDC issuer so the API audience stays stable across
+ * environments.
  */
 export const DEFAULT_JWT_AUDIENCE = 'https://digital-trust-common-service';

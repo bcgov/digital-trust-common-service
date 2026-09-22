@@ -272,12 +272,13 @@ The checked-in **`keycloak/config/realm.json`** already uses the local front-doo
 }
 ```
 
-#### Configure OIDC Provider Issuer
+#### Configure the app's public URL
 
-Set the **`OIDC_ISSUER`** environment variable to the local Caddy endpoint for the app's OIDC provider:
+Set the **`APP_PUBLIC_URL`** environment variable to the local Caddy front
+door's origin. The OIDC provider is mounted at `${APP_PUBLIC_URL}/oidc`:
 
 ```env
-OIDC_ISSUER=https://app.localhost/oidc
+APP_PUBLIC_URL=https://app.localhost
 ```
 
 This URL is used by Keycloak clients to discover the OIDC provider configuration and validate tokens.
@@ -322,9 +323,10 @@ VITE_AUTH_MODE=oidc
 ```
 
 and reach the app at `https://app.localhost` — **not** `http://localhost:5173`.
-`OIDC_ISSUER` is `https://app.localhost/oidc`, and every endpoint in the
-discovery document points there, so the raw Vite origin would put
-authorize/token cross-origin and drop the provider's session cookie.
+`APP_PUBLIC_URL` is `https://app.localhost`, the OIDC provider is mounted at
+its `/oidc` path, and every endpoint in the discovery document points there,
+so the raw Vite origin would put authorize/token cross-origin and drop the
+provider's session cookie.
 
 Prerequisites, all covered above: Keycloak running with the realm imported,
 `config/upstream-identity-federation.json` pointing at it, migrations applied,
@@ -377,8 +379,8 @@ The client the SPA uses:
 | `client_id` | `dtsc-ui` | The SPA reads the id it presents from its runtime config (`oidcClientId` in `apps/ui/public/config.json`; `frontend.config.oidcClientId` in the chart), so one image works in any environment. |
 | Kind | Public (PKCE, no secret) | A browser cannot keep a secret. Registered with `token_endpoint_auth_method=none`. |
 | Grants | `authorization_code`, `refresh_token` | `refresh_token` is what keeps the session past the 5-minute access token. |
-| Redirect URI | `<origin of OIDC_ISSUER>/auth/callback` | `https://app.localhost/auth/callback` locally. The seed derives the origin from `OIDC_ISSUER` because the front door serves the SPA and `/oidc` on one origin, so the same seed registers the right URIs in a PR environment. |
-| Post-logout URI | `<origin of OIDC_ISSUER>/login` | Validated separately from the login redirect. |
+| Redirect URI | `<APP_PUBLIC_URL>/auth/callback` | `https://app.localhost/auth/callback` locally. The seed derives the origin from `APP_PUBLIC_URL` because the front door serves the SPA and `/oidc` on one origin, so the same seed registers the right URIs in a PR environment. |
+| Post-logout URI | `<APP_PUBLIC_URL>/login` | Validated separately from the login redirect. |
 | Scopes | `openid profile email tenant offline_access` | Identity scopes only, the set **every** role holds. The SPA never requests API scopes: the provider derives them from the user's role — see the caveat below. |
 | Tenant | `acme-corp` locally (seed); the operator tenant in a hosted environment (bootstrap) | Interactive login is tenant-scoped through the client (see below). |
 
@@ -738,7 +740,7 @@ SEED_ON_START=true
 | Credential defs | Person credential, Employee badge (active tenants) |
 | Issuance profiles | Published `person-credential/1.0`, draft `employee-badge/1.0` |
 | Verification profile | Published `identity-check/1.0` with age predicate |
-| OAuth clients | One confidential client per tenant (secret from `SEED_CLIENT_SECRET`; where unset — hosted previews — a random one nothing can replay), plus the public UI client `dtsc-ui` with redirect URIs on `OIDC_ISSUER`'s origin |
+| OAuth clients | One confidential client per tenant (secret from `SEED_CLIENT_SECRET`; where unset — hosted previews — a random one nothing can replay), plus the public UI client `dtsc-ui` with redirect URIs on `APP_PUBLIC_URL`'s origin |
 | Connections | Five states per active tenant |
 | Operations | pending, completed, failed per active tenant |
 
@@ -754,11 +756,11 @@ for administering everything else through the API:
 | Created | Details |
 |---------|---------|
 | Tenant | The operator's own tenant (`--tenant-slug`, `--tenant-name`). Left untouched if it already exists. |
-| UI client | The SPA's public client `dtsc-ui`, owned by that tenant, with redirect URIs on `OIDC_ISSUER`'s origin (`/auth/callback`, `/login`). Re-registered in place on every run, so a changed issuer is picked up by running it again. |
+| UI client | The SPA's public client `dtsc-ui`, owned by that tenant, with redirect URIs on `APP_PUBLIC_URL`'s origin (`/auth/callback`, `/login`). Re-registered in place on every run, so a changed public URL is picked up by running it again. |
 | Platform-admin client | `dtsc-platform-admin`: a confidential `client_credentials` client with the `platform-admin` role and the `tenants:admin` scope. Its secret is printed **once**, on creation, and stored only as a hash; keep it with the environment's other secrets. A re-run leaves an existing one alone; `--rotate-admin-secret` mints and prints a new secret — also the recovery path when the only platform-admin secret is lost, since nothing can then authenticate to rotate it through the API. |
 
 Run it once per environment from a running API pod, which already has the
-database credentials and `OIDC_ISSUER` in its environment:
+database credentials and `APP_PUBLIC_URL` in its environment:
 
 ```bash
 oc -n <namespace> exec deploy/digital-trust-common-service -- \
