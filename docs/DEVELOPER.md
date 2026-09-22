@@ -720,11 +720,14 @@ collector gained a JSON parsing stage that promoted `trace_id`. That is a
 shared collector configuration, so such a stage would need to be scoped to this
 service's lines rather than applied to every log line on the platform.
 
-**Expect few matches, and do not read an empty result as broken.** Almost every
-current log site is startup or background work, where there is no active span;
-the service does not yet log during request handling. Until a per-request access
-log is emitted there is very little to correlate, so confirm the query returns
-*some* line before concluding the datasource is misconfigured.
+**Do not read an empty result as broken without checking what is being logged.**
+The service emits a per-request access log, so request handling should produce a
+line per request rather than only the startup and background work that has no
+active span. That makes this query more informative than it used to be: an
+access log that appears *without* `trace_id` means correlation is broken for the
+case operators care about most, not that there is simply little to correlate.
+Either way, confirm the query returns *some* line before concluding the
+datasource is misconfigured.
 
 ### Stop the stack
 
