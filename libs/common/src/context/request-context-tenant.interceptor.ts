@@ -21,10 +21,11 @@ const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
- * Populates `tenantId` on the request's `RequestContextStore` once
- * `TenantGuard` (or an equivalent) has resolved it. Runs after guards, before
- * the handler, so the handler and everything it calls sees the tenant id in
- * the same context the request-id middleware already opened.
+ * Populates `tenantId` and, where the route addresses one, `operationId` on
+ * the request's `RequestContextStore` once `TenantGuard` (or an equivalent)
+ * has resolved the tenant. Runs after guards, before the handler, so the
+ * handler and everything it calls sees the identifiers in the same context
+ * the request-id middleware already opened.
  */
 @Injectable()
 export class RequestContextTenantInterceptor implements NestInterceptor {
@@ -37,12 +38,12 @@ export class RequestContextTenantInterceptor implements NestInterceptor {
     next: CallHandler,
   ): Observable<unknown> {
     try {
-      this.populateTenantId(context);
+      this.populateContext(context);
     } catch (error) {
       // Must never affect request handling — this only enriches the
       // correlation context that downstream logging/tracing reads.
       this.logger.warn(
-        'Failed to populate tenant id on request context',
+        'Failed to populate request context',
         error instanceof Error ? error.stack : undefined,
       );
     }
@@ -50,7 +51,7 @@ export class RequestContextTenantInterceptor implements NestInterceptor {
     return next.handle();
   }
 
-  private populateTenantId(context: ExecutionContext): void {
+  private populateContext(context: ExecutionContext): void {
     if (context.getType() !== 'http') {
       return;
     }
@@ -60,6 +61,12 @@ export class RequestContextTenantInterceptor implements NestInterceptor {
 
     if (tenantId) {
       this.requestContext.setTenantId(tenantId);
+    }
+
+    const operationId = request.params?.operationId;
+
+    if (this.isTraceableId(operationId)) {
+      this.requestContext.setOperationId(operationId);
     }
   }
 

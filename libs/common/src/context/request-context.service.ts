@@ -36,4 +36,15 @@ export class RequestContextService {
       store.tenantId = tenantId;
     }
   }
+
+  public getOperationId(): string | undefined {
+    return this.get()?.operationId;
+  }
+
+  public setOperationId(operationId: string): void {
+    const store = this.get();
+    if (store) {
+      store.operationId = operationId;
+    }
+  }
 }
