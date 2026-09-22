@@ -60,8 +60,14 @@ const stream = {
   },
 };
 
-const logger = createLoggerModuleParams({ get: () => undefined }, stream)
-  .pinoHttp.logger;
+// createLoggerModuleParams(configService, requestContext, stream). Both stubs
+// return undefined: the probe logs outside any request, so the context store
+// is empty and the correlation mixin adds no request_id or tenant_id. The
+// trace fields under test come from the pino instrumentation, not from there.
+const emptyStore = { get: () => undefined };
+
+const logger = createLoggerModuleParams(emptyStore, emptyStore, stream).pinoHttp
+  .logger;
 
 const tracer = trace.getTracer('trace-log-correlation-probe');
 
