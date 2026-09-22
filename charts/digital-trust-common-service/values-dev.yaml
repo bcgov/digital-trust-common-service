@@ -51,7 +51,7 @@ otel:
 
 config:
   NODE_ENV: development
-  OIDC_ISSUER: https://digital-trust-common-service-dev.apps.silver.devops.gov.bc.ca/oidc
+  APP_PUBLIC_URL: https://digital-trust-common-service-dev.apps.silver.devops.gov.bc.ca
   LOG_LEVEL: debug
   # Bare hostname only — DB_PORT defaults to 5432 separately, do not append ":5432" here.
   DB_HOST: digital-trust-common-service-db

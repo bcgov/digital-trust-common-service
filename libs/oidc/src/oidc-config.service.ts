@@ -4,7 +4,9 @@ import { ConfigService } from '@nestjs/config';
 import { DEFAULT_JWT_AUDIENCE, DEFAULT_OIDC_KEYS_PATH } from './oidc.constants';
 
 export interface OidcConfig {
-  /** Base URL at which the OIDC provider is mounted, e.g. https://api.example.com/oidc */
+  /** This app's own externally-reachable origin, e.g. https://api.example.com (no path). */
+  publicUrl: string;
+  /** Base URL at which the OIDC provider is mounted, i.e. `${publicUrl}/oidc`. */
   issuer: string;
   /** Path to the JSON file containing the RS256 signing JWKS. */
   keysPath: string;
@@ -141,6 +143,7 @@ export class OidcConfigService {
     const audience = this.getAudience();
 
     return {
+      publicUrl: this.getPublicUrl(),
       issuer: this.getIssuer(),
       keysPath: this.configService.get<string>(
         'OIDC_KEYS_PATH',
@@ -186,20 +189,24 @@ export class OidcConfigService {
     );
   }
 
-  private getIssuer(): string {
-    const configured = this.configService.get<string>('OIDC_ISSUER');
+  private getPublicUrl(): string {
+    const configured = this.configService.get<string>('APP_PUBLIC_URL');
 
     if (configured) {
       return configured.replace(/\/+$/, '');
     }
 
     if (this.isProduction()) {
-      throw new Error('OIDC_ISSUER must be configured in production.');
+      throw new Error('APP_PUBLIC_URL must be configured in production.');
     }
 
     const port = this.configService.get<string>('PORT', '3000');
 
-    return `http://localhost:${port}/oidc`;
+    return `http://localhost:${port}`;
+  }
+
+  private getIssuer(): string {
+    return `${this.getPublicUrl()}/oidc`;
   }
 
   private getPositiveInt(key: string, fallback: number): number {

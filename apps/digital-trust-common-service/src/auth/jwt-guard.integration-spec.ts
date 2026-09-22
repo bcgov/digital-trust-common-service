@@ -112,6 +112,7 @@ describe('JwtGuard, ScopeGuard, and TenantGuard (integration)', () => {
   let dataSource: DataSource;
   let keysDir: string;
   let listenPort: number;
+  let issuer: string;
   let tenantId: string;
   let otherTenantId: string;
   let tenantClientId: string;
@@ -142,7 +143,8 @@ describe('JwtGuard, ScopeGuard, and TenantGuard (integration)', () => {
     listenPort = await getFreePort();
     keysDir = mkdtempSync(join(tmpdir(), 'jwt-guard-it-'));
     process.env.OIDC_KEYS_PATH = join(keysDir, 'oidc-keys.json');
-    process.env.OIDC_ISSUER = `http://127.0.0.1:${listenPort}/oidc`;
+    process.env.APP_PUBLIC_URL = `http://127.0.0.1:${listenPort}`;
+    issuer = `${process.env.APP_PUBLIC_URL}/oidc`;
     process.env.OIDC_COOKIE_KEYS = 'jwt-guard-integration-cookie-key';
     process.env.JWT_JWKS_URI = `http://127.0.0.1:${listenPort}/oidc/jwks`;
 
@@ -321,7 +323,7 @@ describe('JwtGuard, ScopeGuard, and TenantGuard (integration)', () => {
       tenantClientId,
       tenantClientSecret,
       'credentials:offer',
-      process.env.OIDC_ISSUER,
+      issuer,
     );
 
     const response = await request(app.getHttpServer())
@@ -343,7 +345,7 @@ describe('JwtGuard, ScopeGuard, and TenantGuard (integration)', () => {
       platformAdminClientId,
       platformAdminClientSecret,
       'credentials:offer',
-      process.env.OIDC_ISSUER,
+      issuer,
     );
 
     await request(app.getHttpServer())
@@ -358,7 +360,7 @@ describe('JwtGuard, ScopeGuard, and TenantGuard (integration)', () => {
       tenantClientId,
       tenantClientSecret,
       'credentials:offer',
-      process.env.OIDC_ISSUER,
+      issuer,
     );
 
     const [header, payload] = token.accessToken.split('.');
@@ -380,7 +382,7 @@ describe('JwtGuard, ScopeGuard, and TenantGuard (integration)', () => {
       tenantClientId,
       tenantClientSecret,
       'credentials:offer',
-      process.env.OIDC_ISSUER,
+      issuer,
     );
 
     await request(app.getHttpServer())
@@ -396,7 +398,7 @@ describe('JwtGuard, ScopeGuard, and TenantGuard (integration)', () => {
       logsReadClientId,
       logsReadClientSecret,
       'logs:read',
-      process.env.OIDC_ISSUER,
+      issuer,
     );
 
     const response = await request(app.getHttpServer())
@@ -418,7 +420,7 @@ describe('JwtGuard, ScopeGuard, and TenantGuard (integration)', () => {
       tenantSuperuserClientId,
       tenantSuperuserClientSecret,
       'tenants:admin',
-      process.env.OIDC_ISSUER,
+      issuer,
     );
 
     await request(app.getHttpServer())
@@ -434,7 +436,7 @@ describe('JwtGuard, ScopeGuard, and TenantGuard (integration)', () => {
       tenantClientId,
       tenantClientSecret,
       'credentials:offer',
-      process.env.OIDC_ISSUER,
+      issuer,
     );
 
     const response = await request(app.getHttpServer())
@@ -455,7 +457,7 @@ describe('JwtGuard, ScopeGuard, and TenantGuard (integration)', () => {
       tenantClientId,
       tenantClientSecret,
       'credentials:offer',
-      process.env.OIDC_ISSUER,
+      issuer,
     );
 
     const response = await request(app.getHttpServer())
@@ -478,7 +480,7 @@ describe('JwtGuard, ScopeGuard, and TenantGuard (integration)', () => {
       otherTenantClientId,
       otherTenantClientSecret,
       'credentials:offer',
-      process.env.OIDC_ISSUER,
+      issuer,
     );
 
     const response = await request(app.getHttpServer())
@@ -501,7 +503,7 @@ describe('JwtGuard, ScopeGuard, and TenantGuard (integration)', () => {
       platformAdminClientId,
       platformAdminClientSecret,
       'credentials:offer',
-      process.env.OIDC_ISSUER,
+      issuer,
     );
 
     const response = await request(app.getHttpServer())
@@ -531,7 +533,7 @@ describe('JwtGuard, ScopeGuard, and TenantGuard (integration)', () => {
         tenantClientId,
         tenantClientSecret,
         'credentials:offer',
-        process.env.OIDC_ISSUER,
+        issuer,
       );
 
       const response = await request(app.getHttpServer())
@@ -556,7 +558,7 @@ describe('JwtGuard, ScopeGuard, and TenantGuard (integration)', () => {
         tenantClientId,
         tenantClientSecret,
         'credentials:offer',
-        process.env.OIDC_ISSUER,
+        issuer,
       );
 
       await request(app.getHttpServer())

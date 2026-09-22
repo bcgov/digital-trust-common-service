@@ -9,6 +9,11 @@ and this chart adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.h
 
 ### Added
 
+- `config.APP_PUBLIC_URL` (default `""`), the app's own externally-reachable
+  origin (no path). Replaces `OIDC_ISSUER`: `OidcConfigService` now derives
+  the OIDC issuer as `${APP_PUBLIC_URL}/oidc` and throws at startup if unset
+  in production. Set per environment in `values-dev.yaml`, `values-test.yaml`,
+  and `values-prod.yaml`.
 - `otel.logsExporter` (default `none`), rendered as `OTEL_LOGS_EXPORTER` into
   the API and Worker. Previously omitted on the assumption that leaving it
   unset meant logs were not exported; the OpenTelemetry SDK defaults it to

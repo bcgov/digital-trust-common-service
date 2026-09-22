@@ -50,7 +50,7 @@ worker:
 
 config:
   NODE_ENV: production
-  OIDC_ISSUER: https://digital-trust-common-service-test.apps.silver.devops.gov.bc.ca/oidc
+  APP_PUBLIC_URL: https://digital-trust-common-service-test.apps.silver.devops.gov.bc.ca
   LOG_LEVEL: info
   # TODO: point at the test PostgreSQL service.
   DB_HOST: <TEST_DB_HOST>

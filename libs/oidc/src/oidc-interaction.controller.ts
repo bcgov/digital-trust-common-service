@@ -3,9 +3,9 @@ import { Http2ServerRequest, Http2ServerResponse } from 'http2';
 
 import { partitionRequestedScopes } from '@app/auth/utils/partition-requested-scopes';
 import { Controller, Get, Inject, Query, Req, Res } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import escapeHtml from 'escape-html';
 
+import { OidcConfigService } from './oidc-config.service';
 import { buildOidcIssuerUrl } from './oidc-issuer-url.util';
 import { OidcProviderService } from './oidc-provider.service';
 import * as oidcClientLookupPort from './ports/oidc-client-lookup.port';
@@ -54,7 +54,7 @@ export class OidcInteractionController {
     private readonly roleScopeService: RoleScopeLookup,
     @Inject(oidcClientLookupPort.OIDC_CLIENT_LOOKUP_PORT)
     private readonly clientLookup: oidcClientLookupPort.OidcClientLookupPort,
-    private readonly configService: ConfigService,
+    private readonly oidcConfigService: OidcConfigService,
   ) {}
 
   @Get('/interaction/:uid')
@@ -305,10 +305,7 @@ export class OidcInteractionController {
       throw new Error(`OAuth client not found: ${clientId}`);
     }
 
-    const oidcIssuer = this.configService.get<string>(
-      'OIDC_ISSUER',
-      'http://localhost:3000/oidc',
-    );
+    const oidcIssuer = this.oidcConfigService.getConfig().issuer;
 
     const { authorizationUrl } =
       await this.upstreamOidcService.initiateUpstreamLogin(
@@ -458,10 +455,7 @@ export class OidcInteractionController {
        * The interaction UID came from interactionDetails() when
        * we started the upstream flow.
        */
-      const oidcIssuer = this.configService.get<string>(
-        'OIDC_ISSUER',
-        'http://localhost:3000/oidc',
-      );
+      const oidcIssuer = this.oidcConfigService.getConfig().issuer;
       const interactionUrl = buildOidcIssuerUrl(
         oidcIssuer,
         `interaction/${interaction.interactionUid}`,

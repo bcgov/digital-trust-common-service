@@ -61,7 +61,7 @@ describe('EnvironmentBootstrapService integration', () => {
 
     dataSource = module.get(DataSource);
     bootstrap = module.get(EnvironmentBootstrapService);
-    origin = new URL(module.get(OidcConfigService).getConfig().issuer).origin;
+    origin = module.get(OidcConfigService).getConfig().publicUrl;
 
     await removeBootstrapRows();
   });
