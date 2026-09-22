@@ -22,6 +22,7 @@ import { AppModule } from '../src/app.module';
 import { ConnectorType } from '../src/connection/connection.entity';
 import { ConnectorCredentialService } from '../src/connector-credential/connector-credential.service';
 import { ConnectorHealthCheckService } from '../src/connector-credential/connector-health-check.service';
+import { TractionWebhookRegistrar } from '../src/traction/traction-webhook-registrar.service';
 
 const mockBoss = {
   start: jest.fn().mockResolvedValue(undefined),
@@ -40,6 +41,13 @@ const mockHealthCheckService = {
   check: jest.fn().mockResolvedValue({ status: 'healthy', latencyMs: 1 }),
 };
 
+// Same reasoning as mockHealthCheckService: registering a webhook does a
+// real SSRF-safe DNS resolution of the connector's endpoint, which these
+// unresolvable example.com subdomains would always fail.
+const mockWebhookRegistrar = {
+  ensureWebhookRegistered: jest.fn().mockResolvedValue(undefined),
+};
+
 async function bootstrap(): Promise<TestingModule> {
   return await Test.createTestingModule({ imports: [AppModule] })
     .overrideProvider(PgBossService)
@@ -51,6 +59,8 @@ async function bootstrap(): Promise<TestingModule> {
     })
     .overrideProvider(ConnectorHealthCheckService)
     .useValue(mockHealthCheckService)
+    .overrideProvider(TractionWebhookRegistrar)
+    .useValue(mockWebhookRegistrar)
     .compile();
 }
 
@@ -162,10 +172,18 @@ describe('AdapterRegistry (e2e)', () => {
 
       expect(issuer).toBeInstanceOf(StubAdapter);
       await expect(
-        issuer.offerCredential({
-          format: CredentialFormat.AnonCreds,
-          attributes: [],
-        }),
+        issuer.offerCredential(
+          {
+            connectorId: randomUUID(),
+            tenantId: randomUUID(),
+            endpointUrl: 'https://stub-adapter.example.com',
+            credentials: {},
+          },
+          {
+            format: CredentialFormat.AnonCreds,
+            attributes: [],
+          },
+        ),
       ).rejects.toThrow();
     });
   });
