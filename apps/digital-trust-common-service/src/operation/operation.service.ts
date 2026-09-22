@@ -1,12 +1,17 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import type { EntityManager } from 'typeorm';
 
+import {
+  BusinessMetricsService,
+  UNCLASSIFIED_LABEL,
+} from '../common/telemetry/business-metrics.service';
 import { TenantService } from '../tenant/tenant.service';
 
 import {
   computeOperationExpiresAt,
   isTerminalOperationState,
 } from './operation-ttl.util';
+import { isKnownOperationType } from './operation-type.constants';
 import {
   Operation,
   OperationRequest,
@@ -30,6 +35,7 @@ export class OperationService {
   public constructor(
     private readonly operations: OperationRepository,
     private readonly tenants: TenantService,
+    private readonly businessMetrics: BusinessMetricsService,
   ) {}
 
   /**
@@ -188,7 +194,11 @@ export class OperationService {
       tenant.config,
     );
 
-    return this.operations.save(operation, manager);
+    const saved = await this.operations.save(operation, manager);
+
+    this.recordTerminalOutcome(saved.type, state, manager);
+
+    return saved;
   }
 
   /**
@@ -250,6 +260,45 @@ export class OperationService {
       throw new NotFoundException('Operation not found');
     }
 
+    this.recordTerminalOutcome(updated.type, state, manager);
+
     return updated;
+  }
+
+  /**
+   * Counts an operation that has reached a terminal state.
+   *
+   * Placed on the two state-transition methods rather than at their call sites
+   * because those are the only writers of a terminal state — the batch-parent
+   * settlement in OperationRepository.claimBatchSettlement only claims the
+   * right to finalize, and the winner comes back through transitionState. A
+   * counter spread across call sites would miss the next one added.
+   *
+   * Only `completed` and `failed` are counted: pending and processing are not
+   * outcomes, and counting them would make the total disagree with the number
+   * of operations. `transitionStateIfForward` calls this only when its guarded
+   * UPDATE won, so a duplicate pg-boss delivery of the same transition does not
+   * double count — but only once that UPDATE is committed, which is why
+   * `manager` is handed on: BusinessMetricsService holds the record until the
+   * caller's transaction commits, and drops it if the transaction rolls back
+   * and the worker replays the job.
+   */
+  private recordTerminalOutcome(
+    type: string,
+    state: OperationState,
+    manager?: EntityManager,
+  ): void {
+    if (state !== OperationState.COMPLETED && state !== OperationState.FAILED) {
+      return;
+    }
+
+    this.businessMetrics.recordCredentialOperation(
+      // `type` is an open varchar, so anything could be stored there. The
+      // metric dimension has to stay bounded, and an unrecognised type is
+      // itself worth seeing rather than dropping.
+      isKnownOperationType(type) ? type : UNCLASSIFIED_LABEL,
+      state === OperationState.COMPLETED ? 'completed' : 'failed',
+      manager,
+    );
   }
 }

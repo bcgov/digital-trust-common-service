@@ -1,6 +1,11 @@
 import { NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
+import type { EntityManager } from 'typeorm';
 
+import {
+  BusinessMetricsService,
+  UNCLASSIFIED_LABEL,
+} from '../common/telemetry/business-metrics.service';
 import { TenantService } from '../tenant/tenant.service';
 
 import {
@@ -23,6 +28,7 @@ describe('OperationService', () => {
   let mockMarkFirstView: jest.Mock;
   let mockTenantFindById: jest.Mock;
   let mockTransitionIfForward: jest.Mock;
+  let mockRecordCredentialOperation: jest.Mock;
 
   const createdAt = new Date('2024-01-01T00:00:00.000Z');
   const viewedAt = new Date('2024-01-02T00:00:00.000Z');
@@ -58,6 +64,7 @@ describe('OperationService', () => {
     mockMarkFirstView = jest.fn();
     mockTenantFindById = jest.fn();
     mockTransitionIfForward = jest.fn();
+    mockRecordCredentialOperation = jest.fn();
     mockTenantFindById.mockResolvedValue({ id: 't1', config: {} });
 
     const mockRepository = {
@@ -83,6 +90,12 @@ describe('OperationService', () => {
         {
           provide: TenantService,
           useValue: mockTenantService,
+        },
+        {
+          provide: BusinessMetricsService,
+          useValue: {
+            recordCredentialOperation: mockRecordCredentialOperation,
+          },
         },
       ],
     }).compile();
@@ -637,6 +650,139 @@ describe('OperationService', () => {
       );
 
       expect(result).toBeNull();
+    });
+  });
+
+  describe('business metrics', () => {
+    const transitionTo = async (
+      state: OperationState,
+      type = 'credential.offer',
+    ): Promise<void> => {
+      mockFindById.mockResolvedValue(buildOperation({ type }));
+      mockSave.mockImplementation((op: Operation) => Promise.resolve(op));
+
+      await service.transitionState('op-1', state);
+    };
+
+    it.each([
+      [OperationState.COMPLETED, 'completed'],
+      [OperationState.FAILED, 'failed'],
+    ])('counts a transition to %s as its outcome', async (state, outcome) => {
+      await transitionTo(state);
+
+      expect(mockRecordCredentialOperation).toHaveBeenCalledTimes(1);
+      expect(mockRecordCredentialOperation).toHaveBeenCalledWith(
+        'credential.offer',
+        outcome,
+        undefined,
+      );
+    });
+
+    it.each([[OperationState.PENDING], [OperationState.PROCESSING]])(
+      'does not count a transition to %s, which is not an outcome',
+      async (state) => {
+        await transitionTo(state);
+
+        expect(mockRecordCredentialOperation).not.toHaveBeenCalled();
+      },
+    );
+
+    it('buckets an operation type outside the declared set', async () => {
+      // `type` is an open varchar, so an unrecognised value must not become
+      // its own permanent metric series.
+      await transitionTo(OperationState.COMPLETED, 'something.unexpected');
+
+      expect(mockRecordCredentialOperation).toHaveBeenCalledWith(
+        UNCLASSIFIED_LABEL,
+        'completed',
+        undefined,
+      );
+    });
+
+    it('records the reloaded type when a guarded transition wins', async () => {
+      const operation = buildOperation({ state: OperationState.PROCESSING });
+      const updated = buildOperation({
+        type: 'credential.revoke',
+        state: OperationState.FAILED,
+      });
+      mockFindById
+        .mockResolvedValueOnce(operation)
+        .mockResolvedValueOnce(updated);
+      mockTransitionIfForward.mockResolvedValue(true);
+
+      await service.transitionStateIfForward('op-1', OperationState.FAILED, [
+        OperationState.PROCESSING,
+      ]);
+
+      expect(mockRecordCredentialOperation).toHaveBeenCalledWith(
+        'credential.revoke',
+        'failed',
+        undefined,
+      );
+    });
+
+    it('does not count a guarded transition that lost the race', async () => {
+      // pg-boss delivers at least once, so the same transition can arrive
+      // twice; only the delivery that wins the guarded UPDATE is an outcome.
+      mockFindById.mockResolvedValue(
+        buildOperation({ state: OperationState.PROCESSING }),
+      );
+      mockTransitionIfForward.mockResolvedValue(false);
+
+      await service.transitionStateIfForward('op-1', OperationState.COMPLETED, [
+        OperationState.PROCESSING,
+      ]);
+
+      expect(mockRecordCredentialOperation).not.toHaveBeenCalled();
+    });
+
+    it('hands the transaction on so the count waits for the commit', async () => {
+      // The transition is not a fact until the caller's transaction commits,
+      // and the callers do further work afterwards that can roll it back.
+      // BusinessMetricsService holds the record; it can only do that if it is
+      // told which transaction the write belongs to.
+      const manager = { queryRunner: { isTransactionActive: true } };
+      mockFindById.mockResolvedValue(buildOperation());
+      mockSave.mockImplementation((op: Operation) => Promise.resolve(op));
+
+      await service.transitionState(
+        'op-1',
+        OperationState.COMPLETED,
+        undefined,
+        manager as unknown as EntityManager,
+      );
+
+      expect(mockRecordCredentialOperation).toHaveBeenCalledWith(
+        'credential.offer',
+        'completed',
+        manager,
+      );
+    });
+
+    it('hands the transaction on from a guarded transition too', async () => {
+      const manager = { queryRunner: { isTransactionActive: true } };
+      mockFindById
+        .mockResolvedValueOnce(
+          buildOperation({ state: OperationState.PROCESSING }),
+        )
+        .mockResolvedValueOnce(
+          buildOperation({ state: OperationState.COMPLETED }),
+        );
+      mockTransitionIfForward.mockResolvedValue(true);
+
+      await service.transitionStateIfForward(
+        'op-1',
+        OperationState.COMPLETED,
+        [OperationState.PROCESSING],
+        undefined,
+        manager as unknown as EntityManager,
+      );
+
+      expect(mockRecordCredentialOperation).toHaveBeenCalledWith(
+        'credential.offer',
+        'completed',
+        manager,
+      );
     });
   });
 });

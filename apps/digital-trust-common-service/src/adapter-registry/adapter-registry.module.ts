@@ -2,6 +2,7 @@ import { CredentialPortsModule } from '@app/credential-ports';
 import { Module } from '@nestjs/common';
 
 import { EncryptionModule } from '../common/crypto/encryption.module';
+import { BusinessMetricsModule } from '../common/telemetry/business-metrics.module';
 import { ConnectorCredentialModule } from '../connector-credential/connector-credential.module';
 import { TenantModule } from '../tenant/tenant.module';
 
@@ -18,6 +19,7 @@ import { AdapterRegistry } from './adapter-registry.service';
     TenantModule,
     ConnectorCredentialModule,
     EncryptionModule,
+    BusinessMetricsModule,
   ],
   providers: [AdapterRegistry],
   exports: [AdapterRegistry],

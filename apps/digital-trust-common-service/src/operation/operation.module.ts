@@ -3,6 +3,7 @@ import { PgBossModule } from '@app/pg-boss';
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
+import { BusinessMetricsModule } from '../common/telemetry/business-metrics.module';
 import { RateLimitModule } from '../rate-limit/rate-limit.module';
 import { TenantStatusModule } from '../tenant/tenant-status.module';
 import { TenantModule } from '../tenant/tenant.module';
@@ -21,6 +22,7 @@ import { OperationService } from './operation.service';
     AuthModule,
     TenantStatusModule,
     RateLimitModule,
+    BusinessMetricsModule,
   ],
   controllers: [OperationController],
   providers: [OperationService, OperationRepository, OperationPurgeService],

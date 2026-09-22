@@ -10,6 +10,7 @@ import { ConfigService } from '@nestjs/config';
 import { Test, TestingModule } from '@nestjs/testing';
 
 import { EncryptionService } from '../common/crypto/encryption.service';
+import { BusinessMetricsService } from '../common/telemetry/business-metrics.service';
 import { ConnectorType } from '../connection/connection.entity';
 import { ConnectorCredential } from '../connector-credential/connector-credential.entity';
 import { ConnectorCredentialService } from '../connector-credential/connector-credential.service';
@@ -17,6 +18,7 @@ import { Tenant } from '../tenant/tenant.entity';
 import { TenantService } from '../tenant/tenant.service';
 
 import { AdapterRegistry } from './adapter-registry.service';
+import { unwrapAdapter } from './instrumented-adapter';
 
 const TENANT_A = '11111111-1111-1111-1111-111111111111';
 const TENANT_B = '22222222-2222-2222-2222-222222222222';
@@ -47,9 +49,11 @@ describe('AdapterRegistry', () => {
   let configService: { get: jest.Mock };
   let encryptionService: { decrypt: jest.Mock };
   let adapter: MockAdapter;
+  let businessMetrics: { recordAdapterCall: jest.Mock };
 
   beforeEach(async () => {
     tenantService = { findById: jest.fn() };
+    businessMetrics = { recordAdapterCall: jest.fn() };
     connectorService = { findByTenant: jest.fn() };
     configService = { get: jest.fn().mockReturnValue(undefined) };
     encryptionService = {
@@ -67,6 +71,7 @@ describe('AdapterRegistry', () => {
         { provide: ConnectorCredentialService, useValue: connectorService },
         { provide: ConfigService, useValue: configService },
         { provide: EncryptionService, useValue: encryptionService },
+        { provide: BusinessMetricsService, useValue: businessMetrics },
       ],
     }).compile();
 
@@ -77,9 +82,9 @@ describe('AdapterRegistry', () => {
     it('should return a registered adapter by connector type', () => {
       registry.register(adapter);
 
-      expect(registry.getByConnectorType(PortConnectorType.Traction)).toBe(
-        adapter,
-      );
+      expect(
+        unwrapAdapter(registry.getByConnectorType(PortConnectorType.Traction)),
+      ).toBe(adapter);
     });
 
     it('should throw when the same connector type is registered twice', () => {
@@ -110,7 +115,9 @@ describe('AdapterRegistry', () => {
 
       // The key cannot disagree with the adapter, because there is no second
       // argument to disagree with.
-      expect(registry.getByConnectorType(PortConnectorType.Credo)).toBe(credo);
+      expect(
+        unwrapAdapter(registry.getByConnectorType(PortConnectorType.Credo)),
+      ).toBe(credo);
       expect(() =>
         registry.getByConnectorType(PortConnectorType.Traction),
       ).toThrow(ConnectorUnavailableError);
@@ -132,6 +139,34 @@ describe('AdapterRegistry', () => {
     });
   });
 
+  describe('instrumentation', () => {
+    // The registry is the only place adapters are handed out, so wrapping on
+    // register is what makes adapter.calls cover every consumer. Asserting the
+    // recorded call — not just that something came back — is what keeps a
+    // revert of the wrapping from passing silently.
+    it('should count a port call made through a registered adapter', async () => {
+      registry.register(adapter);
+
+      await registry
+        .getByConnectorType(PortConnectorType.Traction)
+        .list({} as never, {});
+
+      expect(businessMetrics.recordAdapterCall).toHaveBeenCalledWith(
+        PortConnectorType.Traction,
+        'list',
+        'success',
+      );
+    });
+
+    it('should hand out the instrumented adapter rather than the raw one', () => {
+      registry.register(adapter);
+
+      expect(registry.getByConnectorType(PortConnectorType.Traction)).not.toBe(
+        adapter,
+      );
+    });
+  });
+
   describe('format resolution', () => {
     beforeEach(() => {
       registry.register(adapter);
@@ -145,7 +180,7 @@ describe('AdapterRegistry', () => {
       const resolved = await registry.resolve(TENANT_A);
 
       expect(resolved.format).toBe(CredentialFormat.AnonCreds);
-      expect(resolved.adapter).toBe(adapter);
+      expect(unwrapAdapter(resolved.adapter)).toBe(adapter);
     });
 
     it('builds a ConnectorContext from the decrypted connector credentials', async () => {
@@ -202,7 +237,7 @@ describe('AdapterRegistry', () => {
 
       expect(connectorService.findByTenant).toHaveBeenCalledWith(TENANT_A);
       expect(resolved.connector).toBe(connector);
-      expect(resolved.adapter).toBe(adapter);
+      expect(unwrapAdapter(resolved.adapter)).toBe(adapter);
     });
 
     it('should refuse a default_connector owned by another tenant', async () => {
@@ -367,7 +402,7 @@ describe('AdapterRegistry', () => {
         isPlatformAdmin: true,
       });
 
-      expect(resolved.adapter).toBe(credoAdapter);
+      expect(unwrapAdapter(resolved.adapter)).toBe(credoAdapter);
       expect(resolved.connector).toBe(credoConnector);
       expect(resolved.format).toBe(CredentialFormat.SdJwtVc);
     });
