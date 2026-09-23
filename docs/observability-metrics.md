@@ -40,14 +40,15 @@ them could identify one even if they were, per the labelling rule.
 
 ## Business metrics
 
-Everything in the catalog below measures plumbing: how many HTTP requests
+Everything auto-instrumented measures plumbing: how many HTTP requests
 arrived, how long database statements took, how busy the runtime is. All of
 it can look completely healthy while the service is failing at its job —
 every request returning `200 OK` while not a single credential has been
 issued for hours, because the agent is rejecting them further down.
 
-Nothing counts the work itself. That is what business metrics are for, and
-none exist yet.
+Nothing counted the work itself. That is what business metrics are for, and
+two of them now exist: `credential.operations` and `adapter.calls`, described
+under [What shipped](#what-shipped) below.
 
 ### They are one step of four
 
@@ -61,9 +62,9 @@ starts a path that ends somewhere actionable:
 | 3. Diagnose | a trace from that tenant | "here is exactly what failed" |
 | 4. Act | — | fix it, or contact the tenant |
 
-Step 1 is the part that does not exist. Without it nothing ever prompts
-anyone to start at step 2, and a tenant can fail every operation for days
-unnoticed.
+Step 1 is what this work adds. The counters exist; the alerting on top of them
+does not yet, and without that nothing prompts anyone to start at step 2, so a
+tenant can still fail every operation for days unnoticed.
 
 This is also the reason rule 1 above exists. "Which tenant?" is answered at
 step 2, from logs, at the moment someone investigates — not by storing a
@@ -88,18 +89,18 @@ on every span.
 
 ### Candidates
 
-None of these are committed. Each needs an operator question attached — some
-sentence a person would ask, where a different answer leads to a different
-action — and a candidate nobody has a question for should not ship.
+Each needs an operator question attached — some sentence a person would ask,
+where a different answer leads to a different action — and a candidate nobody
+has a question for should not ship.
 
 Dimension values are taken from sets that already exist in the codebase, so
 none of them can grow with traffic or tenant count:
 
-| Candidate | Dimensions | Series |
-| --- | --- | --- |
-| credential operation outcome | operation type (8 declared) x outcome (2) | 16 |
-| adapter call outcome | adapter (2) x port method (12) x outcome or error class (6) | 144 |
-| job queue depth | queue (9 registered) | 9 |
+| Candidate | Dimensions | Series | Status |
+| --- | --- | --- | --- |
+| credential operation outcome | operation type (8 declared) x outcome (2) | 16 | built, see below |
+| adapter call outcome | adapter (2) x port method (12) x outcome or error class (6) | 144 | built, see below |
+| job queue depth | queue (9 registered) | 9 | not built |
 
 That is **about 169 series at worst**, against the roughly 3,000 estimated
 below — near enough 5%. The sets behind each number are `OPERATION_TYPE`,
@@ -108,13 +109,95 @@ interfaces in `libs/credential-ports/src/ports/`, and the five adapter error
 classes in `libs/credential-ports/src/errors/`. Re-count them before
 building, since three of the six are still growing.
 
+Job queue depth is the one candidate still unbuilt. It is the case the
+instrument table below calls out as needing an observable rather than a
+counter, since nothing "happens" when a queue is 40 deep.
+
+### What shipped
+
+Both counters live in `common/telemetry/business-metrics.service.ts`, are
+exported through the existing OTLP path, and carry no tenant identifier — the
+service exposes no parameter that could accept one.
+
+| Instrument | Prometheus | Attributes |
+| --- | --- | --- |
+| `credential.operations` | `credential_operations_total` | `operation.type`, `operation.outcome` |
+| `adapter.calls` | `adapter_calls_total` | `connector.type`, `adapter.method`, `adapter.outcome` |
+
+**`credential.operations`** counts an operation reaching a terminal state.
+Recorded in `OperationService.transitionState` and `transitionStateIfForward`,
+which are the only writers of a terminal state, so no call site can add a
+terminal path that goes uncounted. Only `completed` and `failed` are recorded:
+pending and processing are not outcomes, and counting them would make the total
+disagree with the number of operations. The guarded variant records only when
+its conditional UPDATE won, so a duplicate pg-boss delivery of the same
+transition does not double count.
+
+Counting the winner is not enough on its own, because the transition is not yet
+a fact when it is counted. Every caller runs the transition inside a
+`dataSource.transaction()` that does more work afterwards — settling a batch
+parent, enqueuing follow-on jobs — and any of that can roll the whole
+transaction back, after which pg-boss redelivers the job and the transition is
+replayed and won again. So when a transactional `EntityManager` is passed in,
+`BusinessMetricsService` holds the record rather than recording it, and
+`TransactionalMetricsSubscriber` releases it from TypeORM's after-commit
+broadcast or drops it on rollback. A record made without a manager is its own
+transaction and is counted immediately.
+
+The subscriber tracks transaction starts as well, because TypeORM runs a nested
+transaction as a savepoint on the same query runner and broadcasts the same
+commit and rollback events when that savepoint is released as it does for the
+real `COMMIT`. Without that, an inner commit would release the outer
+transaction's records while it was still open — the same double count, one
+level down. Nothing in the service nests transactions today; the levels are
+tracked so that the first thing to do so does not silently reintroduce it.
+
+**`adapter.calls`** counts one port method call against an agent adapter.
+`AdapterRegistry.register` stores each adapter wrapped in the proxy in
+`adapter-registry/instrumented-adapter.ts`, so every consumer is instrumented
+by going through the registry at all, and no adapter implementation knows that
+metrics exist. `adapter.outcome` is `success` or the `AdapterError.code` each
+error class already declares; anything else that throws is counted under a
+single `unknown` bucket, so the total still matches the number of calls without
+an arbitrary error becoming a label.
+
+#### Recount
+
+The estimate above was made before building, and two of its numbers were low:
+
+| Instrument | Counted | Actual | Why |
+| --- | --- | --- | --- |
+| `credential.operations` | 16 | 18 | 8 declared types plus one `unclassified` bucket, x 2 outcomes |
+| `adapter.calls` | 144 | 168 | outcome is 7, not 6 — `success`, five error codes, and `unknown` |
+
+**186 series at worst**, against the roughly 3,000 estimated below — about 6%,
+still inside the budget agreed for this work.
+
+Two things make the real figure much smaller. A series exists only once its
+combination is actually recorded, and today only four of the eight operation
+types are ever constructed and only one of the two connector types has an
+adapter (`traction`). The numbers above are the ceiling the design is allowed
+to reach, not what is stored now.
+
+`unclassified` is the backstop `boundedLabel` substitutes for any dimension
+value that is not a short identifier — a UUID, a URL, an empty string. UUIDs
+are rejected by shape rather than by character set, because a UUID beginning
+with a hex letter would otherwise satisfy the identifier pattern, and every
+identifier in this service — tenant ids among them — is a UUID. The backstop is
+unreachable for `connector.type` and `adapter.method`, whose values come from
+an enum and a fixed list, and is counted here only because `Operation.type` is
+an open `varchar` that the API contract deliberately leaves open.
+
 ### Choosing an instrument
 
-Everything in this service is auto-instrumented today — there is no
-`createCounter` or `createHistogram` anywhere in the codebase, and no meter is
-obtained from `@opentelemetry/api` (1.9.1) outside the SDK. Business metrics
-will be the first manual instrumentation here, so there is no in-repo example
-to copy and the choice has to be made from first principles each time.
+The two business counters are the only manual instrumentation in the service;
+everything else is auto-instrumented. `common/telemetry/business-metrics.service.ts`
+is therefore the in-repo example to copy, including the reason it resolves its
+meter lazily: the metrics API has no proxy provider the way traces do, so a
+counter created before `tracing.ts` registers the SDK binds to the no-op
+provider for the life of the process and silently records nothing.
+
+Anything beyond a counter still has to be chosen from first principles.
 
 The meter exposes seven instruments. Brief descriptions follow; the official
 documentation linked at the end of this section carries the full semantics and
@@ -149,11 +232,11 @@ moment a job is lost.
 **A histogram is not a counter with extra detail.** Per the series estimate
 below, each histogram costs roughly 17 series per dimension combination — 15
 buckets plus `_count` and `_sum`, at the default duration boundaries — where a
-counter costs one. The adapter call outcome candidate is 144 series as a
-counter and would be about 2,400 as a histogram, which on its own would exceed
-the entire business metric budget. Reach for a histogram only when the
-distribution genuinely changes a decision; if the question is "how many
-failed", a counter answers it for a fraction of the cost.
+counter costs one. `adapter.calls` is 168 series as a counter and would be
+about 2,900 as a histogram, which on its own would exceed the entire business
+metric budget. Reach for a histogram only when the distribution genuinely
+changes a decision; if the question is "how many failed", a counter answers it
+for a fraction of the cost.
 
 Naming follows OTel semantic conventions — dotted, lowercase, with a unit
 suffix where one applies — the same convention the auto-instrumented table
@@ -198,6 +281,24 @@ ticket.
 This is the rule most easily missed, because the change that breaks it is a
 feature change with nothing obviously to do with metrics.
 
+Where the rule can be enforced by the compiler instead of by a reviewer, it
+is. As built:
+
+- **Port methods.** `instrumented-adapter.ts` lists the twelve port methods and
+  asserts that list covers every asynchronous method on `AgentAdapter`. Adding
+  a method to any port interface without listing it fails `npm run build`.
+- **Operation types.** `credential.operations` instruments all eight declared
+  types, including the four not yet constructed, so the counter is already
+  correct when they land. `isKnownOperationType` routes anything else to the
+  `unclassified` bucket rather than dropping it.
+- **Adapter error classes.** The outcome label is `AdapterError.code`, which
+  every class already declares, so a new error class arrives with its own
+  outcome value and needs no change here. An error that is not an
+  `AdapterError` has no code to read and is counted as `unknown`.
+
+That leaves `QUEUE_DEFINITIONS`, which is reviewer-enforced, because the queue
+depth candidate is not built.
+
 ## Metric catalog
 
 Instrument names are dotted, per OTel semantic conventions
@@ -209,6 +310,8 @@ instrumentation package that emits it.
 
 | Prometheus name | OTel instrument | Type | Dimensions (bounded by) |
 | --- | --- | --- | --- |
+| `credential_operations_total` | `credential.operations` | Counter | `operation_type` (`OPERATION_TYPE`, 8 declared, plus `unclassified`), `operation_outcome` (`completed`/`failed`) |
+| `adapter_calls_total` | `adapter.calls` | Counter | `connector_type` (`ConnectorType`, 2), `adapter_method` (12 port methods), `adapter_outcome` (`success`, 5 `AdapterError` codes, `unknown`) |
 | `http_server_request_duration_seconds` | `http.server.request.duration` | Histogram (15 buckets) | `http_route` (declared controller routes, currently 58; absent — not a placeholder — when no route matches), `http_request_method`, `http_response_status_code`, `network_protocol_version`, `url_scheme` |
 | `http_client_request_duration_seconds` | `http.client.request.duration` | Histogram (15 buckets) | `server_address`/`server_port` (outbound hosts we call: upstream OIDC issuer today, adapter backends once instrumented), `http_request_method`, `http_response_status_code`, `url_scheme` |
 | `db_client_operation_duration_seconds` | `db.client.operation.duration` | Histogram (10 buckets) | `db_operation_name` (SQL verb — see finding below), `db_system_name`, `db_namespace`, `server_address`/`server_port` |
@@ -299,6 +402,9 @@ request.
 None of this is unbounded: the only user-influenced input is which of the 58
 route templates and which statement verbs get exercised, both fixed sets
 enumerable from the codebase — not from request content.
+
+The two business counters add at most 186 series on top, one row each rather
+than 17, for the reasons set out under [What shipped](#what-shipped).
 
 ### Verified against the deployed backend
 

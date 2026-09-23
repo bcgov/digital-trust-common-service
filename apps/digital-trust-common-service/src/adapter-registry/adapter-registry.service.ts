@@ -10,12 +10,14 @@ import { ForbiddenException, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
 import { EncryptionService } from '../common/crypto/encryption.service';
+import { BusinessMetricsService } from '../common/telemetry/business-metrics.service';
 import { ConnectorType } from '../connection/connection.entity';
 import { ConnectorCredential } from '../connector-credential/connector-credential.entity';
 import { ConnectorCredentialService } from '../connector-credential/connector-credential.service';
 import { TenantService } from '../tenant/tenant.service';
 
 import { ResolveOptions, ResolvedAdapter } from './adapter-registry.types';
+import { instrumentAdapter } from './instrumented-adapter';
 
 /**
  * Maps the `connector_type` stored on entities onto the port-layer enum. The
@@ -53,12 +55,18 @@ export class AdapterRegistry {
     private readonly connectorCredentialService: ConnectorCredentialService,
     private readonly configService: ConfigService,
     private readonly encryptionService: EncryptionService,
+    private readonly businessMetrics: BusinessMetricsService,
   ) {}
 
   /**
    * Called by adapter modules at startup. The key comes from the adapter's own
    * `connectorType` rather than a separate argument, so an adapter cannot be
    * filed under a type it does not implement.
+   *
+   * What is stored is the adapter wrapped for metrics, not the adapter itself:
+   * every consumer goes through `resolve()` or `getByConnectorType()`, so
+   * instrumenting once here covers all of them and leaves no path that reaches
+   * an agent uncounted.
    *
    * Both failures here are startup misconfiguration and throw rather than
    * degrade: a duplicate would silently replace a working adapter, and an
@@ -80,7 +88,10 @@ export class AdapterRegistry {
       );
     }
 
-    this.adapters.set(connectorType, adapter);
+    this.adapters.set(
+      connectorType,
+      instrumentAdapter(adapter, this.businessMetrics),
+    );
     this.logger.log(`Registered adapter for connector type '${connectorType}'`);
   }
 

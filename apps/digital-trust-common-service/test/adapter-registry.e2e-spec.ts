@@ -16,6 +16,7 @@ import { App } from 'supertest/types';
 import { DataSource } from 'typeorm';
 
 import { AdapterRegistry } from '../src/adapter-registry/adapter-registry.service';
+import { unwrapAdapter } from '../src/adapter-registry/instrumented-adapter';
 import { configureApp } from '../src/app.config';
 import { AppModule } from '../src/app.module';
 import { ConnectorType } from '../src/connection/connection.entity';
@@ -191,7 +192,7 @@ describe('AdapterRegistry (e2e)', () => {
 
       const resolved = await registry.resolve(tenantId);
 
-      expect(resolved.adapter).toBe(adapter);
+      expect(unwrapAdapter(resolved.adapter)).toBe(adapter);
       expect(resolved.connector.id).toBe(connector.id);
       expect(resolved.connector.endpointUrl).toBe(
         'https://traction-e2e.example.com',
@@ -292,7 +293,7 @@ describe('AdapterRegistry (e2e)', () => {
           isPlatformAdmin: true,
         });
 
-        expect(resolved.adapter).toBe(adapter);
+        expect(unwrapAdapter(resolved.adapter)).toBe(adapter);
         expect(resolved.connector.endpointUrl).toBe(
           'https://override.example.com',
         );

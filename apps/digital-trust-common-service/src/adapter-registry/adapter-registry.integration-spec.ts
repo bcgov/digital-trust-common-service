@@ -19,6 +19,7 @@ import { ConnectorCredentialService } from '../connector-credential/connector-cr
 import { ConnectorHealthCheckService } from '../connector-credential/connector-health-check.service';
 
 import { AdapterRegistry } from './adapter-registry.service';
+import { unwrapAdapter } from './instrumented-adapter';
 
 const mockBoss = {
   start: jest.fn().mockResolvedValue(undefined),
@@ -178,7 +179,7 @@ describe('AdapterRegistry (integration)', () => {
 
     const resolved = await registry.resolve(tenantId);
 
-    expect(resolved.adapter).toBe(adapter);
+    expect(unwrapAdapter(resolved.adapter)).toBe(adapter);
     expect(resolved.connector.id).toBe(connector.id);
     expect(resolved.connector.endpointUrl).toBe('https://named.example.com');
     expect(resolved.format).toBe(CredentialFormat.AnonCreds);

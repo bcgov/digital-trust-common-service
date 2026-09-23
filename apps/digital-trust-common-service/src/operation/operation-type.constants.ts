@@ -26,3 +26,19 @@ export type OperationType =
 export function isBatchOperationType(type: string): boolean {
   return type.endsWith('-batch');
 }
+
+const KNOWN_OPERATION_TYPES = new Set<string>(Object.values(OPERATION_TYPE));
+
+/**
+ * True when the type is one this service declares, rather than an arbitrary
+ * string the open `varchar` column and open API contract both permit.
+ *
+ * Exists for the business metrics in `common/telemetry/business-metrics.service.ts`:
+ * `operation.type` is a metric dimension, and a dimension whose values are not
+ * drawn from a fixed set creates permanent series for every distinct value ever
+ * written. Callers narrowing a type for a metric label must route anything this
+ * rejects to a single fallback bucket instead.
+ */
+export function isKnownOperationType(type: string): type is OperationType {
+  return KNOWN_OPERATION_TYPES.has(type);
+}
