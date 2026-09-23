@@ -7,29 +7,20 @@ import {
 } from '../common/telemetry/business-metrics.service';
 
 /**
- * The port methods an AgentAdapter exposes, and the only property names this
- * wrapper intercepts. Method names are a metric dimension, so the set has to be
- * fixed in code rather than discovered from whatever a caller asks for.
+ * The port methods an AgentAdapter exposes, keyed by the port that declares
+ * them, and the only property names this wrapper intercepts. Method names are a
+ * metric dimension, so the set has to be fixed in code rather than discovered
+ * from whatever a caller asks for.
  */
-const PORT_METHODS = [
-  // IssuerPort
-  'offerCredential',
-  'getExchange',
-  // VerifierPort
-  'requestPresentation',
-  'getPresentation',
-  // HolderPort
-  'acceptOffer',
-  'rejectOffer',
-  // ConnectionPort
-  'createInvitation',
-  'acceptInvitation',
-  'list',
-  'getById',
-  // RevocationPort
-  'revoke',
-  'batchRevoke',
-] as const;
+const PORT_METHODS_BY_PORT = {
+  issuer: ['offerCredential', 'getExchange'],
+  verifier: ['requestPresentation', 'getPresentation'],
+  holder: ['acceptOffer', 'rejectOffer'],
+  connection: ['createInvitation', 'acceptInvitation', 'list', 'getById'],
+  revocation: ['revoke', 'batchRevoke'],
+} as const;
+
+const PORT_METHODS = Object.values(PORT_METHODS_BY_PORT).flat();
 
 type ListedMethod = (typeof PORT_METHODS)[number];
 
@@ -44,11 +35,11 @@ type PortMethod = {
 
 /**
  * Enforces `docs/observability-metrics.md`'s coverage rule at compile time
- * rather than at review. Adding a method to any port interface without listing
- * it above fails the build here, because a counter that silently ignores a new
- * method still looks authoritative while under-reporting — which is worse than
- * having no counter at all. The reverse assignment catches a listed name that
- * no longer exists on the surface.
+ * rather than at review. Adding a method to any port interface without adding
+ * it to the map above fails the build here, because a counter that silently
+ * ignores a new method still looks authoritative while under-reporting — which
+ * is worse than having no counter at all. The reverse assignment catches a
+ * listed name that no longer exists on the surface.
  */
 type UncoveredMethod = Exclude<PortMethod, ListedMethod>;
 type CoverageComplete = [UncoveredMethod] extends [never] ? true : never;
