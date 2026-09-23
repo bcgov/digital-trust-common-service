@@ -737,9 +737,10 @@ Job spans exist to answer one question: **which tenant's background work is slow
 or failing, and which request caused it?** Job failures are otherwise invisible —
 nobody is waiting on a response to notice them.
 
-Every job handler runs inside a span named `<queue> process`, tagged with the
-queue, the pg-boss job id, and the tenant and operation the job belongs to. In
-Tempo:
+Job handlers registered through `JobsService` run inside a span named
+`<queue> process`, tagged with the queue, the pg-boss job id, and the tenant and
+operation the job belongs to. The scheduled purge workers register with pg-boss
+directly and do not appear. In Tempo:
 
 ```
 { span.messaging.system = "pg-boss" }

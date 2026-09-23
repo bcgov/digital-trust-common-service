@@ -1695,8 +1695,10 @@ handler. Every line the handler logs then carries the same `request_id`,
 `tenant_id`, and `trace_id` as the request that caused the work — including
 lines from code that has no idea it is running in a worker.
 
-This happens in `JobsService` for every queue, so a worker cannot forget to do
-it and a new worker gets it for free.
+This happens in `JobsService`, so any worker registered through it gets the
+behaviour for free and cannot forget it. Two scheduled cleanup workers — the
+operation purge and the OIDC model purge — still call pg-boss directly, so
+their lines carry no job context and they produce no span.
 
 Each handler also runs inside a span named `<queue> process`, carrying the
 queue, the pg-boss job id, and the `tenant.id` and `operation.id` the job
