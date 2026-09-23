@@ -198,6 +198,29 @@ describe('tracing', () => {
       serviceName: undefined,
     });
   });
+  // Trace-to-log correlation has no application code behind it: the pino
+  // instrumentation injects trace_id/span_id/trace_flags as a side effect of
+  // being registered here. Disabling it would break correlation silently,
+  // since logging itself keeps working. The fields themselves are asserted
+  // end-to-end in trace-log-correlation.e2e-spec.ts, which needs a real Node
+  // process — Jest's module registry bypasses the loader hook that patches
+  // pino, so it cannot be proven in this tier.
+  it('leaves the pino instrumentation enabled so logs carry trace context', () => {
+    process.env.OTEL_ENABLED = 'true';
+    const { getNodeAutoInstrumentations } = mockTelemetryDependencies();
+
+    loadTracing();
+
+    const config = getNodeAutoInstrumentations.mock.calls[0][0] as Record<
+      string,
+      { enabled?: boolean } | undefined
+    >;
+
+    expect(config['@opentelemetry/instrumentation-pino']?.enabled).not.toBe(
+      false,
+    );
+  });
+
   it('remembers the server span for incoming requests only', () => {
     process.env.OTEL_ENABLED = 'true';
     const { getNodeAutoInstrumentations } = mockTelemetryDependencies();

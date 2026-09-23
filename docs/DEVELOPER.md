@@ -651,22 +651,85 @@ labels for filtering.
 #### Correlating a log line with its trace
 
 When a log line is emitted inside an active span, the OpenTelemetry pino
-instrumentation adds `trace_id` and `span_id` automatically — there is no
-application code doing this. Expanding such a line in Grafana shows a
-**Trace: …** button that opens it in Tempo.
+instrumentation adds `trace_id`, `span_id` and `trace_flags` automatically —
+there is no application code doing this, and
+[trace-log-correlation.e2e-spec.ts](../apps/digital-trust-common-service/test/trace-log-correlation.e2e-spec.ts)
+locks the behaviour in. Expanding such a line in Grafana shows a **Trace: …**
+button that opens it in Tempo.
 
-`trace_id` arrives as structured metadata rather than a stream label, so filter
-for it *after* the selector:
+**The query differs between local and deployed**, because the two send logs to
+Loki by different routes. Using the wrong one returns nothing and looks
+identical to broken correlation.
+
+| | how the line reaches Loki | where `trace_id` ends up |
+| --- | --- | --- |
+| local | SDK pushes log records over OTLP (`OTEL_LOGS_EXPORTER=otlp`) | OTLP attribute → **structured metadata** |
+| deployed | pod stdout → Alloy → Loki (`otel.logsExporter: none`) | a field inside the JSON **body** |
+
+**This divergence is a gap in the local stack, not a design intent.** The local
+stack runs no log shipper, so pushing records over OTLP is currently the only
+way lines reach Grafana; deployed, the same push would duplicate what Alloy
+already ships from stdout, which is why it is off there.
+
+The consequence matters more than the cause: **confirming correlation locally
+does not prove the deployed path works.** The two exercise different routes
+into Loki, different query shapes, and different datasource matchers. Local is
+useful for checking that the service *emits* trace fields; only the deployed
+query below tells you whether an operator can actually follow them. Local
+should eventually ship stdout through a collector the way OpenShift does, which
+would collapse both rows into one.
+
+Locally, `trace_id` is structured metadata, so filter for it *after* the
+selector — putting it inside `{...}` matches nothing:
 
 ```
 {service_name="digital-trust-common-service"} | trace_id != ""
 ```
 
-Putting `trace_id` inside the `{...}` selector matches nothing.
+Deployed, the whole JSON line is the log body, so the line must be parsed
+first. **Without `| json` this returns nothing:**
 
-Expect few matches today. Almost every current log site is startup or background
-work, where there is no active span; the service does not yet log during request
-handling. That changes once a per-request access log is emitted.
+```
+{app="digital-trust-common-service"} | json | trace_id != ""
+```
+
+`app` selects the service but is identical for dev and every PR preview, so add
+`instance` when you need one deployment — see
+[Selecting one deployment](./observability-metrics.md#selecting-one-deployment).
+
+#### Validating correlation end to end
+
+1. Run the query above for the environment you are in and confirm `trace_id` is
+   present on a line.
+2. Expand the line and confirm a **Trace: …** link is rendered. If `trace_id` is
+   visible but no link appears, the log side is fine and the Loki datasource's
+   derived field is the problem.
+3. Click it and confirm Tempo opens that trace rather than an empty result.
+4. From a span in that trace, confirm the link back returns the service's lines.
+
+The deployed Loki datasource matches the trace ID with a regex over the raw
+line, because the ID is part of the JSON body:
+
+```yaml
+matcherType: regex
+matcherRegex: '"trace_id":\s*"([a-f0-9]{32})"'
+```
+
+`matcherType: label` is not unavailable — it is simply the wrong matcher for
+this ingest path, since it matches against structured metadata, which deployed
+lines do not carry. It would become the better choice only if the platform
+collector gained a JSON parsing stage that promoted `trace_id`. That is a
+shared collector configuration, so such a stage would need to be scoped to this
+service's lines rather than applied to every log line on the platform.
+
+**Do not read an empty result as broken without checking what is being logged.**
+The service emits a per-request access log, so request handling should produce a
+line per request rather than only the startup and background work that has no
+active span. That makes this query more informative than it used to be: an
+access log that appears *without* `trace_id` means correlation is broken for the
+case operators care about most, not that there is simply little to correlate.
+Either way, confirm the query returns *some* line before concluding the
+datasource is misconfigured.
 
 ### Stop the stack
 
