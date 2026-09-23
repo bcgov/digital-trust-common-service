@@ -5,7 +5,8 @@ import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Test, TestingModule } from '@nestjs/testing';
-import { propagation } from '@opentelemetry/api';
+import { propagation, trace } from '@opentelemetry/api';
+import type { Tracer } from '@opentelemetry/api';
 
 import { ShutdownRegistry } from '../shutdown/shutdown-registry';
 
@@ -257,6 +258,8 @@ describe('JobsService', () => {
   describe('job correlation', () => {
     const TRACEPARENT =
       '00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01';
+    const TENANT_ID = '3f2504e0-4f89-41d3-9a0c-0305e82c3301';
+    const OPERATION_ID = '9c858901-8a57-4791-81fe-4c455b099bc9';
 
     type TestJob = { id: string; data: Record<string, unknown> };
 
@@ -276,6 +279,44 @@ describe('JobsService', () => {
       ];
 
       return workHandler;
+    };
+
+    /**
+     * Runs one job against a stand-in tracer and hands back the attributes the
+     * job span was opened with.
+     */
+    const jobSpanAttributes = async (
+      queueName: string,
+      data: Record<string, unknown>,
+    ): Promise<Record<string, unknown>> => {
+      const span = {
+        setStatus: jest.fn(),
+        recordException: jest.fn(),
+        end: jest.fn(),
+      };
+      const startActiveSpan = jest.fn(
+        (
+          _name: string,
+          _options: unknown,
+          _parent: unknown,
+          callback: (span: unknown) => Promise<void>,
+        ) => callback(span),
+      );
+      const getTracer = jest
+        .spyOn(trace, 'getTracer')
+        .mockReturnValue({ startActiveSpan } as unknown as Tracer);
+
+      const workHandler = await startWorker(queueName, () => Promise.resolve());
+      await workHandler([{ id: 'j1', data }]);
+
+      getTracer.mockRestore();
+
+      const [, options] = startActiveSpan.mock.calls.at(-1) as [
+        string,
+        { attributes: Record<string, unknown> },
+      ];
+
+      return options.attributes;
     };
 
     it('carries the trace context of the enqueuing request on the job data', async () => {
@@ -418,6 +459,68 @@ describe('JobsService', () => {
       );
 
       errorSpy.mockRestore();
+    });
+
+    it('keeps the request operation id off the job payload', async () => {
+      // audit.write persists operationId as the operation the record is
+      // about, and leaves it unset when there is none. Injecting the
+      // request's would be written to the record as if it were that
+      // operation.
+      getRequestContext.mockReturnValueOnce({
+        requestId: 'req-1',
+        operationId: OPERATION_ID,
+      });
+      send.mockResolvedValue('job-1');
+
+      await service.publish('audit.write', { foo: 'bar' });
+
+      expect(send).toHaveBeenCalledWith('audit.write', {
+        foo: 'bar',
+        requestId: 'req-1',
+      });
+    });
+
+    it('restores the operation id the request left on the payload', async () => {
+      const workHandler = await startWorker('audit.write', () =>
+        Promise.resolve(),
+      );
+
+      await workHandler([
+        { id: 'j1', data: { requestId: 'req-1', operationId: OPERATION_ID } },
+      ]);
+
+      expect(runRequestContext).toHaveBeenCalledWith(
+        {
+          source: 'job:audit.write',
+          requestId: 'req-1',
+          operationId: OPERATION_ID,
+        },
+        expect.any(Function),
+      );
+    });
+
+    it('tags the job span with the tenant and operation it belongs to', async () => {
+      const attributes = await jobSpanAttributes('audit.write', {
+        tenantId: TENANT_ID,
+        operationId: OPERATION_ID,
+      });
+
+      expect(attributes).toMatchObject({
+        'tenant.id': TENANT_ID,
+        'operation.id': OPERATION_ID,
+      });
+    });
+
+    it('keeps identifiers that are not ids off the job span', async () => {
+      const attributes = await jobSpanAttributes('audit.write', {
+        tenantId: 'tenant-1',
+        operationId: 'operation-1',
+      });
+
+      // Array form, because the string form would read the dot as a path
+      // into a nested object and pass whatever the attribute held.
+      expect(attributes).not.toHaveProperty(['tenant.id']);
+      expect(attributes).not.toHaveProperty(['operation.id']);
     });
   });
 

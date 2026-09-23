@@ -1,5 +1,6 @@
 import type { RequestContextStore } from '@app/common/context/request-context.interface';
 import { RequestContextService } from '@app/common/context/request-context.service';
+import { isTraceableId } from '@app/common/telemetry/traceable-id';
 import { PgBossService } from '@app/pg-boss';
 import { QUEUE_DEFINITIONS, fromTypeOrm } from '@app/pg-boss';
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
@@ -32,6 +33,9 @@ export type RegisterWorkerOptions = WorkOptions & {
 };
 
 const JOB_TRACER_NAME = 'digital-trust-common-service/jobs';
+
+const OPERATION_ID_ATTRIBUTE = 'operation.id';
+const TENANT_ID_ATTRIBUTE = 'tenant.id';
 
 // W3C trace context, carried on the job payload so the worker can continue the
 // trace of the request that enqueued the job rather than starting its own.
@@ -137,6 +141,14 @@ export class JobsService implements ShutdownParticipant, OnModuleInit {
    * the tenant the job is about, which is not necessarily the same tenant
    * as the request's correlation context (e.g. a platform-admin action).
    * Clobbering it here would misattribute the job.
+   *
+   * The request's `operationId` is deliberately not carried. It is optional on
+   * `AuditWriteJobData`, where it is persisted as the operation the audit
+   * record is about, so a producer leaving it unset means "not about an
+   * operation". Since only a key the caller actually set survives the merge
+   * below, injecting it would win in exactly that case and write a wrong
+   * operation onto the record. A worker still logs `operation_id` when the
+   * payload itself carries one.
    */
   private withRequestContext(data: object | null): object | null {
     const context = this.requestContext.get();
@@ -235,6 +247,7 @@ export class JobsService implements ShutdownParticipant, OnModuleInit {
       otelContext.active(),
       this.traceCarrierFrom(data),
     );
+    const jobContext = this.jobContextFrom(queueName, data);
     const startedAt = Date.now();
 
     await trace.getTracer(JOB_TRACER_NAME).startActiveSpan(
@@ -246,49 +259,54 @@ export class JobsService implements ShutdownParticipant, OnModuleInit {
           [ATTR_MESSAGING_DESTINATION_NAME]: queueName,
           [ATTR_MESSAGING_MESSAGE_ID]: job.id,
           [ATTR_MESSAGING_OPERATION_NAME]: 'process',
+          // Which tenant and operation the job belongs to, so a trace search
+          // can narrow to one tenant's work without reading every span.
+          ...(isTraceableId(jobContext.tenantId)
+            ? { [TENANT_ID_ATTRIBUTE]: jobContext.tenantId }
+            : {}),
+          ...(isTraceableId(jobContext.operationId)
+            ? { [OPERATION_ID_ATTRIBUTE]: jobContext.operationId }
+            : {}),
         },
       },
       parent,
       async (span) =>
         // The log lines below sit inside this scope so they carry the same
         // correlation fields the handler's own lines do.
-        this.requestContext.run(
-          this.jobContextFrom(queueName, data),
-          async () => {
-            try {
-              await handler(job);
+        this.requestContext.run(jobContext, async () => {
+          try {
+            await handler(job);
 
-              this.logger.log(
-                {
-                  duration_ms: Date.now() - startedAt,
-                  job_id: job.id,
-                  queue: queueName,
-                },
-                'job completed',
-              );
-            } catch (error) {
-              span.setStatus({ code: SpanStatusCode.ERROR });
-              if (error instanceof Error) {
-                span.recordException(error);
-              }
-
-              this.logger.error(
-                {
-                  duration_ms: Date.now() - startedAt,
-                  err: error,
-                  job_id: job.id,
-                  queue: queueName,
-                },
-                'job failed',
-              );
-
-              // Rethrown so pg-boss still applies its retry policy.
-              throw error;
-            } finally {
-              span.end();
+            this.logger.log(
+              {
+                duration_ms: Date.now() - startedAt,
+                job_id: job.id,
+                queue: queueName,
+              },
+              'job completed',
+            );
+          } catch (error) {
+            span.setStatus({ code: SpanStatusCode.ERROR });
+            if (error instanceof Error) {
+              span.recordException(error);
             }
-          },
-        ),
+
+            this.logger.error(
+              {
+                duration_ms: Date.now() - startedAt,
+                err: error,
+                job_id: job.id,
+                queue: queueName,
+              },
+              'job failed',
+            );
+
+            // Rethrown so pg-boss still applies its retry policy.
+            throw error;
+          } finally {
+            span.end();
+          }
+        }),
     );
   }
 
@@ -303,11 +321,13 @@ export class JobsService implements ShutdownParticipant, OnModuleInit {
   ): RequestContextStore {
     const requestId = data.requestId;
     const tenantId = data.tenantId;
+    const operationId = data.operationId;
 
     return {
       source: `job:${queueName}`,
       ...(typeof requestId === 'string' ? { requestId } : {}),
       ...(typeof tenantId === 'string' ? { tenantId } : {}),
+      ...(typeof operationId === 'string' ? { operationId } : {}),
     };
   }
 

@@ -1698,6 +1698,17 @@ lines from code that has no idea it is running in a worker.
 This happens in `JobsService` for every queue, so a worker cannot forget to do
 it and a new worker gets it for free.
 
+Each handler also runs inside a span named `<queue> process`, carrying the
+queue, the pg-boss job id, and the `tenant.id` and `operation.id` the job
+belongs to — the same span attributes an HTTP request carries, so a trace search
+can narrow to one tenant's work whether it happened in a request or a worker.
+Identifiers that are not well-formed ids are left off rather than indexed.
+
+Both come from the job payload rather than from the enqueuing request. An
+operation id in particular is a domain field on some payloads and is persisted
+there, so the request's own is deliberately not written onto the payload — a
+producer that leaves it unset means the job is not about an operation.
+
 Each job also produces one line of its own when it finishes, carrying `queue`,
 `job_id`, and `duration_ms`. A failure is logged the same way and then
 rethrown, so pg-boss still applies its retry policy.

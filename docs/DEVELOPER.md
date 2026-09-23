@@ -731,6 +731,37 @@ case operators care about most, not that there is simply little to correlate.
 Either way, confirm the query returns *some* line before concluding the
 datasource is misconfigured.
 
+#### Background job traces
+
+Job spans exist to answer one question: **which tenant's background work is slow
+or failing, and which request caused it?** Job failures are otherwise invisible —
+nobody is waiting on a response to notice them.
+
+Every job handler runs inside a span named `<queue> process`, tagged with the
+queue, the pg-boss job id, and the tenant and operation the job belongs to. In
+Tempo:
+
+```
+{ span.messaging.system = "pg-boss" }
+{ span.messaging.system = "pg-boss" && span.tenant.id = "<tenant-uuid>" }
+{ span.messaging.destination.name = "audit.write" && duration > 5s }
+```
+
+To confirm a job is tied to the request that queued it:
+
+1. Run the first query and open a job span.
+2. Confirm it sits in the same trace as the HTTP request that enqueued it,
+   rather than in a trace of its own. A job with no parent request — a cron
+   schedule — correctly starts its own trace.
+3. Take the `trace_id` from that trace and run the log query above with it. The
+   worker's own lines should come back alongside the request's.
+4. Confirm those worker lines carry `source` of `job:<queue>`, and the same
+   `request_id` as the request.
+
+A job span whose trace contains only the job means the trace context did not
+survive the payload. A worker line with no `source` means the context was not
+restored around the handler.
+
 ### Stop the stack
 
 ```bash
