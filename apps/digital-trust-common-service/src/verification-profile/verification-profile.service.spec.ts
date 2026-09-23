@@ -319,6 +319,118 @@ describe('VerificationProfileService', () => {
         ConflictException,
       );
     });
+
+    it('rethrows a repository error unrelated to the unique constraint', async () => {
+      mockFindByNameAndVersion.mockResolvedValue(null);
+      mockCreate.mockRejectedValue(new Error('connection lost'));
+
+      await expect(service.create(tenantId, dto, auth)).rejects.toThrow(
+        'connection lost',
+      );
+    });
+
+    it('rethrows a QueryFailedError for an unrelated constraint violation', async () => {
+      mockFindByNameAndVersion.mockResolvedValue(null);
+      mockCreate.mockRejectedValue(
+        Object.assign(
+          new QueryFailedError('insert', [], new Error('fk violation')),
+          { driverError: { code: '23503', constraint: 'fk_other' } },
+        ),
+      );
+
+      await expect(service.create(tenantId, dto, auth)).rejects.toThrow(
+        QueryFailedError,
+      );
+    });
+
+    it('rejects an input_descriptor without a string id', async () => {
+      await expect(
+        service.create(
+          tenantId,
+          {
+            ...dto,
+            presentationDefinition: {
+              id: 'age-over-18',
+              input_descriptors: [{ constraints: { fields: [] } }],
+            },
+          },
+          auth,
+        ),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('derives no requested attributes when a descriptor has no constraints.fields array', async () => {
+      mockFindByNameAndVersion.mockResolvedValue(null);
+      mockCreate.mockResolvedValue(mockProfile);
+
+      await service.create(
+        tenantId,
+        {
+          ...dto,
+          presentationDefinition: {
+            id: 'age-over-18',
+            input_descriptors: [{ id: 'person_credential' }],
+          },
+        },
+        auth,
+      );
+
+      expect(mockCreate).toHaveBeenCalledWith(
+        expect.objectContaining({ requestedAttributes: [] }),
+      );
+    });
+
+    it('skips a field whose path is not an array', async () => {
+      mockFindByNameAndVersion.mockResolvedValue(null);
+      mockCreate.mockResolvedValue(mockProfile);
+
+      await service.create(
+        tenantId,
+        {
+          ...dto,
+          presentationDefinition: {
+            id: 'age-over-18',
+            input_descriptors: [
+              {
+                id: 'person_credential',
+                constraints: { fields: [{ path: '$.credentialSubject' }] },
+              },
+            ],
+          },
+        },
+        auth,
+      );
+
+      expect(mockCreate).toHaveBeenCalledWith(
+        expect.objectContaining({ requestedAttributes: [] }),
+      );
+    });
+
+    it('skips a non-string path entry', async () => {
+      mockFindByNameAndVersion.mockResolvedValue(null);
+      mockCreate.mockResolvedValue(mockProfile);
+
+      await service.create(
+        tenantId,
+        {
+          ...dto,
+          presentationDefinition: {
+            id: 'age-over-18',
+            input_descriptors: [
+              {
+                id: 'person_credential',
+                constraints: { fields: [{ path: [42] }] },
+              },
+            ],
+          },
+        },
+        auth,
+      );
+
+      expect(mockCreate).toHaveBeenCalledWith(
+        expect.objectContaining({ requestedAttributes: [] }),
+      );
+    });
   });
 
   describe('findById', () => {
@@ -365,6 +477,47 @@ describe('VerificationProfileService', () => {
       expect(result.data).toEqual([mockProfile]);
       expect(result.pagination.has_more).toBe(true);
       expect(typeof result.pagination.next_cursor).toBe('string');
+    });
+
+    it('rejects an invalid pagination cursor', async () => {
+      const invalidCursor = Buffer.from('not json', 'utf8').toString(
+        'base64url',
+      );
+
+      await expect(
+        service.findByTenantId(tenantId, {}, { cursor: invalidCursor }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('rejects a well-formed JSON cursor missing required fields', async () => {
+      const malformedCursor = Buffer.from(
+        JSON.stringify({ foo: 'bar' }),
+        'utf8',
+      ).toString('base64url');
+
+      await expect(
+        service.findByTenantId(tenantId, {}, { cursor: malformedCursor }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('decodes a valid cursor and passes it to the repository', async () => {
+      mockFindPage.mockResolvedValue({
+        items: [mockProfile],
+        nextCursor: null,
+        hasMore: false,
+      });
+      const decoded = { createdAt: '2024-01-01T00:00:00.000Z', id: 'vp-1' };
+      const validCursor = Buffer.from(JSON.stringify(decoded), 'utf8').toString(
+        'base64url',
+      );
+
+      await service.findByTenantId(tenantId, {}, { cursor: validCursor });
+
+      expect(mockFindPage).toHaveBeenCalledWith(
+        tenantId,
+        {},
+        { limit: 20, cursor: decoded },
+      );
     });
   });
 
@@ -423,6 +576,46 @@ describe('VerificationProfileService', () => {
       await expect(
         service.update(tenantId, mockProfile.id, { description: 'x' }, auth),
       ).rejects.toThrow(ConflictException);
+    });
+
+    it('updates predicates after validating them against the attribute schema', async () => {
+      mockFindById.mockResolvedValue({ ...mockProfile });
+      mockSave.mockImplementation((p: VerificationProfile) =>
+        Promise.resolve(p),
+      );
+
+      const dto: UpdateVerificationProfileDto = {
+        predicates: [
+          {
+            attribute: 'birthdate_dateint',
+            condition: VerificationPredicateCondition.GREATER_THAN_OR_EQUAL,
+            value: '19',
+          },
+        ],
+      };
+
+      const result = await service.update(tenantId, mockProfile.id, dto, auth);
+
+      expect(result.predicates).toEqual(dto.predicates);
+    });
+
+    it('updates metadata, public, and protocol_hint fields', async () => {
+      mockFindById.mockResolvedValue({ ...mockProfile });
+      mockSave.mockImplementation((p: VerificationProfile) =>
+        Promise.resolve(p),
+      );
+
+      const dto: UpdateVerificationProfileDto = {
+        metadata: { note: 'reviewed' },
+        isPublic: true,
+        protocolHint: VerificationProfileProtocolHint.OID4VP,
+      };
+
+      const result = await service.update(tenantId, mockProfile.id, dto, auth);
+
+      expect(result.metadata).toEqual({ note: 'reviewed' });
+      expect(result.isPublic).toBe(true);
+      expect(result.protocolHint).toBe(VerificationProfileProtocolHint.OID4VP);
     });
   });
 
@@ -491,6 +684,18 @@ describe('VerificationProfileService', () => {
 
     it('rejects deprecating a non-published profile', async () => {
       mockFindById.mockResolvedValue({ ...mockProfile });
+
+      await expect(
+        service.deprecate(tenantId, mockProfile.id, auth),
+      ).rejects.toThrow(ConflictException);
+    });
+
+    it('rejects when the transition loses the race', async () => {
+      mockFindById.mockResolvedValue({
+        ...mockProfile,
+        status: VerificationProfileStatus.PUBLISHED,
+      });
+      mockTransitionStatus.mockResolvedValue(false);
 
       await expect(
         service.deprecate(tenantId, mockProfile.id, auth),
