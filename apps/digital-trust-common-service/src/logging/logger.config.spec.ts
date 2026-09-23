@@ -308,7 +308,7 @@ describe('request correlation fields', () => {
   it('attaches the request id and source to every line in a request', () => {
     const { logger, requestContext, stream } = createLogger('info');
 
-    requestContext.run({ requestId: REQUEST_ID }, () => {
+    requestContext.run({ requestId: REQUEST_ID, source: 'api' }, () => {
       logger.info('first');
       logger.info('second');
     });
@@ -322,7 +322,7 @@ describe('request correlation fields', () => {
   it('attaches tenant and operation ids once they are resolved', () => {
     const { logger, requestContext, stream } = createLogger('info');
 
-    requestContext.run({ requestId: REQUEST_ID }, () => {
+    requestContext.run({ requestId: REQUEST_ID, source: 'api' }, () => {
       logger.info('before resolution');
       requestContext.setTenantId(TENANT_ID);
       requestContext.setOperationId(OPERATION_ID);
@@ -336,6 +336,34 @@ describe('request correlation fields', () => {
       operation_id: OPERATION_ID,
       tenant_id: TENANT_ID,
     });
+  });
+
+  it('names the queue a background job came from', () => {
+    const { logger, requestContext, stream } = createLogger('info');
+
+    requestContext.run(
+      { requestId: REQUEST_ID, source: 'job:audit.write' },
+      () => {
+        logger.info('writing audit row');
+      },
+    );
+
+    expect(stream.records()[0]).toMatchObject({
+      request_id: REQUEST_ID,
+      source: 'job:audit.write',
+    });
+  });
+
+  it('omits the request id for a job nobody requested', () => {
+    const { logger, requestContext, stream } = createLogger('info');
+
+    requestContext.run({ source: 'job:audit.partition-maintain' }, () => {
+      logger.info('maintaining partitions');
+    });
+
+    const record = stream.records()[0];
+    expect(record).toMatchObject({ source: 'job:audit.partition-maintain' });
+    expect(record).not.toHaveProperty('request_id');
   });
 });
 

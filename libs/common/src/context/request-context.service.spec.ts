@@ -14,8 +14,8 @@ describe('RequestContextService', () => {
   });
 
   it('exposes the store for the duration of the callback', () => {
-    service.run({ requestId: 'req-1' }, () => {
-      expect(service.get()).toEqual({ requestId: 'req-1' });
+    service.run({ requestId: 'req-1', source: 'api' }, () => {
+      expect(service.get()).toEqual({ requestId: 'req-1', source: 'api' });
       expect(service.getRequestId()).toBe('req-1');
       expect(service.getTenantId()).toBeUndefined();
     });
@@ -24,7 +24,7 @@ describe('RequestContextService', () => {
   });
 
   it('sets the tenant id on the active store', () => {
-    service.run({ requestId: 'req-1' }, () => {
+    service.run({ requestId: 'req-1', source: 'api' }, () => {
       service.setTenantId('tenant-1');
       expect(service.getTenantId()).toBe('tenant-1');
     });
@@ -39,11 +39,11 @@ describe('RequestContextService', () => {
     const results: string[] = [];
 
     await Promise.all([
-      service.run({ requestId: 'req-a' }, async () => {
+      service.run({ requestId: 'req-a', source: 'api' }, async () => {
         await new Promise((resolve) => setTimeout(resolve, 10));
         results.push(`a:${service.getRequestId()}`);
       }),
-      service.run({ requestId: 'req-b' }, async () => {
+      service.run({ requestId: 'req-b', source: 'api' }, async () => {
         await Promise.resolve();
         results.push(`b:${service.getRequestId()}`);
       }),
