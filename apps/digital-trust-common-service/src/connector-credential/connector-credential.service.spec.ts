@@ -657,7 +657,7 @@ describe('ConnectorCredentialService', () => {
       ).rejects.toThrow(registrationError);
 
       expect(mockUpdate).toHaveBeenNthCalledWith(
-        2,
+        1,
         mockCredential.id,
         expect.objectContaining({
           credentialsEncrypted: mockCredential.credentialsEncrypted,
@@ -711,7 +711,7 @@ describe('ConnectorCredentialService', () => {
         service.update(mockCredential.tenantId, mockCredential.id, dto, auth),
       ).rejects.toThrow(registrationError);
 
-      expect(mockUpdate).toHaveBeenCalledTimes(1);
+      expect(mockUpdate).toHaveBeenCalledTimes(0);
     });
 
     it('should log rather than throw when the compensating revert also fails', async () => {

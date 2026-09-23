@@ -375,21 +375,13 @@ export class ConnectorCredentialService {
       );
     }
 
-    const updated = await this.credentialRepository.update(id, updates);
-
-    if (!updated) {
-      throw new NotFoundException(
-        `Connector credential with ID '${id}' was not found.`,
-      );
-    }
-
     if (existing.connectorType === ConnectorType.TRACTION && dto.credentials) {
-      const webhookUrl = this.buildWebhookUrl(updated.id);
+      const webhookUrl = this.buildWebhookUrl(existing.id);
       const webhookSecret = dto.credentials.webhookSecret as string;
       const context: ConnectorContext = {
-        connectorId: updated.id,
+        connectorId: existing.id,
         tenantId,
-        endpointUrl: updated.endpointUrl,
+        endpointUrl,
         credentials: { ...dto.credentials },
       };
 
@@ -413,6 +405,14 @@ export class ConnectorCredentialService {
           throw registrationError;
         }
       }
+    }
+
+    const updated = await this.credentialRepository.update(id, updates);
+
+    if (!updated) {
+      throw new NotFoundException(
+        `Connector credential with ID '${id}' was not found.`,
+      );
     }
 
     await this.lazyRotateKeyIfNeeded(updated);
