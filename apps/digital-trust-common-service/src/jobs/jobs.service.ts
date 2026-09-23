@@ -151,10 +151,10 @@ export class JobsService implements ShutdownParticipant, OnModuleInit {
    * payload itself carries one.
    *
    * The trace context is the one exception to caller-wins: it carries no
-   * domain meaning, so the context active at enqueue time is authoritative
-   * and overwrites any `traceparent`/`tracestate` already on the data.
-   * Nothing sets those today, and a stale one would attach the job to the
-   * wrong trace.
+   * domain meaning, so the context active at enqueue time is authoritative.
+   * A `traceparent`/`tracestate` already on the data is replaced, and dropped
+   * outright when nothing is active, so a job can never inherit a stale trace
+   * and be attached to an unrelated request.
    */
   private withRequestContext(data: object | null): object | null {
     const context = this.requestContext.get();
@@ -170,17 +170,22 @@ export class JobsService implements ShutdownParticipant, OnModuleInit {
     // request sent. Job data is persisted, so only the keys a worker reads
     // back are carried forward.
     const carrier = this.traceCarrierFrom(injected);
+    const base = (data ?? {}) as Record<string, unknown>;
+    const stale = TRACE_CARRIER_KEYS.some((key) => key in base);
 
-    if (!context && Object.keys(carrier).length === 0) {
+    if (!context && !stale && Object.keys(carrier).length === 0) {
       return data;
     }
 
-    const base = (data ?? {}) as Record<string, unknown>;
+    const domain = { ...base };
+    for (const key of TRACE_CARRIER_KEYS) {
+      delete domain[key];
+    }
 
     return {
       ...(context?.tenantId ? { tenantId: context.tenantId } : {}),
       ...(context?.requestId ? { requestId: context.requestId } : {}),
-      ...base,
+      ...domain,
       ...carrier,
     };
   }

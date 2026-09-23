@@ -359,6 +359,19 @@ describe('JobsService', () => {
       inject.mockRestore();
     });
 
+    it('drops a stale trace context when nothing is active', async () => {
+      // No SDK registered means inject writes nothing, so a traceparent left
+      // on the data would otherwise survive and pull the job into an old trace.
+      send.mockResolvedValue('job-1');
+
+      await service.publish('audit.write', {
+        foo: 'bar',
+        traceparent: '00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01',
+      });
+
+      expect(send).toHaveBeenCalledWith('audit.write', { foo: 'bar' });
+    });
+
     it('prefers the active trace context over one already on the data', async () => {
       const inject = jest
         .spyOn(propagation, 'inject')
