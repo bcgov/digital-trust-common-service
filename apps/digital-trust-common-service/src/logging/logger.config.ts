@@ -127,8 +127,9 @@ export function createLoggerModuleParams(
     level,
     // Correlation identifiers are attached here rather than threaded through
     // call sites, so every line emitted during a request carries them —
-    // including lines from code that knows nothing about the request. Startup
-    // and worker lines run with no store and are unaffected.
+    // including lines from code that knows nothing about the request. Workers
+    // restore the same store around each job, so job lines carry them too.
+    // Startup lines run with no store and are unaffected.
     mixin: createRequestContextMixin(requestContext),
     redact: {
       censor: REDACTION_CENSOR,

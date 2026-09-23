@@ -337,6 +337,49 @@ describe('JobsService', () => {
       inject.mockRestore();
     });
 
+    it('keeps propagator extras such as baggage off the job data', async () => {
+      // The default propagators also emit `baggage`, which echoes whatever an
+      // inbound request sent. Job data is persisted, and nothing reads it back.
+      const inject = jest
+        .spyOn(propagation, 'inject')
+        .mockImplementation((_context, carrier) => {
+          const target = carrier as Record<string, string>;
+          target.traceparent = TRACEPARENT;
+          target.baggage = 'user=someone,tier=gold';
+        });
+      send.mockResolvedValue('job-1');
+
+      await service.publish('audit.write', { foo: 'bar' });
+
+      expect(send).toHaveBeenCalledWith('audit.write', {
+        foo: 'bar',
+        traceparent: TRACEPARENT,
+      });
+
+      inject.mockRestore();
+    });
+
+    it('prefers the active trace context over one already on the data', async () => {
+      const inject = jest
+        .spyOn(propagation, 'inject')
+        .mockImplementation((_context, carrier) => {
+          (carrier as Record<string, string>).traceparent = TRACEPARENT;
+        });
+      send.mockResolvedValue('job-1');
+
+      await service.publish('audit.write', {
+        foo: 'bar',
+        traceparent: '00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01',
+      });
+
+      expect(send).toHaveBeenCalledWith('audit.write', {
+        foo: 'bar',
+        traceparent: TRACEPARENT,
+      });
+
+      inject.mockRestore();
+    });
+
     it('runs a job inside the context the enqueuing request left on the payload', async () => {
       const workHandler = await startWorker('audit.write', () =>
         Promise.resolve(),

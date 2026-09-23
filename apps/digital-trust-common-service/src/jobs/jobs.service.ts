@@ -149,15 +149,27 @@ export class JobsService implements ShutdownParticipant, OnModuleInit {
    * below, injecting it would win in exactly that case and write a wrong
    * operation onto the record. A worker still logs `operation_id` when the
    * payload itself carries one.
+   *
+   * The trace context is the one exception to caller-wins: it carries no
+   * domain meaning, so the context active at enqueue time is authoritative
+   * and overwrites any `traceparent`/`tracestate` already on the data.
+   * Nothing sets those today, and a stale one would attach the job to the
+   * wrong trace.
    */
   private withRequestContext(data: object | null): object | null {
     const context = this.requestContext.get();
-    const carrier: Record<string, string> = {};
+    const injected: Record<string, string> = {};
 
     // Injects nothing when no SDK is registered or no span is active, which is
     // why the trace context is read separately from the request context: work
     // can be traced without having arrived over HTTP.
-    propagation.inject(otelContext.active(), carrier);
+    propagation.inject(otelContext.active(), injected);
+
+    // The configured propagators can write more than the trace context — the
+    // default set also emits `baggage`, which carries whatever an inbound
+    // request sent. Job data is persisted, so only the keys a worker reads
+    // back are carried forward.
+    const carrier = this.traceCarrierFrom(injected);
 
     if (!context && Object.keys(carrier).length === 0) {
       return data;
@@ -168,8 +180,8 @@ export class JobsService implements ShutdownParticipant, OnModuleInit {
     return {
       ...(context?.tenantId ? { tenantId: context.tenantId } : {}),
       ...(context?.requestId ? { requestId: context.requestId } : {}),
-      ...carrier,
       ...base,
+      ...carrier,
     };
   }
 
