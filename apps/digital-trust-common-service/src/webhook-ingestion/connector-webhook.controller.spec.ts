@@ -1,3 +1,4 @@
+import { ConnectorType } from '../connection/connection.entity';
 import { ProtocolStateChangeWorker } from '../protocol-state-change/protocol-state-change.worker';
 
 import { ConnectorWebhookController } from './connector-webhook.controller';
@@ -10,6 +11,7 @@ describe('ConnectorWebhookController', () => {
   const request = {
     tenantId: 'tenant-1',
     connectorId: 'connector-1',
+    connectorType: ConnectorType.TRACTION,
   } as ConnectorWebhookRequest;
 
   beforeEach(() => {
@@ -19,14 +21,18 @@ describe('ConnectorWebhookController', () => {
     );
   });
 
-  it('enqueues a protocol.state-change job for a known topic', async () => {
+  it('maps the Traction wire topic to the generic ProtocolTopic and enqueues a job', async () => {
     const body = {
-      credential_exchange_id: 'cred-exch-1',
+      cred_ex_id: 'cred-exch-1',
       state: 'credential_issued',
       thread_id: 'thread-1',
     };
 
-    const result = await controller.receive('issue_credential', body, request);
+    const result = await controller.receive(
+      'issue_credential_v2_0',
+      body,
+      request,
+    );
 
     expect(worker.enqueue).toHaveBeenCalledWith({
       tenantId: 'tenant-1',
@@ -38,17 +44,49 @@ describe('ConnectorWebhookController', () => {
     expect(result).toEqual({});
   });
 
-  it('reads the connection_id field for the connections topic', async () => {
+  it('reads the connection_id field for the connections wire topic', async () => {
     const body = { connection_id: 'conn-1', state: 'active' };
 
     await controller.receive('connections', body, request);
 
     expect(worker.enqueue).toHaveBeenCalledWith(
-      expect.objectContaining({ externalId: 'conn-1' }),
+      expect.objectContaining({
+        topic: 'connections',
+        externalId: 'conn-1',
+      }),
     );
   });
 
-  it('acknowledges an unknown topic without enqueuing', async () => {
+  it('reads the cred_ex_id field for the issuer_cred_rev wire topic', async () => {
+    const body = { cred_ex_id: 'cred-exch-1', state: 'revoked' };
+
+    await controller.receive('issuer_cred_rev', body, request);
+
+    expect(worker.enqueue).toHaveBeenCalledWith(
+      expect.objectContaining({
+        topic: 'revocation_registry',
+        externalId: 'cred-exch-1',
+      }),
+    );
+  });
+
+  it('acknowledges any topic for a connector type with no wire topic mappings', async () => {
+    const credoRequest = {
+      ...request,
+      connectorType: ConnectorType.CREDO,
+    } as ConnectorWebhookRequest;
+
+    const result = await controller.receive(
+      'issue_credential_v2_0',
+      { cred_ex_id: 'cred-exch-1', state: 'credential_issued' },
+      credoRequest,
+    );
+
+    expect(result).toEqual({});
+    expect(worker.enqueue).not.toHaveBeenCalled();
+  });
+
+  it('acknowledges an unknown wire topic without enqueuing', async () => {
     const result = await controller.receive(
       'unknown_topic',
       { state: 'x' },
@@ -61,7 +99,7 @@ describe('ConnectorWebhookController', () => {
 
   it('acknowledges a payload missing the topic-specific external id field without enqueuing', async () => {
     const result = await controller.receive(
-      'issue_credential',
+      'issue_credential_v2_0',
       { state: 'credential_issued' },
       request,
     );
@@ -72,8 +110,8 @@ describe('ConnectorWebhookController', () => {
 
   it('acknowledges a payload missing state without enqueuing', async () => {
     const result = await controller.receive(
-      'issue_credential',
-      { credential_exchange_id: 'cred-exch-1' },
+      'issue_credential_v2_0',
+      { cred_ex_id: 'cred-exch-1' },
       request,
     );
 
