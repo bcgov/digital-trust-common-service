@@ -8,6 +8,7 @@ import {
   forwardRef,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
@@ -34,6 +35,8 @@ import { UpdateConnectorCredentialDto } from './dto/update-connector-credential.
 
 @Injectable()
 export class ConnectorCredentialService {
+  private readonly logger = new Logger(ConnectorCredentialService.name);
+
   public constructor(
     private readonly credentialRepository: ConnectorCredentialRepository,
     @Inject(forwardRef(() => TenantService))
@@ -80,19 +83,38 @@ export class ConnectorCredentialService {
     } as ConnectorCredential);
 
     if (dto.connectorType === ConnectorType.TRACTION) {
-      await this.webhookRegistrar.ensureWebhookRegistered(
-        {
-          connectorId: credential.id,
-          tenantId,
-          endpointUrl: credential.endpointUrl,
-          credentials: { ...dto.credentials },
-        },
-        this.buildWebhookUrl(credential.id),
-        dto.credentials.webhookSecret as string,
-      );
+      try {
+        await this.webhookRegistrar.ensureWebhookRegistered(
+          {
+            connectorId: credential.id,
+            tenantId,
+            endpointUrl: credential.endpointUrl,
+            credentials: { ...dto.credentials },
+          },
+          this.buildWebhookUrl(credential.id),
+          dto.credentials.webhookSecret as string,
+        );
+      } catch (registrationError) {
+        // Registration failed after the row was persisted — delete it so a
+        // failed create doesn't leave an active, un-callable connector behind
+        // for a retry to duplicate.
+        await this.deleteOrLogFailure(credential.id);
+        throw registrationError;
+      }
     }
 
     return credential;
+  }
+
+  private async deleteOrLogFailure(id: string): Promise<void> {
+    try {
+      await this.credentialRepository.delete(id);
+    } catch (cleanupError) {
+      this.logger.error(
+        `Failed to delete connector credential '${id}' after webhook registration failure; manual cleanup required.`,
+        cleanupError instanceof Error ? cleanupError.stack : cleanupError,
+      );
+    }
   }
 
   /**
@@ -247,6 +269,22 @@ export class ConnectorCredentialService {
     }
 
     if (dto.credentials !== undefined) {
+      if (
+        existing.connectorType === ConnectorType.TRACTION &&
+        !dto.credentials.webhookSecret
+      ) {
+        // A PATCH replaces the whole credentials object, so omitting
+        // webhook_secret here (e.g. when only rotating api_key) must not
+        // erase the secret Traction already sends back on callbacks.
+        const existingCredentials =
+          this.encryptionService.decrypt<ConnectorCredentialsDto>(
+            existing.credentialsEncrypted,
+            existing.keyVersion,
+          );
+
+        dto.credentials.webhookSecret = existingCredentials.webhookSecret;
+      }
+
       await this.assertHealthy(
         existing.connectorType,
         endpointUrl,
@@ -289,9 +327,56 @@ export class ConnectorCredentialService {
       );
     }
 
+    if (existing.connectorType === ConnectorType.TRACTION && dto.credentials) {
+      try {
+        // Re-register so external agents wallet_webhook_urls entry reflects
+        // whatever we just persisted, including a preserved/rotated secret.
+        await this.webhookRegistrar.ensureWebhookRegistered(
+          {
+            connectorId: updated.id,
+            tenantId,
+            endpointUrl: updated.endpointUrl,
+            credentials: { ...dto.credentials },
+          },
+          this.buildWebhookUrl(updated.id),
+          dto.credentials.webhookSecret as string,
+        );
+      } catch (registrationError) {
+        // Registration failed after we already persisted the new credentials —
+        // revert to the prior state so a failed PATCH doesn't leave our stored
+        // secret out of sync with what Traction is actually sending.
+        await this.revertOrLogFailure(id, existing, updates);
+        throw registrationError;
+      }
+    }
+
     await this.lazyRotateKeyIfNeeded(updated);
 
     return updated;
+  }
+
+  private async revertOrLogFailure(
+    id: string,
+    existing: ConnectorCredential,
+    appliedUpdates: Partial<Omit<ConnectorCredential, 'tenant'>>,
+  ): Promise<void> {
+    const revert: Partial<Omit<ConnectorCredential, 'tenant'>> = {
+      credentialsEncrypted: existing.credentialsEncrypted,
+      keyVersion: existing.keyVersion,
+    };
+
+    if (appliedUpdates.endpointUrl !== undefined) {
+      revert.endpointUrl = existing.endpointUrl;
+    }
+
+    try {
+      await this.credentialRepository.update(id, revert);
+    } catch (cleanupError) {
+      this.logger.error(
+        `Failed to revert connector credential '${id}' after webhook registration failure; manual cleanup required.`,
+        cleanupError instanceof Error ? cleanupError.stack : cleanupError,
+      );
+    }
   }
 
   public async delete(

@@ -234,6 +234,30 @@ describe('ConnectorCredentialService', () => {
       expect(mockEnsureWebhookRegistered).not.toHaveBeenCalled();
     });
 
+    it('should delete the credential row when webhook registration fails', async () => {
+      mockCreate.mockResolvedValue(mockCredential);
+      const registrationError = new Error('Traction unreachable');
+      mockEnsureWebhookRegistered.mockRejectedValue(registrationError);
+
+      await expect(
+        service.create(mockCredential.tenantId, dto, auth),
+      ).rejects.toThrow(registrationError);
+
+      expect(mockDelete).toHaveBeenCalledWith(mockCredential.id);
+    });
+
+    it('should log rather than throw when the compensating delete also fails', async () => {
+      mockCreate.mockResolvedValue(mockCredential);
+      mockEnsureWebhookRegistered.mockRejectedValue(
+        new Error('Traction unreachable'),
+      );
+      mockDelete.mockRejectedValue(new Error('DB unavailable'));
+
+      await expect(
+        service.create(mockCredential.tenantId, dto, auth),
+      ).rejects.toThrow('Traction unreachable');
+    });
+
     it('should throw TenantAccessDeniedException when the caller tenant does not match', async () => {
       const otherAuth: AuthContext = { ...auth, tenantId: 'other-tenant' };
 
@@ -513,6 +537,161 @@ describe('ConnectorCredentialService', () => {
           keyVersion: expect.any(Number),
         }),
       );
+    });
+
+    it('should preserve the existing webhook secret when rotating Traction credentials without one', async () => {
+      mockDecrypt.mockReturnValue({
+        ...mockCredentials,
+        webhookSecret: 'whsec_existing',
+      });
+      const dto: UpdateConnectorCredentialDto = {
+        credentials: { apiKey: 'sk_live_new456' },
+      };
+
+      mockFindById.mockResolvedValue(mockCredential);
+      mockUpdate.mockResolvedValue(mockCredential);
+
+      await service.update(
+        mockCredential.tenantId,
+        mockCredential.id,
+        dto,
+        auth,
+      );
+
+      expect(dto.credentials?.webhookSecret).toEqual('whsec_existing');
+      expect(mockEncrypt).toHaveBeenCalledWith(
+        expect.objectContaining({ webhookSecret: 'whsec_existing' }),
+      );
+      expect(mockEnsureWebhookRegistered).toHaveBeenCalledWith(
+        {
+          connectorId: mockCredential.id,
+          tenantId: mockCredential.tenantId,
+          endpointUrl: mockCredential.endpointUrl,
+          credentials: dto.credentials,
+        },
+        `https://app.localhost/api/v1/connectors/${mockCredential.id}/webhooks`,
+        'whsec_existing',
+      );
+    });
+
+    it('should re-register the webhook with a newly-rotated secret', async () => {
+      const dto: UpdateConnectorCredentialDto = {
+        credentials: {
+          apiKey: 'sk_live_new456',
+          webhookSecret: 'whsec_rotated',
+        },
+      };
+
+      mockFindById.mockResolvedValue(mockCredential);
+      mockUpdate.mockResolvedValue(mockCredential);
+
+      await service.update(
+        mockCredential.tenantId,
+        mockCredential.id,
+        dto,
+        auth,
+      );
+
+      expect(mockEnsureWebhookRegistered).toHaveBeenCalledWith(
+        {
+          connectorId: mockCredential.id,
+          tenantId: mockCredential.tenantId,
+          endpointUrl: mockCredential.endpointUrl,
+          credentials: dto.credentials,
+        },
+        `https://app.localhost/api/v1/connectors/${mockCredential.id}/webhooks`,
+        'whsec_rotated',
+      );
+    });
+
+    it('should revert the persisted credentials when webhook re-registration fails', async () => {
+      const dto: UpdateConnectorCredentialDto = {
+        endpointUrl: 'https://traction.example.com/api/v2',
+        credentials: {
+          apiKey: 'sk_live_new456',
+          webhookSecret: 'whsec_rotated',
+        },
+      };
+      const registrationError = new Error('Traction unreachable');
+
+      mockFindById.mockResolvedValue(mockCredential);
+      mockUpdate.mockResolvedValue(mockCredential);
+      mockEnsureWebhookRegistered.mockRejectedValue(registrationError);
+
+      await expect(
+        service.update(mockCredential.tenantId, mockCredential.id, dto, auth),
+      ).rejects.toThrow(registrationError);
+
+      expect(mockUpdate).toHaveBeenNthCalledWith(
+        2,
+        mockCredential.id,
+        expect.objectContaining({
+          credentialsEncrypted: mockCredential.credentialsEncrypted,
+          keyVersion: mockCredential.keyVersion,
+          endpointUrl: mockCredential.endpointUrl,
+        }),
+      );
+    });
+
+    it('should log rather than throw when the compensating revert also fails', async () => {
+      const dto: UpdateConnectorCredentialDto = {
+        credentials: { apiKey: 'sk_live_new456' },
+      };
+
+      mockFindById.mockResolvedValue(mockCredential);
+      mockUpdate
+        .mockResolvedValueOnce(mockCredential)
+        .mockRejectedValueOnce(new Error('DB unavailable'));
+      mockEnsureWebhookRegistered.mockRejectedValue(
+        new Error('Traction unreachable'),
+      );
+
+      await expect(
+        service.update(mockCredential.tenantId, mockCredential.id, dto, auth),
+      ).rejects.toThrow('Traction unreachable');
+    });
+
+    it('should not re-register the webhook for a non-Traction connector', async () => {
+      const nonTractionCredential = {
+        ...mockCredential,
+        connectorType: ConnectorType.CREDO,
+      };
+      const dto: UpdateConnectorCredentialDto = {
+        credentials: { apiKey: 'sk_live_new456' },
+      };
+
+      mockFindById.mockResolvedValue(nonTractionCredential);
+      mockUpdate.mockResolvedValue(nonTractionCredential);
+
+      await service.update(
+        mockCredential.tenantId,
+        mockCredential.id,
+        dto,
+        auth,
+      );
+
+      expect(mockEnsureWebhookRegistered).not.toHaveBeenCalled();
+    });
+
+    it('should not re-register the webhook when only the endpoint changes', async () => {
+      const dto: UpdateConnectorCredentialDto = {
+        endpointUrl: 'https://traction.example.com/api/v2',
+      };
+
+      mockFindById.mockResolvedValue(mockCredential);
+      mockUpdate.mockResolvedValue({
+        ...mockCredential,
+        endpointUrl: dto.endpointUrl,
+      });
+
+      await service.update(
+        mockCredential.tenantId,
+        mockCredential.id,
+        dto,
+        auth,
+      );
+
+      expect(mockEnsureWebhookRegistered).not.toHaveBeenCalled();
     });
 
     it('should throw UnprocessableEntityException when rotation health check fails', async () => {

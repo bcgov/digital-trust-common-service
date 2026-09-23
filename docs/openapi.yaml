@@ -2462,31 +2462,51 @@ paths:
                 example: 'attachment; filename="audit-logs-2025-01-15.csv"'
 
   # ─── Webhook Ingestion ───────────────────────────────────────────────
-  /api/v1/webhooks/traction:
+  /api/v1/connectors/{connectorId}/webhooks/topic/{topic}:
     post:
-      operationId: ingestTractionWebhook
-      summary: Receive Traction webhook callbacks
+      operationId: ingestConnectorWebhook
+      summary: Receive an inbound connector protocol state-change webhook
       description: |
-        Endpoint for Traction/ACA-Py to deliver state change notifications.
-        Authenticated via shared secret or IP whitelist.
+        Callback shared by every connector type (Traction, and in future Credo)
+        for protocol state-change notifications. Authenticated by the shared
+        secret configured on the `connectorId` connector, sent as `X-Api-Key` —
+        not a tenant JWT. Malformed or unrecognized payloads are acknowledged
+        with 200 and dropped rather than rejected, since ACA-Py retries on
+        non-2xx.
       tags: [Webhook Ingestion]
-      security: []
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: connectorId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ConnectorCredential id
+        - name: topic
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [issue_credential, present_proof, connections, revocation_registry]
+          description: Protocol topic
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              description: Traction webhook payload (topic-dependent structure)
-              properties:
-                topic:
-                  type: string
-                  enum: [issue_credential, present_proof, connections, revocation_registry]
-                payload:
-                  type: object
+              description: Traction/ACA-Py webhook payload (topic-dependent structure)
       responses:
         "200":
-          description: Webhook received and enqueued
+          description: Webhook accepted for async processing
+        "401":
+          description: Webhook authentication failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   # ─── Admin ──────────────────────────────────────────────────────────
   /api/v1/admin/operations/stats:
@@ -2910,6 +2930,12 @@ components:
       scheme: bearer
       bearerFormat: JWT
       description: App-issued JWT obtained via /oidc/token (client_credentials or authorization_code grant)
+
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-Api-Key
+      description: Per-connector shared webhook secret, not a tenant JWT
 
   parameters:
     TenantId:
