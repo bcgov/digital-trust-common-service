@@ -112,10 +112,10 @@ describe('Connector webhook ingestion (integration)', () => {
     const externalId = `ext-${Math.random().toString(36).slice(2)}`;
 
     await request(app.getHttpServer() as App)
-      .post(webhookUrl('issue_credential'))
+      .post(webhookUrl('issue_credential_v2_0'))
       .set(WEBHOOK_SECRET_HEADER, webhookSecret)
       .send({
-        credential_exchange_id: externalId,
+        cred_ex_id: externalId,
         state: 'credential_issued',
       })
       .expect(200);
@@ -128,7 +128,7 @@ describe('Connector webhook ingestion (integration)', () => {
         externalId,
         protocolState: 'credential_issued',
         payload: {
-          credential_exchange_id: externalId,
+          cred_ex_id: externalId,
           state: 'credential_issued',
         },
       }),
@@ -137,10 +137,10 @@ describe('Connector webhook ingestion (integration)', () => {
 
   it('rejects with 401 when the secret is wrong', async () => {
     await request(app.getHttpServer() as App)
-      .post(webhookUrl('issue_credential'))
+      .post(webhookUrl('issue_credential_v2_0'))
       .set(WEBHOOK_SECRET_HEADER, 'wrong-secret')
       .send({
-        credential_exchange_id: 'ext-1',
+        cred_ex_id: 'ext-1',
         state: 'credential_issued',
       })
       .expect(401);
@@ -150,8 +150,8 @@ describe('Connector webhook ingestion (integration)', () => {
 
   it('rejects with 401 when the secret is missing', async () => {
     await request(app.getHttpServer() as App)
-      .post(webhookUrl('issue_credential'))
-      .send({ credential_exchange_id: 'ext-1', state: 'credential_issued' })
+      .post(webhookUrl('issue_credential_v2_0'))
+      .send({ cred_ex_id: 'ext-1', state: 'credential_issued' })
       .expect(401);
 
     expect(mockBoss.send).not.toHaveBeenCalled();
@@ -160,11 +160,11 @@ describe('Connector webhook ingestion (integration)', () => {
   it('rejects with 401 for an unknown connector id', async () => {
     await request(app.getHttpServer() as App)
       .post(
-        `${API_BASE_PATH}/connectors/00000000-0000-0000-0000-000000000000/webhooks/topic/issue_credential`,
+        `${API_BASE_PATH}/connectors/00000000-0000-0000-0000-000000000000/webhooks/topic/issue_credential_v2_0`,
       )
       .set(WEBHOOK_SECRET_HEADER, webhookSecret)
       .send({
-        credential_exchange_id: 'ext-1',
+        cred_ex_id: 'ext-1',
         state: 'credential_issued',
       })
       .expect(401);
@@ -186,7 +186,7 @@ describe('Connector webhook ingestion (integration)', () => {
 
   it('acknowledges a payload missing the topic-specific external id field without enqueuing', async () => {
     await request(app.getHttpServer() as App)
-      .post(webhookUrl('issue_credential'))
+      .post(webhookUrl('issue_credential_v2_0'))
       .set(WEBHOOK_SECRET_HEADER, webhookSecret)
       .send({
         state: 'credential_issued',
@@ -198,10 +198,10 @@ describe('Connector webhook ingestion (integration)', () => {
 
   it('acknowledges a payload missing state without enqueuing', async () => {
     await request(app.getHttpServer() as App)
-      .post(webhookUrl('issue_credential'))
+      .post(webhookUrl('issue_credential_v2_0'))
       .set(WEBHOOK_SECRET_HEADER, webhookSecret)
       .send({
-        credential_exchange_id: 'ext-1',
+        cred_ex_id: 'ext-1',
       })
       .expect(200);
 
