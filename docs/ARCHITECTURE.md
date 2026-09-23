@@ -1537,7 +1537,7 @@ Every log line emitted by digital-trust-common-service includes labels for Loki 
 |-------|-------------|--------|
 | `app` | Low (1-2) | `digital-trust-common-service` (or `traction` for raw agent logs) |
 | `tenant_id` | Medium | Extracted from AsyncLocalStorage request context |
-| `source` | Low (4 values) | `api`, `adapter:traction`, `adapter:credo`, `webhook` |
+| `source` | Low (bounded by queue count) | `api`, `job:<queue>`, `adapter:traction`, `adapter:credo`, `webhook` |
 | `traction_tenant_id` | Medium | Traction sub-tenant id (only on `app=traction` streams; surfaced once Traction logs JSON) |
 
 Structured metadata (Loki 3.x) or JSON fields (queryable with `| json`):
@@ -1678,8 +1678,38 @@ Client → API Pod → Traction/Credo Agent Service
 open, and `tenant_id` and `operation_id` join them as soon as each is resolved.
 They come from a pino mixin reading the `AsyncLocalStorage` request context
 rather than from call sites, so a line carries them even when the code emitting
-it knows nothing about the request. Lines with no request context — startup and
-background workers — simply omit them rather than emitting empty values.
+it knows nothing about the request. Lines emitted with no context open — during
+startup, for instance — simply omit them rather than emitting empty values.
+
+`source` says what kind of work produced the line: `api` for anything emitted
+while serving a request, and `job:<queue>` for anything emitted while running a
+background job.
+
+#### Background jobs
+
+A job usually starts life inside a request, and the work it does is part of
+what that request asked for. So when a job is enqueued, the correlation
+identifiers and the trace context of the enqueuing request are written onto the
+job payload, and when a worker picks the job up they are restored around the
+handler. Every line the handler logs then carries the same `request_id`,
+`tenant_id`, and `trace_id` as the request that caused the work — including
+lines from code that has no idea it is running in a worker.
+
+This happens in `JobsService` for every queue, so a worker cannot forget to do
+it and a new worker gets it for free.
+
+Each job also produces one line of its own when it finishes, carrying `queue`,
+`job_id`, and `duration_ms`. A failure is logged the same way and then
+rethrown, so pg-boss still applies its retry policy.
+
+Jobs that nobody requested — cron schedules and startup tasks — have no request
+to inherit from. They get a `source` so their lines are still attributable to a
+queue, but no `request_id` is invented for them.
+
+Because the job continues the enqueuing request's trace rather than starting a
+new one, a delayed or retried job stretches that trace out over however long it
+waited. That is the cost of being able to get from a request to the work it
+caused using nothing but the shared `trace_id`.
 
 #### Access log
 
