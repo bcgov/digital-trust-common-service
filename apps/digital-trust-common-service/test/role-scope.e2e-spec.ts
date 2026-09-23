@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+
 import { JwtGuard, ScopeGuard, TENANT_SUPERUSER_SCOPE } from '@app/auth';
 import { OidcModel } from '@app/oidc/entities/oidc-model.entity';
 import { PgBossService } from '@app/pg-boss';
@@ -165,11 +167,15 @@ describe('Role scope API (e2e)', () => {
   });
 
   async function createUser(role: TenantUserRole): Promise<TenantUser> {
+    // A timestamp is not unique enough: two users of the same role created in
+    // the same millisecond collide on uq_tenant_user_external_user.
+    const unique = randomUUID();
+
     return tenantUserRepo.save(
       tenantUserRepo.create({
         tenantId: tenant.id,
-        externalUserId: `e2e-${role}-${Date.now()}`,
-        email: `${role}-${Date.now()}@example.test`,
+        externalUserId: `e2e-${role}-${unique}`,
+        email: `${role}-${unique}@example.test`,
         role,
         status: TenantUserStatus.ACTIVE,
       }),
