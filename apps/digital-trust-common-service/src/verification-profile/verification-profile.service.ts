@@ -210,10 +210,13 @@ export class VerificationProfileService {
             continue;
           }
 
-          const match = /([^.[\]]+)$/.exec(path);
+          const segments = path
+            .split(/[.[\]]/)
+            .filter((segment) => segment.length > 0);
+          const lastSegment = segments[segments.length - 1];
 
-          if (match) {
-            names.add(match[1]);
+          if (lastSegment) {
+            names.add(lastSegment);
           }
         }
       }
