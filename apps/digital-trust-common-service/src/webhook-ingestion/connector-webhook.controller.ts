@@ -114,10 +114,6 @@ export class ConnectorWebhookController {
     const connectorType = request.connectorType as ConnectorType;
     const topic = CONNECTOR_WIRE_TOPIC_MAP[connectorType]?.[wireTopic];
 
-    this.logger.log(
-      `Received webhook for connector type '${connectorType}' on topic '${wireTopic}' with body: ${JSON.stringify(body)}`,
-    );
-
     // ACA-Py retries on non-2xx, so malformed/unrecognized payloads are
     // acknowledged and dropped rather than rejected.
     if (!topic) {
