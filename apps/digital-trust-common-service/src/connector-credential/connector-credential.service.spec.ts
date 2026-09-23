@@ -38,6 +38,7 @@ describe('ConnectorCredentialService', () => {
   let mockHealthCheck: jest.Mock;
   let mockExistsByConnectorId: jest.Mock;
   let mockEnsureWebhookRegistered: jest.Mock;
+  let mockIsWebhookRegistered: jest.Mock;
   let mockGetConfig: jest.Mock;
 
   const mockCredentials = { apiKey: 'sk_live_abc123' };
@@ -92,6 +93,9 @@ describe('ConnectorCredentialService', () => {
       .mockResolvedValue({ status: 'healthy', latencyMs: 10 });
     mockExistsByConnectorId = jest.fn().mockResolvedValue(false);
     mockEnsureWebhookRegistered = jest.fn().mockResolvedValue(undefined);
+    // Verification defaults to "not registered", matching a registration
+    // call that genuinely never reached Traction.
+    mockIsWebhookRegistered = jest.fn().mockResolvedValue(false);
     mockGetConfig = jest
       .fn()
       .mockReturnValue({ publicUrl: 'https://app.localhost' });
@@ -145,6 +149,7 @@ describe('ConnectorCredentialService', () => {
           provide: TractionWebhookRegistrar,
           useValue: {
             ensureWebhookRegistered: mockEnsureWebhookRegistered,
+            isWebhookRegistered: mockIsWebhookRegistered,
           },
         },
         {
@@ -234,10 +239,11 @@ describe('ConnectorCredentialService', () => {
       expect(mockEnsureWebhookRegistered).not.toHaveBeenCalled();
     });
 
-    it('should delete the credential row when webhook registration fails', async () => {
+    it('should delete the credential row when registration fails and Traction confirms it was never applied', async () => {
       mockCreate.mockResolvedValue(mockCredential);
       const registrationError = new Error('Traction unreachable');
       mockEnsureWebhookRegistered.mockRejectedValue(registrationError);
+      mockIsWebhookRegistered.mockResolvedValue(false);
 
       await expect(
         service.create(mockCredential.tenantId, dto, auth),
@@ -246,11 +252,38 @@ describe('ConnectorCredentialService', () => {
       expect(mockDelete).toHaveBeenCalledWith(mockCredential.id);
     });
 
+    it('should keep the credential row when a failed registration call is confirmed to have applied remotely', async () => {
+      mockCreate.mockResolvedValue(mockCredential);
+      mockEnsureWebhookRegistered.mockRejectedValue(new Error('ETIMEDOUT'));
+      mockIsWebhookRegistered.mockResolvedValue(true);
+
+      const result = await service.create(mockCredential.tenantId, dto, auth);
+
+      expect(mockDelete).not.toHaveBeenCalled();
+      expect(result).toEqual(mockCredential);
+    });
+
+    it('should leave the credential row in place when the registration state cannot be verified', async () => {
+      mockCreate.mockResolvedValue(mockCredential);
+      const registrationError = new Error('Traction unreachable');
+      mockEnsureWebhookRegistered.mockRejectedValue(registrationError);
+      mockIsWebhookRegistered.mockRejectedValue(
+        new Error('Traction unreachable'),
+      );
+
+      await expect(
+        service.create(mockCredential.tenantId, dto, auth),
+      ).rejects.toThrow(registrationError);
+
+      expect(mockDelete).not.toHaveBeenCalled();
+    });
+
     it('should log rather than throw when the compensating delete also fails', async () => {
       mockCreate.mockResolvedValue(mockCredential);
       mockEnsureWebhookRegistered.mockRejectedValue(
         new Error('Traction unreachable'),
       );
+      mockIsWebhookRegistered.mockResolvedValue(false);
       mockDelete.mockRejectedValue(new Error('DB unavailable'));
 
       await expect(
@@ -604,7 +637,7 @@ describe('ConnectorCredentialService', () => {
       );
     });
 
-    it('should revert the persisted credentials when webhook re-registration fails', async () => {
+    it('should revert the persisted credentials when webhook re-registration fails and Traction confirms it was never applied', async () => {
       const dto: UpdateConnectorCredentialDto = {
         endpointUrl: 'https://traction.example.com/api/v2',
         credentials: {
@@ -617,6 +650,7 @@ describe('ConnectorCredentialService', () => {
       mockFindById.mockResolvedValue(mockCredential);
       mockUpdate.mockResolvedValue(mockCredential);
       mockEnsureWebhookRegistered.mockRejectedValue(registrationError);
+      mockIsWebhookRegistered.mockResolvedValue(false);
 
       await expect(
         service.update(mockCredential.tenantId, mockCredential.id, dto, auth),
@@ -633,6 +667,53 @@ describe('ConnectorCredentialService', () => {
       );
     });
 
+    it('should keep the persisted update when a failed re-registration call is confirmed to have applied remotely', async () => {
+      const dto: UpdateConnectorCredentialDto = {
+        credentials: {
+          apiKey: 'sk_live_new456',
+          webhookSecret: 'whsec_rotated',
+        },
+      };
+
+      mockFindById.mockResolvedValue(mockCredential);
+      mockUpdate.mockResolvedValue(mockCredential);
+      mockEnsureWebhookRegistered.mockRejectedValue(new Error('ETIMEDOUT'));
+      mockIsWebhookRegistered.mockResolvedValue(true);
+
+      const result = await service.update(
+        mockCredential.tenantId,
+        mockCredential.id,
+        dto,
+        auth,
+      );
+
+      expect(mockUpdate).toHaveBeenCalledTimes(1);
+      expect(result).toEqual(mockCredential);
+    });
+
+    it('should leave the persisted update in place when the registration state cannot be verified', async () => {
+      const dto: UpdateConnectorCredentialDto = {
+        credentials: {
+          apiKey: 'sk_live_new456',
+          webhookSecret: 'whsec_rotated',
+        },
+      };
+      const registrationError = new Error('Traction unreachable');
+
+      mockFindById.mockResolvedValue(mockCredential);
+      mockUpdate.mockResolvedValue(mockCredential);
+      mockEnsureWebhookRegistered.mockRejectedValue(registrationError);
+      mockIsWebhookRegistered.mockRejectedValue(
+        new Error('Traction unreachable'),
+      );
+
+      await expect(
+        service.update(mockCredential.tenantId, mockCredential.id, dto, auth),
+      ).rejects.toThrow(registrationError);
+
+      expect(mockUpdate).toHaveBeenCalledTimes(1);
+    });
+
     it('should log rather than throw when the compensating revert also fails', async () => {
       const dto: UpdateConnectorCredentialDto = {
         credentials: { apiKey: 'sk_live_new456' },
@@ -645,6 +726,7 @@ describe('ConnectorCredentialService', () => {
       mockEnsureWebhookRegistered.mockRejectedValue(
         new Error('Traction unreachable'),
       );
+      mockIsWebhookRegistered.mockResolvedValue(false);
 
       await expect(
         service.update(mockCredential.tenantId, mockCredential.id, dto, auth),

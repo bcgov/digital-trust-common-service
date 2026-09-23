@@ -33,6 +33,7 @@ jest.mock('@nestjs/swagger', () => {
     ApiOperation: decorator,
     ApiOkResponse: decorator,
     ApiForbiddenResponse: decorator,
+    ApiParam: decorator,
     ApiTags: decorator,
   };
 });

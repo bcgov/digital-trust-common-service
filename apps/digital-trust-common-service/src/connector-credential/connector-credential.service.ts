@@ -1,6 +1,7 @@
 import { randomBytes } from 'crypto';
 
 import type { AuthContext } from '@app/auth';
+import type { ConnectorContext } from '@app/credential-ports';
 import { OidcConfigService } from '@app/oidc/config';
 import {
   BadRequestException,
@@ -83,27 +84,82 @@ export class ConnectorCredentialService {
     } as ConnectorCredential);
 
     if (dto.connectorType === ConnectorType.TRACTION) {
+      const webhookUrl = this.buildWebhookUrl(credential.id);
+      const webhookSecret = dto.credentials.webhookSecret as string;
+      const context: ConnectorContext = {
+        connectorId: credential.id,
+        tenantId,
+        endpointUrl: credential.endpointUrl,
+        credentials: { ...dto.credentials },
+      };
+
       try {
         await this.webhookRegistrar.ensureWebhookRegistered(
-          {
-            connectorId: credential.id,
-            tenantId,
-            endpointUrl: credential.endpointUrl,
-            credentials: { ...dto.credentials },
-          },
-          this.buildWebhookUrl(credential.id),
-          dto.credentials.webhookSecret as string,
+          context,
+          webhookUrl,
+          webhookSecret,
         );
       } catch (registrationError) {
-        // Registration failed after the row was persisted — delete it so a
-        // failed create doesn't leave an active, un-callable connector behind
-        // for a retry to duplicate.
-        await this.deleteOrLogFailure(credential.id);
-        throw registrationError;
+        const confirmedRegistered = await this.reconcileFailedRegistration(
+          context,
+          webhookUrl,
+          webhookSecret,
+          () => this.deleteOrLogFailure(credential.id),
+        );
+
+        if (!confirmedRegistered) {
+          throw registrationError;
+        }
       }
     }
 
     return credential;
+  }
+
+  /**
+   * A registration call can fail after Traction has already applied the PUT
+   * (e.g. the response times out), so a bare try/catch can't tell "never
+   * happened" apart from "happened, but we didn't hear back". This checks
+   * Traction's actual wallet state before deciding what's safe:
+   * - registered remotely: the failure was cosmetic, keep the persisted row.
+   * - confirmed not registered: safe to run the cleanup callback.
+   * - verification itself fails: state is unknown, so nothing is reverted —
+   *   an unverified revert risks diverging from a change Traction did apply.
+   * Returns true only when the remote state is confirmed to already match.
+   */
+  private async reconcileFailedRegistration(
+    context: ConnectorContext,
+    webhookUrl: string,
+    webhookSecret: string,
+    onConfirmedNotRegistered: () => Promise<void>,
+  ): Promise<boolean> {
+    let isRegistered: boolean;
+
+    try {
+      isRegistered = await this.webhookRegistrar.isWebhookRegistered(
+        context,
+        webhookUrl,
+        webhookSecret,
+      );
+    } catch (verificationError) {
+      this.logger.error(
+        `Could not verify Traction's webhook registration state for connector '${context.connectorId}' after a registration failure; leaving it as-is pending manual reconciliation.`,
+        verificationError instanceof Error
+          ? verificationError.stack
+          : verificationError,
+      );
+      return false;
+    }
+
+    if (isRegistered) {
+      this.logger.warn(
+        `Webhook registration for connector '${context.connectorId}' reported failure but Traction confirms it was applied; keeping the persisted state.`,
+      );
+      return true;
+    }
+
+    await onConfirmedNotRegistered();
+    return false;
   }
 
   private async deleteOrLogFailure(id: string): Promise<void> {
@@ -328,25 +384,34 @@ export class ConnectorCredentialService {
     }
 
     if (existing.connectorType === ConnectorType.TRACTION && dto.credentials) {
+      const webhookUrl = this.buildWebhookUrl(updated.id);
+      const webhookSecret = dto.credentials.webhookSecret as string;
+      const context: ConnectorContext = {
+        connectorId: updated.id,
+        tenantId,
+        endpointUrl: updated.endpointUrl,
+        credentials: { ...dto.credentials },
+      };
+
       try {
         // Re-register so external agents wallet_webhook_urls entry reflects
         // whatever we just persisted, including a preserved/rotated secret.
         await this.webhookRegistrar.ensureWebhookRegistered(
-          {
-            connectorId: updated.id,
-            tenantId,
-            endpointUrl: updated.endpointUrl,
-            credentials: { ...dto.credentials },
-          },
-          this.buildWebhookUrl(updated.id),
-          dto.credentials.webhookSecret as string,
+          context,
+          webhookUrl,
+          webhookSecret,
         );
       } catch (registrationError) {
-        // Registration failed after we already persisted the new credentials —
-        // revert to the prior state so a failed PATCH doesn't leave our stored
-        // secret out of sync with what Traction is actually sending.
-        await this.revertOrLogFailure(id, existing, updates);
-        throw registrationError;
+        const confirmedRegistered = await this.reconcileFailedRegistration(
+          context,
+          webhookUrl,
+          webhookSecret,
+          () => this.revertOrLogFailure(id, existing, updates),
+        );
+
+        if (!confirmedRegistered) {
+          throw registrationError;
+        }
       }
     }
 

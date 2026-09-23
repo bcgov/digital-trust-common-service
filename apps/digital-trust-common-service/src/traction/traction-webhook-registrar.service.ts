@@ -1,5 +1,7 @@
 import { ConnectorContext } from '@app/credential-ports';
 import { Injectable } from '@nestjs/common';
+import { InjectDataSource } from '@nestjs/typeorm';
+import { DataSource } from 'typeorm';
 
 import { assertSafeConnectorUrl } from '../common/assert-safe-connector-url';
 import { buildTractionWalletUrl } from '../common/traction-request';
@@ -10,6 +12,9 @@ import { TractionTokenManager } from './traction-token-manager.service';
 interface TractionWalletSettings {
   readonly wallet_webhook_urls?: string[];
 }
+
+/** Fixed advisory-lock class id for Traction webhook registration writes. */
+export const TRACTION_WEBHOOK_LOCK_CLASS = 4209;
 
 /**
  * Registers this connector's inbound webhook URL and secret with Traction,
@@ -28,13 +33,71 @@ export class TractionWebhookRegistrar {
   public constructor(
     private readonly httpClient: TractionHttpClient,
     private readonly tokenManager: TractionTokenManager,
+    @InjectDataSource() private readonly dataSource: DataSource,
   ) {}
 
+  /**
+   * Connector credentials don't enforce one connector per Traction wallet,
+   * so two registrations against the same `endpointUrl` can race: both read
+   * the same `wallet_webhook_urls`, and the later PUT silently drops the
+   * other's newly added entry. `pg_advisory_xact_lock`, keyed on the wallet's
+   * endpoint URL, serializes the read-modify-write across replicas (same
+   * pattern as role-scope.repository.ts); the lock releases on commit or
+   * rollback.
+   */
   public async ensureWebhookRegistered(
     context: ConnectorContext,
     webhookUrl: string,
     webhookSecret: string,
   ): Promise<void> {
+    await this.dataSource.transaction(async (manager) => {
+      await manager.query('SELECT pg_advisory_xact_lock($1, hashtext($2))', [
+        TRACTION_WEBHOOK_LOCK_CLASS,
+        context.endpointUrl,
+      ]);
+
+      const { url, headers, entries } = await this.fetchCurrentEntries(context);
+
+      const otherEntries = entries.filter(
+        (entry) => !this.isOurEntry(entry, webhookUrl),
+      );
+
+      await this.httpClient.request({
+        method: 'PUT',
+        url,
+        headers,
+        data: {
+          wallet_webhook_urls: [
+            ...otherEntries,
+            `${webhookUrl}#${webhookSecret}`,
+          ],
+        },
+      });
+    });
+  }
+
+  /**
+   * Whether Traction's wallet currently has exactly this webhook url/secret
+   * registered. Used to distinguish an `ensureWebhookRegistered` failure that
+   * never reached Traction from one where the PUT was applied remotely but
+   * the response was lost (e.g. a timeout) — callers must not assume the
+   * latter is safely reversible.
+   */
+  public async isWebhookRegistered(
+    context: ConnectorContext,
+    webhookUrl: string,
+    webhookSecret: string,
+  ): Promise<boolean> {
+    const { entries } = await this.fetchCurrentEntries(context);
+
+    return entries.includes(`${webhookUrl}#${webhookSecret}`);
+  }
+
+  private async fetchCurrentEntries(context: ConnectorContext): Promise<{
+    url: string;
+    headers: Record<string, string>;
+    entries: string[];
+  }> {
     await assertSafeConnectorUrl(context.endpointUrl);
 
     const token = await this.tokenManager.getToken(context);
@@ -51,21 +114,7 @@ export class TractionWebhookRegistrar {
       headers,
     });
 
-    const otherEntries = (current.data.wallet_webhook_urls ?? []).filter(
-      (entry) => !this.isOurEntry(entry, webhookUrl),
-    );
-
-    await this.httpClient.request({
-      method: 'PUT',
-      url,
-      headers,
-      data: {
-        wallet_webhook_urls: [
-          ...otherEntries,
-          `${webhookUrl}#${webhookSecret}`,
-        ],
-      },
-    });
+    return { url, headers, entries: current.data.wallet_webhook_urls ?? [] };
   }
 
   private isOurEntry(entry: string, webhookUrl: string): boolean {

@@ -2489,7 +2489,7 @@ paths:
           required: true
           schema:
             type: string
-            enum: [issue_credential, present_proof, connections, revocation_registry]
+            enum: [issue_credential_v2_0, present_proof_v2_0, connections, issuer_cred_rev]
           description: Protocol topic
       requestBody:
         required: true
@@ -2498,6 +2498,7 @@ paths:
             schema:
               type: object
               description: Traction/ACA-Py webhook payload (topic-dependent structure)
+              additionalProperties: true
       responses:
         "200":
           description: Webhook accepted for async processing

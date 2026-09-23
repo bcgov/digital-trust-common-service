@@ -4788,13 +4788,15 @@ export interface operations {
                 /** @description ConnectorCredential id */
                 connectorId: string;
                 /** @description Protocol topic */
-                topic: "issue_credential" | "present_proof" | "connections" | "revocation_registry";
+                topic: "issue_credential_v2_0" | "present_proof_v2_0" | "connections" | "issuer_cred_rev";
             };
             cookie?: never;
         };
         requestBody: {
             content: {
-                "application/json": Record<string, never>;
+                "application/json": {
+                    [key: string]: unknown;
+                };
             };
         };
         responses: {
