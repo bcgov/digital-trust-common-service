@@ -7,6 +7,7 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
+  ROOT_CONTEXT,
   SpanKind,
   SpanStatusCode,
   context as otelContext,
@@ -260,10 +261,17 @@ export class JobsService implements ShutdownParticipant, OnModuleInit {
     handler: (job: Job<T>) => Promise<void>,
   ): Promise<void> {
     const data = (job.data ?? {}) as Record<string, unknown>;
-    const parent = propagation.extract(
-      otelContext.active(),
-      this.traceCarrierFrom(data),
-    );
+    const carrier = this.traceCarrierFrom(data);
+
+    // Parented from the root rather than from whatever happens to be active:
+    // this callback runs inside pg-boss's polling loop, so an instrumented
+    // database query can leave a span in scope. Extracting from the active
+    // context would quietly hang the job off that query, or off the previous
+    // job, instead of continuing the enqueuing request or starting fresh.
+    const parent =
+      Object.keys(carrier).length > 0
+        ? propagation.extract(ROOT_CONTEXT, carrier)
+        : ROOT_CONTEXT;
     const jobContext = this.jobContextFrom(queueName, data);
     const startedAt = Date.now();
 

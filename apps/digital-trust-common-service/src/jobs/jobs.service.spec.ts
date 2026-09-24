@@ -5,8 +5,13 @@ import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Test, TestingModule } from '@nestjs/testing';
-import { propagation, trace } from '@opentelemetry/api';
-import type { Tracer } from '@opentelemetry/api';
+import {
+  ROOT_CONTEXT,
+  context as otelContext,
+  propagation,
+  trace,
+} from '@opentelemetry/api';
+import type { Context, Tracer } from '@opentelemetry/api';
 
 import { ShutdownRegistry } from '../shutdown/shutdown-registry';
 
@@ -423,6 +428,57 @@ describe('JobsService', () => {
         { source: 'job:audit.partition-maintain' },
         expect.any(Function),
       );
+    });
+
+    it('starts a fresh trace for an unrequested job, ignoring any ambient span', async () => {
+      // pg-boss polls the database, so an instrumented query can leave a span
+      // in scope around this callback. A job with no carrier of its own must
+      // not end up hanging off it.
+      const span = {
+        setStatus: jest.fn(),
+        recordException: jest.fn(),
+        end: jest.fn(),
+      };
+      const startActiveSpan = jest.fn(
+        (
+          _name: string,
+          _options: unknown,
+          _parent: unknown,
+          callback: (span: unknown) => Promise<void>,
+        ) => callback(span),
+      );
+      const getTracer = jest
+        .spyOn(trace, 'getTracer')
+        .mockReturnValue({ startActiveSpan } as unknown as Tracer);
+
+      const ambient = trace.wrapSpanContext({
+        traceId: '0af7651916cd43dd8448eb211c80319c',
+        spanId: 'b7ad6b7169203331',
+        traceFlags: 1,
+      });
+      // Spied rather than entered with `otelContext.with`: no context manager
+      // is registered in a unit test, so `with` would be a no-op and the span
+      // would never actually be ambient.
+      const active = jest
+        .spyOn(otelContext, 'active')
+        .mockReturnValue(trace.setSpan(ROOT_CONTEXT, ambient));
+
+      const workHandler = await startWorker('audit.partition-maintain', () =>
+        Promise.resolve(),
+      );
+
+      await workHandler([{ id: 'j1', data: {} }]);
+
+      active.mockRestore();
+      getTracer.mockRestore();
+
+      const [, , parent] = startActiveSpan.mock.calls.at(-1) as [
+        string,
+        unknown,
+        Context,
+      ];
+
+      expect(trace.getSpanContext(parent)).toBeUndefined();
     });
 
     it('does not carry one job identifiers into the next job of a batch', async () => {
