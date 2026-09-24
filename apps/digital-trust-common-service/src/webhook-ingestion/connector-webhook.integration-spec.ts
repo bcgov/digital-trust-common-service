@@ -28,7 +28,7 @@ const mockBoss = {
 };
 
 /**
- * `connector-webhook.guard.spec.ts` and `connector-webhook.controller.spec.ts`
+ * `connector-webhook.guard.spec.ts` and `traction-webhook.controller.spec.ts`
  * both mock every collaborator, so neither proves the guard's secret lookup,
  * the strict global ValidationPipe, and the controller's enqueue actually
  * compose end to end over real HTTP through the full Nest pipeline.
@@ -105,7 +105,7 @@ describe('Connector webhook ingestion (integration)', () => {
   });
 
   function webhookUrl(topic: string): string {
-    return `${API_BASE_PATH}/connectors/${connector.id}/webhooks/topic/${topic}`;
+    return `${API_BASE_PATH}/connectors/${connector.id}/webhooks/traction/topic/${topic}`;
   }
 
   it('enqueues a protocol.state-change job on a valid webhook call', async () => {
@@ -160,7 +160,7 @@ describe('Connector webhook ingestion (integration)', () => {
   it('rejects with 401 for an unknown connector id', async () => {
     await request(app.getHttpServer() as App)
       .post(
-        `${API_BASE_PATH}/connectors/00000000-0000-0000-0000-000000000000/webhooks/topic/issue_credential_v2_0`,
+        `${API_BASE_PATH}/connectors/00000000-0000-0000-0000-000000000000/webhooks/traction/topic/issue_credential_v2_0`,
       )
       .set(WEBHOOK_SECRET_HEADER, webhookSecret)
       .send({

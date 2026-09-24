@@ -4,8 +4,8 @@ import { EncryptionModule } from '../common/crypto/encryption.module';
 import { ConnectorCredentialModule } from '../connector-credential/connector-credential.module';
 import { ProtocolStateChangeModule } from '../protocol-state-change/protocol-state-change.module';
 
-import { ConnectorWebhookController } from './connector-webhook.controller';
 import { ConnectorWebhookGuard } from './connector-webhook.guard';
+import { TractionWebhookController } from './traction-webhook.controller';
 
 @Module({
   imports: [
@@ -13,7 +13,7 @@ import { ConnectorWebhookGuard } from './connector-webhook.guard';
     EncryptionModule,
     ProtocolStateChangeModule,
   ],
-  controllers: [ConnectorWebhookController],
+  controllers: [TractionWebhookController],
   providers: [ConnectorWebhookGuard],
   exports: [ConnectorWebhookGuard],
 })

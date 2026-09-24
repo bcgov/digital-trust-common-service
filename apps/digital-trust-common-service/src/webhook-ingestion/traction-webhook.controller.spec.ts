@@ -1,10 +1,10 @@
 import { ConnectorType } from '../connection/connection.entity';
 import { ProtocolStateChangeWorker } from '../protocol-state-change/protocol-state-change.worker';
 
-import { TractionWebhookController } from './connector-webhook.controller';
 import type { ConnectorWebhookRequest } from './connector-webhook.guard';
+import { TractionWebhookController } from './traction-webhook.controller';
 
-describe('ConnectorWebhookController', () => {
+describe('TractionWebhookController', () => {
   let controller: TractionWebhookController;
   let worker: jest.Mocked<Pick<ProtocolStateChangeWorker, 'enqueue'>>;
 

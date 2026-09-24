@@ -259,11 +259,11 @@ tags:
       **Auth**: None required.
   - name: Webhook Ingestion
     description: |
-      Inbound webhook receivers for async state updates from backend agents
-      (Traction/ACA-Py, Credo Agent Service).
-      Authenticated via HMAC shared secret — not a Bearer JWT.
+      Inbound webhook receivers for async state updates from backend agents.
+      Currently Traction/ACA-Py only; Credo will get its own path when that
+      connector type is implemented.
       **Audience**: Internal — called by backend agents only, not by API consumers.
-      **Auth**: `X-Traction-Signature` HMAC header.
+      **Auth**: `X-Api-Key` shared connector secret.
 
 security:
   - BearerAuth: []
@@ -2462,17 +2462,17 @@ paths:
                 example: 'attachment; filename="audit-logs-2025-01-15.csv"'
 
   # ─── Webhook Ingestion ───────────────────────────────────────────────
-  /api/v1/connectors/{connectorId}/webhooks/topic/{topic}:
+  /api/v1/connectors/{connectorId}/webhooks/traction/topic/{topic}:
     post:
       operationId: ingestConnectorWebhook
-      summary: Receive an inbound connector protocol state-change webhook
+      summary: Receive an inbound Traction/ACA-Py protocol state-change webhook
       description: |
-        Callback shared by every connector type (Traction, and in future Credo)
-        for protocol state-change notifications. Authenticated by the shared
-        secret configured on the `connectorId` connector, sent as `X-Api-Key` —
-        not a tenant JWT. Malformed or unrecognized payloads are acknowledged
-        with 200 and dropped rather than rejected, since ACA-Py retries on
-        non-2xx.
+        Traction/ACA-Py-specific webhook callback for protocol state-change
+        notifications. Credo will get its own controller and path when that
+        connector type is implemented. Authenticated by the shared secret
+        configured on the `connectorId` connector, sent as `X-Api-Key` — not a
+        tenant JWT. Malformed or unrecognized payloads are acknowledged with
+        200 and dropped rather than rejected, since ACA-Py retries on non-2xx.
       tags: [Webhook Ingestion]
       security:
         - ApiKeyAuth: []

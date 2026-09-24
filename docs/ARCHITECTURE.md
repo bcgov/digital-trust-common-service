@@ -824,7 +824,7 @@ sequenceDiagram
 
     Note over Traction: Later — holder accepts...
 
-    Traction->>API: POST /connectors/{connectorId}/webhooks/topic/{topic} (state: credential_issued)
+    Traction->>API: POST /connectors/{connectorId}/webhooks/traction/topic/{topic} (state: credential_issued)
     API->>DB: pgboss.send('protocol.state-change', {topic, payload, tenant_id})
     API-->>Traction: 200 OK
     DB->>DB: pg-boss worker picks up job

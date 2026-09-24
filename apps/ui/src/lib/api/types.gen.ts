@@ -1305,7 +1305,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/connectors/{connectorId}/webhooks/topic/{topic}": {
+    "/api/v1/connectors/{connectorId}/webhooks/traction/topic/{topic}": {
         parameters: {
             query?: never;
             header?: never;
@@ -1315,13 +1315,13 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Receive an inbound connector protocol state-change webhook
-         * @description Callback shared by every connector type (Traction, and in future Credo)
-         *     for protocol state-change notifications. Authenticated by the shared
-         *     secret configured on the `connectorId` connector, sent as `X-Api-Key` —
-         *     not a tenant JWT. Malformed or unrecognized payloads are acknowledged
-         *     with 200 and dropped rather than rejected, since ACA-Py retries on
-         *     non-2xx.
+         * Receive an inbound Traction/ACA-Py protocol state-change webhook
+         * @description Traction/ACA-Py-specific webhook callback for protocol state-change
+         *     notifications. Credo will get its own controller and path when that
+         *     connector type is implemented. Authenticated by the shared secret
+         *     configured on the `connectorId` connector, sent as `X-Api-Key` — not a
+         *     tenant JWT. Malformed or unrecognized payloads are acknowledged with
+         *     200 and dropped rather than rejected, since ACA-Py retries on non-2xx.
          */
         post: operations["ingestConnectorWebhook"];
         delete?: never;

@@ -219,7 +219,7 @@ describe('ConnectorCredentialService', () => {
           endpointUrl: mockCredential.endpointUrl,
           credentials: dto.credentials,
         },
-        `https://app.localhost/api/v1/connectors/${mockCredential.id}/webhooks`,
+        `https://app.localhost/api/v1/connectors/${mockCredential.id}/webhooks/traction`,
         dto.credentials.webhookSecret,
       );
     });
@@ -602,7 +602,7 @@ describe('ConnectorCredentialService', () => {
           endpointUrl: mockCredential.endpointUrl,
           credentials: dto.credentials,
         },
-        `https://app.localhost/api/v1/connectors/${mockCredential.id}/webhooks`,
+        `https://app.localhost/api/v1/connectors/${mockCredential.id}/webhooks/traction`,
         'whsec_existing',
       );
     });
@@ -632,7 +632,7 @@ describe('ConnectorCredentialService', () => {
           endpointUrl: mockCredential.endpointUrl,
           credentials: dto.credentials,
         },
-        `https://app.localhost/api/v1/connectors/${mockCredential.id}/webhooks`,
+        `https://app.localhost/api/v1/connectors/${mockCredential.id}/webhooks/traction`,
         'whsec_rotated',
       );
     });

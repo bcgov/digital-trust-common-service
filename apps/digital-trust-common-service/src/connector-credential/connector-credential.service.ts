@@ -175,13 +175,13 @@ export class ConnectorCredentialService {
 
   /**
    * The URL Traction calls back on. ACA-Py appends `/topic/{topic}/` to
-   * whatever URL is registered (see ConnectorWebhookController), so this is
+   * whatever URL is registered (see TractionWebhookController), so this is
    * deliberately just the base connector webhook path with no topic segment.
    */
   private buildWebhookUrl(connectorId: string): string {
     const origin = this.oidcConfigService.getConfig().publicUrl;
 
-    return `${origin}${API_BASE_PATH}/connectors/${connectorId}/webhooks`;
+    return `${origin}${API_BASE_PATH}/connectors/${connectorId}/webhooks/traction`;
   }
 
   private async assertHealthy(
