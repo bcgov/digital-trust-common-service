@@ -1691,9 +1691,15 @@ A job usually starts life inside a request, and the work it does is part of
 what that request asked for. So when a job is enqueued, the correlation
 identifiers and the trace context of the enqueuing request are written onto the
 job payload, and when a worker picks the job up they are restored around the
-handler. Every line the handler logs then carries the same `request_id`,
-`tenant_id`, and `trace_id` as the request that caused the work — including
-lines from code that has no idea it is running in a worker.
+handler. Every line the handler logs then carries the same `request_id` and
+`trace_id` as the request that caused the work — including lines from code that
+has no idea it is running in a worker.
+
+`tenant_id` is the one field that need not match. Several job payloads carry a
+`tenantId` of their own naming the tenant the job acts on, and that value wins,
+because a platform-admin request can queue work against a different tenant than
+the one in its own context. So `tenant_id` on a worker line is the job's target
+tenant, not necessarily the caller's.
 
 This happens in `JobsService`, so any worker registered through it gets the
 behaviour for free and cannot forget it. Two scheduled cleanup workers — the
