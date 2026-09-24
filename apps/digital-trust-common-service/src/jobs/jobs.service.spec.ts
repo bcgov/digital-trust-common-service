@@ -1,8 +1,17 @@
+import type { RequestContextStore } from '@app/common/context/request-context.interface';
 import { RequestContextService } from '@app/common/context/request-context.service';
 import { PgBossService } from '@app/pg-boss';
+import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Test, TestingModule } from '@nestjs/testing';
+import {
+  ROOT_CONTEXT,
+  context as otelContext,
+  propagation,
+  trace,
+} from '@opentelemetry/api';
+import type { Context, Tracer } from '@opentelemetry/api';
 
 import { ShutdownRegistry } from '../shutdown/shutdown-registry';
 
@@ -20,6 +29,9 @@ describe('JobsService', () => {
   const stopService = jest.fn().mockResolvedValue(undefined);
   const emit = jest.fn();
   const getRequestContext = jest.fn().mockReturnValue(undefined);
+  const runRequestContext = jest.fn(
+    <T>(_store: RequestContextStore, callback: () => T): T => callback(),
+  );
 
   const mockPgBossService = {
     stop: stopService,
@@ -61,7 +73,10 @@ describe('JobsService', () => {
         },
         {
           provide: RequestContextService,
-          useValue: { get: getRequestContext },
+          useValue: {
+            get: getRequestContext,
+            run: runRequestContext,
+          },
         },
       ],
     }).compile();
@@ -243,6 +258,382 @@ describe('JobsService', () => {
     await expect(service.publish('test-job', {})).rejects.toThrow(
       'send failed',
     );
+  });
+
+  describe('job correlation', () => {
+    const TRACEPARENT =
+      '00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01';
+    const TENANT_ID = '3f2504e0-4f89-41d3-9a0c-0305e82c3301';
+    const OPERATION_ID = '9c858901-8a57-4791-81fe-4c455b099bc9';
+
+    type TestJob = { id: string; data: Record<string, unknown> };
+
+    const startWorker = async (
+      queueName: string,
+      handler: (job: TestJob) => Promise<void>,
+    ): Promise<(jobs: TestJob[]) => Promise<void>> => {
+      await service.registerWorker(
+        queueName,
+        handler as unknown as (job: never) => Promise<void>,
+      );
+
+      const [, , workHandler] = work.mock.calls.at(-1) as [
+        string,
+        object,
+        (jobs: TestJob[]) => Promise<void>,
+      ];
+
+      return workHandler;
+    };
+
+    /**
+     * Runs one job against a stand-in tracer and hands back the attributes the
+     * job span was opened with.
+     */
+    const jobSpanAttributes = async (
+      queueName: string,
+      data: Record<string, unknown>,
+    ): Promise<Record<string, unknown>> => {
+      const span = {
+        setStatus: jest.fn(),
+        recordException: jest.fn(),
+        end: jest.fn(),
+      };
+      const startActiveSpan = jest.fn(
+        (
+          _name: string,
+          _options: unknown,
+          _parent: unknown,
+          callback: (span: unknown) => Promise<void>,
+        ) => callback(span),
+      );
+      const getTracer = jest
+        .spyOn(trace, 'getTracer')
+        .mockReturnValue({ startActiveSpan } as unknown as Tracer);
+
+      const workHandler = await startWorker(queueName, () => Promise.resolve());
+      await workHandler([{ id: 'j1', data }]);
+
+      getTracer.mockRestore();
+
+      const [, options] = startActiveSpan.mock.calls.at(-1) as [
+        string,
+        { attributes: Record<string, unknown> },
+      ];
+
+      return options.attributes;
+    };
+
+    it('carries the trace context of the enqueuing request on the job data', async () => {
+      const inject = jest
+        .spyOn(propagation, 'inject')
+        .mockImplementation((_context, carrier) => {
+          (carrier as Record<string, string>).traceparent = TRACEPARENT;
+        });
+      send.mockResolvedValue('job-1');
+
+      await service.publish('audit.write', { foo: 'bar' });
+
+      expect(send).toHaveBeenCalledWith('audit.write', {
+        foo: 'bar',
+        traceparent: TRACEPARENT,
+      });
+
+      inject.mockRestore();
+    });
+
+    it('keeps propagator extras such as baggage off the job data', async () => {
+      // The default propagators also emit `baggage`, which echoes whatever an
+      // inbound request sent. Job data is persisted, and nothing reads it back.
+      const inject = jest
+        .spyOn(propagation, 'inject')
+        .mockImplementation((_context, carrier) => {
+          const target = carrier as Record<string, string>;
+          target.traceparent = TRACEPARENT;
+          target.baggage = 'user=someone,tier=gold';
+        });
+      send.mockResolvedValue('job-1');
+
+      await service.publish('audit.write', { foo: 'bar' });
+
+      expect(send).toHaveBeenCalledWith('audit.write', {
+        foo: 'bar',
+        traceparent: TRACEPARENT,
+      });
+
+      inject.mockRestore();
+    });
+
+    it('drops a stale trace context when nothing is active', async () => {
+      // No SDK registered means inject writes nothing, so a traceparent left
+      // on the data would otherwise survive and pull the job into an old trace.
+      send.mockResolvedValue('job-1');
+
+      await service.publish('audit.write', {
+        foo: 'bar',
+        traceparent: '00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01',
+      });
+
+      expect(send).toHaveBeenCalledWith('audit.write', { foo: 'bar' });
+    });
+
+    it('prefers the active trace context over one already on the data', async () => {
+      const inject = jest
+        .spyOn(propagation, 'inject')
+        .mockImplementation((_context, carrier) => {
+          (carrier as Record<string, string>).traceparent = TRACEPARENT;
+        });
+      send.mockResolvedValue('job-1');
+
+      await service.publish('audit.write', {
+        foo: 'bar',
+        traceparent: '00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01',
+      });
+
+      expect(send).toHaveBeenCalledWith('audit.write', {
+        foo: 'bar',
+        traceparent: TRACEPARENT,
+      });
+
+      inject.mockRestore();
+    });
+
+    it('runs a job inside the context the enqueuing request left on the payload', async () => {
+      const workHandler = await startWorker('audit.write', () =>
+        Promise.resolve(),
+      );
+
+      await workHandler([
+        { id: 'j1', data: { requestId: 'req-1', tenantId: 'tenant-1' } },
+      ]);
+
+      expect(runRequestContext).toHaveBeenCalledWith(
+        {
+          source: 'job:audit.write',
+          requestId: 'req-1',
+          tenantId: 'tenant-1',
+        },
+        expect.any(Function),
+      );
+    });
+
+    it('labels a job nobody requested without inventing a request id', async () => {
+      const workHandler = await startWorker('audit.partition-maintain', () =>
+        Promise.resolve(),
+      );
+
+      await workHandler([{ id: 'j1', data: {} }]);
+
+      expect(runRequestContext).toHaveBeenCalledWith(
+        { source: 'job:audit.partition-maintain' },
+        expect.any(Function),
+      );
+    });
+
+    it('starts a fresh trace for an unrequested job, ignoring any ambient span', async () => {
+      // pg-boss polls the database, so an instrumented query can leave a span
+      // in scope around this callback. A job with no carrier of its own must
+      // not end up hanging off it.
+      const span = {
+        setStatus: jest.fn(),
+        recordException: jest.fn(),
+        end: jest.fn(),
+      };
+      const startActiveSpan = jest.fn(
+        (
+          _name: string,
+          _options: unknown,
+          _parent: unknown,
+          callback: (span: unknown) => Promise<void>,
+        ) => callback(span),
+      );
+      const getTracer = jest
+        .spyOn(trace, 'getTracer')
+        .mockReturnValue({ startActiveSpan } as unknown as Tracer);
+
+      const ambient = trace.wrapSpanContext({
+        traceId: '0af7651916cd43dd8448eb211c80319c',
+        spanId: 'b7ad6b7169203331',
+        traceFlags: 1,
+      });
+      // Spied rather than entered with `otelContext.with`: no context manager
+      // is registered in a unit test, so `with` would be a no-op and the span
+      // would never actually be ambient.
+      const active = jest
+        .spyOn(otelContext, 'active')
+        .mockReturnValue(trace.setSpan(ROOT_CONTEXT, ambient));
+
+      const workHandler = await startWorker('audit.partition-maintain', () =>
+        Promise.resolve(),
+      );
+
+      await workHandler([{ id: 'j1', data: {} }]);
+
+      active.mockRestore();
+      getTracer.mockRestore();
+
+      const [, , parent] = startActiveSpan.mock.calls.at(-1) as [
+        string,
+        unknown,
+        Context,
+      ];
+
+      expect(trace.getSpanContext(parent)).toBeUndefined();
+    });
+
+    it('does not carry one job identifiers into the next job of a batch', async () => {
+      const workHandler = await startWorker('audit.write', () =>
+        Promise.resolve(),
+      );
+
+      await workHandler([
+        { id: 'j1', data: { requestId: 'req-1', tenantId: 'tenant-1' } },
+        { id: 'j2', data: {} },
+      ]);
+
+      expect(runRequestContext.mock.calls.map(([store]) => store)).toEqual([
+        { source: 'job:audit.write', requestId: 'req-1', tenantId: 'tenant-1' },
+        { source: 'job:audit.write' },
+      ]);
+    });
+
+    it('reads the trace context off the payload without copying it into the request context', async () => {
+      const extract = jest.spyOn(propagation, 'extract');
+      const workHandler = await startWorker('audit.write', () =>
+        Promise.resolve(),
+      );
+
+      await workHandler([
+        {
+          id: 'j1',
+          data: {
+            requestId: 'req-1',
+            traceparent: TRACEPARENT,
+            tracestate: 'vendor=1',
+            foo: 'bar',
+          },
+        },
+      ]);
+
+      expect(extract).toHaveBeenCalledWith(expect.anything(), {
+        traceparent: TRACEPARENT,
+        tracestate: 'vendor=1',
+      });
+      expect(runRequestContext).toHaveBeenCalledWith(
+        { source: 'job:audit.write', requestId: 'req-1' },
+        expect.any(Function),
+      );
+
+      extract.mockRestore();
+    });
+
+    it('logs a line for every completed job', async () => {
+      const logSpy = jest.spyOn(Logger.prototype, 'log').mockImplementation();
+      const workHandler = await startWorker('audit.write', () =>
+        Promise.resolve(),
+      );
+
+      await workHandler([{ id: 'j1', data: {} }]);
+
+      expect(logSpy).toHaveBeenCalledWith(
+        {
+          duration_ms: expect.any(Number),
+          job_id: 'j1',
+          queue: 'audit.write',
+        },
+        'job completed',
+      );
+
+      logSpy.mockRestore();
+    });
+
+    it('logs a failing job and rethrows so pg-boss can retry it', async () => {
+      const failure = new Error('handler blew up');
+      const errorSpy = jest
+        .spyOn(Logger.prototype, 'error')
+        .mockImplementation();
+      const workHandler = await startWorker('audit.write', () =>
+        Promise.reject(failure),
+      );
+
+      await expect(
+        workHandler([{ id: 'j1', data: { requestId: 'req-1' } }]),
+      ).rejects.toThrow('handler blew up');
+
+      expect(errorSpy).toHaveBeenCalledWith(
+        {
+          duration_ms: expect.any(Number),
+          err: failure,
+          job_id: 'j1',
+          queue: 'audit.write',
+        },
+        'job failed',
+      );
+
+      errorSpy.mockRestore();
+    });
+
+    it('keeps the request operation id off the job payload', async () => {
+      // audit.write persists operationId as the operation the record is
+      // about, and leaves it unset when there is none. Injecting the
+      // request's would be written to the record as if it were that
+      // operation.
+      getRequestContext.mockReturnValueOnce({
+        requestId: 'req-1',
+        operationId: OPERATION_ID,
+      });
+      send.mockResolvedValue('job-1');
+
+      await service.publish('audit.write', { foo: 'bar' });
+
+      expect(send).toHaveBeenCalledWith('audit.write', {
+        foo: 'bar',
+        requestId: 'req-1',
+      });
+    });
+
+    it('restores the operation id the request left on the payload', async () => {
+      const workHandler = await startWorker('audit.write', () =>
+        Promise.resolve(),
+      );
+
+      await workHandler([
+        { id: 'j1', data: { requestId: 'req-1', operationId: OPERATION_ID } },
+      ]);
+
+      expect(runRequestContext).toHaveBeenCalledWith(
+        {
+          source: 'job:audit.write',
+          requestId: 'req-1',
+          operationId: OPERATION_ID,
+        },
+        expect.any(Function),
+      );
+    });
+
+    it('tags the job span with the tenant and operation it belongs to', async () => {
+      const attributes = await jobSpanAttributes('audit.write', {
+        tenantId: TENANT_ID,
+        operationId: OPERATION_ID,
+      });
+
+      expect(attributes).toMatchObject({
+        'tenant.id': TENANT_ID,
+        'operation.id': OPERATION_ID,
+      });
+    });
+
+    it('keeps identifiers that are not ids off the job span', async () => {
+      const attributes = await jobSpanAttributes('audit.write', {
+        tenantId: 'tenant-1',
+        operationId: 'operation-1',
+      });
+
+      // Array form, because the string form would read the dot as a path
+      // into a nested object and pass whatever the attribute held.
+      expect(attributes).not.toHaveProperty(['tenant.id']);
+      expect(attributes).not.toHaveProperty(['operation.id']);
+    });
   });
 
   it('should shutdown the boss service', async () => {

@@ -46,14 +46,17 @@ describe('RequestContextTenantInterceptor', () => {
       tenantId: ROUTE_TENANT_ID,
     });
 
-    await requestContext.run({ requestId: 'req-1' }, async () => {
-      const result = await lastValueFrom(
-        interceptor.intercept(context, { handle: nextHandle }),
-      );
+    await requestContext.run(
+      { requestId: 'req-1', source: 'api' },
+      async () => {
+        const result = await lastValueFrom(
+          interceptor.intercept(context, { handle: nextHandle }),
+        );
 
-      expect(result).toBe('handled');
-      expect(requestContext.getTenantId()).toBe(ROUTE_TENANT_ID);
-    });
+        expect(result).toBe('handled');
+        expect(requestContext.getTenantId()).toBe(ROUTE_TENANT_ID);
+      },
+    );
   });
 
   it('sets the operation id when the route addresses one', async () => {
@@ -64,13 +67,16 @@ describe('RequestContextTenantInterceptor', () => {
       tenantId: ROUTE_TENANT_ID,
     });
 
-    await requestContext.run({ requestId: 'req-1' }, async () => {
-      await lastValueFrom(
-        interceptor.intercept(context, { handle: nextHandle }),
-      );
+    await requestContext.run(
+      { requestId: 'req-1', source: 'api' },
+      async () => {
+        await lastValueFrom(
+          interceptor.intercept(context, { handle: nextHandle }),
+        );
 
-      expect(requestContext.getOperationId()).toBe(OPERATION_ID);
-    });
+        expect(requestContext.getOperationId()).toBe(OPERATION_ID);
+      },
+    );
   });
 
   it('leaves the operation id unset when the route does not address one', async () => {
@@ -80,13 +86,16 @@ describe('RequestContextTenantInterceptor', () => {
       tenantId: ROUTE_TENANT_ID,
     });
 
-    await requestContext.run({ requestId: 'req-1' }, async () => {
-      await lastValueFrom(
-        interceptor.intercept(context, { handle: nextHandle }),
-      );
+    await requestContext.run(
+      { requestId: 'req-1', source: 'api' },
+      async () => {
+        await lastValueFrom(
+          interceptor.intercept(context, { handle: nextHandle }),
+        );
 
-      expect(requestContext.getOperationId()).toBeUndefined();
-    });
+        expect(requestContext.getOperationId()).toBeUndefined();
+      },
+    );
   });
 
   it('ignores an operation id that is not uuid-shaped', async () => {
@@ -97,13 +106,16 @@ describe('RequestContextTenantInterceptor', () => {
       tenantId: ROUTE_TENANT_ID,
     });
 
-    await requestContext.run({ requestId: 'req-1' }, async () => {
-      await lastValueFrom(
-        interceptor.intercept(context, { handle: nextHandle }),
-      );
+    await requestContext.run(
+      { requestId: 'req-1', source: 'api' },
+      async () => {
+        await lastValueFrom(
+          interceptor.intercept(context, { handle: nextHandle }),
+        );
 
-      expect(requestContext.getOperationId()).toBeUndefined();
-    });
+        expect(requestContext.getOperationId()).toBeUndefined();
+      },
+    );
   });
 
   it('falls back to the JWT tenant claim when the route tenant is absent', async () => {
@@ -113,12 +125,15 @@ describe('RequestContextTenantInterceptor', () => {
       auth: { tenantId: CLAIM_TENANT_ID } as AuthenticatedRequest['auth'],
     });
 
-    await requestContext.run({ requestId: 'req-1' }, async () => {
-      await lastValueFrom(
-        interceptor.intercept(context, { handle: nextHandle }),
-      );
-      expect(requestContext.getTenantId()).toBe(CLAIM_TENANT_ID);
-    });
+    await requestContext.run(
+      { requestId: 'req-1', source: 'api' },
+      async () => {
+        await lastValueFrom(
+          interceptor.intercept(context, { handle: nextHandle }),
+        );
+        expect(requestContext.getTenantId()).toBe(CLAIM_TENANT_ID);
+      },
+    );
   });
 
   it('prefers the route tenant over the JWT claim', async () => {
@@ -129,12 +144,15 @@ describe('RequestContextTenantInterceptor', () => {
       tenantId: ROUTE_TENANT_ID,
     });
 
-    await requestContext.run({ requestId: 'req-1' }, async () => {
-      await lastValueFrom(
-        interceptor.intercept(context, { handle: nextHandle }),
-      );
-      expect(requestContext.getTenantId()).toBe(ROUTE_TENANT_ID);
-    });
+    await requestContext.run(
+      { requestId: 'req-1', source: 'api' },
+      async () => {
+        await lastValueFrom(
+          interceptor.intercept(context, { handle: nextHandle }),
+        );
+        expect(requestContext.getTenantId()).toBe(ROUTE_TENANT_ID);
+      },
+    );
   });
 
   it('ignores a non-UUID-shaped tenant id', async () => {
@@ -144,12 +162,15 @@ describe('RequestContextTenantInterceptor', () => {
       tenantId: 'not-a-uuid',
     });
 
-    await requestContext.run({ requestId: 'req-1' }, async () => {
-      await lastValueFrom(
-        interceptor.intercept(context, { handle: nextHandle }),
-      );
-      expect(requestContext.getTenantId()).toBeUndefined();
-    });
+    await requestContext.run(
+      { requestId: 'req-1', source: 'api' },
+      async () => {
+        await lastValueFrom(
+          interceptor.intercept(context, { handle: nextHandle }),
+        );
+        expect(requestContext.getTenantId()).toBeUndefined();
+      },
+    );
   });
 
   it('is a no-op for non-http contexts', async () => {
@@ -160,12 +181,15 @@ describe('RequestContextTenantInterceptor', () => {
       'rpc',
     );
 
-    await requestContext.run({ requestId: 'req-1' }, async () => {
-      await lastValueFrom(
-        interceptor.intercept(context, { handle: nextHandle }),
-      );
-      expect(requestContext.getTenantId()).toBeUndefined();
-    });
+    await requestContext.run(
+      { requestId: 'req-1', source: 'api' },
+      async () => {
+        await lastValueFrom(
+          interceptor.intercept(context, { handle: nextHandle }),
+        );
+        expect(requestContext.getTenantId()).toBeUndefined();
+      },
+    );
   });
 
   it('logs a warning and still calls next() when resolution throws', async () => {
