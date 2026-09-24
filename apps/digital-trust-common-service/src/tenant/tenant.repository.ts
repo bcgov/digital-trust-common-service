@@ -6,11 +6,9 @@ import { Cursor } from '../common/cursor-pagination';
 
 import { Tenant } from './tenant.entity';
 
-export type TenantCursor = Cursor;
-
 export type TenantPage = {
   items: Tenant[];
-  nextCursor: TenantCursor | null;
+  nextCursor: Cursor | null;
   hasMore: boolean;
 };
 
@@ -23,7 +21,7 @@ export class TenantRepository {
 
   public async findPage(options: {
     limit: number;
-    cursor?: TenantCursor | null;
+    cursor?: Cursor | null;
   }): Promise<TenantPage> {
     const qb = this.repo
       .createQueryBuilder('tenant')

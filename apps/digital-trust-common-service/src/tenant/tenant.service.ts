@@ -22,7 +22,7 @@ import { CreateTenantDto } from './dto/create-tenant.dto';
 import { UpdateTenantConfigDto } from './dto/update-tenant-config.dto';
 import { UpdateTenantDto } from './dto/update-tenant.dto';
 import { Tenant, TenantStatus } from './tenant.entity';
-import { TenantCursor, TenantRepository } from './tenant.repository';
+import { TenantRepository } from './tenant.repository';
 
 export type PaginatedTenants = {
   data: Tenant[];
@@ -142,27 +142,17 @@ export class TenantService {
     cursor?: string | null;
   }): Promise<PaginatedTenants> {
     const limit = options.limit ?? 20;
-    const cursor = options.cursor ? this.decodeCursor(options.cursor) : null;
+    const cursor = options.cursor ? decodeCursor(options.cursor) : null;
 
     const page = await this.tenants.findPage({ limit, cursor });
 
     return {
       data: page.items,
       pagination: {
-        next_cursor: page.nextCursor
-          ? this.encodeCursor(page.nextCursor)
-          : null,
+        next_cursor: page.nextCursor ? encodeCursor(page.nextCursor) : null,
         has_more: page.hasMore,
       },
     };
-  }
-
-  public encodeCursor(cursor: TenantCursor): string {
-    return encodeCursor(cursor);
-  }
-
-  public decodeCursor(raw: string): TenantCursor {
-    return decodeCursor(raw);
   }
 
   public async findById(id: string) {

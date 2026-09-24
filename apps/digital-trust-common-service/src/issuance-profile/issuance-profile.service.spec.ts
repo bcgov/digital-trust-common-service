@@ -14,6 +14,7 @@ import { QueryFailedError } from 'typeorm';
 import { AdapterRegistry } from '../adapter-registry/adapter-registry.service';
 import { AuditAction } from '../audit-log/audit-log.entity';
 import { DomainAuditService } from '../audit-log/domain-audit.service';
+import { encodeCursor } from '../common/cursor-pagination';
 import {
   CredentialDefinition,
   CredentialDefinitionConnectorType,
@@ -431,7 +432,7 @@ describe('IssuanceProfileService', () => {
       );
       expect(result.pagination.has_more).toBe(true);
       expect(result.pagination.next_cursor).toEqual(
-        service.encodeCursor({
+        encodeCursor({
           createdAt: mockProfile.createdAt.toISOString(),
           id: mockProfile.id,
         }),
@@ -439,7 +440,7 @@ describe('IssuanceProfileService', () => {
     });
 
     it('decodes a cursor supplied by the caller and passes it to the repository', async () => {
-      const cursor = service.encodeCursor({
+      const cursor = encodeCursor({
         createdAt: '2024-01-01T00:00:00.000Z',
         id: mockProfile.id,
       });

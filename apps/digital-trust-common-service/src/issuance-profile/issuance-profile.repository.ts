@@ -16,11 +16,9 @@ export interface IssuanceProfileFilters {
   readonly name?: string;
 }
 
-export type IssuanceProfileCursor = Cursor;
-
 export type IssuanceProfilePage = {
   items: IssuanceProfile[];
-  nextCursor: IssuanceProfileCursor | null;
+  nextCursor: Cursor | null;
   hasMore: boolean;
 };
 
@@ -61,7 +59,7 @@ export class IssuanceProfileRepository {
     filters: IssuanceProfileFilters,
     options: {
       limit: number;
-      cursor?: IssuanceProfileCursor | null;
+      cursor?: Cursor | null;
     },
   ): Promise<IssuanceProfilePage> {
     const qb = this.repository

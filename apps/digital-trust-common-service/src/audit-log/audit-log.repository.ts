@@ -17,11 +17,9 @@ export type AuditLogFilters = {
   until?: Date;
 };
 
-export type AuditLogCursor = Cursor;
-
 export type AuditLogPage = {
   items: AuditLog[];
-  nextCursor: AuditLogCursor | null;
+  nextCursor: Cursor | null;
   hasMore: boolean;
 };
 
@@ -78,7 +76,7 @@ export class AuditLogRepository {
     filters: AuditLogFilters,
     options: {
       limit: number;
-      cursor?: AuditLogCursor | null;
+      cursor?: Cursor | null;
     },
   ): Promise<AuditLogPage> {
     const limit = options.limit;

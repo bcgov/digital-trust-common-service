@@ -18,10 +18,7 @@ import {
   TenantUserRole,
   TenantUserStatus,
 } from './tenant-user.entity';
-import {
-  TenantUserCursor,
-  TenantUserRepository,
-} from './tenant-user.repository';
+import { TenantUserRepository } from './tenant-user.repository';
 
 export type PaginatedTenantUsers = {
   data: TenantUser[];
@@ -143,7 +140,7 @@ export class TenantUserService {
     options: { limit?: number; cursor?: string | null },
   ): Promise<PaginatedTenantUsers> {
     const limit = options.limit ?? 20;
-    const cursor = options.cursor ? this.decodeCursor(options.cursor) : null;
+    const cursor = options.cursor ? decodeCursor(options.cursor) : null;
 
     const page = await this.tenantUserRepository.findPageForTenant(tenantId, {
       limit,
@@ -153,20 +150,10 @@ export class TenantUserService {
     return {
       data: page.items,
       pagination: {
-        next_cursor: page.nextCursor
-          ? this.encodeCursor(page.nextCursor)
-          : null,
+        next_cursor: page.nextCursor ? encodeCursor(page.nextCursor) : null,
         has_more: page.hasMore,
       },
     };
-  }
-
-  public encodeCursor(cursor: TenantUserCursor): string {
-    return encodeCursor(cursor);
-  }
-
-  public decodeCursor(raw: string): TenantUserCursor {
-    return decodeCursor(raw);
   }
 
   public async findByExternalUserId(

@@ -6,7 +6,6 @@ import { decodeCursor, encodeCursor } from '../common/cursor-pagination';
 import { AuditAction, AuditActorType, AuditLog } from './audit-log.entity';
 import {
   AUDIT_LOG_EXPORT_MAX_ROWS,
-  AuditLogCursor,
   AuditLogFilters,
   AuditLogRepository,
 } from './audit-log.repository';
@@ -79,7 +78,7 @@ export class AuditLogService {
     options: { limit?: number; cursor?: string | null },
   ): Promise<PaginatedAuditLogs> {
     const limit = options.limit ?? 20;
-    const cursor = options.cursor ? this.decodeCursor(options.cursor) : null;
+    const cursor = options.cursor ? decodeCursor(options.cursor) : null;
 
     const page = await this.auditLogRepository.findPageForTenant(
       tenantId,
@@ -90,9 +89,7 @@ export class AuditLogService {
     return {
       data: page.items,
       pagination: {
-        next_cursor: page.nextCursor
-          ? this.encodeCursor(page.nextCursor)
-          : null,
+        next_cursor: page.nextCursor ? encodeCursor(page.nextCursor) : null,
         has_more: page.hasMore,
       },
     };
@@ -137,14 +134,6 @@ export class AuditLogService {
     );
 
     return [header, ...lines].join('\n');
-  }
-
-  public encodeCursor(cursor: AuditLogCursor): string {
-    return encodeCursor(cursor);
-  }
-
-  public decodeCursor(raw: string): AuditLogCursor {
-    return decodeCursor(raw);
   }
 
   private csvEscape(value: string): string {

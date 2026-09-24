@@ -10,11 +10,9 @@ import {
   TenantUserStatus,
 } from './tenant-user.entity';
 
-export type TenantUserCursor = Cursor;
-
 export type TenantUserPage = {
   items: TenantUser[];
-  nextCursor: TenantUserCursor | null;
+  nextCursor: Cursor | null;
   hasMore: boolean;
 };
 
@@ -62,7 +60,7 @@ export class TenantUserRepository {
     tenantId: string,
     options: {
       limit: number;
-      cursor?: TenantUserCursor | null;
+      cursor?: Cursor | null;
     },
   ): Promise<TenantUserPage> {
     const qb = this.repository
