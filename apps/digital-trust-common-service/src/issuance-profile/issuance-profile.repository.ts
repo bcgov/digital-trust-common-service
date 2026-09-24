@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 
+import { Cursor } from '../common/cursor-pagination';
 import { CredentialDefinitionFormat } from '../credential-definition/credential-definition.entity';
 
 import {
@@ -15,14 +16,9 @@ export interface IssuanceProfileFilters {
   readonly name?: string;
 }
 
-export type IssuanceProfileCursor = {
-  createdAt: string;
-  id: string;
-};
-
 export type IssuanceProfilePage = {
   items: IssuanceProfile[];
-  nextCursor: IssuanceProfileCursor | null;
+  nextCursor: Cursor | null;
   hasMore: boolean;
 };
 
@@ -63,7 +59,7 @@ export class IssuanceProfileRepository {
     filters: IssuanceProfileFilters,
     options: {
       limit: number;
-      cursor?: IssuanceProfileCursor | null;
+      cursor?: Cursor | null;
     },
   ): Promise<IssuanceProfilePage> {
     const qb = this.repository

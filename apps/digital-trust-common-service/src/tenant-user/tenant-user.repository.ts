@@ -2,20 +2,17 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, Repository } from 'typeorm';
 
+import { Cursor } from '../common/cursor-pagination';
+
 import {
   TenantUser,
   TenantUserRole,
   TenantUserStatus,
 } from './tenant-user.entity';
 
-export type TenantUserCursor = {
-  createdAt: string;
-  id: string;
-};
-
 export type TenantUserPage = {
   items: TenantUser[];
-  nextCursor: TenantUserCursor | null;
+  nextCursor: Cursor | null;
   hasMore: boolean;
 };
 
@@ -63,7 +60,7 @@ export class TenantUserRepository {
     tenantId: string,
     options: {
       limit: number;
-      cursor?: TenantUserCursor | null;
+      cursor?: Cursor | null;
     },
   ): Promise<TenantUserPage> {
     const qb = this.repository
