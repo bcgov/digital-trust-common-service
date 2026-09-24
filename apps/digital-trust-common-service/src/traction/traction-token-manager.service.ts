@@ -59,9 +59,10 @@ interface DescribedFailure {
  * "Why No Redis"): not shared across pods and does not survive a restart —
  * a cold pod just pays for one extra token fetch per connector.
  *
- * Each call emits one token lifecycle event carrying the outcome and the cache
- * state it was reached from, never the token or the api_key exchanged for it.
- * See docs/ARCHITECTURE.md, "Token lifecycle events".
+ * Each call emits one cache or acquisition event carrying the outcome and the
+ * cache state it was reached from; a token whose `exp` claim cannot be read
+ * adds a warning alongside it. Neither carries the token or the api_key
+ * exchanged for it. See docs/ARCHITECTURE.md, "Token lifecycle events".
  */
 @Injectable()
 export class TractionTokenManager {

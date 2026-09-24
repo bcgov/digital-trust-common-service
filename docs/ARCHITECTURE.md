@@ -1598,9 +1598,11 @@ Redaction rules: never log `api_key`, credential claim values, DID private keys.
 
 ##### Token lifecycle events (implemented)
 
-`TractionTokenManager` emits one event per `getToken` call. The Traction bearer
-token is never a field on any of them, and neither is the `api_key` exchanged
-for it.
+`TractionTokenManager` emits one cache or acquisition event per `getToken`
+call. A token whose `exp` claim cannot be read adds a warning alongside that
+event rather than replacing it, so an acquisition that succeeded but cannot be
+cached usefully shows up as both lines. The Traction bearer token is never a
+field on any of them, and neither is the `api_key` exchanged for it.
 
 | Event | Level | Fields |
 |-------|-------|--------|

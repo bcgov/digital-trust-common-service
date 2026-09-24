@@ -30,14 +30,26 @@ function makeJwt(payload: Record<string, unknown>): string {
  * An axios error shaped the way one from the token endpoint really is: it
  * carries the request that produced it, and that request body is the
  * connector's `api_key`. The leak tests below depend on that being present.
+ *
+ * Omitting `status` gives the transport-failure shape — a refused connection
+ * or a timeout, where nothing ever answered and there is no response to read.
  */
-function makeAxiosError(status: number): AxiosError {
+function makeAxiosError(status?: number): AxiosError {
   const config = {
     method: 'POST',
     url: 'https://traction.example.com/multitenancy/tenant/traction-tenant-1/token',
     data: { api_key: 'key-1' },
     headers: {},
   } as unknown as InternalAxiosRequestConfig;
+
+  if (status === undefined) {
+    return new AxiosError(
+      'connect ECONNREFUSED 10.0.0.1:443',
+      AxiosError.ERR_NETWORK,
+      config,
+      {},
+    );
+  }
 
   return new AxiosError(
     `Request failed with status code ${status}`,
@@ -302,6 +314,28 @@ describe('TractionTokenManager', () => {
       );
     });
 
+    it('reports a transport failure with no status code at all', async () => {
+      const error = makeAxiosError();
+      mockRequest.mockRejectedValue(error);
+
+      await expect(manager.getToken(makeContext())).rejects.toBe(error);
+
+      const [payload] = logError.mock.calls[0] as [Record<string, unknown>];
+
+      // Nothing ever answered, so there is no status to report. The field is
+      // absent rather than zero or null: "Traction is unreachable" and "the
+      // api_key was rejected" are the two failures an operator has to tell
+      // apart, and its presence is what separates them.
+      expect(payload).not.toHaveProperty('status_code');
+      expect(payload).toMatchObject({
+        cache_state: 'miss',
+        error_message: 'connect ECONNREFUSED 10.0.0.1:443',
+        error_type: 'AxiosError',
+        outcome: 'failure',
+      });
+      expect(JSON.stringify(payload)).not.toContain('key-1');
+    });
+
     it('keeps the api_key the request carried out of the failure line', async () => {
       mockRequest.mockRejectedValue(makeAxiosError(401));
 
@@ -388,7 +422,7 @@ describe('TractionTokenManager', () => {
       expect(emitted).not.toContain(token);
     });
 
-    it('reports an unusable exp claim as its own event', async () => {
+    it('reports an unusable exp claim alongside the acquisition, not instead of it', async () => {
       mockRequest.mockResolvedValue({ data: { token: makeJwt({}) } });
 
       await manager.getToken(makeContext());
@@ -399,6 +433,13 @@ describe('TractionTokenManager', () => {
           error_message: 'token has no exp claim',
         },
         'token expiry claim unusable',
+      );
+      // The fetch itself worked, so the acquisition is still a success — it
+      // just cannot be cached usefully. Two lines, not one, and the pair is
+      // what says "we keep re-fetching and here is why".
+      expect(logLine).toHaveBeenCalledWith(
+        expect.objectContaining({ cache_state: 'miss', outcome: 'success' }),
+        'token acquired',
       );
     });
   });
