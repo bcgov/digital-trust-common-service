@@ -3,11 +3,13 @@ import {
   ConnectorUnavailableError,
   CredentialFormat,
   FormatNotSupportedError,
+  FormatValidationError,
   MockAdapter,
   ConnectorType as PortConnectorType,
   TimeoutError,
   ValidationError,
 } from '@app/credential-ports';
+import { Logger } from '@nestjs/common';
 import {
   Span,
   SpanKind,
@@ -17,6 +19,7 @@ import {
   Tracer,
   trace,
 } from '@opentelemetry/api';
+import pino from 'pino';
 
 import {
   ADAPTER_OUTCOME_SUCCESS,
@@ -99,6 +102,8 @@ describe('instrumentAdapter', () => {
   let recordAdapterCall: jest.Mock;
   let spans: RecordedSpan[];
   let getTracer: jest.SpiedFunction<typeof trace.getTracer>;
+  let logLine: jest.SpiedFunction<typeof Logger.prototype.log>;
+  let logError: jest.SpiedFunction<typeof Logger.prototype.error>;
 
   beforeEach(() => {
     adapter = new MockAdapter({
@@ -108,6 +113,9 @@ describe('instrumentAdapter', () => {
     recordAdapterCall = jest.fn();
     spans = [];
     getTracer = stubTracer(spans);
+    // The wrapper's logger is module-level, so the prototype is the seam.
+    logLine = jest.spyOn(Logger.prototype, 'log').mockImplementation();
+    logError = jest.spyOn(Logger.prototype, 'error').mockImplementation();
     instrumented = instrumentAdapter(adapter, {
       recordAdapterCall,
     } as unknown as BusinessMetricsService);
@@ -327,6 +335,191 @@ describe('instrumentAdapter', () => {
       void instrumented.supportedFormats;
 
       expect(spans).toHaveLength(0);
+    });
+  });
+
+  describe('call events', () => {
+    it('logs a successful call with connector, method, outcome, and duration', async () => {
+      await instrumented.list({} as never, {});
+
+      expect(logLine).toHaveBeenCalledTimes(1);
+      expect(logError).not.toHaveBeenCalled();
+      expect(logLine).toHaveBeenCalledWith(
+        {
+          connector: 'traction',
+          duration_ms: expect.any(Number),
+          method: 'list',
+          outcome: ADAPTER_OUTCOME_SUCCESS,
+        },
+        'adapter call completed',
+      );
+    });
+
+    it('logs a failed call at error level under its stable error code', async () => {
+      const error = new ConnectorUnavailableError('down');
+      jest.spyOn(adapter, 'revoke').mockRejectedValue(error);
+
+      await expect(instrumented.revoke({} as never, 'cred-1')).rejects.toBe(
+        error,
+      );
+
+      expect(logLine).not.toHaveBeenCalled();
+      expect(logError).toHaveBeenCalledWith(
+        {
+          connector: 'traction',
+          duration_ms: expect.any(Number),
+          error_message: 'down',
+          error_stack: error.stack,
+          error_type: 'ConnectorUnavailableError',
+          method: 'revoke',
+          outcome: 'CONNECTOR_UNAVAILABLE',
+        },
+        'adapter call failed',
+      );
+    });
+
+    it('logs an unexpected rejection under the unknown outcome', async () => {
+      const error = new Error('socket hang up');
+      jest.spyOn(adapter, 'revoke').mockRejectedValue(error);
+
+      await expect(instrumented.revoke({} as never, 'cred-1')).rejects.toBe(
+        error,
+      );
+
+      expect(logError).toHaveBeenCalledWith(
+        expect.objectContaining({ outcome: ADAPTER_OUTCOME_UNKNOWN }),
+        'adapter call failed',
+      );
+    });
+
+    it('keeps the error context bag out of the log line', async () => {
+      // FormatValidationError.issues carries `actual`: the credential attribute
+      // value that failed validation. pino copies every own enumerable property
+      // off anything with a string `message`, so logging the error itself would
+      // emit that value. The assertion is on the whole payload rather than on
+      // named keys, so any future field has to be added here deliberately.
+      const error = new FormatValidationError([
+        {
+          actual: 'Ada Lovelace',
+          expected: 'a date',
+          field: 'birthdate',
+          message: 'birthdate must be a date',
+        },
+      ]);
+      jest.spyOn(adapter, 'revoke').mockRejectedValue(error);
+
+      await expect(instrumented.revoke({} as never, 'cred-1')).rejects.toBe(
+        error,
+      );
+
+      const [payload] = logError.mock.calls[0] as [Record<string, unknown>];
+
+      expect(Object.keys(payload).sort()).toEqual([
+        'connector',
+        'duration_ms',
+        'error_message',
+        'error_stack',
+        'error_type',
+        'method',
+        'outcome',
+      ]);
+      expect(JSON.stringify(payload)).not.toContain('Ada Lovelace');
+    });
+
+    it('survives serialization without pino reattaching the error fields', async () => {
+      // A regression to logging the error itself would still pass the key
+      // assertion above if pino were the thing expanding it, so drive the
+      // payload through the same serializer the real logger uses.
+      const error = new FormatValidationError([
+        {
+          actual: 'Ada Lovelace',
+          expected: 'a date',
+          field: 'birthdate',
+          message: 'birthdate must be a date',
+        },
+      ]);
+      jest.spyOn(adapter, 'revoke').mockRejectedValue(error);
+
+      await expect(instrumented.revoke({} as never, 'cred-1')).rejects.toBe(
+        error,
+      );
+
+      const [payload] = logError.mock.calls[0] as [Record<string, unknown>];
+      const serialized = JSON.stringify(
+        Object.fromEntries(
+          Object.entries(payload).map(([key, value]) => [
+            key,
+            pino.stdSerializers.err(value as Error),
+          ]),
+        ),
+      );
+
+      expect(serialized).not.toContain('Ada Lovelace');
+      expect(serialized).not.toContain('birthdate');
+    });
+
+    it('stringifies a thrown non-Error rather than describing its fields', async () => {
+      jest
+        .spyOn(adapter, 'revoke')
+        .mockRejectedValue({ claims: { given_name: 'Ada' } });
+
+      await expect(
+        instrumented.revoke({} as never, 'cred-1'),
+      ).rejects.toStrictEqual({ claims: { given_name: 'Ada' } });
+
+      const [payload] = logError.mock.calls[0] as [Record<string, unknown>];
+
+      expect(payload.error_message).toBe('[object Object]');
+      expect(payload.error_type).toBe('object');
+      expect(JSON.stringify(payload)).not.toContain('given_name');
+    });
+
+    it('logs a synchronous throw once', () => {
+      const error = new TimeoutError('slow');
+      jest.spyOn(adapter, 'revoke').mockImplementation(() => {
+        throw error;
+      });
+
+      expect(() => instrumented.revoke({} as never, 'cred-1')).toThrow(error);
+      expect(logError).toHaveBeenCalledTimes(1);
+      expect(logError).toHaveBeenCalledWith(
+        expect.objectContaining({ method: 'revoke', outcome: 'TIMEOUT' }),
+        'adapter call failed',
+      );
+    });
+
+    it('does not log before the promise settles', async () => {
+      const pending = instrumented.list({} as never, {});
+
+      expect(logLine).not.toHaveBeenCalled();
+
+      await pending;
+
+      expect(logLine).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not log a non-port property read', () => {
+      void instrumented.connectorType;
+      void instrumented.supportedFormats;
+
+      expect(logLine).not.toHaveBeenCalled();
+      expect(logError).not.toHaveBeenCalled();
+    });
+
+    it('logs one line per caller-visible call', async () => {
+      jest.spyOn(adapter, 'revoke').mockImplementation(async function (
+        this: MockAdapter,
+        context,
+        id,
+      ) {
+        await this.list(context, {});
+
+        return { credentialId: id, revoked: true };
+      });
+
+      await instrumented.revoke({} as never, 'cred-1');
+
+      expect(logLine).toHaveBeenCalledTimes(1);
     });
   });
 

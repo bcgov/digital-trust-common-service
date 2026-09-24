@@ -1761,6 +1761,37 @@ new one, a delayed or retried job stretches that trace out over however long it
 waited. That is the cost of being able to get from a request to the work it
 caused using nothing but the shared `trace_id`.
 
+#### Agent adapter calls
+
+Every port-method call on an `AgentAdapter` produces one line when it settles,
+from the same wrapper that records the span and the counter:
+
+| Field | Notes |
+| --- | --- |
+| `connector` | The connector type the call went to, e.g. `traction` |
+| `method` | The port method called, e.g. `offerCredential` |
+| `outcome` | `success`, the `AdapterError` code, or `unknown` |
+| `duration_ms` | Time from entering the adapter to the call settling |
+| `err` | Failure lines only — the error's type, message, and stack |
+
+Success is logged at `log`, failure at `error`, matching the job lines above.
+The correlation fields come from the mixin, so an adapter line carries the
+`request_id`, `tenant_id`, `operation_id`, and `trace_id` of whatever caused the
+call without the wrapper knowing any of them.
+
+`outcome` is classified once and shared with the span and the counter, so the
+three cannot disagree about how a call ended.
+
+The error is reduced to those three fields before it is logged, rather than
+handed to the logger as-is. pino's error serializer copies every own enumerable
+property of an error, and `AdapterError` carries a free-form `context` bag —
+`FormatNotSupportedError` puts a format in it, `ValidationError` a list of
+issues, and a future adapter could put an upstream response body there. Passing
+the error through would emit that bag in full, below the depth the redaction
+paths reach and under key names they do not list. This is the case the redaction
+rules mean by not relying on redaction for payloads this codebase did not shape.
+A thrown non-Error is stringified for the same reason.
+
 #### Access log
 
 One line per request is emitted when the response finishes:
