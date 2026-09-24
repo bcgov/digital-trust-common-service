@@ -1772,7 +1772,9 @@ from the same wrapper that records the span and the counter:
 | `method` | The port method called, e.g. `offerCredential` |
 | `outcome` | `success`, the `AdapterError` code, or `unknown` |
 | `duration_ms` | Time from entering the adapter to the call settling |
-| `err` | Failure lines only — the error's type, message, and stack |
+| `error_type` | Failure lines only — the error's class name, or the thrown value's `typeof` |
+| `error_message` | Failure lines only — the error's message, or the thrown value stringified |
+| `error_stack` | Failure lines only, and only when an `Error` was thrown |
 
 Success is logged at `log`, failure at `error`, matching the job lines above.
 The correlation fields come from the mixin, so an adapter line carries the

@@ -344,5 +344,17 @@ function describeError(error: unknown): DescribedError {
     };
   }
 
-  return { error_message: String(error), error_type: typeof error };
+  // A thrown non-Error need not be convertible to a string: `Object.create(null)`
+  // has no `toString`, and a `Symbol.toPrimitive` is free to throw. Letting that
+  // escape would replace the value the caller is about to be handed with a
+  // conversion error raised by the logging itself, so it degrades to a label.
+  let message: string;
+
+  try {
+    message = String(error);
+  } catch {
+    message = '<unstringifiable thrown value>';
+  }
+
+  return { error_message: message, error_type: typeof error };
 }

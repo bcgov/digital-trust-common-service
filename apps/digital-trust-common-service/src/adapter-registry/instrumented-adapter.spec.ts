@@ -474,6 +474,21 @@ describe('instrumentAdapter', () => {
       expect(JSON.stringify(payload)).not.toContain('given_name');
     });
 
+    it('rethrows a thrown value that cannot be converted to a string', async () => {
+      const unstringifiable = Object.create(null) as object;
+      jest.spyOn(adapter, 'revoke').mockRejectedValue(unstringifiable);
+
+      await expect(instrumented.revoke({} as never, 'cred-1')).rejects.toBe(
+        unstringifiable,
+      );
+
+      const [payload] = logError.mock.calls[0] as [Record<string, unknown>];
+
+      expect(payload.error_message).toBe('<unstringifiable thrown value>');
+      expect(payload.error_type).toBe('object');
+      expect(payload.outcome).toBe('unknown');
+    });
+
     it('logs a synchronous throw once', () => {
       const error = new TimeoutError('slow');
       jest.spyOn(adapter, 'revoke').mockImplementation(() => {
