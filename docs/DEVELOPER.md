@@ -598,6 +598,39 @@ onwards:
  "message":"Starting Nest application..."}
 ```
 
+Alloy parses these fields, so the set is a contract rather than an
+implementation detail. `log-contract.spec.ts` asserts it — including that the
+logger adds nothing beyond it, so a pino upgrade cannot quietly reintroduce
+`hostname` or rename `message` back to `msg`. These are the fields the logger
+attaches on its own; a call site is free to log fields of its own alongside
+them.
+
+| Field | Always | Meaning |
+| --- | --- | --- |
+| `timestamp` | yes | Epoch milliseconds. |
+| `level` | yes | Nest's name for the level — `verbose`, `debug`, `log`, `warn`, `error`, `fatal`. |
+| `message` | yes | The log message. |
+| `service` | yes | Always `digital-trust-common-service`. |
+| `pid` | yes | Id of the emitting process. Not a way to tell API from worker — they are separate Deployments, and each container's process is usually PID 1. Use `source`, or the pod and workload labels. |
+| `context` | no | The `Logger` name at the call site, e.g. `NestFactory`. |
+| `source` | no | `api` for a request, `job:<queue>` for a job. Absent on startup. |
+| `request_id` | no | Present for a request, and for a job enqueued by one. |
+| `tenant_id` | no | Present once trusted context has resolved a tenant. |
+| `operation_id` | no | Present once the line belongs to an operation. |
+| `trace_id`, `span_id`, `trace_flags` | no | Injected by OpenTelemetry while a span is recording. |
+
+The correlation fields come from the request context rather than from call
+sites, so a line logged by code that knows nothing about the request still
+carries them.
+
+One further record has a contract of its own: the access log, emitted once per
+logged request — liveness and readiness probes are deliberately excluded, since
+the kubelet polls them continuously and they carry no signal. On top of the
+fields above it carries exactly `method`, `route`, `status_code`, and
+`duration_ms` — `route` is the matched pattern, never the request path, and is
+omitted when nothing matched. That "exactly" is asserted too, because it is
+what keeps request headers and bodies out of the log.
+
 `LOG_LEVEL` sets the threshold (`trace`, `debug`, `info`, `warn`, `error`,
 `fatal`, `silent`). It defaults to `info`, and an unrecognised value falls back
 to `info` rather than failing startup. Locally it comes from `.env`; deployed it
@@ -630,7 +663,9 @@ Sensitive values are redacted centrally in
 secrets, passwords, keys, cookies, and credential claim values. Redaction is a
 backstop for mistakes, not the control: log identifiers and outcomes you have
 chosen, never whole entities, upstream response bodies, or caught error
-payloads. See the redaction rules in
+payloads. It matches a key by its exact spelling and only to a fixed nesting
+depth, and it fails silently in both cases — `log-contract.spec.ts` pins where
+those limits fall. See the redaction rules in
 [ARCHITECTURE.md](./ARCHITECTURE.md#observability).
 
 #### Reading them in Grafana
