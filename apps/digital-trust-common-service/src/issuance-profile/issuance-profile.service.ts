@@ -15,6 +15,7 @@ import {
   assertResourceTenantOrNotFound,
   assertTenantAccess,
 } from '../common/assert-tenant-access';
+import { decodeCursor, encodeCursor } from '../common/cursor-pagination';
 import { CredentialDefinitionFormat } from '../credential-definition/credential-definition.entity';
 import {
   CredentialDefinitionService,
@@ -28,7 +29,6 @@ import {
   IssuanceProfileStatus,
 } from './issuance-profile.entity';
 import {
-  IssuanceProfileCursor,
   IssuanceProfileFilters,
   IssuanceProfileRepository,
 } from './issuance-profile.repository';
@@ -254,7 +254,7 @@ export class IssuanceProfileService {
     options: { limit?: number; cursor?: string | null } = {},
   ): Promise<PaginatedIssuanceProfiles> {
     const limit = options.limit ?? 20;
-    const cursor = options.cursor ? this.decodeCursor(options.cursor) : null;
+    const cursor = options.cursor ? decodeCursor(options.cursor) : null;
 
     const page = await this.issuanceProfileRepository.findPage(
       tenantId,
@@ -265,32 +265,10 @@ export class IssuanceProfileService {
     return {
       data: page.items,
       pagination: {
-        next_cursor: page.nextCursor
-          ? this.encodeCursor(page.nextCursor)
-          : null,
+        next_cursor: page.nextCursor ? encodeCursor(page.nextCursor) : null,
         has_more: page.hasMore,
       },
     };
-  }
-
-  public encodeCursor(cursor: IssuanceProfileCursor): string {
-    return Buffer.from(JSON.stringify(cursor), 'utf8').toString('base64url');
-  }
-
-  public decodeCursor(raw: string): IssuanceProfileCursor {
-    try {
-      const parsed = JSON.parse(
-        Buffer.from(raw, 'base64url').toString('utf8'),
-      ) as IssuanceProfileCursor;
-
-      if (!parsed?.createdAt || !parsed?.id) {
-        throw new Error('invalid cursor shape');
-      }
-
-      return parsed;
-    } catch {
-      throw new BadRequestException('Invalid pagination cursor.');
-    }
   }
 
   public async update(

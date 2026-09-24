@@ -1,5 +1,4 @@
 import {
-  BadRequestException,
   ConflictException,
   ForbiddenException,
   Injectable,
@@ -9,6 +8,7 @@ import { EntityManager } from 'typeorm';
 
 import { AuditAction } from '../audit-log/audit-log.entity';
 import { DomainAuditService } from '../audit-log/domain-audit.service';
+import { decodeCursor, encodeCursor } from '../common/cursor-pagination';
 
 import { CreateTenantUserDto } from './dto/create-tenant-user.dto';
 import { InviteTenantUserDto } from './dto/invite-tenant-user.dto';
@@ -18,10 +18,7 @@ import {
   TenantUserRole,
   TenantUserStatus,
 } from './tenant-user.entity';
-import {
-  TenantUserCursor,
-  TenantUserRepository,
-} from './tenant-user.repository';
+import { TenantUserRepository } from './tenant-user.repository';
 
 export type PaginatedTenantUsers = {
   data: TenantUser[];
@@ -143,7 +140,7 @@ export class TenantUserService {
     options: { limit?: number; cursor?: string | null },
   ): Promise<PaginatedTenantUsers> {
     const limit = options.limit ?? 20;
-    const cursor = options.cursor ? this.decodeCursor(options.cursor) : null;
+    const cursor = options.cursor ? decodeCursor(options.cursor) : null;
 
     const page = await this.tenantUserRepository.findPageForTenant(tenantId, {
       limit,
@@ -153,32 +150,10 @@ export class TenantUserService {
     return {
       data: page.items,
       pagination: {
-        next_cursor: page.nextCursor
-          ? this.encodeCursor(page.nextCursor)
-          : null,
+        next_cursor: page.nextCursor ? encodeCursor(page.nextCursor) : null,
         has_more: page.hasMore,
       },
     };
-  }
-
-  public encodeCursor(cursor: TenantUserCursor): string {
-    return Buffer.from(JSON.stringify(cursor), 'utf8').toString('base64url');
-  }
-
-  public decodeCursor(raw: string): TenantUserCursor {
-    try {
-      const parsed = JSON.parse(
-        Buffer.from(raw, 'base64url').toString('utf8'),
-      ) as TenantUserCursor;
-
-      if (!parsed?.createdAt || !parsed?.id) {
-        throw new Error('invalid cursor shape');
-      }
-
-      return parsed;
-    } catch {
-      throw new BadRequestException('Invalid pagination cursor.');
-    }
   }
 
   public async findByExternalUserId(

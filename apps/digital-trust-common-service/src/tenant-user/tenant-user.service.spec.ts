@@ -9,6 +9,7 @@ import { EntityManager } from 'typeorm';
 
 import { AuditAction } from '../audit-log/audit-log.entity';
 import { DomainAuditService } from '../audit-log/domain-audit.service';
+import { encodeCursor } from '../common/cursor-pagination';
 
 import { CreateTenantUserDto } from './dto/create-tenant-user.dto';
 import { InviteTenantUserDto } from './dto/invite-tenant-user.dto';
@@ -382,9 +383,7 @@ describe('TenantUserService', () => {
         cursor: null,
       });
       expect(result.pagination.has_more).toBe(true);
-      expect(result.pagination.next_cursor).toEqual(
-        service.encodeCursor(nextCursor),
-      );
+      expect(result.pagination.next_cursor).toEqual(encodeCursor(nextCursor));
     });
 
     it('should decode a provided cursor and pass it to the repository', async () => {
@@ -393,7 +392,7 @@ describe('TenantUserService', () => {
         createdAt: mockTenantUser.createdAt.toISOString(),
         id: mockTenantUser.id,
       };
-      const encoded = service.encodeCursor(cursor);
+      const encoded = encodeCursor(cursor);
       mockFindPageForTenant.mockResolvedValue({
         items: [],
         nextCursor: null,
