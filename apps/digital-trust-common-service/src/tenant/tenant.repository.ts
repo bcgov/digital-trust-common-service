@@ -2,12 +2,11 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, Repository } from 'typeorm';
 
+import { Cursor } from '../common/cursor-pagination';
+
 import { Tenant } from './tenant.entity';
 
-export type TenantCursor = {
-  createdAt: string;
-  id: string;
-};
+export type TenantCursor = Cursor;
 
 export type TenantPage = {
   items: Tenant[];

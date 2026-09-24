@@ -1,9 +1,7 @@
-import {
-  BadRequestException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { EntityManager } from 'typeorm';
+
+import { decodeCursor, encodeCursor } from '../common/cursor-pagination';
 
 import { AuditAction, AuditActorType, AuditLog } from './audit-log.entity';
 import {
@@ -142,23 +140,11 @@ export class AuditLogService {
   }
 
   public encodeCursor(cursor: AuditLogCursor): string {
-    return Buffer.from(JSON.stringify(cursor), 'utf8').toString('base64url');
+    return encodeCursor(cursor);
   }
 
   public decodeCursor(raw: string): AuditLogCursor {
-    try {
-      const parsed = JSON.parse(
-        Buffer.from(raw, 'base64url').toString('utf8'),
-      ) as AuditLogCursor;
-
-      if (!parsed?.createdAt || !parsed?.id) {
-        throw new Error('invalid cursor shape');
-      }
-
-      return parsed;
-    } catch {
-      throw new BadRequestException('Invalid pagination cursor.');
-    }
+    return decodeCursor(raw);
   }
 
   private csvEscape(value: string): string {

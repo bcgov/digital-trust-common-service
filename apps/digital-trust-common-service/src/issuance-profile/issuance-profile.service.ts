@@ -15,6 +15,7 @@ import {
   assertResourceTenantOrNotFound,
   assertTenantAccess,
 } from '../common/assert-tenant-access';
+import { decodeCursor, encodeCursor } from '../common/cursor-pagination';
 import { CredentialDefinitionFormat } from '../credential-definition/credential-definition.entity';
 import {
   CredentialDefinitionService,
@@ -274,23 +275,11 @@ export class IssuanceProfileService {
   }
 
   public encodeCursor(cursor: IssuanceProfileCursor): string {
-    return Buffer.from(JSON.stringify(cursor), 'utf8').toString('base64url');
+    return encodeCursor(cursor);
   }
 
   public decodeCursor(raw: string): IssuanceProfileCursor {
-    try {
-      const parsed = JSON.parse(
-        Buffer.from(raw, 'base64url').toString('utf8'),
-      ) as IssuanceProfileCursor;
-
-      if (!parsed?.createdAt || !parsed?.id) {
-        throw new Error('invalid cursor shape');
-      }
-
-      return parsed;
-    } catch {
-      throw new BadRequestException('Invalid pagination cursor.');
-    }
+    return decodeCursor(raw);
   }
 
   public async update(

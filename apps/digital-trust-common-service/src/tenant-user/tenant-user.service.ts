@@ -1,5 +1,4 @@
 import {
-  BadRequestException,
   ConflictException,
   ForbiddenException,
   Injectable,
@@ -9,6 +8,7 @@ import { EntityManager } from 'typeorm';
 
 import { AuditAction } from '../audit-log/audit-log.entity';
 import { DomainAuditService } from '../audit-log/domain-audit.service';
+import { decodeCursor, encodeCursor } from '../common/cursor-pagination';
 
 import { CreateTenantUserDto } from './dto/create-tenant-user.dto';
 import { InviteTenantUserDto } from './dto/invite-tenant-user.dto';
@@ -162,23 +162,11 @@ export class TenantUserService {
   }
 
   public encodeCursor(cursor: TenantUserCursor): string {
-    return Buffer.from(JSON.stringify(cursor), 'utf8').toString('base64url');
+    return encodeCursor(cursor);
   }
 
   public decodeCursor(raw: string): TenantUserCursor {
-    try {
-      const parsed = JSON.parse(
-        Buffer.from(raw, 'base64url').toString('utf8'),
-      ) as TenantUserCursor;
-
-      if (!parsed?.createdAt || !parsed?.id) {
-        throw new Error('invalid cursor shape');
-      }
-
-      return parsed;
-    } catch {
-      throw new BadRequestException('Invalid pagination cursor.');
-    }
+    return decodeCursor(raw);
   }
 
   public async findByExternalUserId(
