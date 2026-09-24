@@ -1647,6 +1647,37 @@ Client → API Pod → Traction/Credo Agent Service
 - `trace_id` injected into every structured log line → seamless log-to-trace navigation
 - `tenant.id` and `operation.id` are set on the HTTP **server** span at the request boundary, so traces can be filtered by tenant or by credential operation. Both are request-scoped: never process resource attributes (one process serves every tenant, so the first one resolved would label all traffic) and never metric labels (unbounded cardinality). A request without a trusted tenant context is left unattributed rather than assigned a placeholder.
 
+#### Agent adapter spans
+
+Every port-method call on an `AgentAdapter` — `offerCredential`, `requestPresentation`,
+`revoke`, and the rest — runs inside a client span named `<connectorType> <method>`,
+for example `traction offerCredential`. It carries `connector.type`,
+`adapter.method`, and `adapter.outcome`: the same three values the
+`adapter.calls` counter records, taken from the same place, so a trace and a
+dashboard cannot disagree about how a call ended.
+
+The span is made active for the duration of the call, so the HTTP client span
+the auto-instrumentation records for the actual agent request nests inside it.
+That nesting is the point. A span on its own says the adapter call took four
+seconds; the child says how much of that was the wire and how much was this
+service, which is the difference between knowing a request was slow and knowing
+whose problem it is.
+
+A failed call sets the span status to `ERROR` and records the exception before
+the error is rethrown unchanged — callers map the concrete `AdapterError`
+subclass to an HTTP status, so observation must not disturb it. `adapter.outcome`
+is the error's stable `code`, or `unknown` for anything that is not an
+`AdapterError`.
+
+Nothing else is attached. No request or response bodies, no credential
+attributes, no connector or tenant identifiers: the span carries what the
+counter carries and no more. Tenant attribution comes from the enclosing server
+or job span, which the adapter span already descends from.
+
+This is wired in the `instrumentAdapter()` proxy that the adapter registry wraps
+every registered adapter with, so it applies to any adapter added later without
+that adapter knowing telemetry exists.
+
 ### Structured Logging
 
 ```json

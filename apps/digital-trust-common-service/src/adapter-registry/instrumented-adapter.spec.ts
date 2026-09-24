@@ -8,10 +8,22 @@ import {
   TimeoutError,
   ValidationError,
 } from '@app/credential-ports';
+import {
+  Span,
+  SpanKind,
+  SpanOptions,
+  SpanStatus,
+  SpanStatusCode,
+  Tracer,
+  trace,
+} from '@opentelemetry/api';
 
 import {
   ADAPTER_OUTCOME_SUCCESS,
   ADAPTER_OUTCOME_UNKNOWN,
+  ATTR_ADAPTER_METHOD,
+  ATTR_ADAPTER_OUTCOME,
+  ATTR_CONNECTOR_TYPE,
   BusinessMetricsService,
 } from '../common/telemetry/business-metrics.service';
 
@@ -21,10 +33,72 @@ import {
   unwrapAdapter,
 } from './instrumented-adapter';
 
+const ADAPTER_TRACER_NAME = 'digital-trust-common-service/adapter';
+
+/** What the stub tracer below saw, flattened for assertions. */
+interface RecordedSpan {
+  attributes: Record<string, unknown>;
+  ended: boolean;
+  exceptions: unknown[];
+  kind?: SpanKind;
+  name: string;
+  status?: SpanStatus;
+}
+
+/**
+ * Replaces the global tracer with one that records what the wrapper does to
+ * each span, following this repo's convention of mocking collaborators with
+ * plain jest doubles rather than pulling in an SDK exporter.
+ *
+ * The callback is invoked and its return value passed straight back, which is
+ * what `startActiveSpan` does — so the wrapper's synchronous, non-promise, and
+ * promise paths behave under the stub exactly as they do in production.
+ */
+function stubTracer(
+  spans: RecordedSpan[],
+): jest.SpiedFunction<typeof trace.getTracer> {
+  return jest.spyOn(trace, 'getTracer').mockReturnValue({
+    startActiveSpan: (
+      name: string,
+      options: SpanOptions,
+      callback: (span: Span) => unknown,
+    ): unknown => {
+      const recorded: RecordedSpan = {
+        attributes: { ...options.attributes },
+        ended: false,
+        exceptions: [],
+        kind: options.kind,
+        name,
+      };
+
+      spans.push(recorded);
+
+      const span = {
+        end: (): void => {
+          recorded.ended = true;
+        },
+        recordException: (exception: unknown): void => {
+          recorded.exceptions.push(exception);
+        },
+        setAttribute: (key: string, value: unknown): void => {
+          recorded.attributes[key] = value;
+        },
+        setStatus: (status: SpanStatus): void => {
+          recorded.status = status;
+        },
+      } as unknown as Span;
+
+      return callback(span);
+    },
+  } as unknown as Tracer);
+}
+
 describe('instrumentAdapter', () => {
   let adapter: MockAdapter;
   let instrumented: AgentAdapter;
   let recordAdapterCall: jest.Mock;
+  let spans: RecordedSpan[];
+  let getTracer: jest.SpiedFunction<typeof trace.getTracer>;
 
   beforeEach(() => {
     adapter = new MockAdapter({
@@ -32,9 +106,15 @@ describe('instrumentAdapter', () => {
       supportedFormats: [CredentialFormat.AnonCreds],
     });
     recordAdapterCall = jest.fn();
+    spans = [];
+    getTracer = stubTracer(spans);
     instrumented = instrumentAdapter(adapter, {
       recordAdapterCall,
     } as unknown as BusinessMetricsService);
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
   });
 
   describe('capability passthrough', () => {
@@ -147,6 +227,109 @@ describe('instrumentAdapter', () => {
     });
   });
 
+  describe('call spans', () => {
+    it('records the span against a dedicated adapter tracer', async () => {
+      await instrumented.list({} as never, {});
+
+      expect(getTracer).toHaveBeenCalledWith(ADAPTER_TRACER_NAME);
+    });
+
+    it('names the span by connector and method', async () => {
+      await instrumented.list({} as never, {});
+
+      expect(spans).toHaveLength(1);
+      expect(spans[0].name).toBe('traction list');
+    });
+
+    it('records an outbound call as a client span', async () => {
+      await instrumented.list({} as never, {});
+
+      expect(spans[0].kind).toBe(SpanKind.CLIENT);
+    });
+
+    it('tags a successful call with connector, method, and outcome', async () => {
+      await instrumented.list({} as never, {});
+
+      expect(spans[0].attributes).toEqual({
+        [ATTR_CONNECTOR_TYPE]: 'traction',
+        [ATTR_ADAPTER_METHOD]: 'list',
+        [ATTR_ADAPTER_OUTCOME]: ADAPTER_OUTCOME_SUCCESS,
+      });
+      expect(spans[0].status).toBeUndefined();
+      expect(spans[0].ended).toBe(true);
+    });
+
+    it('keeps the span open until the promise settles', async () => {
+      const pending = instrumented.list({} as never, {});
+
+      expect(spans[0].ended).toBe(false);
+
+      await pending;
+
+      expect(spans[0].ended).toBe(true);
+    });
+
+    it('tags a failed call with the stable error code and marks it an error', async () => {
+      const error = new ConnectorUnavailableError('down');
+      jest.spyOn(adapter, 'revoke').mockRejectedValue(error);
+
+      await expect(instrumented.revoke({} as never, 'cred-1')).rejects.toBe(
+        error,
+      );
+
+      expect(spans[0].attributes[ATTR_ADAPTER_OUTCOME]).toBe(
+        'CONNECTOR_UNAVAILABLE',
+      );
+      expect(spans[0].status).toEqual({ code: SpanStatusCode.ERROR });
+      expect(spans[0].exceptions).toEqual([error]);
+      expect(spans[0].ended).toBe(true);
+    });
+
+    it('tags an unexpected rejection with the unknown outcome', async () => {
+      const error = new Error('socket hang up');
+      jest.spyOn(adapter, 'revoke').mockRejectedValue(error);
+
+      await expect(instrumented.revoke({} as never, 'cred-1')).rejects.toBe(
+        error,
+      );
+
+      expect(spans[0].attributes[ATTR_ADAPTER_OUTCOME]).toBe(
+        ADAPTER_OUTCOME_UNKNOWN,
+      );
+    });
+
+    it('ends the span on a synchronous throw', () => {
+      const error = new TimeoutError('slow');
+      jest.spyOn(adapter, 'revoke').mockImplementation(() => {
+        throw error;
+      });
+
+      expect(() => instrumented.revoke({} as never, 'cred-1')).toThrow(error);
+      expect(spans[0].attributes[ATTR_ADAPTER_OUTCOME]).toBe('TIMEOUT');
+      expect(spans[0].status).toEqual({ code: SpanStatusCode.ERROR });
+      expect(spans[0].ended).toBe(true);
+    });
+
+    it('still ends and marks the span when a non-Error is thrown', async () => {
+      jest.spyOn(adapter, 'revoke').mockRejectedValue('socket hang up');
+
+      await expect(instrumented.revoke({} as never, 'cred-1')).rejects.toBe(
+        'socket hang up',
+      );
+
+      expect(spans[0].status).toEqual({ code: SpanStatusCode.ERROR });
+      expect(spans[0].exceptions).toEqual([]);
+      expect(spans[0].ended).toBe(true);
+    });
+
+    it('does not record a span for a non-port property read', () => {
+      void instrumented.connectorType;
+      void instrumented.supportedFormats;
+
+      expect(spans).toHaveLength(0);
+    });
+  });
+
   describe('double counting', () => {
     it('counts a port method the adapter calls on itself only once', async () => {
       jest.spyOn(adapter, 'revoke').mockImplementation(async function (
@@ -169,6 +352,23 @@ describe('instrumentAdapter', () => {
         'revoke',
         ADAPTER_OUTCOME_SUCCESS,
       );
+    });
+
+    it('records one span per caller-visible call', async () => {
+      jest.spyOn(adapter, 'revoke').mockImplementation(async function (
+        this: MockAdapter,
+        context,
+        id,
+      ) {
+        await this.list(context, {});
+
+        return { credentialId: id, revoked: true };
+      });
+
+      await instrumented.revoke({} as never, 'cred-1');
+
+      expect(spans).toHaveLength(1);
+      expect(spans[0].name).toBe('traction revoke');
     });
   });
 
