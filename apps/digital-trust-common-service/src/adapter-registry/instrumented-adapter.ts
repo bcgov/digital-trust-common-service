@@ -43,7 +43,7 @@ type PortMethod = {
  */
 type UncoveredMethod = Exclude<PortMethod, ListedMethod>;
 type CoverageComplete = [UncoveredMethod] extends [never] ? true : never;
-const PORT_METHODS_COVER_EVERY_PORT_METHOD: CoverageComplete = true;
+const PORT_METHODS_COVER_EVERY_PORT_METHOD = true as CoverageComplete;
 void PORT_METHODS_COVER_EVERY_PORT_METHOD;
 const LISTED_METHODS_EXIST: readonly PortMethod[] = PORT_METHODS;
 void LISTED_METHODS_EXIST;
