@@ -1107,7 +1107,9 @@ describe('OidcInteractionController', () => {
       mockUpstreamOidcService.consumeInteraction.mockResolvedValue(
         mockInteraction,
       );
-      mockConfigService.get.mockReturnValue('http://localhost:3000/oidc');
+      mockOidcConfigService.getConfig.mockReturnValue({
+        issuer: 'http://localhost:3000/oidc',
+      });
 
       const mockReq = {
         headers: { host: 'localhost:3000' },
@@ -1197,7 +1199,9 @@ describe('OidcInteractionController', () => {
       mockUpstreamOidcService.consumeInteraction.mockResolvedValue(
         mockInteraction,
       );
-      mockConfigService.get.mockReturnValue('http://localhost:3000/oidc');
+      mockOidcConfigService.getConfig.mockReturnValue({
+        issuer: 'http://localhost:3000/oidc',
+      });
 
       const mockReq = {
         headers: { host: 'localhost:3000' },
@@ -1269,7 +1273,9 @@ describe('OidcInteractionController', () => {
       mockUpstreamOidcService.consumeInteraction.mockResolvedValue(
         mockInteraction,
       );
-      mockConfigService.get.mockReturnValue('http://localhost:3000/oidc');
+      mockOidcConfigService.getConfig.mockReturnValue({
+        issuer: 'http://localhost:3000/oidc',
+      });
 
       const mockReq = {
         headers: { host: 'localhost:3000' },
