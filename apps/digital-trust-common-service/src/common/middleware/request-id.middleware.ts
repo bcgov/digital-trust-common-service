@@ -25,7 +25,7 @@ export function createRequestIdMiddleware(
     );
     res.setHeader(REQUEST_ID_HEADER, requestId);
 
-    requestContext.run({ requestId }, () => next());
+    requestContext.run({ requestId, source: 'api' }, () => next());
   };
 }
 

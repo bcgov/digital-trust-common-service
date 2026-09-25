@@ -10,20 +10,10 @@ import { trace } from '@opentelemetry/api';
 import { Observable } from 'rxjs';
 
 import { getServerSpan } from './server-span';
+import { isTraceableId } from './traceable-id';
 
 const OPERATION_ID_ATTRIBUTE = 'operation.id';
 const TENANT_ID_ATTRIBUTE = 'tenant.id';
-
-/**
- * Tenant and operation identifiers are UUIDs throughout the API — the routes
- * parse them with `ParseUUIDPipe`. Interceptors run before pipes, so what is
- * read here is still raw URL input: a request that will be rejected with a 400
- * moments later can carry any path segment at all. Checking the shape first
- * keeps malformed or oversized values from reaching the tracing backend, where
- * attributes are indexed for search.
- */
-const UUID_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 @Injectable()
 export class TenantSpanInterceptor implements NestInterceptor {
@@ -72,12 +62,12 @@ export class TenantSpanInterceptor implements NestInterceptor {
   }
 
   private resolveTenantId(request: AuthenticatedRequest): string | null {
-    if (this.isTraceableId(request.tenantId)) {
+    if (isTraceableId(request.tenantId)) {
       return request.tenantId;
     }
 
     const authTenantId = request.auth?.tenantId;
-    if (this.isTraceableId(authTenantId)) {
+    if (isTraceableId(authTenantId)) {
       return authTenantId;
     }
 
@@ -87,11 +77,7 @@ export class TenantSpanInterceptor implements NestInterceptor {
   private resolveOperationId(request: AuthenticatedRequest): string | null {
     const operationId = request.params?.operationId;
 
-    return this.isTraceableId(operationId) ? operationId : null;
-  }
-
-  private isTraceableId(value: unknown): value is string {
-    return typeof value === 'string' && UUID_PATTERN.test(value);
+    return isTraceableId(operationId) ? operationId : null;
   }
 
   private setAttribute(

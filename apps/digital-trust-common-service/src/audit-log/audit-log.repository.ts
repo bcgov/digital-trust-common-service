@@ -3,6 +3,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, Repository, SelectQueryBuilder } from 'typeorm';
 import type { QueryDeepPartialEntity } from 'typeorm/query-builder/QueryPartialEntity';
 
+import { Cursor } from '../common/cursor-pagination';
+
 import { AuditAction, AuditLog } from './audit-log.entity';
 
 export type AuditLogFilters = {
@@ -15,14 +17,9 @@ export type AuditLogFilters = {
   until?: Date;
 };
 
-export type AuditLogCursor = {
-  createdAt: string;
-  id: string;
-};
-
 export type AuditLogPage = {
   items: AuditLog[];
-  nextCursor: AuditLogCursor | null;
+  nextCursor: Cursor | null;
   hasMore: boolean;
 };
 
@@ -79,7 +76,7 @@ export class AuditLogRepository {
     filters: AuditLogFilters,
     options: {
       limit: number;
-      cursor?: AuditLogCursor | null;
+      cursor?: Cursor | null;
     },
   ): Promise<AuditLogPage> {
     const limit = options.limit;

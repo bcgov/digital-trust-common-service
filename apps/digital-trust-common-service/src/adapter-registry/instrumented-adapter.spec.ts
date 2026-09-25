@@ -3,15 +3,30 @@ import {
   ConnectorUnavailableError,
   CredentialFormat,
   FormatNotSupportedError,
+  FormatValidationError,
   MockAdapter,
   ConnectorType as PortConnectorType,
   TimeoutError,
   ValidationError,
 } from '@app/credential-ports';
+import { Logger } from '@nestjs/common';
+import {
+  Span,
+  SpanKind,
+  SpanOptions,
+  SpanStatus,
+  SpanStatusCode,
+  Tracer,
+  trace,
+} from '@opentelemetry/api';
+import pino from 'pino';
 
 import {
   ADAPTER_OUTCOME_SUCCESS,
   ADAPTER_OUTCOME_UNKNOWN,
+  ATTR_ADAPTER_METHOD,
+  ATTR_ADAPTER_OUTCOME,
+  ATTR_CONNECTOR_TYPE,
   BusinessMetricsService,
 } from '../common/telemetry/business-metrics.service';
 
@@ -21,10 +36,74 @@ import {
   unwrapAdapter,
 } from './instrumented-adapter';
 
+const ADAPTER_TRACER_NAME = 'digital-trust-common-service/adapter';
+
+/** What the stub tracer below saw, flattened for assertions. */
+interface RecordedSpan {
+  attributes: Record<string, unknown>;
+  ended: boolean;
+  exceptions: unknown[];
+  kind?: SpanKind;
+  name: string;
+  status?: SpanStatus;
+}
+
+/**
+ * Replaces the global tracer with one that records what the wrapper does to
+ * each span, following this repo's convention of mocking collaborators with
+ * plain jest doubles rather than pulling in an SDK exporter.
+ *
+ * The callback is invoked and its return value passed straight back, which is
+ * what `startActiveSpan` does — so the wrapper's synchronous, non-promise, and
+ * promise paths behave under the stub exactly as they do in production.
+ */
+function stubTracer(
+  spans: RecordedSpan[],
+): jest.SpiedFunction<typeof trace.getTracer> {
+  return jest.spyOn(trace, 'getTracer').mockReturnValue({
+    startActiveSpan: (
+      name: string,
+      options: SpanOptions,
+      callback: (span: Span) => unknown,
+    ): unknown => {
+      const recorded: RecordedSpan = {
+        attributes: { ...options.attributes },
+        ended: false,
+        exceptions: [],
+        kind: options.kind,
+        name,
+      };
+
+      spans.push(recorded);
+
+      const span = {
+        end: (): void => {
+          recorded.ended = true;
+        },
+        recordException: (exception: unknown): void => {
+          recorded.exceptions.push(exception);
+        },
+        setAttribute: (key: string, value: unknown): void => {
+          recorded.attributes[key] = value;
+        },
+        setStatus: (status: SpanStatus): void => {
+          recorded.status = status;
+        },
+      } as unknown as Span;
+
+      return callback(span);
+    },
+  } as unknown as Tracer);
+}
+
 describe('instrumentAdapter', () => {
   let adapter: MockAdapter;
   let instrumented: AgentAdapter;
   let recordAdapterCall: jest.Mock;
+  let spans: RecordedSpan[];
+  let getTracer: jest.SpiedFunction<typeof trace.getTracer>;
+  let logLine: jest.SpiedFunction<typeof Logger.prototype.log>;
+  let logError: jest.SpiedFunction<typeof Logger.prototype.error>;
 
   beforeEach(() => {
     adapter = new MockAdapter({
@@ -32,9 +111,18 @@ describe('instrumentAdapter', () => {
       supportedFormats: [CredentialFormat.AnonCreds],
     });
     recordAdapterCall = jest.fn();
+    spans = [];
+    getTracer = stubTracer(spans);
+    // The wrapper's logger is module-level, so the prototype is the seam.
+    logLine = jest.spyOn(Logger.prototype, 'log').mockImplementation();
+    logError = jest.spyOn(Logger.prototype, 'error').mockImplementation();
     instrumented = instrumentAdapter(adapter, {
       recordAdapterCall,
     } as unknown as BusinessMetricsService);
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
   });
 
   describe('capability passthrough', () => {
@@ -147,6 +235,309 @@ describe('instrumentAdapter', () => {
     });
   });
 
+  describe('call spans', () => {
+    it('records the span against a dedicated adapter tracer', async () => {
+      await instrumented.list({} as never, {});
+
+      expect(getTracer).toHaveBeenCalledWith(ADAPTER_TRACER_NAME);
+    });
+
+    it('names the span by connector and method', async () => {
+      await instrumented.list({} as never, {});
+
+      expect(spans).toHaveLength(1);
+      expect(spans[0].name).toBe('traction list');
+    });
+
+    it('records an outbound call as a client span', async () => {
+      await instrumented.list({} as never, {});
+
+      expect(spans[0].kind).toBe(SpanKind.CLIENT);
+    });
+
+    it('tags a successful call with connector, method, and outcome', async () => {
+      await instrumented.list({} as never, {});
+
+      expect(spans[0].attributes).toEqual({
+        [ATTR_CONNECTOR_TYPE]: 'traction',
+        [ATTR_ADAPTER_METHOD]: 'list',
+        [ATTR_ADAPTER_OUTCOME]: ADAPTER_OUTCOME_SUCCESS,
+      });
+      expect(spans[0].status).toBeUndefined();
+      expect(spans[0].ended).toBe(true);
+    });
+
+    it('keeps the span open until the promise settles', async () => {
+      const pending = instrumented.list({} as never, {});
+
+      expect(spans[0].ended).toBe(false);
+
+      await pending;
+
+      expect(spans[0].ended).toBe(true);
+    });
+
+    it('tags a failed call with the stable error code and marks it an error', async () => {
+      const error = new ConnectorUnavailableError('down');
+      jest.spyOn(adapter, 'revoke').mockRejectedValue(error);
+
+      await expect(instrumented.revoke({} as never, 'cred-1')).rejects.toBe(
+        error,
+      );
+
+      expect(spans[0].attributes[ATTR_ADAPTER_OUTCOME]).toBe(
+        'CONNECTOR_UNAVAILABLE',
+      );
+      expect(spans[0].status).toEqual({ code: SpanStatusCode.ERROR });
+      expect(spans[0].exceptions).toEqual([error]);
+      expect(spans[0].ended).toBe(true);
+    });
+
+    it('tags an unexpected rejection with the unknown outcome', async () => {
+      const error = new Error('socket hang up');
+      jest.spyOn(adapter, 'revoke').mockRejectedValue(error);
+
+      await expect(instrumented.revoke({} as never, 'cred-1')).rejects.toBe(
+        error,
+      );
+
+      expect(spans[0].attributes[ATTR_ADAPTER_OUTCOME]).toBe(
+        ADAPTER_OUTCOME_UNKNOWN,
+      );
+    });
+
+    it('ends the span on a synchronous throw', () => {
+      const error = new TimeoutError('slow');
+      jest.spyOn(adapter, 'revoke').mockImplementation(() => {
+        throw error;
+      });
+
+      expect(() => instrumented.revoke({} as never, 'cred-1')).toThrow(error);
+      expect(spans[0].attributes[ATTR_ADAPTER_OUTCOME]).toBe('TIMEOUT');
+      expect(spans[0].status).toEqual({ code: SpanStatusCode.ERROR });
+      expect(spans[0].ended).toBe(true);
+    });
+
+    it('still ends and marks the span when a non-Error is thrown', async () => {
+      jest.spyOn(adapter, 'revoke').mockRejectedValue('socket hang up');
+
+      await expect(instrumented.revoke({} as never, 'cred-1')).rejects.toBe(
+        'socket hang up',
+      );
+
+      expect(spans[0].status).toEqual({ code: SpanStatusCode.ERROR });
+      expect(spans[0].exceptions).toEqual([]);
+      expect(spans[0].ended).toBe(true);
+    });
+
+    it('does not record a span for a non-port property read', () => {
+      void instrumented.connectorType;
+      void instrumented.supportedFormats;
+
+      expect(spans).toHaveLength(0);
+    });
+  });
+
+  describe('call events', () => {
+    it('logs a successful call with connector, method, outcome, and duration', async () => {
+      await instrumented.list({} as never, {});
+
+      expect(logLine).toHaveBeenCalledTimes(1);
+      expect(logError).not.toHaveBeenCalled();
+      expect(logLine).toHaveBeenCalledWith(
+        {
+          connector: 'traction',
+          duration_ms: expect.any(Number),
+          method: 'list',
+          outcome: ADAPTER_OUTCOME_SUCCESS,
+        },
+        'adapter call completed',
+      );
+    });
+
+    it('logs a failed call at error level under its stable error code', async () => {
+      const error = new ConnectorUnavailableError('down');
+      jest.spyOn(adapter, 'revoke').mockRejectedValue(error);
+
+      await expect(instrumented.revoke({} as never, 'cred-1')).rejects.toBe(
+        error,
+      );
+
+      expect(logLine).not.toHaveBeenCalled();
+      expect(logError).toHaveBeenCalledWith(
+        {
+          connector: 'traction',
+          duration_ms: expect.any(Number),
+          error_message: 'down',
+          error_stack: error.stack,
+          error_type: 'ConnectorUnavailableError',
+          method: 'revoke',
+          outcome: 'CONNECTOR_UNAVAILABLE',
+        },
+        'adapter call failed',
+      );
+    });
+
+    it('logs an unexpected rejection under the unknown outcome', async () => {
+      const error = new Error('socket hang up');
+      jest.spyOn(adapter, 'revoke').mockRejectedValue(error);
+
+      await expect(instrumented.revoke({} as never, 'cred-1')).rejects.toBe(
+        error,
+      );
+
+      expect(logError).toHaveBeenCalledWith(
+        expect.objectContaining({ outcome: ADAPTER_OUTCOME_UNKNOWN }),
+        'adapter call failed',
+      );
+    });
+
+    it('keeps the error context bag out of the log line', async () => {
+      // FormatValidationError.issues carries `actual`: the credential attribute
+      // value that failed validation. pino copies every own enumerable property
+      // off anything with a string `message`, so logging the error itself would
+      // emit that value. The assertion is on the whole payload rather than on
+      // named keys, so any future field has to be added here deliberately.
+      const error = new FormatValidationError([
+        {
+          actual: 'Ada Lovelace',
+          expected: 'a date',
+          field: 'birthdate',
+          message: 'birthdate must be a date',
+        },
+      ]);
+      jest.spyOn(adapter, 'revoke').mockRejectedValue(error);
+
+      await expect(instrumented.revoke({} as never, 'cred-1')).rejects.toBe(
+        error,
+      );
+
+      const [payload] = logError.mock.calls[0] as [Record<string, unknown>];
+
+      expect(Object.keys(payload).sort()).toEqual([
+        'connector',
+        'duration_ms',
+        'error_message',
+        'error_stack',
+        'error_type',
+        'method',
+        'outcome',
+      ]);
+      expect(JSON.stringify(payload)).not.toContain('Ada Lovelace');
+    });
+
+    it('survives serialization without pino reattaching the error fields', async () => {
+      // A regression to logging the error itself would still pass the key
+      // assertion above if pino were the thing expanding it, so drive the
+      // payload through the same serializer the real logger uses.
+      const error = new FormatValidationError([
+        {
+          actual: 'Ada Lovelace',
+          expected: 'a date',
+          field: 'birthdate',
+          message: 'birthdate must be a date',
+        },
+      ]);
+      jest.spyOn(adapter, 'revoke').mockRejectedValue(error);
+
+      await expect(instrumented.revoke({} as never, 'cred-1')).rejects.toBe(
+        error,
+      );
+
+      const [payload] = logError.mock.calls[0] as [Record<string, unknown>];
+      const serialized = JSON.stringify(
+        Object.fromEntries(
+          Object.entries(payload).map(([key, value]) => [
+            key,
+            pino.stdSerializers.err(value as Error),
+          ]),
+        ),
+      );
+
+      expect(serialized).not.toContain('Ada Lovelace');
+      expect(serialized).not.toContain('birthdate');
+    });
+
+    it('stringifies a thrown non-Error rather than describing its fields', async () => {
+      jest
+        .spyOn(adapter, 'revoke')
+        .mockRejectedValue({ claims: { given_name: 'Ada' } });
+
+      await expect(
+        instrumented.revoke({} as never, 'cred-1'),
+      ).rejects.toStrictEqual({ claims: { given_name: 'Ada' } });
+
+      const [payload] = logError.mock.calls[0] as [Record<string, unknown>];
+
+      expect(payload.error_message).toBe('[object Object]');
+      expect(payload.error_type).toBe('object');
+      expect(JSON.stringify(payload)).not.toContain('given_name');
+    });
+
+    it('rethrows a thrown value that cannot be converted to a string', async () => {
+      const unstringifiable = Object.create(null) as object;
+      jest.spyOn(adapter, 'revoke').mockRejectedValue(unstringifiable);
+
+      await expect(instrumented.revoke({} as never, 'cred-1')).rejects.toBe(
+        unstringifiable,
+      );
+
+      const [payload] = logError.mock.calls[0] as [Record<string, unknown>];
+
+      expect(payload.error_message).toBe('<unstringifiable thrown value>');
+      expect(payload.error_type).toBe('object');
+      expect(payload.outcome).toBe('unknown');
+    });
+
+    it('logs a synchronous throw once', () => {
+      const error = new TimeoutError('slow');
+      jest.spyOn(adapter, 'revoke').mockImplementation(() => {
+        throw error;
+      });
+
+      expect(() => instrumented.revoke({} as never, 'cred-1')).toThrow(error);
+      expect(logError).toHaveBeenCalledTimes(1);
+      expect(logError).toHaveBeenCalledWith(
+        expect.objectContaining({ method: 'revoke', outcome: 'TIMEOUT' }),
+        'adapter call failed',
+      );
+    });
+
+    it('does not log before the promise settles', async () => {
+      const pending = instrumented.list({} as never, {});
+
+      expect(logLine).not.toHaveBeenCalled();
+
+      await pending;
+
+      expect(logLine).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not log a non-port property read', () => {
+      void instrumented.connectorType;
+      void instrumented.supportedFormats;
+
+      expect(logLine).not.toHaveBeenCalled();
+      expect(logError).not.toHaveBeenCalled();
+    });
+
+    it('logs one line per caller-visible call', async () => {
+      jest.spyOn(adapter, 'revoke').mockImplementation(async function (
+        this: MockAdapter,
+        context,
+        id,
+      ) {
+        await this.list(context, {});
+
+        return { credentialId: id, revoked: true };
+      });
+
+      await instrumented.revoke({} as never, 'cred-1');
+
+      expect(logLine).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe('double counting', () => {
     it('counts a port method the adapter calls on itself only once', async () => {
       jest.spyOn(adapter, 'revoke').mockImplementation(async function (
@@ -169,6 +560,23 @@ describe('instrumentAdapter', () => {
         'revoke',
         ADAPTER_OUTCOME_SUCCESS,
       );
+    });
+
+    it('records one span per caller-visible call', async () => {
+      jest.spyOn(adapter, 'revoke').mockImplementation(async function (
+        this: MockAdapter,
+        context,
+        id,
+      ) {
+        await this.list(context, {});
+
+        return { credentialId: id, revoked: true };
+      });
+
+      await instrumented.revoke({} as never, 'cred-1');
+
+      expect(spans).toHaveLength(1);
+      expect(spans[0].name).toBe('traction revoke');
     });
   });
 

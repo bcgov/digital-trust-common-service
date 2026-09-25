@@ -1,45 +1,22 @@
-import { Writable } from 'node:stream';
-
 import { RequestContextService } from '@app/common/context/request-context.service';
 import { ConsoleLogger, Logger as NestLogger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
-import express from 'express';
 import { LoggerModule, Logger as PinoNestLogger } from 'nestjs-pino';
 import { type Logger as PinoLogger } from 'pino';
-import pinoHttp from 'pino-http';
 import request from 'supertest';
 
-import { createRequestIdMiddleware } from '../common/middleware/request-id.middleware';
+import {
+  accessLogRecords,
+  config,
+  createHttpApp,
+  createLogger,
+  InMemoryStream,
+  OPERATION_ID,
+  REQUEST_ID,
+  TENANT_ID,
+} from '../../test/support/logger-harness';
 
 import { createLoggerModuleParams } from './logger.config';
-
-class InMemoryStream extends Writable {
-  public readonly chunks: string[] = [];
-
-  public _write(
-    chunk: Buffer | string,
-    _encoding: BufferEncoding,
-    callback: (error?: Error | null) => void,
-  ): void {
-    this.chunks.push(chunk.toString());
-    callback();
-  }
-
-  public lines(): string[] {
-    return this.chunks.join('').trim().split('\n').filter(Boolean);
-  }
-
-  public records(): Array<Record<string, unknown>> {
-    return this.lines().map(
-      (line) => JSON.parse(line) as Record<string, unknown>,
-    );
-  }
-}
-
-const REQUEST_ID = '11111111-1111-4111-8111-111111111111';
-const TENANT_ID = '22222222-2222-4222-8222-222222222222';
-const OPERATION_ID = '33333333-3333-4333-8333-333333333333';
 
 describe('createLoggerModuleParams', () => {
   afterEach(() => {
@@ -308,7 +285,7 @@ describe('request correlation fields', () => {
   it('attaches the request id and source to every line in a request', () => {
     const { logger, requestContext, stream } = createLogger('info');
 
-    requestContext.run({ requestId: REQUEST_ID }, () => {
+    requestContext.run({ requestId: REQUEST_ID, source: 'api' }, () => {
       logger.info('first');
       logger.info('second');
     });
@@ -322,7 +299,7 @@ describe('request correlation fields', () => {
   it('attaches tenant and operation ids once they are resolved', () => {
     const { logger, requestContext, stream } = createLogger('info');
 
-    requestContext.run({ requestId: REQUEST_ID }, () => {
+    requestContext.run({ requestId: REQUEST_ID, source: 'api' }, () => {
       logger.info('before resolution');
       requestContext.setTenantId(TENANT_ID);
       requestContext.setOperationId(OPERATION_ID);
@@ -336,6 +313,34 @@ describe('request correlation fields', () => {
       operation_id: OPERATION_ID,
       tenant_id: TENANT_ID,
     });
+  });
+
+  it('names the queue a background job came from', () => {
+    const { logger, requestContext, stream } = createLogger('info');
+
+    requestContext.run(
+      { requestId: REQUEST_ID, source: 'job:audit.write' },
+      () => {
+        logger.info('writing audit row');
+      },
+    );
+
+    expect(stream.records()[0]).toMatchObject({
+      request_id: REQUEST_ID,
+      source: 'job:audit.write',
+    });
+  });
+
+  it('omits the request id for a job nobody requested', () => {
+    const { logger, requestContext, stream } = createLogger('info');
+
+    requestContext.run({ source: 'job:audit.partition-maintain' }, () => {
+      logger.info('maintaining partitions');
+    });
+
+    const record = stream.records()[0];
+    expect(record).toMatchObject({ source: 'job:audit.partition-maintain' });
+    expect(record).not.toHaveProperty('request_id');
   });
 });
 
@@ -427,84 +432,4 @@ const ANSI_PATTERN = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 'g');
  */
 function stripAnsi(value: string): string {
   return value.replace(ANSI_PATTERN, '');
-}
-
-function createLogger(
-  logLevel: string | undefined,
-  extras?: Record<string, string>,
-): {
-  logger: PinoLogger;
-  requestContext: RequestContextService;
-  stream: InMemoryStream;
-} {
-  const stream = new InMemoryStream();
-  const requestContext = new RequestContextService();
-  const params = createLoggerModuleParams(
-    config(logLevel, extras),
-    requestContext,
-    stream,
-  );
-  const pinoHttp = params.pinoHttp as { logger: PinoLogger };
-
-  return { logger: pinoHttp.logger, requestContext, stream };
-}
-
-function config(
-  logLevel: string | undefined,
-  extras: Record<string, string> = {},
-): ConfigService {
-  return {
-    get: (key: string) => (key === 'LOG_LEVEL' ? logLevel : extras[key]),
-  } as ConfigService;
-}
-
-/**
- * Wires the logger the way `configureApp()` does — request-id middleware first
- * so the context is open before pino-http registers its response listener.
- */
-function createHttpApp(): {
-  app: express.Express;
-  stream: InMemoryStream;
-} {
-  const stream = new InMemoryStream();
-  const requestContext = new RequestContextService();
-  const params = createLoggerModuleParams(
-    config('info'),
-    requestContext,
-    stream,
-  );
-  const app = express();
-
-  app.use(createRequestIdMiddleware(requestContext));
-  app.use(pinoHttp(params.pinoHttp as Parameters<typeof pinoHttp>[0]));
-  app.get('/api/v1/tenants/:tenantId', (_req, res) => {
-    res.json({ ok: true });
-  });
-  app.get('/health/live', (_req, res) => {
-    res.json({ ok: true });
-  });
-  app.get('/health/ready', (_req, res) => {
-    res.json({ ok: true });
-  });
-  app.get('/boom', (_req, _res, next) => {
-    next(new Error('boom'));
-  });
-
-  return { app, stream };
-}
-
-// pino-http writes from a response-finish listener, which runs after supertest
-// has resolved. Yielding once lets that listener land before the assertion.
-async function accessLogRecords(
-  stream: InMemoryStream,
-): Promise<Array<Record<string, unknown>>> {
-  await new Promise((resolve) => setImmediate(resolve));
-
-  return stream
-    .records()
-    .filter(
-      (record) =>
-        record.message === 'request completed' ||
-        record.message === 'request failed',
-    );
 }

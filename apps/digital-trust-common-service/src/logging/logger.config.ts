@@ -30,12 +30,6 @@ const REDACTION_CENSOR = '[Redacted]';
 // redaction rules in docs/ARCHITECTURE.md.
 const MAX_REDACTION_DEPTH = 6;
 
-// `source` distinguishes where a line originated once several producers share
-// a Loki stream; see the label taxonomy in docs/ARCHITECTURE.md. Anything
-// emitted while a request context is open came in through the HTTP API.
-// Adapter and webhook lines carry their own value and are not set here.
-const REQUEST_LOG_SOURCE = 'api';
-
 // Liveness and readiness are polled continuously by the kubelet, so an access
 // log per probe is volume without signal. `health/status` is a human/monitoring
 // endpoint rather than a probe, so it stays logged.
@@ -133,8 +127,9 @@ export function createLoggerModuleParams(
     level,
     // Correlation identifiers are attached here rather than threaded through
     // call sites, so every line emitted during a request carries them —
-    // including lines from code that knows nothing about the request. Startup
-    // and worker lines run with no store and are unaffected.
+    // including lines from code that knows nothing about the request. Workers
+    // restore the same store around each job, so job lines carry them too.
+    // Startup lines run with no store and are unaffected.
     mixin: createRequestContextMixin(requestContext),
     redact: {
       censor: REDACTION_CENSOR,
@@ -198,8 +193,8 @@ function createRequestContextMixin(
     }
 
     return {
-      request_id: store.requestId,
-      source: REQUEST_LOG_SOURCE,
+      source: store.source,
+      ...(store.requestId === undefined ? {} : { request_id: store.requestId }),
       ...(store.tenantId === undefined ? {} : { tenant_id: store.tenantId }),
       ...(store.operationId === undefined
         ? {}

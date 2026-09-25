@@ -350,6 +350,19 @@ three tenants, so it exists to exercise the tenant switcher. It signs in to
 listed but not switchable. Its Keycloak id is pinned in the realm file, since
 the seed has to know the subject to create active rows for it.
 
+A sign-in claims every unclaimed invitation at that email, in **every** tenant
+— not just the one the SPA's OIDC client belongs to. So inviting a user who
+already has a membership into a second tenant now takes effect on their next
+sign-in, and the tenant appears in the switcher at the role it was invited at.
+There is no seeded fixture for this; invite someone from a tenant's Users page
+and sign in again to exercise it. Invitations into suspended, deactivated or
+pending-approval tenants are claimed too, and the tenant is listed with its
+status; switching in is still refused until the tenant is active. Three kinds
+are passed over: invitations in soft-deleted tenants, invitations in a tenant
+where the account already holds a membership row, and any second invitation in
+a tenant that has already been claimed from — at most one per tenant, oldest
+first.
+
 The realm's `admin` account (`admin@example.com`, password `admin`) has no
 seeded row: the login callback creates one on the fly with the `readonly`
 role, which holds no API scopes. A Keycloak volume created before these
@@ -598,6 +611,39 @@ onwards:
  "message":"Starting Nest application..."}
 ```
 
+Alloy parses these fields, so the set is a contract rather than an
+implementation detail. `log-contract.spec.ts` asserts it — including that the
+logger adds nothing beyond it, so a pino upgrade cannot quietly reintroduce
+`hostname` or rename `message` back to `msg`. These are the fields the logger
+attaches on its own; a call site is free to log fields of its own alongside
+them.
+
+| Field | Always | Meaning |
+| --- | --- | --- |
+| `timestamp` | yes | Epoch milliseconds. |
+| `level` | yes | Nest's name for the level — `verbose`, `debug`, `log`, `warn`, `error`, `fatal`. |
+| `message` | yes | The log message. |
+| `service` | yes | Always `digital-trust-common-service`. |
+| `pid` | yes | Id of the emitting process. Not a way to tell API from worker — they are separate Deployments, and each container's process is usually PID 1. Use `source`, or the pod and workload labels. |
+| `context` | no | The `Logger` name at the call site, e.g. `NestFactory`. |
+| `source` | no | `api` for a request, `job:<queue>` for a job. Absent on startup. |
+| `request_id` | no | Present for a request, and for a job enqueued by one. |
+| `tenant_id` | no | Present once trusted context has resolved a tenant. |
+| `operation_id` | no | Present once the line belongs to an operation. |
+| `trace_id`, `span_id`, `trace_flags` | no | Injected by OpenTelemetry while a span is recording. |
+
+The correlation fields come from the request context rather than from call
+sites, so a line logged by code that knows nothing about the request still
+carries them.
+
+One further record has a contract of its own: the access log, emitted once per
+logged request — liveness and readiness probes are deliberately excluded, since
+the kubelet polls them continuously and they carry no signal. On top of the
+fields above it carries exactly `method`, `route`, `status_code`, and
+`duration_ms` — `route` is the matched pattern, never the request path, and is
+omitted when nothing matched. That "exactly" is asserted too, because it is
+what keeps request headers and bodies out of the log.
+
 `LOG_LEVEL` sets the threshold (`trace`, `debug`, `info`, `warn`, `error`,
 `fatal`, `silent`). It defaults to `info`, and an unrecognised value falls back
 to `info` rather than failing startup. Locally it comes from `.env`; deployed it
@@ -630,7 +676,9 @@ Sensitive values are redacted centrally in
 secrets, passwords, keys, cookies, and credential claim values. Redaction is a
 backstop for mistakes, not the control: log identifiers and outcomes you have
 chosen, never whole entities, upstream response bodies, or caught error
-payloads. See the redaction rules in
+payloads. It matches a key by its exact spelling and only to a fixed nesting
+depth, and it fails silently in both cases — `log-contract.spec.ts` pins where
+those limits fall. See the redaction rules in
 [ARCHITECTURE.md](./ARCHITECTURE.md#observability).
 
 #### Reading them in Grafana
@@ -730,6 +778,38 @@ access log that appears *without* `trace_id` means correlation is broken for the
 case operators care about most, not that there is simply little to correlate.
 Either way, confirm the query returns *some* line before concluding the
 datasource is misconfigured.
+
+#### Background job traces
+
+Job spans exist to answer one question: **which tenant's background work is slow
+or failing, and which request caused it?** Job failures are otherwise invisible —
+nobody is waiting on a response to notice them.
+
+Job handlers registered through `JobsService` run inside a span named
+`<queue> process`, tagged with the queue, the pg-boss job id, and the tenant and
+operation the job belongs to. The scheduled purge workers register with pg-boss
+directly and do not appear. In Tempo:
+
+```
+{ span.messaging.system = "pg-boss" }
+{ span.messaging.system = "pg-boss" && span.tenant.id = "<tenant-uuid>" }
+{ span.messaging.destination.name = "audit.write" && duration > 5s }
+```
+
+To confirm a job is tied to the request that queued it:
+
+1. Run the first query and open a job span.
+2. Confirm it sits in the same trace as the HTTP request that enqueued it,
+   rather than in a trace of its own. A job with no parent request — a cron
+   schedule — correctly starts its own trace.
+3. Take the `trace_id` from that trace and run the log query above with it. The
+   worker's own lines should come back alongside the request's.
+4. Confirm those worker lines carry `source` of `job:<queue>`, and the same
+   `request_id` as the request.
+
+A job span whose trace contains only the job means the trace context did not
+survive the payload. A worker line with no `source` means the context was not
+restored around the handler.
 
 ### Stop the stack
 

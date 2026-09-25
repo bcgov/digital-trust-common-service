@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 
+import { Cursor } from '../common/cursor-pagination';
 import { CredentialDefinitionFormat } from '../credential-definition/credential-definition.entity';
 
 import {
@@ -15,14 +16,9 @@ export interface IssuanceProfileFilters {
   readonly name?: string;
 }
 
-export type IssuanceProfileCursor = {
-  createdAt: string;
-  id: string;
-};
-
 export type IssuanceProfilePage = {
   items: IssuanceProfile[];
-  nextCursor: IssuanceProfileCursor | null;
+  nextCursor: Cursor | null;
   hasMore: boolean;
 };
 
@@ -63,7 +59,7 @@ export class IssuanceProfileRepository {
     filters: IssuanceProfileFilters,
     options: {
       limit: number;
-      cursor?: IssuanceProfileCursor | null;
+      cursor?: Cursor | null;
     },
   ): Promise<IssuanceProfilePage> {
     const qb = this.repository
@@ -133,7 +129,7 @@ export class IssuanceProfileRepository {
    * Atomically moves a profile from `fromStatus` to `toStatus`, scoped to
    * the tenant. The `status = fromStatus` condition on the UPDATE makes this
    * a single atomic operation, mirroring
-   * `TenantUserRepository.claimInvitedByEmail`: only one concurrent caller
+   * `TenantUserRepository.claimInvitedById`: only one concurrent caller
    * can win the transition, and a caller racing against an already-moved
    * profile gets 0 affected rows back instead of silently overwriting it.
    *

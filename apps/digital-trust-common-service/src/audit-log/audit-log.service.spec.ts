@@ -1,6 +1,8 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 
+import { decodeCursor } from '../common/cursor-pagination';
+
 import { AuditAction, AuditActorType, AuditLog } from './audit-log.entity';
 import { AuditLogRepository } from './audit-log.repository';
 import { AuditLogService } from './audit-log.service';
@@ -98,9 +100,7 @@ describe('AuditLogService', () => {
   });
 
   it('rejects invalid cursors', () => {
-    expect(() => service.decodeCursor('not-valid')).toThrow(
-      BadRequestException,
-    );
+    expect(() => decodeCursor('not-valid')).toThrow(BadRequestException);
   });
 
   it('exports CSV rows', async () => {

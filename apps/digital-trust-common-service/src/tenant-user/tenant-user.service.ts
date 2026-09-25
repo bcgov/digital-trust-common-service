@@ -1,5 +1,4 @@
 import {
-  BadRequestException,
   ConflictException,
   ForbiddenException,
   Injectable,
@@ -9,6 +8,7 @@ import { EntityManager } from 'typeorm';
 
 import { AuditAction } from '../audit-log/audit-log.entity';
 import { DomainAuditService } from '../audit-log/domain-audit.service';
+import { decodeCursor, encodeCursor } from '../common/cursor-pagination';
 
 import { CreateTenantUserDto } from './dto/create-tenant-user.dto';
 import { InviteTenantUserDto } from './dto/invite-tenant-user.dto';
@@ -18,10 +18,7 @@ import {
   TenantUserRole,
   TenantUserStatus,
 } from './tenant-user.entity';
-import {
-  TenantUserCursor,
-  TenantUserRepository,
-} from './tenant-user.repository';
+import { TenantUserRepository } from './tenant-user.repository';
 
 export type PaginatedTenantUsers = {
   data: TenantUser[];
@@ -143,7 +140,7 @@ export class TenantUserService {
     options: { limit?: number; cursor?: string | null },
   ): Promise<PaginatedTenantUsers> {
     const limit = options.limit ?? 20;
-    const cursor = options.cursor ? this.decodeCursor(options.cursor) : null;
+    const cursor = options.cursor ? decodeCursor(options.cursor) : null;
 
     const page = await this.tenantUserRepository.findPageForTenant(tenantId, {
       limit,
@@ -153,32 +150,10 @@ export class TenantUserService {
     return {
       data: page.items,
       pagination: {
-        next_cursor: page.nextCursor
-          ? this.encodeCursor(page.nextCursor)
-          : null,
+        next_cursor: page.nextCursor ? encodeCursor(page.nextCursor) : null,
         has_more: page.hasMore,
       },
     };
-  }
-
-  public encodeCursor(cursor: TenantUserCursor): string {
-    return Buffer.from(JSON.stringify(cursor), 'utf8').toString('base64url');
-  }
-
-  public decodeCursor(raw: string): TenantUserCursor {
-    try {
-      const parsed = JSON.parse(
-        Buffer.from(raw, 'base64url').toString('utf8'),
-      ) as TenantUserCursor;
-
-      if (!parsed?.createdAt || !parsed?.id) {
-        throw new Error('invalid cursor shape');
-      }
-
-      return parsed;
-    } catch {
-      throw new BadRequestException('Invalid pagination cursor.');
-    }
   }
 
   public async findByExternalUserId(
@@ -206,34 +181,63 @@ export class TenantUserService {
   }
 
   /**
-   * Claims an invited tenant user (AU-06 follow-up) on first login: links
-   * a previously-invited, externalUserId-less row to the authenticated
-   * external identity and activates it, preserving its invited role.
-   * Returns `null` if no such invited row exists for this tenant/email.
+   * Claims every invitation waiting at this email on sign-in, in any tenant,
+   * activating each with the role it was invited at. Tenants where this
+   * identity already has a row are skipped: a second one would violate
+   * `uq_tenant_user_external_user` and fail the whole sign-in. That also
+   * settles two invitations in one tenant at addresses differing only in
+   * case, which `invite` permits — the oldest wins.
    */
-  public async claimInvitedByEmail(
-    tenantId: string,
+  public async claimAllInvitedByEmail(
     email: string,
     externalUserId: string,
-  ): Promise<TenantUser | null> {
-    const claimed = await this.tenantUserRepository.claimInvitedByEmail(
-      tenantId,
-      email,
-      externalUserId,
-    );
+  ): Promise<TenantUser[]> {
+    const invites =
+      await this.tenantUserRepository.findUnclaimedInvitesByEmail(email);
 
-    if (!claimed) {
-      return null;
+    if (invites.length === 0) {
+      return [];
     }
 
-    await this.domainAudit.emit({
-      tenantId: claimed.tenantId,
-      action: AuditAction.UPDATE,
-      resourceType: 'tenant_user',
-      resourceId: claimed.id,
-    });
+    const existing =
+      await this.tenantUserRepository.findByExternalUserId(externalUserId);
+    const takenTenantIds = new Set(existing.map((row) => row.tenantId));
 
-    return claimed;
+    const claimedRows: TenantUser[] = [];
+
+    for (const invite of invites) {
+      if (takenTenantIds.has(invite.tenantId)) {
+        continue;
+      }
+
+      // One attempt per tenant, win or lose: a concurrent login claiming this
+      // invitation first would otherwise send us on to the next one in the
+      // same tenant, which is the violation this guard exists to prevent.
+      // Whatever is left over is swept up at the next sign-in.
+      takenTenantIds.add(invite.tenantId);
+
+      const claimed = await this.tenantUserRepository.claimInvitedById(
+        invite.id,
+        externalUserId,
+      );
+
+      if (!claimed) {
+        continue;
+      }
+
+      claimedRows.push(claimed);
+
+      // One event per tenant: audit logs are per tenant, so a single event
+      // would land in the wrong one.
+      await this.domainAudit.emit({
+        tenantId: claimed.tenantId,
+        action: AuditAction.UPDATE,
+        resourceType: 'tenant_user',
+        resourceId: claimed.id,
+      });
+    }
+
+    return claimedRows;
   }
 
   public async update(

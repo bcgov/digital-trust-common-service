@@ -1537,7 +1537,7 @@ Every log line emitted by digital-trust-common-service includes labels for Loki 
 |-------|-------------|--------|
 | `app` | Low (1-2) | `digital-trust-common-service` (or `traction` for raw agent logs) |
 | `tenant_id` | Medium | Extracted from AsyncLocalStorage request context |
-| `source` | Low (4 values) | `api`, `adapter:traction`, `adapter:credo`, `webhook` |
+| `source` | Low (bounded by queue count) | `api`, `job:<queue>`, `adapter:traction`, `adapter:credo`, `webhook` |
 | `traction_tenant_id` | Medium | Traction sub-tenant id (only on `app=traction` streams; surfaced once Traction logs JSON) |
 
 Structured metadata (Loki 3.x) or JSON fields (queryable with `| json`):
@@ -1647,6 +1647,37 @@ Client → API Pod → Traction/Credo Agent Service
 - `trace_id` injected into every structured log line → seamless log-to-trace navigation
 - `tenant.id` and `operation.id` are set on the HTTP **server** span at the request boundary, so traces can be filtered by tenant or by credential operation. Both are request-scoped: never process resource attributes (one process serves every tenant, so the first one resolved would label all traffic) and never metric labels (unbounded cardinality). A request without a trusted tenant context is left unattributed rather than assigned a placeholder.
 
+#### Agent adapter spans
+
+Every port-method call on an `AgentAdapter` — `offerCredential`, `requestPresentation`,
+`revoke`, and the rest — runs inside a client span named `<connectorType> <method>`,
+for example `traction offerCredential`. It carries `connector.type`,
+`adapter.method`, and `adapter.outcome`: the same three values the
+`adapter.calls` counter records, taken from the same place, so a trace and a
+dashboard cannot disagree about how a call ended.
+
+The span is made active for the duration of the call, so the HTTP client span
+the auto-instrumentation records for the actual agent request nests inside it.
+That nesting is the point. A span on its own says the adapter call took four
+seconds; the child says how much of that was the wire and how much was this
+service, which is the difference between knowing a request was slow and knowing
+whose problem it is.
+
+A failed call sets the span status to `ERROR` and records the exception before
+the error is rethrown unchanged — callers map the concrete `AdapterError`
+subclass to an HTTP status, so observation must not disturb it. `adapter.outcome`
+is the error's stable `code`, or `unknown` for anything that is not an
+`AdapterError`.
+
+Nothing else is attached. No request or response bodies, no credential
+attributes, no connector or tenant identifiers: the span carries what the
+counter carries and no more. Tenant attribution comes from the enclosing server
+or job span, which the adapter span already descends from.
+
+This is wired in the `instrumentAdapter()` proxy that the adapter registry wraps
+every registered adapter with, so it applies to any adapter added later without
+that adapter knowing telemetry exists.
+
 ### Structured Logging
 
 ```json
@@ -1678,8 +1709,90 @@ Client → API Pod → Traction/Credo Agent Service
 open, and `tenant_id` and `operation_id` join them as soon as each is resolved.
 They come from a pino mixin reading the `AsyncLocalStorage` request context
 rather than from call sites, so a line carries them even when the code emitting
-it knows nothing about the request. Lines with no request context — startup and
-background workers — simply omit them rather than emitting empty values.
+it knows nothing about the request. Lines emitted with no context open — during
+startup, for instance — simply omit them rather than emitting empty values.
+
+`source` says what kind of work produced the line: `api` for anything emitted
+while serving a request, and `job:<queue>` for anything emitted while running a
+background job.
+
+#### Background jobs
+
+A job usually starts life inside a request, and the work it does is part of
+what that request asked for. So when a job is enqueued, the correlation
+identifiers and the trace context of the enqueuing request are written onto the
+job payload, and when a worker picks the job up they are restored around the
+handler. Every line the handler logs then carries the same `request_id` and
+`trace_id` as the request that caused the work — including lines from code that
+has no idea it is running in a worker.
+
+`tenant_id` is the one field that need not match. Several job payloads carry a
+`tenantId` of their own naming the tenant the job acts on, and that value wins,
+because a platform-admin request can queue work against a different tenant than
+the one in its own context. So `tenant_id` on a worker line is the job's target
+tenant, not necessarily the caller's.
+
+This happens in `JobsService`, so any worker registered through it gets the
+behaviour for free and cannot forget it. Two scheduled cleanup workers — the
+operation purge and the OIDC model purge — still call pg-boss directly, so
+their lines carry no job context and they produce no span.
+
+Each handler also runs inside a span named `<queue> process`, carrying the
+queue, the pg-boss job id, and the `tenant.id` and `operation.id` the job
+belongs to — the same span attributes an HTTP request carries, so a trace search
+can narrow to one tenant's work whether it happened in a request or a worker.
+Identifiers that are not well-formed ids are left off rather than indexed.
+
+Both come from the job payload rather than from the enqueuing request. An
+operation id in particular is a domain field on some payloads and is persisted
+there, so the request's own is deliberately not written onto the payload — a
+producer that leaves it unset means the job is not about an operation.
+
+Each job also produces one line of its own when it finishes, carrying `queue`,
+`job_id`, and `duration_ms`. A failure is logged the same way and then
+rethrown, so pg-boss still applies its retry policy.
+
+Jobs that nobody requested — cron schedules and startup tasks — have no request
+to inherit from. They get a `source` so their lines are still attributable to a
+queue, but no `request_id` is invented for them.
+
+Because the job continues the enqueuing request's trace rather than starting a
+new one, a delayed or retried job stretches that trace out over however long it
+waited. That is the cost of being able to get from a request to the work it
+caused using nothing but the shared `trace_id`.
+
+#### Agent adapter calls
+
+Every port-method call on an `AgentAdapter` produces one line when it settles,
+from the same wrapper that records the span and the counter:
+
+| Field | Notes |
+| --- | --- |
+| `connector` | The connector type the call went to, e.g. `traction` |
+| `method` | The port method called, e.g. `offerCredential` |
+| `outcome` | `success`, the `AdapterError` code, or `unknown` |
+| `duration_ms` | Time from entering the adapter to the call settling |
+| `error_type` | Failure lines only — the error's class name, or the thrown value's `typeof` |
+| `error_message` | Failure lines only — the error's message, or the thrown value stringified |
+| `error_stack` | Failure lines only, and only when an `Error` was thrown |
+
+Success is logged at `log`, failure at `error`, matching the job lines above.
+The correlation fields come from the mixin, so an adapter line carries the
+`request_id`, `tenant_id`, `operation_id`, and `trace_id` of whatever caused the
+call without the wrapper knowing any of them.
+
+`outcome` is classified once and shared with the span and the counter, so the
+three cannot disagree about how a call ended.
+
+The error is reduced to those three fields before it is logged, rather than
+handed to the logger as-is. pino's error serializer copies every own enumerable
+property of an error, and `AdapterError` carries a free-form `context` bag —
+`FormatNotSupportedError` puts a format in it, `ValidationError` a list of
+issues, and a future adapter could put an upstream response body there. Passing
+the error through would emit that bag in full, below the depth the redaction
+paths reach and under key names they do not list. This is the case the redaction
+rules mean by not relying on redaction for payloads this codebase did not shape.
+A thrown non-Error is stringified for the same reason.
 
 #### Access log
 
