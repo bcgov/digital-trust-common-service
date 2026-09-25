@@ -1647,6 +1647,37 @@ Client → API Pod → Traction/Credo Agent Service
 - `trace_id` injected into every structured log line → seamless log-to-trace navigation
 - `tenant.id` and `operation.id` are set on the HTTP **server** span at the request boundary, so traces can be filtered by tenant or by credential operation. Both are request-scoped: never process resource attributes (one process serves every tenant, so the first one resolved would label all traffic) and never metric labels (unbounded cardinality). A request without a trusted tenant context is left unattributed rather than assigned a placeholder.
 
+#### Agent adapter spans
+
+Every port-method call on an `AgentAdapter` — `offerCredential`, `requestPresentation`,
+`revoke`, and the rest — runs inside a client span named `<connectorType> <method>`,
+for example `traction offerCredential`. It carries `connector.type`,
+`adapter.method`, and `adapter.outcome`: the same three values the
+`adapter.calls` counter records, taken from the same place, so a trace and a
+dashboard cannot disagree about how a call ended.
+
+The span is made active for the duration of the call, so the HTTP client span
+the auto-instrumentation records for the actual agent request nests inside it.
+That nesting is the point. A span on its own says the adapter call took four
+seconds; the child says how much of that was the wire and how much was this
+service, which is the difference between knowing a request was slow and knowing
+whose problem it is.
+
+A failed call sets the span status to `ERROR` and records the exception before
+the error is rethrown unchanged — callers map the concrete `AdapterError`
+subclass to an HTTP status, so observation must not disturb it. `adapter.outcome`
+is the error's stable `code`, or `unknown` for anything that is not an
+`AdapterError`.
+
+Nothing else is attached. No request or response bodies, no credential
+attributes, no connector or tenant identifiers: the span carries what the
+counter carries and no more. Tenant attribution comes from the enclosing server
+or job span, which the adapter span already descends from.
+
+This is wired in the `instrumentAdapter()` proxy that the adapter registry wraps
+every registered adapter with, so it applies to any adapter added later without
+that adapter knowing telemetry exists.
+
 ### Structured Logging
 
 ```json
@@ -1729,6 +1760,39 @@ Because the job continues the enqueuing request's trace rather than starting a
 new one, a delayed or retried job stretches that trace out over however long it
 waited. That is the cost of being able to get from a request to the work it
 caused using nothing but the shared `trace_id`.
+
+#### Agent adapter calls
+
+Every port-method call on an `AgentAdapter` produces one line when it settles,
+from the same wrapper that records the span and the counter:
+
+| Field | Notes |
+| --- | --- |
+| `connector` | The connector type the call went to, e.g. `traction` |
+| `method` | The port method called, e.g. `offerCredential` |
+| `outcome` | `success`, the `AdapterError` code, or `unknown` |
+| `duration_ms` | Time from entering the adapter to the call settling |
+| `error_type` | Failure lines only — the error's class name, or the thrown value's `typeof` |
+| `error_message` | Failure lines only — the error's message, or the thrown value stringified |
+| `error_stack` | Failure lines only, and only when an `Error` was thrown |
+
+Success is logged at `log`, failure at `error`, matching the job lines above.
+The correlation fields come from the mixin, so an adapter line carries the
+`request_id`, `tenant_id`, `operation_id`, and `trace_id` of whatever caused the
+call without the wrapper knowing any of them.
+
+`outcome` is classified once and shared with the span and the counter, so the
+three cannot disagree about how a call ended.
+
+The error is reduced to those three fields before it is logged, rather than
+handed to the logger as-is. pino's error serializer copies every own enumerable
+property of an error, and `AdapterError` carries a free-form `context` bag —
+`FormatNotSupportedError` puts a format in it, `ValidationError` a list of
+issues, and a future adapter could put an upstream response body there. Passing
+the error through would emit that bag in full, below the depth the redaction
+paths reach and under key names they do not list. This is the case the redaction
+rules mean by not relying on redaction for payloads this codebase did not shape.
+A thrown non-Error is stringified for the same reason.
 
 #### Access log
 

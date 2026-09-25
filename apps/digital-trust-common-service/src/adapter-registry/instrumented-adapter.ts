@@ -1,10 +1,28 @@
 import { AdapterError, AgentAdapter } from '@app/credential-ports';
+import { Logger } from '@nestjs/common';
+import { Span, SpanKind, SpanStatusCode, trace } from '@opentelemetry/api';
 
 import {
   ADAPTER_OUTCOME_SUCCESS,
   ADAPTER_OUTCOME_UNKNOWN,
+  ATTR_ADAPTER_METHOD,
+  ATTR_ADAPTER_OUTCOME,
+  ATTR_CONNECTOR_TYPE,
   BusinessMetricsService,
 } from '../common/telemetry/business-metrics.service';
+
+const ADAPTER_TRACER_NAME = 'digital-trust-common-service/adapter';
+
+/**
+ * Module-level rather than injected: the wrapper is a plain function, and
+ * threading a logger through `instrumentAdapter` would change every call site
+ * and every test double for a value that is the same everywhere.
+ *
+ * The correlation fields — `request_id`, `tenant_id`, `operation_id`,
+ * `trace_id` — are attached by the pino mixin and the pino instrumentation, so
+ * nothing is threaded through here for them either.
+ */
+const logger = new Logger('AdapterCall');
 
 /**
  * The port methods an AgentAdapter exposes, keyed by the port that declares
@@ -92,8 +110,8 @@ export function classifyAdapterOutcome(error: unknown): string {
 }
 
 /**
- * Returns the adapter wrapped so every port method call is counted by
- * connector, method, and outcome.
+ * Returns the adapter wrapped so every port method call is counted and traced
+ * by connector, method, and outcome.
  *
  * A proxy rather than a decorator on each adapter: instrumentation then applies
  * to any adapter the registry is given, including ones added later and the test
@@ -131,54 +149,81 @@ export function instrumentAdapter(
       const method = value as (...args: unknown[]) => unknown;
 
       return function instrumented(this: unknown, ...args: unknown[]): unknown {
-        // `target` rather than `this`: the bound receiver is the proxy, and
-        // calling through it would re-enter this trap for any port method the
-        // adapter calls on itself, counting one caller-visible call twice.
-        let result: unknown;
-
-        try {
-          result = method.apply(target, args);
-        } catch (error) {
-          metrics.recordAdapterCall(
-            connectorType,
-            property,
-            classifyAdapterOutcome(error),
-          );
-
-          throw error;
-        }
-
-        // Port methods return promises, but a test double or a future
-        // synchronous implementation need not, and awaiting a non-promise here
-        // would turn a synchronous call asynchronous for its caller.
-        if (!isPromiseLike(result)) {
-          metrics.recordAdapterCall(
-            connectorType,
-            property,
-            ADAPTER_OUTCOME_SUCCESS,
-          );
-
-          return result;
-        }
-
-        return result.then(
-          (resolved) => {
-            metrics.recordAdapterCall(
-              connectorType,
-              property,
-              ADAPTER_OUTCOME_SUCCESS,
-            );
-
-            return resolved;
+        // Active rather than detached, so the HTTP client span the OTel
+        // auto-instrumentation records for the agent request nests inside this
+        // one. That nesting is the point: the adapter span on its own gives a
+        // duration, and the child gives how much of it was spent on the wire
+        // versus in this service. Anything else the adapter does — a database
+        // query, another HTTP call — nests for the same reason.
+        //
+        // startActiveSpan returns whatever the callback returns, so the three
+        // settle paths below stay exactly as they were.
+        return trace.getTracer(ADAPTER_TRACER_NAME).startActiveSpan(
+          `${connectorType} ${property}`,
+          {
+            kind: SpanKind.CLIENT,
+            attributes: {
+              [ATTR_CONNECTOR_TYPE]: connectorType,
+              [ATTR_ADAPTER_METHOD]: property,
+            },
           },
-          (error: unknown) => {
-            metrics.recordAdapterCall(
-              connectorType,
-              property,
-              classifyAdapterOutcome(error),
-            );
+          (span): unknown => {
+            const startedAt = Date.now();
+            let result: unknown;
 
-            throw error;
+            // `target` rather than `this`: the bound receiver is the proxy, and
+            // calling through it would re-enter this trap for any port method
+            // the adapter calls on itself, counting one caller-visible call
+            // twice.
+            try {
+              result = method.apply(target, args);
+            } catch (error) {
+              settleFailure(
+                span,
+                metrics,
+                connectorType,
+                property,
+                startedAt,
+                error,
+              );
+
+              throw error;
+            }
+
+            // Port methods return promises, but a test double or a future
+            // synchronous implementation need not, and awaiting a non-promise
+            // here would turn a synchronous call asynchronous for its caller.
+            if (!isPromiseLike(result)) {
+              settleSuccess(span, metrics, connectorType, property, startedAt);
+
+              return result;
+            }
+
+            return result.then(
+              (resolved) => {
+                settleSuccess(
+                  span,
+                  metrics,
+                  connectorType,
+                  property,
+                  startedAt,
+                );
+
+                return resolved;
+              },
+              (error: unknown) => {
+                settleFailure(
+                  span,
+                  metrics,
+                  connectorType,
+                  property,
+                  startedAt,
+                  error,
+                );
+
+                throw error;
+              },
+            );
           },
         );
       };
@@ -192,4 +237,124 @@ function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
     value !== null &&
     typeof (value as PromiseLike<unknown>).then === 'function'
   );
+}
+
+/**
+ * Closes out a call that returned.
+ *
+ * `adapter.outcome` is set here rather than at span start because it is not
+ * known until the call settles, and the span, the counter, and the log line all
+ * take the same value from the same place so a trace, a dashboard, and a log
+ * search cannot disagree.
+ *
+ * Span attribute values are deliberately not put through `boundedLabel`. That
+ * backstop exists to stop an unexpected string becoming a permanent metric
+ * series; spans are not aggregated into series, and reusing it here would
+ * discard detail from a trace to solve a problem traces do not have.
+ */
+function settleSuccess(
+  span: Span,
+  metrics: BusinessMetricsService,
+  connectorType: string,
+  method: string,
+  startedAt: number,
+): void {
+  span.setAttribute(ATTR_ADAPTER_OUTCOME, ADAPTER_OUTCOME_SUCCESS);
+  span.end();
+
+  metrics.recordAdapterCall(connectorType, method, ADAPTER_OUTCOME_SUCCESS);
+
+  logger.log(
+    {
+      connector: connectorType,
+      duration_ms: Date.now() - startedAt,
+      method,
+      outcome: ADAPTER_OUTCOME_SUCCESS,
+    },
+    'adapter call completed',
+  );
+}
+
+/**
+ * Closes out a call that threw. The error is recorded, never handled: the
+ * caller is rethrown the original value so the AdapterError subclass it maps to
+ * an HTTP status survives.
+ *
+ * The error is reduced to an explicit set of fields rather than logged under
+ * `err`. pino treats any value with a string `message` as an error and copies
+ * every own enumerable property off it, so passing the error through would emit
+ * `AdapterError.context` in full — and with it `FormatValidationError.issues`,
+ * whose `actual` field holds the credential attribute value that failed
+ * validation. An allowlist makes that structural instead of leaving it to
+ * redaction to guess the key names a future adapter picks.
+ */
+function settleFailure(
+  span: Span,
+  metrics: BusinessMetricsService,
+  connectorType: string,
+  method: string,
+  startedAt: number,
+  error: unknown,
+): void {
+  const outcome = classifyAdapterOutcome(error);
+
+  span.setAttribute(ATTR_ADAPTER_OUTCOME, outcome);
+  span.setStatus({ code: SpanStatusCode.ERROR });
+
+  // recordException takes an Error or an exception-shaped object; a thrown
+  // primitive is left to the status and the outcome attribute.
+  if (error instanceof Error) {
+    span.recordException(error);
+  }
+
+  span.end();
+
+  metrics.recordAdapterCall(connectorType, method, outcome);
+
+  logger.error(
+    {
+      connector: connectorType,
+      duration_ms: Date.now() - startedAt,
+      ...describeError(error),
+      method,
+      outcome,
+    },
+    'adapter call failed',
+  );
+}
+
+/** The fields of a thrown value this wrapper is willing to log. */
+interface DescribedError {
+  error_message: string;
+  error_stack?: string;
+  error_type: string;
+}
+
+/**
+ * Describes a thrown value without reaching into it. A thrown non-Error is
+ * stringified rather than inspected, so an object carrying arbitrary fields
+ * cannot smuggle them into the log either.
+ */
+function describeError(error: unknown): DescribedError {
+  if (error instanceof Error) {
+    return {
+      error_message: error.message,
+      error_stack: error.stack,
+      error_type: error.name,
+    };
+  }
+
+  // A thrown non-Error need not be convertible to a string: `Object.create(null)`
+  // has no `toString`, and a `Symbol.toPrimitive` is free to throw. Letting that
+  // escape would replace the value the caller is about to be handed with a
+  // conversion error raised by the logging itself, so it degrades to a label.
+  let message: string;
+
+  try {
+    message = String(error);
+  } catch {
+    message = '<unstringifiable thrown value>';
+  }
+
+  return { error_message: message, error_type: typeof error };
 }
