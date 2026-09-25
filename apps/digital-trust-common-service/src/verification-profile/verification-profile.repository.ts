@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { QueryDeepPartialEntity } from 'typeorm/query-builder/QueryPartialEntity';
 
 import {
   VerificationProfile,
@@ -153,6 +154,32 @@ export class VerificationProfileRepository {
       .where('id = :id', { id })
       .andWhere('tenant_id = :tenantId', { tenantId })
       .andWhere('status = :fromStatus', { fromStatus })
+      .execute();
+
+    return (result.affected ?? 0) > 0;
+  }
+
+  /**
+   * Atomically persists a partial update to a profile only while it is
+   * still in `draft` status, scoped to the tenant. This closes a
+   * check-then-act race in the service: a plain findById-then-save could
+   * overwrite a status change (e.g. a concurrent publish) with a stale
+   * `draft` value. Mirrors `transitionStatus`'s guarded-UPDATE idiom.
+   */
+  public async updateIfDraft(
+    tenantId: string,
+    id: string,
+    patch: QueryDeepPartialEntity<VerificationProfile>,
+  ): Promise<boolean> {
+    const result = await this.repository
+      .createQueryBuilder()
+      .update(VerificationProfile)
+      .set(patch)
+      .where('id = :id', { id })
+      .andWhere('tenant_id = :tenantId', { tenantId })
+      .andWhere('status = :status', {
+        status: VerificationProfileStatus.DRAFT,
+      })
       .execute();
 
     return (result.affected ?? 0) > 0;

@@ -6,6 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { QueryFailedError } from 'typeorm';
+import { QueryDeepPartialEntity } from 'typeorm/query-builder/QueryPartialEntity';
 
 import { AuditAction } from '../audit-log/audit-log.entity';
 import { DomainAuditService } from '../audit-log/domain-audit.service';
@@ -160,6 +161,24 @@ export class VerificationProfileService {
   }
 
   /**
+   * Strips a matching pair of surrounding single or double quotes from a
+   * JSONPath bracket segment, e.g. `'given_names'` -> `given_names`, so
+   * quoted bracket notation (`$['credentialSubject']['given_names']`)
+   * resolves to the same attribute name as dot notation.
+   */
+  private stripJsonPathQuotes(segment: string): string {
+    if (
+      segment.length >= 2 &&
+      ((segment.startsWith("'") && segment.endsWith("'")) ||
+        (segment.startsWith('"') && segment.endsWith('"')))
+    ) {
+      return segment.slice(1, -1);
+    }
+
+    return segment;
+  }
+
+  /**
    * Extracts attribute names referenced by a DIF Presentation Exchange
    * `presentation_definition`, from each input descriptor's
    * `constraints.fields[].path` JSONPath entries (e.g.
@@ -216,7 +235,7 @@ export class VerificationProfileService {
           const lastSegment = segments[segments.length - 1];
 
           if (lastSegment) {
-            names.add(lastSegment);
+            names.add(this.stripJsonPathQuotes(lastSegment));
           }
         }
       }
@@ -325,15 +344,20 @@ export class VerificationProfileService {
 
   public decodeCursor(raw: string): VerificationProfileCursor {
     try {
-      const parsed = JSON.parse(
+      const parsed: unknown = JSON.parse(
         Buffer.from(raw, 'base64url').toString('utf8'),
-      ) as VerificationProfileCursor;
+      );
 
-      if (!parsed?.createdAt || !parsed?.id) {
+      if (
+        !parsed ||
+        typeof parsed !== 'object' ||
+        typeof (parsed as { createdAt?: unknown }).createdAt !== 'string' ||
+        typeof (parsed as { id?: unknown }).id !== 'string'
+      ) {
         throw new Error('invalid cursor shape');
       }
 
-      return parsed;
+      return parsed as VerificationProfileCursor;
     } catch {
       throw new BadRequestException('Invalid pagination cursor.');
     }
@@ -353,6 +377,8 @@ export class VerificationProfileService {
       );
     }
 
+    const patch: Partial<VerificationProfile> = {};
+
     if (
       dto.presentationDefinition !== undefined ||
       dto.predicates !== undefined
@@ -371,8 +397,8 @@ export class VerificationProfileService {
           issuanceProfile.attributeSchema,
           requestedAttributes,
         );
-        profile.presentationDefinition = dto.presentationDefinition;
-        profile.requestedAttributes = requestedAttributes;
+        patch.presentationDefinition = dto.presentationDefinition;
+        patch.requestedAttributes = requestedAttributes;
       }
 
       if (dto.predicates !== undefined) {
@@ -380,7 +406,7 @@ export class VerificationProfileService {
           issuanceProfile.attributeSchema,
           dto.predicates,
         );
-        profile.predicates = dto.predicates as unknown as Record<
+        patch.predicates = dto.predicates as unknown as Record<
           string,
           unknown
         >[];
@@ -388,22 +414,35 @@ export class VerificationProfileService {
     }
 
     if (dto.description !== undefined) {
-      profile.description = dto.description;
+      patch.description = dto.description;
     }
 
     if (dto.metadata !== undefined) {
-      profile.metadata = dto.metadata;
+      patch.metadata = dto.metadata;
     }
 
     if (dto.isPublic !== undefined) {
-      profile.isPublic = dto.isPublic;
+      patch.isPublic = dto.isPublic;
     }
 
     if (dto.protocolHint !== undefined) {
-      profile.protocolHint = dto.protocolHint;
+      patch.protocolHint = dto.protocolHint;
     }
 
-    const updated = await this.verificationProfileRepository.save(profile);
+    const updatedWhileDraft =
+      await this.verificationProfileRepository.updateIfDraft(
+        tenantId,
+        id,
+        patch as QueryDeepPartialEntity<VerificationProfile>,
+      );
+
+    if (!updatedWhileDraft) {
+      throw new ConflictException(
+        `Verification profile '${id}' cannot be updated because it is not in draft status.`,
+      );
+    }
+
+    const updated = await this.findById(tenantId, id, auth);
 
     await this.domainAudit.emit({
       tenantId: updated.tenantId,

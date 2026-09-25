@@ -84,7 +84,7 @@ export class VerificationProfileResponseDto {
   @Expose({ name: 'public' })
   @ApiProperty({
     name: 'public',
-    description: 'When true, discoverable via public endpoint (CA-14)',
+    description: 'When true, discoverable via public endpoint',
     example: false,
   })
   public isPublic!: boolean;

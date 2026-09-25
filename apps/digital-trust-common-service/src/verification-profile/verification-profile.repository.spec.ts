@@ -249,4 +249,58 @@ describe('VerificationProfileRepository', () => {
     await expect(repository.save(entity)).resolves.toBe(entity);
     expect(mockRepo.save).toHaveBeenCalledWith(entity);
   });
+
+  describe('updateIfDraft', () => {
+    let mockQueryBuilder: {
+      update: jest.Mock;
+      set: jest.Mock;
+      where: jest.Mock;
+      andWhere: jest.Mock;
+      execute: jest.Mock;
+    };
+
+    beforeEach(() => {
+      mockQueryBuilder = {
+        update: jest.fn().mockReturnThis(),
+        set: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        execute: jest.fn(),
+      };
+      (
+        mockRepo as unknown as { createQueryBuilder: jest.Mock }
+      ).createQueryBuilder = jest.fn().mockReturnValue(mockQueryBuilder);
+    });
+
+    it('returns true and applies the patch when the profile is still a draft', async () => {
+      mockQueryBuilder.execute.mockResolvedValue({ affected: 1 });
+
+      await expect(
+        repository.updateIfDraft('t1', 'vp-1', { description: 'Updated' }),
+      ).resolves.toBe(true);
+
+      expect(mockQueryBuilder.set).toHaveBeenCalledWith({
+        description: 'Updated',
+      });
+      expect(mockQueryBuilder.where).toHaveBeenCalledWith('id = :id', {
+        id: 'vp-1',
+      });
+      expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
+        'tenant_id = :tenantId',
+        { tenantId: 't1' },
+      );
+      expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
+        'status = :status',
+        { status: VerificationProfileStatus.DRAFT },
+      );
+    });
+
+    it('returns false when the profile is no longer a draft', async () => {
+      mockQueryBuilder.execute.mockResolvedValue({ affected: 0 });
+
+      await expect(
+        repository.updateIfDraft('t1', 'vp-1', { description: 'Updated' }),
+      ).resolves.toBe(false);
+    });
+  });
 });

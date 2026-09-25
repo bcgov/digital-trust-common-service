@@ -34,6 +34,7 @@ describe('VerificationProfileService', () => {
   let mockFindByNameAndVersion: jest.Mock;
   let mockFindPage: jest.Mock;
   let mockSave: jest.Mock;
+  let mockUpdateIfDraft: jest.Mock;
   let mockTransitionStatus: jest.Mock;
   let mockEmit: jest.Mock;
   let mockIssuanceFindById: jest.Mock;
@@ -110,6 +111,7 @@ describe('VerificationProfileService', () => {
     mockFindByNameAndVersion = jest.fn();
     mockFindPage = jest.fn();
     mockSave = jest.fn();
+    mockUpdateIfDraft = jest.fn().mockResolvedValue(true);
     mockTransitionStatus = jest.fn().mockResolvedValue(true);
     mockEmit = jest.fn().mockResolvedValue(undefined);
     mockIssuanceFindById = jest.fn().mockResolvedValue(mockIssuanceProfile);
@@ -125,6 +127,7 @@ describe('VerificationProfileService', () => {
             findByNameAndVersion: mockFindByNameAndVersion,
             findPage: mockFindPage,
             save: mockSave,
+            updateIfDraft: mockUpdateIfDraft,
             transitionStatus: mockTransitionStatus,
           },
         },
@@ -431,6 +434,41 @@ describe('VerificationProfileService', () => {
         expect.objectContaining({ requestedAttributes: [] }),
       );
     });
+
+    it('resolves quoted JSONPath bracket notation to the same attribute as dot notation', async () => {
+      mockFindByNameAndVersion.mockResolvedValue(null);
+      mockCreate.mockResolvedValue(mockProfile);
+
+      await service.create(
+        tenantId,
+        {
+          ...dto,
+          presentationDefinition: {
+            id: 'age-over-18',
+            input_descriptors: [
+              {
+                id: 'person_credential',
+                constraints: {
+                  fields: [
+                    {
+                      path: [
+                        "$['credentialSubject']['given_names']",
+                        '$.credentialSubject["given_names"]',
+                      ],
+                    },
+                  ],
+                },
+              },
+            ],
+          },
+        },
+        auth,
+      );
+
+      expect(mockCreate).toHaveBeenCalledWith(
+        expect.objectContaining({ requestedAttributes: ['given_names'] }),
+      );
+    });
   });
 
   describe('findById', () => {
@@ -523,14 +561,16 @@ describe('VerificationProfileService', () => {
 
   describe('update', () => {
     it('updates description on a draft profile', async () => {
-      mockFindById.mockResolvedValue({ ...mockProfile });
-      mockSave.mockImplementation((p: VerificationProfile) =>
-        Promise.resolve(p),
-      );
+      mockFindById
+        .mockResolvedValueOnce({ ...mockProfile })
+        .mockResolvedValueOnce({ ...mockProfile, description: 'Updated' });
 
       const dto: UpdateVerificationProfileDto = { description: 'Updated' };
       const result = await service.update(tenantId, mockProfile.id, dto, auth);
 
+      expect(mockUpdateIfDraft).toHaveBeenCalledWith(tenantId, mockProfile.id, {
+        description: 'Updated',
+      });
       expect(result.description).toBe('Updated');
       expect(mockEmit).toHaveBeenCalledWith(
         expect.objectContaining({ action: AuditAction.UPDATE }),
@@ -538,10 +578,12 @@ describe('VerificationProfileService', () => {
     });
 
     it('re-derives requested_attributes when presentation_definition changes', async () => {
-      mockFindById.mockResolvedValue({ ...mockProfile });
-      mockSave.mockImplementation((p: VerificationProfile) =>
-        Promise.resolve(p),
-      );
+      mockFindById
+        .mockResolvedValueOnce({ ...mockProfile })
+        .mockResolvedValueOnce({
+          ...mockProfile,
+          requestedAttributes: ['given_names'],
+        });
 
       const dto: UpdateVerificationProfileDto = {
         presentationDefinition: {
@@ -576,34 +618,45 @@ describe('VerificationProfileService', () => {
       await expect(
         service.update(tenantId, mockProfile.id, { description: 'x' }, auth),
       ).rejects.toThrow(ConflictException);
+      expect(mockUpdateIfDraft).not.toHaveBeenCalled();
+    });
+
+    it('rejects when the guarded update loses the race to a concurrent publish', async () => {
+      mockFindById.mockResolvedValue({ ...mockProfile });
+      mockUpdateIfDraft.mockResolvedValue(false);
+
+      await expect(
+        service.update(tenantId, mockProfile.id, { description: 'x' }, auth),
+      ).rejects.toThrow(ConflictException);
     });
 
     it('updates predicates after validating them against the attribute schema', async () => {
-      mockFindById.mockResolvedValue({ ...mockProfile });
-      mockSave.mockImplementation((p: VerificationProfile) =>
-        Promise.resolve(p),
-      );
+      const predicates = [
+        {
+          attribute: 'birthdate_dateint',
+          condition: VerificationPredicateCondition.GREATER_THAN_OR_EQUAL,
+          value: '19',
+        },
+      ];
+      mockFindById
+        .mockResolvedValueOnce({ ...mockProfile })
+        .mockResolvedValueOnce({ ...mockProfile, predicates });
 
-      const dto: UpdateVerificationProfileDto = {
-        predicates: [
-          {
-            attribute: 'birthdate_dateint',
-            condition: VerificationPredicateCondition.GREATER_THAN_OR_EQUAL,
-            value: '19',
-          },
-        ],
-      };
-
+      const dto: UpdateVerificationProfileDto = { predicates };
       const result = await service.update(tenantId, mockProfile.id, dto, auth);
 
       expect(result.predicates).toEqual(dto.predicates);
     });
 
     it('updates metadata, public, and protocol_hint fields', async () => {
-      mockFindById.mockResolvedValue({ ...mockProfile });
-      mockSave.mockImplementation((p: VerificationProfile) =>
-        Promise.resolve(p),
-      );
+      mockFindById
+        .mockResolvedValueOnce({ ...mockProfile })
+        .mockResolvedValueOnce({
+          ...mockProfile,
+          metadata: { note: 'reviewed' },
+          isPublic: true,
+          protocolHint: VerificationProfileProtocolHint.OID4VP,
+        });
 
       const dto: UpdateVerificationProfileDto = {
         metadata: { note: 'reviewed' },
@@ -613,6 +666,11 @@ describe('VerificationProfileService', () => {
 
       const result = await service.update(tenantId, mockProfile.id, dto, auth);
 
+      expect(mockUpdateIfDraft).toHaveBeenCalledWith(tenantId, mockProfile.id, {
+        metadata: { note: 'reviewed' },
+        isPublic: true,
+        protocolHint: VerificationProfileProtocolHint.OID4VP,
+      });
       expect(result.metadata).toEqual({ note: 'reviewed' });
       expect(result.isPublic).toBe(true);
       expect(result.protocolHint).toBe(VerificationProfileProtocolHint.OID4VP);
