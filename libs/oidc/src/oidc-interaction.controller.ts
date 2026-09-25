@@ -379,28 +379,26 @@ export class OidcInteractionController {
       const tenantId = interaction.tenantId;
 
       /*
-       * If the Keycloak subject already has active memberships, bind the
-       * session to the oldest one. Do not JIT-create a second row in the
-       * SPA client's tenant.
+       * Bind to the oldest membership held *before* the sweep, so a
+       * newly-claimed older invitation cannot move a returning user into a
+       * different tenant. A first login binds the claim in the client's own
+       * tenant, the one this interaction is scoped to, rather than whichever
+       * invitation happens to be oldest.
        */
-      const memberships =
+      const priorMemberships =
         await this.tenantUserService.findActiveByExternalUserId(claims.sub);
+
+      const claimed = claims.email
+        ? await this.tenantUserService.claimAllInvitedByEmail(
+            claims.email,
+            claims.sub,
+          )
+        : [];
 
       let federatedUser:
         oidcTenantUserPort.OidcTenantUserRecord | null | undefined =
-        memberships[0];
-
-      // A previously-invited user has no externalUserId yet, so the lookup
-      // above misses; claim the invited row by email before falling back to
-      // creating a brand-new one (which would otherwise collide with the
-      // per-tenant email uniqueness constraint or create a duplicate).
-      if (!federatedUser && claims.email) {
-        federatedUser = await this.tenantUserService.claimInvitedByEmail(
-          tenantId,
-          claims.email,
-          claims.sub,
-        );
-      }
+        priorMemberships[0] ??
+        claimed.find((membership) => membership.tenantId === tenantId);
 
       if (!federatedUser) {
         federatedUser =

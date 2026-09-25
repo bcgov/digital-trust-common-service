@@ -350,6 +350,19 @@ three tenants, so it exists to exercise the tenant switcher. It signs in to
 listed but not switchable. Its Keycloak id is pinned in the realm file, since
 the seed has to know the subject to create active rows for it.
 
+A sign-in claims every unclaimed invitation at that email, in **every** tenant
+— not just the one the SPA's OIDC client belongs to. So inviting a user who
+already has a membership into a second tenant now takes effect on their next
+sign-in, and the tenant appears in the switcher at the role it was invited at.
+There is no seeded fixture for this; invite someone from a tenant's Users page
+and sign in again to exercise it. Invitations into suspended, deactivated or
+pending-approval tenants are claimed too, and the tenant is listed with its
+status; switching in is still refused until the tenant is active. Three kinds
+are passed over: invitations in soft-deleted tenants, invitations in a tenant
+where the account already holds a membership row, and any second invitation in
+a tenant that has already been claimed from — at most one per tenant, oldest
+first.
+
 The realm's `admin` account (`admin@example.com`, password `admin`) has no
 seeded row: the login callback creates one on the fly with the `readonly`
 role, which holds no API scopes. A Keycloak volume created before these

@@ -32,7 +32,8 @@ describe('TenantUserService', () => {
   let mockFindActiveByExternalUserId: jest.Mock;
   let mockFindByTenantAndExternalUserId: jest.Mock;
   let mockFindByTenantAndEmail: jest.Mock;
-  let mockClaimInvitedByEmail: jest.Mock;
+  let mockFindUnclaimedInvitesByEmail: jest.Mock;
+  let mockClaimInvitedById: jest.Mock;
   let mockUpdate: jest.Mock;
   let mockDelete: jest.Mock;
   let mockEmit: jest.Mock;
@@ -73,7 +74,8 @@ describe('TenantUserService', () => {
     mockFindActiveByExternalUserId = jest.fn();
     mockFindByTenantAndExternalUserId = jest.fn();
     mockFindByTenantAndEmail = jest.fn();
-    mockClaimInvitedByEmail = jest.fn();
+    mockFindUnclaimedInvitesByEmail = jest.fn();
+    mockClaimInvitedById = jest.fn();
     mockUpdate = jest.fn();
     mockDelete = jest.fn();
     mockEmit = jest.fn().mockResolvedValue(undefined);
@@ -88,7 +90,8 @@ describe('TenantUserService', () => {
       findActiveByExternalUserId: mockFindActiveByExternalUserId,
       findByTenantAndExternalUserId: mockFindByTenantAndExternalUserId,
       findByTenantAndEmail: mockFindByTenantAndEmail,
-      claimInvitedByEmail: mockClaimInvitedByEmail,
+      findUnclaimedInvitesByEmail: mockFindUnclaimedInvitesByEmail,
+      claimInvitedById: mockClaimInvitedById,
       update: mockUpdate,
       delete: mockDelete,
     };
@@ -441,45 +444,155 @@ describe('TenantUserService', () => {
     });
   });
 
-  describe('claimInvitedByEmail', () => {
-    it('should claim an invited tenant user and emit an audit event', async () => {
-      const tenantId = mockTenantUser.tenantId;
-      const email = mockTenantUser.email;
-      const externalUserId = 'keycloak-user-new';
-      const claimed = { ...mockTenantUser, externalUserId };
+  describe('claimAllInvitedByEmail', () => {
+    const externalUserId = 'keycloak-user-new';
 
-      mockClaimInvitedByEmail.mockResolvedValue(claimed);
-
-      const result = await service.claimInvitedByEmail(
-        tenantId,
-        email,
-        externalUserId,
-      );
-
-      expect(mockClaimInvitedByEmail).toHaveBeenCalledWith(
-        tenantId,
-        email,
-        externalUserId,
-      );
-      expect(mockEmit).toHaveBeenCalledWith({
-        tenantId: claimed.tenantId,
-        action: AuditAction.UPDATE,
-        resourceType: 'tenant_user',
-        resourceId: claimed.id,
-      });
-      expect(result).toEqual(claimed);
+    const invite = (id: string, tenantId: string): TenantUser => ({
+      ...mockTenantUser,
+      id,
+      tenantId,
+      externalUserId: undefined,
+      status: TenantUserStatus.INVITED,
     });
 
-    it('should return null and not emit an audit event when no invited row matches', async () => {
-      mockClaimInvitedByEmail.mockResolvedValue(null);
+    it('claims invitations across tenants and emits one audit event each', async () => {
+      const first = invite('invite-1', 'tenant-a');
+      const second = invite('invite-2', 'tenant-b');
 
-      const result = await service.claimInvitedByEmail(
-        mockTenantUser.tenantId,
-        mockTenantUser.email,
-        'keycloak-user-new',
+      mockFindUnclaimedInvitesByEmail.mockResolvedValue([first, second]);
+      mockFindByExternalUserId.mockResolvedValue([]);
+      mockClaimInvitedById.mockImplementation((id: string) =>
+        Promise.resolve({
+          ...(id === first.id ? first : second),
+          externalUserId,
+          status: TenantUserStatus.ACTIVE,
+        }),
       );
 
-      expect(result).toBeNull();
+      const result = await service.claimAllInvitedByEmail(
+        mockTenantUser.email,
+        externalUserId,
+      );
+
+      expect(mockFindUnclaimedInvitesByEmail).toHaveBeenCalledWith(
+        mockTenantUser.email,
+      );
+      expect(result.map((row) => row.tenantId)).toEqual([
+        'tenant-a',
+        'tenant-b',
+      ]);
+      expect(mockEmit).toHaveBeenCalledTimes(2);
+      expect(mockEmit).toHaveBeenCalledWith({
+        tenantId: 'tenant-a',
+        action: AuditAction.UPDATE,
+        resourceType: 'tenant_user',
+        resourceId: 'invite-1',
+      });
+      expect(mockEmit).toHaveBeenCalledWith({
+        tenantId: 'tenant-b',
+        action: AuditAction.UPDATE,
+        resourceType: 'tenant_user',
+        resourceId: 'invite-2',
+      });
+    });
+
+    it('skips a tenant where this identity already holds a row', async () => {
+      // Claiming there would violate uq_tenant_user_external_user and fail
+      // the whole sign-in.
+      mockFindUnclaimedInvitesByEmail.mockResolvedValue([
+        invite('invite-1', 'tenant-a'),
+      ]);
+      mockFindByExternalUserId.mockResolvedValue([
+        { ...mockTenantUser, tenantId: 'tenant-a' },
+      ]);
+
+      const result = await service.claimAllInvitedByEmail(
+        mockTenantUser.email,
+        externalUserId,
+      );
+
+      expect(result).toEqual([]);
+      expect(mockClaimInvitedById).not.toHaveBeenCalled();
+      expect(mockEmit).not.toHaveBeenCalled();
+    });
+
+    it('claims only the oldest of two invitations in one tenant', async () => {
+      // invite() stores email verbatim and the uniqueness constraint is
+      // case-sensitive, so one tenant can hold both spellings.
+      const oldest = invite('invite-1', 'tenant-a');
+      const newer = invite('invite-2', 'tenant-a');
+
+      mockFindUnclaimedInvitesByEmail.mockResolvedValue([oldest, newer]);
+      mockFindByExternalUserId.mockResolvedValue([]);
+      mockClaimInvitedById.mockResolvedValue({
+        ...oldest,
+        externalUserId,
+        status: TenantUserStatus.ACTIVE,
+      });
+
+      const result = await service.claimAllInvitedByEmail(
+        mockTenantUser.email,
+        externalUserId,
+      );
+
+      expect(mockClaimInvitedById).toHaveBeenCalledTimes(1);
+      expect(mockClaimInvitedById).toHaveBeenCalledWith(
+        'invite-1',
+        externalUserId,
+      );
+      expect(result).toHaveLength(1);
+    });
+
+    it('does not count an invitation another login claimed first', async () => {
+      mockFindUnclaimedInvitesByEmail.mockResolvedValue([
+        invite('invite-1', 'tenant-a'),
+      ]);
+      mockFindByExternalUserId.mockResolvedValue([]);
+      mockClaimInvitedById.mockResolvedValue(null);
+
+      const result = await service.claimAllInvitedByEmail(
+        mockTenantUser.email,
+        externalUserId,
+      );
+
+      expect(result).toEqual([]);
+      expect(mockEmit).not.toHaveBeenCalled();
+    });
+
+    it('gives up on a tenant whose claim was lost rather than trying the next row', async () => {
+      // Walking on to the second invitation would put this identity on two
+      // rows of one tenant, which is the constraint violation the guard is
+      // there to prevent.
+      mockFindUnclaimedInvitesByEmail.mockResolvedValue([
+        invite('invite-1', 'tenant-a'),
+        invite('invite-2', 'tenant-a'),
+      ]);
+      mockFindByExternalUserId.mockResolvedValue([]);
+      mockClaimInvitedById.mockResolvedValue(null);
+
+      const result = await service.claimAllInvitedByEmail(
+        mockTenantUser.email,
+        externalUserId,
+      );
+
+      expect(result).toEqual([]);
+      expect(mockClaimInvitedById).toHaveBeenCalledTimes(1);
+      expect(mockClaimInvitedById).toHaveBeenCalledWith(
+        'invite-1',
+        externalUserId,
+      );
+    });
+
+    it('returns early when nothing is waiting', async () => {
+      mockFindUnclaimedInvitesByEmail.mockResolvedValue([]);
+
+      const result = await service.claimAllInvitedByEmail(
+        mockTenantUser.email,
+        externalUserId,
+      );
+
+      expect(result).toEqual([]);
+      expect(mockFindByExternalUserId).not.toHaveBeenCalled();
       expect(mockEmit).not.toHaveBeenCalled();
     });
   });
