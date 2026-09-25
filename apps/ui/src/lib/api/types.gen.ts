@@ -1305,7 +1305,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/webhooks/traction": {
+    "/api/v1/connectors/{connectorId}/webhooks/traction/topic/{topic}": {
         parameters: {
             query?: never;
             header?: never;
@@ -1315,11 +1315,15 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Receive Traction webhook callbacks
-         * @description Endpoint for Traction/ACA-Py to deliver state change notifications.
-         *     Authenticated via shared secret or IP whitelist.
+         * Receive an inbound Traction/ACA-Py protocol state-change webhook
+         * @description Traction/ACA-Py-specific webhook callback for protocol state-change
+         *     notifications. Credo will get its own controller and path when that
+         *     connector type is implemented. Authenticated by the shared secret
+         *     configured on the `connectorId` connector, sent as `X-Api-Key` — not a
+         *     tenant JWT. Malformed or unrecognized payloads are acknowledged with
+         *     200 and dropped rather than rejected, since ACA-Py retries on non-2xx.
          */
-        post: operations["ingestTractionWebhook"];
+        post: operations["ingestConnectorWebhook"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4776,29 +4780,41 @@ export interface operations {
             };
         };
     };
-    ingestTractionWebhook: {
+    ingestConnectorWebhook: {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                /** @description ConnectorCredential id */
+                connectorId: string;
+                /** @description Protocol topic */
+                topic: "issue_credential_v2_0" | "present_proof_v2_0" | "connections" | "issuer_cred_rev";
+            };
             cookie?: never;
         };
         requestBody: {
             content: {
                 "application/json": {
-                    /** @enum {string} */
-                    topic?: "issue_credential" | "present_proof" | "connections" | "revocation_registry";
-                    payload?: Record<string, never>;
+                    [key: string]: unknown;
                 };
             };
         };
         responses: {
-            /** @description Webhook received and enqueued */
+            /** @description Webhook accepted for async processing */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Webhook authentication failed */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
         };
     };
