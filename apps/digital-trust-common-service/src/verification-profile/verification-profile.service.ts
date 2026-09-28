@@ -5,7 +5,6 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { QueryFailedError } from 'typeorm';
 import { QueryDeepPartialEntity } from 'typeorm/query-builder/QueryPartialEntity';
 
 import { AuditAction } from '../audit-log/audit-log.entity';
@@ -14,6 +13,8 @@ import {
   assertResourceTenantOrNotFound,
   assertTenantAccess,
 } from '../common/assert-tenant-access';
+import { decodeCursor, encodeCursor } from '../common/cursor-pagination';
+import { isUniqueConstraintViolation } from '../common/postgres-error';
 import { IssuanceProfileStatus } from '../issuance-profile/issuance-profile.entity';
 import { IssuanceProfileService } from '../issuance-profile/issuance-profile.service';
 
@@ -25,7 +26,6 @@ import {
   VerificationProfileStatus,
 } from './verification-profile.entity';
 import {
-  VerificationProfileCursor,
   VerificationProfileFilters,
   VerificationProfileRepository,
 } from './verification-profile.repository';
@@ -136,7 +136,12 @@ export class VerificationProfileService {
     try {
       return await this.verificationProfileRepository.create(profile);
     } catch (error) {
-      if (this.isUniqueConstraintViolation(error)) {
+      if (
+        isUniqueConstraintViolation(
+          error,
+          'uq_verification_profile_tenant_name_version',
+        )
+      ) {
         throw new ConflictException(
           'Verification profile with this name and version already exists for this tenant.',
         );
@@ -144,20 +149,6 @@ export class VerificationProfileService {
 
       throw error;
     }
-  }
-
-  private isUniqueConstraintViolation(error: unknown): boolean {
-    if (!(error instanceof QueryFailedError)) {
-      return false;
-    }
-
-    const driverError = error.driverError as
-      { code?: string; constraint?: string } | undefined;
-
-    return (
-      driverError?.code === '23505' &&
-      driverError?.constraint === 'uq_verification_profile_tenant_name_version'
-    );
   }
 
   /**
@@ -176,6 +167,20 @@ export class VerificationProfileService {
     }
 
     return segment;
+  }
+
+  /**
+   * True when `descriptor` is a DIF Presentation Exchange input_descriptor
+   * with the required string `id` field.
+   */
+  private hasValidDescriptorId(
+    descriptor: unknown,
+  ): descriptor is { id: string; constraints?: { fields?: unknown } } {
+    return (
+      !!descriptor &&
+      typeof descriptor === 'object' &&
+      typeof (descriptor as { id?: unknown }).id === 'string'
+    );
   }
 
   /**
@@ -200,18 +205,13 @@ export class VerificationProfileService {
     const names = new Set<string>();
 
     for (const descriptor of inputDescriptors) {
-      if (
-        !descriptor ||
-        typeof descriptor !== 'object' ||
-        typeof (descriptor as { id?: unknown }).id !== 'string'
-      ) {
+      if (!this.hasValidDescriptorId(descriptor)) {
         throw new BadRequestException(
           "Each presentation_definition input_descriptor must declare a string 'id'.",
         );
       }
 
-      const fields = (descriptor as { constraints?: { fields?: unknown } })
-        .constraints?.fields;
+      const fields = descriptor.constraints?.fields;
 
       if (!Array.isArray(fields)) {
         continue;
@@ -319,7 +319,7 @@ export class VerificationProfileService {
     options: { limit?: number; cursor?: string | null } = {},
   ): Promise<PaginatedVerificationProfiles> {
     const limit = options.limit ?? 20;
-    const cursor = options.cursor ? this.decodeCursor(options.cursor) : null;
+    const cursor = options.cursor ? decodeCursor(options.cursor) : null;
 
     const page = await this.verificationProfileRepository.findPage(
       tenantId,
@@ -330,37 +330,10 @@ export class VerificationProfileService {
     return {
       data: page.items,
       pagination: {
-        next_cursor: page.nextCursor
-          ? this.encodeCursor(page.nextCursor)
-          : null,
+        next_cursor: page.nextCursor ? encodeCursor(page.nextCursor) : null,
         has_more: page.hasMore,
       },
     };
-  }
-
-  public encodeCursor(cursor: VerificationProfileCursor): string {
-    return Buffer.from(JSON.stringify(cursor), 'utf8').toString('base64url');
-  }
-
-  public decodeCursor(raw: string): VerificationProfileCursor {
-    try {
-      const parsed: unknown = JSON.parse(
-        Buffer.from(raw, 'base64url').toString('utf8'),
-      );
-
-      if (
-        !parsed ||
-        typeof parsed !== 'object' ||
-        typeof (parsed as { createdAt?: unknown }).createdAt !== 'string' ||
-        typeof (parsed as { id?: unknown }).id !== 'string'
-      ) {
-        throw new Error('invalid cursor shape');
-      }
-
-      return parsed as VerificationProfileCursor;
-    } catch {
-      throw new BadRequestException('Invalid pagination cursor.');
-    }
   }
 
   public async update(

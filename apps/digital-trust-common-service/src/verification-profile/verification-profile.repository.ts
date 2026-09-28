@@ -3,6 +3,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { QueryDeepPartialEntity } from 'typeorm/query-builder/QueryPartialEntity';
 
+import { Cursor } from '../common/cursor-pagination';
+
 import {
   VerificationProfile,
   VerificationProfileStatus,
@@ -14,14 +16,9 @@ export interface VerificationProfileFilters {
   readonly isPublic?: boolean;
 }
 
-export type VerificationProfileCursor = {
-  createdAt: string;
-  id: string;
-};
-
 export type VerificationProfilePage = {
   items: VerificationProfile[];
-  nextCursor: VerificationProfileCursor | null;
+  nextCursor: Cursor | null;
   hasMore: boolean;
 };
 
@@ -64,7 +61,7 @@ export class VerificationProfileRepository {
     filters: VerificationProfileFilters,
     options: {
       limit: number;
-      cursor?: VerificationProfileCursor | null;
+      cursor?: Cursor | null;
     },
   ): Promise<VerificationProfilePage> {
     const qb = this.repository

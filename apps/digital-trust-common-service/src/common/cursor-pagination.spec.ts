@@ -21,4 +21,13 @@ describe('cursor-pagination', () => {
 
     expect(() => decodeCursor(malformed)).toThrow(BadRequestException);
   });
+
+  it('throws BadRequestException when a field is not a string', () => {
+    const malformed = Buffer.from(
+      JSON.stringify({ createdAt: 123, id: 'abc-123' }),
+      'utf8',
+    ).toString('base64url');
+
+    expect(() => decodeCursor(malformed)).toThrow(BadRequestException);
+  });
 });

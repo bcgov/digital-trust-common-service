@@ -12,15 +12,20 @@ export function encodeCursor(cursor: Cursor): string {
 
 export function decodeCursor(raw: string): Cursor {
   try {
-    const parsed = JSON.parse(
+    const parsed: unknown = JSON.parse(
       Buffer.from(raw, 'base64url').toString('utf8'),
-    ) as Cursor;
+    );
 
-    if (!parsed?.createdAt || !parsed?.id) {
+    if (
+      !parsed ||
+      typeof parsed !== 'object' ||
+      typeof (parsed as { createdAt?: unknown }).createdAt !== 'string' ||
+      typeof (parsed as { id?: unknown }).id !== 'string'
+    ) {
       throw new Error('invalid cursor shape');
     }
 
-    return parsed;
+    return parsed as Cursor;
   } catch {
     throw new BadRequestException('Invalid pagination cursor.');
   }

@@ -14,6 +14,7 @@ import {
   assertTenantAccess,
 } from '../common/assert-tenant-access';
 import { EncryptionService } from '../common/crypto/encryption.service';
+import { getPostgresErrorCode } from '../common/postgres-error';
 import { ConnectorType } from '../connection/connection.entity';
 import { CredentialRepository } from '../credential/credential.repository';
 import { TenantService } from '../tenant/tenant.service';
@@ -246,11 +247,9 @@ export class ConnectorCredentialService {
     try {
       await this.credentialRepository.delete(id);
     } catch (error) {
-      const pgCode = (error as { driverError?: { code?: string } }).driverError
-        ?.code;
       // Defense in depth: the fk_credential_connector constraint is ON DELETE RESTRICT,
       // so a race can still fail here even if the pre-check passed.
-      if (pgCode === '23503') {
+      if (getPostgresErrorCode(error) === '23503') {
         throw new ConflictException(
           'Cannot delete connector: credential records still reference it.',
         );

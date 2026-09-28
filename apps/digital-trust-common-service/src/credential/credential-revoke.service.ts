@@ -13,6 +13,7 @@ import { AdapterRegistry } from '../adapter-registry/adapter-registry.service';
 import { AuditAction } from '../audit-log/audit-log.entity';
 import { DomainAuditService } from '../audit-log/domain-audit.service';
 import { API_BASE_PATH } from '../common/constants/api-version.constants';
+import { isUniqueConstraintViolation } from '../common/postgres-error';
 import { CredentialDefinitionFormat } from '../credential-definition/credential-definition.entity';
 import { JobsService } from '../jobs/jobs.service';
 import { OPERATION_TYPE } from '../operation/operation-type.constants';
@@ -143,10 +144,7 @@ export class CredentialRevokeService {
         externalId,
       });
     } catch (error) {
-      const pgCode = (error as { driverError?: { code?: string } }).driverError
-        ?.code;
-
-      if (pgCode !== '23505') {
+      if (!isUniqueConstraintViolation(error)) {
         throw error;
       }
 
