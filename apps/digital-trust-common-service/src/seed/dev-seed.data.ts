@@ -289,8 +289,6 @@ export const SEED_VERIFICATION_PROFILE = {
   version: '1.0',
   description: 'Published age verification profile with birthdate predicate.',
   status: VerificationProfileStatus.PUBLISHED,
-  issuanceProfileName: 'person-credential',
-  issuanceProfileVersion: '1.0',
   requestedAttributes: ['given_names', 'family_name'],
   predicates: [
     {
