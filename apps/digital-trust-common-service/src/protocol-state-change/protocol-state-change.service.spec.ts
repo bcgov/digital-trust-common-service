@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Test, TestingModule } from '@nestjs/testing';
 import { DataSource, EntityManager } from 'typeorm';
@@ -881,6 +882,113 @@ describe('ProtocolStateChangeService', () => {
         'webhook.dispatch',
         expect.objectContaining({ event: 'operation.batch.completed' }),
       );
+    });
+  });
+  /**
+   * The state-transition events: what a delivery resolved to and whether it
+   * actually moved anything. The assertions name the whole payload rather
+   * than the interesting key, so a field added later has to be added here
+   * deliberately — that is the control that keeps the webhook payload out of
+   * the logs, not the redaction backstop in the logger config.
+   *
+   * `tenant_id`, `request_id`, and `operation_id` are deliberately absent:
+   * the pino mixin attaches them from the job context JobsService restored.
+   */
+  describe('state-transition events', () => {
+    let logDebug: jest.SpiedFunction<typeof Logger.prototype.debug>;
+    let logLine: jest.SpiedFunction<typeof Logger.prototype.log>;
+    let logWarn: jest.SpiedFunction<typeof Logger.prototype.warn>;
+
+    beforeEach(() => {
+      // The service's logger is an instance field, so the prototype is the
+      // seam.
+      logDebug = jest.spyOn(Logger.prototype, 'debug').mockImplementation();
+      logLine = jest.spyOn(Logger.prototype, 'log').mockImplementation();
+      logWarn = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+    });
+
+    afterEach(() => {
+      jest.restoreAllMocks();
+    });
+
+    it('logs an applied transition naming the domain event it produced', async () => {
+      operationRepository.findByExternalIdForTenant.mockResolvedValue(
+        operation(),
+      );
+      credentialRepository.findByExternalId.mockResolvedValue(credential());
+
+      await service.process(baseData());
+
+      expect(logLine).toHaveBeenCalledWith(
+        {
+          domain_event: 'credential.issued',
+          duration_ms: expect.any(Number),
+          external_id: 'ext-1',
+          operation_state: OperationState.COMPLETED,
+          outcome: 'applied',
+          protocol_state: 'credential-issued',
+          topic: 'issue_credential',
+        },
+        'protocol state change applied',
+      );
+      expect(logWarn).not.toHaveBeenCalled();
+    });
+
+    it('omits the domain event for a transition that produces none', async () => {
+      operationRepository.findByExternalIdForTenant.mockResolvedValue(
+        operation({ state: OperationState.PENDING }),
+      );
+
+      await service.process(
+        baseData({ topic: 'present_proof', protocolState: 'request-sent' }),
+      );
+
+      expect(logLine).toHaveBeenCalledWith(
+        {
+          duration_ms: expect.any(Number),
+          external_id: 'ext-1',
+          operation_state: OperationState.PROCESSING,
+          outcome: 'applied',
+          protocol_state: 'request-sent',
+          topic: 'present_proof',
+        },
+        'protocol state change applied',
+      );
+    });
+
+    it('logs a redelivery that moved nothing at debug rather than as a fault', async () => {
+      operationRepository.findByExternalIdForTenant.mockResolvedValue(null);
+      credentialRepository.findByExternalId.mockResolvedValue(null);
+
+      await service.process(baseData());
+
+      expect(logDebug).toHaveBeenCalledWith(
+        {
+          duration_ms: expect.any(Number),
+          external_id: 'ext-1',
+          operation_state: OperationState.COMPLETED,
+          outcome: 'no_op',
+          protocol_state: 'credential-issued',
+          topic: 'issue_credential',
+        },
+        'protocol state change had no effect',
+      );
+      expect(logLine).not.toHaveBeenCalled();
+    });
+
+    it('warns about a protocol state it has no mapping for', async () => {
+      await service.process(baseData({ protocolState: 'not-a-real-state' }));
+
+      expect(logWarn).toHaveBeenCalledWith(
+        {
+          external_id: 'ext-1',
+          outcome: 'ignored',
+          protocol_state: 'not-a-real-state',
+          topic: 'issue_credential',
+        },
+        'protocol state change ignored',
+      );
+      expect(logLine).not.toHaveBeenCalled();
     });
   });
 });

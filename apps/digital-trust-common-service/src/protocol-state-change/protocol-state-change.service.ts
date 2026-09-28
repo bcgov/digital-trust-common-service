@@ -31,6 +31,17 @@ interface OperationOutcomeResult {
   readonly operationType: string | null;
 }
 
+/**
+ * How a delivery settled. `applied` moved at least one of the Operation,
+ * Credential, or Connection forward; `no_op` resolved to a real outcome but
+ * every guarded write found the row already at or past that state, which is
+ * what a duplicate or out-of-order pg-boss delivery looks like; `ignored` is a
+ * protocol state this service has no mapping for.
+ */
+const OUTCOME_APPLIED = 'applied';
+const OUTCOME_IGNORED = 'ignored';
+const OUTCOME_NO_OP = 'no_op';
+
 @Injectable()
 export class ProtocolStateChangeService {
   private readonly logger = new Logger(ProtocolStateChangeService.name);
@@ -50,11 +61,23 @@ export class ProtocolStateChangeService {
     const outcome = resolveProtocolOutcome(data.topic, data.protocolState);
 
     if (!outcome) {
+      // Not an error: ACA-Py may introduce states this service has no mapping
+      // for yet, and a topic's non-terminal chatter is dropped here too. Worth
+      // a warning because the state change is then lost — nothing retries it.
       this.logger.warn(
-        `Unrecognized ${data.topic} state '${data.protocolState}' for tenant ${data.tenantId}; ignoring`,
+        {
+          external_id: data.externalId,
+          outcome: OUTCOME_IGNORED,
+          protocol_state: data.protocolState,
+          topic: data.topic,
+        },
+        'protocol state change ignored',
       );
+
       return;
     }
+
+    const startedAt = Date.now();
 
     // The guarded state writes below and the webhook-dispatch enqueue are
     // committed together: if the pg-boss insert fails, the whole
@@ -130,6 +153,29 @@ export class ProtocolStateChangeService {
         tenantId: data.tenantId,
         externalId: data.externalId,
       });
+    }
+
+    // Every field is named explicitly and the webhook payload is never among
+    // them: `tenant_id`, `request_id`, and `operation_id` are attached by the
+    // pino mixin from the job context JobsService restored, so nothing is
+    // threaded through for them.
+    const event = {
+      ...(result.event ? { domain_event: result.event } : {}),
+      duration_ms: Date.now() - startedAt,
+      external_id: data.externalId,
+      operation_state: outcome.operationState,
+      outcome: result.transitioned ? OUTCOME_APPLIED : OUTCOME_NO_OP,
+      protocol_state: data.protocolState,
+      topic: data.topic,
+    };
+
+    if (result.transitioned) {
+      this.logger.log(event, 'protocol state change applied');
+    } else {
+      // Debug: pg-boss delivers at least once and ACA-Py re-sends the same
+      // state, so a delivery landing on a row already at or past that state
+      // is expected traffic rather than a fault.
+      this.logger.debug(event, 'protocol state change had no effect');
     }
   }
 

@@ -1,5 +1,5 @@
 import { JOB_QUEUES } from '@app/pg-boss';
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Injectable, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Job } from 'pg-boss';
 
@@ -36,8 +36,6 @@ const UUID_RE =
 
 @Injectable()
 export class ProtocolStateChangeWorker implements OnModuleInit {
-  private readonly logger = new Logger(ProtocolStateChangeWorker.name);
-
   public constructor(
     private readonly jobsService: JobsService,
     private readonly service: ProtocolStateChangeService,
@@ -57,10 +55,11 @@ export class ProtocolStateChangeWorker implements OnModuleInit {
 
   public async handle(job: Job<ProtocolStateChangeJobData>): Promise<void> {
     const data = this.assertValidPayload(job.data);
+    // No line of its own on the way out: JobsService already logs the job's
+    // queue, id, and duration when the handler settles, and
+    // ProtocolStateChangeService emits the state-transition event describing
+    // what the delivery actually did.
     await this.service.process(data);
-    this.logger.debug(
-      `Processed protocol.state-change job ${job.id} (${data.topic}/${data.protocolState})`,
-    );
   }
 
   /** Helper for producers / tests to enqueue a protocol.state-change job. */
