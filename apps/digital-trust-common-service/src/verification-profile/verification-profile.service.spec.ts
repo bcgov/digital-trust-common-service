@@ -9,12 +9,6 @@ import { QueryFailedError } from 'typeorm';
 
 import { AuditAction } from '../audit-log/audit-log.entity';
 import { DomainAuditService } from '../audit-log/domain-audit.service';
-import {
-  IssuanceProfile,
-  IssuanceProfileProtocolHint,
-  IssuanceProfileStatus,
-} from '../issuance-profile/issuance-profile.entity';
-import { IssuanceProfileService } from '../issuance-profile/issuance-profile.service';
 
 import { CreateVerificationProfileDto } from './dto/create-verification-profile.dto';
 import { UpdateVerificationProfileDto } from './dto/update-verification-profile.dto';
@@ -37,36 +31,12 @@ describe('VerificationProfileService', () => {
   let mockUpdateIfDraft: jest.Mock;
   let mockTransitionStatus: jest.Mock;
   let mockEmit: jest.Mock;
-  let mockIssuanceFindById: jest.Mock;
 
   const tenantId = '123e4567-e89b-12d3-a456-426614174001';
-
-  const mockIssuanceProfile: IssuanceProfile = {
-    id: '123e4567-e89b-12d3-a456-426614174000',
-    tenantId,
-    name: 'person-credential',
-    version: '1.0',
-    description: undefined,
-    credentialDefinitionId: '123e4567-e89b-12d3-a456-426614174002',
-    format: 'anoncreds' as IssuanceProfile['format'],
-    connectorId: undefined,
-    attributeSchema: {
-      given_names: { type: 'string' },
-      birthdate_dateint: { type: 'number' },
-    },
-    defaults: undefined,
-    display: undefined,
-    metadata: {},
-    protocolHint: IssuanceProfileProtocolHint.AUTO,
-    status: IssuanceProfileStatus.PUBLISHED,
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  } as IssuanceProfile;
 
   const mockProfile: VerificationProfile = {
     id: '123e4567-e89b-12d3-a456-426614174003',
     tenantId,
-    issuanceProfileId: mockIssuanceProfile.id,
     name: 'age-verification',
     version: '1.0',
     description: undefined,
@@ -114,7 +84,6 @@ describe('VerificationProfileService', () => {
     mockUpdateIfDraft = jest.fn().mockResolvedValue(true);
     mockTransitionStatus = jest.fn().mockResolvedValue(true);
     mockEmit = jest.fn().mockResolvedValue(undefined);
-    mockIssuanceFindById = jest.fn().mockResolvedValue(mockIssuanceProfile);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -130,10 +99,6 @@ describe('VerificationProfileService', () => {
             updateIfDraft: mockUpdateIfDraft,
             transitionStatus: mockTransitionStatus,
           },
-        },
-        {
-          provide: IssuanceProfileService,
-          useValue: { findById: mockIssuanceFindById },
         },
         {
           provide: DomainAuditService,
@@ -155,7 +120,6 @@ describe('VerificationProfileService', () => {
     const dto: CreateVerificationProfileDto = {
       name: 'age-verification',
       version: '1.0',
-      issuanceProfileId: mockIssuanceProfile.id,
       presentationDefinition: mockProfile.presentationDefinition,
     };
 
@@ -165,15 +129,9 @@ describe('VerificationProfileService', () => {
 
       const result = await service.create(tenantId, dto, auth);
 
-      expect(mockIssuanceFindById).toHaveBeenCalledWith(
-        tenantId,
-        dto.issuanceProfileId,
-        auth,
-      );
       expect(mockCreate).toHaveBeenCalledWith(
         expect.objectContaining({
           tenantId,
-          issuanceProfileId: mockIssuanceProfile.id,
           name: dto.name,
           version: dto.version,
           presentationDefinition: dto.presentationDefinition,
@@ -190,91 +148,7 @@ describe('VerificationProfileService', () => {
       expect(result).toBe(mockProfile);
     });
 
-    it('rejects when the issuance profile is not published', async () => {
-      mockIssuanceFindById.mockResolvedValue({
-        ...mockIssuanceProfile,
-        status: IssuanceProfileStatus.DRAFT,
-      });
-
-      await expect(service.create(tenantId, dto, auth)).rejects.toThrow(
-        BadRequestException,
-      );
-      expect(mockCreate).not.toHaveBeenCalled();
-    });
-
-    it('rejects requested attributes not present in attribute_schema', async () => {
-      await expect(
-        service.create(
-          tenantId,
-          {
-            ...dto,
-            presentationDefinition: {
-              id: 'age-over-18',
-              input_descriptors: [
-                {
-                  id: 'person_credential',
-                  constraints: {
-                    fields: [{ path: ['$.credentialSubject.unknown_attr'] }],
-                  },
-                },
-              ],
-            },
-          },
-          auth,
-        ),
-      ).rejects.toThrow(BadRequestException);
-      expect(mockCreate).not.toHaveBeenCalled();
-    });
-
-    it('rejects a presentation_definition without input_descriptors', async () => {
-      await expect(
-        service.create(
-          tenantId,
-          { ...dto, presentationDefinition: { id: 'age-over-18' } },
-          auth,
-        ),
-      ).rejects.toThrow(BadRequestException);
-    });
-
-    it('rejects predicates referencing an unknown attribute', async () => {
-      await expect(
-        service.create(
-          tenantId,
-          {
-            ...dto,
-            predicates: [
-              {
-                attribute: 'unknown_attr',
-                condition: VerificationPredicateCondition.GREATER_THAN_OR_EQUAL,
-                value: '19',
-              },
-            ],
-          },
-          auth,
-        ),
-      ).rejects.toThrow(BadRequestException);
-    });
-
-    it('rejects a non-numeric predicate value for a numeric attribute', async () => {
-      await expect(
-        service.create(
-          tenantId,
-          {
-            ...dto,
-            predicates: [
-              {
-                attribute: 'birthdate_dateint',
-                condition: VerificationPredicateCondition.GREATER_THAN_OR_EQUAL,
-                value: 'not-a-number',
-              },
-            ],
-          },
-          auth,
-        ),
-      ).rejects.toThrow(BadRequestException);
-    });
-
-    it('accepts a numeric predicate value for a numeric attribute', async () => {
+    it('accepts predicates without validating them against an attribute schema', async () => {
       mockFindByNameAndVersion.mockResolvedValue(null);
       mockCreate.mockResolvedValue(mockProfile);
 
@@ -285,15 +159,25 @@ describe('VerificationProfileService', () => {
             ...dto,
             predicates: [
               {
-                attribute: 'birthdate_dateint',
+                attribute: 'unknown_attr',
                 condition: VerificationPredicateCondition.GREATER_THAN_OR_EQUAL,
-                value: '19',
+                value: 'not-a-number',
               },
             ],
           },
           auth,
         ),
       ).resolves.toBe(mockProfile);
+    });
+
+    it('rejects a presentation_definition without input_descriptors', async () => {
+      await expect(
+        service.create(
+          tenantId,
+          { ...dto, presentationDefinition: { id: 'age-over-18' } },
+          auth,
+        ),
+      ).rejects.toThrow(BadRequestException);
     });
 
     it('throws 409 when the name/version already exists', async () => {
@@ -601,11 +485,6 @@ describe('VerificationProfileService', () => {
 
       const result = await service.update(tenantId, mockProfile.id, dto, auth);
 
-      expect(mockIssuanceFindById).toHaveBeenCalledWith(
-        tenantId,
-        mockProfile.issuanceProfileId,
-        auth,
-      );
       expect(result.requestedAttributes).toEqual(['given_names']);
     });
 
@@ -630,7 +509,7 @@ describe('VerificationProfileService', () => {
       ).rejects.toThrow(ConflictException);
     });
 
-    it('updates predicates after validating them against the attribute schema', async () => {
+    it('updates predicates without validating them against an attribute schema', async () => {
       const predicates = [
         {
           attribute: 'birthdate_dateint',

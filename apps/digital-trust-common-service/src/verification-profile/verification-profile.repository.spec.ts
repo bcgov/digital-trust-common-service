@@ -96,7 +96,6 @@ describe('VerificationProfileRepository', () => {
       't1',
       {
         status: VerificationProfileStatus.DRAFT,
-        issuanceProfileId: 'ip-1',
         isPublic: true,
       },
       {
@@ -111,10 +110,6 @@ describe('VerificationProfileRepository', () => {
     expect(qb.andWhere).toHaveBeenCalledWith('profile.status = :status', {
       status: VerificationProfileStatus.DRAFT,
     });
-    expect(qb.andWhere).toHaveBeenCalledWith(
-      'profile.issuance_profile_id = :issuanceProfileId',
-      { issuanceProfileId: 'ip-1' },
-    );
     expect(qb.andWhere).toHaveBeenCalledWith('profile.public = :isPublic', {
       isPublic: true,
     });

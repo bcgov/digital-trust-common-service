@@ -6,7 +6,6 @@ import {
   IsObject,
   IsOptional,
   IsString,
-  IsUUID,
   MaxLength,
   MinLength,
   ValidateNested,
@@ -34,10 +33,6 @@ export class CreateVerificationProfileDto {
   @IsString()
   @MaxLength(500)
   public description?: string;
-
-  @Expose({ name: 'issuance_profile_id' })
-  @IsUUID()
-  public issuanceProfileId!: string;
 
   @Expose({ name: 'presentation_definition' })
   @IsObject()

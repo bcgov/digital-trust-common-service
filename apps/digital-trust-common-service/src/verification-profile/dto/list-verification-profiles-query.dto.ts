@@ -6,7 +6,6 @@ import {
   IsInt,
   IsOptional,
   IsString,
-  IsUUID,
   Max,
   Min,
 } from 'class-validator';
@@ -25,15 +24,6 @@ export class ListVerificationProfilesQueryDto {
   @IsOptional()
   @IsEnum(VerificationProfileStatus)
   public status?: VerificationProfileStatus;
-
-  @Expose({ name: 'issuance_profile_id' })
-  @ApiPropertyOptional({
-    name: 'issuance_profile_id',
-    description: 'Filter by the linked issuance profile',
-  })
-  @IsOptional()
-  @IsUUID()
-  public issuanceProfileId?: string;
 
   @Expose({ name: 'public' })
   @ApiPropertyOptional({

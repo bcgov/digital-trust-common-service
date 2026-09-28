@@ -15,10 +15,9 @@ import { VerificationProfileProtocolHint } from '../verification-profile.entity'
 import { VerificationPredicateDto } from './verification-predicate.dto';
 
 /**
- * Narrower than CreateVerificationProfileDto by design: name, version, and
- * issuance_profile_id are immutable once set (mirrors
- * UpdateIssuanceProfileDto's pattern of excluding identity fields from
- * updates).
+ * Narrower than CreateVerificationProfileDto by design: name and version
+ * are immutable once set (mirrors UpdateIssuanceProfileDto's pattern of
+ * excluding identity fields from updates).
  */
 export class UpdateVerificationProfileDto {
   @Expose()

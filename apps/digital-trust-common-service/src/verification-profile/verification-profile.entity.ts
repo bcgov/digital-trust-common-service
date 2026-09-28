@@ -11,7 +11,6 @@ import {
   JoinColumn,
 } from 'typeorm';
 
-import { IssuanceProfile } from '../issuance-profile/issuance-profile.entity';
 import { Tenant } from '../tenant/tenant.entity';
 
 export enum VerificationProfileProtocolHint {
@@ -33,7 +32,6 @@ export enum VerificationProfileStatus {
   'version',
 ])
 @Index('idx_verification_profile_tenant_status', ['tenantId', 'status'])
-@Index('idx_verification_profile_issuance_profile_id', ['issuanceProfileId'])
 export class VerificationProfile {
   @ApiProperty({
     description: 'The unique identifier of the verification profile',
@@ -54,19 +52,6 @@ export class VerificationProfile {
   })
   @JoinColumn({ name: 'tenant_id' })
   public tenant!: Tenant;
-
-  @ApiProperty({
-    description: 'Issuance profile this verification profile is linked to',
-    example: '123e4567-e89b-12d3-a456-426614174000',
-  })
-  @Column({ name: 'issuance_profile_id', type: 'uuid' })
-  public issuanceProfileId!: string;
-
-  @ManyToOne(() => IssuanceProfile, {
-    onDelete: 'CASCADE',
-  })
-  @JoinColumn({ name: 'issuance_profile_id' })
-  public issuanceProfile!: IssuanceProfile;
 
   @ApiProperty({
     description: 'Human-friendly profile identifier',
@@ -127,7 +112,7 @@ export class VerificationProfile {
   public metadata!: Record<string, unknown>;
 
   @ApiProperty({
-    description: 'When true, discoverable via public endpoint (CA-14)',
+    description: 'When true, discoverable via public endpoint',
     example: false,
   })
   @Column({ name: 'public', type: 'boolean', default: false })

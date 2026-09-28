@@ -22,14 +22,6 @@ export class VerificationProfileResponseDto {
   })
   public tenantId!: string;
 
-  @Expose({ name: 'issuance_profile_id' })
-  @ApiProperty({
-    name: 'issuance_profile_id',
-    description: 'Issuance profile this verification profile is linked to',
-    example: '123e4567-e89b-12d3-a456-426614174000',
-  })
-  public issuanceProfileId!: string;
-
   @ApiProperty({
     description: 'Human-friendly profile identifier',
     example: 'age-verification',
@@ -127,7 +119,6 @@ export class VerificationProfileResponseDto {
     const dto = new VerificationProfileResponseDto();
     dto.id = profile.id;
     dto.tenantId = profile.tenantId;
-    dto.issuanceProfileId = profile.issuanceProfileId;
     dto.name = profile.name;
     dto.version = profile.version;
     dto.description = profile.description;

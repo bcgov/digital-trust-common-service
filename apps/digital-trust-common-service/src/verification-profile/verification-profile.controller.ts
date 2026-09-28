@@ -74,13 +74,9 @@ export class VerificationProfileController {
     description: 'Verification profile created successfully (draft status)',
     type: VerificationProfileResponseDto,
   })
-  @ApiNotFoundResponse({ description: 'Issuance profile not found' })
   @ApiBadRequestResponse({
     description:
-      'Issuance profile is not published, presentation_definition is not a ' +
-      'valid DIF Presentation Exchange object, requested_attributes or ' +
-      "predicates reference attributes not in the issuance profile's " +
-      'attribute_schema',
+      'presentation_definition is not a valid DIF Presentation Exchange object',
   })
   @ApiConflictResponse({
     description:
@@ -96,7 +92,6 @@ export class VerificationProfileController {
           name: 'age-verification',
           version: '1.0',
           description: 'Verifies the holder is over 19',
-          issuance_profile_id: '123e4567-e89b-12d3-a456-426614174000',
           presentation_definition: {
             id: 'age-over-18',
             input_descriptors: [
@@ -138,7 +133,6 @@ export class VerificationProfileController {
     required: false,
     enum: VerificationProfileStatus,
   })
-  @ApiQuery({ name: 'issuance_profile_id', required: false })
   @ApiQuery({ name: 'public', required: false })
   @ApiQuery({
     name: 'cursor',
@@ -158,7 +152,6 @@ export class VerificationProfileController {
       tenantId,
       {
         status: query.status,
-        issuanceProfileId: query.issuanceProfileId,
         isPublic: query.isPublic,
       },
       { limit: query.limit, cursor: query.cursor },
@@ -200,8 +193,7 @@ export class VerificationProfileController {
   @ApiNotFoundResponse({ description: 'Verification profile not found' })
   @ApiBadRequestResponse({
     description:
-      'requested_attributes or predicates reference attributes not in ' +
-      "the issuance profile's attribute_schema",
+      'presentation_definition is not a valid DIF Presentation Exchange object',
   })
   @ApiConflictResponse({
     description: 'Cannot update a published or deprecated profile',

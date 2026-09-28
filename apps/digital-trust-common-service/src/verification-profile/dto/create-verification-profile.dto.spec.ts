@@ -8,7 +8,6 @@ describe('CreateVerificationProfileDto', () => {
     const dto = plainToInstance(CreateVerificationProfileDto, {
       name: 'Age Verification',
       version: '1.0.0',
-      issuance_profile_id: '123e4567-e89b-12d3-a456-426614174000',
       presentation_definition: { input_descriptors: [] },
       predicates: [{ attribute: 'age', condition: '>=', value: '18' }],
       public: true,
@@ -26,7 +25,6 @@ describe('CreateVerificationProfileDto', () => {
     const dto = plainToInstance(CreateVerificationProfileDto, {
       name: 'Age Verification',
       version: '1.0.0',
-      issuance_profile_id: '123e4567-e89b-12d3-a456-426614174000',
       presentation_definition: { input_descriptors: [] },
       predicates: [{ attribute: 'age', condition: 'not-a-condition' }],
     });

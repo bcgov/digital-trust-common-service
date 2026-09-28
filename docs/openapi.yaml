@@ -1354,11 +1354,6 @@ paths:
           in: query
           schema:
             $ref: "#/components/schemas/ProfileStatus"
-        - name: issuance_profile_id
-          in: query
-          schema:
-            type: string
-            format: uuid
         - name: public
           in: query
           schema:
@@ -3669,9 +3664,6 @@ components:
         tenant_id:
           type: string
           format: uuid
-        issuance_profile_id:
-          type: string
-          format: uuid
         name:
           type: string
         version:
@@ -3718,7 +3710,7 @@ components:
 
     CreateVerificationProfileRequest:
       type: object
-      required: [name, version, issuance_profile_id, presentation_definition]
+      required: [name, version, presentation_definition]
       properties:
         name:
           type: string
@@ -3731,9 +3723,6 @@ components:
         description:
           type: string
           maxLength: 500
-        issuance_profile_id:
-          type: string
-          format: uuid
         presentation_definition:
           type: object
           description: DIF Presentation Exchange object

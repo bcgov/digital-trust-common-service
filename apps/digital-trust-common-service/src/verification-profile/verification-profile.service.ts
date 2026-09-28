@@ -15,12 +15,9 @@ import {
 } from '../common/assert-tenant-access';
 import { decodeCursor, encodeCursor } from '../common/cursor-pagination';
 import { isUniqueConstraintViolation } from '../common/postgres-error';
-import { IssuanceProfileStatus } from '../issuance-profile/issuance-profile.entity';
-import { IssuanceProfileService } from '../issuance-profile/issuance-profile.service';
 
 import { CreateVerificationProfileDto } from './dto/create-verification-profile.dto';
 import { UpdateVerificationProfileDto } from './dto/update-verification-profile.dto';
-import { VerificationPredicateDto } from './dto/verification-predicate.dto';
 import {
   VerificationProfile,
   VerificationProfileStatus,
@@ -38,19 +35,10 @@ export type PaginatedVerificationProfiles = {
   };
 };
 
-/** Attribute schema `type` values treated as numeric for predicate validation. */
-const NUMERIC_ATTRIBUTE_TYPES = new Set([
-  'number',
-  'integer',
-  'date',
-  'datetime',
-]);
-
 @Injectable()
 export class VerificationProfileService {
   public constructor(
     private readonly verificationProfileRepository: VerificationProfileRepository,
-    private readonly issuanceProfileService: IssuanceProfileService,
     private readonly domainAudit: DomainAuditService,
   ) {}
 
@@ -61,29 +49,8 @@ export class VerificationProfileService {
   ): Promise<VerificationProfile> {
     assertTenantAccess(auth, tenantId);
 
-    const issuanceProfile = await this.issuanceProfileService.findById(
-      tenantId,
-      dto.issuanceProfileId,
-      auth,
-    );
-
-    if (issuanceProfile.status !== IssuanceProfileStatus.PUBLISHED) {
-      throw new BadRequestException(
-        `Issuance profile '${dto.issuanceProfileId}' must be published before it can back a verification profile.`,
-      );
-    }
-
     const requestedAttributes = this.extractRequestedAttributes(
       dto.presentationDefinition,
-    );
-
-    this.validateRequestedAttributes(
-      issuanceProfile.attributeSchema,
-      requestedAttributes,
-    );
-    this.validatePredicates(
-      issuanceProfile.attributeSchema,
-      dto.predicates ?? [],
     );
 
     const existing =
@@ -101,7 +68,6 @@ export class VerificationProfileService {
 
     const created = await this.createProfile({
       tenantId,
-      issuanceProfileId: issuanceProfile.id,
       name: dto.name,
       version: dto.version,
       description: dto.description,
@@ -187,9 +153,10 @@ export class VerificationProfileService {
    * Extracts attribute names referenced by a DIF Presentation Exchange
    * `presentation_definition`, from each input descriptor's
    * `constraints.fields[].path` JSONPath entries (e.g.
-   * `$.credentialSubject.given_names` -> `given_names`). Used both to
-   * validate against the issuance profile's attribute_schema and to
-   * populate the `requested_attributes` quick-reference column.
+   * `$.credentialSubject.given_names` -> `given_names`). Populates the
+   * `requested_attributes` quick-reference column; there is no
+   * tenant-independent credential schema registry yet to validate these
+   * names or predicates against.
    */
   private extractRequestedAttributes(
     presentationDefinition: Record<string, unknown>,
@@ -242,59 +209,6 @@ export class VerificationProfileService {
     }
 
     return [...names];
-  }
-
-  private validateRequestedAttributes(
-    attributeSchema: Readonly<Record<string, unknown>>,
-    requestedAttributes: string[],
-  ): void {
-    const allowed = new Set(Object.keys(attributeSchema));
-    const unknownAttributes = requestedAttributes.filter(
-      (name) => !allowed.has(name),
-    );
-
-    if (unknownAttributes.length > 0) {
-      throw new BadRequestException(
-        `presentation_definition requests attributes not present in the issuance profile's attribute_schema: ${unknownAttributes.join(', ')}`,
-      );
-    }
-  }
-
-  /**
-   * Validates that each predicate references an attribute declared on the
-   * issuance profile, and, where the attribute_schema declares a `type`,
-   * that the predicate's value is shape-compatible with it (numeric types
-   * require a parseable numeric value).
-   */
-  private validatePredicates(
-    attributeSchema: Readonly<Record<string, unknown>>,
-    predicates: VerificationPredicateDto[],
-  ): void {
-    const allowed = new Set(Object.keys(attributeSchema));
-
-    for (const predicate of predicates) {
-      if (!allowed.has(predicate.attribute)) {
-        throw new BadRequestException(
-          `Predicate references an attribute not present in the issuance profile's attribute_schema: '${predicate.attribute}'.`,
-        );
-      }
-
-      const declared = attributeSchema[predicate.attribute];
-      const declaredType =
-        declared && typeof declared === 'object'
-          ? (declared as { type?: unknown }).type
-          : undefined;
-
-      if (
-        typeof declaredType === 'string' &&
-        NUMERIC_ATTRIBUTE_TYPES.has(declaredType.toLowerCase()) &&
-        Number.isNaN(Number(predicate.value))
-      ) {
-        throw new BadRequestException(
-          `Predicate value for attribute '${predicate.attribute}' must be numeric to match its declared type '${declaredType}'.`,
-        );
-      }
-    }
   }
 
   public async findById(
@@ -352,38 +266,16 @@ export class VerificationProfileService {
 
     const patch: Partial<VerificationProfile> = {};
 
-    if (
-      dto.presentationDefinition !== undefined ||
-      dto.predicates !== undefined
-    ) {
-      const issuanceProfile = await this.issuanceProfileService.findById(
-        tenantId,
-        profile.issuanceProfileId,
-        auth,
+    if (dto.presentationDefinition !== undefined) {
+      const requestedAttributes = this.extractRequestedAttributes(
+        dto.presentationDefinition,
       );
+      patch.presentationDefinition = dto.presentationDefinition;
+      patch.requestedAttributes = requestedAttributes;
+    }
 
-      if (dto.presentationDefinition !== undefined) {
-        const requestedAttributes = this.extractRequestedAttributes(
-          dto.presentationDefinition,
-        );
-        this.validateRequestedAttributes(
-          issuanceProfile.attributeSchema,
-          requestedAttributes,
-        );
-        patch.presentationDefinition = dto.presentationDefinition;
-        patch.requestedAttributes = requestedAttributes;
-      }
-
-      if (dto.predicates !== undefined) {
-        this.validatePredicates(
-          issuanceProfile.attributeSchema,
-          dto.predicates,
-        );
-        patch.predicates = dto.predicates as unknown as Record<
-          string,
-          unknown
-        >[];
-      }
+    if (dto.predicates !== undefined) {
+      patch.predicates = dto.predicates as unknown as Record<string, unknown>[];
     }
 
     if (dto.description !== undefined) {

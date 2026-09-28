@@ -12,7 +12,6 @@ import {
 
 export interface VerificationProfileFilters {
   readonly status?: VerificationProfileStatus;
-  readonly issuanceProfileId?: string;
   readonly isPublic?: boolean;
 }
 
@@ -72,12 +71,6 @@ export class VerificationProfileRepository {
 
     if (filters.status !== undefined) {
       qb.andWhere('profile.status = :status', { status: filters.status });
-    }
-
-    if (filters.issuanceProfileId !== undefined) {
-      qb.andWhere('profile.issuance_profile_id = :issuanceProfileId', {
-        issuanceProfileId: filters.issuanceProfileId,
-      });
     }
 
     if (filters.isPublic !== undefined) {

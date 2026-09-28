@@ -1966,8 +1966,6 @@ export interface components {
             id?: string;
             /** Format: uuid */
             tenant_id?: string;
-            /** Format: uuid */
-            issuance_profile_id?: string;
             name?: string;
             version?: string;
             description?: string | null;
@@ -1994,8 +1992,6 @@ export interface components {
             name: string;
             version: string;
             description?: string;
-            /** Format: uuid */
-            issuance_profile_id: string;
             /** @description DIF Presentation Exchange object */
             presentation_definition: Record<string, never>;
             predicates?: {
@@ -3668,7 +3664,6 @@ export interface operations {
                 /** @description Number of items per page */
                 limit?: components["parameters"]["Limit"];
                 status?: components["schemas"]["ProfileStatus"];
-                issuance_profile_id?: string;
                 public?: boolean;
             };
             header?: never;

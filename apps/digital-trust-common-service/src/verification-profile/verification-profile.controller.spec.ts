@@ -49,7 +49,6 @@ describe('VerificationProfileController', () => {
   const mockProfile: VerificationProfile = {
     id: '123e4567-e89b-12d3-a456-426614174000',
     tenantId: '123e4567-e89b-12d3-a456-426614174001',
-    issuanceProfileId: '123e4567-e89b-12d3-a456-426614174002',
     name: 'age-verification',
     version: '1.0',
     description: undefined,
@@ -117,7 +116,6 @@ describe('VerificationProfileController', () => {
       const dto: CreateVerificationProfileDto = {
         name: mockProfile.name,
         version: mockProfile.version,
-        issuanceProfileId: mockProfile.issuanceProfileId,
         presentationDefinition: mockProfile.presentationDefinition,
       };
 
@@ -142,7 +140,6 @@ describe('VerificationProfileController', () => {
 
       const result = await controller.findByTenantId(tenantId, {
         status: VerificationProfileStatus.DRAFT,
-        issuanceProfileId: undefined,
         isPublic: undefined,
         cursor: undefined,
         limit: undefined,
@@ -152,7 +149,6 @@ describe('VerificationProfileController', () => {
         tenantId,
         {
           status: VerificationProfileStatus.DRAFT,
-          issuanceProfileId: undefined,
           isPublic: undefined,
         },
         { limit: undefined, cursor: undefined },
@@ -172,7 +168,6 @@ describe('VerificationProfileController', () => {
 
       const result = await controller.findByTenantId(tenantId, {
         status: undefined,
-        issuanceProfileId: mockProfile.issuanceProfileId,
         isPublic: true,
         cursor: 'prev-cursor',
         limit: 5,
@@ -182,7 +177,6 @@ describe('VerificationProfileController', () => {
         tenantId,
         {
           status: undefined,
-          issuanceProfileId: mockProfile.issuanceProfileId,
           isPublic: true,
         },
         { limit: 5, cursor: 'prev-cursor' },

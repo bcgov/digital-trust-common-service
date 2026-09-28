@@ -3,7 +3,6 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { AuditLogModule } from '../audit-log/audit-log.module';
-import { IssuanceProfileModule } from '../issuance-profile/issuance-profile.module';
 import { RateLimitModule } from '../rate-limit/rate-limit.module';
 import { TenantStatusModule } from '../tenant/tenant-status.module';
 
@@ -17,7 +16,6 @@ import { VerificationProfileService } from './verification-profile.service';
     TypeOrmModule.forFeature([VerificationProfile]),
     AuditLogModule,
     AuthModule,
-    IssuanceProfileModule,
     TenantStatusModule,
     RateLimitModule,
   ],

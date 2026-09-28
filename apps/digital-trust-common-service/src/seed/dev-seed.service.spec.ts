@@ -765,13 +765,13 @@ describe('DevSeedService', () => {
     expect(summary.operations).toBe(0);
   });
 
-  it('skips verification profile when the issuance profile is missing', async () => {
+  it('seeds the verification profile independently of issuance profile seeding', async () => {
     issuanceProfileRepo.create.mockResolvedValue(null);
     issuanceProfileRepo.findByNameAndVersion.mockResolvedValue(null);
 
     const summary = await service.run();
 
-    expect(summary.verificationProfiles).toBe(0);
-    expect(verificationProfileRepo.create).not.toHaveBeenCalled();
+    expect(summary.verificationProfiles).toBeGreaterThan(0);
+    expect(verificationProfileRepo.create).toHaveBeenCalled();
   });
 });
