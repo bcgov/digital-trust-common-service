@@ -560,3 +560,142 @@ permissive network policy, or a direct path to the backend.
 **Rule V3.** The isolation tests **MUST** run in every environment where tenants have access,
 against that environment's own configuration. Isolation validated only in one environment is
 isolation validated only in one environment.
+
+---
+
+## 8. External ownership
+
+Most of this contract is implemented outside this repository. That is the main reason it
+exists as a written contract rather than as review comments on a pull request: no single team
+can verify the boundary end to end from inside their own component, so each one needs to know
+precisely what the others guarantee.
+
+Named repositories and teams are recorded on the tracking work rather than here, so this
+document does not go stale when either changes. The split of responsibility does not change.
+
+### 8.1 Who owns what
+
+| Owner | Responsibility | Rules they implement |
+|---|---|---|
+| **This service** | Minting the access token with the tenant claim, the log-read scope, and the log gateway resource audience; capturing and refreshing each connector's agent log identifier; exposing the resolution the gateway consumes | T1–T11, M1–M12 |
+| **Identity-aware gateway** | Token validation and authorization, mapping consumption, partition header construction, read-surface coverage | T1–T11, M8–M12, G1–G8, S1, S4 |
+| **Platform observability (GitOps)** | Storage-layer multi-tenancy, collector partition routing, query limits, network isolation of the backend in every environment, write-path partition assignment for existing direct-push consumers | L1–L8, G8 |
+| **Agent deployment (GitOps)** | Structured log output carrying the agent's log identifier as a discrete field | L5 |
+| **Platform Grafana** | The dedicated tenant-facing instance, registered against this service as its identity provider; a single shared datasource forwarding the caller's token; generic dashboards | S2, S3 |
+
+### 8.2 Sequencing
+
+The dependencies between these are real, and taking them out of order produces either a broken
+deployment or a boundary that looks present and is not.
+
+1. **The agent emits structured logs first.** Until it does, there is no discrete identifier to
+   route on, and routing must not be attempted against unstructured text ([L5](#52-partitioning-happens-at-ingestion)).
+   Until then the agent's lines stay in the platform partition and tenants see only this
+   service's lines — a usable intermediate state, not a blocked one.
+2. **Query limits and network isolation land before any tenant gets access**
+   ([L7](#53-preconditions-for-exposing-query-access), [L8](#53-preconditions-for-exposing-query-access)).
+   Both are preconditions for exposure, not follow-ups: after exposure, adding them is a
+   regression risk rather than a safe default.
+3. **The storage multi-tenancy cutover is coordinated, not a flag flip.** Enabling native
+   tenancy makes the partition header mandatory on **ingestion** as well as query. Any existing
+   producer that pushes directly, outside the collector, starts failing at that moment unless
+   the write path assigns its partition first. Assignment must be in place before or atomically
+   with the cutover, verified in a lower environment, and the affected team told ahead of the
+   production change even though their client should not need to change.
+4. **The gateway and the tenant Grafana land last**, once the token surface and the storage
+   boundary both exist. Standing up the access layer earlier would mean either exercising it
+   against an unenforced backend — validating nothing — or creating a path that is open while
+   its enforcement is still in flight.
+
+### 8.3 What this repository guarantees to the others
+
+So the external owners can build against a fixed surface:
+
+- The token is signed by this service, discoverable through its OIDC metadata and JWKS, and
+  validated the same way the API validates its own ([T1](#31-shape-and-validation)).
+- `tenant_id` is a single, stable, opaque identifier for one service tenant, and it is the
+  value our own log lines carry.
+- The log gateway audience is a configured resource identifier, distinct from the API audience,
+  and a token resolves to exactly one of them ([T8](#34-audience-separation), [T9](#34-audience-separation)).
+- The log-read scope is a real, assignable scope, granted per tenant, and expanded consistently
+  with the API ([T6](#33-authorization)).
+- The agent log identifier is resolvable per service tenant, refreshed on connector rotation,
+  and fails closed rather than returning a guess ([section 4](#4-mapping-a-service-tenant-to-its-agent-log-identifier)).
+- Onboarding a tenant requires **no** configuration change in any external component: no
+  collector reload, no Grafana object, no datasource, no dashboard, and no partition
+  pre-registration.
+
+### 8.4 What this repository depends on
+
+- The agent emits its log identifier as a discrete field in structured output.
+- The storage backend enforces partition isolation and accepts a multi-partition read scope.
+- The backend is unreachable except through a gateway that sets the partition header, in every
+  environment.
+- The tenant Grafana forwards the caller's token to the datasource unchanged.
+
+---
+
+## 9. Acceptance and closure
+
+### 9.1 Closing this contract
+
+This contract is complete when it is **agreed**, not when it is implemented. It closes on:
+
+- the identifier glossary ([section 2](#2-what-tenant-means-in-each-service)) reviewed and
+  agreed by the teams owning each system in it, since its whole purpose is to stop two of those
+  rows being conflated;
+- the token, mapping, storage, header, and selection rules accepted as binding by the
+  implementing owners in [8.1](#81-who-owns-what);
+- a security review of exposing tenant-facing observability data, taken against this document;
+- each owner having the rules they implement reflected in their own tracked work.
+
+It does **not** wait on any implementation. Blocking the contract on the work it specifies
+would invert the dependency — the implementing work is written against this document.
+
+### 9.2 Accepting each external piece
+
+Acceptance criteria per owner. Each is verifiable by someone other than its author, which is
+the point.
+
+| Owner | Accepted when |
+|---|---|
+| **This service** | A token requested for the log gateway audience carries that audience and not the API audience, and is rejected by the API; the log-read scope is grantable and expands consistently; a connector's agent log identifier is captured at setup, refreshed on rotation, and resolution fails closed on missing, inactive, ambiguous, or errored lookups |
+| **Identity-aware gateway** | Every negative test N1–N22 denies and every positive test P1–P6 passes, except N12 and N22, which are verified jointly with platform observability; the tests run against a deployed gateway in front of a real backend ([V2](#72-required-tests)), in every environment with tenant access ([V3](#72-required-tests)); the read surface is an enumerated allowlist |
+| **Platform observability** | Native tenancy enabled with query limits in place; the backend unreachable from a tenant-reachable network position in **every** environment (N12); unattributed lines land in the platform partition, never a tenant one; existing direct-push producers keep succeeding through the cutover; platform cross-tenant visibility retained (P7) |
+| **Agent deployment** | Log output is structured, carries the log identifier as a discrete field, and the field name is confirmed against real output rather than assumed — no routing depends on pattern matching unstructured text |
+| **Platform Grafana** | One instance, one org, one shared datasource, no tenant identity in any datasource field or URL; dashboards generic with no tenant variable; two tenants on the same dashboard each see only their own data (P4) |
+
+### 9.3 The end-to-end check
+
+Component-level acceptance is necessary and not sufficient — each owner can pass their own
+criteria while the seam between two of them leaks. Before tenants are granted access, one
+cross-team verification **MUST** be performed and recorded:
+
+Two real service tenants, each with a configured connector, each generating both service and
+agent activity. For each tenant, using a real token through the real chain: they see both of
+their own log sources, and neither sees any line belonging to the other — through a dashboard,
+through ad-hoc query, through label enumeration, and through live tail. Then the negative set
+against the deployed chain: spoofed partition header, wrong audience, missing scope, and a
+LogQL query naming the other tenant.
+
+This is the only check that exercises the mapping, the token, the gateway, and the storage
+partition together, and it is the one that would catch the failures each team's own tests are
+structurally unable to see.
+
+---
+
+## 10. Amending this contract
+
+Changing a **MUST** or **MUST NOT** here changes a security boundary that several teams have
+built against and reviewed as a whole. Such a change requires the same agreement as the
+original: the owners in [8.1](#81-who-owns-what), and a security review where the boundary
+itself moves.
+
+Two changes in particular are not amendments but new contracts, because their threat models
+differ from this one rather than extend it: exposing metrics or traces to tenants
+([1.3](#13-logs-only--metrics-and-traces-are-excluded)), and issuing a token authorizing more
+than one service tenant ([T4](#32-claims)).
+
+Adding a new agent type is explicitly **not** an amendment. The contract is written against
+identifier roles rather than a particular agent's identifier names, so a new connector type
+supplying its own log identifier is already covered ([M5](#42-agent-agnostic-by-construction)).
