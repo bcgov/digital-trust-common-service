@@ -2,7 +2,7 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
 
 export const migrationName = 'AllowNullableConnectionExternalId';
 
-export class AllowNullableConnectionExternalId1789751397832 implements MigrationInterface {
+export class AllowNullableConnectionExternalId1790623456139 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
       DROP INDEX IF EXISTS idx_connection_external_connection_id;
