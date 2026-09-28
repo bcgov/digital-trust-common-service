@@ -36,7 +36,7 @@ Three decisions frame everything below and supersede parts of the original resea
 
 **TL;DR of the design**:
 
-- Enable native Loki multi-tenancy (`auth_enabled: true`); Alloy routes each log line to a per-tenant Loki tenant via `stage.tenant`, keyed on `traction_tenant_id` (Traction/ACA-Py) or `tenant_id` (digital-trust-common-service). Enforcement is in the storage layer itself. **Prerequisite**: Traction must emit JSON logs carrying its sub-tenant id (via `ACAPY_LOG_CONFIG`) — see [Getting identifiers into log streams](#getting-identifiers-into-log-streams).
+- Enable native Loki multi-tenancy (`auth_enabled: true`); Alloy routes each log line to a per-tenant Loki tenant via `stage.tenant`, keyed on the agent's **log identifier** (the wallet id ACA-Py stamps on each record) or `tenant_id` (digital-trust-common-service). Enforcement is in the storage layer itself. **Prerequisite**: Traction must emit JSON logs carrying that wallet id (via `ACAPY_LOG_CONFIG`) — see [Getting identifiers into log streams](#getting-identifiers-into-log-streams).
 - Reuse the existing per-tenant **`ConnectorCredential`** record (PE-06) as the `tenant_id → traction_tenant_id` mapping — no new registry entity.
 - **Auth flow**: Grafana → digital-trust-common-service `oidc-provider` → Keycloak (upstream). Grafana forwards the app-issued access token; a small **identity-aware gateway** in front of Loki validates it **and requires the `logs:read` scope** (fail closed), resolves `tenant_id → traction_tenant_id` from `ConnectorCredential`, and sets a pipe-joined `X-Scope-OrgID: tenant_id|traction_tenant_id` — so a tenant sees **both** its digital-trust-common-service and its Traction logs. Zero per-tenant Grafana resources — a **dedicated tenant-facing Grafana instance** with one org, one datasource, one set of generic dashboards.
 - A **conservative global Loki `limits_config`** is required before exposing arbitrary LogQL to external tenants; **the auth foundation this depends on (`oidc-provider`, JWT issuance/validation, guards, `logs:read`) is spec-only today** — Phase 2 depends on it landing first.
@@ -91,13 +91,13 @@ For the MVP there are exactly two **systems** to correlate — but three identif
 | Service | Tenant identifier | In logs via |
 |---------|-------------------|-------------|
 | **digital-trust-common-service** | `tenant_id` (app-owned) | structured JSON logging (pino, OB-09) |
-| **Traction / ACA-Py** | **Two distinct identifiers for the same sub-wallet.** The **sub-tenant id** (stored by us as `traction_tenant_id`) addresses the Traction API and is what we exchange for a bearer token — it does **not** appear in logs. The **wallet id** is what ACA-Py stamps on each log record via a contextvar in multitenant mode, and it is already present in the bearer token the connector obtains at setup. | Only the **wallet id** reaches the log stream, and only once Traction is configured to log JSON (see below). Attribution needs no inbound header — the sub-tenant is resolved from the Bearer token on our calls. |
+| **Traction / ACA-Py** | **Two distinct identifiers for the same sub-wallet.** The **sub-tenant id** (stored by us as `traction_tenant_id`) addresses the Traction API and is what we exchange for a bearer token — it does **not** appear in logs. The **wallet id** is what ACA-Py stamps on each log record via a contextvar in multitenant mode, and it is present as a claim in the bearer token the connector obtains at setup — though we do not read or store it today, so capturing it is new work. | Only the **wallet id** reaches the log stream, and only once Traction is configured to log JSON (see below). Attribution needs no inbound header — the sub-tenant is resolved from the Bearer token on our calls. |
 
 > **These two are not interchangeable.** Partitioning or querying logs by the sub-tenant id yields an empty result at best and a coincidental match at worst. See [tenant-log-access-contract.md](./tenant-log-access-contract.md#21-the-agent-sub-tenant-has-two-identifiers-and-they-are-not-interchangeable).
 
 ### The mapping — reuse `ConnectorCredential` (PE-06)
 
-This mapping is **not a new entity**. The design already stores each tenant's Traction identity in the per-tenant **`ConnectorCredential`** record (PE-06): it holds `traction_tenant_id` alongside the connector's `api_key` and `endpoint_url`, CT-01 reads it to configure the adapter, and CT-06 already resolves the internal `tenant_id` **from** `traction_tenant_id` on inbound webhooks. What the gateway needs is neither of those directions: it needs `tenant_id →` the agent's **log identifier** (the wallet id), which is a different value carried in the same record. It is available without a new call — the connector already obtains a bearer token from Traction at setup, and the wallet id is a claim in it.
+This mapping is **not a new entity**. The design already stores each tenant's Traction identity in the per-tenant **`ConnectorCredential`** record (PE-06): it holds `traction_tenant_id` alongside the connector's `api_key` and `endpoint_url`, CT-01 reads it to configure the adapter, and CT-06 already resolves the internal `tenant_id` **from** `traction_tenant_id` on inbound webhooks. What the gateway needs is neither of those directions: it needs `tenant_id →` the agent's **log identifier** (the wallet id), which is a different value carried in the same record. It needs no new call to Traction — the connector already obtains a bearer token at setup and the wallet id is a claim in it — but it does need new code: today that token is decoded only for its expiry, and the value is never captured or persisted.
 
 At query time the gateway (cached): receives an app-issued token carrying `tenant_id`, resolves that tenant's agent log identifier from **its own** connector record, and sets a pipe-joined Loki tenant scope (`X-Scope-OrgID: tenant_id|<agent log identifier>`) covering **both** the digital-trust-common-service stream (ingested under `tenant_id`) and the Traction stream (ingested under the wallet id ACA-Py stamps on it). The lookup is forward-only, from the requesting tenant's own record — never a reverse lookup keyed by the agent identifier. The gateway never parses or rewrites the query — it only translates identity into a tenant scope that Loki itself enforces. Per-tenant cost: one existing row.
 
@@ -107,7 +107,7 @@ At query time the gateway (cached): receives an app-issued token carrying `tenan
 
 - **digital-trust-common-service**: log `tenant_id` in structured JSON from day one (OB-09). Outbound calls to the Traction API are already attributed to the sub-tenant via the **Bearer token** they carry — ACA-Py stamps the sub-tenant identity onto every log record (via a contextvar) in multitenant mode, so **no `X-Wallet-ID` (or any inbound wallet header) is involved** (OB-08).
 - **Traction / ACA-Py**: two prerequisites, both real work:
-  1. **Traction must emit JSON logs.** Our Traction deployment logs **plain text** today — no `ACAPY_LOG_CONFIG` / `--log-config` is wired up in the charts. The sub-tenant id is on the log record (contextvar) but the default format doesn't print it. Emitting it needs a **log-config change on the Traction deployment** (gitops in the Traction repo).
+  1. **Traction must emit JSON logs.** Our Traction deployment logs **plain text** today — no `ACAPY_LOG_CONFIG` / `--log-config` is wired up in the charts. The wallet id is on the log record (contextvar) but the default format doesn't print it. Emitting it needs a **log-config change on the Traction deployment** (gitops in the Traction repo).
   2. **Then** Alloy extracts it with `stage.json` on the clean field. Against today's plain-text logs `stage.json` does nothing; a `stage.regex` fallback on plain text is brittle and would turn log-format drift into a tenant-isolation incident. Get Traction emitting JSON **first**.
 
 ### Post-MVP: multi-service correlation
@@ -276,7 +276,7 @@ digital-trust-common-service is the source of truth for tenant lifecycle. When a
 
 ### Provisioning steps (per tenant)
 
-1. Populate the tenant's `ConnectorCredential` (PE-06) with its Traction sub-tenant id **and** the agent log identifier read from the setup token (Tenant Identity section) — the same per-tenant record the adapter already needs (CT-01), written when the connector is configured.
+1. Populate the tenant's `ConnectorCredential` (PE-06) with its Traction sub-tenant id **and** the agent log identifier read from the setup token — capturing that claim is net-new work (Tenant Identity section) — the same per-tenant record the adapter already needs (CT-01), written when the connector is configured.
 2. — that's it. The tenant binding is the app-issued `tenant_id` claim digital-trust-common-service already mints at login; the gateway resolves `traction_tenant_id` at query time; dashboards are shared.
 
 One-time (not per-tenant) setup: the dedicated tenant Grafana instance (single org), the OAuth-forwarding datasource, the generic dashboard set (JSON in the gitops repo, provisioned normally), the static `org_mapping` rule, Grafana registered as an OIDC client of digital-trust-common-service, and the gateway deployment.
@@ -431,12 +431,12 @@ READ PATH (query)                     │ X-Scope-OrgID: <tenant_id>|<traction_t
                      digital-trust-common-service oidc-provider ──federates──▶ Keycloak
                      (Grafana = OIDC client; single provider on this instance)
 
- * Traction emits traction_tenant_id only after ACAPY_LOG_CONFIG is set to log JSON — prerequisite.
+ * Traction emits its wallet id only after ACAPY_LOG_CONFIG is set to log JSON — prerequisite.
  NOTE: oidc-provider, JWT issuance/validation, guards, the ConnectorCredential mapping, and
        logs:read are all spec-only today; this Phase-2 flow depends on that foundation landing first.
 ```
 
-1. **Ingestion — two paths.** (a) In-cluster: services + Traction → Alloy → `stage.json` → `stage.tenant` routes each line to a Loki tenant (`tenant_id` / `traction_tenant_id`). This is net-new pipeline work — today Alloy only runs `static_labels` + `label_keep`. (b) External direct push (BC Wallet): `curl` + basic auth → nginx gateway injects `X-Scope-OrgID` from `$remote_user`. **Prerequisite**: Traction must be configured (`ACAPY_LOG_CONFIG`) to emit its sub-tenant id as JSON. Loki runs `auth_enabled: true`; unattributed lines → platform tenant.
+1. **Ingestion — two paths.** (a) In-cluster: services + Traction → Alloy → `stage.json` → `stage.tenant` routes each line to a Loki tenant (`tenant_id` / `traction_tenant_id`). This is net-new pipeline work — today Alloy only runs `static_labels` + `label_keep`. (b) External direct push (BC Wallet): `curl` + basic auth → nginx gateway injects `X-Scope-OrgID` from `$remote_user`. **Prerequisite**: Traction must be configured (`ACAPY_LOG_CONFIG`) to emit its wallet id as JSON. Loki runs `auth_enabled: true`; unattributed lines → platform tenant.
 2. **Identity mapping — `tenant_id →` the agent log identifier.** Reuses the existing per-tenant `ConnectorCredential` record (PE-06); no new entity, **no new column**. Consumed by the read gateway (cached), forward-only from the requesting tenant’s own record. Note this is the wallet id ACA-Py stamps on log lines, not the `traction_tenant_id` that addresses the API.
 3. **Loki isolation + limits.** `auth_enabled: true` enforces per-tenant. A global `limits_config` (query length/series/rate/cardinality) is required before external exposure — one global config, enforced per-tenant automatically; per-tenant overrides only for exceptions (e.g. `bcwallet` ingest headroom). Loki reachable only via the gateways (NetworkPolicy — dev/test permissive today, hardening required).
 4. **Access layer, zero per-tenant Grafana resources.** A dedicated tenant-facing Grafana (own instance, single default org, one `oauthPassThru` datasource, one generic dashboard set, stateless pods + own Postgres, provisioned-only). The read gateway turns the validated app JWT (+ `logs:read` authz) into `X-Scope-OrgID`; Loki enforces. Tenants may use dashboards / Explore / raw API — only ever their own data.
@@ -458,7 +458,7 @@ An alternative was considered: since digital-trust-common-service is greenfield 
 ### Phased plan
 
 ```text
-PoC (now)           → Get Traction emitting JSON with its sub-tenant id (ACAPY_LOG_CONFIG) —
+PoC (now)           → Get Traction emitting JSON with its wallet id (ACAPY_LOG_CONFIG) —
                       load-bearing check. Alloy stage.json + stage.tenant for Traction logs;
                       enable Loki auth_enabled: true in dev + a global limits_config; wire the
                       nginx write-path X-Scope-OrgID injection for the BC Wallet push tenant;
