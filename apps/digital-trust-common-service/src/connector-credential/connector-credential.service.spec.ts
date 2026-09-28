@@ -637,7 +637,7 @@ describe('ConnectorCredentialService', () => {
       );
     });
 
-    it('should revert the persisted credentials when webhook re-registration fails and Traction confirms it was never applied', async () => {
+    it('should not persist the update when webhook re-registration fails and Traction confirms it was never applied', async () => {
       const dto: UpdateConnectorCredentialDto = {
         endpointUrl: 'https://traction.example.com/api/v2',
         credentials: {
@@ -656,15 +656,7 @@ describe('ConnectorCredentialService', () => {
         service.update(mockCredential.tenantId, mockCredential.id, dto, auth),
       ).rejects.toThrow(registrationError);
 
-      expect(mockUpdate).toHaveBeenNthCalledWith(
-        1,
-        mockCredential.id,
-        expect.objectContaining({
-          credentialsEncrypted: mockCredential.credentialsEncrypted,
-          keyVersion: mockCredential.keyVersion,
-          endpointUrl: mockCredential.endpointUrl,
-        }),
-      );
+      expect(mockUpdate).not.toHaveBeenCalled();
     });
 
     it('should keep the persisted update when a failed re-registration call is confirmed to have applied remotely', async () => {

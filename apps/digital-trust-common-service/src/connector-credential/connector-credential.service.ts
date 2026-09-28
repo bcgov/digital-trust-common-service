@@ -131,7 +131,7 @@ export class ConnectorCredentialService {
     context: ConnectorContext,
     webhookUrl: string,
     webhookSecret: string,
-    onConfirmedNotRegistered: () => Promise<void>,
+    onConfirmedNotRegistered?: () => Promise<void>,
   ): Promise<boolean> {
     let isRegistered: boolean;
 
@@ -158,7 +158,7 @@ export class ConnectorCredentialService {
       return true;
     }
 
-    await onConfirmedNotRegistered();
+    await onConfirmedNotRegistered?.();
     return false;
   }
 
@@ -394,11 +394,12 @@ export class ConnectorCredentialService {
           webhookSecret,
         );
       } catch (registrationError) {
+        // Nothing to revert: the DB write below hasn't happened yet, so a
+        // confirmed-unregistered result just falls through to the throw.
         const confirmedRegistered = await this.reconcileFailedRegistration(
           context,
           webhookUrl,
           webhookSecret,
-          () => this.revertOrLogFailure(id, existing, updates),
         );
 
         if (!confirmedRegistered) {
@@ -418,30 +419,6 @@ export class ConnectorCredentialService {
     await this.lazyRotateKeyIfNeeded(updated);
 
     return updated;
-  }
-
-  private async revertOrLogFailure(
-    id: string,
-    existing: ConnectorCredential,
-    appliedUpdates: Partial<Omit<ConnectorCredential, 'tenant'>>,
-  ): Promise<void> {
-    const revert: Partial<Omit<ConnectorCredential, 'tenant'>> = {
-      credentialsEncrypted: existing.credentialsEncrypted,
-      keyVersion: existing.keyVersion,
-    };
-
-    if (appliedUpdates.endpointUrl !== undefined) {
-      revert.endpointUrl = existing.endpointUrl;
-    }
-
-    try {
-      await this.credentialRepository.update(id, revert);
-    } catch (cleanupError) {
-      this.logger.error(
-        `Failed to revert connector credential '${id}' after webhook registration failure; manual cleanup required.`,
-        cleanupError instanceof Error ? cleanupError.stack : cleanupError,
-      );
-    }
   }
 
   public async delete(
