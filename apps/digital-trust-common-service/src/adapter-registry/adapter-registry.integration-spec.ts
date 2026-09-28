@@ -17,6 +17,7 @@ import { ConnectorType } from '../connection/connection.entity';
 import { ConnectorCredential } from '../connector-credential/connector-credential.entity';
 import { ConnectorCredentialService } from '../connector-credential/connector-credential.service';
 import { ConnectorHealthCheckService } from '../connector-credential/connector-health-check.service';
+import { TractionWebhookRegistrar } from '../traction/traction-webhook-registrar.service';
 
 import { AdapterRegistry } from './adapter-registry.service';
 import { unwrapAdapter } from './instrumented-adapter';
@@ -62,6 +63,12 @@ describe('AdapterRegistry (integration)', () => {
       .overrideProvider(ConnectorHealthCheckService)
       .useValue({
         check: jest.fn().mockResolvedValue({ status: 'healthy', latencyMs: 1 }),
+      })
+      // Same reasoning: Traction connector creation also registers a
+      // webhook, which would otherwise DNS-check these fake hostnames.
+      .overrideProvider(TractionWebhookRegistrar)
+      .useValue({
+        ensureWebhookRegistered: jest.fn().mockResolvedValue(undefined),
       })
       .compile();
 

@@ -50,6 +50,7 @@ import { OidcUpstreamFederationAdapter } from './upstream-oidc/oidc-upstream-fed
 import { UpstreamOidcModule } from './upstream-oidc/oidc-upstream.module';
 import { VerificationProfileModule } from './verification-profile/verification-profile.module';
 import { WebhookDispatchModule } from './webhook-dispatch/webhook-dispatch.module';
+import { WebhookIngestionModule } from './webhook-ingestion/webhook-ingestion.module';
 
 @Module({
   imports: [
@@ -112,6 +113,7 @@ import { WebhookDispatchModule } from './webhook-dispatch/webhook-dispatch.modul
     UpstreamOidcModule,
     VerificationProfileModule,
     WebhookDispatchModule,
+    WebhookIngestionModule,
     ConnectionModule,
     ConnectorCredentialModule,
     CredentialModule,

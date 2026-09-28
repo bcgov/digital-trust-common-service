@@ -142,9 +142,17 @@ describe('ConnectorCredentialController', () => {
     it('should find a credential by ID', async () => {
       mockFindById.mockResolvedValue(mockCredential);
 
-      const result = await controller.findById(mockCredential.id, auth);
+      const result = await controller.findById(
+        mockCredential.tenantId,
+        mockCredential.id,
+        auth,
+      );
 
-      expect(mockFindById).toHaveBeenCalledWith(mockCredential.id, auth);
+      expect(mockFindById).toHaveBeenCalledWith(
+        mockCredential.tenantId,
+        mockCredential.id,
+        auth,
+      );
       expect(result).toEqual(mockResponseDto);
     });
   });
@@ -177,12 +185,14 @@ describe('ConnectorCredentialController', () => {
       mockUpdate.mockResolvedValue(updatedCredential);
 
       const result = await controller.update(
+        mockCredential.tenantId,
         mockCredential.id,
         updateDto,
         auth,
       );
 
       expect(mockUpdate).toHaveBeenCalledWith(
+        mockCredential.tenantId,
         mockCredential.id,
         updateDto,
         auth,
@@ -195,9 +205,13 @@ describe('ConnectorCredentialController', () => {
     it('should delete a connector credential', async () => {
       mockDelete.mockResolvedValue(undefined);
 
-      await controller.delete(mockCredential.id, auth);
+      await controller.delete(mockCredential.tenantId, mockCredential.id, auth);
 
-      expect(mockDelete).toHaveBeenCalledWith(mockCredential.id, auth);
+      expect(mockDelete).toHaveBeenCalledWith(
+        mockCredential.tenantId,
+        mockCredential.id,
+        auth,
+      );
     });
   });
 
@@ -206,9 +220,14 @@ describe('ConnectorCredentialController', () => {
       const connectivityResult = { status: 'healthy', latencyMs: 42 };
       mockTestConnectivity.mockResolvedValue(connectivityResult);
 
-      const result = await controller.test(mockCredential.id, auth);
+      const result = await controller.test(
+        mockCredential.tenantId,
+        mockCredential.id,
+        auth,
+      );
 
       expect(mockTestConnectivity).toHaveBeenCalledWith(
+        mockCredential.tenantId,
         mockCredential.id,
         auth,
       );

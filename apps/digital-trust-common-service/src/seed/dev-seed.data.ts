@@ -1,3 +1,5 @@
+import { TENANT_SUPERUSER_SCOPE } from '@app/auth';
+
 import {
   ConnectionProtocol,
   ConnectionState,
@@ -24,6 +26,7 @@ import {
 } from '../verification-profile/verification-profile.entity';
 
 export const ADMIN_SCOPES = [
+  TENANT_SUPERUSER_SCOPE,
   'credentials:offer',
   'credentials:verify',
   'connections:manage',
