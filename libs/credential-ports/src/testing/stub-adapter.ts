@@ -127,6 +127,12 @@ export class StubAdapter implements AgentAdapter {
     );
   }
 
+  public deleteById(_context: ConnectorContext, _id: string): Promise<void> {
+    return Promise.reject(
+      new NotImplementedException('StubAdapter.deleteById not implemented'),
+    );
+  }
+
   public revoke(
     _context: ConnectorContext,
     _credentialId: string,

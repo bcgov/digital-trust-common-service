@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { EntityManager, In, Not, Repository } from 'typeorm';
+import { EntityManager, In, Not, Raw, Repository } from 'typeorm';
 
 import { Connection, ConnectionState } from './connection.entity';
 
@@ -11,9 +11,15 @@ export class ConnectionRepository {
     private readonly repository: Repository<Connection>,
   ) {}
 
-  public async create(connection: Partial<Connection>): Promise<Connection> {
-    const entity = this.repository.create(connection);
-    return await this.repository.save(entity);
+  public async create(
+    connection: Partial<Connection>,
+    manager?: EntityManager,
+  ): Promise<Connection> {
+    const repository = manager
+      ? manager.getRepository(Connection)
+      : this.repository;
+    const entity = repository.create(connection);
+    return await repository.save(entity);
   }
 
   public async findById(id: string): Promise<Connection | null> {
@@ -44,6 +50,28 @@ export class ConnectionRepository {
   ): Promise<Connection | null> {
     return await this.repository.findOne({
       where: { tenantId, externalConnectionId },
+      relations: { tenant: true },
+    });
+  }
+
+  /**
+   * Tenant-scoped lookup for a multi-use invitation's persisted connection
+   * row, keyed on the `invitationId` recorded in `metadata` (jsonb) rather
+   * than `externalConnectionId` — a multi-use invitation has no single
+   * external connection id of its own.
+   */
+  public async findByInvitationMsgIdForTenant(
+    tenantId: string,
+    invitationMsgId: string,
+  ): Promise<Connection | null> {
+    return await this.repository.findOne({
+      where: {
+        tenantId,
+        metadata: Raw(
+          (alias) => `${alias} ->> 'invitationId' = :invitationMsgId`,
+          { invitationMsgId },
+        ),
+      },
       relations: { tenant: true },
     });
   }

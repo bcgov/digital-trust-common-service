@@ -30,6 +30,7 @@ import { CreateRateLimitHitsTable1788897010000 } from './migrations/000026_creat
 import { AddCredentialStateFailed1789510285355 } from './migrations/000027_add-credential-state-failed';
 import { AddOperationInflightHolderActionUniqueIndex1789677721725 } from './migrations/000028_add-operation-inflight-holder-action-unique-index';
 import { AddOperationInflightRevokeUniqueIndex1789751397831 } from './migrations/000029_add-operation-inflight-revoke-unique-index';
+import { AllowNullableConnectionExternalId1789751397832 } from './migrations/000030_allow-nullable-connection-external-id';
 import { RemoveVerificationProfileIssuanceProfileLink1790623456139 } from './migrations/000030_remove-verification-profile-issuance-profile-link';
 import { buildSslConfig } from './ssl.util';
 
@@ -76,6 +77,7 @@ export const AppDataSource = new DataSource({
     AddOperationInflightHolderActionUniqueIndex1789677721725,
     AddOperationInflightRevokeUniqueIndex1789751397831,
     RemoveVerificationProfileIssuanceProfileLink1790623456139,
+    AllowNullableConnectionExternalId1789751397832,
   ],
   ssl: buildSslConfig(
     process.env.DB_SSL,
