@@ -1590,11 +1590,45 @@ Attack prevention:
 | **HTTP outbound to Traction** | method, path, status, duration_ms, error_code | `adapter:traction` |
 | **Traction response parsing** | external_id (cred_ex_id, thread_id), state | `adapter:traction` |
 | **Webhook ingestion** | topic, state transition, connection_id, thread_id | `webhook` |
-| **Token lifecycle** | token_refreshed, token_failed, cached hit/miss | `adapter:traction` |
+| **Token lifecycle** | cache_state (hit/miss/expiring), outcome, duration_ms, status_code on failure | `adapter:traction` |
 | **Error interpretation** | map Traction error → actionable message + suggestion | `adapter:traction` |
 | **Credo Agent Service events (post-MVP)** | CredentialStateChanged, ProofStateChanged, DIDComm messages (via webhook callback from Credo Agent Service) | `adapter:credo` |
 
 Redaction rules: never log `api_key`, credential claim values, DID private keys. Log: DIDs, connection_ids, thread_ids (public identifiers), operation_ids, cred_def_ids.
+
+##### Token lifecycle events (implemented)
+
+`TractionTokenManager` emits one cache or acquisition event per `getToken`
+call. A token whose `exp` claim cannot be read adds a warning alongside that
+event rather than replacing it, so an acquisition that succeeded but cannot be
+cached usefully shows up as both lines. The Traction bearer token is never a
+field on any of them, and neither is the `api_key` exchanged for it.
+
+| Event | Level | Fields |
+|-------|-------|--------|
+| `token served from cache` | debug | `cache_state: hit`, `connector_id`, `outcome: success` |
+| `token acquired` | log | `cache_state: miss \| expiring`, `connector_id`, `duration_ms`, `outcome: success` |
+| `token acquisition failed` | error | the above plus `error_message`, `error_stack`, `error_type`, `status_code` (when the endpoint answered), `outcome: failure` |
+| `token expiry claim unusable` | warn | `connector_id`, `error_message` |
+
+A cache hit is logged at debug because one fires on every outbound Traction
+call: at info it would roughly double the access log while saying only that
+things are normal. The hit count is the adapter call count minus the
+acquisitions.
+
+`cache_state` separates a cold pod (`miss`) from a token refreshed inside the
+30s expiry safety margin (`expiring`) — a pod restarting repeatedly and a
+Traction TTL shorter than expected look identical without it.
+
+The failure event names its fields explicitly rather than logging the caught
+error. An axios error carries the request that produced it, and that request
+body is the connector's `api_key`; pino copies every own enumerable property
+off anything with a string `message`, so logging the error itself would emit
+that key. Redaction is a backstop for that, not the control.
+
+`tenant_id`, `request_id`, and `operation_id` are not set by these call sites —
+the pino mixin attaches them from the request context, in a job as well as in a
+request.
 
 #### Frontend: embedded Grafana (UI-08)
 
