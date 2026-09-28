@@ -4783,7 +4783,10 @@ export interface operations {
     ingestConnectorWebhook: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Shared webhook secret configured on the connector */
+                "X-Api-Key": string;
+            };
             path: {
                 /** @description ConnectorCredential id */
                 connectorId: string;

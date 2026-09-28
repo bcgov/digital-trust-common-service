@@ -9,6 +9,8 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import {
+  ApiBody,
+  ApiHeader,
   ApiOkResponse,
   ApiOperation,
   ApiParam,
@@ -99,11 +101,19 @@ export class TractionWebhookController {
   @ApiOperation({
     summary: 'Receive an inbound connector protocol state-change webhook',
   })
+  @ApiHeader({
+    name: 'X-Api-Key',
+    description: 'Shared webhook secret configured on the connector',
+  })
   @ApiParam({ name: 'connectorId', description: 'ConnectorCredential id' })
   @ApiParam({
     name: 'topic',
     description: "Connector's wire-level webhook topic",
     enum: KNOWN_WIRE_TOPICS,
+  })
+  @ApiBody({
+    description: 'Traction/ACA-Py webhook payload (topic-dependent structure)',
+    schema: { type: 'object' },
   })
   @ApiOkResponse({ description: 'Webhook accepted for async processing' })
   @ApiUnauthorizedResponse({ description: 'Webhook authentication failed' })

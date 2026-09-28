@@ -16,6 +16,7 @@ jest.mock('@nestjs/swagger', () => {
     setVersion: jest.fn().mockReturnThis(),
     addTag: jest.fn().mockReturnThis(),
     addBearerAuth: jest.fn().mockReturnThis(),
+    addApiKey: jest.fn().mockReturnThis(),
     build: jest.fn().mockReturnValue({
       openapi: '3.0.0',
     }),
@@ -35,6 +36,9 @@ jest.mock('@nestjs/swagger', () => {
     ApiForbiddenResponse: decorator,
     ApiParam: decorator,
     ApiTags: decorator,
+    ApiSecurity: decorator,
+    ApiHeader: decorator,
+    ApiBody: decorator,
   };
 });
 

@@ -2474,9 +2474,13 @@ paths:
         tenant JWT. Malformed or unrecognized payloads are acknowledged with
         200 and dropped rather than rejected, since ACA-Py retries on non-2xx.
       tags: [Webhook Ingestion]
-      security:
-        - ApiKeyAuth: []
       parameters:
+        - name: X-Api-Key
+          in: header
+          required: true
+          schema:
+            type: string
+          description: Shared webhook secret configured on the connector
         - name: connectorId
           in: path
           required: true
@@ -2931,12 +2935,6 @@ components:
       scheme: bearer
       bearerFormat: JWT
       description: App-issued JWT obtained via /oidc/token (client_credentials or authorization_code grant)
-
-    ApiKeyAuth:
-      type: apiKey
-      in: header
-      name: X-Api-Key
-      description: Per-connector shared webhook secret, not a tenant JWT
 
   parameters:
     TenantId:

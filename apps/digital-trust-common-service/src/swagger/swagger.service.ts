@@ -85,7 +85,9 @@ function buildDocumentConfig(
   title: string,
   description: string,
   version: string,
-  options: { includeAppJwtBearerAuth?: boolean } = {},
+  options: {
+    includeAppJwtBearerAuth?: boolean;
+  } = {},
 ): ReturnType<DocumentBuilder['build']> {
   let configBuilder = new DocumentBuilder()
     .setTitle(title)
