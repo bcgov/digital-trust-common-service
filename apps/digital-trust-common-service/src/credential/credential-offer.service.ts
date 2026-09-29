@@ -14,6 +14,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { isUUID } from 'class-validator';
 import { DataSource } from 'typeorm';
 
 import { AdapterRegistry } from '../adapter-registry/adapter-registry.service';
@@ -55,7 +56,13 @@ import { OfferCredentialRequestDto } from './dto/offer-credential-request.dto';
  * mode.
  */
 interface ResolvedCredentialSource {
+  /** Local DB UUID — only for internal profile/metadata relationships. */
   readonly credentialDefinitionId: string;
+  /**
+   * The connector/ledger `cred_def_id` (CredentialDefinition.externalId) —
+   * this, not the local UUID, is what the adapter/Traction needs.
+   */
+  readonly externalCredentialDefinitionId: string;
   readonly format: CredentialDefinitionFormat;
   readonly connectorId?: string;
   readonly schemaDefinition: Readonly<Record<string, unknown>>;
@@ -118,7 +125,7 @@ export class CredentialOfferService {
 
     const offerRequest: OfferCredentialRequest = {
       connectionId: dto.connectionId,
-      credentialDefinitionId: source.credentialDefinitionId,
+      credentialDefinitionId: source.externalCredentialDefinitionId,
       format: portFormat,
       attributes: credentialAttributes,
     };
@@ -231,6 +238,16 @@ export class CredentialOfferService {
     const separatorIndex = profileId.lastIndexOf('/');
 
     if (separatorIndex === -1) {
+      // The DTO only validates profile_id as a non-empty string, so a
+      // malformed no-slash value (e.g. "not-a-uuid") must be rejected here
+      // before it reaches a UUID-column lookup, or it surfaces as an
+      // internal DB error instead of the documented 400.
+      if (!isUUID(profileId)) {
+        throw new BadRequestException(
+          `profile_id '${profileId}' is not a valid UUID or 'name/version'`,
+        );
+      }
+
       return this.issuanceProfileRepository.findById(profileId);
     }
 
@@ -290,6 +307,7 @@ export class CredentialOfferService {
 
     return {
       credentialDefinitionId: credentialDefinition.id,
+      externalCredentialDefinitionId: credentialDefinition.externalId,
       format: profile.format,
       connectorId: profile.connectorId ?? undefined,
       schemaDefinition: credentialDefinition.schemaDefinition,
@@ -308,6 +326,15 @@ export class CredentialOfferService {
     credentialDefinitionId: string,
     format?: CredentialDefinitionFormat,
   ): Promise<ResolvedCredentialSource> {
+    // The OpenAPI contract requires credential_definition_id + format
+    // together in legacy mode; silently deriving the format from the
+    // stored definition would let a malformed client bypass that pairing.
+    if (format === undefined) {
+      throw new BadRequestException(
+        'format is required when credential_definition_id is provided',
+      );
+    }
+
     const credentialDefinition =
       await this.credentialDefinitionRepository.findById(
         credentialDefinitionId,
@@ -319,7 +346,7 @@ export class CredentialOfferService {
       );
     }
 
-    if (format !== undefined && format !== credentialDefinition.format) {
+    if (format !== credentialDefinition.format) {
       throw new BadRequestException(
         `format '${format}' does not match credential definition '${credentialDefinitionId}''s format '${credentialDefinition.format}'`,
       );
@@ -327,6 +354,7 @@ export class CredentialOfferService {
 
     return {
       credentialDefinitionId: credentialDefinition.id,
+      externalCredentialDefinitionId: credentialDefinition.externalId,
       format: credentialDefinition.format,
       connectorId: undefined,
       schemaDefinition: credentialDefinition.schemaDefinition,
