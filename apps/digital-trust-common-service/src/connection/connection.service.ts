@@ -314,10 +314,7 @@ export class ConnectionService {
     tenantId: string,
     options: { limit?: number; cursor?: string | null } = {},
   ): Promise<PaginatedConnections> {
-    const connections =
-      await this.connectionRepository.findByTenantId(tenantId);
-
-    return this.paginate(connections, options);
+    return this.findPage(tenantId, options);
   }
 
   public async findByTenantIdAndState(
@@ -325,56 +322,34 @@ export class ConnectionService {
     state: ConnectionState,
     options: { limit?: number; cursor?: string | null } = {},
   ): Promise<PaginatedConnections> {
-    const connections = await this.connectionRepository.findByTenantIdAndState(
-      tenantId,
-      state,
-    );
-
-    return this.paginate(connections, options);
+    return this.findPage(tenantId, options, state);
   }
 
   /**
-   * Paginates an already-fetched connection list in memory. Kept as an
-   * in-memory cursor over the full tenant/state result set rather than
-   * pushing LIMIT/OFFSET into the query, matching the shared cursor
-   * convention used elsewhere in this service.
+   * Cursor, limit, ordering, and the optional state predicate are all
+   * pushed into the repository's SQL rather than fetched-then-sliced in
+   * memory, so a page costs O(limit) rows regardless of tenant size.
    */
-  private paginate(
-    connections: Connection[],
+  private async findPage(
+    tenantId: string,
     options: { limit?: number; cursor?: string | null },
-  ): PaginatedConnections {
+    state?: ConnectionState,
+  ): Promise<PaginatedConnections> {
     const limit = options.limit ?? 20;
     const cursor = options.cursor ? decodeCursor(options.cursor) : null;
 
-    const sorted = [...connections].sort((a, b) => {
-      const createdAtDiff = a.createdAt.getTime() - b.createdAt.getTime();
-      return createdAtDiff !== 0 ? createdAtDiff : a.id.localeCompare(b.id);
+    const page = await this.connectionRepository.findPageForTenant(tenantId, {
+      limit,
+      cursor,
+      state,
     });
 
-    const afterCursor = cursor
-      ? sorted.filter((connection) => {
-          const createdAt = connection.createdAt.toISOString();
-          return (
-            createdAt > cursor.createdAt ||
-            (createdAt === cursor.createdAt && connection.id > cursor.id)
-          );
-        })
-      : sorted;
-
-    const hasMore = afterCursor.length > limit;
-    const data = afterCursor.slice(0, limit);
-    const last = data[data.length - 1];
-    const nextCursor =
-      hasMore && last
-        ? encodeCursor({
-            createdAt: last.createdAt.toISOString(),
-            id: last.id,
-          })
-        : null;
-
     return {
-      data,
-      pagination: { next_cursor: nextCursor, has_more: hasMore },
+      data: page.items,
+      pagination: {
+        next_cursor: page.nextCursor ? encodeCursor(page.nextCursor) : null,
+        has_more: page.hasMore,
+      },
     };
   }
 

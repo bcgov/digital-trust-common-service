@@ -5,6 +5,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { AdapterRegistry } from '../adapter-registry/adapter-registry.service';
 import { AuditAction } from '../audit-log/audit-log.entity';
 import { DomainAuditService } from '../audit-log/domain-audit.service';
+import { encodeCursor } from '../common/cursor-pagination';
 import { ConnectorCredential } from '../connector-credential/connector-credential.entity';
 import { OPERATION_TYPE } from '../operation/operation-type.constants';
 import { Operation, OperationState } from '../operation/operation.entity';
@@ -25,8 +26,7 @@ describe('ConnectionService', () => {
   let mockCreate: jest.Mock;
   let mockFindById: jest.Mock;
   let mockFindByExternalConnectionId: jest.Mock;
-  let mockFindByTenantId: jest.Mock;
-  let mockFindByTenantIdAndState: jest.Mock;
+  let mockFindPageForTenant: jest.Mock;
   let mockUpdate: jest.Mock;
   let mockUpdateStateIfForward: jest.Mock;
   let mockDelete: jest.Mock;
@@ -113,8 +113,7 @@ describe('ConnectionService', () => {
     mockCreate = jest.fn();
     mockFindById = jest.fn();
     mockFindByExternalConnectionId = jest.fn();
-    mockFindByTenantId = jest.fn();
-    mockFindByTenantIdAndState = jest.fn();
+    mockFindPageForTenant = jest.fn();
     mockUpdate = jest.fn();
     mockUpdateStateIfForward = jest.fn();
     mockDelete = jest.fn();
@@ -138,8 +137,7 @@ describe('ConnectionService', () => {
       create: mockCreate,
       findById: mockFindById,
       findByExternalConnectionId: mockFindByExternalConnectionId,
-      findByTenantId: mockFindByTenantId,
-      findByTenantIdAndState: mockFindByTenantIdAndState,
+      findPageForTenant: mockFindPageForTenant,
       update: mockUpdate,
       updateStateIfForward: mockUpdateStateIfForward,
       delete: mockDelete,
@@ -450,11 +448,18 @@ describe('ConnectionService', () => {
 
   describe('findByTenantId', () => {
     it('returns the persisted connections for the tenant, without contacting the connector', async () => {
-      mockFindByTenantId.mockResolvedValue([{ ...mockConnection }]);
+      mockFindPageForTenant.mockResolvedValue({
+        items: [{ ...mockConnection }],
+        nextCursor: null,
+        hasMore: false,
+      });
 
       const result = await service.findByTenantId(mockConnection.tenantId);
 
-      expect(mockFindByTenantId).toHaveBeenCalledWith(mockConnection.tenantId);
+      expect(mockFindPageForTenant).toHaveBeenCalledWith(
+        mockConnection.tenantId,
+        { limit: 20, cursor: null, state: undefined },
+      );
       expect(mockResolve).not.toHaveBeenCalled();
       expect(mockList).not.toHaveBeenCalled();
       expect(result).toEqual({
@@ -463,64 +468,77 @@ describe('ConnectionService', () => {
       });
     });
 
-    it('paginates the list and returns an opaque next_cursor', async () => {
-      const older = {
-        ...mockConnection,
-        id: 'conn-older',
-        externalConnectionId: 'ext-older',
-        createdAt: new Date('2026-01-01T00:00:00.000Z'),
+    it('passes the decoded cursor and limit to the repository and encodes its next cursor', async () => {
+      const nextCursor = {
+        createdAt: mockConnection.createdAt.toISOString(),
+        id: mockConnection.id,
       };
-      const newer = {
-        ...mockConnection,
-        id: 'conn-newer',
-        externalConnectionId: 'ext-newer',
-        createdAt: new Date('2026-01-02T00:00:00.000Z'),
-      };
-      mockFindByTenantId.mockResolvedValue([older, newer]);
+      mockFindPageForTenant.mockResolvedValue({
+        items: [mockConnection],
+        nextCursor,
+        hasMore: true,
+      });
 
       const result = await service.findByTenantId(mockConnection.tenantId, {
         limit: 1,
       });
 
-      expect(result.data).toEqual([older]);
+      expect(mockFindPageForTenant).toHaveBeenCalledWith(
+        mockConnection.tenantId,
+        { limit: 1, cursor: null, state: undefined },
+      );
       expect(result.pagination.has_more).toBe(true);
-      expect(typeof result.pagination.next_cursor).toBe('string');
-
-      const nextPage = await service.findByTenantId(mockConnection.tenantId, {
-        limit: 1,
-        cursor: result.pagination.next_cursor ?? undefined,
-      });
-
-      expect(nextPage.data).toEqual([newer]);
-      expect(nextPage.pagination).toEqual({
-        next_cursor: null,
-        has_more: false,
-      });
+      expect(result.pagination.next_cursor).toEqual(encodeCursor(nextCursor));
     });
 
-    it('rejects a malformed pagination cursor', async () => {
-      mockFindByTenantId.mockResolvedValue([{ ...mockConnection }]);
+    it('decodes a provided cursor and passes it to the repository', async () => {
+      const cursor = {
+        createdAt: mockConnection.createdAt.toISOString(),
+        id: mockConnection.id,
+      };
+      const encoded = encodeCursor(cursor);
+      mockFindPageForTenant.mockResolvedValue({
+        items: [],
+        nextCursor: null,
+        hasMore: false,
+      });
 
+      await service.findByTenantId(mockConnection.tenantId, {
+        cursor: encoded,
+      });
+
+      expect(mockFindPageForTenant).toHaveBeenCalledWith(
+        mockConnection.tenantId,
+        { limit: 20, cursor, state: undefined },
+      );
+    });
+
+    it('rejects a malformed pagination cursor without contacting the repository', async () => {
       await expect(
         service.findByTenantId(mockConnection.tenantId, {
           cursor: 'not-a-valid-cursor',
         }),
       ).rejects.toThrow(BadRequestException);
+      expect(mockFindPageForTenant).not.toHaveBeenCalled();
     });
   });
 
   describe('findByTenantIdAndState', () => {
     it('finds connections by tenant id and state, without contacting the connector', async () => {
-      mockFindByTenantIdAndState.mockResolvedValue([mockConnection]);
+      mockFindPageForTenant.mockResolvedValue({
+        items: [mockConnection],
+        nextCursor: null,
+        hasMore: false,
+      });
 
       const result = await service.findByTenantIdAndState(
         mockConnection.tenantId,
         mockConnection.state,
       );
 
-      expect(mockFindByTenantIdAndState).toHaveBeenCalledWith(
+      expect(mockFindPageForTenant).toHaveBeenCalledWith(
         mockConnection.tenantId,
-        mockConnection.state,
+        { limit: 20, cursor: null, state: mockConnection.state },
       );
       expect(mockResolve).not.toHaveBeenCalled();
       expect(mockList).not.toHaveBeenCalled();

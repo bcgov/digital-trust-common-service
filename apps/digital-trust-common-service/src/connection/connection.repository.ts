@@ -2,7 +2,15 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, In, Not, Raw, Repository } from 'typeorm';
 
+import { Cursor } from '../common/cursor-pagination';
+
 import { Connection, ConnectionState } from './connection.entity';
+
+export type ConnectionPage = {
+  items: Connection[];
+  nextCursor: Cursor | null;
+  hasMore: boolean;
+};
 
 @Injectable()
 export class ConnectionRepository {
@@ -76,27 +84,57 @@ export class ConnectionRepository {
     });
   }
 
-  public async findByTenantId(tenantId: string): Promise<Connection[]> {
-    return await this.repository.find({
-      where: { tenantId },
-      order: {
-        createdAt: 'ASC',
-      },
-      relations: { tenant: true },
-    });
-  }
-
-  public async findByTenantIdAndState(
+  /**
+   * Cursor-paginated tenant listing, optionally filtered by state. Ordering,
+   * the cursor predicate, and the page size limit are all pushed into the
+   * query rather than fetched-then-sliced in memory, so a page costs O(limit)
+   * rows regardless of how many connections the tenant has.
+   */
+  public async findPageForTenant(
     tenantId: string,
-    state: ConnectionState,
-  ): Promise<Connection[]> {
-    return await this.repository.find({
-      where: { tenantId, state },
-      order: {
-        createdAt: 'ASC',
-      },
-      relations: { tenant: true },
-    });
+    options: {
+      limit: number;
+      cursor?: Cursor | null;
+      state?: ConnectionState;
+    },
+  ): Promise<ConnectionPage> {
+    const qb = this.repository
+      .createQueryBuilder('connection')
+      .leftJoinAndSelect('connection.tenant', 'tenant')
+      .where('connection.tenant_id = :tenantId', { tenantId })
+      .orderBy('connection.created_at', 'ASC')
+      .addOrderBy('connection.id', 'ASC');
+
+    if (options.state) {
+      qb.andWhere('connection.state = :state', { state: options.state });
+    }
+
+    if (options.cursor) {
+      // Use CAST(...) — TypeORM mishandles `:param::type` binding.
+      qb.andWhere(
+        '(connection.created_at, connection.id) > (CAST(:cursorCreatedAt AS timestamptz), CAST(:cursorId AS uuid))',
+        {
+          cursorCreatedAt: options.cursor.createdAt,
+          cursorId: options.cursor.id,
+        },
+      );
+    }
+
+    qb.take(options.limit + 1);
+
+    const rows = await qb.getMany();
+    const hasMore = rows.length > options.limit;
+    const items = hasMore ? rows.slice(0, options.limit) : rows;
+    const last = items[items.length - 1];
+    const nextCursor =
+      hasMore && last
+        ? {
+            createdAt: last.createdAt.toISOString(),
+            id: last.id,
+          }
+        : null;
+
+    return { items, nextCursor, hasMore };
   }
 
   public async update(connection: Connection): Promise<Connection> {
