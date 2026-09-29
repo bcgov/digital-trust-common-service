@@ -21,6 +21,6 @@ import { ConnectionService } from './connection.service';
   ],
   controllers: [ConnectionController],
   providers: [ConnectionService, ConnectionRepository],
-  exports: [ConnectionService],
+  exports: [ConnectionService, ConnectionRepository],
 })
 export class ConnectionModule {}

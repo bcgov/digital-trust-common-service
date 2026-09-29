@@ -1,6 +1,5 @@
 import type { AuthContext } from '@app/auth';
 import {
-  BadRequestException,
   ConflictException,
   Injectable,
   NotFoundException,
@@ -18,6 +17,7 @@ import { isUniqueConstraintViolation } from '../common/postgres-error';
 
 import { CreateVerificationProfileDto } from './dto/create-verification-profile.dto';
 import { UpdateVerificationProfileDto } from './dto/update-verification-profile.dto';
+import { extractRequestedAttributes } from './presentation-definition.validator';
 import {
   VerificationProfile,
   VerificationProfileStatus,
@@ -49,7 +49,7 @@ export class VerificationProfileService {
   ): Promise<VerificationProfile> {
     assertTenantAccess(auth, tenantId);
 
-    const requestedAttributes = this.extractRequestedAttributes(
+    const requestedAttributes = extractRequestedAttributes(
       dto.presentationDefinition,
     );
 
@@ -117,100 +117,6 @@ export class VerificationProfileService {
     }
   }
 
-  /**
-   * Strips a matching pair of surrounding single or double quotes from a
-   * JSONPath bracket segment, e.g. `'given_names'` -> `given_names`, so
-   * quoted bracket notation (`$['credentialSubject']['given_names']`)
-   * resolves to the same attribute name as dot notation.
-   */
-  private stripJsonPathQuotes(segment: string): string {
-    if (
-      segment.length >= 2 &&
-      ((segment.startsWith("'") && segment.endsWith("'")) ||
-        (segment.startsWith('"') && segment.endsWith('"')))
-    ) {
-      return segment.slice(1, -1);
-    }
-
-    return segment;
-  }
-
-  /**
-   * True when `descriptor` is a DIF Presentation Exchange input_descriptor
-   * with the required string `id` field.
-   */
-  private hasValidDescriptorId(
-    descriptor: unknown,
-  ): descriptor is { id: string; constraints?: { fields?: unknown } } {
-    return (
-      !!descriptor &&
-      typeof descriptor === 'object' &&
-      typeof (descriptor as { id?: unknown }).id === 'string'
-    );
-  }
-
-  /**
-   * Extracts attribute names referenced by a DIF Presentation Exchange
-   * `presentation_definition`, from each input descriptor's
-   * `constraints.fields[].path` JSONPath entries (e.g.
-   * `$.credentialSubject.given_names` -> `given_names`). Populates the
-   * `requested_attributes` quick-reference column; there is no
-   * tenant-independent credential schema registry yet to validate these
-   * names or predicates against.
-   */
-  private extractRequestedAttributes(
-    presentationDefinition: Record<string, unknown>,
-  ): string[] {
-    const inputDescriptors = presentationDefinition.input_descriptors;
-
-    if (!Array.isArray(inputDescriptors) || inputDescriptors.length === 0) {
-      throw new BadRequestException(
-        'presentation_definition must be a DIF Presentation Exchange object with a non-empty input_descriptors array.',
-      );
-    }
-
-    const names = new Set<string>();
-
-    for (const descriptor of inputDescriptors) {
-      if (!this.hasValidDescriptorId(descriptor)) {
-        throw new BadRequestException(
-          "Each presentation_definition input_descriptor must declare a string 'id'.",
-        );
-      }
-
-      const fields = descriptor.constraints?.fields;
-
-      if (!Array.isArray(fields)) {
-        continue;
-      }
-
-      for (const field of fields) {
-        const paths = (field as { path?: unknown } | undefined)?.path;
-
-        if (!Array.isArray(paths)) {
-          continue;
-        }
-
-        for (const path of paths) {
-          if (typeof path !== 'string') {
-            continue;
-          }
-
-          const segments = path
-            .split(/[.[\]]/)
-            .filter((segment) => segment.length > 0);
-          const lastSegment = segments[segments.length - 1];
-
-          if (lastSegment) {
-            names.add(this.stripJsonPathQuotes(lastSegment));
-          }
-        }
-      }
-    }
-
-    return [...names];
-  }
-
   public async findById(
     tenantId: string,
     id: string,
@@ -267,7 +173,7 @@ export class VerificationProfileService {
     const patch: Partial<VerificationProfile> = {};
 
     if (dto.presentationDefinition !== undefined) {
-      const requestedAttributes = this.extractRequestedAttributes(
+      const requestedAttributes = extractRequestedAttributes(
         dto.presentationDefinition,
       );
       patch.presentationDefinition = dto.presentationDefinition;
