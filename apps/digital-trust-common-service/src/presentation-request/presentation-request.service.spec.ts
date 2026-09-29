@@ -11,7 +11,12 @@ import { DataSource, EntityManager } from 'typeorm';
 import { AdapterRegistry } from '../adapter-registry/adapter-registry.service';
 import { AuditAction } from '../audit-log/audit-log.entity';
 import { DomainAuditService } from '../audit-log/domain-audit.service';
-import { Connection, ConnectionState } from '../connection/connection.entity';
+import {
+  Connection,
+  ConnectionProtocol,
+  ConnectionState,
+  ConnectorType,
+} from '../connection/connection.entity';
 import { ConnectionRepository } from '../connection/connection.repository';
 import { CredentialDefinitionFormat } from '../credential-definition/credential-definition.entity';
 import { JobsService } from '../jobs/jobs.service';
@@ -47,14 +52,17 @@ describe('PresentationRequestService', () => {
   const tenantId = '123e4567-e89b-12d3-a456-426614174001';
   const connectionId = '123e4567-e89b-12d3-a456-426614174002';
   const profileId = '123e4567-e89b-12d3-a456-426614174003';
+  const externalConnectionId = 'ext-conn-1';
   const createdAt = new Date('2024-01-01T00:00:00.000Z');
 
   const buildConnection = (overrides: Partial<Connection> = {}): Connection =>
     ({
       id: connectionId,
       tenantId,
-      externalConnectionId: 'ext-conn-1',
+      externalConnectionId,
       state: ConnectionState.ACTIVE,
+      connectorType: ConnectorType.TRACTION,
+      protocol: ConnectionProtocol.DIDCOMM_V1,
       metadata: {},
       createdAt,
       updatedAt: createdAt,
@@ -105,6 +113,13 @@ describe('PresentationRequestService', () => {
       ...overrides,
     }) as Operation;
 
+  const mockResolvedAdapter = () => ({
+    adapter: { requestPresentation: mockRequestPresentation },
+    connector: { id: 'connector-1' },
+    context: { connectorId: 'connector-1' },
+    format: CredentialDefinitionFormat.ANONCREDS,
+  });
+
   beforeEach(async () => {
     mockFindProfileById = jest.fn().mockResolvedValue(null);
     mockFindByNameAndVersion = jest.fn().mockResolvedValue(null);
@@ -112,8 +127,8 @@ describe('PresentationRequestService', () => {
     mockFindOperationById = jest.fn();
     mockCreateOperation = jest.fn().mockResolvedValue(buildOperation());
     mockTransitionStateIfForward = jest.fn();
-    mockResolve = jest.fn();
     mockRequestPresentation = jest.fn();
+    mockResolve = jest.fn().mockResolvedValue(mockResolvedAdapter());
     mockEmit = jest.fn().mockResolvedValue(undefined);
     mockSendInTransaction = jest.fn().mockResolvedValue('job-1');
     mockEventEmit = jest.fn();
@@ -252,6 +267,44 @@ describe('PresentationRequestService', () => {
     expect(mockCreateOperation).not.toHaveBeenCalled();
   });
 
+  it('rejects a presentation_definition using submission_requirements (unrepresentable at the port)', async () => {
+    const dto = buildDto({
+      presentationDefinition: {
+        input_descriptors: [{ id: 'x' }],
+        submission_requirements: [{ rule: 'pick', count: 1, from: 'A' }],
+      },
+      format: CredentialDefinitionFormat.ANONCREDS,
+    });
+
+    await expect(service.requestPresentation(tenantId, dto)).rejects.toThrow(
+      BadRequestException,
+    );
+    expect(mockCreateOperation).not.toHaveBeenCalled();
+  });
+
+  it('rejects a presentation_definition using a field filter (unrepresentable at the port)', async () => {
+    const dto = buildDto({
+      presentationDefinition: {
+        input_descriptors: [
+          {
+            id: 'x',
+            constraints: {
+              fields: [
+                { path: ['$.issuer'], filter: { const: 'did:example:1' } },
+              ],
+            },
+          },
+        ],
+      },
+      format: CredentialDefinitionFormat.ANONCREDS,
+    });
+
+    await expect(service.requestPresentation(tenantId, dto)).rejects.toThrow(
+      BadRequestException,
+    );
+    expect(mockCreateOperation).not.toHaveBeenCalled();
+  });
+
   it('rejects a non-published verification profile', async () => {
     mockFindProfileById.mockResolvedValue(
       buildProfile({ status: VerificationProfileStatus.DRAFT }),
@@ -279,11 +332,6 @@ describe('PresentationRequestService', () => {
 
   it('resolves a profile by "name/version" string', async () => {
     mockFindByNameAndVersion.mockResolvedValue(buildProfile());
-    mockResolve.mockResolvedValue({
-      adapter: { requestPresentation: mockRequestPresentation },
-      context: {},
-      format: CredentialDefinitionFormat.ANONCREDS,
-    });
     mockRequestPresentation.mockResolvedValue({
       id: 'exch-1',
       externalId: 'agent-exch-1',
@@ -337,12 +385,42 @@ describe('PresentationRequestService', () => {
     );
   });
 
-  it('submits a raw-mode request and transitions the operation to processing', async () => {
-    mockResolve.mockResolvedValue({
-      adapter: { requestPresentation: mockRequestPresentation },
-      context: { connectorId: 'connector-1' },
+  it.each([
+    ConnectionState.INVITED,
+    ConnectionState.REQUESTED,
+    ConnectionState.RESPONDED,
+    ConnectionState.ABANDONED,
+  ])('rejects a connection not yet established (state: %s)', async (state) => {
+    mockFindConnectionById.mockResolvedValue(buildConnection({ state }));
+
+    const dto = buildDto({
+      presentationDefinition: { input_descriptors: [{ id: 'x' }] },
       format: CredentialDefinitionFormat.ANONCREDS,
     });
+
+    await expect(service.requestPresentation(tenantId, dto)).rejects.toThrow(
+      BadRequestException,
+    );
+    expect(mockCreateOperation).not.toHaveBeenCalled();
+  });
+
+  it('rejects a connection using an OID4VC (non-DIDComm) protocol', async () => {
+    mockFindConnectionById.mockResolvedValue(
+      buildConnection({ protocol: ConnectionProtocol.OPENID4VC }),
+    );
+
+    const dto = buildDto({
+      presentationDefinition: { input_descriptors: [{ id: 'x' }] },
+      format: CredentialDefinitionFormat.ANONCREDS,
+    });
+
+    await expect(service.requestPresentation(tenantId, dto)).rejects.toThrow(
+      BadRequestException,
+    );
+    expect(mockCreateOperation).not.toHaveBeenCalled();
+  });
+
+  it('submits a raw-mode request and transitions the operation to processing', async () => {
     mockRequestPresentation.mockResolvedValue({
       id: 'exch-1',
       externalId: 'agent-exch-1',
@@ -369,18 +447,26 @@ describe('PresentationRequestService', () => {
 
     const result = await service.requestPresentation(tenantId, dto);
 
+    expect(mockResolve).toHaveBeenCalledWith(
+      tenantId,
+      expect.any(String),
+      expect.objectContaining({ connectorType: ConnectorType.TRACTION }),
+    );
     expect(mockRequestPresentation).toHaveBeenCalledWith(
       { connectorId: 'connector-1' },
       expect.objectContaining({
-        connectionId,
+        connectionId: externalConnectionId,
         requestedAttributes: [{ name: 'birth_date' }],
       }),
     );
+    // Non-terminal (still in-flight) outcome must not leak the raw exchange
+    // payload as `result` — the Operation contract documents it as null
+    // while pending/processing.
     expect(mockTransitionStateIfForward).toHaveBeenCalledWith(
       'presentation-op-1',
       OperationState.PROCESSING,
       expect.any(Array),
-      expect.objectContaining({ id: 'exch-1' }),
+      undefined,
       mockManager,
       'agent-exch-1',
     );
@@ -390,17 +476,73 @@ describe('PresentationRequestService', () => {
     expect(result.state).toBe(OperationState.PROCESSING);
   });
 
+  it('stores the terminal result payload when the exchange resolves synchronously', async () => {
+    mockRequestPresentation.mockResolvedValue({
+      id: 'exch-1',
+      externalId: 'agent-exch-1',
+      state: PresentationExchangeState.Verified,
+      verified: true,
+      createdAt: createdAt.toISOString(),
+      updatedAt: createdAt.toISOString(),
+    });
+    mockTransitionStateIfForward.mockResolvedValue(
+      buildOperation({ state: OperationState.COMPLETED }),
+    );
+
+    const dto = buildDto({
+      presentationDefinition: { input_descriptors: [{ id: 'x' }] },
+      format: CredentialDefinitionFormat.ANONCREDS,
+    });
+
+    await service.requestPresentation(tenantId, dto);
+
+    expect(mockTransitionStateIfForward).toHaveBeenCalledWith(
+      'presentation-op-1',
+      OperationState.COMPLETED,
+      expect.any(Array),
+      expect.objectContaining({ id: 'exch-1', verified: true }),
+      mockManager,
+      'agent-exch-1',
+    );
+    expect(mockEventEmit).toHaveBeenCalledWith('credential.verified', {
+      tenantId,
+      externalId: 'agent-exch-1',
+    });
+  });
+
+  it('does not emit audit/domain events when the guarded transition loses the race', async () => {
+    mockRequestPresentation.mockResolvedValue({
+      id: 'exch-1',
+      externalId: 'agent-exch-1',
+      state: PresentationExchangeState.Verified,
+      createdAt: createdAt.toISOString(),
+      updatedAt: createdAt.toISOString(),
+    });
+    // null return means another delivery already won the guarded transition.
+    mockTransitionStateIfForward.mockResolvedValue(null);
+    mockFindOperationById.mockResolvedValue(
+      buildOperation({ state: OperationState.COMPLETED }),
+    );
+
+    const dto = buildDto({
+      presentationDefinition: { input_descriptors: [{ id: 'x' }] },
+      format: CredentialDefinitionFormat.ANONCREDS,
+    });
+
+    const result = await service.requestPresentation(tenantId, dto);
+
+    expect(result.state).toBe(OperationState.COMPLETED);
+    expect(mockEmit).not.toHaveBeenCalled();
+    expect(mockEventEmit).not.toHaveBeenCalled();
+    expect(mockSendInTransaction).not.toHaveBeenCalled();
+  });
+
   it('passes profile predicates through to the adapter, mapped to name/pType/pValue', async () => {
     mockFindProfileById.mockResolvedValue(
       buildProfile({
         predicates: [{ attribute: 'age', condition: '>=', value: '18' }],
       }),
     );
-    mockResolve.mockResolvedValue({
-      adapter: { requestPresentation: mockRequestPresentation },
-      context: {},
-      format: CredentialDefinitionFormat.ANONCREDS,
-    });
     mockRequestPresentation.mockResolvedValue({
       id: 'exch-1',
       state: PresentationExchangeState.RequestSent,
@@ -423,12 +565,24 @@ describe('PresentationRequestService', () => {
     );
   });
 
+  it('rejects a profile predicate whose value is not numeric', async () => {
+    mockFindProfileById.mockResolvedValue(
+      buildProfile({
+        predicates: [
+          { attribute: 'age', condition: '>=', value: 'not-a-number' },
+        ],
+      }),
+    );
+
+    const dto = buildDto({ verificationProfileId: profileId });
+
+    await expect(service.requestPresentation(tenantId, dto)).rejects.toThrow(
+      BadRequestException,
+    );
+    expect(mockCreateOperation).not.toHaveBeenCalled();
+  });
+
   it('marks the operation FAILED (not thrown) when the adapter rejects with an AdapterError', async () => {
-    mockResolve.mockResolvedValue({
-      adapter: { requestPresentation: mockRequestPresentation },
-      context: {},
-      format: CredentialDefinitionFormat.ANONCREDS,
-    });
     mockRequestPresentation.mockRejectedValue(
       new ConnectorUnavailableError('agent unreachable'),
     );
@@ -444,9 +598,10 @@ describe('PresentationRequestService', () => {
       format: CredentialDefinitionFormat.ANONCREDS,
     });
 
-    const result = await service.requestPresentation(tenantId, dto);
+    await expect(service.requestPresentation(tenantId, dto)).rejects.toThrow(
+      ConnectorUnavailableError,
+    );
 
-    expect(result.state).toBe(OperationState.FAILED);
     expect(mockTransitionStateIfForward).toHaveBeenCalledWith(
       'presentation-op-1',
       OperationState.FAILED,
@@ -459,18 +614,19 @@ describe('PresentationRequestService', () => {
       JOB_QUEUES.WEBHOOK_DISPATCH,
       expect.objectContaining({ event: 'presentation.request.failed' }),
     );
+    expect(mockEmit).toHaveBeenCalledWith(
+      expect.objectContaining({ action: AuditAction.VERIFY }),
+    );
     // Abandoned/failed outcomes carry no domain event, mirroring
     // PRESENT_PROOF_OUTCOMES.Abandoned having no `event`.
     expect(mockEventEmit).not.toHaveBeenCalled();
   });
 
-  it('propagates a non-AdapterError from the adapter call', async () => {
-    mockResolve.mockResolvedValue({
-      adapter: { requestPresentation: mockRequestPresentation },
-      context: {},
-      format: CredentialDefinitionFormat.ANONCREDS,
-    });
+  it('guard-transitions to FAILED and still propagates a non-AdapterError from the adapter call', async () => {
     mockRequestPresentation.mockRejectedValue(new Error('boom'));
+    mockTransitionStateIfForward.mockResolvedValue(
+      buildOperation({ state: OperationState.FAILED }),
+    );
 
     const dto = buildDto({
       presentationDefinition: { input_descriptors: [{ id: 'x' }] },
@@ -480,5 +636,47 @@ describe('PresentationRequestService', () => {
     await expect(service.requestPresentation(tenantId, dto)).rejects.toThrow(
       'boom',
     );
+
+    expect(mockTransitionStateIfForward).toHaveBeenCalledWith(
+      'presentation-op-1',
+      OperationState.FAILED,
+      expect.any(Array),
+      { code: 'ADAPTER_ERROR', message: 'boom' },
+      mockManager,
+    );
+  });
+
+  it('does not emit audit when the FAILED guarded transition loses the race', async () => {
+    mockRequestPresentation.mockRejectedValue(new Error('boom'));
+    mockTransitionStateIfForward.mockResolvedValue(null);
+    mockFindOperationById.mockResolvedValue(
+      buildOperation({ state: OperationState.FAILED }),
+    );
+
+    const dto = buildDto({
+      presentationDefinition: { input_descriptors: [{ id: 'x' }] },
+      format: CredentialDefinitionFormat.ANONCREDS,
+    });
+
+    await expect(service.requestPresentation(tenantId, dto)).rejects.toThrow(
+      'boom',
+    );
+    expect(mockEmit).not.toHaveBeenCalled();
+  });
+
+  it('wraps an AdapterError from adapter resolution as a 400 before creating an Operation', async () => {
+    mockResolve.mockRejectedValue(
+      new ConnectorUnavailableError('no connector'),
+    );
+
+    const dto = buildDto({
+      presentationDefinition: { input_descriptors: [{ id: 'x' }] },
+      format: CredentialDefinitionFormat.ANONCREDS,
+    });
+
+    await expect(service.requestPresentation(tenantId, dto)).rejects.toThrow(
+      BadRequestException,
+    );
+    expect(mockCreateOperation).not.toHaveBeenCalled();
   });
 });

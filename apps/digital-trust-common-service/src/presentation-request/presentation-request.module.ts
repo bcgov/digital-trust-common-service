@@ -13,7 +13,7 @@ import { PresentationRequestController } from './presentation-request.controller
 import { PresentationRequestService } from './presentation-request.service';
 
 /**
- * Backs CA-04 (#54): POST /tenants/:tenantId/presentations/request.
+ * Backs POST /tenants/:tenantId/presentations/request.
  * Deliberately its own module, alongside `VerificationProfileModule` and
  * `ConnectionModule` (for profile resolution and connection-id tenant
  * validation) rather than folded into either — mirrors
