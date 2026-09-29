@@ -2,7 +2,11 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { EntityManager, In, Not, Repository } from 'typeorm';
 
-import { Connection, ConnectionState } from './connection.entity';
+import {
+  Connection,
+  ConnectionProtocol,
+  ConnectionState,
+} from './connection.entity';
 import { ConnectionRepository } from './connection.repository';
 
 describe('ConnectionRepository', () => {
@@ -109,6 +113,18 @@ describe('ConnectionRepository', () => {
       expect(mockQb.andWhere).toHaveBeenCalledWith(
         'connection.state = :state',
         { state: ConnectionState.ACTIVE },
+      );
+    });
+
+    it('adds the protocol predicate only when a protocol is given', async () => {
+      await repository.findPageForTenant('t1', {
+        limit: 20,
+        protocol: ConnectionProtocol.DIDCOMM_V2,
+      });
+
+      expect(mockQb.andWhere).toHaveBeenCalledWith(
+        'connection.protocol = :protocol',
+        { protocol: ConnectionProtocol.DIDCOMM_V2 },
       );
     });
 

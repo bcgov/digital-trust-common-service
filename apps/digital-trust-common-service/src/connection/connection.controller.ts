@@ -112,6 +112,11 @@ export class ConnectionController {
     description: 'Filter connections by state',
   })
   @ApiQuery({
+    name: 'protocol',
+    required: false,
+    description: 'Filter connections by protocol',
+  })
+  @ApiQuery({
     name: 'cursor',
     required: false,
     description: 'Opaque pagination cursor from a previous response',
@@ -127,13 +132,15 @@ export class ConnectionController {
     @Query() query: ListConnectionsQueryDto,
   ): Promise<PaginatedConnectionsResponseDto> {
     const options = { limit: query.limit, cursor: query.cursor };
-    const page = query.state
-      ? await this.connectionService.findByTenantIdAndState(
-          tenantId,
-          query.state,
-          options,
-        )
-      : await this.connectionService.findByTenantId(tenantId, options);
+    const page =
+      query.state || query.protocol
+        ? await this.connectionService.findByTenantIdAndFilters(
+            tenantId,
+            query.state,
+            query.protocol,
+            options,
+          )
+        : await this.connectionService.findByTenantId(tenantId, options);
 
     return {
       data: page.data.map((connection) =>

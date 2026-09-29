@@ -31,7 +31,7 @@ describe('ConnectionController', () => {
   let mockCreate: jest.Mock;
   let mockFindById: jest.Mock;
   let mockFindByTenantId: jest.Mock;
-  let mockFindByTenantIdAndState: jest.Mock;
+  let mockFindByTenantIdAndFilters: jest.Mock;
   let mockDelete: jest.Mock;
 
   const mockConnection: Connection = {
@@ -83,14 +83,14 @@ describe('ConnectionController', () => {
     mockCreate = jest.fn();
     mockFindById = jest.fn();
     mockFindByTenantId = jest.fn();
-    mockFindByTenantIdAndState = jest.fn();
+    mockFindByTenantIdAndFilters = jest.fn();
     mockDelete = jest.fn();
 
     const mockService = {
       create: mockCreate,
       findById: mockFindById,
       findByTenantId: mockFindByTenantId,
-      findByTenantIdAndState: mockFindByTenantIdAndState,
+      findByTenantIdAndFilters: mockFindByTenantIdAndFilters,
       delete: mockDelete,
     };
 
@@ -189,7 +189,7 @@ describe('ConnectionController', () => {
     });
 
     it('should find connections by tenant id and state when state is provided', async () => {
-      mockFindByTenantIdAndState.mockResolvedValue({
+      mockFindByTenantIdAndFilters.mockResolvedValue({
         data: [mockConnection],
         pagination: { next_cursor: null, has_more: false },
       });
@@ -198,15 +198,35 @@ describe('ConnectionController', () => {
         state: ConnectionState.ACTIVE,
       });
 
-      expect(mockFindByTenantIdAndState).toHaveBeenCalledWith(
+      expect(mockFindByTenantIdAndFilters).toHaveBeenCalledWith(
         mockConnection.tenantId,
         ConnectionState.ACTIVE,
+        undefined,
         { limit: undefined, cursor: undefined },
       );
       expect(result).toEqual({
         data: [ConnectionResponseDto.fromEntity(mockConnection)],
         pagination: { nextCursor: null, hasMore: false },
       });
+    });
+
+    it('passes state and protocol as direct params to findByTenantIdAndFilters', async () => {
+      mockFindByTenantIdAndFilters.mockResolvedValue({
+        data: [mockConnection],
+        pagination: { next_cursor: null, has_more: false },
+      });
+
+      await controller.findByTenantId(mockConnection.tenantId, {
+        state: ConnectionState.ACTIVE,
+        protocol: ConnectionProtocol.DIDCOMM_V2,
+      });
+
+      expect(mockFindByTenantIdAndFilters).toHaveBeenCalledWith(
+        mockConnection.tenantId,
+        ConnectionState.ACTIVE,
+        ConnectionProtocol.DIDCOMM_V2,
+        { limit: undefined, cursor: undefined },
+      );
     });
 
     it('passes cursor and limit through to the service', async () => {
@@ -228,6 +248,25 @@ describe('ConnectionController', () => {
         nextCursor: 'opaque-cursor',
         hasMore: true,
       });
+    });
+
+    it('routes a protocol-only filter through findByTenantIdAndFilters with no state', async () => {
+      mockFindByTenantIdAndFilters.mockResolvedValue({
+        data: [],
+        pagination: { next_cursor: null, has_more: false },
+      });
+
+      await controller.findByTenantId(mockConnection.tenantId, {
+        protocol: ConnectionProtocol.DIDCOMM_V2,
+      });
+
+      expect(mockFindByTenantIdAndFilters).toHaveBeenCalledWith(
+        mockConnection.tenantId,
+        undefined,
+        ConnectionProtocol.DIDCOMM_V2,
+        { limit: undefined, cursor: undefined },
+      );
+      expect(mockFindByTenantId).not.toHaveBeenCalled();
     });
   });
 

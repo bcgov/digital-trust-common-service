@@ -4,7 +4,11 @@ import { EntityManager, In, Not, Raw, Repository } from 'typeorm';
 
 import { Cursor } from '../common/cursor-pagination';
 
-import { Connection, ConnectionState } from './connection.entity';
+import {
+  Connection,
+  ConnectionProtocol,
+  ConnectionState,
+} from './connection.entity';
 
 export type ConnectionPage = {
   items: Connection[];
@@ -96,6 +100,7 @@ export class ConnectionRepository {
       limit: number;
       cursor?: Cursor | null;
       state?: ConnectionState;
+      protocol?: ConnectionProtocol;
     },
   ): Promise<ConnectionPage> {
     const qb = this.repository
@@ -107,6 +112,12 @@ export class ConnectionRepository {
 
     if (options.state) {
       qb.andWhere('connection.state = :state', { state: options.state });
+    }
+
+    if (options.protocol) {
+      qb.andWhere('connection.protocol = :protocol', {
+        protocol: options.protocol,
+      });
     }
 
     if (options.cursor) {

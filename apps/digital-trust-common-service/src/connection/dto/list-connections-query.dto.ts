@@ -2,7 +2,7 @@ import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { IsEnum, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
 
-import { ConnectionState } from '../connection.entity';
+import { ConnectionProtocol, ConnectionState } from '../connection.entity';
 
 export class ListConnectionsQueryDto {
   @ApiPropertyOptional({
@@ -12,6 +12,14 @@ export class ListConnectionsQueryDto {
   @IsOptional()
   @IsEnum(ConnectionState)
   public state?: ConnectionState;
+
+  @ApiPropertyOptional({
+    enum: ConnectionProtocol,
+    description: 'Filter connections by protocol',
+  })
+  @IsOptional()
+  @IsEnum(ConnectionProtocol)
+  public protocol?: ConnectionProtocol;
 
   @ApiPropertyOptional({
     description: 'Opaque pagination cursor from a previous response',

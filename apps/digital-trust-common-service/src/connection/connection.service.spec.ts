@@ -458,7 +458,7 @@ describe('ConnectionService', () => {
 
       expect(mockFindPageForTenant).toHaveBeenCalledWith(
         mockConnection.tenantId,
-        { limit: 20, cursor: null, state: undefined },
+        { limit: 20, cursor: null, state: undefined, protocol: undefined },
       );
       expect(mockResolve).not.toHaveBeenCalled();
       expect(mockList).not.toHaveBeenCalled();
@@ -485,7 +485,7 @@ describe('ConnectionService', () => {
 
       expect(mockFindPageForTenant).toHaveBeenCalledWith(
         mockConnection.tenantId,
-        { limit: 1, cursor: null, state: undefined },
+        { limit: 1, cursor: null, state: undefined, protocol: undefined },
       );
       expect(result.pagination.has_more).toBe(true);
       expect(result.pagination.next_cursor).toEqual(encodeCursor(nextCursor));
@@ -509,7 +509,7 @@ describe('ConnectionService', () => {
 
       expect(mockFindPageForTenant).toHaveBeenCalledWith(
         mockConnection.tenantId,
-        { limit: 20, cursor, state: undefined },
+        { limit: 20, cursor, state: undefined, protocol: undefined },
       );
     });
 
@@ -523,7 +523,7 @@ describe('ConnectionService', () => {
     });
   });
 
-  describe('findByTenantIdAndState', () => {
+  describe('findByTenantIdAndFilters', () => {
     it('finds connections by tenant id and state, without contacting the connector', async () => {
       mockFindPageForTenant.mockResolvedValue({
         items: [mockConnection],
@@ -531,14 +531,19 @@ describe('ConnectionService', () => {
         hasMore: false,
       });
 
-      const result = await service.findByTenantIdAndState(
+      const result = await service.findByTenantIdAndFilters(
         mockConnection.tenantId,
         mockConnection.state,
       );
 
       expect(mockFindPageForTenant).toHaveBeenCalledWith(
         mockConnection.tenantId,
-        { limit: 20, cursor: null, state: mockConnection.state },
+        {
+          limit: 20,
+          cursor: null,
+          state: mockConnection.state,
+          protocol: undefined,
+        },
       );
       expect(mockResolve).not.toHaveBeenCalled();
       expect(mockList).not.toHaveBeenCalled();
@@ -546,6 +551,55 @@ describe('ConnectionService', () => {
         data: [mockConnection],
         pagination: { next_cursor: null, has_more: false },
       });
+    });
+
+    it('passes the protocol filter as a direct parameter, not a nested option', async () => {
+      mockFindPageForTenant.mockResolvedValue({
+        items: [mockConnection],
+        nextCursor: null,
+        hasMore: false,
+      });
+
+      await service.findByTenantIdAndFilters(
+        mockConnection.tenantId,
+        mockConnection.state,
+        mockConnection.protocol,
+        { limit: 5 },
+      );
+
+      expect(mockFindPageForTenant).toHaveBeenCalledWith(
+        mockConnection.tenantId,
+        {
+          limit: 5,
+          cursor: null,
+          state: mockConnection.state,
+          protocol: mockConnection.protocol,
+        },
+      );
+    });
+
+    it('filters by protocol alone, with no state given', async () => {
+      mockFindPageForTenant.mockResolvedValue({
+        items: [mockConnection],
+        nextCursor: null,
+        hasMore: false,
+      });
+
+      await service.findByTenantIdAndFilters(
+        mockConnection.tenantId,
+        undefined,
+        mockConnection.protocol,
+      );
+
+      expect(mockFindPageForTenant).toHaveBeenCalledWith(
+        mockConnection.tenantId,
+        {
+          limit: 20,
+          cursor: null,
+          state: undefined,
+          protocol: mockConnection.protocol,
+        },
+      );
     });
   });
 

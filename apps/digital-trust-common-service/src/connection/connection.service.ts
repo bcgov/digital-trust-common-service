@@ -22,7 +22,11 @@ import { OPERATION_TYPE } from '../operation/operation-type.constants';
 import { Operation, OperationState } from '../operation/operation.entity';
 import { OperationService } from '../operation/operation.service';
 
-import { Connection, ConnectionState } from './connection.entity';
+import {
+  Connection,
+  ConnectionProtocol,
+  ConnectionState,
+} from './connection.entity';
 import { ConnectionRepository } from './connection.repository';
 import { CreateConnectionDto } from './dto/create-connection.dto';
 
@@ -317,23 +321,25 @@ export class ConnectionService {
     return this.findPage(tenantId, options);
   }
 
-  public async findByTenantIdAndState(
+  public async findByTenantIdAndFilters(
     tenantId: string,
-    state: ConnectionState,
+    state: ConnectionState | undefined,
+    protocol?: ConnectionProtocol,
     options: { limit?: number; cursor?: string | null } = {},
   ): Promise<PaginatedConnections> {
-    return this.findPage(tenantId, options, state);
+    return this.findPage(tenantId, options, state, protocol);
   }
 
   /**
-   * Cursor, limit, ordering, and the optional state predicate are all
-   * pushed into the repository's SQL rather than fetched-then-sliced in
+   * Cursor, limit, ordering, and the optional state/protocol predicates are
+   * all pushed into the repository's SQL rather than fetched-then-sliced in
    * memory, so a page costs O(limit) rows regardless of tenant size.
    */
   private async findPage(
     tenantId: string,
     options: { limit?: number; cursor?: string | null },
     state?: ConnectionState,
+    protocol?: ConnectionProtocol,
   ): Promise<PaginatedConnections> {
     const limit = options.limit ?? 20;
     const cursor = options.cursor ? decodeCursor(options.cursor) : null;
@@ -342,6 +348,7 @@ export class ConnectionService {
       limit,
       cursor,
       state,
+      protocol,
     });
 
     return {
