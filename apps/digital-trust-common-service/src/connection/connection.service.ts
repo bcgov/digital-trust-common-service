@@ -73,6 +73,27 @@ function sanitizeCallerMetadata(
   return sanitized;
 }
 
+type InvitationOptions = {
+  alias?: string;
+  label?: string;
+  goalCode?: string;
+  multiUse?: boolean;
+};
+
+/** Pulls the well-known invitation-creation keys out of caller metadata. */
+function extractInvitationOptions(
+  metadata: Record<string, unknown>,
+): InvitationOptions {
+  return {
+    alias: typeof metadata.alias === 'string' ? metadata.alias : undefined,
+    label: typeof metadata.label === 'string' ? metadata.label : undefined,
+    goalCode:
+      typeof metadata.goalCode === 'string' ? metadata.goalCode : undefined,
+    multiUse:
+      typeof metadata.multiUse === 'boolean' ? metadata.multiUse : undefined,
+  };
+}
+
 export type PaginatedConnections = {
   data: Connection[];
   pagination: {
@@ -186,7 +207,9 @@ export class ConnectionService {
   /**
    * Create-invitation mode: generates a new invitation on the connector and
    * links it to the local connection row. The result carries invitation_url
-   * for the caller to hand to the other party.
+   * for the caller to hand to the other party. alias/label/goalCode/multiUse
+   * are read from the caller-supplied metadata bag rather than dedicated
+   * request fields — they only apply to this mode.
    */
   private async createInvitation(
     created: Connection,
@@ -194,14 +217,18 @@ export class ConnectionService {
     context: ConnectorContext,
     dto: CreateConnectionDto,
   ): Promise<Record<string, unknown>> {
+    const { alias, label, goalCode, multiUse } = extractInvitationOptions(
+      dto.metadata ?? {},
+    );
+
     const invitation = await adapter.createInvitation(context, {
-      alias: dto.alias,
-      label: dto.label,
-      goalCode: dto.goalCode,
-      multiUse: dto.multiUse,
+      alias,
+      label,
+      goalCode,
+      multiUse,
     });
 
-    await this.applyInvitationResult(created.id, invitation, dto.multiUse);
+    await this.applyInvitationResult(created.id, invitation, multiUse);
 
     return {
       connection_id: created.id,

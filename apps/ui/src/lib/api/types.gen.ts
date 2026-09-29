@@ -2101,9 +2101,20 @@ export interface components {
              * @description URL of an existing invitation to accept. If provided, creates a connection by accepting this invitation rather than generating a new one.
              */
             invitation_url?: string;
-            /** @description Human-readable label for the invitation (used when creating) */
-            label?: string;
-            protocol?: components["schemas"]["ConnectionProtocol"];
+            protocol: components["schemas"]["ConnectionProtocol"];
+            /**
+             * @description Free-form metadata to associate with the connection. When creating a new
+             *     invitation (no `invitation_url`), these well-known keys are also read to
+             *     configure it: `alias` (string, internal label), `label` (string, shown to
+             *     the other party), `goalCode` (string), `multiUse` (boolean, defaults to
+             *     false).
+             * @example {
+             *       "alias": "acme-partner",
+             *       "label": "Acme Corp",
+             *       "goalCode": "aries.rel.build",
+             *       "multiUse": false
+             *     }
+             */
             metadata?: Record<string, never>;
         };
         /**

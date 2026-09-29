@@ -78,8 +78,12 @@ export class ConnectionController {
         summary: 'Create a new invitation',
         value: {
           protocol: 'didcomm-v2',
-          alias: 'acme-partner',
-          metadata: { key: 'value' },
+          metadata: {
+            alias: 'acme-partner',
+            label: 'Acme Corp',
+            goalCode: 'aries.rel.build',
+            multiUse: false,
+          },
         },
       },
       accept: {

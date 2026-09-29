@@ -1,13 +1,6 @@
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Expose } from 'class-transformer';
-import {
-  IsBoolean,
-  IsEnum,
-  IsObject,
-  IsOptional,
-  IsString,
-  IsUrl,
-  MaxLength,
-} from 'class-validator';
+import { IsEnum, IsObject, IsOptional, IsUrl } from 'class-validator';
 
 import { ConnectionProtocol } from '../connection.entity';
 
@@ -24,38 +17,41 @@ import { ConnectionProtocol } from '../connection.entity';
  */
 export class CreateConnectionDto {
   @Expose()
+  @ApiProperty({
+    description: 'The DIDComm protocol version to use for the connection',
+    enum: ConnectionProtocol,
+    example: ConnectionProtocol.DIDCOMM_V2,
+  })
   @IsEnum(ConnectionProtocol)
   public protocol!: ConnectionProtocol;
 
   @Expose({ name: 'invitation_url' })
+  @ApiPropertyOptional({
+    description:
+      'URL of an existing invitation to accept. If provided, creates a ' +
+      'connection by accepting this invitation rather than generating a ' +
+      'new one.',
+    example: 'https://example.com/invitations/abc123',
+  })
   @IsOptional()
   @IsUrl()
   public invitationUrl?: string;
 
   @Expose()
-  @IsOptional()
-  @IsString()
-  @MaxLength(255)
-  public alias?: string;
-
-  @Expose()
-  @IsOptional()
-  @IsString()
-  @MaxLength(255)
-  public label?: string;
-
-  @Expose({ name: 'goal_code' })
-  @IsOptional()
-  @IsString()
-  @MaxLength(255)
-  public goalCode?: string;
-
-  @Expose({ name: 'multi_use' })
-  @IsOptional()
-  @IsBoolean()
-  public multiUse?: boolean;
-
-  @Expose()
+  @ApiPropertyOptional({
+    description:
+      'Free-form metadata to associate with the connection. When creating ' +
+      'a new invitation (no invitation_url), the following well-known keys ' +
+      'are also read to configure it: `alias` (string, internal label), ' +
+      '`label` (string, shown to the other party), `goalCode` (string), ' +
+      '`multiUse` (boolean, defaults to false).',
+    example: {
+      alias: 'acme-partner',
+      label: 'Acme Corp',
+      goalCode: 'aries.rel.build',
+      multiUse: false,
+    },
+  })
   @IsOptional()
   @IsObject()
   public metadata?: Record<string, unknown>;

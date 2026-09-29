@@ -126,8 +126,7 @@ describe('ConnectionController', () => {
     it('should create a connection and return the completed operation', async () => {
       const dto: CreateConnectionDto = {
         protocol: mockConnection.protocol,
-        alias: 'acme-partner',
-        metadata: mockConnection.metadata,
+        metadata: { ...mockConnection.metadata, alias: 'acme-partner' },
       };
 
       mockCreate.mockResolvedValue(mockOperation);

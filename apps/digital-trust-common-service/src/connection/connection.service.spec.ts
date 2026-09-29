@@ -178,9 +178,7 @@ describe('ConnectionService', () => {
   describe('create', () => {
     const dto: CreateConnectionDto = {
       protocol: mockConnection.protocol,
-      alias: 'acme-partner',
-      label: 'Acme Corp',
-      metadata: { key: 'value' },
+      metadata: { key: 'value', alias: 'acme-partner', label: 'Acme Corp' },
     };
 
     beforeEach(() => {
@@ -243,10 +241,10 @@ describe('ConnectionService', () => {
         OperationState.PROCESSING,
       );
       expect(mockCreateInvitation).toHaveBeenCalledWith(mockContext, {
-        alias: dto.alias,
-        label: dto.label,
-        goalCode: dto.goalCode,
-        multiUse: dto.multiUse,
+        alias: 'acme-partner',
+        label: 'Acme Corp',
+        goalCode: undefined,
+        multiUse: undefined,
       });
       expect(mockUpdate).toHaveBeenCalledWith(
         expect.objectContaining({
