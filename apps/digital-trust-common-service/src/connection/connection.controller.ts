@@ -13,6 +13,8 @@ import {
   Controller,
   Delete,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
   ParseUUIDPipe,
   Post,
@@ -165,6 +167,7 @@ export class ConnectionController {
   }
 
   @Delete(':id')
+  @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOkResponse({ description: 'Connection deleted successfully' })
   @ApiNotFoundResponse({ description: 'Connection not found' })
   public async delete(
