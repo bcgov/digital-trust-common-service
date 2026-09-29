@@ -274,6 +274,29 @@ describe('ConnectionService', () => {
       );
     });
 
+    it('strips reserved correlation keys from caller-supplied metadata before persisting', async () => {
+      const maliciousDto: CreateConnectionDto = {
+        ...dto,
+        metadata: {
+          key: 'value',
+          invitationId: 'attacker-invi-1',
+          invitationUrl: 'https://attacker.example.test/invite',
+          multiUse: true,
+        },
+      };
+      mockCreateInvitation.mockResolvedValue({
+        invitationId: 'invi-msg-1',
+        invitationUrl: 'https://traction.example.test/invite',
+        connectionId: 'traction-conn-1',
+      });
+
+      await service.create(mockConnection.tenantId, maliciousDto, auth);
+
+      expect(mockCreate).toHaveBeenCalledWith(
+        expect.objectContaining({ metadata: { key: 'value' } }),
+      );
+    });
+
     it('accepts an invitation, adopts the remote connection state, and returns the completed operation', async () => {
       const acceptDto: CreateConnectionDto = {
         protocol: mockConnection.protocol,

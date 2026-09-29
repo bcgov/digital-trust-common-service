@@ -51,6 +51,24 @@ function mapAdapterConnectionState(
   }
 }
 
+/**
+ * `invitationId`, `invitationUrl`, and `multiUse` are internal correlation
+ * state the webhook worker trusts to decide whether to update or clone a
+ * connection row (see applyConnectionOutcome) — a caller-supplied metadata
+ * object must never be able to set them, or a crafted value could redirect
+ * a later webhook onto (or clone from) an unrelated connection.
+ */
+function sanitizeCallerMetadata(
+  metadata: Record<string, unknown>,
+): Record<string, unknown> {
+  const sanitized = { ...metadata };
+  delete sanitized.invitationId;
+  delete sanitized.invitationUrl;
+  delete sanitized.multiUse;
+
+  return sanitized;
+}
+
 export type PaginatedConnections = {
   data: Connection[];
   pagination: {
@@ -98,7 +116,7 @@ export class ConnectionService {
       state: dto.invitationUrl
         ? ConnectionState.REQUESTED
         : ConnectionState.INVITED,
-      metadata: dto.metadata ?? {},
+      metadata: sanitizeCallerMetadata(dto.metadata ?? {}),
     });
 
     await this.domainAudit.emit({
