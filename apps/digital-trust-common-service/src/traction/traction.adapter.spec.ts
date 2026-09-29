@@ -255,6 +255,7 @@ describe('TractionAdapter', () => {
 
       expect(result).toEqual({
         id: 'conn-1',
+        externalId: 'conn-1',
         state: 'active',
         alias: 'test',
         protocol: 'didcomm-v1',
@@ -344,6 +345,7 @@ describe('TractionAdapter', () => {
       expect(result).toEqual([
         {
           id: 'conn-1',
+          externalId: 'conn-1',
           state: 'active',
           alias: 'test',
           protocol: 'didcomm-v1',
@@ -397,10 +399,12 @@ describe('TractionAdapter', () => {
 
       expect(result).toEqual({
         id: 'conn-1',
+        externalId: 'conn-1',
         state: 'completed',
         alias: undefined,
         protocol: 'didcomm-v1',
         theirLabel: undefined,
+        theirDid: undefined,
         createdAt: '2026-09-08T23:05:07.503811Z',
         updatedAt: '2026-09-08T23:05:07.638608Z',
       });

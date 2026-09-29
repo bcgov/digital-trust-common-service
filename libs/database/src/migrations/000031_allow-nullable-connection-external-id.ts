@@ -29,11 +29,6 @@ export class AllowNullableConnectionExternalId1790703557000 implements Migration
     `);
 
     await queryRunner.query(`
-      ALTER TABLE connection
-        ALTER COLUMN external_connection_id SET NOT NULL;
-    `);
-
-    await queryRunner.query(`
       CREATE UNIQUE INDEX idx_connection_external_connection_id
         ON connection (external_connection_id);
     `);
