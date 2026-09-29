@@ -348,6 +348,7 @@ export class TractionAdapter implements AgentAdapter, OnModuleInit {
   private toConnection(record: TractionConnectionRecord): Connection {
     return {
       id: record.connection_id,
+      externalId: record.connection_id,
       state: record.state as ConnectionState,
       alias: record.alias,
       protocol: 'didcomm-v1',
