@@ -27,7 +27,7 @@ export class ConnectionResponseDto {
   @ApiProperty({
     name: 'external_connection_id',
     description:
-      'The external connection ID. Null until the connection.create job completes.',
+      'The external connection ID reported by the connector; null for pending or multi-use invitation templates.',
     example: 'ext-conn-123',
     required: false,
     nullable: true,
