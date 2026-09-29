@@ -34,7 +34,13 @@ const PORT_METHODS_BY_PORT = {
   issuer: ['offerCredential', 'getExchange'],
   verifier: ['requestPresentation', 'getPresentation'],
   holder: ['acceptOffer', 'rejectOffer'],
-  connection: ['createInvitation', 'acceptInvitation', 'list', 'getById'],
+  connection: [
+    'createInvitation',
+    'acceptInvitation',
+    'list',
+    'getById',
+    'deleteById',
+  ],
   revocation: ['revoke', 'batchRevoke'],
 } as const;
 
@@ -61,7 +67,7 @@ type PortMethod = {
  */
 type UncoveredMethod = Exclude<PortMethod, ListedMethod>;
 type CoverageComplete = [UncoveredMethod] extends [never] ? true : never;
-const PORT_METHODS_COVER_EVERY_PORT_METHOD = true as CoverageComplete;
+const PORT_METHODS_COVER_EVERY_PORT_METHOD: CoverageComplete = true;
 void PORT_METHODS_COVER_EVERY_PORT_METHOD;
 const LISTED_METHODS_EXIST: readonly PortMethod[] = PORT_METHODS;
 void LISTED_METHODS_EXIST;
