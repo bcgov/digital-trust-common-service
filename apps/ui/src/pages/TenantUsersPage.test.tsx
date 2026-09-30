@@ -17,6 +17,7 @@ type UserEvent = ReturnType<typeof userEvent.setup>;
 const tenantId = MOCK_AUTH_TENANTS[0]?.id ?? '';
 const usersPath = `${API_BASE_PATH}/tenants/:id/users`;
 const userPath = `${usersPath}/:userId`;
+const rolesPath = `${API_BASE_PATH}/tenants/:id/roles`;
 const admin = mockTenantUsers[1];
 const invited = mockTenantUsers[3];
 
@@ -152,6 +153,58 @@ describe('TenantUsersPage', () => {
     );
     expect(
       screen.getByRole('dialog', { name: 'Invite user' }),
+    ).toBeInTheDocument();
+  });
+
+  it('describes a role the tenant has customised from its scopes', async () => {
+    const user = userEvent.setup();
+    server.use(
+      http.get(rolesPath, () =>
+        HttpResponse.json({
+          data: [
+            {
+              name: 'member',
+              scopes: ['credentials:offer', 'credentials:revoke'],
+              source: 'override',
+            },
+          ],
+        }),
+      ),
+    );
+    renderPage(await signedIn());
+    await screen.findByText('Ada Admin');
+
+    await user.click(screen.getByRole('button', { name: 'Invite user' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Invite user' });
+    await user.click(within(dialog).getByRole('button', { name: /role/i }));
+
+    expect(
+      await screen.findByText(
+        'Customised for this tenant: issue credentials, revoke credentials.',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('Manages users, connections and credentials.'),
+    ).toBeInTheDocument();
+  });
+
+  it('falls back to the default role copy when the roles fail to load', async () => {
+    const user = userEvent.setup();
+    server.use(
+      http.get(rolesPath, () => new HttpResponse(null, { status: 500 })),
+    );
+    renderPage(await signedIn());
+    await screen.findByText('Ada Admin');
+
+    await user.click(screen.getByRole('button', { name: 'Invite user' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Invite user' });
+
+    expect(
+      await within(dialog).findByText(/showing the platform defaults/i),
+    ).toBeInTheDocument();
+    await user.click(within(dialog).getByRole('button', { name: /role/i }));
+    expect(
+      await screen.findByText('Issues and verifies credentials.'),
     ).toBeInTheDocument();
   });
 

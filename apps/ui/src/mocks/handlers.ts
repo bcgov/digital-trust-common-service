@@ -3,6 +3,7 @@ import { http, HttpResponse } from 'msw';
 import { API_BASE_PATH } from '@/lib/api/constants';
 import type { Connection } from '@/lib/api/resources/connections';
 import type { CredentialDefinition } from '@/lib/api/resources/credential-definitions';
+import type { TenantRoleMapping } from '@/lib/api/resources/tenant-roles';
 import type { TenantUser } from '@/lib/api/resources/tenant-users';
 import type { Tenant } from '@/lib/api/resources/tenants';
 import { MOCK_AUTH_TENANTS } from '@/lib/auth/mock-auth';
@@ -118,6 +119,33 @@ export const mockTenantUsers: TenantUser[] = [
   },
 ];
 
+// The seeded platform defaults, with no tenant overrides.
+export const mockTenantRoles: TenantRoleMapping[] = [
+  { name: 'owner', scopes: ['tenants:admin'], source: 'default' },
+  {
+    name: 'admin',
+    scopes: [
+      'audit:read',
+      'clients:manage',
+      'connections:manage',
+      'credentials:hold',
+      'credentials:offer',
+      'credentials:revoke',
+      'credentials:verify',
+      'logs:read',
+      'profiles:manage',
+      'users:manage',
+    ],
+    source: 'default',
+  },
+  {
+    name: 'member',
+    scopes: ['credentials:offer', 'credentials:verify'],
+    source: 'default',
+  },
+  { name: 'readonly', scopes: [], source: 'default' },
+];
+
 function encodeJwtSegment(value: Record<string, unknown>): string {
   const json = JSON.stringify(value);
   const base64 =
@@ -209,6 +237,9 @@ export const handlers = [
   http.delete(
     `${API_BASE_PATH}/tenants/:id/users/:userId`,
     () => new HttpResponse(null, { status: 204 }),
+  ),
+  http.get(`${API_BASE_PATH}/tenants/:id/roles`, () =>
+    HttpResponse.json({ data: mockTenantRoles }),
   ),
   // Same fixture the mock auth client serves, so the two stay in lockstep.
   http.get(`${API_BASE_PATH}/auth/tenants`, () =>

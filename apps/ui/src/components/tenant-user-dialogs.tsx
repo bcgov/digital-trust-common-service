@@ -11,6 +11,7 @@ import {
 import { useState, type FormEvent, type ReactNode } from 'react';
 
 import { ApiError } from '@/lib/api/errors';
+import { useTenantRoles } from '@/lib/api/queries/tenant-roles';
 import {
   useInviteTenantUser,
   useRemoveTenantUser,
@@ -19,7 +20,7 @@ import {
 import type { TenantRole, TenantUser } from '@/lib/api/resources/tenant-users';
 import { useAuth } from '@/lib/auth/context';
 import { hasScope, TENANT_ADMIN_SCOPE } from '@/lib/auth/scopes';
-import { TENANT_ROLES } from '@/lib/tenant/roles';
+import { effectiveRoleOptions } from '@/lib/tenant/roles';
 
 // BCDS dialogs are react-aria: `onPress` not `onClick`, `isDisabled` not
 // `disabled`, and the overlay is driven by `isOpen` / `onOpenChange`. Each
@@ -53,27 +54,33 @@ function MutationError({
   );
 }
 
-const ROLE_ITEMS = [...TENANT_ROLES];
-
 function RoleSelect({
+  tenantId,
   value,
   onChange,
 }: {
+  tenantId: string;
   value: TenantRole;
   onChange: (role: TenantRole) => void;
 }) {
   const { user } = useAuth();
+  const roles = useTenantRoles(tenantId);
+  const options = effectiveRoleOptions(roles.data);
   // Only an owner hands out the owner role (and only an owner reaches an
   // owner's row). The API is expected to hold the same line; this keeps the
   // option out of reach in the meantime.
   const items = hasScope(user, TENANT_ADMIN_SCOPE)
-    ? ROLE_ITEMS
-    : ROLE_ITEMS.filter((role) => role.id !== 'owner');
+    ? options
+    : options.filter((role) => role.id !== 'owner');
 
   return (
     <Select
       label="Role"
-      description="What each role may do follows the platform defaults unless this tenant has customised its roles."
+      description={
+        roles.isError
+          ? 'Showing the platform defaults; this tenant may have customised its roles.'
+          : undefined
+      }
       items={items}
       selectedKey={value}
       onSelectionChange={(key) => {
@@ -175,7 +182,7 @@ export function InviteTenantUserDialog({ tenantId, onClose }: DialogProps) {
         onChange={setEmail}
         isRequired
       />
-      <RoleSelect value={role} onChange={setRole} />
+      <RoleSelect tenantId={tenantId} value={role} onChange={setRole} />
       <p className="text-sm text-muted-foreground">
         No invitation email is sent yet. Ask them to sign in with this email
         address to accept.
@@ -217,7 +224,7 @@ export function ChangeTenantUserRoleDialog({
       <p className="text-sm text-muted-foreground">
         Change the role of {user.email}.
       </p>
-      <RoleSelect value={role} onChange={setRole} />
+      <RoleSelect tenantId={tenantId} value={role} onChange={setRole} />
       <MutationError error={update.error} />
     </FormDialog>
   );
