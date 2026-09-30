@@ -78,15 +78,17 @@ function listScopes(scopes: readonly string[]): string {
   const known = Object.entries(SCOPE_PHRASES)
     .filter(([scope]) => scopes.includes(scope))
     .map(([, phrase]) => phrase);
-  const unknown = scopes.filter(
+  const unknown = [...new Set(scopes)].filter(
     (scope) => !Object.hasOwn(SCOPE_PHRASES, scope),
   );
   const phrases = [...known, ...unknown];
   return phrases.length > 0 ? phrases.join(', ') : 'views only';
 }
 
+// Set equality: the column has no uniqueness constraint.
 function sameScopes(a: readonly string[], b: readonly string[]): boolean {
-  return a.length === b.length && a.every((scope) => b.includes(scope));
+  const set = new Set(a);
+  return set.size === new Set(b).size && b.every((scope) => set.has(scope));
 }
 
 /** Curated copy while a role has the scopes it describes; a scope list otherwise. */
@@ -101,11 +103,13 @@ export function effectiveRoleOptions(
     ) {
       return option;
     }
-    const listed = listScopes(entry.scopes);
-    const description =
+    const lead =
       entry.source === 'override'
-        ? `Customised for this tenant: ${listed}.`
-        : `${listed.charAt(0).toUpperCase()}${listed.slice(1)}.`;
-    return { ...option, description };
+        ? 'Customised for this tenant'
+        : 'Platform default';
+    return {
+      ...option,
+      description: `${lead}: ${listScopes(entry.scopes)}.`,
+    };
   });
 }

@@ -72,6 +72,20 @@ describe('effectiveRoleOptions', () => {
     );
   });
 
+  it('does not let a repeated scope pass for the defaults', () => {
+    const mapping: TenantRoleMapping[] = [
+      {
+        name: 'member',
+        scopes: ['credentials:offer', 'credentials:offer'],
+        source: 'override',
+      },
+    ];
+
+    expect(descriptionOf(mapping, 'member')).toBe(
+      'Customised for this tenant: issue credentials.',
+    );
+  });
+
   it('lists the scopes of a default that no longer matches its copy', () => {
     const mapping: TenantRoleMapping[] = [
       {
@@ -83,10 +97,14 @@ describe('effectiveRoleOptions', () => {
         ],
         source: 'default',
       },
+      { name: 'readonly', scopes: ['reports:read'], source: 'default' },
     ];
 
     expect(descriptionOf(mapping, 'member')).toBe(
-      'Issue credentials, verify credentials, revoke credentials.',
+      'Platform default: issue credentials, verify credentials, revoke credentials.',
+    );
+    expect(descriptionOf(mapping, 'readonly')).toBe(
+      'Platform default: reports:read.',
     );
   });
 
