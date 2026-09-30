@@ -66,6 +66,11 @@ function RoleSelect({
   const { user } = useAuth();
   const roles = useTenantRoles(tenantId);
   const options = effectiveRoleOptions(roles.data);
+  // Loading and failed alike show the defaults; a failed refetch keeps the
+  // last good mapping, so it needs no caveat.
+  const caveat = roles.data
+    ? undefined
+    : 'Showing the platform defaults; this tenant may have customised its roles.';
   // Only an owner hands out the owner role (and only an owner reaches an
   // owner's row). The API is expected to hold the same line; this keeps the
   // option out of reach in the meantime.
@@ -76,11 +81,7 @@ function RoleSelect({
   return (
     <Select
       label="Role"
-      description={
-        roles.isError
-          ? 'Showing the platform defaults; this tenant may have customised its roles.'
-          : undefined
-      }
+      description={caveat}
       items={items}
       selectedKey={value}
       onSelectionChange={(key) => {

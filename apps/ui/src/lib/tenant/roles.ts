@@ -1,4 +1,7 @@
-import type { TenantRoleMapping } from '@/lib/api/resources/tenant-roles';
+import type {
+  Scope,
+  TenantRoleMapping,
+} from '@/lib/api/resources/tenant-roles';
 import type { TenantRole } from '@/lib/api/resources/tenant-users';
 
 export interface TenantRoleOption {
@@ -31,43 +34,78 @@ export const TENANT_ROLES: readonly TenantRoleOption[] = [
   },
 ];
 
+/** The seeded platform defaults the descriptions above were written for. */
+export const DEFAULT_ROLE_SCOPES: Record<TenantRole, readonly Scope[]> = {
+  owner: ['tenants:admin'],
+  admin: [
+    'credentials:offer',
+    'credentials:verify',
+    'credentials:hold',
+    'credentials:revoke',
+    'connections:manage',
+    'profiles:manage',
+    'users:manage',
+    'clients:manage',
+    'logs:read',
+    'audit:read',
+  ],
+  member: ['credentials:offer', 'credentials:verify'],
+  readonly: [],
+};
+
 export function roleLabel(role: string | undefined): string {
   return (
     TENANT_ROLES.find((option) => option.id === role)?.label ?? role ?? '—'
   );
 }
 
-// Catalog order, so the wording doesn't depend on the order the API sends.
-const SCOPE_PHRASES = new Map<string, string>([
-  ['credentials:offer', 'issue credentials'],
-  ['credentials:verify', 'verify credentials'],
-  ['credentials:hold', 'hold credentials'],
-  ['credentials:revoke', 'revoke credentials'],
-  ['connections:manage', 'manage connections'],
-  ['profiles:manage', 'manage profiles'],
-  ['users:manage', 'manage users'],
-  ['clients:manage', 'manage API clients'],
-  ['logs:read', 'read logs'],
-  ['audit:read', 'read the audit log'],
-]);
+// Typed against the spec, so a new scope fails the build until it has words.
+const SCOPE_PHRASES: Record<Scope, string> = {
+  'tenants:admin': 'full control',
+  'credentials:offer': 'issue credentials',
+  'credentials:verify': 'verify credentials',
+  'credentials:hold': 'hold credentials',
+  'credentials:revoke': 'revoke credentials',
+  'connections:manage': 'manage connections',
+  'profiles:manage': 'manage profiles',
+  'users:manage': 'manage users',
+  'clients:manage': 'manage API clients',
+  'logs:read': 'read logs',
+  'audit:read': 'read the audit log',
+};
 
-function describeOverride(scopes: readonly string[]): string {
-  const known = [...SCOPE_PHRASES]
+function listScopes(scopes: readonly string[]): string {
+  const known = Object.entries(SCOPE_PHRASES)
     .filter(([scope]) => scopes.includes(scope))
     .map(([, phrase]) => phrase);
-  const unknown = scopes.filter((scope) => !SCOPE_PHRASES.has(scope));
+  const unknown = scopes.filter(
+    (scope) => !Object.hasOwn(SCOPE_PHRASES, scope),
+  );
   const phrases = [...known, ...unknown];
-  return `Customised for this tenant: ${phrases.length > 0 ? phrases.join(', ') : 'views only'}.`;
+  return phrases.length > 0 ? phrases.join(', ') : 'views only';
 }
 
-/** Role options whose descriptions follow the tenant's overrides. */
+function sameScopes(a: readonly string[], b: readonly string[]): boolean {
+  return a.length === b.length && a.every((scope) => b.includes(scope));
+}
+
+/** Curated copy while a role has the scopes it describes; a scope list otherwise. */
 export function effectiveRoleOptions(
   mapping: readonly TenantRoleMapping[] = [],
 ): TenantRoleOption[] {
   return TENANT_ROLES.map((option) => {
     const entry = mapping.find((role) => role.name === option.id);
-    return entry?.source === 'override'
-      ? { ...option, description: describeOverride(entry.scopes ?? []) }
-      : option;
+    if (
+      !entry?.scopes ||
+      sameScopes(entry.scopes, DEFAULT_ROLE_SCOPES[option.id])
+    ) {
+      return option;
+    }
+    const listed = listScopes(entry.scopes);
+    const description =
+      entry.source === 'override'
+        ? `Customised for this tenant: ${listed}.`
+        : `${listed.charAt(0).toUpperCase()}${listed.slice(1)}.`;
+    return { ...option, description };
   });
 }

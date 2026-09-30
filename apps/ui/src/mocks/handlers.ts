@@ -6,7 +6,8 @@ import type { CredentialDefinition } from '@/lib/api/resources/credential-defini
 import type { TenantRoleMapping } from '@/lib/api/resources/tenant-roles';
 import type { TenantUser } from '@/lib/api/resources/tenant-users';
 import type { Tenant } from '@/lib/api/resources/tenants';
-import { MOCK_AUTH_TENANTS } from '@/lib/auth/mock-auth';
+import { MOCK_AUTH_TENANTS, scopesForRoles } from '@/lib/auth/mock-auth';
+import { TENANT_ROLES } from '@/lib/tenant/roles';
 
 // Also bundled into the mock-mode browser build (browser.ts): keep vitest and
 // node-only imports out of this file.
@@ -119,32 +120,12 @@ export const mockTenantUsers: TenantUser[] = [
   },
 ];
 
-// The seeded platform defaults, with no tenant overrides.
-export const mockTenantRoles: TenantRoleMapping[] = [
-  { name: 'owner', scopes: ['tenants:admin'], source: 'default' },
-  {
-    name: 'admin',
-    scopes: [
-      'audit:read',
-      'clients:manage',
-      'connections:manage',
-      'credentials:hold',
-      'credentials:offer',
-      'credentials:revoke',
-      'credentials:verify',
-      'logs:read',
-      'profiles:manage',
-      'users:manage',
-    ],
-    source: 'default',
-  },
-  {
-    name: 'member',
-    scopes: ['credentials:offer', 'credentials:verify'],
-    source: 'default',
-  },
-  { name: 'readonly', scopes: [], source: 'default' },
-];
+// The platform defaults, with no tenant overrides.
+const mockTenantRoles = TENANT_ROLES.map(({ id }): TenantRoleMapping => ({
+  name: id,
+  scopes: scopesForRoles([id]),
+  source: 'default',
+}));
 
 function encodeJwtSegment(value: Record<string, unknown>): string {
   const json = JSON.stringify(value);
@@ -169,7 +150,10 @@ export function mockSwitchedAccessToken(tenantId: string | undefined): string {
   return mockAccessToken({
     tenant_id: tenantId,
     roles: ['admin'],
-    scope: 'openid profile email tenant offline_access users:manage',
+    scope: [
+      'openid profile email tenant offline_access',
+      ...scopesForRoles(['admin']),
+    ].join(' '),
   });
 }
 

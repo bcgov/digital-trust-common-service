@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
+import { DEFAULT_ROLE_SCOPES } from '@/lib/tenant/roles';
+
 import { createMockAuthClient } from './mock-auth';
 
 describe('mock auth client', () => {
@@ -109,7 +111,7 @@ describe('mock auth client', () => {
 
     expect(client.getState().user?.tenantId).toBe(target.id);
     expect(client.getState().user?.roles).toEqual([target.role]);
-    expect(client.getState().user?.scopes).toEqual(['users:manage']);
+    expect(client.getState().user?.scopes).toEqual(DEFAULT_ROLE_SCOPES.admin);
     expect(client.getAccessToken()).not.toBe(before);
   });
 
@@ -123,6 +125,6 @@ describe('mock auth client', () => {
     );
     const client = createMockAuthClient();
 
-    expect(client.getState().user?.scopes).toEqual(['users:manage']);
+    expect(client.getState().user?.scopes).toEqual(DEFAULT_ROLE_SCOPES.admin);
   });
 });
