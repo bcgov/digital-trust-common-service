@@ -139,7 +139,7 @@ This contract therefore does not use the bare word "tenant". It uses the terms d
 | **Service tenant** | This service | A customer organization — the subject of our tenancy model and the unit of isolation everywhere in our own data | `tenant_id`, a UUID we generate | Emitted as a structured `tenant_id` field on our own log lines | Us. Authoritative. |
 | **Agent sub-tenant** | Credential agent (Traction/ACA-Py today) | One sub-wallet on a shared multi-tenant agent, acting for exactly one service tenant | **Two distinct identifiers — see below** | The agent stamps its own log records | The agent |
 | **Loki tenant** | Loki | A storage partition. An opaque key; Loki attaches no meaning to it and enforces isolation between partitions | Whatever string we put in the routing header | n/a — it is the partition, not a field | Us, by choice of value |
-| **Grafana org** | Grafana | A UI grouping of users, dashboards and datasources | Numeric org id | n/a | Platform |
+| **Grafana org** | Grafana | A UI grouping of users, dashboards and datasources — a **single shared org for every tenant**, not a per-tenant unit ([2.2](#22-grafana-orgs-are-not-an-isolation-boundary-here)) | Numeric org id. One fixed value, configured on the instance — we neither store it nor provision one per tenant | n/a | Platform |
 
 ### 2.1 The agent sub-tenant has two identifiers, and they are not interchangeable
 
