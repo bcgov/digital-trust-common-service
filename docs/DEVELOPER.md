@@ -1337,6 +1337,26 @@ not against the target tenant's own quota/tier.
 > **Note:** Per-endpoint `@Throttle()` overrides are not yet used anywhere (no controller currently
 > needs a tighter limit than its tier default). This section will be extended if one is added.
 
+## CORS
+
+`configureApp()` (`app.config.ts`) calls `app.enableCors()` with options built by
+`buildCorsOptions()` (`common/cors-options.ts`). The bundled UI is same-origin behind Caddy/the
+OpenShift route (see `APP_PUBLIC_URL`) and does not need this — it exists for other cross-origin API
+callers.
+
+- `allowedHeaders` is fixed: `Authorization`, `Content-Type`, `X-Request-Id`, `Idempotency-Key`.
+- `exposedHeaders` is fixed: `X-Request-Id`, `X-RateLimit-Remaining`, `X-RateLimit-Reset` — the
+  latter two are set by `RateLimitGuard` (global, IP-keyed flood protection; see
+  [Per-tenant rate limiting](#per-tenant-rate-limiting)) on every response via the base
+  `@nestjs/throttler` `ThrottlerGuard`. `TenantTierRateLimitGuard` does not set them.
+- `credentials` is always `false` — auth is Bearer-token only, never a cross-origin cookie.
+
+**Environment variables** (see `.env.example`):
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `CORS_ALLOWED_ORIGINS` | `*` | Comma-separated list of exact allowed origins (scheme + host + port, no path), or `*` to allow any origin. Refused at startup when `NODE_ENV=production` — with `credentials: false` this is not the usual reflect-any-origin-with-credentials hole, but a wildcard reaching a deployed environment is far more likely a forgotten override than intent. |
+
 ## Testing
 
 
