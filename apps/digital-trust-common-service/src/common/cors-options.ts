@@ -63,14 +63,10 @@ function parseAllowedOrigins(
     throw new Error('CORS_ALLOWED_ORIGINS must not be empty.');
   }
 
-  for (const origin of origins) {
-    assertValidOrigin(origin);
-  }
-
-  return origins;
+  return origins.map((origin) => normalizeOrigin(origin));
 }
 
-function assertValidOrigin(origin: string): void {
+function normalizeOrigin(origin: string): string {
   let url: URL;
 
   try {
@@ -81,10 +77,21 @@ function assertValidOrigin(origin: string): void {
     );
   }
 
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    throw new Error(
+      `CORS_ALLOWED_ORIGINS entry '${origin}' must use http or https.`,
+    );
+  }
+
   if (url.pathname !== '/' || url.search || url.hash) {
     throw new Error(
       `CORS_ALLOWED_ORIGINS entry '${origin}' must be an origin only ` +
         '(scheme + host + port, no path).',
     );
   }
+
+  // Normalizes a trailing-slash-only path ("https://a.com/") to the exact
+  // string the browser's Origin header uses ("https://a.com"), which `cors`'s
+  // array-equality check otherwise never matches.
+  return url.origin;
 }

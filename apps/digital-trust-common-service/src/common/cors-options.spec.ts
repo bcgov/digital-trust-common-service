@@ -43,6 +43,18 @@ describe('buildCorsOptions', () => {
     ).toThrow(/must be an origin only/);
   });
 
+  it('normalizes a trailing-slash-only path to the bare origin', () => {
+    const options = buildCorsOptions('https://app.example.com/', 'production');
+
+    expect(options.origin).toEqual(['https://app.example.com']);
+  });
+
+  it('throws when an entry uses a non-http(s) scheme', () => {
+    expect(() => buildCorsOptions('file:///', 'development')).toThrow(
+      /must use http or https/,
+    );
+  });
+
   it('never sets credentials, since auth is Bearer-token only', () => {
     const options = buildCorsOptions('*', 'development');
 
