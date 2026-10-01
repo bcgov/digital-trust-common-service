@@ -22,7 +22,7 @@ meant to be entered at the part that concerns you rather than read end to end.
 | If you are | Start at |
 |---|---|
 | Deciding whether to approve it | [Open points](#open-points) below, then [9.1](#91-closing-this-contract) |
-| Implementing a component | Your row in [8.1](#81-who-owns-what), then the rules it names, via [Appendix A](#appendix-a-rule-index) |
+| Implementing a component | That component's row in [8.1](#81-what-each-component-is-responsible-for), then the rules it names, via [Appendix A](#appendix-a-rule-index) |
 | Reviewing the boundary | [Section 2](#2-what-tenant-means-in-each-service), then [7.1](#71-threat-model) and [7.2](#72-required-tests) |
 | Looking up a single rule | [Appendix A: rule index](#appendix-a-rule-index) |
 | Tracing an attack to its control | [7.1](#71-threat-model) and [Appendix B](#appendix-b-remaining-threat-model-rows) |
@@ -43,8 +43,8 @@ Each of these is argued where it is stated. The links are the argument, not a su
   ([2.1](#21-the-agent-sub-tenant-has-two-identifiers-and-they-are-not-interchangeable)).
 - **No queryable agent identifier enters the schema.** Uniqueness is enforced on a derived
   value instead ([M3](#41-provenance--the-identifier-must-be-trustworthy-before-it-is-useful)).
-- **Every rule has a named owner and an acceptance test**
-  ([8.1](#81-who-owns-what), [9.2](#92-accepting-each-external-piece)).
+- **Every rule names the component that implements it, and an acceptance test**
+  ([8.1](#81-what-each-component-is-responsible-for), [9.2](#92-accepting-each-component)).
 
 ### Open points
 
@@ -85,7 +85,7 @@ This contract defines:
 
 It is not an implementation. It specifies no gateway internals, no Grafana configuration, no
 Loki or Alloy values, no agent deployment change, and no nginx configuration. Those live in
-the repositories identified in [section 8](#8-external-ownership), and each is accepted
+the repositories identified in [section 8](#8-where-the-work-lands), and each is accepted
 against the criteria in [section 9](#9-acceptance-and-closure).
 
 It also does not cover the write path beyond the requirements that make the read path safe.
@@ -134,12 +134,12 @@ available in this design starts by treating two of the rows below as interchange
 
 This contract therefore does not use the bare word "tenant". It uses the terms defined here.
 
-| Term | System | What it identifies | Identifier | Where it appears in logs | Owner |
+| Term | System | What it identifies | Identifier | Where it appears in logs | Authoritative for it |
 |---|---|---|---|---|---|
 | **Service tenant** | This service | A customer organization — the subject of our tenancy model and the unit of isolation everywhere in our own data | `tenant_id`, a UUID we generate | Emitted as a structured `tenant_id` field on our own log lines | Us. Authoritative. |
 | **Agent sub-tenant** | Credential agent (Traction/ACA-Py today) | One sub-wallet on a shared multi-tenant agent, acting for exactly one service tenant | **Two distinct identifiers — see below** | The agent stamps its own log records | The agent |
 | **Loki tenant** | Loki | A storage partition. An opaque key; Loki attaches no meaning to it and enforces isolation between partitions | Whatever string we put in the routing header | n/a — it is the partition, not a field | Us, by choice of value |
-| **Grafana org** | Grafana | A UI grouping of users, dashboards and datasources — a **single shared org for every tenant**, not a per-tenant unit ([2.2](#22-grafana-orgs-are-not-an-isolation-boundary-here)) | Numeric org id. One fixed value, configured on the instance — we neither store it nor provision one per tenant | n/a | Platform |
+| **Grafana org** | Grafana | A UI grouping of users, dashboards and datasources — a **single shared org for every tenant**, not a per-tenant unit ([2.2](#22-grafana-orgs-are-not-an-isolation-boundary-here)) | Numeric org id. One fixed value, configured on the instance — we neither store it nor provision one per tenant | n/a | Tenant Grafana config |
 
 ### 2.1 The agent sub-tenant has two identifiers, and they are not interchangeable
 
@@ -163,6 +163,20 @@ agent happens to use today.
 Where a service tenant is reconciled to its agent log identifier, and what constrains that
 resolution, is [section 4](#4-mapping-a-service-tenant-to-its-agent-log-identifier). The rules
 that keep it independent of any one agent are [4.3](#43-agent-agnostic-by-construction).
+
+**For the agent deployed today**, three facts about those two identifiers are worth stating,
+because each one is a place an implementer would otherwise guess:
+
+- The **log identifier is a claim in the token** returned by the agent's tenant-token endpoint —
+  the same token the connector already obtains. Capturing it is reading one more claim where the
+  token is already decoded, not a new call.
+- That token also carries an expiry, and on the credential path the connector uses it carries
+  **no wallet key material**. The identifier is not a secret
+  ([M7](#42-provenance-at-query-time)); the token around it still is.
+- The agent **already stamps the log identifier on its log records**, and the label it prints it
+  under reads `TENANT`. The value behind that label is the log identifier, **not** the API
+  sub-tenant id. Anyone reading those lines, or writing an extraction rule against them, will
+  assume otherwise.
 
 ### 2.2 Grafana orgs are not an isolation boundary here
 
@@ -759,7 +773,7 @@ the contract, not against its own implementation.
 
 **Positive — the intended path works.**
 
-| # | Given | Expect | Owner |
+| # | Given | Expect | Component |
 |---|---|---|---|
 | P1 | Valid token, log-read scope, tenant A, one connector resolving | Query succeeds; scope is exactly A's service partition plus that connector's | Gateway |
 | P2 | Tenant A has no connector | Query succeeds; scope is A's service partition only | Gateway |
@@ -768,16 +782,16 @@ the contract, not against its own implementation.
 | P5 | Tenant A has several active connectors, including of different types | Scope includes **all** of A's resolved partitions, none of B's ([M16](#46-multiple-connectors-are-not-ambiguous)) | Gateway |
 | P6 | Label, series and label-values endpoints, valid token | Succeed, constrained to the caller's partitions | Gateway |
 | P7 | Connector rotated to a new identifier, **no** invalidation signal delivered | New identifier in effect within the staleness bound ([M11](#44-freshness), [M13](#44-freshness)) | This service + gateway |
-| P8 | Platform operator via the platform path | Full cross-tenant visibility retained | Platform observability |
+| P8 | Platform operator via the platform path | Full cross-tenant visibility retained | Log storage |
 | P9 | An identifier is bound to a tenant for the first time | Binding succeeds and is usable | This service |
-| P10 | An agent line emitted for tenant A, carrying A's identifier field | Lands in A's partition and is returned to A's token, and to no other tenant's | Agent deployment + Platform observability |
+| P10 | An agent line emitted for tenant A, carrying A's identifier field | Lands in A's partition and is returned to A's token, and to no other tenant's | Agent deployment + Log storage |
 | P11 | Tenant A deletes and re-creates a connector against the same sub-wallet, then rotates its credentials | Binding succeeds both times and A's agent logs stay visible ([M2](#41-provenance--the-identifier-must-be-trustworthy-before-it-is-useful), [M19](#47-the-binding-is-system-owned-not-tenant-supplied), [M20](#47-the-binding-is-system-owned-not-tenant-supplied)) | This service |
 
 **Adversarial — each must produce the stated safe outcome.** Some outcomes are a rejection and
 some are a correctly scoped success; both are passes. A case that "succeeds" here is not a
 weaker result — it is the demonstration that the attack changed nothing.
 
-| # | Given | Expect | Threat | Owner |
+| # | Given | Expect | Threat | Component |
 |---|---|---|---|---|
 | N1 | Token with the API audience | `401`; nothing forwarded | 6 | Gateway |
 | N2 | Log-audience token against the API | `401` | 7 | This service |
@@ -799,26 +813,26 @@ weaker result — it is the demonstration that the attack changed nothing.
 | N18 | A backend read route that exists but is not enumerated | Denied ([G7](#63-complete-coverage-of-the-read-surface)) | 17 | Gateway |
 | N19 | Label-values request naming another tenant's partition | Scoped to A's label space | 17 | Gateway |
 | N20 | Live-tail request | Generic denial; or, under fan-in, per-partition streams with teardown and reconnect re-authorization ([G10](#64-live-tail-is-not-compatible-with-a-multi-partition-scope), [G11](#64-live-tail-is-not-compatible-with-a-multi-partition-scope)) | 18, 19 | Gateway |
-| N21 | Direct request to the storage backend with a chosen header | Not routable from a tenant-reachable network position, in every environment | 5 | Platform observability |
-| N22 | Plaintext request to any token-bearing hop | Refused or redirected; no token accepted over plaintext | 12 | Platform observability |
+| N21 | Direct request to the storage backend with a chosen header | Not routable from a tenant-reachable network position, in every environment | 5 | Log storage |
+| N22 | Plaintext request to any token-bearing hop | Refused or redirected; no token accepted over plaintext | 12 | Log storage |
 | N23 | Tenant B attempts to bind an identifier already bound to tenant A | Binding **refused**; A's binding unchanged | 13 | This service |
 | N24 | Two tenants attempt to bind the same identifier concurrently | Exactly one succeeds | 13 | This service |
 | N25 | Connector pointed at an untrusted endpoint asserting an identifier | Identifier not usable for partitioning ([M1](#41-provenance--the-identifier-must-be-trustworthy-before-it-is-useful)) | 14 | This service |
 | N26 | Identifier containing `\|`, a path or control character, or over the length limit | Rejected; never reaches a header ([L8](#54-partition-keys-must-be-derived-not-passed-through)) | 15 | This service + gateway |
 | N27 | Two different source identifiers deriving to the same partition key | Collision detected, not silently shared | 15 | This service + gateway |
-| N28 | Log line carrying a foreign routing value via request data, user content, or a duplicate JSON key | Routed to the platform partition, never to the named tenant ([L6](#53-the-routing-field-must-be-trusted-not-merely-structured), [L7](#53-the-routing-field-must-be-trusted-not-merely-structured)) | 16 | Platform observability |
-| N29 | Agent line with no extractable identifier | Platform partition; never a tenant partition ([L4](#52-partitioning-happens-at-ingestion)) | 16 | Platform observability |
+| N28 | Log line carrying a foreign routing value via request data, user content, or a duplicate JSON key | Routed to the platform partition, never to the named tenant ([L6](#53-the-routing-field-must-be-trusted-not-merely-structured), [L7](#53-the-routing-field-must-be-trusted-not-merely-structured)) | 16 | Log storage |
+| N29 | Agent line with no extractable identifier | Platform partition; never a tenant partition ([L4](#52-partitioning-happens-at-ingestion)) | 16 | Log storage |
 | N30 | Connector inactive, or present with no identifier | That partition omitted; service lines still served ([M14](#45-failure-behaviour)) | 23 | Gateway |
 | N31 | Resolution fails with a backend error | Denied; **not** degraded to partial results | 23 | Gateway |
 | N32 | Responses compared across an unusable identifier and a backend error | Indistinguishable status and body. A tenant with no connector is a **success** and is correctly distinguishable ([M15](#45-failure-behaviour)) | 24 | Gateway |
 | N33 | Any failure response body inspected | No other tenant's identifier, no connector count, no tenant existence signal | 24 | Gateway |
 | N34 | Identifier rotated; queries issued at the staleness bound and just after | Old binding not honoured past the bound | 25 | Gateway |
 | N35 | Spoofed `Host` / forwarded headers matching the gateway audience | `401`; audience unaffected | 26 | Gateway |
-| N36 | Query exceeding the global limits | Rejected by limits; other tenants unaffected | 27 | Platform observability |
-| N37 | Tenant A floods many individually compliant queries | Tenant B stays within the agreed latency and error target ([L11](#55-preconditions-for-exposing-query-access)) | 28 | Platform observability |
-| N38 | Read attempted through the write path | Not readable | 29 | Platform observability |
+| N36 | Query exceeding the global limits | Rejected by limits; other tenants unaffected | 27 | Log storage |
+| N37 | Tenant A floods many individually compliant queries | Tenant B stays within the agreed latency and error target ([L11](#55-preconditions-for-exposing-query-access)) | 28 | Log storage |
+| N38 | Read attempted through the write path | Not readable | 29 | Log storage |
 | N39 | Tenant supplies a log identifier directly in a connector create or update request | Not persisted, not used for partitioning, attempt recorded ([M18](#47-the-binding-is-system-owned-not-tenant-supplied)) | 13, 31 | This service |
-| N40 | Direct-push credential whose identity derives to a tenant's partition key | Refused; no write into a tenant partition ([L8](#54-partition-keys-must-be-derived-not-passed-through)) | 30 | Platform observability |
+| N40 | Direct-push credential whose identity derives to a tenant's partition key | Refused; no write into a tenant partition ([L8](#54-partition-keys-must-be-derived-not-passed-through)) | 30 | Log storage |
 | N41 | Tenant's resolved partition count exceeds the bound | Denied, never silently truncated ([M17](#46-multiple-connectors-are-not-ambiguous)) | — | Gateway |
 
 **Rule V1.** N14 is the one to read carefully. A query naming another tenant **MUST** return no
@@ -838,51 +852,58 @@ permissive network policy, or a direct path to the backend.
 against that environment's own configuration. Isolation validated only in one environment is
 isolation validated only in one environment.
 
-## 8. External ownership
+## 8. Where the work lands
 
-Most of this contract is implemented outside this repository. That is the main reason it
-exists as a written contract rather than as review comments on a pull request: no single team
-can verify the boundary end to end from inside their own component, so each one needs to know
+This contract spans five components, and they do not all live in one repository. That is the
+main reason it exists as a written document rather than as review comments on a pull request:
+no component can verify the boundary end to end from inside itself, so each one needs to know
 precisely what the others guarantee.
 
-Named repositories and teams are recorded on the tracking work rather than here, so this
-document does not go stale when either changes. The split of responsibility does not change.
+The table below names each component and the repository its artifacts land in. It does not
+assign people — who picks up a given component is a scheduling decision recorded on the
+tracking work, not a property of the boundary.
 
-### 8.1 Who owns what
+### 8.1 What each component is responsible for
 
 The split matters in one particular way: the rules about the token are **issuer** obligations
 for this service and **verifier** obligations for the gateway, and they are not the same work.
 Issuing a correctly shaped token does not enforce anything; enforcing on a token this service
-did not shape is not possible. Both halves are required, and each is listed against the owner
-who performs it.
+did not shape is not possible. Both halves are required, and each is listed against the
+component that performs it.
 
-| Owner | Responsibility | Rules they implement |
-|---|---|---|
-| **This service** | Minting the access token with the tenant claim, the log-read scope, and the log gateway resource audience, with exactly one audience per token; rejecting log-audience tokens on the API; establishing identifier provenance and binding each agent log identifier to exactly one tenant, system-owned and released on deletion; refreshing it on rotation; exposing the resolution the gateway consumes | T1 (issuance), T3–T4 (issuance), T6 (definition), T8, T12, M1–M8, M10, M18–M20, L8–L9 (derivation definition) |
-| **Identity-aware gateway** | Token validation and authorization on every request, mapping consumption, partition scope composition and header construction, read-surface coverage, fail-closed and uniform failure behaviour | T1, T2, T3–T4 (enforcement), T5, T6 (enforcement), T7, T9–T11, M9, M11–M17, G1–G11, L8–L9 (read-side application), S1, S4–S6 |
-| **Platform observability (GitOps)** | Storage-layer multi-tenancy including the multi-partition read scope the gateway depends on, collector partition routing and routing-field trust, query and fairness limits, TLS on every token-bearing hop, network isolation of the backend in every environment, write-path partition assignment for existing direct-push consumers | L1–L4, L6, L7, L8–L9 (ingestion application), L10–L12, T13, backend half of G3, G9 |
-| **Agent deployment (GitOps)** | Structured log output carrying the agent's log identifier as a discrete field, populated by the agent runtime rather than from request data | L5, agent half of L6 |
-| **Platform Grafana** | The dedicated tenant-facing instance, registered against this service as its identity provider; a single shared datasource forwarding the caller's token; generic dashboards | S2, S3 |
+| Component | Artifacts land in | Responsibility | Rules it implements |
+|---|---|---|---|
+| **This service** | this repository | Minting the access token with the tenant claim, the log-read scope, and the log gateway resource audience, with exactly one audience per token; rejecting log-audience tokens on the API; establishing identifier provenance and binding each agent log identifier to exactly one tenant, system-owned and released on deletion; refreshing it on rotation; exposing the resolution the gateway consumes | T1 (issuance), T3–T4 (issuance), T6 (definition), T8, T12, M1–M8, M10, M18–M20, L8–L9 (derivation definition) |
+| **Identity-aware gateway** | this repository | Token validation and authorization on every request, mapping consumption, partition scope composition and header construction, read-surface coverage, fail-closed and uniform failure behaviour | T1, T2, T3–T4 (enforcement), T5, T6 (enforcement), T7, T9–T11, M9, M11–M17, G1–G11, L8–L9 (read-side application), S1, S4–S6 |
+| **Log storage and collection** | platform gitops | Storage-layer multi-tenancy including the multi-partition read scope the gateway depends on, collector partition routing and routing-field trust, query and fairness limits, TLS on every token-bearing hop, network isolation of the backend in every environment, write-path partition assignment for existing direct-push consumers | L1–L4, L6, L7, L8–L9 (ingestion application), L10–L12, T13, backend half of G3, G9 |
+| **Agent deployment** | the agent's own chart, gitops | Structured log output carrying the agent's log identifier as a discrete field, populated by the agent runtime rather than from request data | L5, agent half of L6 |
+| **Tenant Grafana** | platform gitops | The dedicated tenant-facing instance, registered against this service as its identity provider; a single shared datasource forwarding the caller's token; generic dashboards | S2, S3 |
 
 ### 8.2 Sequencing
 
 The dependencies between these are real, and taking them out of order produces either a broken
 deployment or a boundary that looks present and is not.
 
-1. **The agent emits structured logs first.** Until it does, there is no discrete identifier to
-   route on, and routing must not be attempted against unstructured text ([L5](#52-partitioning-happens-at-ingestion)).
-   Until then the agent's lines stay in the platform partition and tenants see only this
-   service's lines — a usable intermediate state, not a blocked one.
+1. **The agent emits structured logs first.** The identifier is already present in the agent's
+   logging context and already appears on its log lines, so this is a change of output **format**
+   rather than new instrumentation. Until it lands there is no discrete field to route on, and
+   routing must not be attempted against unstructured text
+   ([L5](#52-partitioning-happens-at-ingestion)). Until then the agent's lines stay in the
+   platform partition and tenants see only this service's lines — a usable intermediate state,
+   not a blocked one.
 2. **Query limits, fairness controls and network isolation land before any tenant gets access**
    ([L10](#55-preconditions-for-exposing-query-access), [L11](#55-preconditions-for-exposing-query-access),
    [L12](#55-preconditions-for-exposing-query-access)). These are preconditions for exposure, not
    follow-ups: after exposure, adding them is a regression risk rather than a safe default.
-3. **The storage multi-tenancy cutover is coordinated, not a flag flip.** Enabling native
-   tenancy makes the partition header mandatory on **ingestion** as well as query. Any existing
-   producer that pushes directly, outside the collector, starts failing at that moment unless
-   the write path assigns its partition first. Assignment must be in place before or atomically
-   with the cutover, verified in a lower environment, and the affected team told ahead of the
-   production change even though their client should not need to change.
+3. **The storage multi-tenancy cutover is coordinated, not a flag flip, and carries its own
+   written plan.** Enabling native tenancy makes the partition header mandatory on **ingestion**
+   as well as query. Any existing producer that pushes directly, outside the collector, starts
+   failing at that moment unless the write path assigns its partition first. The cutover plan
+   **MUST** enumerate every current producer, state what each one has to change — including
+   "nothing" where that is the answer — and carry a runbook covering the rollback and any
+   downtime. Assignment must be in place before or atomically with the cutover, verified in a
+   lower environment, and every affected producer told ahead of the production change even
+   where their client needs no change.
 4. **The gateway and the tenant Grafana land last**, once the token surface and the storage
    boundary both exist. Standing up the access layer earlier would mean either exercising it
    against an unenforced backend — validating nothing — or creating a path that is open while
@@ -890,7 +911,7 @@ deployment or a boundary that looks present and is not.
 
 ### 8.3 What this repository guarantees to the others
 
-So the external owners can build against a fixed surface:
+So the other components can be built against a fixed surface:
 
 - The token is signed by this service, discoverable through its OIDC metadata and JWKS, and
   validated the same way the API validates its own ([T1](#31-shape-and-validation)).
@@ -931,30 +952,30 @@ This contract is complete when it is **agreed**, not when it is implemented. It 
   agreed by the teams owning each system in it, since its whole purpose is to stop two of those
   rows being conflated;
 - the token, mapping, storage, header, and selection rules accepted as binding by the
-  implementing owners in [8.1](#81-who-owns-what);
+  implementing owners in [8.1](#81-what-each-component-is-responsible-for);
 - a security review of exposing tenant-facing observability data, taken against this document;
 - each owner having the rules they implement reflected in their own tracked work.
 
 It does **not** wait on any implementation. Blocking the contract on the work it specifies
 would invert the dependency — the implementing work is written against this document.
 
-### 9.2 Accepting each external piece
+### 9.2 Accepting each component
 
-Acceptance criteria per owner. Each is verifiable by someone other than its author, which is
-the point.
+Acceptance criteria per component. Each is verifiable by someone other than whoever built it,
+which is the point.
 
-Each owner is accepted when the tests assigned to them in
+A component is accepted when the tests assigned to it in
 [7.2](#72-required-tests) all pass — noting that a pass is sometimes a denial and sometimes a
-correctly scoped success, and that a test naming two owners is verified jointly rather than
+correctly scoped success, and that a test naming two components is verified jointly rather than
 twice.
 
-| Owner | Accepted when |
+| Component | Accepted when |
 |---|---|
 | **This service** | **P9, P11, N2, N23–N25, N39** pass, plus **P7, N3, N26, N27** jointly with the gateway: a token requested for the log gateway audience carries that audience alone and is rejected by the API; the log-read scope is grantable and expands consistently; an agent log identifier is captured only from a trusted agent, never accepted from a caller, bound to exactly one tenant under a write-time constraint, re-bindable by its own tenant, released on deletion, and never usable if it fails validation or encoding |
 | **Identity-aware gateway** | **P1–P3, P5, P6, N1, N4–N20, N30–N35, N41** pass, plus **P7, N3, N26, N27** jointly with this service and **P4** jointly with Grafana; run against a deployed gateway in front of a real backend ([V2](#72-required-tests)) in every environment with tenant access ([V3](#72-required-tests)); the read surface is an enumerated allowlist; failures are externally indistinguishable |
-| **Platform observability** | **P8, N21, N22, N28, N29, N36–N38, N40** pass, plus **P10** jointly with agent deployment: native tenancy enabled with multi-partition reads, query and fairness limits in place; the backend unreachable from a tenant-reachable network position in **every** environment; unattributed or conflicting lines land in the platform partition, never a tenant one; no write path can place a line in a tenant partition it does not own; existing direct-push producers keep succeeding through the cutover; platform cross-tenant visibility retained |
+| **Log storage** | **P8, N21, N22, N28, N29, N36–N38, N40** pass, plus **P10** jointly with agent deployment: native tenancy enabled with multi-partition reads, query and fairness limits in place; the backend unreachable from a tenant-reachable network position in **every** environment; unattributed or conflicting lines land in the platform partition, never a tenant one; no write path can place a line in a tenant partition it does not own; existing direct-push producers keep succeeding through the cutover; platform cross-tenant visibility retained |
 | **Agent deployment** | **P10** passes jointly with platform observability: log output is structured, carries the log identifier as a discrete field populated by the runtime and not from request data, the field name is confirmed against real output rather than assumed, and a line emitted for a tenant is demonstrably readable **by that tenant** — no routing depends on pattern matching unstructured text |
-| **Platform Grafana** | **P4** passes jointly with the gateway: one instance, one org, one shared datasource, no tenant identity in any datasource field or URL; dashboards generic with no tenant variable; two tenants on the same dashboard each see only their own data |
+| **Tenant Grafana** | **P4** passes jointly with the gateway: one instance, one org, one shared datasource, no tenant identity in any datasource field or URL; dashboards generic with no tenant variable; two tenants on the same dashboard each see only their own data |
 
 ### 9.3 The end-to-end check
 
@@ -973,7 +994,7 @@ spoofed partition header, wrong audience, missing scope, a LogQL query naming th
 with a canary line in place, and an attempt to bind the other tenant's agent identifier.
 
 This is the only check that exercises the mapping, the token, the gateway, and the storage
-partition together, and it is the one that would catch the failures each team's own tests are
+partition together, and it is the one that would catch the failures a single component's own tests are
 structurally unable to see.
 
 ---
@@ -982,7 +1003,7 @@ structurally unable to see.
 
 Changing a **MUST** or **MUST NOT** here changes a security boundary that several teams have
 built against and reviewed as a whole. Such a change requires the same agreement as the
-original: the owners in [8.1](#81-who-owns-what), and a security review where the boundary
+original: the owners in [8.1](#81-what-each-component-is-responsible-for), and a security review where the boundary
 itself moves.
 
 Two changes in particular are not amendments but new contracts, because their threat models
