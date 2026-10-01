@@ -85,7 +85,7 @@ function listScopes(scopes: readonly string[]): string {
   return phrases.length > 0 ? phrases.join(', ') : 'views only';
 }
 
-// Set equality: the column has no uniqueness constraint.
+// Set equality: order differs and nothing guarantees unique entries.
 function sameScopes(a: readonly string[], b: readonly string[]): boolean {
   const set = new Set(a);
   return set.size === new Set(b).size && b.every((scope) => set.has(scope));

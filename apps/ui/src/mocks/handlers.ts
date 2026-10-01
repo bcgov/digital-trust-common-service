@@ -6,8 +6,8 @@ import type { CredentialDefinition } from '@/lib/api/resources/credential-defini
 import type { TenantRoleMapping } from '@/lib/api/resources/tenant-roles';
 import type { TenantUser } from '@/lib/api/resources/tenant-users';
 import type { Tenant } from '@/lib/api/resources/tenants';
-import { MOCK_AUTH_TENANTS, scopesForRoles } from '@/lib/auth/mock-auth';
-import { TENANT_ROLES } from '@/lib/tenant/roles';
+import { MOCK_AUTH_TENANTS } from '@/lib/auth/mock-auth';
+import { DEFAULT_ROLE_SCOPES, TENANT_ROLES } from '@/lib/tenant/roles';
 
 // Also bundled into the mock-mode browser build (browser.ts): keep vitest and
 // node-only imports out of this file.
@@ -123,7 +123,7 @@ export const mockTenantUsers: TenantUser[] = [
 // The platform defaults, with no tenant overrides.
 const mockTenantRoles = TENANT_ROLES.map(({ id }): TenantRoleMapping => ({
   name: id,
-  scopes: scopesForRoles([id]),
+  scopes: [...DEFAULT_ROLE_SCOPES[id]],
   source: 'default',
 }));
 
@@ -152,7 +152,7 @@ export function mockSwitchedAccessToken(tenantId: string | undefined): string {
     roles: ['admin'],
     scope: [
       'openid profile email tenant offline_access',
-      ...scopesForRoles(['admin']),
+      ...DEFAULT_ROLE_SCOPES.admin,
     ].join(' '),
   });
 }

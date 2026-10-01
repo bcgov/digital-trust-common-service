@@ -32,10 +32,9 @@ export const MOCK_AUTH_TENANTS: AuthTenant[] = [
 
 // An owner's token carries only `tenants:admin`, which stands in for every
 // other scope.
-const ROLE_SCOPES: Readonly<Record<string, readonly string[]>> =
-  DEFAULT_ROLE_SCOPES;
+const ROLE_SCOPES: Record<string, readonly string[]> = DEFAULT_ROLE_SCOPES;
 
-export function scopesForRoles(roles: string[]): string[] {
+function scopesForRoles(roles: string[]): string[] {
   return roles.flatMap((role) => ROLE_SCOPES[role] ?? []);
 }
 

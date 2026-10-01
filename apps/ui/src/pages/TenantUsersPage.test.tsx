@@ -64,8 +64,12 @@ async function openAction(
   await user.click(await screen.findByRole('menuitem', { name: item }));
 }
 
-async function chooseRole(user: UserEvent, dialog: HTMLElement, label: RegExp) {
+async function openRolePicker(user: UserEvent, dialog: HTMLElement) {
   await user.click(within(dialog).getByRole('button', { name: /role/i }));
+}
+
+async function chooseRole(user: UserEvent, dialog: HTMLElement, label: RegExp) {
+  await openRolePicker(user, dialog);
   await user.click(await screen.findByRole('option', { name: label }));
 }
 
@@ -77,6 +81,7 @@ const customisedMember = {
 const CUSTOMISED =
   'Customised for this tenant: issue credentials, revoke credentials.';
 const FALLBACK = /showing the platform defaults/i;
+const serverError = () => new HttpResponse(null, { status: 500 });
 
 // Only this tenant is customised, so a picker asking for another tenant's
 // roles shows the default copy.
@@ -91,7 +96,7 @@ function customisedRoles() {
 async function openInvitePicker(user: UserEvent) {
   await user.click(screen.getByRole('button', { name: 'Invite user' }));
   const dialog = await screen.findByRole('dialog', { name: 'Invite user' });
-  await user.click(within(dialog).getByRole('button', { name: /role/i }));
+  await openRolePicker(user, dialog);
   return dialog;
 }
 
@@ -206,35 +211,17 @@ describe('TenantUsersPage', () => {
 
     await openAction(user, members, 'ada@example.com', /change role/i);
     const dialog = await screen.findByRole('dialog', { name: 'Change role' });
-    await user.click(within(dialog).getByRole('button', { name: /role/i }));
+    await openRolePicker(user, dialog);
 
     expect(await screen.findByText(CUSTOMISED)).toBeInTheDocument();
   });
 
-  it('marks the default copy as a fallback while the roles load', async () => {
+  it.each([
+    ['while the roles load', () => delay('infinite')],
+    ['when the roles fail to load', serverError],
+  ])('falls back to the default role copy %s', async (_, resolver) => {
     const user = userEvent.setup();
-    server.use(
-      http.get(rolesPath, async () => {
-        await delay('infinite');
-        return HttpResponse.json({ data: [] });
-      }),
-    );
-    renderPage(await signedIn());
-    await screen.findByText('Ada Admin');
-
-    const dialog = await openInvitePicker(user);
-
-    expect(within(dialog).getByText(FALLBACK)).toBeInTheDocument();
-    expect(
-      screen.getByText('Issues and verifies credentials.'),
-    ).toBeInTheDocument();
-  });
-
-  it('falls back to the default role copy when the roles fail to load', async () => {
-    const user = userEvent.setup();
-    server.use(
-      http.get(rolesPath, () => new HttpResponse(null, { status: 500 })),
-    );
+    server.use(http.get(rolesPath, resolver));
     renderPage(await signedIn());
     await screen.findByText('Ada Admin');
 
@@ -248,20 +235,13 @@ describe('TenantUsersPage', () => {
 
   it('keeps the tenant copy without a caveat when a refetch fails', async () => {
     const user = userEvent.setup();
-    let calls = 0;
-    server.use(
-      http.get(rolesPath, () => {
-        calls += 1;
-        return calls === 1
-          ? HttpResponse.json({ data: [customisedMember] })
-          : new HttpResponse(null, { status: 500 });
-      }),
-    );
+    server.use(customisedRoles());
     const { queryClient } = renderPage(await signedIn());
     const key = tenantRoleKeys.list(tenantId);
     await waitFor(() => expect(queryClient.getQueryData(key)).toBeDefined());
 
     // Test data is stale at once, so opening the dialog refetches.
+    server.use(http.get(rolesPath, serverError));
     const dialog = await openInvitePicker(user);
     await waitFor(() =>
       expect(queryClient.getQueryState(key)?.status).toBe('error'),
@@ -461,9 +441,7 @@ describe('TenantUsersPage', () => {
     renderPage(client);
     await screen.findByText('Ada Admin');
 
-    await user.click(screen.getByRole('button', { name: 'Invite user' }));
-    const dialog = await screen.findByRole('dialog', { name: 'Invite user' });
-    await user.click(within(dialog).getByRole('button', { name: /role/i }));
+    await openInvitePicker(user);
 
     expect(
       await screen.findByRole('option', { name: /admin/i }),
