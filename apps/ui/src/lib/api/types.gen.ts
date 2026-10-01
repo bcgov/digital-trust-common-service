@@ -1631,7 +1631,7 @@ export interface components {
                     actual?: string;
                     message?: string;
                 }[];
-                /** Format: uuid */
+                /** @description Correlation id, echoed from the X-Request-Id response header. Usually a UUID (server-generated), but a caller that supplies its own X-Request-Id gets it echoed back verbatim instead. */
                 request_id?: string;
             };
         };
