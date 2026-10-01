@@ -53,6 +53,9 @@ config:
   NODE_ENV: development
   APP_PUBLIC_URL: https://digital-trust-common-service-dev.apps.silver.devops.gov.bc.ca
   LOG_LEVEL: debug
+  # Shared internal sandbox, Bearer-token auth only: wildcard is low-risk and
+  # saves updating this whenever a new caller needs access.
+  CORS_ALLOWED_ORIGINS: "*"
   # Bare hostname only — DB_PORT defaults to 5432 separately, do not append ":5432" here.
   DB_HOST: digital-trust-common-service-db
   DB_NAME: dc_common_service
