@@ -12,7 +12,7 @@ and this chart adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.h
 - `config.CORS_ALLOWED_ORIGINS` (default `""`), a comma-separated list of
   exact allowed CORS origins, or `"*"` (refused when `NODE_ENV=production`).
   No safe chart-wide default: `values-dev.yaml`, `values-test.yaml`,
-  `values-prod.yaml`, `values-pr.yaml`, and `ci/ci-values.yaml` each set
+  `values-prod.yaml`, and `values-pr.yaml`, each set
   their own.
 - `config.APP_PUBLIC_URL` (default `""`), the app's own externally-reachable
   origin (no path). Replaces `OIDC_ISSUER`: `OidcConfigService` now derives
