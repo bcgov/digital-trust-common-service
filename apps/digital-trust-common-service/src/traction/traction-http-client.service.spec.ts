@@ -1,14 +1,18 @@
 import axios, { AxiosInstance } from 'axios';
 import { BrokenCircuitError } from 'cockatiel';
 
+import { assertSafeConnectorUrl } from '../common/assert-safe-connector-url';
+
 import {
   isRetryableError,
   TractionHttpClient,
 } from './traction-http-client.service';
 
 jest.mock('axios');
+jest.mock('../common/assert-safe-connector-url');
 
 const mockedAxios = axios as jest.Mocked<typeof axios>;
+const mockedAssertSafeConnectorUrl = assertSafeConnectorUrl as jest.Mock;
 
 function axiosError(status?: number): unknown {
   return { isAxiosError: true, response: status ? { status } : undefined };
@@ -63,6 +67,8 @@ describe('TractionHttpClient', () => {
         error !== null &&
         (error as { isAxiosError?: boolean }).isAxiosError === true,
     );
+    mockedAssertSafeConnectorUrl.mockReset();
+    mockedAssertSafeConnectorUrl.mockResolvedValue(undefined);
 
     client = new TractionHttpClient();
   });
@@ -78,6 +84,27 @@ describe('TractionHttpClient', () => {
 
     expect(response.data).toEqual({ ok: true });
     expect(mockRequest).toHaveBeenCalledTimes(1);
+  });
+
+  it('revalidates the endpoint on every request, not just on a cache miss', async () => {
+    mockRequest.mockResolvedValue({ status: 200, data: { ok: true } });
+
+    await client.request({ url: 'https://traction.example.com/connections' });
+    await client.request({ url: 'https://traction.example.com/connections' });
+
+    expect(mockedAssertSafeConnectorUrl).toHaveBeenCalledTimes(2);
+    expect(mockedAssertSafeConnectorUrl).toHaveBeenCalledWith(
+      'https://traction.example.com/connections',
+    );
+  });
+
+  it('rejects before dispatching when the endpoint fails validation', async () => {
+    mockedAssertSafeConnectorUrl.mockRejectedValue(new Error('unsafe'));
+
+    await expect(
+      client.request({ url: 'https://internal.example.com/connections' }),
+    ).rejects.toThrow('unsafe');
+    expect(mockRequest).not.toHaveBeenCalled();
   });
 
   it('does not retry a non-retryable 4xx response', async () => {

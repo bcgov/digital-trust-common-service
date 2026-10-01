@@ -9,6 +9,8 @@ import {
   wrap,
 } from 'cockatiel';
 
+import { assertSafeConnectorUrl } from '../common/assert-safe-connector-url';
+
 const REQUEST_TIMEOUT_MS = 30_000;
 // cockatiel's `maxAttempts` counts retries after the first attempt, not
 // total attempts — 2 here means 3 total attempts (1 initial + 2 retries).
@@ -68,9 +70,13 @@ export class TractionHttpClient {
     }),
   );
 
-  public request<T = unknown>(
+  public async request<T = unknown>(
     config: AxiosRequestConfig,
   ): Promise<AxiosResponse<T>> {
+    if (config.url) {
+      await assertSafeConnectorUrl(config.url);
+    }
+
     return this.policy.execute(() => this.http.request<T>(config));
   }
 }

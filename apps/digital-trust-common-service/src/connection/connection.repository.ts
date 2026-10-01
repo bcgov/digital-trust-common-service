@@ -1,8 +1,20 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { EntityManager, In, Not, Repository } from 'typeorm';
+import { EntityManager, In, Not, Raw, Repository } from 'typeorm';
 
-import { Connection, ConnectionState } from './connection.entity';
+import { Cursor } from '../common/cursor-pagination';
+
+import {
+  Connection,
+  ConnectionProtocol,
+  ConnectionState,
+} from './connection.entity';
+
+export type ConnectionPage = {
+  items: Connection[];
+  nextCursor: Cursor | null;
+  hasMore: boolean;
+};
 
 @Injectable()
 export class ConnectionRepository {
@@ -11,9 +23,15 @@ export class ConnectionRepository {
     private readonly repository: Repository<Connection>,
   ) {}
 
-  public async create(connection: Partial<Connection>): Promise<Connection> {
-    const entity = this.repository.create(connection);
-    return await this.repository.save(entity);
+  public async create(
+    connection: Partial<Connection>,
+    manager?: EntityManager,
+  ): Promise<Connection> {
+    const repository = manager
+      ? manager.getRepository(Connection)
+      : this.repository;
+    const entity = repository.create(connection);
+    return await repository.save(entity);
   }
 
   public async findById(id: string): Promise<Connection | null> {
@@ -48,27 +66,86 @@ export class ConnectionRepository {
     });
   }
 
-  public async findByTenantId(tenantId: string): Promise<Connection[]> {
-    return await this.repository.find({
-      where: { tenantId },
-      order: {
-        createdAt: 'ASC',
+  /**
+   * Tenant-scoped lookup for a multi-use invitation's persisted connection
+   * row, keyed on the `invitationId` recorded in `metadata` (jsonb) rather
+   * than `externalConnectionId` — a multi-use invitation has no single
+   * external connection id of its own.
+   */
+  public async findByInvitationMsgIdForTenant(
+    tenantId: string,
+    invitationMsgId: string,
+  ): Promise<Connection | null> {
+    return await this.repository.findOne({
+      where: {
+        tenantId,
+        metadata: Raw(
+          (alias) => `${alias} ->> 'invitationId' = :invitationMsgId`,
+          { invitationMsgId },
+        ),
       },
       relations: { tenant: true },
     });
   }
 
-  public async findByTenantIdAndState(
+  /**
+   * Cursor-paginated tenant listing, optionally filtered by state. Ordering,
+   * the cursor predicate, and the page size limit are all pushed into the
+   * query rather than fetched-then-sliced in memory, so a page costs O(limit)
+   * rows regardless of how many connections the tenant has.
+   */
+  public async findPageForTenant(
     tenantId: string,
-    state: ConnectionState,
-  ): Promise<Connection[]> {
-    return await this.repository.find({
-      where: { tenantId, state },
-      order: {
-        createdAt: 'ASC',
-      },
-      relations: { tenant: true },
-    });
+    options: {
+      limit: number;
+      cursor?: Cursor | null;
+      state?: ConnectionState;
+      protocol?: ConnectionProtocol;
+    },
+  ): Promise<ConnectionPage> {
+    const qb = this.repository
+      .createQueryBuilder('connection')
+      .leftJoinAndSelect('connection.tenant', 'tenant')
+      .where('connection.tenant_id = :tenantId', { tenantId })
+      .orderBy('connection.created_at', 'ASC')
+      .addOrderBy('connection.id', 'ASC');
+
+    if (options.state) {
+      qb.andWhere('connection.state = :state', { state: options.state });
+    }
+
+    if (options.protocol) {
+      qb.andWhere('connection.protocol = :protocol', {
+        protocol: options.protocol,
+      });
+    }
+
+    if (options.cursor) {
+      // Use CAST(...) — TypeORM mishandles `:param::type` binding.
+      qb.andWhere(
+        '(connection.created_at, connection.id) > (CAST(:cursorCreatedAt AS timestamptz), CAST(:cursorId AS uuid))',
+        {
+          cursorCreatedAt: options.cursor.createdAt,
+          cursorId: options.cursor.id,
+        },
+      );
+    }
+
+    qb.take(options.limit + 1);
+
+    const rows = await qb.getMany();
+    const hasMore = rows.length > options.limit;
+    const items = hasMore ? rows.slice(0, options.limit) : rows;
+    const last = items[items.length - 1];
+    const nextCursor =
+      hasMore && last
+        ? {
+            createdAt: last.createdAt.toISOString(),
+            id: last.id,
+          }
+        : null;
+
+    return { items, nextCursor, hasMore };
   }
 
   public async update(connection: Connection): Promise<Connection> {

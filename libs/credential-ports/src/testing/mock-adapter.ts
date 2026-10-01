@@ -326,6 +326,16 @@ export class MockAdapter implements AgentAdapter {
     );
   }
 
+  public async deleteById(
+    context: ConnectorContext,
+    id: string,
+  ): Promise<void> {
+    return this.execute('deleteById', [context, id], () => {
+      this.getConnectionOrThrow(id);
+      this.connections.delete(id);
+    });
+  }
+
   public async revoke(
     context: ConnectorContext,
     credentialId: string,
