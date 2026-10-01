@@ -1,5 +1,6 @@
 import { ApiError } from '@/lib/api/errors';
 import type { AuthTenant } from '@/lib/api/resources/auth';
+import { DEFAULT_ROLE_SCOPES } from '@/lib/tenant/roles';
 
 import type { AuthClient, AuthState, AuthUser } from './types';
 
@@ -29,15 +30,12 @@ export const MOCK_AUTH_TENANTS: AuthTenant[] = [
   },
 ];
 
-// The slice of the seeded role -> scope table the UI gates on. An owner's
-// token carries only `tenants:admin`, which stands in for every other scope.
-const MOCK_ROLE_SCOPES: Record<string, string[]> = {
-  owner: ['tenants:admin'],
-  admin: ['users:manage'],
-};
+// An owner's token carries only `tenants:admin`, which stands in for every
+// other scope.
+const ROLE_SCOPES: Record<string, readonly string[]> = DEFAULT_ROLE_SCOPES;
 
 function scopesForRoles(roles: string[]): string[] {
-  return roles.flatMap((role) => MOCK_ROLE_SCOPES[role] ?? []);
+  return roles.flatMap((role) => ROLE_SCOPES[role] ?? []);
 }
 
 const MOCK_USER: AuthUser = {

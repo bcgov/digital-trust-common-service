@@ -3,9 +3,11 @@ import { http, HttpResponse } from 'msw';
 import { API_BASE_PATH } from '@/lib/api/constants';
 import type { Connection } from '@/lib/api/resources/connections';
 import type { CredentialDefinition } from '@/lib/api/resources/credential-definitions';
+import type { TenantRoleMapping } from '@/lib/api/resources/tenant-roles';
 import type { TenantUser } from '@/lib/api/resources/tenant-users';
 import type { Tenant } from '@/lib/api/resources/tenants';
 import { MOCK_AUTH_TENANTS } from '@/lib/auth/mock-auth';
+import { DEFAULT_ROLE_SCOPES, TENANT_ROLES } from '@/lib/tenant/roles';
 
 // Also bundled into the mock-mode browser build (browser.ts): keep vitest and
 // node-only imports out of this file.
@@ -118,6 +120,13 @@ export const mockTenantUsers: TenantUser[] = [
   },
 ];
 
+// The platform defaults, with no tenant overrides.
+const mockTenantRoles = TENANT_ROLES.map(({ id }): TenantRoleMapping => ({
+  name: id,
+  scopes: [...DEFAULT_ROLE_SCOPES[id]],
+  source: 'default',
+}));
+
 function encodeJwtSegment(value: Record<string, unknown>): string {
   const json = JSON.stringify(value);
   const base64 =
@@ -141,7 +150,10 @@ export function mockSwitchedAccessToken(tenantId: string | undefined): string {
   return mockAccessToken({
     tenant_id: tenantId,
     roles: ['admin'],
-    scope: 'openid profile email tenant offline_access users:manage',
+    scope: [
+      'openid profile email tenant offline_access',
+      ...DEFAULT_ROLE_SCOPES.admin,
+    ].join(' '),
   });
 }
 
@@ -209,6 +221,9 @@ export const handlers = [
   http.delete(
     `${API_BASE_PATH}/tenants/:id/users/:userId`,
     () => new HttpResponse(null, { status: 204 }),
+  ),
+  http.get(`${API_BASE_PATH}/tenants/:id/roles`, () =>
+    HttpResponse.json({ data: mockTenantRoles }),
   ),
   // Same fixture the mock auth client serves, so the two stay in lockstep.
   http.get(`${API_BASE_PATH}/auth/tenants`, () =>

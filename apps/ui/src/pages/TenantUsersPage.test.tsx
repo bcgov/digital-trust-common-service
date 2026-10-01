@@ -1,9 +1,10 @@
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { http, HttpResponse } from 'msw';
+import { delay, http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 
 import { API_BASE_PATH } from '@/lib/api/constants';
+import { tenantRoleKeys } from '@/lib/api/queries/tenant-roles';
 import { createMockAuthClient, MOCK_AUTH_TENANTS } from '@/lib/auth/mock-auth';
 import type { AuthClient } from '@/lib/auth/types';
 import { mockTenantUsers } from '@/mocks/handlers';
@@ -17,6 +18,7 @@ type UserEvent = ReturnType<typeof userEvent.setup>;
 const tenantId = MOCK_AUTH_TENANTS[0]?.id ?? '';
 const usersPath = `${API_BASE_PATH}/tenants/:id/users`;
 const userPath = `${usersPath}/:userId`;
+const rolesPath = `${API_BASE_PATH}/tenants/:id/roles`;
 const admin = mockTenantUsers[1];
 const invited = mockTenantUsers[3];
 
@@ -62,9 +64,40 @@ async function openAction(
   await user.click(await screen.findByRole('menuitem', { name: item }));
 }
 
-async function chooseRole(user: UserEvent, dialog: HTMLElement, label: RegExp) {
+async function openRolePicker(user: UserEvent, dialog: HTMLElement) {
   await user.click(within(dialog).getByRole('button', { name: /role/i }));
+}
+
+async function chooseRole(user: UserEvent, dialog: HTMLElement, label: RegExp) {
+  await openRolePicker(user, dialog);
   await user.click(await screen.findByRole('option', { name: label }));
+}
+
+const customisedMember = {
+  name: 'member',
+  scopes: ['credentials:offer', 'credentials:revoke'],
+  source: 'override',
+};
+const CUSTOMISED =
+  'Customised for this tenant: issue credentials, revoke credentials.';
+const FALLBACK = /showing the platform defaults/i;
+const serverError = () => new HttpResponse(null, { status: 500 });
+
+// Only this tenant is customised, so a picker asking for another tenant's
+// roles shows the default copy.
+function customisedRoles() {
+  return http.get(rolesPath, ({ params }) =>
+    HttpResponse.json({
+      data: params.id === tenantId ? [customisedMember] : [],
+    }),
+  );
+}
+
+async function openInvitePicker(user: UserEvent) {
+  await user.click(screen.getByRole('button', { name: 'Invite user' }));
+  const dialog = await screen.findByRole('dialog', { name: 'Invite user' });
+  await openRolePicker(user, dialog);
+  return dialog;
 }
 
 function conflict(message: string) {
@@ -153,6 +186,69 @@ describe('TenantUsersPage', () => {
     expect(
       screen.getByRole('dialog', { name: 'Invite user' }),
     ).toBeInTheDocument();
+  });
+
+  it('describes a role the tenant has customised from its scopes', async () => {
+    const user = userEvent.setup();
+    server.use(customisedRoles());
+    renderPage(await signedIn());
+    await screen.findByText('Ada Admin');
+
+    await openInvitePicker(user);
+
+    expect(await screen.findByText(CUSTOMISED)).toBeInTheDocument();
+    expect(
+      screen.getByText('Manages users, connections and credentials.'),
+    ).toBeInTheDocument();
+  });
+
+  it('describes a customised role in the change-role picker too', async () => {
+    const user = userEvent.setup();
+    server.use(customisedRoles());
+    renderPage(await signedIn());
+    const { members } = await tables();
+    await within(members).findByText('Ada Admin');
+
+    await openAction(user, members, 'ada@example.com', /change role/i);
+    const dialog = await screen.findByRole('dialog', { name: 'Change role' });
+    await openRolePicker(user, dialog);
+
+    expect(await screen.findByText(CUSTOMISED)).toBeInTheDocument();
+  });
+
+  it.each([
+    ['while the roles load', () => delay('infinite')],
+    ['when the roles fail to load', serverError],
+  ])('falls back to the default role copy %s', async (_, resolver) => {
+    const user = userEvent.setup();
+    server.use(http.get(rolesPath, resolver));
+    renderPage(await signedIn());
+    await screen.findByText('Ada Admin');
+
+    const dialog = await openInvitePicker(user);
+
+    expect(await within(dialog).findByText(FALLBACK)).toBeInTheDocument();
+    expect(
+      screen.getByText('Issues and verifies credentials.'),
+    ).toBeInTheDocument();
+  });
+
+  it('keeps the tenant copy without a caveat when a refetch fails', async () => {
+    const user = userEvent.setup();
+    server.use(customisedRoles());
+    const { queryClient } = renderPage(await signedIn());
+    const key = tenantRoleKeys.list(tenantId);
+    await waitFor(() => expect(queryClient.getQueryData(key)).toBeDefined());
+
+    // Test data is stale at once, so opening the dialog refetches.
+    server.use(http.get(rolesPath, serverError));
+    const dialog = await openInvitePicker(user);
+    await waitFor(() =>
+      expect(queryClient.getQueryState(key)?.status).toBe('error'),
+    );
+
+    expect(screen.getByText(CUSTOMISED)).toBeInTheDocument();
+    expect(within(dialog).queryByText(FALLBACK)).not.toBeInTheDocument();
   });
 
   it("changes a member's role", async () => {
@@ -345,9 +441,7 @@ describe('TenantUsersPage', () => {
     renderPage(client);
     await screen.findByText('Ada Admin');
 
-    await user.click(screen.getByRole('button', { name: 'Invite user' }));
-    const dialog = await screen.findByRole('dialog', { name: 'Invite user' });
-    await user.click(within(dialog).getByRole('button', { name: /role/i }));
+    await openInvitePicker(user);
 
     expect(
       await screen.findByRole('option', { name: /admin/i }),
