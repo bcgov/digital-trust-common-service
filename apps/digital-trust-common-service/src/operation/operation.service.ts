@@ -213,6 +213,9 @@ export class OperationService {
    * the operation has moved on since), so the caller must skip any audit,
    * domain event, or webhook dispatch for this call rather than re-firing
    * them.
+   *
+   * `externalId`, when supplied, is written atomically with the state —
+   * see OperationRepository.transitionIfForward's own doc comment.
    */
   public async transitionStateIfForward(
     id: string,
@@ -220,6 +223,7 @@ export class OperationService {
     fromStates: OperationState[],
     result?: OperationResult,
     manager?: EntityManager,
+    externalId?: string | null,
   ): Promise<Operation | null> {
     const operation = await this.operations.findById(id);
 
@@ -243,6 +247,7 @@ export class OperationService {
         state,
         expiresAt,
         ...(result !== undefined ? { result } : {}),
+        ...(externalId !== undefined ? { externalId } : {}),
       },
       manager,
     );
