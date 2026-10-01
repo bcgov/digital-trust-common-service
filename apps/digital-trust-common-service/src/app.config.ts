@@ -11,6 +11,7 @@ import { Reflector } from '@nestjs/core';
 import type { Express } from 'express';
 
 import { API_PREFIX } from './common/constants/api-version.constants';
+import { buildValidationExceptionFactory } from './common/filters/validation-exception-factory';
 import { DeprecationInterceptor } from './common/interceptors/deprecation.interceptor';
 import { createRequestIdMiddleware } from './common/middleware/request-id.middleware';
 
@@ -44,6 +45,7 @@ export function configureApp(app: INestApplication): void {
       whitelist: true,
       forbidNonWhitelisted: true,
       transform: true,
+      exceptionFactory: buildValidationExceptionFactory(),
     }),
   );
 

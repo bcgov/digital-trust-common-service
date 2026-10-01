@@ -12,7 +12,7 @@ import {
 } from '@app/oidc';
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { APP_INTERCEPTOR } from '@nestjs/core';
+import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
 import { LoggerModule } from 'nestjs-pino';
 
 import { AdapterRegistryModule } from './adapter-registry/adapter-registry.module';
@@ -23,6 +23,7 @@ import { AuditAutoInterceptor } from './audit-log/audit-auto.interceptor';
 import { AuditLogModule } from './audit-log/audit-log.module';
 import { AuthApiModule } from './auth/auth-api.module';
 import { EncryptionModule } from './common/crypto/encryption.module';
+import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
 import { ConnectionModule } from './connection/connection.module';
 import { ConnectorCredentialModule } from './connector-credential/connector-credential.module';
 import { CredentialActionModule } from './credential/credential-action.module';
@@ -124,6 +125,10 @@ import { WebhookIngestionModule } from './webhook-ingestion/webhook-ingestion.mo
   controllers: [AppController],
   providers: [
     AppService,
+    {
+      provide: APP_FILTER,
+      useClass: GlobalExceptionFilter,
+    },
     {
       provide: APP_INTERCEPTOR,
       useClass: AuditAutoInterceptor,

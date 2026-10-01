@@ -1337,6 +1337,33 @@ not against the target tenant's own quota/tier.
 > **Note:** Per-endpoint `@Throttle()` overrides are not yet used anywhere (no controller currently
 > needs a tighter limit than its tier default). This section will be extended if one is added.
 
+## Error handling
+
+`GlobalExceptionFilter` (`APP_FILTER`, `apps/.../common/filters/global-exception.filter.ts`) catches
+every exception and normalizes the response into the `ErrorResponse` envelope documented in
+`docs/openapi.yaml`:
+
+```json
+{ "error": { "code": "RESOURCE_NOT_FOUND", "message": "Tenant not found", "request_id": "..." } }
+```
+
+- `code`/`message`/extra fields are taken as-is from exceptions that already build this shape (e.g.
+  `AuthenticationRequiredException`, `InsufficientScopeException`, `TenantAccessDeniedException`).
+  Everything else falls back to a generic code derived from the HTTP status (`RESOURCE_NOT_FOUND` for
+  404, `DUPLICATE_RESOURCE` for 409, `BAD_REQUEST` for 400, etc.) — no service call site needs to
+  change to get an envelope.
+- `request_id` is the same correlation id as the `X-Request-Id` response header
+  (`RequestContextService.getRequestId()`).
+- A 5xx response always carries a generic message; the original exception's message/stack never
+  reaches the client, only the logs.
+- Outside production (`NODE_ENV !== 'production'`), the stack trace is appended as a `details` entry
+  for local debugging. Omitted entirely in production.
+- Logged at `warn` for 4xx and `error` for 5xx; `request_id`/`tenant_id` are attached automatically by
+  the pino mixin, not by the filter itself.
+- DTO validation failures (`ValidationPipe`) go through `buildValidationExceptionFactory()`
+  (`apps/.../common/filters/validation-exception-factory.ts`), which builds the `VALIDATION_FAILED`
+  envelope directly with one `details` entry per failed constraint (`field`, `message`).
+
 ## Testing
 
 
