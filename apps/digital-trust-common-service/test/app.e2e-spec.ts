@@ -82,6 +82,35 @@ describe('AppController (e2e)', () => {
       .expect(404);
   });
 
+  it('/admin/operations/stats (GET) 404 body uses the standard error envelope', async () => {
+    const response = await request(app.getHttpServer())
+      .get('/admin/operations/stats')
+      .expect(404)
+      .expect('x-request-id', /.+/);
+
+    expect(response.body).toMatchObject({
+      error: {
+        code: 'RESOURCE_NOT_FOUND',
+        request_id: response.headers['x-request-id'],
+      },
+    });
+  });
+
+  it('/api/v1/tenants (GET) without a token returns the standard 401 envelope', async () => {
+    const response = await request(app.getHttpServer())
+      .get('/api/v1/tenants')
+      .expect(401)
+      .expect('x-request-id', /.+/)
+      .expect('www-authenticate', /^Bearer /);
+
+    expect(response.body).toMatchObject({
+      error: {
+        code: 'AUTHENTICATION_REQUIRED',
+        request_id: response.headers['x-request-id'],
+      },
+    });
+  });
+
   it('/health/ready (GET) reports the database up against a real connection', async () => {
     // The only tier where the readiness contract meets real collaborators. A
     // unit test can assert the mapping from a mocked indicator, but not that
