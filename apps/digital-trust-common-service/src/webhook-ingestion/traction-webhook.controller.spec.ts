@@ -140,9 +140,9 @@ describe('TractionWebhookController', () => {
    * deliberately — that is the control that keeps the webhook body out of the
    * logs, not the redaction backstop in the logger config.
    *
-   * `tenant_id`, `request_id`, and `operation_id` are deliberately absent: the
-   * pino mixin attaches them from the request context, which
-   * `ConnectorWebhookGuard` has already resolved the tenant into.
+   * `tenant_id` and `request_id` are deliberately absent: the pino mixin
+   * attaches them from the request context, which `ConnectorWebhookGuard`
+   * has already resolved the tenant into.
    */
   describe('webhook ingestion events', () => {
     it('logs an accepted delivery naming the topic, state, and external id', async () => {

@@ -891,8 +891,8 @@ describe('ProtocolStateChangeService', () => {
    * deliberately — that is the control that keeps the webhook payload out of
    * the logs, not the redaction backstop in the logger config.
    *
-   * `tenant_id`, `request_id`, and `operation_id` are deliberately absent:
-   * the pino mixin attaches them from the job context JobsService restored.
+   * `tenant_id` and `request_id` are deliberately absent: the pino mixin
+   * attaches them from the job context JobsService restored.
    */
   describe('state-transition events', () => {
     let logDebug: jest.SpiedFunction<typeof Logger.prototype.debug>;
@@ -957,8 +957,13 @@ describe('ProtocolStateChangeService', () => {
     });
 
     it('logs a redelivery that moved nothing at debug rather than as a fault', async () => {
-      operationRepository.findByExternalIdForTenant.mockResolvedValue(null);
-      credentialRepository.findByExternalId.mockResolvedValue(null);
+      // The row exists; the forward guard rejects because it is already at or
+      // past this state, which is what pg-boss at-least-once and ACA-Py's
+      // resends look like.
+      operationRepository.findByExternalIdForTenant.mockResolvedValue(
+        operation({ type: OPERATION_TYPE.CREDENTIAL_OFFER }),
+      );
+      operationService.transitionStateIfForward.mockResolvedValue(null);
 
       await service.process(baseData());
 
@@ -973,6 +978,30 @@ describe('ProtocolStateChangeService', () => {
         },
         'protocol state change had no effect',
       );
+      expect(logLine).not.toHaveBeenCalled();
+      expect(logWarn).not.toHaveBeenCalled();
+    });
+
+    it('warns about a delivery that correlated to no row at all', async () => {
+      // Nothing to apply the state change to: unlike a redelivery, this one
+      // is lost, so it must not be reported as the expected no-op.
+      operationRepository.findByExternalIdForTenant.mockResolvedValue(null);
+      credentialRepository.findByExternalId.mockResolvedValue(null);
+
+      await service.process(baseData());
+
+      expect(logWarn).toHaveBeenCalledWith(
+        {
+          duration_ms: expect.any(Number),
+          external_id: 'ext-1',
+          operation_state: OperationState.COMPLETED,
+          outcome: 'unmatched',
+          protocol_state: 'credential-issued',
+          topic: 'issue_credential',
+        },
+        'protocol state change matched nothing',
+      );
+      expect(logDebug).not.toHaveBeenCalled();
       expect(logLine).not.toHaveBeenCalled();
     });
 

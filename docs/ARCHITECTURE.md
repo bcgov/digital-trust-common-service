@@ -1613,6 +1613,7 @@ for payloads this codebase did not shape.
 | `webhook dropped` | debug or warn | `connector_id`, `connector_type`, `drop_reason`, `outcome: dropped`, `wire_topic`, plus `topic` and `external_id` once each is resolved |
 | `protocol state change applied` | log | `domain_event` (when one was emitted), `duration_ms`, `external_id`, `operation_state`, `outcome: applied`, `protocol_state`, `topic` |
 | `protocol state change had no effect` | debug | the above without `domain_event`, `outcome: no_op` |
+| `protocol state change matched nothing` | warn | the above without `domain_event`, `outcome: unmatched` |
 | `protocol state change ignored` | warn | `external_id`, `outcome: ignored`, `protocol_state`, `topic` |
 
 `wire_topic` is the raw path segment the agent posted to (`issue_credential_v2_0`)
@@ -1633,16 +1634,28 @@ and warn.
 
 On the worker side, `ignored` is a protocol state with no mapping — the delivery
 was well-formed but this service does not know that state, and it is dropped.
-`no_op` is the opposite: the state mapped, but every guarded write found the row
-already at or past the target state. That is what a duplicate or out-of-order
-pg-boss delivery looks like under at-least-once, so it is expected traffic and
-logged at debug; `applied` is the transition that actually happened.
+`no_op` is narrower: the state mapped and the row was found, but every guarded
+write saw it already at or past the target state. That is what a duplicate or
+out-of-order pg-boss delivery looks like under at-least-once, so it is expected
+traffic and logged at debug; `applied` is the transition that actually happened.
 
-Neither call site sets `tenant_id`, `request_id`, or `operation_id`. On the
-ingestion side `ConnectorWebhookGuard` has already resolved the connector's
-tenant onto the request before the handler runs, and on the worker side
-`JobsService` restores the job's context; the pino mixin attaches them from
-there.
+`unmatched` is the third case, and it is a fault rather than expected traffic:
+the state mapped, but no Operation, Credential, or Connection was found to
+apply it to, so the delivery correlated to nothing in that tenant. It carries
+the same consequence as `ignored` — the state change is lost and nothing
+retries it — so it warns for the same reason. Finding no Operation alone is not
+enough to qualify: one is best-effort (an out-of-band connections update has
+none), so `unmatched` requires that every row consulted for that topic was
+absent.
+
+Neither call site sets `tenant_id` or `request_id`. On the ingestion side
+`ConnectorWebhookGuard` has already resolved the connector's tenant onto the
+request before the handler runs, and on the worker side `JobsService` restores
+the job's context; the pino mixin attaches them from there. Neither event
+carries `operation_id`: the webhook route has no `:operationId` parameter for
+the request-context interceptor to read, and `JobsService` restores one only
+from a job payload that carries it, which `ProtocolStateChangeJobData` does
+not.
 
 ##### Token lifecycle events (implemented)
 

@@ -235,9 +235,9 @@ export class TractionWebhookController {
     });
 
     // Every field is named explicitly and the payload is never among them:
-    // `tenant_id`, `request_id`, and `operation_id` are attached by the pino
-    // mixin from the request context, which the guard has already resolved
-    // the tenant into, so nothing is threaded through for them.
+    // `tenant_id` and `request_id` are attached by the pino mixin from the
+    // request context, which the guard has already resolved the tenant into,
+    // so nothing is threaded through for them.
     this.logger.log(
       {
         connector_id: connectorId,
