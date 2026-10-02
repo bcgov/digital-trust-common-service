@@ -1589,12 +1589,73 @@ Attack prevention:
 |-------|----------------|--------------|
 | **HTTP outbound to Traction** | method, path, status, duration_ms, error_code | `adapter:traction` |
 | **Traction response parsing** | external_id (cred_ex_id, thread_id), state | `adapter:traction` |
-| **Webhook ingestion** | topic, state transition, connection_id, thread_id | `webhook` |
+| **Webhook ingestion** | wire_topic, topic, protocol_state, external_id, connector_id, outcome | `webhook` |
 | **Token lifecycle** | cache_state (hit/miss/expiring), outcome, duration_ms, status_code on failure | `adapter:traction` |
 | **Error interpretation** | map Traction error → actionable message + suggestion | `adapter:traction` |
 | **Credo Agent Service events (post-MVP)** | CredentialStateChanged, ProofStateChanged, DIDComm messages (via webhook callback from Credo Agent Service) | `adapter:credo` |
 
 Redaction rules: never log `api_key`, credential claim values, DID private keys. Log: DIDs, connection_ids, thread_ids (public identifiers), operation_ids, cred_def_ids.
+
+##### Webhook ingestion and state-transition events (implemented)
+
+An inbound protocol state change crosses two boundaries and each emits exactly
+one event, so a state that never landed can be attributed to the side that lost
+it. `TractionWebhookController` says what arrived and whether it was enqueued;
+`ProtocolStateChangeService` says what the enqueued delivery resolved to and
+whether it moved anything. The webhook payload itself is never a field on
+either — it is vendor-shaped JSON carrying credential attribute values, which
+is exactly the case the redaction rules above mean by not relying on redaction
+for payloads this codebase did not shape.
+
+| Event | Level | Fields |
+|-------|-------|--------|
+| `webhook accepted` | log | `connector_id`, `connector_type`, `external_id`, `outcome: accepted`, `protocol_state`, `topic`, `wire_topic` |
+| `webhook dropped` | debug or warn | `connector_id`, `connector_type`, `drop_reason`, `outcome: dropped`, `wire_topic`, plus `topic` and `external_id` once each is resolved |
+| `protocol state change applied` | log | `domain_event` (when one was emitted), `duration_ms`, `external_id`, `operation_state`, `outcome: applied`, `protocol_state`, `topic` |
+| `protocol state change had no effect` | debug | the above without `domain_event`, `outcome: no_op` |
+| `protocol state change matched nothing` | warn | the above without `domain_event`, `outcome: unmatched` |
+| `protocol state change ignored` | warn | `external_id`, `outcome: ignored`, `protocol_state`, `topic` |
+
+`wire_topic` is the raw path segment the agent posted to (`issue_credential_v2_0`)
+and `topic` the internal `ProtocolTopic` it mapped to (`issue_credential`). Both
+are kept because a delivery that never mapped has only the first, and the gap
+between the vendor's topic names and ours is a recurring source of silently
+dropped webhooks.
+
+A drop is a state change that is gone: the endpoint answers `200` and nothing
+retries, because ACA-Py re-delivers on any non-2xx and would otherwise storm.
+`drop_reason` is a closed set — `unknown_topic`, `no_external_id_field`,
+`missing_external_id`, `missing_state` — so drops can be counted by reason
+without the reason coming from the payload. Only `unknown_topic` is logged at
+debug: ACA-Py fans every topic it knows out to the single registered URL, so the
+topics this service does not consume arrive constantly and are not a fault. The
+rest are a real mismatch between what the agent sends and what is mapped here,
+and warn.
+
+On the worker side, `ignored` is a protocol state with no mapping — the delivery
+was well-formed but this service does not know that state, and it is dropped.
+`no_op` is narrower: the state mapped and the row was found, but every guarded
+write saw it already at or past the target state. That is what a duplicate or
+out-of-order pg-boss delivery looks like under at-least-once, so it is expected
+traffic and logged at debug; `applied` is the transition that actually happened.
+
+`unmatched` is the third case, and it is a fault rather than expected traffic:
+the state mapped, but no Operation, Credential, or Connection was found to
+apply it to, so the delivery correlated to nothing in that tenant. It carries
+the same consequence as `ignored` — the state change is lost and nothing
+retries it — so it warns for the same reason. Finding no Operation alone is not
+enough to qualify: one is best-effort (an out-of-band connections update has
+none), so `unmatched` requires that every row consulted for that topic was
+absent.
+
+Neither call site sets `tenant_id` or `request_id`. On the ingestion side
+`ConnectorWebhookGuard` has already resolved the connector's tenant onto the
+request before the handler runs, and on the worker side `JobsService` restores
+the job's context; the pino mixin attaches them from there. Neither event
+carries `operation_id`: the webhook route has no `:operationId` parameter for
+the request-context interceptor to read, and `JobsService` restores one only
+from a job payload that carries it, which `ProtocolStateChangeJobData` does
+not.
 
 ##### Token lifecycle events (implemented)
 
