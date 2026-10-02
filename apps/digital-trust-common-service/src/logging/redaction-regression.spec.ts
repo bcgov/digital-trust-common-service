@@ -28,9 +28,10 @@ jest.mock('../common/assert-safe-connector-url');
 const mockedAssertSafeConnectorUrl = assertSafeConnectorUrl as jest.Mock;
 
 /**
- * OB-08.1, OB-08.2, and OB-08.3 each have their own regression tests proving
- * the object handed to a *mocked* `Logger` carries only the named fields. What
- * none of them prove is that those fields survive the real pino pipeline —
+ * The adapter-failure, webhook-ingestion, and token-acquisition event sources
+ * each have their own regression tests proving the object handed to a *mocked*
+ * `Logger` carries only the named fields. What none of them prove is that
+ * those fields survive the real pino pipeline —
  * the serializer, the mixin, and the redact config this service actually
  * ships with. This file drives each of the three event sources through
  * `createLoggerModuleParams` for real and asserts on the bytes written to the
@@ -40,6 +41,12 @@ const mockedAssertSafeConnectorUrl = assertSafeConnectorUrl as jest.Mock;
  * real control (see docs/ARCHITECTURE.md, "Redaction rules"), and this file
  * exists so a regression in either the allowlist *or* the redact config is
  * still caught even if the other one is.
+ *
+ * Each test asserts the event was emitted and carries its safe structural
+ * fields before asserting the sensitive value is absent. A `not.toContain`
+ * check alone passes just as happily against an empty stream, so on its own it
+ * would keep reporting success if the event were suppressed, renamed, or
+ * silently routed to a different logger instance.
  *
  * `nestjs-pino` caches its one `pino-http` instance in a module-level
  * variable on first use, so a second `LoggerModule.forRoot()` call in the
@@ -82,7 +89,7 @@ async function withRealLogger(
   return stream;
 }
 
-describe('redaction regression: OB-08 event sources through the real logger', () => {
+describe('redaction regression: event sources through the real logger', () => {
   it('keeps a credential attribute value out of an adapter failure event', async () => {
     const adapter = new MockAdapter({
       connectorType: PortConnectorType.Traction,
@@ -107,6 +114,18 @@ describe('redaction regression: OB-08 event sources through the real logger', ()
       );
     });
 
+    const records = stream.records();
+
+    expect(records).toHaveLength(1);
+    expect(records[0]).toMatchObject({
+      connector: 'traction',
+      context: 'AdapterCall',
+      error_type: 'FormatValidationError',
+      level: 'error',
+      message: 'adapter call failed',
+      method: 'revoke',
+      outcome: 'FORMAT_VALIDATION_ERROR',
+    });
     expect(stream.chunks.join('')).not.toContain('Ada Lovelace');
     expect(stream.chunks.join('')).not.toContain('birthdate');
   });
@@ -134,6 +153,21 @@ describe('redaction regression: OB-08 event sources through the real logger', ()
       );
     });
 
+    const records = stream.records();
+
+    expect(records).toHaveLength(1);
+    expect(records[0]).toMatchObject({
+      connector_id: 'connector-1',
+      connector_type: 'traction',
+      context: 'TractionWebhookController',
+      external_id: 'cred-exch-1',
+      level: 'log',
+      message: 'webhook accepted',
+      outcome: 'accepted',
+      protocol_state: 'credential_issued',
+      topic: 'issue_credential',
+      wire_topic: 'issue_credential_v2_0',
+    });
     expect(stream.chunks.join('')).not.toContain('Alice');
     expect(stream.chunks.join('')).not.toContain('given_name');
   });
@@ -177,6 +211,19 @@ describe('redaction regression: OB-08 event sources through the real logger', ()
       ).rejects.toBeInstanceOf(AxiosError);
     });
 
+    const records = stream.records();
+
+    expect(records).toHaveLength(1);
+    expect(records[0]).toMatchObject({
+      cache_state: 'miss',
+      connector_id: 'connector-1',
+      context: 'TractionTokenManager',
+      error_type: 'AxiosError',
+      level: 'error',
+      message: 'token acquisition failed',
+      outcome: 'failure',
+      status_code: 401,
+    });
     expect(stream.chunks.join('')).not.toContain('key-1');
     expect(stream.chunks.join('')).not.toContain('api_key');
   });
