@@ -23,6 +23,6 @@ import { CredentialDefinitionService } from './credential-definition.service';
   ],
   controllers: [CredentialDefinitionController],
   providers: [CredentialDefinitionService, CredentialDefinitionRepository],
-  exports: [CredentialDefinitionService],
+  exports: [CredentialDefinitionService, CredentialDefinitionRepository],
 })
 export class CredentialDefinitionModule {}

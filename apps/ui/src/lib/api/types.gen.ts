@@ -3894,7 +3894,7 @@ export interface operations {
                      * @example {
                      *       "id": "op-uuid",
                      *       "type": "credential.offer",
-                     *       "state": "pending",
+                     *       "state": "processing",
                      *       "created_at": "2025-01-15T10:30:00.000Z",
                      *       "updated_at": "2025-01-15T10:30:00.000Z",
                      *       "result": null

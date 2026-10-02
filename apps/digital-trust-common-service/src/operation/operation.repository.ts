@@ -214,6 +214,7 @@ export class OperationRepository {
       state: OperationState;
       result?: OperationResult;
       expiresAt: Date;
+      externalId?: string | null;
     },
     manager?: EntityManager,
   ): Promise<boolean> {
