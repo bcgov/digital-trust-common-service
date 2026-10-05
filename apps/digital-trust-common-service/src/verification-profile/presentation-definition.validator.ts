@@ -42,6 +42,51 @@ export function hasValidDescriptorId(
 }
 
 /**
+ * Resolves a single DIF Presentation Exchange JSONPath (e.g.
+ * `$.credentialSubject.given_names` or
+ * `$['credentialSubject']['given_names']`) to the attribute name it
+ * references, i.e. the path's last segment with any surrounding quotes
+ * stripped. Returns `undefined` for a path with no segments.
+ */
+function attributeNameFromPath(path: string): string | undefined {
+  const segments = path.split(/[.[\]]/).filter((segment) => segment.length > 0);
+  const lastSegment = segments[segments.length - 1];
+
+  return lastSegment ? stripJsonPathQuotes(lastSegment) : undefined;
+}
+
+/**
+ * Resolves the attribute names referenced by a single
+ * `constraints.fields[]` entry's `path` JSONPath array. Non-string paths
+ * and a missing/malformed `path` array yield no names.
+ */
+function attributeNamesFromField(field: unknown): string[] {
+  const paths = (field as { path?: unknown } | undefined)?.path;
+
+  if (!Array.isArray(paths)) {
+    return [];
+  }
+
+  return paths
+    .filter((path): path is string => typeof path === 'string')
+    .map(attributeNameFromPath)
+    .filter((name): name is string => name !== undefined);
+}
+
+/**
+ * Resolves the attribute names referenced by a single input descriptor's
+ * `constraints.fields[].path` entries. A descriptor with no fields
+ * references no attributes.
+ */
+function attributeNamesFromDescriptor(descriptor: {
+  constraints?: { fields?: unknown };
+}): string[] {
+  const fields = descriptor.constraints?.fields;
+
+  return Array.isArray(fields) ? fields.flatMap(attributeNamesFromField) : [];
+}
+
+/**
  * Extracts attribute names referenced by a DIF Presentation Exchange
  * `presentation_definition`, from each input descriptor's
  * `constraints.fields[].path` JSONPath entries (e.g.
@@ -70,33 +115,8 @@ export function extractRequestedAttributes(
       );
     }
 
-    const fields = descriptor.constraints?.fields;
-
-    if (!Array.isArray(fields)) {
-      continue;
-    }
-
-    for (const field of fields) {
-      const paths = (field as { path?: unknown } | undefined)?.path;
-
-      if (!Array.isArray(paths)) {
-        continue;
-      }
-
-      for (const path of paths) {
-        if (typeof path !== 'string') {
-          continue;
-        }
-
-        const segments = path
-          .split(/[.[\]]/)
-          .filter((segment) => segment.length > 0);
-        const lastSegment = segments[segments.length - 1];
-
-        if (lastSegment) {
-          names.add(stripJsonPathQuotes(lastSegment));
-        }
-      }
+    for (const name of attributeNamesFromDescriptor(descriptor)) {
+      names.add(name);
     }
   }
 
