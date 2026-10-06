@@ -46,6 +46,7 @@ describe('TenantUserService', () => {
     displayName: 'Test User',
     role: TenantUserRole.MEMBER,
     status: TenantUserStatus.ACTIVE,
+    isPlatformOperator: false,
     tenant: undefined as any,
     createdAt: new Date(),
     updatedAt: new Date(),
@@ -821,6 +822,60 @@ describe('TenantUserService', () => {
 
       expect(mockCountByTenantAndRole).not.toHaveBeenCalled();
       expect(result).toEqual(updatedTenantUser);
+    });
+  });
+
+  describe('setPlatformOperator', () => {
+    it('flags a tenant user as a platform operator and audits the change', async () => {
+      const id = mockTenantUser.id;
+      const updatedTenantUser = { ...mockTenantUser, isPlatformOperator: true };
+
+      mockFindById.mockResolvedValue({ ...mockTenantUser });
+      mockUpdate.mockResolvedValue(updatedTenantUser);
+
+      const result = await service.setPlatformOperator(id, true);
+
+      expect(mockFindById).toHaveBeenCalledWith(id);
+      expect(mockUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({ id, isPlatformOperator: true }),
+      );
+      expect(mockEmit).toHaveBeenCalledWith({
+        tenantId: updatedTenantUser.tenantId,
+        action: AuditAction.UPDATE,
+        resourceType: 'tenant_user',
+        resourceId: updatedTenantUser.id,
+      });
+      expect(result).toEqual(updatedTenantUser);
+    });
+
+    it('unflags a tenant user as a platform operator', async () => {
+      const id = mockTenantUser.id;
+      const flagged = { ...mockTenantUser, isPlatformOperator: true };
+      const updatedTenantUser = {
+        ...mockTenantUser,
+        isPlatformOperator: false,
+      };
+
+      mockFindById.mockResolvedValue(flagged);
+      mockUpdate.mockResolvedValue(updatedTenantUser);
+
+      const result = await service.setPlatformOperator(id, false);
+
+      expect(mockUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({ id, isPlatformOperator: false }),
+      );
+      expect(result).toEqual(updatedTenantUser);
+    });
+
+    it('throws NotFoundException when the tenant user does not exist', async () => {
+      const id = '999e4567-e89b-12d3-a456-426614174000';
+
+      mockFindById.mockResolvedValue(null);
+
+      await expect(service.setPlatformOperator(id, true)).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(mockUpdate).not.toHaveBeenCalled();
     });
   });
 

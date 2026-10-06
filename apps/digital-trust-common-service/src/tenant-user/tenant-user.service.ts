@@ -312,6 +312,33 @@ export class TenantUserService {
     return updated;
   }
 
+  /**
+   * Flags or unflags a human tenant user as a platform operator. Not
+   * tenant-scoped: callers are platform admins operating across every
+   * tenant, same as {@link findById}. Once flagged, the user's OIDC tokens
+   * additionally carry `PLATFORM_ADMIN_ROLE`, which bypasses every
+   * tenant-scoped role/scope check downstream.
+   */
+  public async setPlatformOperator(
+    id: string,
+    isPlatformOperator: boolean,
+  ): Promise<TenantUser> {
+    const tenantUser = await this.findById(id);
+
+    tenantUser.isPlatformOperator = isPlatformOperator;
+
+    const updated = await this.tenantUserRepository.update(tenantUser);
+
+    await this.domainAudit.emit({
+      tenantId: updated.tenantId,
+      action: AuditAction.UPDATE,
+      resourceType: 'tenant_user',
+      resourceId: updated.id,
+    });
+
+    return updated;
+  }
+
   public async delete(
     tenantId: string,
     id: string,

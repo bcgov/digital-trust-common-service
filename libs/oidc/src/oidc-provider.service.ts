@@ -1,3 +1,4 @@
+import { PLATFORM_ADMIN_ROLE } from '@app/auth/constants/scopes.constants';
 import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { verify } from 'argon2';
@@ -273,7 +274,9 @@ export function buildOidcConfiguration(
         return {
           tenant_id: user.tenantId,
           tenant_role: user.role,
-          roles: [user.role],
+          roles: user.isPlatformOperator
+            ? [user.role, PLATFORM_ADMIN_ROLE]
+            : [user.role],
         };
       }
 
