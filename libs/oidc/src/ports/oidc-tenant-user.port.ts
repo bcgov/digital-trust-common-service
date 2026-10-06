@@ -13,6 +13,11 @@ export interface OidcTenantUserRecord {
   displayName?: string;
   role: OidcTenantUserRole;
   status: OidcTenantUserStatus;
+  /**
+   * Whether this human user also carries the platform-admin role on their
+   * OIDC tokens, bypassing all tenant-scoped role/scope checks.
+   */
+  isPlatformOperator: boolean;
 }
 
 export interface OidcCreateTenantUserInput {
