@@ -1372,7 +1372,7 @@ OpenShift route (see `APP_PUBLIC_URL`) and does not need this — it exists for 
 callers.
 
 - `allowedHeaders` is fixed: `Authorization`, `Content-Type`, `X-Request-Id`, `Idempotency-Key`.
-- `exposedHeaders` is fixed: `X-Request-Id`, `X-RateLimit-Remaining`, `X-RateLimit-Reset` — the
+- `exposedHeaders` is fixed: `Retry-After`, `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`, `X-Request-Id` — the
   latter two are set by `RateLimitGuard` (global, IP-keyed flood protection; see
   [Per-tenant rate limiting](#per-tenant-rate-limiting)) on every response via the base
   `@nestjs/throttler` `ThrottlerGuard`. `TenantTierRateLimitGuard` does not set them.
