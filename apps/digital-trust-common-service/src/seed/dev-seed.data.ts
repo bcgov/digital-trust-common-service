@@ -1,3 +1,5 @@
+import { TENANT_SUPERUSER_SCOPE } from '@app/auth';
+
 import {
   ConnectionProtocol,
   ConnectionState,
@@ -24,6 +26,7 @@ import {
 } from '../verification-profile/verification-profile.entity';
 
 export const ADMIN_SCOPES = [
+  TENANT_SUPERUSER_SCOPE,
   'credentials:offer',
   'credentials:verify',
   'connections:manage',
@@ -286,8 +289,6 @@ export const SEED_VERIFICATION_PROFILE = {
   version: '1.0',
   description: 'Published age verification profile with birthdate predicate.',
   status: VerificationProfileStatus.PUBLISHED,
-  issuanceProfileName: 'person-credential',
-  issuanceProfileVersion: '1.0',
   requestedAttributes: ['given_names', 'family_name'],
   predicates: [
     {

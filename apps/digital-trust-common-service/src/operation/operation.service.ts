@@ -61,6 +61,7 @@ export class OperationService {
 
   public async createOperation(
     input: CreateOperationInput,
+    manager?: EntityManager,
   ): Promise<Operation> {
     const now = new Date();
     const tenant = await this.tenants.findById(input.tenantId);
@@ -86,7 +87,7 @@ export class OperationService {
       ),
     });
 
-    return this.operations.save(operation);
+    return this.operations.save(operation, manager);
   }
 
   /**
@@ -213,6 +214,14 @@ export class OperationService {
    * the operation has moved on since), so the caller must skip any audit,
    * domain event, or webhook dispatch for this call rather than re-firing
    * them.
+   *
+   * `externalId`, when provided, is written atomically with the state in the
+   * same guarded UPDATE — the credential-offer flow uses this to durably
+   * record the back-end agent's exchange id the first time it becomes known,
+   * so the protocol.state-change worker can later correlate a webhook back
+   * to this Operation (see OperationRepository.findByExternalIdForTenant).
+   * Appended after `manager` rather than inserted earlier, so existing
+   * positional call sites that already pass `manager` are unaffected.
    */
   public async transitionStateIfForward(
     id: string,
@@ -220,6 +229,7 @@ export class OperationService {
     fromStates: OperationState[],
     result?: OperationResult,
     manager?: EntityManager,
+    externalId?: string | null,
   ): Promise<Operation | null> {
     const operation = await this.operations.findById(id);
 
@@ -243,6 +253,7 @@ export class OperationService {
         state,
         expiresAt,
         ...(result !== undefined ? { result } : {}),
+        ...(externalId !== undefined ? { externalId } : {}),
       },
       manager,
     );

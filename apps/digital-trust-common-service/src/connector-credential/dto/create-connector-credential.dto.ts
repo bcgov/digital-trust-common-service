@@ -32,6 +32,17 @@ export class ConnectorCredentialsDto {
   @IsOptional()
   @IsString()
   public tractionTenantId?: string;
+
+  @Expose({ name: 'webhook_secret' })
+  @ApiProperty({
+    description:
+      'Shared secret Traction is configured to send back on inbound webhook callbacks for this connector',
+    example: 'whsec_abc123',
+    required: false,
+  })
+  @IsOptional()
+  @IsString()
+  public webhookSecret?: string;
 }
 
 export class CreateConnectorCredentialDto {

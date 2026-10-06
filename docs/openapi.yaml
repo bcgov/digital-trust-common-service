@@ -259,11 +259,11 @@ tags:
       **Auth**: None required.
   - name: Webhook Ingestion
     description: |
-      Inbound webhook receivers for async state updates from backend agents
-      (Traction/ACA-Py, Credo Agent Service).
-      Authenticated via HMAC shared secret — not a Bearer JWT.
+      Inbound webhook receivers for async state updates from backend agents.
+      Currently Traction/ACA-Py only; Credo will get its own path when that
+      connector type is implemented.
       **Audience**: Internal — called by backend agents only, not by API consumers.
-      **Auth**: `X-Traction-Signature` HMAC header.
+      **Auth**: `X-Api-Key` shared connector secret.
 
 security:
   - BearerAuth: []
@@ -1354,11 +1354,6 @@ paths:
           in: query
           schema:
             $ref: "#/components/schemas/ProfileStatus"
-        - name: issuance_profile_id
-          in: query
-          schema:
-            type: string
-            format: uuid
         - name: public
           in: query
           schema:
@@ -1526,7 +1521,7 @@ paths:
               example:
                 id: "op-uuid"
                 type: credential.offer
-                state: pending
+                state: processing
                 created_at: "2025-01-15T10:30:00.000Z"
                 updated_at: "2025-01-15T10:30:00.000Z"
                 result: null
@@ -1773,8 +1768,10 @@ paths:
         Request a verifiable presentation. Supports profile-based or raw presentation definition.
 
         **Delivery mode** determined by `connection_id`:
-        - **Present** → DIDComm (send proof request to connected agent). Returns 202.
-        - **Absent** → OID4VP (generate authorization_request_uri). Returns 200.
+        - **Present** → DIDComm (send proof request to connected agent). Returns 202 while
+          the exchange is in flight, or 200 if it resolves synchronously (e.g. submission
+          failure).
+        - **Absent** → OID4VP (connectionless). Not yet implemented for this MVP — returns 400.
       tags: [Presentations]
       parameters:
         - $ref: "#/components/parameters/IdempotencyKey"
@@ -1804,7 +1801,7 @@ paths:
                   connection_id: "c3d4e5f6-7890-1234-abcd-ef0123456789"
       responses:
         "200":
-          description: Authorization request URI generated (OID4VP)
+          description: Presentation request resolved synchronously (e.g. failed submission)
           content:
             application/json:
               schema:
@@ -2462,31 +2459,56 @@ paths:
                 example: 'attachment; filename="audit-logs-2025-01-15.csv"'
 
   # ─── Webhook Ingestion ───────────────────────────────────────────────
-  /api/v1/webhooks/traction:
+  /api/v1/connectors/{connectorId}/webhooks/traction/topic/{topic}:
     post:
-      operationId: ingestTractionWebhook
-      summary: Receive Traction webhook callbacks
+      operationId: ingestConnectorWebhook
+      summary: Receive an inbound Traction/ACA-Py protocol state-change webhook
       description: |
-        Endpoint for Traction/ACA-Py to deliver state change notifications.
-        Authenticated via shared secret or IP whitelist.
+        Traction/ACA-Py-specific webhook callback for protocol state-change
+        notifications. Credo will get its own controller and path when that
+        connector type is implemented. Authenticated by the shared secret
+        configured on the `connectorId` connector, sent as `X-Api-Key` — not a
+        tenant JWT. Malformed or unrecognized payloads are acknowledged with
+        200 and dropped rather than rejected, since ACA-Py retries on non-2xx.
       tags: [Webhook Ingestion]
-      security: []
+      parameters:
+        - name: X-Api-Key
+          in: header
+          required: true
+          schema:
+            type: string
+          description: Shared webhook secret configured on the connector
+        - name: connectorId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ConnectorCredential id
+        - name: topic
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [issue_credential_v2_0, present_proof_v2_0, connections, issuer_cred_rev]
+          description: Protocol topic
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              description: Traction webhook payload (topic-dependent structure)
-              properties:
-                topic:
-                  type: string
-                  enum: [issue_credential, present_proof, connections, revocation_registry]
-                payload:
-                  type: object
+              description: Traction/ACA-Py webhook payload (topic-dependent structure)
+              additionalProperties: true
       responses:
         "200":
-          description: Webhook received and enqueued
+          description: Webhook accepted for async processing
+        "401":
+          description: Webhook authentication failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   # ─── Admin ──────────────────────────────────────────────────────────
   /api/v1/admin/operations/stats:
@@ -3669,9 +3691,6 @@ components:
         tenant_id:
           type: string
           format: uuid
-        issuance_profile_id:
-          type: string
-          format: uuid
         name:
           type: string
         version:
@@ -3718,7 +3737,7 @@ components:
 
     CreateVerificationProfileRequest:
       type: object
-      required: [name, version, issuance_profile_id, presentation_definition]
+      required: [name, version, presentation_definition]
       properties:
         name:
           type: string
@@ -3731,9 +3750,6 @@ components:
         description:
           type: string
           maxLength: 500
-        issuance_profile_id:
-          type: string
-          format: uuid
         presentation_definition:
           type: object
           description: DIF Presentation Exchange object
@@ -3892,18 +3908,27 @@ components:
         Creates a new connection. Two modes:
         - **Create invitation**: omit `invitation_url` — generates a new invitation.
         - **Accept invitation**: provide `invitation_url` — accepts an existing invitation from another party.
+      required: [protocol]
       properties:
         invitation_url:
           type: string
           format: uri
           description: URL of an existing invitation to accept. If provided, creates a connection by accepting this invitation rather than generating a new one.
-        label:
-          type: string
-          description: Human-readable label for the invitation (used when creating)
         protocol:
           $ref: "#/components/schemas/ConnectionProtocol"
         metadata:
           type: object
+          description: |
+            Free-form metadata to associate with the connection. When creating a new
+            invitation (no `invitation_url`), these well-known keys are also read to
+            configure it: `alias` (string, internal label), `label` (string, shown to
+            the other party), `goalCode` (string), `multiUse` (boolean, defaults to
+            false).
+          example:
+            alias: acme-partner
+            label: Acme Corp
+            goalCode: aries.rel.build
+            multiUse: false
 
     # ─── Operation ───────────────────────────────────────────────────
     Operation:

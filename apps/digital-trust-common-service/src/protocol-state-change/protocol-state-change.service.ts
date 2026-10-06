@@ -5,6 +5,7 @@ import { DataSource, EntityManager } from 'typeorm';
 
 import { AuditAction } from '../audit-log/audit-log.entity';
 import { DomainAuditService } from '../audit-log/domain-audit.service';
+import { ConnectionState } from '../connection/connection.entity';
 import { ConnectionService } from '../connection/connection.service';
 import { CredentialState } from '../credential/credential.entity';
 import { CredentialRepository } from '../credential/credential.repository';
@@ -355,14 +356,60 @@ export class ProtocolStateChangeService {
       return false;
     }
 
-    const connection =
+    let connection =
       await this.connectionService.findByExternalConnectionIdForTenant(
         data.tenantId,
         data.externalId,
       );
+    let createdFromTemplate = false;
+
+    if (!connection) {
+      // A single-use invitation's own row is the connection itself, so a
+      // match found only by invitation_msg_id must update it directly, same
+      // as before. Only a multi-use invitation's shared template row (which
+      // has no externalConnectionId of its own) must instead spin off a
+      // fresh per-party connection rather than being mutated in place.
+      const invitationTemplate =
+        await this.connectionService.findByInvitationMsgIdForTenant(
+          data.tenantId,
+          data.payload.invitation_msg_id as string,
+        );
+
+      // A multi-use invitation's own connection_id also mirrors back an
+      // `invitation`-state webhook of its own (the OOB record reflecting the
+      // invitation itself, not a party using it) — that carries the same
+      // invitation_msg_id and would otherwise be mistaken for a first-use
+      // signal and spun off into a bogus connection. A real connecting
+      // party is never reported at INVITED; it first appears at REQUESTED
+      // or later, so only those states may create the per-party row.
+      if (
+        invitationTemplate?.metadata?.multiUse &&
+        outcome.connectionState !== ConnectionState.INVITED
+      ) {
+        connection = await this.connectionService.createFromInvitationTemplate(
+          invitationTemplate,
+          data.externalId,
+          outcome.connectionState,
+          data.payload.their_did as string | undefined,
+          manager,
+        );
+        createdFromTemplate = true;
+      } else if (!invitationTemplate?.metadata?.multiUse) {
+        connection = invitationTemplate;
+      }
+    }
 
     if (!connection) {
       return false;
+    }
+
+    // A row just created above already landed in outcome.connectionState —
+    // applying the forward-guarded transition again would be a no-op at
+    // best (same state isn't a forward transition) and a false negative at
+    // worst (outcome.connectionState may be INVITED itself, whose
+    // `fromStates` guard is empty and could never match).
+    if (createdFromTemplate) {
+      return true;
     }
 
     const updated = await this.connectionService.applyProtocolStateIfForward(

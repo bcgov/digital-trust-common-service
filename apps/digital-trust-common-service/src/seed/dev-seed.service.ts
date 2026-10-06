@@ -163,7 +163,6 @@ export class DevSeedService {
 
       summary.verificationProfiles += await this.seedVerificationProfile(
         tenant.id,
-        issuanceByKey,
       );
       summary.connections += await this.seedConnections(
         tenant.id,
@@ -467,21 +466,7 @@ export class DevSeedService {
     return byKey;
   }
 
-  private async seedVerificationProfile(
-    tenantId: string,
-    issuanceByKey: Map<string, IssuanceProfile>,
-  ): Promise<number> {
-    const issuanceProfile = issuanceByKey.get(
-      `${SEED_VERIFICATION_PROFILE.issuanceProfileName}/${SEED_VERIFICATION_PROFILE.issuanceProfileVersion}`,
-    );
-
-    if (!issuanceProfile) {
-      this.logger.warn(
-        'Skipping verification profile: issuance profile missing.',
-      );
-      return 0;
-    }
-
+  private async seedVerificationProfile(tenantId: string): Promise<number> {
     const profile = await this.verificationProfiles.findByNameAndVersion(
       tenantId,
       SEED_VERIFICATION_PROFILE.name,
@@ -490,7 +475,6 @@ export class DevSeedService {
 
     const payload: Partial<VerificationProfile> = {
       tenantId,
-      issuanceProfileId: issuanceProfile.id,
       name: SEED_VERIFICATION_PROFILE.name,
       version: SEED_VERIFICATION_PROFILE.version,
       description: SEED_VERIFICATION_PROFILE.description,

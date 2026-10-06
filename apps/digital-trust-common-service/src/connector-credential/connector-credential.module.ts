@@ -1,4 +1,5 @@
 import { AuthModule } from '@app/auth';
+import { OidcConfigModule } from '@app/oidc/config';
 import { forwardRef, Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
@@ -7,6 +8,7 @@ import { CredentialModule } from '../credential/credential.module';
 import { RateLimitModule } from '../rate-limit/rate-limit.module';
 import { TenantStatusModule } from '../tenant/tenant-status.module';
 import { TenantModule } from '../tenant/tenant.module';
+import { TractionClientModule } from '../traction/traction-client.module';
 
 import { ConnectorCredentialController } from './connector-credential.controller';
 import { ConnectorCredential } from './connector-credential.entity';
@@ -23,6 +25,8 @@ import { ConnectorHealthCheckService } from './connector-health-check.service';
     TenantStatusModule,
     CredentialModule,
     RateLimitModule,
+    TractionClientModule,
+    OidcConfigModule,
   ],
   controllers: [ConnectorCredentialController],
   providers: [

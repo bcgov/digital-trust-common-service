@@ -34,7 +34,13 @@ const PORT_METHODS_BY_PORT = {
   issuer: ['offerCredential', 'getExchange'],
   verifier: ['requestPresentation', 'getPresentation'],
   holder: ['acceptOffer', 'rejectOffer'],
-  connection: ['createInvitation', 'acceptInvitation', 'list', 'getById'],
+  connection: [
+    'createInvitation',
+    'acceptInvitation',
+    'list',
+    'getById',
+    'deleteById',
+  ],
   revocation: ['revoke', 'batchRevoke'],
 } as const;
 

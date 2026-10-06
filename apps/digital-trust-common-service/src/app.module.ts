@@ -35,6 +35,7 @@ import { createLoggerModuleParams } from './logging/logger.config';
 import { OAuthClientLookupAdapter } from './oauth-client/oauth-client-lookup.adapter';
 import { OAuthClientModule } from './oauth-client/oauth-client.module';
 import { OperationModule } from './operation/operation.module';
+import { PresentationRequestModule } from './presentation-request/presentation-request.module';
 import { ProtocolStateChangeModule } from './protocol-state-change/protocol-state-change.module';
 import { RateLimitModule } from './rate-limit/rate-limit.module';
 import { RoleScopeModule } from './role-scope/role-scope.module';
@@ -50,6 +51,7 @@ import { OidcUpstreamFederationAdapter } from './upstream-oidc/oidc-upstream-fed
 import { UpstreamOidcModule } from './upstream-oidc/oidc-upstream.module';
 import { VerificationProfileModule } from './verification-profile/verification-profile.module';
 import { WebhookDispatchModule } from './webhook-dispatch/webhook-dispatch.module';
+import { WebhookIngestionModule } from './webhook-ingestion/webhook-ingestion.module';
 
 @Module({
   imports: [
@@ -101,6 +103,7 @@ import { WebhookDispatchModule } from './webhook-dispatch/webhook-dispatch.modul
     }),
     AuthModule,
     OperationModule,
+    PresentationRequestModule,
     ProtocolStateChangeModule,
     RateLimitModule,
     RoleScopeModule,
@@ -112,6 +115,7 @@ import { WebhookDispatchModule } from './webhook-dispatch/webhook-dispatch.modul
     UpstreamOidcModule,
     VerificationProfileModule,
     WebhookDispatchModule,
+    WebhookIngestionModule,
     ConnectionModule,
     ConnectorCredentialModule,
     CredentialModule,

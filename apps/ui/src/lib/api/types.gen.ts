@@ -903,8 +903,10 @@ export interface paths {
          * @description Request a verifiable presentation. Supports profile-based or raw presentation definition.
          *
          *     **Delivery mode** determined by `connection_id`:
-         *     - **Present** → DIDComm (send proof request to connected agent). Returns 202.
-         *     - **Absent** → OID4VP (generate authorization_request_uri). Returns 200.
+         *     - **Present** → DIDComm (send proof request to connected agent). Returns 202 while
+         *       the exchange is in flight, or 200 if it resolves synchronously (e.g. submission
+         *       failure).
+         *     - **Absent** → OID4VP (connectionless). Not yet implemented for this MVP — returns 400.
          */
         post: operations["requestPresentation"];
         delete?: never;
@@ -1305,7 +1307,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/webhooks/traction": {
+    "/api/v1/connectors/{connectorId}/webhooks/traction/topic/{topic}": {
         parameters: {
             query?: never;
             header?: never;
@@ -1315,11 +1317,15 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Receive Traction webhook callbacks
-         * @description Endpoint for Traction/ACA-Py to deliver state change notifications.
-         *     Authenticated via shared secret or IP whitelist.
+         * Receive an inbound Traction/ACA-Py protocol state-change webhook
+         * @description Traction/ACA-Py-specific webhook callback for protocol state-change
+         *     notifications. Credo will get its own controller and path when that
+         *     connector type is implemented. Authenticated by the shared secret
+         *     configured on the `connectorId` connector, sent as `X-Api-Key` — not a
+         *     tenant JWT. Malformed or unrecognized payloads are acknowledged with
+         *     200 and dropped rather than rejected, since ACA-Py retries on non-2xx.
          */
-        post: operations["ingestTractionWebhook"];
+        post: operations["ingestConnectorWebhook"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1966,8 +1972,6 @@ export interface components {
             id?: string;
             /** Format: uuid */
             tenant_id?: string;
-            /** Format: uuid */
-            issuance_profile_id?: string;
             name?: string;
             version?: string;
             description?: string | null;
@@ -1994,8 +1998,6 @@ export interface components {
             name: string;
             version: string;
             description?: string;
-            /** Format: uuid */
-            issuance_profile_id: string;
             /** @description DIF Presentation Exchange object */
             presentation_definition: Record<string, never>;
             predicates?: {
@@ -2101,9 +2103,20 @@ export interface components {
              * @description URL of an existing invitation to accept. If provided, creates a connection by accepting this invitation rather than generating a new one.
              */
             invitation_url?: string;
-            /** @description Human-readable label for the invitation (used when creating) */
-            label?: string;
-            protocol?: components["schemas"]["ConnectionProtocol"];
+            protocol: components["schemas"]["ConnectionProtocol"];
+            /**
+             * @description Free-form metadata to associate with the connection. When creating a new
+             *     invitation (no `invitation_url`), these well-known keys are also read to
+             *     configure it: `alias` (string, internal label), `label` (string, shown to
+             *     the other party), `goalCode` (string), `multiUse` (boolean, defaults to
+             *     false).
+             * @example {
+             *       "alias": "acme-partner",
+             *       "label": "Acme Corp",
+             *       "goalCode": "aries.rel.build",
+             *       "multiUse": false
+             *     }
+             */
             metadata?: Record<string, never>;
         };
         /**
@@ -3668,7 +3681,6 @@ export interface operations {
                 /** @description Number of items per page */
                 limit?: components["parameters"]["Limit"];
                 status?: components["schemas"]["ProfileStatus"];
-                issuance_profile_id?: string;
                 public?: boolean;
             };
             header?: never;
@@ -3884,7 +3896,7 @@ export interface operations {
                      * @example {
                      *       "id": "op-uuid",
                      *       "type": "credential.offer",
-                     *       "state": "pending",
+                     *       "state": "processing",
                      *       "created_at": "2025-01-15T10:30:00.000Z",
                      *       "updated_at": "2025-01-15T10:30:00.000Z",
                      *       "result": null
@@ -4145,7 +4157,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Authorization request URI generated (OID4VP) */
+            /** @description Presentation request resolved synchronously (e.g. failed submission) */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -4776,29 +4788,44 @@ export interface operations {
             };
         };
     };
-    ingestTractionWebhook: {
+    ingestConnectorWebhook: {
         parameters: {
             query?: never;
-            header?: never;
-            path?: never;
+            header: {
+                /** @description Shared webhook secret configured on the connector */
+                "X-Api-Key": string;
+            };
+            path: {
+                /** @description ConnectorCredential id */
+                connectorId: string;
+                /** @description Protocol topic */
+                topic: "issue_credential_v2_0" | "present_proof_v2_0" | "connections" | "issuer_cred_rev";
+            };
             cookie?: never;
         };
         requestBody: {
             content: {
                 "application/json": {
-                    /** @enum {string} */
-                    topic?: "issue_credential" | "present_proof" | "connections" | "revocation_registry";
-                    payload?: Record<string, never>;
+                    [key: string]: unknown;
                 };
             };
         };
         responses: {
-            /** @description Webhook received and enqueued */
+            /** @description Webhook accepted for async processing */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Webhook authentication failed */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
         };
     };

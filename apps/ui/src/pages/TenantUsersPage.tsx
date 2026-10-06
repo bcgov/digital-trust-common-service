@@ -32,6 +32,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { ApiError } from '@/lib/api/errors';
+import { useTenantRoles } from '@/lib/api/queries/tenant-roles';
 import { useTenantUsers } from '@/lib/api/queries/tenant-users';
 import type { TenantUser } from '@/lib/api/resources/tenant-users';
 import { useAuth } from '@/lib/auth/context';
@@ -123,6 +124,8 @@ export function TenantUsersPage() {
     { limit: PAGE_SIZE },
     { enabled: canManage },
   );
+  // Warms the role picker, so a dialog rarely opens before the mapping loads.
+  useTenantRoles(tenantId, { enabled: canManage });
   const [dialog, setDialog] = useState<DialogState>(null);
 
   // A token without the scope is the normal case for members and read-only

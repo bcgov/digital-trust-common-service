@@ -87,7 +87,10 @@ describe('ProtocolStateChangeService', () => {
   let connectionService: jest.Mocked<
     Pick<
       ConnectionService,
-      'findByExternalConnectionIdForTenant' | 'applyProtocolStateIfForward'
+      | 'findByExternalConnectionIdForTenant'
+      | 'findByInvitationMsgIdForTenant'
+      | 'createFromInvitationTemplate'
+      | 'applyProtocolStateIfForward'
     >
   >;
   let jobsService: jest.Mocked<Pick<JobsService, 'sendInTransaction'>>;
@@ -116,6 +119,14 @@ describe('ProtocolStateChangeService', () => {
     };
     connectionService = {
       findByExternalConnectionIdForTenant: jest.fn().mockResolvedValue(null),
+      findByInvitationMsgIdForTenant: jest.fn().mockResolvedValue(null),
+      createFromInvitationTemplate: jest
+        .fn()
+        .mockImplementation((_template, externalId, state) =>
+          Promise.resolve(
+            connection({ externalConnectionId: externalId, state }),
+          ),
+        ),
       applyProtocolStateIfForward: jest.fn().mockResolvedValue(connection()),
     };
     jobsService = { sendInTransaction: jest.fn().mockResolvedValue('job-1') };
@@ -590,6 +601,95 @@ describe('ProtocolStateChangeService', () => {
     );
 
     expect(jobsService.sendInTransaction).not.toHaveBeenCalled();
+  });
+
+  it('spins off a new connection row from a multi-use invitation template on first use', async () => {
+    const invitationTemplate = connection({
+      id: 'invitation-conn-1',
+      externalConnectionId: undefined,
+      metadata: { multiUse: true },
+    });
+    connectionService.findByInvitationMsgIdForTenant.mockResolvedValue(
+      invitationTemplate,
+    );
+
+    await service.process(
+      baseData({
+        topic: 'connections',
+        protocolState: 'active',
+        payload: { invitation_msg_id: 'invi-msg-1' },
+      }),
+    );
+
+    expect(
+      connectionService.findByInvitationMsgIdForTenant,
+    ).toHaveBeenCalledWith(TENANT_ID, 'invi-msg-1');
+    expect(connectionService.createFromInvitationTemplate).toHaveBeenCalledWith(
+      invitationTemplate,
+      'ext-1',
+      ConnectionState.ACTIVE,
+      undefined,
+      mockManager,
+    );
+    expect(
+      connectionService.applyProtocolStateIfForward,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("does not clone a new connection for a multi-use template's own invitation-state self-notification", async () => {
+    const invitationTemplate = connection({
+      id: 'invitation-conn-1',
+      externalConnectionId: undefined,
+      metadata: { multiUse: true },
+    });
+    connectionService.findByInvitationMsgIdForTenant.mockResolvedValue(
+      invitationTemplate,
+    );
+
+    await service.process(
+      baseData({
+        topic: 'connections',
+        protocolState: 'invitation',
+        externalId: 'invitation-conn-1',
+        payload: { invitation_msg_id: 'invi-msg-1' },
+      }),
+    );
+
+    expect(
+      connectionService.createFromInvitationTemplate,
+    ).not.toHaveBeenCalled();
+    expect(
+      connectionService.applyProtocolStateIfForward,
+    ).not.toHaveBeenCalled();
+  });
+
+  it('updates a single-use invitation connection directly when matched by invitation_msg_id, without cloning', async () => {
+    const invitationConnection = connection({
+      id: 'invitation-conn-1',
+      externalConnectionId: undefined,
+      metadata: { multiUse: false },
+    });
+    connectionService.findByInvitationMsgIdForTenant.mockResolvedValue(
+      invitationConnection,
+    );
+
+    await service.process(
+      baseData({
+        topic: 'connections',
+        protocolState: 'active',
+        payload: { invitation_msg_id: 'invi-msg-1' },
+      }),
+    );
+
+    expect(
+      connectionService.createFromInvitationTemplate,
+    ).not.toHaveBeenCalled();
+    expect(connectionService.applyProtocolStateIfForward).toHaveBeenCalledWith(
+      invitationConnection,
+      ConnectionState.ACTIVE,
+      connectionStatesBelow(ConnectionState.ACTIVE),
+      mockManager,
+    );
   });
 
   it('marks a credential revoked on a revocation_registry event', async () => {

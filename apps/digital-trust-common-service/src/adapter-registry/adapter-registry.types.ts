@@ -28,6 +28,17 @@ export interface ResolveOptions {
   readonly connectorId?: string;
 
   /**
+   * Narrows the tenant-default/sole-active-connector fallback (used when
+   * `connectorId` is not supplied and the tenant has no `default_connector`
+   * configured) to connectors of this type — e.g. a connection's own
+   * `connector_type`, so an operation bound to that connection cannot land
+   * on a different connector the tenant also happens to have configured.
+   * Ignored when `connectorId` is supplied, since that already identifies
+   * the connector unambiguously.
+   */
+  readonly connectorType?: ConnectorType;
+
+  /**
    * Platform-admin escape hatch (`?adapter=traction`). Honoured only when
    * `ADAPTER_OVERRIDE_ENABLED` is on AND `isPlatformAdmin` is true; otherwise
    * the request is rejected rather than silently ignored.

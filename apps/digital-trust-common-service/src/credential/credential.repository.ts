@@ -11,9 +11,14 @@ export class CredentialRepository {
     private readonly repository: Repository<Credential>,
   ) {}
 
-  public async create(data: Partial<Credential>): Promise<Credential> {
+  public async create(
+    data: Partial<Credential>,
+    manager?: EntityManager,
+  ): Promise<Credential> {
     const entity = this.repository.create(data);
-    return await this.repository.save(entity);
+    return manager
+      ? await manager.save(entity)
+      : await this.repository.save(entity);
   }
 
   public async findById(id: string): Promise<Credential | null> {
@@ -90,13 +95,22 @@ export class CredentialRepository {
    * call's UPDATE actually matched a row; a duplicate or losing delivery
    * (or a cross-tenant id) gets `false` and must not repeat any side
    * effects.
+   *
+   * `externalId`, when provided, is written atomically with the state in
+   * the same guarded UPDATE — see `setExternalId` below for the case where
+   * the target state is `OFFERED` itself (never a valid transition target,
+   * so this guard can't be used to persist externalId there).
    */
   public async updateStateIfForward(
     id: string,
     tenantId: string,
     state: CredentialState,
     fromStates: CredentialState[],
-    timestamps?: { issuedAt?: Date; revokedAt?: Date },
+    timestamps?: {
+      issuedAt?: Date;
+      revokedAt?: Date;
+      externalId?: string | null;
+    },
     manager?: EntityManager,
   ): Promise<boolean> {
     const result = await (manager ?? this.repository.manager).update(
@@ -110,10 +124,40 @@ export class CredentialRepository {
         ...(timestamps?.revokedAt !== undefined
           ? { revokedAt: timestamps.revokedAt }
           : {}),
+        ...(timestamps?.externalId !== undefined
+          ? { externalId: timestamps.externalId }
+          : {}),
       },
     );
 
     return (result.affected ?? 0) > 0;
+  }
+
+  /**
+   * Sets externalId without a state guard. `CredentialState.OFFERED` is
+   * never a valid *target* of a guarded transition (it's the row's initial
+   * state only — see state-mapping.ts's `CREDENTIAL_ALLOWED_FROM_STATES`),
+   * so the common "offer sent, still in flight" outcome (no credential
+   * state change yet) has no guarded-transition call to piggy-back this
+   * write onto, unlike updateStateIfForward above. The back-end agent's
+   * exchange id still needs to be durably recorded here so the
+   * protocol.state-change worker can later correlate a webhook back to this
+   * credential (see `CredentialRepository.findByExternalId`). `tenantId`
+   * scopes the WHERE clause for the same reason as updateStateIfForward: a
+   * system-triggered write with no AuthContext must not rely solely on a
+   * tenant-scoped read moments earlier.
+   */
+  public async setExternalId(
+    id: string,
+    tenantId: string,
+    externalId: string,
+    manager?: EntityManager,
+  ): Promise<void> {
+    await (manager ?? this.repository.manager).update(
+      Credential,
+      { id, tenantId },
+      { externalId },
+    );
   }
 
   /**

@@ -1,55 +1,147 @@
 import type { AuthContext } from '@app/auth';
 import {
-  ConflictException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+  type AgentAdapter,
+  ConnectionState as AdapterConnectionState,
+  type Connection as AdapterConnection,
+  type ConnectorContext,
+  type Invitation,
+} from '@app/credential-ports';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import type { EntityManager } from 'typeorm';
 
+import { AdapterRegistry } from '../adapter-registry/adapter-registry.service';
 import { AuditAction } from '../audit-log/audit-log.entity';
 import { DomainAuditService } from '../audit-log/domain-audit.service';
 import {
   assertResourceTenantOrNotFound,
   assertTenantAccess,
 } from '../common/assert-tenant-access';
+import { API_BASE_PATH } from '../common/constants/api-version.constants';
+import { decodeCursor, encodeCursor } from '../common/cursor-pagination';
+import { OPERATION_TYPE } from '../operation/operation-type.constants';
+import { Operation, OperationState } from '../operation/operation.entity';
+import { OperationService } from '../operation/operation.service';
 
-import { Connection, ConnectionState } from './connection.entity';
+import {
+  Connection,
+  ConnectionProtocol,
+  ConnectionState,
+} from './connection.entity';
 import { ConnectionRepository } from './connection.repository';
 import { CreateConnectionDto } from './dto/create-connection.dto';
-import { UpdateConnectionDto } from './dto/update-connection.dto';
+
+/**
+ * Maps the connector-reported connection state (the ConnectionPort's
+ * agent-agnostic vocabulary) onto the persisted ConnectionState. The two
+ * enums are not the same values: 'error' has no direct equivalent locally,
+ * so it is treated the same as an abandoned connection.
+ */
+function mapAdapterConnectionState(
+  state: AdapterConnectionState,
+): ConnectionState {
+  switch (state) {
+    case AdapterConnectionState.Invitation:
+      return ConnectionState.INVITED;
+    case AdapterConnectionState.Request:
+      return ConnectionState.REQUESTED;
+    case AdapterConnectionState.Response:
+      return ConnectionState.RESPONDED;
+    case AdapterConnectionState.Active:
+      return ConnectionState.ACTIVE;
+    case AdapterConnectionState.Completed:
+      return ConnectionState.COMPLETED;
+    case AdapterConnectionState.Error:
+      return ConnectionState.ABANDONED;
+  }
+}
+
+/**
+ * `invitationId`, `invitationUrl`, and `multiUse` are internal correlation
+ * state the webhook worker trusts to decide whether to update or clone a
+ * connection row (see applyConnectionOutcome) — a caller-supplied metadata
+ * object must never be able to set them, or a crafted value could redirect
+ * a later webhook onto (or clone from) an unrelated connection.
+ */
+function sanitizeCallerMetadata(
+  metadata: Record<string, unknown>,
+): Record<string, unknown> {
+  const sanitized = { ...metadata };
+  delete sanitized.invitationId;
+  delete sanitized.invitationUrl;
+  delete sanitized.multiUse;
+
+  return sanitized;
+}
+
+type InvitationOptions = {
+  alias?: string;
+  label?: string;
+  goalCode?: string;
+  multiUse?: boolean;
+};
+
+/** Pulls the well-known invitation-creation keys out of caller metadata. */
+function extractInvitationOptions(
+  metadata: Record<string, unknown>,
+): InvitationOptions {
+  return {
+    alias: typeof metadata.alias === 'string' ? metadata.alias : undefined,
+    label: typeof metadata.label === 'string' ? metadata.label : undefined,
+    goalCode:
+      typeof metadata.goalCode === 'string' ? metadata.goalCode : undefined,
+    multiUse:
+      typeof metadata.multiUse === 'boolean' ? metadata.multiUse : undefined,
+  };
+}
+
+export type PaginatedConnections = {
+  data: Connection[];
+  pagination: {
+    next_cursor: string | null;
+    has_more: boolean;
+  };
+};
 
 @Injectable()
 export class ConnectionService {
+  private readonly logger = new Logger(ConnectionService.name);
+
   public constructor(
     private readonly connectionRepository: ConnectionRepository,
     private readonly domainAudit: DomainAuditService,
+    private readonly adapterRegistry: AdapterRegistry,
+    private readonly operationService: OperationService,
   ) {}
 
+  /**
+   * Creates the connection row in its initial (invited) state, then calls
+   * the tenant's connector adapter (e.g. TractionAdapter) to create the
+   * invitation inline: unlike issuance/verification, invitation creation is
+   * itself the immediate operation — there is nothing further for the
+   * connector to do asynchronously — so the request waits on the adapter
+   * call and returns the connection with its real external connection ID
+   * populated. An Operation of type OPERATION_TYPE.CONNECTION_CREATE is
+   * still recorded (pending -> processing -> completed/failed) so connection
+   * creation attempts are tracked the same way as every other tenant action.
+   */
   public async create(
+    tenantId: string,
     dto: CreateConnectionDto,
     auth: AuthContext,
-  ): Promise<Connection> {
-    assertTenantAccess(auth, dto.tenantId);
+  ): Promise<Operation> {
+    assertTenantAccess(auth, tenantId);
 
-    const existing = await this.connectionRepository.findByExternalConnectionId(
-      dto.externalConnectionId,
-    );
-
-    if (existing) {
-      throw new ConflictException(
-        'Connection with this external ID already exists.',
-      );
-    }
+    const { adapter, connector, context } =
+      await this.adapterRegistry.resolve(tenantId);
 
     const created = await this.connectionRepository.create({
-      tenantId: dto.tenantId,
-      externalConnectionId: dto.externalConnectionId,
-      theirLabel: dto.theirLabel,
-      theirDid: dto.theirDid,
-      state: dto.state,
-      connectorType: dto.connectorType,
+      tenantId,
+      connectorType: connector.connectorType,
       protocol: dto.protocol,
-      metadata: dto.metadata || {},
+      state: dto.invitationUrl
+        ? ConnectionState.REQUESTED
+        : ConnectionState.INVITED,
+      metadata: sanitizeCallerMetadata(dto.metadata ?? {}),
     });
 
     await this.domainAudit.emit({
@@ -59,14 +151,162 @@ export class ConnectionService {
       resourceId: created.id,
     });
 
-    return created;
+    const operation = await this.operationService.createOperation({
+      tenantId,
+      type: OPERATION_TYPE.CONNECTION_CREATE,
+      request: {
+        method: 'POST',
+        path: `${API_BASE_PATH}/tenants/${tenantId}/connections`,
+        body: dto as unknown as Record<string, unknown>,
+      },
+    });
+
+    await this.operationService.transitionState(
+      operation.id,
+      OperationState.PROCESSING,
+    );
+
+    try {
+      const result = dto.invitationUrl
+        ? await this.acceptInvitation(
+            created,
+            adapter,
+            context,
+            dto.invitationUrl,
+          )
+        : await this.createInvitation(created, adapter, context, dto);
+
+      return await this.operationService.transitionState(
+        operation.id,
+        OperationState.COMPLETED,
+        result,
+      );
+    } catch (error) {
+      await this.markAbandoned(created.id);
+
+      this.logger.warn(
+        `connection.create failed for connection '${created.id}': ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+
+      return await this.operationService.transitionState(
+        operation.id,
+        OperationState.FAILED,
+        {
+          code: 'CONNECTION_CREATE_FAILED',
+          message:
+            error instanceof Error
+              ? error.message
+              : `Connector invitation could not be created for connection '${created.id}'.`,
+        },
+      );
+    }
   }
 
-  public async findById(id: string, auth: AuthContext): Promise<Connection> {
+  /**
+   * Create-invitation mode: generates a new invitation on the connector and
+   * links it to the local connection row. The result carries invitation_url
+   * for the caller to hand to the other party. alias/label/goalCode/multiUse
+   * are read from the caller-supplied metadata bag rather than dedicated
+   * request fields — they only apply to this mode.
+   */
+  private async createInvitation(
+    created: Connection,
+    adapter: AgentAdapter,
+    context: ConnectorContext,
+    dto: CreateConnectionDto,
+  ): Promise<Record<string, unknown>> {
+    const { alias, label, goalCode, multiUse } = extractInvitationOptions(
+      dto.metadata ?? {},
+    );
+
+    const invitation = await adapter.createInvitation(context, {
+      alias,
+      label,
+      goalCode,
+      multiUse,
+    });
+
+    await this.applyInvitationResult(created.id, invitation, multiUse);
+
+    return {
+      connection_id: created.id,
+      invitation_url: invitation.invitationUrl,
+    };
+  }
+
+  /**
+   * Accept-invitation mode: accepts another party's invitation URL on the
+   * connector and adopts its reported connection state onto the local row.
+   * The result carries connection_id + state so the caller can poll or fetch
+   * the connection without a separate list() round trip.
+   */
+  private async acceptInvitation(
+    created: Connection,
+    adapter: AgentAdapter,
+    context: ConnectorContext,
+    invitationUrl: string,
+  ): Promise<Record<string, unknown>> {
+    const remote = await adapter.acceptInvitation(context, invitationUrl);
+    const updated = await this.applyRemoteConnectionState(created, remote);
+
+    return {
+      connection_id: updated.id,
+      state: updated.state,
+    };
+  }
+
+  private async applyInvitationResult(
+    connectionId: string,
+    invitation: Invitation,
+    multiUse?: boolean,
+  ): Promise<Connection> {
+    const connection = await this.connectionRepository.findById(connectionId);
+
+    if (!connection) {
+      throw new NotFoundException(
+        `Connection '${connectionId}' was not found.`,
+      );
+    }
+
+    if (invitation.connectionId) {
+      connection.externalConnectionId = invitation.connectionId;
+    }
+
+    connection.metadata = {
+      ...connection.metadata,
+      invitationUrl: invitation.invitationUrl,
+      invitationId: invitation.invitationId,
+      // Distinguishes a reusable multi-use invitation template (never itself
+      // a specific party's connection) from a single-use invitation's own
+      // connection row, for applyConnectionOutcome's create-vs-update choice.
+      multiUse: Boolean(multiUse),
+    };
+
+    return await this.connectionRepository.update(connection);
+  }
+
+  private async markAbandoned(connectionId: string): Promise<void> {
+    const connection = await this.connectionRepository.findById(connectionId);
+
+    if (!connection) {
+      return;
+    }
+
+    connection.state = ConnectionState.ABANDONED;
+    await this.connectionRepository.update(connection);
+  }
+
+  public async findById(
+    tenantId: string,
+    id: string,
+    auth: AuthContext,
+  ): Promise<Connection> {
     const connection = await this.connectionRepository.findById(id);
     const notFound = `Connection '${id}' was not found.`;
 
-    if (!connection) {
+    if (!connection || connection.tenantId !== tenantId) {
       throw new NotFoundException(notFound);
     }
 
@@ -74,79 +314,97 @@ export class ConnectionService {
     return connection;
   }
 
-  public async findByExternalConnectionId(
-    externalConnectionId: string,
-    auth: AuthContext,
+  /**
+   * Persists a connection's state, their-label, and external connection id
+   * as reported by the connector immediately after accepting an invitation.
+   */
+  private async applyRemoteConnectionState(
+    connection: Connection,
+    remote: AdapterConnection,
   ): Promise<Connection> {
-    const connection =
-      await this.connectionRepository.findByExternalConnectionId(
-        externalConnectionId,
-      );
-    const notFound = `Connection with external ID '${externalConnectionId}' was not found.`;
+    const state = mapAdapterConnectionState(remote.state);
 
-    if (!connection) {
-      throw new NotFoundException(notFound);
+    if (
+      connection.state === state &&
+      connection.theirLabel === remote.theirLabel &&
+      connection.theirDid === remote.theirDid &&
+      connection.externalConnectionId === remote.id
+    ) {
+      return connection;
     }
 
-    assertResourceTenantOrNotFound(auth, connection.tenantId, notFound);
-    return connection;
+    connection.state = state;
+    connection.theirLabel = remote.theirLabel;
+    connection.theirDid = remote.theirDid;
+    connection.externalConnectionId = remote.id;
+
+    return await this.connectionRepository.update(connection);
   }
 
-  public async findByTenantId(tenantId: string): Promise<Connection[]> {
-    return await this.connectionRepository.findByTenantId(tenantId);
-  }
-
-  public async findByTenantIdAndState(
+  public async findByTenantId(
     tenantId: string,
-    state: ConnectionState,
-  ): Promise<Connection[]> {
-    return await this.connectionRepository.findByTenantIdAndState(
-      tenantId,
-      state,
-    );
+    options: { limit?: number; cursor?: string | null } = {},
+  ): Promise<PaginatedConnections> {
+    return this.findPage(tenantId, options);
   }
 
-  public async update(
-    id: string,
-    dto: UpdateConnectionDto,
-    auth: AuthContext,
-  ): Promise<Connection> {
-    const connection = await this.findById(id, auth);
+  public async findByTenantIdAndFilters(
+    tenantId: string,
+    state: ConnectionState | undefined,
+    protocol?: ConnectionProtocol,
+    options: { limit?: number; cursor?: string | null } = {},
+  ): Promise<PaginatedConnections> {
+    return this.findPage(tenantId, options, state, protocol);
+  }
 
-    if (dto.theirLabel !== undefined) {
-      connection.theirLabel = dto.theirLabel;
-    }
+  /**
+   * Cursor, limit, ordering, and the optional state/protocol predicates are
+   * all pushed into the repository's SQL rather than fetched-then-sliced in
+   * memory, so a page costs O(limit) rows regardless of tenant size.
+   */
+  private async findPage(
+    tenantId: string,
+    options: { limit?: number; cursor?: string | null },
+    state?: ConnectionState,
+    protocol?: ConnectionProtocol,
+  ): Promise<PaginatedConnections> {
+    const limit = options.limit ?? 20;
+    const cursor = options.cursor ? decodeCursor(options.cursor) : null;
 
-    if (dto.theirDid !== undefined) {
-      connection.theirDid = dto.theirDid;
-    }
-
-    if (dto.state !== undefined) {
-      connection.state = dto.state;
-    }
-
-    if (dto.protocol !== undefined) {
-      connection.protocol = dto.protocol;
-    }
-
-    if (dto.metadata !== undefined) {
-      connection.metadata = dto.metadata;
-    }
-
-    const updated = await this.connectionRepository.update(connection);
-
-    await this.domainAudit.emit({
-      tenantId: updated.tenantId,
-      action: AuditAction.UPDATE,
-      resourceType: 'connection',
-      resourceId: updated.id,
+    const page = await this.connectionRepository.findPageForTenant(tenantId, {
+      limit,
+      cursor,
+      state,
+      protocol,
     });
 
-    return updated;
+    return {
+      data: page.items,
+      pagination: {
+        next_cursor: page.nextCursor ? encodeCursor(page.nextCursor) : null,
+        has_more: page.hasMore,
+      },
+    };
   }
 
-  public async delete(id: string, auth: AuthContext): Promise<void> {
-    const connection = await this.findById(id, auth);
+  /**
+   * Deletes a connection locally and, when it has been linked to a
+   * connector-side connection, on the connector too. A connection still
+   * pending correlation (no externalConnectionId yet) has nothing to delete
+   * on the connector side.
+   */
+  public async delete(
+    tenantId: string,
+    id: string,
+    auth: AuthContext,
+  ): Promise<void> {
+    const connection = await this.findById(tenantId, id, auth);
+
+    if (connection.externalConnectionId) {
+      const { adapter, context } = await this.adapterRegistry.resolve(tenantId);
+
+      await adapter.deleteById(context, connection.externalConnectionId);
+    }
 
     await this.connectionRepository.delete(id);
 
@@ -178,6 +436,80 @@ export class ConnectionService {
       tenantId,
       externalConnectionId,
     );
+  }
+
+  /**
+   * Tenant-scoped lookup for the protocol.state-change worker, which has no
+   * AuthContext (it's a system caller, not a request), so it can't use
+   * findById's assertResourceTenantOrNotFound path. Returns null rather than
+   * throwing, since "no matching connection for this tenant" is a legitimate
+   * no-op for the worker rather than an error.
+   */
+  public async findByInvitationMsgIdForTenant(
+    tenantId: string,
+    invitationMsgId: string,
+  ): Promise<Connection | null> {
+    return this.connectionRepository.findByInvitationMsgIdForTenant(
+      tenantId,
+      invitationMsgId,
+    );
+  }
+
+  /**
+   * A multi-use invitation's connection row represents the reusable
+   * invitation itself, not any one party that accepted it, so it must stay
+   * untouched here and can't be the row a per-connection webhook transitions
+   * (see applyConnectionOutcome). This clones a fresh connection row from it
+   * for the newly-connecting party, keyed on their own `externalId`, in the
+   * same transaction as the caller's guarded state write so a rollback
+   * (e.g. the webhook-dispatch enqueue failing) doesn't leave an orphaned
+   * connection with no corresponding notification.
+   *
+   * Created directly in `state`, the outcome the triggering webhook already
+   * reported, rather than a fixed INVITED followed by a separate guarded
+   * transition: connectionStatesBelow's forward-guard is built for
+   * protecting an existing row from regressing, but a row that didn't exist
+   * a moment ago has no prior state to protect, and `state` may itself be
+   * INVITED's floor (rank 0), which no `fromStates` guard could ever match.
+   */
+  public async createFromInvitationTemplate(
+    template: Connection,
+    externalId: string,
+    state: ConnectionState,
+    theirDid: string | undefined,
+    manager: EntityManager,
+  ): Promise<Connection> {
+    // invitationUrl/invitationId only mean anything for the row that owns
+    // the invitation (the template itself); the per-party row this spins
+    // off is a real connection, not an invitation, so it doesn't need them.
+    const metadata = { ...(template.metadata ?? {}) };
+    delete metadata.invitationUrl;
+    delete metadata.invitationId;
+
+    const created = await this.connectionRepository.create(
+      {
+        tenantId: template.tenantId,
+        connectorType: template.connectorType,
+        protocol: template.protocol,
+        state,
+        externalConnectionId: externalId,
+        theirDid,
+        metadata,
+      },
+      manager,
+    );
+
+    await this.domainAudit.emit(
+      {
+        tenantId: created.tenantId,
+        action: AuditAction.CREATE,
+        resourceType: 'connection',
+        resourceId: created.id,
+      },
+      manager,
+    );
+
+    return created;
   }
 
   /**

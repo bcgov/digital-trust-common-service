@@ -4,7 +4,7 @@ import { assertSafeConnectorUrl } from '../common/assert-safe-connector-url';
 import {
   buildTractionTokenRequestBody,
   buildTractionTokenUrl,
-} from '../common/traction-token-request';
+} from '../common/traction-request';
 import { ConnectorType } from '../connection/connection.entity';
 
 import { ConnectorCredentialsDto } from './dto/create-connector-credential.dto';
