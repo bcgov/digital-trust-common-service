@@ -12,6 +12,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { Request, Response } from 'express';
 
+import { isUnloggedPath } from '../is-unlogged-path';
 import { resolveRoute } from '../resolve-route';
 
 import {
@@ -196,6 +197,10 @@ export class GlobalExceptionFilter implements ExceptionFilter {
   }
 
   private log(exception: unknown, status: HttpStatus, request: Request): void {
+    if (isUnloggedPath(request)) {
+      return;
+    }
+
     const route = resolveRoute(request);
     const context = `${request.method}${route === undefined ? '' : ` ${route}`}`;
 

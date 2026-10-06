@@ -26,7 +26,7 @@ describe('buildValidationExceptionFactory', () => {
     expect(exception.getResponse()).toEqual({
       error: {
         code: 'VALIDATION_FAILED',
-        message: 'Request body validation failed',
+        message: 'Request validation failed',
         details: [{ field: 'email', message: 'email must be an email' }],
       },
     });
@@ -47,7 +47,7 @@ describe('buildValidationExceptionFactory', () => {
     expect(exception.getResponse()).toEqual({
       error: {
         code: 'VALIDATION_FAILED',
-        message: 'Request body validation failed',
+        message: 'Request validation failed',
         details: [
           {
             field: 'attributes.birth_date',

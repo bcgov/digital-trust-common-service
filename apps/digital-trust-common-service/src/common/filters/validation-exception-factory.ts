@@ -38,7 +38,7 @@ export function buildValidationExceptionFactory(): (
     const body: ErrorResponseBody = {
       error: {
         code: 'VALIDATION_FAILED',
-        message: 'Request body validation failed',
+        message: 'Request validation failed',
         details: flattenValidationErrors(errors, ''),
       },
     };

@@ -1631,7 +1631,7 @@ export interface components {
                     actual?: string;
                     message?: string;
                 }[];
-                /** @description Correlation id, echoed from the X-Request-Id response header. Usually a UUID (server-generated), but a caller that supplies its own X-Request-Id gets it echoed back verbatim instead. */
+                /** @description Correlation id, echoed from the X-Request-Id response header. Usually a UUID (server-generated), but a caller that supplies its own X-Request-Id gets it echoed back verbatim instead, provided it matches this pattern and length; otherwise the server discards it and generates a UUID. */
                 request_id?: string;
             };
         };
@@ -2432,7 +2432,7 @@ export interface components {
                  * @example {
                  *       "error": {
                  *         "code": "VALIDATION_FAILED",
-                 *         "message": "Request body validation failed",
+                 *         "message": "Request validation failed",
                  *         "details": [
                  *           {
                  *             "field": "attributes.birth_date",

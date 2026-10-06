@@ -13,7 +13,7 @@ import { GlobalExceptionFilter } from './global-exception.filter';
 
 const REQUEST_ID = '11111111-1111-4111-8111-111111111111';
 
-function buildHost(): {
+function buildHost(originalUrl = '/api/v1/tenants/123'): {
   host: ArgumentsHost;
   status: jest.Mock;
   json: jest.Mock;
@@ -25,7 +25,7 @@ function buildHost(): {
   const host = {
     switchToHttp: () => ({
       getResponse: () => ({ status, setHeader }),
-      getRequest: () => ({ method: 'GET', url: '/api/v1/tenants/123' }),
+      getRequest: () => ({ method: 'GET', url: originalUrl, originalUrl }),
     }),
   } as unknown as ArgumentsHost;
 
@@ -222,5 +222,23 @@ describe('GlobalExceptionFilter', () => {
 
     expect(status).toHaveBeenCalledWith(503);
     expect(json).toHaveBeenCalledWith(shutdownBody);
+  });
+
+  it('does not log a readiness probe 503, matching the access-log probe exclusion', () => {
+    const { filter, requestContext } = buildFilter('production');
+    const { host } = buildHost('/health/ready');
+    const readinessBody = {
+      status: 'error',
+      info: {},
+      error: { database: { status: 'down' } },
+      details: { database: { status: 'down' } },
+    };
+
+    requestContext.run({ requestId: REQUEST_ID, source: 'api' }, () => {
+      filter.catch(new ServiceUnavailableException(readinessBody), host);
+    });
+
+    expect(warnSpy).not.toHaveBeenCalled();
+    expect(errorSpy).not.toHaveBeenCalled();
   });
 });

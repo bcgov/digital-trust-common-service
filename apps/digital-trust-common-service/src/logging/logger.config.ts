@@ -13,6 +13,7 @@ import pino, {
 } from 'pino';
 import type { PrettyOptions } from 'pino-pretty';
 
+import { isUnloggedPath } from '../common/is-unlogged-path';
 import { resolveRoute } from '../common/resolve-route';
 
 const DEFAULT_LOG_LEVEL: LevelWithSilent = 'info';
@@ -31,17 +32,6 @@ const REDACTION_CENSOR = '[Redacted]';
 // primary defence for foreign payloads is not logging them at all: see the
 // redaction rules in docs/ARCHITECTURE.md.
 const MAX_REDACTION_DEPTH = 6;
-
-// Liveness and readiness are polled continuously by the kubelet, so an access
-// log per probe is volume without signal. `health/status` is a human/monitoring
-// endpoint rather than a probe, so it stays logged.
-const UNLOGGED_PATHS = new Set(['/health/live', '/health/ready']);
-
-// The express-specific field pino-http sees on the request for the raw path
-// before routing, used only to recognize unlogged probe paths.
-interface RoutedRequest extends IncomingMessage {
-  originalUrl?: string;
-}
 
 const VALID_LOG_LEVELS = new Set<LevelWithSilent>([
   'trace',
@@ -216,13 +206,6 @@ function buildAccessLogObject(
     ...(route === undefined ? {} : { route }),
     status_code: res.statusCode,
   };
-}
-
-function isUnloggedPath(req: IncomingMessage): boolean {
-  const { originalUrl } = req as RoutedRequest;
-  const path = (originalUrl ?? req.url ?? '').split('?')[0];
-
-  return UNLOGGED_PATHS.has(path);
 }
 
 function getLogLevel(configService: ConfigService): {
