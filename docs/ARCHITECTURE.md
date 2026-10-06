@@ -1540,7 +1540,7 @@ Every log line emitted by digital-trust-common-service includes labels for Loki 
 |-------|-------------|--------|
 | `app` | Low (1-2) | `digital-trust-common-service` (or `traction` for raw agent logs) |
 | `tenant_id` | Medium | Extracted from AsyncLocalStorage request context |
-| `source` | Low (bounded by queue count) | `api`, `job:<queue>`, `adapter:traction`, `adapter:credo`, `webhook` |
+| `source` | Low (bounded by queue count) | `api`, `job:<queue>`, `adapter:traction`, `adapter:credo` |
 | `traction_tenant_id` | Medium | Traction sub-tenant id (only on `app=traction` streams; surfaced once Traction logs JSON) |
 
 Structured metadata (Loki 3.x) or JSON fields (queryable with `| json`):
@@ -1592,7 +1592,7 @@ Attack prevention:
 |-------|----------------|--------------|
 | **HTTP outbound to Traction** | method, path, status, duration_ms, error_code | `adapter:traction` |
 | **Traction response parsing** | external_id (cred_ex_id, thread_id), state | `adapter:traction` |
-| **Webhook ingestion** | wire_topic, topic, protocol_state, external_id, connector_id, outcome | `webhook` |
+| **Webhook ingestion** | wire_topic, topic, protocol_state, external_id, connector_id, outcome | `api` |
 | **Token lifecycle** | cache_state (hit/miss/expiring), outcome, duration_ms, status_code on failure | `adapter:traction` |
 | **Error interpretation** | map Traction error → actionable message + suggestion | `adapter:traction` |
 | **Credo Agent Service events (post-MVP)** | CredentialStateChanged, ProofStateChanged, DIDComm messages (via webhook callback from Credo Agent Service) | `adapter:credo` |
