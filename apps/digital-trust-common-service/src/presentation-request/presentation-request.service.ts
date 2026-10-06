@@ -435,6 +435,20 @@ export class PresentationRequestService {
     resolved: ResolvedRequest,
     resolvedAdapter: ResolvedAdapter,
   ): Promise<Operation> {
+    // ACTIVE/COMPLETED (already enforced by assertConnectionUsable) is only
+    // reached once the connection.create job has recorded the agent's own
+    // connection id — externalConnectionId is otherwise null while that job
+    // is still pending — so this should be unreachable in practice; it
+    // guards the adapter boundary against ever addressing a connection the
+    // agent has never heard of, and narrows the nullable column to the
+    // string the port requires.
+    if (!connection.externalConnectionId) {
+      throw new BadRequestException(
+        `Connection '${connection.id}' has no external connection id yet.`,
+      );
+    }
+
+    const externalConnectionId = connection.externalConnectionId;
     let exchange;
 
     try {
@@ -444,7 +458,7 @@ export class PresentationRequestService {
           // The adapter's own connection identifier, not this service's
           // local Connection.id — the local UUID would address a
           // connection the agent has never heard of.
-          connectionId: connection.externalConnectionId,
+          connectionId: externalConnectionId,
           name: resolved.name,
           requestedAttributes: resolved.requestedAttributes,
           ...(resolved.requestedPredicates
