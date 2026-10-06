@@ -74,8 +74,9 @@ export class ProtocolStateChangeService {
     const outcome = resolveProtocolOutcome(data.topic, data.protocolState);
 
     if (!outcome) {
-      // Not an error: ACA-Py may introduce states this service has no mapping
-      // for yet, and a topic's non-terminal chatter is dropped here too. Worth
+      // Not an error: an agent may introduce states this service has no
+      // mapping for yet, and a topic's non-terminal chatter is dropped here
+      // too. Worth
       // a warning because the state change is then lost — nothing retries it.
       this.logger.warn(
         {
@@ -207,7 +208,7 @@ export class ProtocolStateChangeService {
     if (result.transitioned) {
       this.logger.log(event, 'protocol state change applied');
     } else if (result.matched) {
-      // Debug: pg-boss delivers at least once and ACA-Py re-sends the same
+      // Debug: pg-boss delivers at least once and agents may re-send the same
       // state, so a delivery landing on a row already at or past that state
       // is expected traffic rather than a fault.
       this.logger.debug(event, 'protocol state change had no effect');
