@@ -232,6 +232,31 @@ describe('AdminSessionsController (e2e)', () => {
       .post(`${API_BASE_PATH}/admin/users/not-a-uuid/revoke-sessions`)
       .expect(400);
   });
+
+  it('flags a user as a platform operator', async () => {
+    const user = await createUser(externalUserId);
+
+    const response = await request(app.getHttpServer())
+      .patch(`${API_BASE_PATH}/admin/users/${user.id}/platform-operator`)
+      .send({ is_platform_operator: true })
+      .expect(200);
+
+    expect(response.body).toMatchObject({
+      id: user.id,
+      is_platform_operator: true,
+    });
+    const updated = await tenantUserRepo.findOneByOrFail({ id: user.id });
+    expect(updated.isPlatformOperator).toBe(true);
+  });
+
+  it('returns 404 for setting platform-operator on an unknown user', async () => {
+    await request(app.getHttpServer())
+      .patch(
+        `${API_BASE_PATH}/admin/users/3f1d9c88-4b2e-4a6d-9f10-7c5b8e2a1d44/platform-operator`,
+      )
+      .send({ is_platform_operator: true })
+      .expect(404);
+  });
 });
 
 describe('AdminSessionsController (e2e) — unauthenticated', () => {
@@ -267,6 +292,15 @@ describe('AdminSessionsController (e2e) — unauthenticated', () => {
       .post(
         `${API_BASE_PATH}/admin/users/3f1d9c88-4b2e-4a6d-9f10-7c5b8e2a1d44/revoke-sessions`,
       )
+      .expect(401);
+  });
+
+  it('rejects a platform-operator request with no bearer token', async () => {
+    await request(app.getHttpServer())
+      .patch(
+        `${API_BASE_PATH}/admin/users/3f1d9c88-4b2e-4a6d-9f10-7c5b8e2a1d44/platform-operator`,
+      )
+      .send({ is_platform_operator: true })
       .expect(401);
   });
 });
