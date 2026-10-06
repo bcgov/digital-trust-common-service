@@ -53,8 +53,10 @@ interface RoleScopesBody {
 }
 
 interface ErrorBody {
-  code?: string;
-  role?: string;
+  error: {
+    code?: string;
+    role?: string;
+  };
 }
 
 /**
@@ -344,7 +346,7 @@ describe('Role scope API (e2e)', () => {
         .send({ scopes: ['credentials:teleport'] })
         .expect(400);
 
-      expect((response.body as ErrorBody).code).toBe('unknown_scope');
+      expect((response.body as ErrorBody).error.code).toBe('unknown_scope');
     });
 
     it('rejects an unknown role with 400 rather than a database error', async () => {
@@ -360,7 +362,7 @@ describe('Role scope API (e2e)', () => {
         .send({ scopes: [] })
         .expect(400);
 
-      expect((response.body as ErrorBody).code).toBe('role_immutable');
+      expect((response.body as ErrorBody).error.code).toBe('role_immutable');
     });
 
     it('refuses to grant tenants:admin to another role', async () => {
@@ -369,7 +371,9 @@ describe('Role scope API (e2e)', () => {
         .send({ scopes: [TENANT_SUPERUSER_SCOPE] })
         .expect(400);
 
-      expect((response.body as ErrorBody).code).toBe('scope_not_assignable');
+      expect((response.body as ErrorBody).error.code).toBe(
+        'scope_not_assignable',
+      );
     });
 
     it('rejects a child holding a scope its parent lacks', async () => {
@@ -386,8 +390,7 @@ describe('Role scope API (e2e)', () => {
         .expect(400);
 
       expect(response.body).toMatchObject({
-        code: 'hierarchy_violation',
-        role: 'member',
+        error: { code: 'hierarchy_violation', role: 'member' },
       });
     });
 
@@ -399,8 +402,7 @@ describe('Role scope API (e2e)', () => {
         .expect(400);
 
       expect(response.body).toMatchObject({
-        code: 'hierarchy_violation',
-        role: 'member',
+        error: { code: 'hierarchy_violation', role: 'member' },
       });
     });
 

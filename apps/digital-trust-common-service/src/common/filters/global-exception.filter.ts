@@ -46,6 +46,23 @@ function isShapedErrorBody(value: unknown): value is ErrorResponseBody {
 }
 
 /**
+ * Some services throw `new BadRequestException({ code, message, ...extra })`
+ * directly, without the `error` wrapper (e.g. RoleScopeService's
+ * `hierarchy_violation`/`scope_escalation` codes). Recognized here so those
+ * intentional codes and extra fields survive instead of being discarded for
+ * a generic status-derived fallback.
+ */
+function isBareCodedBody(value: unknown): value is ErrorBody {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    !('error' in value) &&
+    typeof (value as { code?: unknown }).code === 'string' &&
+    typeof (value as { message?: unknown }).message === 'string'
+  );
+}
+
+/**
  * Catches every exception and normalizes the response into the
  * `ErrorResponse` envelope documented in docs/openapi.yaml. Replaces the
  * three narrow, auth-specific filters this used to sit alongside — their
@@ -91,13 +108,15 @@ export class GlobalExceptionFilter implements ExceptionFilter {
 
     const error: ErrorBody = isShapedErrorBody(rawResponse)
       ? { ...(rawResponse.error as ErrorBody) }
-      : {
-          code: STATUS_CODE_FALLBACKS[status] ?? `HTTP_${status}`,
-          message:
-            exception instanceof HttpException
-              ? this.extractMessage(exception)
-              : GENERIC_SERVER_ERROR_MESSAGE,
-        };
+      : isBareCodedBody(rawResponse)
+        ? { ...rawResponse }
+        : {
+            code: STATUS_CODE_FALLBACKS[status] ?? `HTTP_${status}`,
+            message:
+              exception instanceof HttpException
+                ? this.extractMessage(exception)
+                : GENERIC_SERVER_ERROR_MESSAGE,
+          };
 
     if (isServerError) {
       error.message = GENERIC_SERVER_ERROR_MESSAGE;
