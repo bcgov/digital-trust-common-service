@@ -157,7 +157,7 @@ describe('Credential offer (e2e)', () => {
       })
       .expect(400);
 
-    expect(response.body).toMatchObject({ statusCode: 400 });
+    expect(response.body).toMatchObject({ error: { code: 'BAD_REQUEST' } });
 
     // The adapter pre-flight resolve happens before any DB writes, so a
     // connector-configuration problem must not leave a stillborn
