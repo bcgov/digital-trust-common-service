@@ -35,6 +35,7 @@ import { createLoggerModuleParams } from './logging/logger.config';
 import { OAuthClientLookupAdapter } from './oauth-client/oauth-client-lookup.adapter';
 import { OAuthClientModule } from './oauth-client/oauth-client.module';
 import { OperationModule } from './operation/operation.module';
+import { PresentationRequestModule } from './presentation-request/presentation-request.module';
 import { ProtocolStateChangeModule } from './protocol-state-change/protocol-state-change.module';
 import { RateLimitModule } from './rate-limit/rate-limit.module';
 import { RoleScopeModule } from './role-scope/role-scope.module';
@@ -102,6 +103,7 @@ import { WebhookIngestionModule } from './webhook-ingestion/webhook-ingestion.mo
     }),
     AuthModule,
     OperationModule,
+    PresentationRequestModule,
     ProtocolStateChangeModule,
     RateLimitModule,
     RoleScopeModule,
