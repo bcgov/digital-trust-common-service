@@ -5,6 +5,7 @@ import {
   ConflictException,
   Logger,
   NotFoundException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
@@ -187,5 +188,39 @@ describe('GlobalExceptionFilter', () => {
 
     const body = json.mock.calls[0][0] as { error: { request_id?: string } };
     expect(body.error.request_id).toBeUndefined();
+  });
+
+  it('passes a Terminus readiness body through unchanged instead of a generic envelope', () => {
+    const { filter, requestContext } = buildFilter('production');
+    const { host, status, json } = buildHost();
+    const readinessBody = {
+      status: 'error',
+      info: {},
+      error: { database: { status: 'down' } },
+      details: { database: { status: 'down' } },
+    };
+
+    requestContext.run({ requestId: REQUEST_ID, source: 'api' }, () => {
+      filter.catch(new ServiceUnavailableException(readinessBody), host);
+    });
+
+    expect(status).toHaveBeenCalledWith(503);
+    expect(json).toHaveBeenCalledWith(readinessBody);
+  });
+
+  it('passes a HealthService shutdown status body through unchanged', () => {
+    const { filter, requestContext } = buildFilter('production');
+    const { host, status, json } = buildHost();
+    const shutdownBody = {
+      status: 'shutting_down',
+      details: { shutdown: { status: 'down' } },
+    };
+
+    requestContext.run({ requestId: REQUEST_ID, source: 'api' }, () => {
+      filter.catch(new ServiceUnavailableException(shutdownBody), host);
+    });
+
+    expect(status).toHaveBeenCalledWith(503);
+    expect(json).toHaveBeenCalledWith(shutdownBody);
   });
 });

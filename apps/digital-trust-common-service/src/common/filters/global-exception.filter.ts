@@ -65,6 +65,25 @@ function isBareCodedBody(value: unknown): value is ErrorBody {
 }
 
 /**
+ * Terminus's `HealthCheckService.check()` and `HealthService.status()` both
+ * raise `ServiceUnavailableException` carrying the full
+ * `ReadinessResponseDto`/`HealthStatusResponseDto` body (docs/openapi.yaml's
+ * health schemas), not a `{ code, message }` shape. That body is the
+ * documented health contract — dependency diagnostics operators rely on — so
+ * it is returned unchanged instead of being replaced by the generic envelope.
+ */
+function isHealthCheckBody(value: unknown): value is Record<string, unknown> {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    typeof (value as { status?: unknown }).status === 'string' &&
+    typeof (value as { details?: unknown }).details === 'object' &&
+    !('code' in value) &&
+    !('message' in value)
+  );
+}
+
+/**
  * Catches every exception and normalizes the response into the
  * `ErrorResponse` envelope documented in docs/openapi.yaml. Replaces the
  * three narrow, auth-specific filters this used to sit alongside — their
@@ -100,13 +119,25 @@ export class GlobalExceptionFilter implements ExceptionFilter {
 
     this.log(exception, status, request);
 
-    response.status(status).json(this.buildBody(exception, status));
-  }
-
-  private buildBody(exception: unknown, status: HttpStatus): ErrorResponseBody {
-    const isServerError = status >= HttpStatus.INTERNAL_SERVER_ERROR;
     const rawResponse =
       exception instanceof HttpException ? exception.getResponse() : null;
+
+    if (isHealthCheckBody(rawResponse)) {
+      response.status(status).json(rawResponse);
+      return;
+    }
+
+    response
+      .status(status)
+      .json(this.buildBody(exception, status, rawResponse));
+  }
+
+  private buildBody(
+    exception: unknown,
+    status: HttpStatus,
+    rawResponse: unknown,
+  ): ErrorResponseBody {
+    const isServerError = status >= HttpStatus.INTERNAL_SERVER_ERROR;
 
     const error: ErrorBody = isShapedErrorBody(rawResponse)
       ? { ...(rawResponse.error as ErrorBody) }
