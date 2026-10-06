@@ -205,6 +205,13 @@ export class OperationRepository {
    * this call's UPDATE actually matched a row; a duplicate or losing
    * delivery (or a cross-tenant id) gets `false` and must not repeat any
    * side effects.
+   *
+   * `patch.externalId`, when supplied, is written atomically with the state
+   * in the same guarded UPDATE — used by callers (e.g. presentation-request
+   * submission) that only learn the back-end agent's exchange id from the
+   * same adapter call whose outcome is winning this transition, so the
+   * correlation id and the state it enables never land in two separate
+   * writes.
    */
   public async transitionIfForward(
     id: string,

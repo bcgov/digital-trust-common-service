@@ -138,7 +138,11 @@ export class AdapterRegistry {
       };
     }
 
-    const connector = await this.findConnector(tenantId, options.connectorId);
+    const connector = await this.findConnector(
+      tenantId,
+      options.connectorId,
+      options.connectorType,
+    );
     const connectorType = toPortConnectorType(connector.connectorType);
 
     if (!connectorType) {
@@ -219,12 +223,13 @@ export class AdapterRegistry {
   private async findConnector(
     tenantId: string,
     connectorId?: string,
+    connectorType?: PortConnectorType,
   ): Promise<ConnectorCredential> {
     const explicitId =
       connectorId ?? (await this.readDefaultConnector(tenantId));
 
     if (!explicitId) {
-      return await this.findSoleActiveConnector(tenantId);
+      return await this.findSoleActiveConnector(tenantId, connectorType);
     }
 
     // Selected from the tenant's own connectors rather than fetched by id.
