@@ -13,9 +13,11 @@ const ALLOWED_HEADERS = [
 ];
 
 const EXPOSED_HEADERS = [
-  'X-Request-Id',
+  'Retry-After',
+  'X-RateLimit-Limit',
   'X-RateLimit-Remaining',
   'X-RateLimit-Reset',
+  'X-Request-Id',
 ];
 
 /**

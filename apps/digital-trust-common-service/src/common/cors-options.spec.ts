@@ -76,9 +76,11 @@ describe('buildCorsOptions', () => {
     const options = buildCorsOptions('*', 'development');
 
     expect(options.exposedHeaders).toEqual([
-      'X-Request-Id',
+      'Retry-After',
+      'X-RateLimit-Limit',
       'X-RateLimit-Remaining',
       'X-RateLimit-Reset',
+      'X-Request-Id',
     ]);
   });
 });
