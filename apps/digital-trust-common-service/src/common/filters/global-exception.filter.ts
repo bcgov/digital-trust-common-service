@@ -12,6 +12,8 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { Request, Response } from 'express';
 
+import { resolveRoute } from '../resolve-route';
+
 import {
   ErrorResponseBody,
   ErrorResponseDetail,
@@ -163,7 +165,8 @@ export class GlobalExceptionFilter implements ExceptionFilter {
   }
 
   private log(exception: unknown, status: HttpStatus, request: Request): void {
-    const context = `${request.method} ${request.url}`;
+    const route = resolveRoute(request);
+    const context = `${request.method}${route === undefined ? '' : ` ${route}`}`;
 
     if (status >= HttpStatus.INTERNAL_SERVER_ERROR) {
       this.logger.error(

@@ -13,6 +13,8 @@ import pino, {
 } from 'pino';
 import type { PrettyOptions } from 'pino-pretty';
 
+import { resolveRoute } from '../common/resolve-route';
+
 const DEFAULT_LOG_LEVEL: LevelWithSilent = 'info';
 const SERVICE_NAME = 'digital-trust-common-service';
 const REDACTION_CENSOR = '[Redacted]';
@@ -35,13 +37,10 @@ const MAX_REDACTION_DEPTH = 6;
 // endpoint rather than a probe, so it stays logged.
 const UNLOGGED_PATHS = new Set(['/health/live', '/health/ready']);
 
-// The express-specific fields pino-http sees on the request. `route` is only
-// populated once a handler has matched, which is true by the time the access
-// log is emitted on response finish.
+// The express-specific field pino-http sees on the request for the raw path
+// before routing, used only to recognize unlogged probe paths.
 interface RoutedRequest extends IncomingMessage {
-  baseUrl?: string;
   originalUrl?: string;
-  route?: { path?: string };
 }
 
 const VALID_LOG_LEVELS = new Set<LevelWithSilent>([
@@ -217,22 +216,6 @@ function buildAccessLogObject(
     ...(route === undefined ? {} : { route }),
     status_code: res.statusCode,
   };
-}
-
-// The matched route pattern, never the request path: the path carries tenant
-// and operation ids, and on an unmatched request it is arbitrary client input.
-// An unmatched request is therefore logged with its method and status but no
-// route, rather than with something unbounded.
-function resolveRoute(req: IncomingMessage): string | undefined {
-  const { baseUrl, route } = req as RoutedRequest;
-
-  if (typeof route?.path !== 'string') {
-    return undefined;
-  }
-
-  const resolved = `${typeof baseUrl === 'string' ? baseUrl : ''}${route.path}`;
-
-  return resolved === '' ? undefined : resolved;
 }
 
 function isUnloggedPath(req: IncomingMessage): boolean {
