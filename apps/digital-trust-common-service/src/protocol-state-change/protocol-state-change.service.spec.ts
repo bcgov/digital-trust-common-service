@@ -73,6 +73,7 @@ describe('ProtocolStateChangeService', () => {
     Pick<
       OperationRepository,
       | 'findByExternalIdForTenant'
+      | 'existsByExternalIdForTenant'
       | 'findByIdForTenant'
       | 'lockBatchParent'
       | 'countByBatchGroupedByState'
@@ -103,6 +104,7 @@ describe('ProtocolStateChangeService', () => {
   beforeEach(async () => {
     operationRepository = {
       findByExternalIdForTenant: jest.fn().mockResolvedValue(null),
+      existsByExternalIdForTenant: jest.fn().mockResolvedValue(false),
       findByIdForTenant: jest
         .fn()
         .mockImplementation((id: string) => Promise.resolve(operation({ id }))),
@@ -975,6 +977,71 @@ describe('ProtocolStateChangeService', () => {
           outcome: 'no_op',
           protocol_state: 'credential-issued',
           topic: 'issue_credential',
+        },
+        'protocol state change had no effect',
+      );
+      expect(logLine).not.toHaveBeenCalled();
+      expect(logWarn).not.toHaveBeenCalled();
+    });
+
+    it('logs a present_proof redelivery after the Operation already completed as no_op rather than unmatched', async () => {
+      // present_proof has no Credential/Connection fallback, and
+      // findByExternalIdForTenant only sees PENDING/PROCESSING rows, so once
+      // the first delivery has completed the Operation, this duplicate
+      // delivery of the same terminal state finds no in-flight row —
+      // existsByExternalIdForTenant still finds the (now terminal) row, so
+      // this must be reported no_op rather than unmatched.
+      operationRepository.findByExternalIdForTenant.mockResolvedValue(null);
+      operationRepository.existsByExternalIdForTenant.mockResolvedValue(true);
+
+      await service.process(
+        baseData({ topic: 'present_proof', protocolState: 'verified' }),
+      );
+
+      expect(logDebug).toHaveBeenCalledWith(
+        {
+          duration_ms: expect.any(Number),
+          external_id: 'ext-1',
+          operation_state: OperationState.COMPLETED,
+          outcome: 'no_op',
+          protocol_state: 'verified',
+          topic: 'present_proof',
+        },
+        'protocol state change had no effect',
+      );
+      expect(logLine).not.toHaveBeenCalled();
+      expect(logWarn).not.toHaveBeenCalled();
+    });
+
+    it("logs a multi-use invitation template's own invitation-state self-notification as no_op rather than unmatched", async () => {
+      // The template row is found but intentionally left untransitioned (see
+      // applyConnectionOutcome), so this is expected ACA-Py traffic, not a
+      // lost delivery.
+      connectionService.findByInvitationMsgIdForTenant.mockResolvedValue(
+        connection({
+          id: 'invitation-conn-1',
+          externalConnectionId: undefined,
+          metadata: { multiUse: true },
+        }),
+      );
+
+      await service.process(
+        baseData({
+          topic: 'connections',
+          protocolState: 'invitation',
+          externalId: 'invitation-conn-1',
+          payload: { invitation_msg_id: 'invi-msg-1' },
+        }),
+      );
+
+      expect(logDebug).toHaveBeenCalledWith(
+        {
+          duration_ms: expect.any(Number),
+          external_id: 'invitation-conn-1',
+          operation_state: OperationState.PROCESSING,
+          outcome: 'no_op',
+          protocol_state: 'invitation',
+          topic: 'connections',
         },
         'protocol state change had no effect',
       );

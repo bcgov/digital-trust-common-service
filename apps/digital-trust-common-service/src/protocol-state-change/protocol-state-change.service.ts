@@ -26,8 +26,9 @@ import {
 } from './state-mapping';
 
 interface OperationOutcomeResult {
+  readonly matched: boolean;
   readonly transitioned: boolean;
-  /** Null when no Operation is linked to this externalId at all. */
+  /** Null when no in-flight Operation is linked to this externalId. */
   readonly operationType: string | null;
 }
 
@@ -108,10 +109,10 @@ export class ProtocolStateChangeService {
       );
       let transitioned = operationOutcome.transitioned;
       const operationType = operationOutcome.operationType;
-      // Finding no Operation is not itself a miss: one is best-effort (see
-      // applyOperationOutcome), and the Credential or Connection below may
-      // still be this delivery's real target.
-      let matched = operationType !== null;
+      // Finding no in-flight Operation is not itself a miss: one is
+      // best-effort (see applyOperationOutcome), and the Credential or
+      // Connection below may still be this delivery's real target.
+      let matched = operationOutcome.matched;
 
       if (data.topic === 'connections') {
         const connectionOutcome = await this.applyConnectionOutcome(
@@ -230,9 +231,19 @@ export class ProtocolStateChangeService {
     );
 
     if (!operation) {
-      // Not every topic has a linked Operation (e.g. an out-of-band
-      // connections update with no create() Operation) — best-effort only.
-      return { transitioned: false, operationType: null };
+      // findByExternalIdForTenant only sees PENDING/PROCESSING rows, so a
+      // redelivery landing after this Operation has already gone terminal
+      // looks identical here to an externalId that never had one. Only the
+      // latter is a genuine miss — fall back to the state-unrestricted
+      // existence check to tell them apart before reporting unmatched.
+      const existed =
+        await this.operationRepository.existsByExternalIdForTenant(
+          data.tenantId,
+          data.externalId,
+          TOPIC_OPERATION_TYPES[data.topic],
+        );
+
+      return { matched: existed, transitioned: false, operationType: null };
     }
 
     const updated = await this.operationService.transitionStateIfForward(
@@ -244,7 +255,11 @@ export class ProtocolStateChangeService {
     );
 
     if (!updated) {
-      return { transitioned: false, operationType: operation.type };
+      return {
+        matched: true,
+        transitioned: false,
+        operationType: operation.type,
+      };
     }
 
     if (operation.batchId) {
@@ -271,7 +286,11 @@ export class ProtocolStateChangeService {
       await this.settleRelatedOfferOperation(data, outcome, manager);
     }
 
-    return { transitioned: true, operationType: operation.type };
+    return {
+      matched: true,
+      transitioned: true,
+      operationType: operation.type,
+    };
   }
 
   /**
@@ -481,6 +500,12 @@ export class ProtocolStateChangeService {
         createdFromTemplate = true;
       } else if (!invitationTemplate?.metadata?.multiUse) {
         connection = invitationTemplate;
+      } else {
+        // The multi-use invitation template's own `invitation`-state
+        // self-notification: intentionally left unapplied to any per-party
+        // row (see above), but the template row itself was found, so this
+        // is expected traffic — report it no_op rather than unmatched.
+        return { matched: true, transitioned: false };
       }
     }
 

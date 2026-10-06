@@ -46,6 +46,7 @@ describe('OperationRepository', () => {
       save: jest.fn(),
       findOne: jest.fn(),
       update: jest.fn(),
+      count: jest.fn(),
       createQueryBuilder: jest.fn().mockReturnValue(queryBuilder),
       manager: {
         query: (mockManagerQuery = jest.fn()),
@@ -140,6 +141,33 @@ describe('OperationRepository', () => {
       },
       order: { createdAt: 'DESC' },
     });
+  });
+
+  it('existsByExternalIdForTenant queries the same tenantId/externalId/type scope with no state filter', async () => {
+    (mockRepo.count as jest.Mock).mockResolvedValue(1);
+
+    await expect(
+      repository.existsByExternalIdForTenant('t1', 'ext-1', [
+        'credential.offer',
+      ]),
+    ).resolves.toBe(true);
+    expect(mockRepo.count).toHaveBeenCalledWith({
+      where: {
+        tenantId: 't1',
+        externalId: 'ext-1',
+        type: In(['credential.offer']),
+      },
+    });
+  });
+
+  it('existsByExternalIdForTenant resolves false when no matching row exists', async () => {
+    (mockRepo.count as jest.Mock).mockResolvedValue(0);
+
+    await expect(
+      repository.existsByExternalIdForTenant('t1', 'ext-1', [
+        'credential.offer',
+      ]),
+    ).resolves.toBe(false);
   });
 
   it('findLatestByExternalIdAndTypeForTenant queries by tenantId/externalId/type with no state filter, newest first', async () => {

@@ -104,6 +104,26 @@ export class OperationRepository {
   }
 
   /**
+   * Same tenant/topic scoping as findByExternalIdForTenant, but without its
+   * PENDING/PROCESSING restriction, so a redelivery landing after this
+   * externalId's Operation has already gone terminal is still recognised as
+   * matched instead of looking identical to an externalId that never had an
+   * Operation at all. Existence-only: never used to drive a transition,
+   * which stays exclusively on the guarded in-flight lookup above.
+   */
+  public async existsByExternalIdForTenant(
+    tenantId: string,
+    externalId: string,
+    types: readonly string[],
+  ): Promise<boolean> {
+    const count = await this.repo.count({
+      where: { tenantId, externalId, type: In(types) },
+    });
+
+    return count > 0;
+  }
+
+  /**
    * Recovery lookup for a unique-violation on `uq_operation_inflight_holder_action`
    * or `uq_operation_inflight_revoke`: unlike findByExternalIdForTenant above,
    * this is not disambiguating between
