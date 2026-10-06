@@ -12,13 +12,23 @@ import {
 } from '@/components/ui/table';
 import { useTenants } from '@/lib/api/queries/tenants';
 import { ApiError } from '@/lib/api/errors';
+import { useAuth } from '@/lib/auth/context';
+import { isPlatformAdmin } from '@/lib/auth/scopes';
 
 export function TenantsPage() {
+  const { user } = useAuth();
   const { data, isLoading, error } = useTenants();
 
   return (
     <div className="flex flex-col gap-4">
-      <h1 className="text-xl font-semibold">Tenants</h1>
+      <div>
+        <h1 className="text-xl font-semibold">Tenants</h1>
+        <p className="text-sm text-muted-foreground">
+          {isPlatformAdmin(user)
+            ? 'All tenants on the platform.'
+            : 'The tenant you belong to.'}
+        </p>
+      </div>
 
       {error ? (
         <p role="alert" className="text-sm text-destructive">

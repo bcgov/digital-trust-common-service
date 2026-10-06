@@ -1,7 +1,10 @@
 import { screen, waitFor } from '@testing-library/react';
+import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 
+import { API_BASE_PATH } from '@/lib/api/constants';
 import { createMockAuthClient, MOCK_AUTH_TENANTS } from '@/lib/auth/mock-auth';
+import { server } from '@/mocks/server';
 import { renderWithAuth } from '@/test/render-with-auth';
 
 import { TenantLayout } from './TenantLayout';
@@ -90,5 +93,35 @@ describe('TenantLayout', () => {
     expect(
       screen.queryByRole('link', { name: 'Users' }),
     ).not.toBeInTheDocument();
+  });
+
+  it('shows a clear access-denied state for a suspended tenant', async () => {
+    server.use(
+      http.get(`${API_BASE_PATH}/tenants/:id`, () =>
+        HttpResponse.json(
+          {
+            error: {
+              code: 'TENANT_NOT_ACTIVE',
+              message: 'Tenant is suspended and cannot perform this action',
+            },
+          },
+          { status: 403 },
+        ),
+      ),
+    );
+    const client = createMockAuthClient();
+    await client.login();
+    renderWithAuth(routes, {
+      client,
+      initialEntries: [`/tenants/${activeTenantId}`],
+    });
+
+    expect(
+      await screen.findByText(
+        'Tenant is suspended and cannot perform this action',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.queryByText('overview content')).not.toBeInTheDocument();
   });
 });
