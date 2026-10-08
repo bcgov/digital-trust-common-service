@@ -57,6 +57,24 @@ describe('AppController (e2e)', () => {
       .expect('Hello World!');
   });
 
+  it('reflects any origin and exposes the configured headers (CORS_ALLOWED_ORIGINS=*)', () => {
+    return request(app.getHttpServer())
+      .get('/')
+      .set('Origin', 'https://example.com')
+      .expect(200)
+      .expect('access-control-allow-origin', 'https://example.com')
+      .expect('access-control-expose-headers', /X-Request-Id/);
+  });
+
+  it('answers a CORS preflight with the configured allowed headers', () => {
+    return request(app.getHttpServer())
+      .options('/')
+      .set('Origin', 'https://example.com')
+      .set('Access-Control-Request-Method', 'GET')
+      .expect(204)
+      .expect('access-control-allow-headers', /Authorization/);
+  });
+
   it('/health/live (GET) stays on a stable, unversioned path', () => {
     return request(app.getHttpServer())
       .get('/health/live')
