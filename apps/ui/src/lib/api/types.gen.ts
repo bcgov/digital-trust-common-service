@@ -903,8 +903,10 @@ export interface paths {
          * @description Request a verifiable presentation. Supports profile-based or raw presentation definition.
          *
          *     **Delivery mode** determined by `connection_id`:
-         *     - **Present** → DIDComm (send proof request to connected agent). Returns 202.
-         *     - **Absent** → OID4VP (generate authorization_request_uri). Returns 200.
+         *     - **Present** → DIDComm (send proof request to connected agent). Returns 202 while
+         *       the exchange is in flight, or 200 if it resolves synchronously (e.g. submission
+         *       failure).
+         *     - **Absent** → OID4VP (connectionless). Not yet implemented for this MVP — returns 400.
          */
         post: operations["requestPresentation"];
         delete?: never;
@@ -1629,7 +1631,7 @@ export interface components {
                     actual?: string;
                     message?: string;
                 }[];
-                /** Format: uuid */
+                /** @description Correlation id, echoed from the X-Request-Id response header. Usually a UUID (server-generated), but a caller that supplies its own X-Request-Id gets it echoed back verbatim instead, provided it matches this pattern and length; otherwise the server discards it and generates a UUID. */
                 request_id?: string;
             };
         };
@@ -2430,7 +2432,7 @@ export interface components {
                  * @example {
                  *       "error": {
                  *         "code": "VALIDATION_FAILED",
-                 *         "message": "Request body validation failed",
+                 *         "message": "Request validation failed",
                  *         "details": [
                  *           {
                  *             "field": "attributes.birth_date",
@@ -4155,7 +4157,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Authorization request URI generated (OID4VP) */
+            /** @description Presentation request resolved synchronously (e.g. failed submission) */
             200: {
                 headers: {
                     [name: string]: unknown;

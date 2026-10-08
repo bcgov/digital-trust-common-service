@@ -56,6 +56,16 @@ export class TenantUserResponseDto {
   })
   public status!: TenantUserStatus;
 
+  @Expose({ name: 'is_platform_operator' })
+  @ApiProperty({
+    name: 'is_platform_operator',
+    description:
+      'Whether this user also carries the platform-admin role on their ' +
+      'OIDC tokens, bypassing all tenant-scoped role/scope checks.',
+    example: false,
+  })
+  public isPlatformOperator!: boolean;
+
   @Expose({ name: 'created_at' })
   @ApiProperty({
     name: 'created_at',
@@ -72,6 +82,7 @@ export class TenantUserResponseDto {
     dto.displayName = tenantUser.displayName;
     dto.role = tenantUser.role;
     dto.status = tenantUser.status;
+    dto.isPlatformOperator = tenantUser.isPlatformOperator;
     dto.createdAt = tenantUser.createdAt;
     return dto;
   }

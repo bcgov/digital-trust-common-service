@@ -111,6 +111,20 @@ export class TenantUser {
   public status!: TenantUserStatus;
 
   @ApiProperty({
+    description:
+      'Whether this human user is also a platform operator. Their OIDC ' +
+      'tokens carry the platform-admin role in addition to their normal ' +
+      'tenant role, bypassing all tenant-scoped role/scope checks.',
+    example: false,
+  })
+  @Column({
+    name: 'is_platform_operator',
+    type: 'boolean',
+    default: false,
+  })
+  public isPlatformOperator!: boolean;
+
+  @ApiProperty({
     description: 'The date and time when the tenant user was created',
     example: '2024-01-01T00:00:00Z',
   })

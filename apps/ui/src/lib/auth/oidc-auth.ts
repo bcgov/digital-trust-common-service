@@ -61,21 +61,26 @@ function toScopes(payload: Record<string, unknown>): string[] {
 }
 
 /**
- * Identity and role come from the profile. API scopes live only on the access
+ * Membership claims prefer the access token because the profile can retain
+ * the original login tenant after a switch or refresh. API scopes live only on the access
  * token JWT: the id_token never carries them, and oidc-client-ts's `user.scope`
  * is the token response parameter (what was requested), not the claim the
  * provider derives from the role. An opaque token yields none: fail closed.
  */
 function toAuthUser(user: User): AuthUser {
   const { profile } = user;
+  const payload = decodeJwtPayload(user.access_token);
+  const membership = { ...profile, ...payload };
   return {
-    sub: typeof profile.sub === 'string' ? profile.sub : '',
+    sub: typeof membership.sub === 'string' ? membership.sub : '',
     name: typeof profile.name === 'string' ? profile.name : undefined,
     email: typeof profile.email === 'string' ? profile.email : undefined,
     tenantId:
-      typeof profile.tenant_id === 'string' ? profile.tenant_id : undefined,
-    roles: toRoles(profile),
-    scopes: toScopes(decodeJwtPayload(user.access_token)),
+      typeof membership.tenant_id === 'string'
+        ? membership.tenant_id
+        : undefined,
+    roles: toRoles(membership),
+    scopes: toScopes(payload),
   };
 }
 

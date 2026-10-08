@@ -236,6 +236,42 @@ describe('oidc auth client', () => {
   });
 
   describe('claim mapping', () => {
+    it('keeps refreshed access-token membership instead of stale profile claims', async () => {
+      const client = createOidcAuthClient(config);
+      mocks.manager.signinSilent.mockResolvedValue(
+        makeUser(
+          {
+            sub: 'original-member',
+            tenant_id: 'original-tenant',
+            tenant_role: 'readonly',
+            name: 'Ada Lovelace',
+          },
+          {
+            access_token: mockAccessToken({
+              sub: 'selected-member',
+              tenant_id: 'selected-tenant',
+              tenant_role: 'owner',
+              roles: ['owner'],
+              scope: 'openid tenants:admin',
+            }),
+          },
+        ),
+      );
+
+      await vi.waitFor(() =>
+        expect(client.getState().status).toBe('unauthenticated'),
+      );
+      await client.refresh();
+
+      expect(client.getState().user).toMatchObject({
+        sub: 'selected-member',
+        tenantId: 'selected-tenant',
+        roles: ['owner'],
+        name: 'Ada Lovelace',
+        scopes: ['openid', 'tenants:admin'],
+      });
+    });
+
     it('maps the app-issued claims onto the UI user', async () => {
       mocks.manager.getUser.mockResolvedValue(
         makeUser({

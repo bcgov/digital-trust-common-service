@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Test, TestingModule } from '@nestjs/testing';
 import { DataSource, EntityManager } from 'typeorm';
@@ -72,6 +73,7 @@ describe('ProtocolStateChangeService', () => {
     Pick<
       OperationRepository,
       | 'findByExternalIdForTenant'
+      | 'existsByExternalIdForTenant'
       | 'findByIdForTenant'
       | 'lockBatchParent'
       | 'countByBatchGroupedByState'
@@ -102,6 +104,7 @@ describe('ProtocolStateChangeService', () => {
   beforeEach(async () => {
     operationRepository = {
       findByExternalIdForTenant: jest.fn().mockResolvedValue(null),
+      existsByExternalIdForTenant: jest.fn().mockResolvedValue(false),
       findByIdForTenant: jest
         .fn()
         .mockImplementation((id: string) => Promise.resolve(operation({ id }))),
@@ -881,6 +884,207 @@ describe('ProtocolStateChangeService', () => {
         'webhook.dispatch',
         expect.objectContaining({ event: 'operation.batch.completed' }),
       );
+    });
+  });
+  /**
+   * The state-transition events: what a delivery resolved to and whether it
+   * actually moved anything. The assertions name the whole payload rather
+   * than the interesting key, so a field added later has to be added here
+   * deliberately — that is the control that keeps the webhook payload out of
+   * the logs, not the redaction backstop in the logger config.
+   *
+   * `tenant_id` and `request_id` are deliberately absent: the pino mixin
+   * attaches them from the job context JobsService restored.
+   */
+  describe('state-transition events', () => {
+    let logDebug: jest.SpiedFunction<typeof Logger.prototype.debug>;
+    let logLine: jest.SpiedFunction<typeof Logger.prototype.log>;
+    let logWarn: jest.SpiedFunction<typeof Logger.prototype.warn>;
+
+    beforeEach(() => {
+      // The service's logger is an instance field, so the prototype is the
+      // seam.
+      logDebug = jest.spyOn(Logger.prototype, 'debug').mockImplementation();
+      logLine = jest.spyOn(Logger.prototype, 'log').mockImplementation();
+      logWarn = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+    });
+
+    afterEach(() => {
+      jest.restoreAllMocks();
+    });
+
+    it('logs an applied transition naming the domain event it produced', async () => {
+      operationRepository.findByExternalIdForTenant.mockResolvedValue(
+        operation(),
+      );
+      credentialRepository.findByExternalId.mockResolvedValue(credential());
+
+      await service.process(baseData());
+
+      expect(logLine).toHaveBeenCalledWith(
+        {
+          domain_event: 'credential.issued',
+          duration_ms: expect.any(Number),
+          external_id: 'ext-1',
+          operation_state: OperationState.COMPLETED,
+          outcome: 'applied',
+          protocol_state: 'credential-issued',
+          topic: 'issue_credential',
+        },
+        'protocol state change applied',
+      );
+      expect(logWarn).not.toHaveBeenCalled();
+    });
+
+    it('omits the domain event for a transition that produces none', async () => {
+      operationRepository.findByExternalIdForTenant.mockResolvedValue(
+        operation({ state: OperationState.PENDING }),
+      );
+
+      await service.process(
+        baseData({ topic: 'present_proof', protocolState: 'request-sent' }),
+      );
+
+      expect(logLine).toHaveBeenCalledWith(
+        {
+          duration_ms: expect.any(Number),
+          external_id: 'ext-1',
+          operation_state: OperationState.PROCESSING,
+          outcome: 'applied',
+          protocol_state: 'request-sent',
+          topic: 'present_proof',
+        },
+        'protocol state change applied',
+      );
+    });
+
+    it('logs a redelivery that moved nothing at debug rather than as a fault', async () => {
+      // The row exists; the forward guard rejects because it is already at or
+      // past this state, which is what pg-boss at-least-once and ACA-Py's
+      // resends look like.
+      operationRepository.findByExternalIdForTenant.mockResolvedValue(
+        operation({ type: OPERATION_TYPE.CREDENTIAL_OFFER }),
+      );
+      operationService.transitionStateIfForward.mockResolvedValue(null);
+
+      await service.process(baseData());
+
+      expect(logDebug).toHaveBeenCalledWith(
+        {
+          duration_ms: expect.any(Number),
+          external_id: 'ext-1',
+          operation_state: OperationState.COMPLETED,
+          outcome: 'no_op',
+          protocol_state: 'credential-issued',
+          topic: 'issue_credential',
+        },
+        'protocol state change had no effect',
+      );
+      expect(logLine).not.toHaveBeenCalled();
+      expect(logWarn).not.toHaveBeenCalled();
+    });
+
+    it('logs a present_proof redelivery after the Operation already completed as no_op rather than unmatched', async () => {
+      // present_proof has no Credential/Connection fallback, and
+      // findByExternalIdForTenant only sees PENDING/PROCESSING rows, so once
+      // the first delivery has completed the Operation, this duplicate
+      // delivery of the same terminal state finds no in-flight row —
+      // existsByExternalIdForTenant still finds the (now terminal) row, so
+      // this must be reported no_op rather than unmatched.
+      operationRepository.findByExternalIdForTenant.mockResolvedValue(null);
+      operationRepository.existsByExternalIdForTenant.mockResolvedValue(true);
+
+      await service.process(
+        baseData({ topic: 'present_proof', protocolState: 'verified' }),
+      );
+
+      expect(logDebug).toHaveBeenCalledWith(
+        {
+          duration_ms: expect.any(Number),
+          external_id: 'ext-1',
+          operation_state: OperationState.COMPLETED,
+          outcome: 'no_op',
+          protocol_state: 'verified',
+          topic: 'present_proof',
+        },
+        'protocol state change had no effect',
+      );
+      expect(logLine).not.toHaveBeenCalled();
+      expect(logWarn).not.toHaveBeenCalled();
+    });
+
+    it("logs a multi-use invitation template's own invitation-state self-notification as no_op rather than unmatched", async () => {
+      // The template row is found but intentionally left untransitioned (see
+      // applyConnectionOutcome), so this is expected ACA-Py traffic, not a
+      // lost delivery.
+      connectionService.findByInvitationMsgIdForTenant.mockResolvedValue(
+        connection({
+          id: 'invitation-conn-1',
+          externalConnectionId: undefined,
+          metadata: { multiUse: true },
+        }),
+      );
+
+      await service.process(
+        baseData({
+          topic: 'connections',
+          protocolState: 'invitation',
+          externalId: 'invitation-conn-1',
+          payload: { invitation_msg_id: 'invi-msg-1' },
+        }),
+      );
+
+      expect(logDebug).toHaveBeenCalledWith(
+        {
+          duration_ms: expect.any(Number),
+          external_id: 'invitation-conn-1',
+          operation_state: OperationState.PROCESSING,
+          outcome: 'no_op',
+          protocol_state: 'invitation',
+          topic: 'connections',
+        },
+        'protocol state change had no effect',
+      );
+      expect(logLine).not.toHaveBeenCalled();
+      expect(logWarn).not.toHaveBeenCalled();
+    });
+
+    it('warns about a delivery that correlated to no row at all', async () => {
+      // Nothing to apply the state change to: unlike a redelivery, this one
+      // is lost, so it must not be reported as the expected no-op.
+      operationRepository.findByExternalIdForTenant.mockResolvedValue(null);
+      credentialRepository.findByExternalId.mockResolvedValue(null);
+
+      await service.process(baseData());
+
+      expect(logWarn).toHaveBeenCalledWith(
+        {
+          duration_ms: expect.any(Number),
+          external_id: 'ext-1',
+          operation_state: OperationState.COMPLETED,
+          outcome: 'unmatched',
+          protocol_state: 'credential-issued',
+          topic: 'issue_credential',
+        },
+        'protocol state change matched nothing',
+      );
+      expect(logDebug).not.toHaveBeenCalled();
+      expect(logLine).not.toHaveBeenCalled();
+    });
+
+    it('warns about a protocol state it has no mapping for', async () => {
+      await service.process(baseData({ protocolState: 'not-a-real-state' }));
+
+      expect(logWarn).toHaveBeenCalledWith(
+        {
+          external_id: 'ext-1',
+          outcome: 'ignored',
+          protocol_state: 'not-a-real-state',
+          topic: 'issue_credential',
+        },
+        'protocol state change ignored',
+      );
+      expect(logLine).not.toHaveBeenCalled();
     });
   });
 });

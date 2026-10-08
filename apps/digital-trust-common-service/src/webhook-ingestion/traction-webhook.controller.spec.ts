@@ -1,3 +1,5 @@
+import { Logger } from '@nestjs/common';
+
 import { ConnectorType } from '../connection/connection.entity';
 import { ProtocolStateChangeWorker } from '../protocol-state-change/protocol-state-change.worker';
 
@@ -7,6 +9,9 @@ import { TractionWebhookController } from './traction-webhook.controller';
 describe('TractionWebhookController', () => {
   let controller: TractionWebhookController;
   let worker: jest.Mocked<Pick<ProtocolStateChangeWorker, 'enqueue'>>;
+  let logDebug: jest.SpiedFunction<typeof Logger.prototype.debug>;
+  let logLine: jest.SpiedFunction<typeof Logger.prototype.log>;
+  let logWarn: jest.SpiedFunction<typeof Logger.prototype.warn>;
 
   const request = {
     tenantId: 'tenant-1',
@@ -19,6 +24,15 @@ describe('TractionWebhookController', () => {
     controller = new TractionWebhookController(
       worker as unknown as ProtocolStateChangeWorker,
     );
+    // The controller's logger is an instance field, so the prototype is the
+    // seam.
+    logDebug = jest.spyOn(Logger.prototype, 'debug').mockImplementation();
+    logLine = jest.spyOn(Logger.prototype, 'log').mockImplementation();
+    logWarn = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
   });
 
   it('maps the Traction wire topic to the generic ProtocolTopic and enqueues a job', async () => {
@@ -117,5 +131,104 @@ describe('TractionWebhookController', () => {
 
     expect(result).toEqual({});
     expect(worker.enqueue).not.toHaveBeenCalled();
+  });
+
+  /**
+   * The webhook ingestion events: what arrived, and whether it was enqueued
+   * or dropped. The assertions name the whole payload rather than the
+   * interesting key, so a field added later has to be added here
+   * deliberately — that is the control that keeps the webhook body out of the
+   * logs, not the redaction backstop in the logger config.
+   *
+   * `tenant_id` and `request_id` are deliberately absent: the pino mixin
+   * attaches them from the request context, which `ConnectorWebhookGuard`
+   * has already resolved the tenant into.
+   */
+  describe('webhook ingestion events', () => {
+    it('logs an accepted delivery naming the topic, state, and external id', async () => {
+      await controller.receive(
+        'issue_credential_v2_0',
+        {
+          cred_ex_id: 'cred-exch-1',
+          state: 'credential_issued',
+          attributes: [{ name: 'given_name', value: 'Alice' }],
+        },
+        request,
+      );
+
+      expect(logLine).toHaveBeenCalledWith(
+        {
+          connector_id: 'connector-1',
+          connector_type: ConnectorType.TRACTION,
+          external_id: 'cred-exch-1',
+          outcome: 'accepted',
+          protocol_state: 'credential_issued',
+          topic: 'issue_credential',
+          wire_topic: 'issue_credential_v2_0',
+        },
+        'webhook accepted',
+      );
+      expect(logWarn).not.toHaveBeenCalled();
+    });
+
+    it('logs an unconsumed topic at debug rather than as a fault', async () => {
+      await controller.receive('ping', { state: 'x' }, request);
+
+      expect(logDebug).toHaveBeenCalledWith(
+        {
+          connector_id: 'connector-1',
+          connector_type: ConnectorType.TRACTION,
+          drop_reason: 'unknown_topic',
+          outcome: 'dropped',
+          wire_topic: 'ping',
+        },
+        'webhook dropped',
+      );
+      expect(logWarn).not.toHaveBeenCalled();
+      expect(logLine).not.toHaveBeenCalled();
+    });
+
+    it('warns when a consumed topic arrives without its external id', async () => {
+      await controller.receive(
+        'issue_credential_v2_0',
+        { state: 'credential_issued' },
+        request,
+      );
+
+      expect(logWarn).toHaveBeenCalledWith(
+        {
+          connector_id: 'connector-1',
+          connector_type: ConnectorType.TRACTION,
+          drop_reason: 'missing_external_id',
+          outcome: 'dropped',
+          topic: 'issue_credential',
+          wire_topic: 'issue_credential_v2_0',
+        },
+        'webhook dropped',
+      );
+      expect(logLine).not.toHaveBeenCalled();
+    });
+
+    it('warns when a consumed topic arrives without a state', async () => {
+      await controller.receive(
+        'connections',
+        { connection_id: 'conn-1' },
+        request,
+      );
+
+      expect(logWarn).toHaveBeenCalledWith(
+        {
+          connector_id: 'connector-1',
+          connector_type: ConnectorType.TRACTION,
+          drop_reason: 'missing_state',
+          external_id: 'conn-1',
+          outcome: 'dropped',
+          topic: 'connections',
+          wire_topic: 'connections',
+        },
+        'webhook dropped',
+      );
+      expect(logLine).not.toHaveBeenCalled();
+    });
   });
 });

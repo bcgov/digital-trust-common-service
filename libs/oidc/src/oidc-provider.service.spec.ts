@@ -546,6 +546,7 @@ describe('buildOidcConfiguration', () => {
         displayName: 'Test User',
         role: 'member',
         status: 'active',
+        isPlatformOperator: false,
       });
       const configuration = buildOidcConfiguration(
         config,
@@ -567,6 +568,40 @@ describe('buildOidcConfiguration', () => {
         tenant_id: 'tenant-123',
         tenant_role: 'member',
         roles: ['member'],
+      });
+    });
+
+    it('adds the platform-admin role for a flagged platform operator', async () => {
+      (tenantUserService.findById as jest.Mock).mockResolvedValue({
+        id: 'user-id-123',
+        tenantId: 'tenant-123',
+        externalUserId: 'external-user-123',
+        email: 'user@example.com',
+        displayName: 'Test User',
+        role: 'member',
+        status: 'active',
+        isPlatformOperator: true,
+      });
+      const configuration = buildOidcConfiguration(
+        config,
+        jwks,
+        adapterFactory,
+        tenantUserService,
+        roleScopeService,
+      );
+
+      const claims = await configuration.extraTokenClaims?.(
+        {} as never,
+        {
+          accountId: 'user-id-123',
+          client: undefined,
+        } as never,
+      );
+
+      expect(claims).toEqual({
+        tenant_id: 'tenant-123',
+        tenant_role: 'member',
+        roles: ['member', 'platform-admin'],
       });
     });
   });

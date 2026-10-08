@@ -26,10 +26,34 @@ import {
 } from './state-mapping';
 
 interface OperationOutcomeResult {
+  readonly matched: boolean;
   readonly transitioned: boolean;
-  /** Null when no Operation is linked to this externalId at all. */
+  /** Null when no in-flight Operation is linked to this externalId. */
   readonly operationType: string | null;
 }
+
+/**
+ * Whether a guarded write found its target row at all, kept separate from
+ * whether that row moved. The two failure modes look identical from the
+ * caller's `false` but mean opposite things operationally.
+ */
+interface ApplyOutcomeResult {
+  readonly matched: boolean;
+  readonly transitioned: boolean;
+}
+
+/**
+ * How a delivery settled. `applied` moved at least one of the Operation,
+ * Credential, or Connection forward; `no_op` found the row but every guarded
+ * write saw it already at or past that state, which is what a duplicate or
+ * out-of-order pg-boss delivery looks like; `unmatched` resolved to a real
+ * outcome yet found no row to apply it to, so the state change is lost;
+ * `ignored` is a protocol state this service has no mapping for.
+ */
+const OUTCOME_APPLIED = 'applied';
+const OUTCOME_IGNORED = 'ignored';
+const OUTCOME_NO_OP = 'no_op';
+const OUTCOME_UNMATCHED = 'unmatched';
 
 @Injectable()
 export class ProtocolStateChangeService {
@@ -50,11 +74,24 @@ export class ProtocolStateChangeService {
     const outcome = resolveProtocolOutcome(data.topic, data.protocolState);
 
     if (!outcome) {
+      // Not an error: an agent may introduce states this service has no
+      // mapping for yet, and a topic's non-terminal chatter is dropped here
+      // too. Worth
+      // a warning because the state change is then lost — nothing retries it.
       this.logger.warn(
-        `Unrecognized ${data.topic} state '${data.protocolState}' for tenant ${data.tenantId}; ignoring`,
+        {
+          external_id: data.externalId,
+          outcome: OUTCOME_IGNORED,
+          protocol_state: data.protocolState,
+          topic: data.topic,
+        },
+        'protocol state change ignored',
       );
+
       return;
     }
+
+    const startedAt = Date.now();
 
     // The guarded state writes below and the webhook-dispatch enqueue are
     // committed together: if the pg-boss insert fails, the whole
@@ -73,19 +110,33 @@ export class ProtocolStateChangeService {
       );
       let transitioned = operationOutcome.transitioned;
       const operationType = operationOutcome.operationType;
+      // Finding no in-flight Operation is not itself a miss: one is
+      // best-effort (see applyOperationOutcome), and the Credential or
+      // Connection below may still be this delivery's real target.
+      let matched = operationOutcome.matched;
 
       if (data.topic === 'connections') {
-        transitioned =
-          (await this.applyConnectionOutcome(data, outcome, manager)) ||
-          transitioned;
+        const connectionOutcome = await this.applyConnectionOutcome(
+          data,
+          outcome,
+          manager,
+        );
+
+        matched = connectionOutcome.matched || matched;
+        transitioned = connectionOutcome.transitioned || transitioned;
       } else if (operationType === null || transitioned) {
-        transitioned =
-          (await this.applyCredentialOutcome(data, outcome, manager)) ||
-          transitioned;
+        const credentialOutcome = await this.applyCredentialOutcome(
+          data,
+          outcome,
+          manager,
+        );
+
+        matched = credentialOutcome.matched || matched;
+        transitioned = credentialOutcome.transitioned || transitioned;
       }
 
       if (!transitioned) {
-        return { transitioned, event: null };
+        return { matched, transitioned, event: null };
       }
 
       // A holder-initiated accept still confirms via an issue_credential
@@ -120,7 +171,7 @@ export class ProtocolStateChangeService {
         },
       );
 
-      return { transitioned, event };
+      return { matched, transitioned, event };
     });
 
     // In-process only, and only once the transition + durable enqueue above
@@ -130,6 +181,42 @@ export class ProtocolStateChangeService {
         tenantId: data.tenantId,
         externalId: data.externalId,
       });
+    }
+
+    let settledOutcome = OUTCOME_UNMATCHED;
+
+    if (result.transitioned) {
+      settledOutcome = OUTCOME_APPLIED;
+    } else if (result.matched) {
+      settledOutcome = OUTCOME_NO_OP;
+    }
+
+    // Every field is named explicitly and the webhook payload is never among
+    // them: `tenant_id` and `request_id` are attached by the pino mixin from
+    // the job context JobsService restored, so nothing is threaded through
+    // for them.
+    const event = {
+      ...(result.event ? { domain_event: result.event } : {}),
+      duration_ms: Date.now() - startedAt,
+      external_id: data.externalId,
+      operation_state: outcome.operationState,
+      outcome: settledOutcome,
+      protocol_state: data.protocolState,
+      topic: data.topic,
+    };
+
+    if (result.transitioned) {
+      this.logger.log(event, 'protocol state change applied');
+    } else if (result.matched) {
+      // Debug: pg-boss delivers at least once and agents may re-send the same
+      // state, so a delivery landing on a row already at or past that state
+      // is expected traffic rather than a fault.
+      this.logger.debug(event, 'protocol state change had no effect');
+    } else {
+      // Warned for the same reason an unmapped state is: the delivery
+      // resolved to a real outcome but found no row to apply it to, so the
+      // state change is lost and nothing retries it.
+      this.logger.warn(event, 'protocol state change matched nothing');
     }
   }
 
@@ -145,9 +232,19 @@ export class ProtocolStateChangeService {
     );
 
     if (!operation) {
-      // Not every topic has a linked Operation (e.g. an out-of-band
-      // connections update with no create() Operation) — best-effort only.
-      return { transitioned: false, operationType: null };
+      // findByExternalIdForTenant only sees PENDING/PROCESSING rows, so a
+      // redelivery landing after this Operation has already gone terminal
+      // looks identical here to an externalId that never had one. Only the
+      // latter is a genuine miss — fall back to the state-unrestricted
+      // existence check to tell them apart before reporting unmatched.
+      const existed =
+        await this.operationRepository.existsByExternalIdForTenant(
+          data.tenantId,
+          data.externalId,
+          TOPIC_OPERATION_TYPES[data.topic],
+        );
+
+      return { matched: existed, transitioned: false, operationType: null };
     }
 
     const updated = await this.operationService.transitionStateIfForward(
@@ -159,7 +256,11 @@ export class ProtocolStateChangeService {
     );
 
     if (!updated) {
-      return { transitioned: false, operationType: operation.type };
+      return {
+        matched: true,
+        transitioned: false,
+        operationType: operation.type,
+      };
     }
 
     if (operation.batchId) {
@@ -186,7 +287,11 @@ export class ProtocolStateChangeService {
       await this.settleRelatedOfferOperation(data, outcome, manager);
     }
 
-    return { transitioned: true, operationType: operation.type };
+    return {
+      matched: true,
+      transitioned: true,
+      operationType: operation.type,
+    };
   }
 
   /**
@@ -298,9 +403,9 @@ export class ProtocolStateChangeService {
     data: ProtocolStateChangeJobData,
     outcome: ProtocolOutcome,
     manager: EntityManager,
-  ): Promise<boolean> {
+  ): Promise<ApplyOutcomeResult> {
     if (!outcome.credentialState) {
-      return false;
+      return { matched: false, transitioned: false };
     }
 
     const credential = await this.credentialRepository.findByExternalId(
@@ -309,7 +414,7 @@ export class ProtocolStateChangeService {
     );
 
     if (!credential) {
-      return false;
+      return { matched: false, transitioned: false };
     }
 
     const won = await this.credentialRepository.updateStateIfForward(
@@ -331,7 +436,7 @@ export class ProtocolStateChangeService {
     );
 
     if (!won) {
-      return false;
+      return { matched: true, transitioned: false };
     }
 
     await this.domainAudit.emit(
@@ -344,16 +449,16 @@ export class ProtocolStateChangeService {
       manager,
     );
 
-    return true;
+    return { matched: true, transitioned: true };
   }
 
   private async applyConnectionOutcome(
     data: ProtocolStateChangeJobData,
     outcome: ProtocolOutcome,
     manager: EntityManager,
-  ): Promise<boolean> {
+  ): Promise<ApplyOutcomeResult> {
     if (!outcome.connectionState) {
-      return false;
+      return { matched: false, transitioned: false };
     }
 
     let connection =
@@ -396,11 +501,17 @@ export class ProtocolStateChangeService {
         createdFromTemplate = true;
       } else if (!invitationTemplate?.metadata?.multiUse) {
         connection = invitationTemplate;
+      } else {
+        // The multi-use invitation template's own `invitation`-state
+        // self-notification: intentionally left unapplied to any per-party
+        // row (see above), but the template row itself was found, so this
+        // is expected traffic — report it no_op rather than unmatched.
+        return { matched: true, transitioned: false };
       }
     }
 
     if (!connection) {
-      return false;
+      return { matched: false, transitioned: false };
     }
 
     // A row just created above already landed in outcome.connectionState —
@@ -409,7 +520,7 @@ export class ProtocolStateChangeService {
     // worst (outcome.connectionState may be INVITED itself, whose
     // `fromStates` guard is empty and could never match).
     if (createdFromTemplate) {
-      return true;
+      return { matched: true, transitioned: true };
     }
 
     const updated = await this.connectionService.applyProtocolStateIfForward(
@@ -419,7 +530,7 @@ export class ProtocolStateChangeService {
       manager,
     );
 
-    return updated !== null;
+    return { matched: true, transitioned: updated !== null };
   }
 
   /**

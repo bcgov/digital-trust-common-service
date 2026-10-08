@@ -391,8 +391,8 @@ describe('OAuth client management (e2e)', () => {
       })
       .expect(403);
 
-    const body = response.body as { message: string };
+    const body = response.body as { error: { message: string } };
 
-    expect(body.message).toContain('Cannot assign scope(s)');
+    expect(body.error.message).toContain('Cannot assign scope(s)');
   });
 });

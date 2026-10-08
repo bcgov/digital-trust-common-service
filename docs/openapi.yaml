@@ -1768,8 +1768,10 @@ paths:
         Request a verifiable presentation. Supports profile-based or raw presentation definition.
 
         **Delivery mode** determined by `connection_id`:
-        - **Present** → DIDComm (send proof request to connected agent). Returns 202.
-        - **Absent** → OID4VP (generate authorization_request_uri). Returns 200.
+        - **Present** → DIDComm (send proof request to connected agent). Returns 202 while
+          the exchange is in flight, or 200 if it resolves synchronously (e.g. submission
+          failure).
+        - **Absent** → OID4VP (connectionless). Not yet implemented for this MVP — returns 400.
       tags: [Presentations]
       parameters:
         - $ref: "#/components/parameters/IdempotencyKey"
@@ -1799,7 +1801,7 @@ paths:
                   connection_id: "c3d4e5f6-7890-1234-abcd-ef0123456789"
       responses:
         "200":
-          description: Authorization request URI generated (OID4VP)
+          description: Presentation request resolved synchronously (e.g. failed submission)
           content:
             application/json:
               schema:
@@ -3040,7 +3042,7 @@ components:
           example:
             error:
               code: VALIDATION_FAILED
-              message: "Request body validation failed"
+              message: "Request validation failed"
               details:
                 - field: attributes.birth_date
                   expected: string (ISO date)
@@ -3109,7 +3111,15 @@ components:
                     type: string
             request_id:
               type: string
-              format: uuid
+              pattern: "^[A-Za-z0-9._-]{1,128}$"
+              maxLength: 128
+              description: >-
+                Correlation id, echoed from the X-Request-Id response
+                header. Usually a UUID (server-generated), but a caller
+                that supplies its own X-Request-Id gets it echoed back
+                verbatim instead, provided it matches this pattern and
+                length; otherwise the server discards it and generates a
+                UUID.
 
     PaginatedResponse:
       type: object
