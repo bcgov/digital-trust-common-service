@@ -10,9 +10,10 @@ export type ApiErrorDetail = NonNullable<
 >[number];
 
 /**
- * Normalized API error. The design spec (docs/openapi.yaml, ErrorResponse)
- * wraps errors as { error: { code, message, details, request_id } }, but the
- * current implementation still returns Nest defaults
+ * Normalized API error. The backend's `GlobalExceptionFilter` wraps errors
+ * as { error: { code, message, details, request_id } } (docs/openapi.yaml,
+ * ErrorResponse), but a raw Express/body-parser failure ahead of Nest's
+ * filter chain can still surface the framework default
  * ({ statusCode, message, error }) — this class absorbs both shapes.
  */
 export class ApiError extends Error {

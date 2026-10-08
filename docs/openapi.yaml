@@ -3042,7 +3042,7 @@ components:
           example:
             error:
               code: VALIDATION_FAILED
-              message: "Request body validation failed"
+              message: "Request validation failed"
               details:
                 - field: attributes.birth_date
                   expected: string (ISO date)
@@ -3111,7 +3111,15 @@ components:
                     type: string
             request_id:
               type: string
-              format: uuid
+              pattern: "^[A-Za-z0-9._-]{1,128}$"
+              maxLength: 128
+              description: >-
+                Correlation id, echoed from the X-Request-Id response
+                header. Usually a UUID (server-generated), but a caller
+                that supplies its own X-Request-Id gets it echoed back
+                verbatim instead, provided it matches this pattern and
+                length; otherwise the server discards it and generates a
+                UUID.
 
     PaginatedResponse:
       type: object

@@ -7,10 +7,8 @@ import {
   AuthenticationRequiredException,
   CurrentAuth,
   InsufficientScopeException,
-  InsufficientScopeExceptionFilter,
   JwksCacheService,
   JwksKeyNotFoundError,
-  JwtAuthExceptionFilter,
   JwtGuard,
   JwtValidationService,
   LEVEL2_SCOPES,
@@ -32,7 +30,6 @@ import {
   CLIENTS_MANAGE_SCOPE,
   AUDIT_READ_SCOPE,
   TenantAccessDeniedException,
-  TenantAccessDeniedExceptionFilter,
   TenantGuard,
   extractBearerToken,
   normalizeAuthPayload,
@@ -68,10 +65,7 @@ describe('auth package index', () => {
     expect(RequireScopes).toBeDefined();
     expect(AuthenticationRequiredException).toBeDefined();
     expect(InsufficientScopeException).toBeDefined();
-    expect(InsufficientScopeExceptionFilter).toBeDefined();
     expect(TenantAccessDeniedException).toBeDefined();
-    expect(TenantAccessDeniedExceptionFilter).toBeDefined();
-    expect(JwtAuthExceptionFilter).toBeDefined();
     expect(JwtGuard).toBeDefined();
     expect(ScopeGuard).toBeDefined();
     expect(TenantGuard).toBeDefined();
