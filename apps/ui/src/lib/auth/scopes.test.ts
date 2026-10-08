@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { hasScope, TENANT_ADMIN_SCOPE, USERS_MANAGE_SCOPE } from './scopes';
+import {
+  hasScope,
+  isPlatformAdmin,
+  TENANT_ADMIN_SCOPE,
+  USERS_MANAGE_SCOPE,
+} from './scopes';
 
 describe('hasScope', () => {
   it('matches a scope the token carries', () => {
@@ -21,5 +26,16 @@ describe('hasScope', () => {
   it('is false without a user or without scopes', () => {
     expect(hasScope(null, USERS_MANAGE_SCOPE)).toBe(false);
     expect(hasScope({ scopes: [] }, USERS_MANAGE_SCOPE)).toBe(false);
+  });
+});
+
+describe('isPlatformAdmin', () => {
+  it('is true for a token carrying the platform-admin role', () => {
+    expect(isPlatformAdmin({ roles: ['platform-admin'] })).toBe(true);
+  });
+
+  it('is false for a tenant role and for no user at all', () => {
+    expect(isPlatformAdmin({ roles: ['owner'] })).toBe(false);
+    expect(isPlatformAdmin(null)).toBe(false);
   });
 });

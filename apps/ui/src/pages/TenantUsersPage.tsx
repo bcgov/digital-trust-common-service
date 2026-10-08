@@ -2,6 +2,7 @@ import { MoreHorizontal } from 'lucide-react';
 import { useState } from 'react';
 import { useParams } from 'react-router';
 
+import { AccessDenied } from '@/components/access-denied';
 import {
   ChangeTenantUserRoleDialog,
   InviteTenantUserDialog,
@@ -10,12 +11,6 @@ import {
 import { TenantUserStatusBadge } from '@/components/tenant-user-status-badge';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import {
-  Card,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -132,14 +127,10 @@ export function TenantUsersPage() {
   // users, not a failure; a 403 means the same thing from the API's side.
   if (!canManage || (error instanceof ApiError && error.status === 403)) {
     return (
-      <Card className="max-w-lg">
-        <CardHeader>
-          <CardTitle>Users</CardTitle>
-          <CardDescription>
-            You need the owner or admin role in this tenant to manage its users.
-          </CardDescription>
-        </CardHeader>
-      </Card>
+      <AccessDenied
+        title="Users"
+        description="You need the owner or admin role in this tenant to manage its users."
+      />
     );
   }
 
