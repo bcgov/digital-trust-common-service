@@ -21,7 +21,7 @@ meant to be entered at the part that concerns you rather than read end to end.
 
 | If you are | Start at |
 |---|---|
-| Deciding whether to approve it | [Open points](#open-points) below, then [9.1](#91-closing-this-contract) |
+| Deciding whether to approve it | [What is settled](#what-is-settled) below, then [9.1](#91-closing-this-contract) |
 | Implementing a component | That component's row in [8.1](#81-what-each-component-is-responsible-for), then the rules it names, via [Appendix A](#appendix-a-rule-index) |
 | Reviewing the boundary | [Section 2](#2-what-tenant-means-in-each-service), then [7.1](#71-threat-model) and [7.2](#72-required-tests) |
 | Looking up a single rule | [Appendix A: rule index](#appendix-a-rule-index) |
@@ -43,22 +43,14 @@ Each of these is argued where it is stated. The links are the argument, not a su
   ([2.1](#21-the-agent-sub-tenant-has-two-identifiers-and-they-are-not-interchangeable)).
 - **No queryable agent identifier enters the schema.** Uniqueness is enforced on a derived
   value instead ([M3](#41-provenance--the-identifier-must-be-trustworthy-before-it-is-useful)).
+- **Live tail is excluded.** Near-real-time viewing is a refreshed range query, not a pushed
+  stream ([G10](#64-live-tail-is-not-compatible-with-a-multi-partition-scope)).
+- **The numbers are stated, not left to the implementation**: five minutes' maximum staleness,
+  ten partitions per scope, and a measurable fairness target between tenants
+  ([M11](#44-freshness), [M17](#46-multiple-connectors-are-not-ambiguous),
+  [L11](#55-preconditions-for-exposing-query-access)).
 - **Every rule names the component that implements it, and an acceptance test**
   ([8.1](#81-what-each-component-is-responsible-for), [9.2](#92-accepting-each-component)).
-
-### Open points
-
-Five rules state a requirement that still needs a number or a decision attached to it. They are
-what remains before this contract can close under [9.1](#91-closing-this-contract), and this
-section is removed once they are settled.
-
-| Rule | What is open |
-|---|---|
-| [M3](#41-provenance--the-identifier-must-be-trustworthy-before-it-is-useful) | Uniqueness needs a stored derived value, which is a new column. Needs sign-off, or an alternative that closes the same hole. |
-| [M11](#44-freshness) | Five minutes is proposed, not agreed. Both sides of the gateway need the same number. |
-| [M17](#46-multiple-connectors-are-not-ambiguous) | The partition-count bound is required but unstated, and has no owner. |
-| [L11](#55-preconditions-for-exposing-query-access) | The fairness target between tenants must be measurable, and no number is set. |
-| [G10](#64-live-tail-is-not-compatible-with-a-multi-partition-scope) | Live tail defaults to excluded. If tenants need it, fan-in and its obligations are the alternative. |
 
 ---
 
@@ -466,6 +458,12 @@ data behind whichever connector happened to sort first.
 exceeding the bound **MUST** be denied rather than silently truncated. Truncation is the
 tie-break of Rule M16 wearing a different hat: it returns a confident, incomplete answer.
 
+The bound is **ten partitions**, enforced by the gateway when it composes the scope. Ten is
+well above any tenant's realistic connector count while keeping the fan-out of a single query
+bounded; the number matters less than having one, since the failure mode without it is a scope
+that widens until one tenant's query consumes the read path. A tenant that legitimately reaches
+the bound is a conversation about why, not a configuration increase.
+
 > Rule M16 is only safe because of [Rule M2](#41-provenance--the-identifier-must-be-trustworthy-before-it-is-useful).
 > Without single-tenant ownership of each identifier, widening the scope to every connector a
 > tenant holds would widen the blast radius of a mis-binding in exact proportion.
@@ -604,6 +602,16 @@ capacity by volume. Per-partition **request rate, concurrent/outstanding query, 
 controls **MUST** also be configured, and the fairness expectation between tenants **MUST** be
 stated as a measurable target rather than left implicit.
 
+The target is: **while one tenant runs its heaviest permitted query load, another tenant's
+typical query completes within ten seconds with no increase in error rate.** No tenant may hold
+more than a third of total query capacity, where capacity is querier replicas multiplied by
+per-querier concurrency — so the per-partition concurrency limit moves whenever the replica
+count does.
+
+Note that the storage backend provides concurrency and queue-depth controls but **no
+per-partition query rate limit**. The rate half of this rule is therefore the gateway's to
+enforce if it is needed; concurrency and queue bounds alone are the accepted starting position.
+
 **Rule L12.** Loki **MUST NOT** be reachable except through a gateway that sets the partition
 header, in **every** environment — including development and test. An environment where the
 storage backend accepts a caller-supplied partition header from anywhere in the cluster has no
@@ -689,6 +697,15 @@ and testing its per-connection resource limits, cancellation and teardown on cli
 reconnect behaviour, and re-authorization on reconnect — a long-lived stream outlives the token
 that opened it, which no request-scoped check covers. Fan-in is a stateful proxy, and header
 injection alone does not make it safe.
+
+**Option 1 is adopted.** Live tail is excluded from the allowlist. Tenants retain near-real-time
+viewing through ordinary range queries on a refresh interval, which traverse the allowed query
+path; what is given up is the continuously pushed stream. Fan-in remains available as a later,
+contained change if a tenant need is established, under the obligations G11 states.
+
+The denial **MUST** be the same generic denial as any unenumerated route, for every tenant
+regardless of partition count. Allowing tail to succeed for single-partition tenants would make
+its success or failure a disclosure of how many partitions the caller has.
 
 ## 7. Tenant selection is never an input
 
@@ -1063,7 +1080,7 @@ they do not restate it. Where an entry and the rule itself appear to differ, the
 | M14 | Resolution fails closed | [4.5](#45-failure-behaviour) |
 | M15 | Failures externally indistinguishable from one another | [4.5](#45-failure-behaviour) |
 | M16 | Scope is all of the tenant's resolved identifiers, no tie-break | [4.6](#46-multiple-connectors-are-not-ambiguous) |
-| M17 | Partition count bounded; denied rather than truncated | [4.6](#46-multiple-connectors-are-not-ambiguous) |
+| M17 | Partition count bounded at ten; denied rather than truncated | [4.6](#46-multiple-connectors-are-not-ambiguous) |
 | M18 | Identifier is system-populated, never caller-supplied | [4.7](#47-the-binding-is-system-owned-not-tenant-supplied) |
 | M19 | Rotation must not silently orphan a binding | [4.7](#47-the-binding-is-system-owned-not-tenant-supplied) |
 | M20 | Binding released on connector deletion or tenant deactivation | [4.7](#47-the-binding-is-system-owned-not-tenant-supplied) |
@@ -1082,7 +1099,7 @@ they do not restate it. Where an entry and the rule itself appear to differ, the
 | L8 | Partition keys derived, charset-constrained, domain-separated | [5.4](#54-partition-keys-must-be-derived-not-passed-through) |
 | L9 | Same derivation applied by ingestion and the gateway | [5.4](#54-partition-keys-must-be-derived-not-passed-through) |
 | L10 | Global query limits in place before exposure | [5.5](#55-preconditions-for-exposing-query-access) |
-| L11 | Per-partition rate and concurrency controls, stated fairness target | [5.5](#55-preconditions-for-exposing-query-access) |
+| L11 | Per-partition rate and concurrency controls, stated fairness target (one third of capacity; 10s under load) | [5.5](#55-preconditions-for-exposing-query-access) |
 | L12 | Backend reachable only through the gateway, in every environment | [5.5](#55-preconditions-for-exposing-query-access) |
 
 ### G — the gateway header contract ([section 6](#6-the-gateway-header-contract))
@@ -1098,7 +1115,7 @@ they do not restate it. Where an entry and the rule itself appear to differ, the
 | G7 | Route handling is an allowlist | [6.3](#63-complete-coverage-of-the-read-surface) |
 | G8 | Generic, identical denial for unknown routes | [6.3](#63-complete-coverage-of-the-read-surface) |
 | G9 | No read path to the backend that bypasses the gateway | [6.3](#63-complete-coverage-of-the-read-surface) |
-| G10 | Live tail either excluded or fanned in | [6.4](#64-live-tail-is-not-compatible-with-a-multi-partition-scope) |
+| G10 | Live tail excluded (option 1 adopted) | [6.4](#64-live-tail-is-not-compatible-with-a-multi-partition-scope) |
 | G11 | Exclusion is the default; fan-in carries stated obligations | [6.4](#64-live-tail-is-not-compatible-with-a-multi-partition-scope) |
 
 ### S — tenant selection is never an input ([section 7](#7-tenant-selection-is-never-an-input))
