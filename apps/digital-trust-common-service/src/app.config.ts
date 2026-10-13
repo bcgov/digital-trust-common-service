@@ -7,10 +7,12 @@ import {
   ValidationPipe,
   VersioningType,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Reflector } from '@nestjs/core';
 import type { Express } from 'express';
 
 import { API_PREFIX } from './common/constants/api-version.constants';
+import { buildCorsOptions } from './common/cors-options';
 import { buildValidationExceptionFactory } from './common/filters/validation-exception-factory';
 import { DeprecationInterceptor } from './common/interceptors/deprecation.interceptor';
 import { createRequestIdMiddleware } from './common/middleware/request-id.middleware';
@@ -33,6 +35,14 @@ export function configureApp(app: INestApplication): void {
   // for every caller instead of the real client IP.
   const expressInstance = app.getHttpAdapter().getInstance() as Express;
   expressInstance.set('trust proxy', true);
+
+  const configService = app.get(ConfigService);
+  app.enableCors(
+    buildCorsOptions(
+      configService.get<string>('CORS_ALLOWED_ORIGINS', '*'),
+      configService.get<string>('NODE_ENV'),
+    ),
+  );
 
   // Raw `app.use()`, registered first, so every request — including
   // `health` and `oidc`, which sit outside the `/api` prefix below — gets a
