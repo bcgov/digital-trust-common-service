@@ -20,6 +20,12 @@ export interface VerifyJwtOptions {
  * Shared JWT verification used by {@link JwtValidationService} and tests.
  * Validates RS256 signature, expiration, issuer, and audience against a
  * caller-supplied JWKS key resolver.
+ *
+ * Audience is checked twice on purpose. `jwtVerify` tests audience
+ * *membership*, so a token whose `aud` listed both this API and a downstream
+ * gateway would satisfy this validator and the gateway's alike, collapsing
+ * the separation between them. Exactly one audience per token is therefore
+ * enforced here as well (Rule T12 of `docs/tenant-log-access-contract.md`).
  */
 export async function verifyAccessToken(
   token: string,
@@ -54,6 +60,13 @@ export async function verifyAccessToken(
       audience: options.audience,
     },
   );
+
+  if (Array.isArray(payload.aud) && payload.aud.length !== 1) {
+    throw new AuthenticationRequiredException(
+      'invalid_token',
+      'Token must carry exactly one audience',
+    );
+  }
 
   return payload;
 }
