@@ -52,3 +52,16 @@ tests:
           path: data.APP_PUBLIC_URL
           value: https://app.example.com
         template: templates/configmap.yaml
+
+  # buildCorsOptions() refuses "*" when NODE_ENV=production, so a ConfigMap
+  # wiring change that silently drops this key would fail the app at startup
+  # instead of rendering — exercised against the real prod overlay rather
+  # than an ad-hoc `set`, so a regression there is caught too.
+  - it: renders CORS_ALLOWED_ORIGINS into the application ConfigMap under the prod overlay
+    values:
+      - ../values-prod.yaml
+    asserts:
+      - equal:
+          path: data.CORS_ALLOWED_ORIGINS
+          value: https://digital-trust-common-service.apps.silver.devops.gov.bc.ca
+        template: templates/configmap.yaml

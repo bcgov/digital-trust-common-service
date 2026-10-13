@@ -1316,6 +1316,7 @@ throws `ThrottlerException` on block.
 | `RATE_LIMIT_PREMIUM_PER_MINUTE` | `1000` | Request limit for the `premium` tier, enforced by `TenantTierRateLimitGuard` only. |
 | `RATE_LIMIT_PRUNE_CRON` | `0 * * * *` | Cron schedule for the pg-boss pruning worker. |
 | `RATE_LIMIT_HIT_RETENTION_MINUTES` | `5` | How long a hit row is kept before pruning. Must stay comfortably above `RATE_LIMIT_WINDOW_MS`, or the sliding window loses hits it still needs to count. |
+| `CORS_ALLOWED_ORIGINS` | `*` | Comma-separated list of exact allowed origins (scheme + host + port, no path), or `*` to allow any origin. Refused at startup when `NODE_ENV=production` — with `credentials: false` this is not the usual reflect-any-origin-with-credentials hole, but a wildcard reaching a deployed environment is far more likely a forgotten override than intent. |
 
 A pg-boss worker (`rate-limit-prune.worker.ts`, queue `rate-limit.prune`) runs on the
 `RATE_LIMIT_PRUNE_CRON` schedule and deletes hit rows older than `RATE_LIMIT_HIT_RETENTION_MINUTES`,
@@ -1363,6 +1364,19 @@ every exception and normalizes the response into the `ErrorResponse` envelope do
 - DTO validation failures (`ValidationPipe`) go through `buildValidationExceptionFactory()`
   (`apps/.../common/filters/validation-exception-factory.ts`), which builds the `VALIDATION_FAILED`
   envelope directly with one `details` entry per failed constraint (`field`, `message`).
+## CORS
+
+`configureApp()` (`app.config.ts`) calls `app.enableCors()` with options built by
+`buildCorsOptions()` (`common/cors-options.ts`). The bundled UI is same-origin behind Caddy/the
+OpenShift route (see `APP_PUBLIC_URL`) and does not need this — it exists for other cross-origin API
+callers.
+
+- `allowedHeaders` is fixed: `Authorization`, `Content-Type`, `X-Request-Id`, `Idempotency-Key`.
+- `exposedHeaders` is fixed: `Retry-After`, `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`, `X-Request-Id` — the
+  latter two are set by `RateLimitGuard` (global, IP-keyed flood protection; see
+  [Per-tenant rate limiting](#per-tenant-rate-limiting)) on every response via the base
+  `@nestjs/throttler` `ThrottlerGuard`. `TenantTierRateLimitGuard` does not set them.
+- `credentials` is always `false` — auth is Bearer-token only, never a cross-origin cookie.
 
 ## Testing
 

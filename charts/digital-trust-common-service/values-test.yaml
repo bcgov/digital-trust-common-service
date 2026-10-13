@@ -52,6 +52,9 @@ config:
   NODE_ENV: production
   APP_PUBLIC_URL: https://digital-trust-common-service-test.apps.silver.devops.gov.bc.ca
   LOG_LEVEL: info
+  # No known cross-origin caller yet; scoped to this env's own origin rather
+  # than "*", which NODE_ENV=production refuses anyway. Override if one shows up.
+  CORS_ALLOWED_ORIGINS: https://digital-trust-common-service-test.apps.silver.devops.gov.bc.ca
   # TODO: point at the test PostgreSQL service.
   DB_HOST: <TEST_DB_HOST>
   DB_NAME: dc_common_service
