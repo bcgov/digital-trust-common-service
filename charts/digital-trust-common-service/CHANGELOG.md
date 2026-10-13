@@ -9,6 +9,12 @@ and this chart adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.h
 
 ### Added
 
+- `config.JWT_ADDITIONAL_AUDIENCES` (default `""`), comma-separated extra
+  RFC 8707 resource indicators the OIDC provider may mint access tokens for,
+  such as the tenant log gateway. Previously settable only through `.env`
+  locally, so the gateway audience could not be configured in a deployed
+  environment. Tokens minted for these resources carry that audience alone
+  and are rejected by `JwtGuard`.
 - `config.CORS_ALLOWED_ORIGINS` (default `""`), a comma-separated list of
   exact allowed CORS origins, or `"*"` (refused when `NODE_ENV=production`).
   No safe chart-wide default: `values-dev.yaml`, `values-test.yaml`,

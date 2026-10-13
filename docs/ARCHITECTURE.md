@@ -1202,6 +1202,11 @@ API access tokens use a **fixed API resource audience**, not the OIDC issuer URL
 
 `oidc-provider` requires RFC 8707 resource indicators to be absolute URIs, so the documented logical name `digital-trust-common-service` is minted as `https://digital-trust-common-service`. The AU-01 interim of `aud = OIDC_ISSUER` is no longer used.
 
+A token resolves to **exactly one** audience, and `verifyAccessToken` rejects any token whose `aud`
+carries more than one value. Ordinary JWT validation tests audience *membership*, so a token listing
+both the API and a gateway audience would satisfy both validators and erase the separation between
+them.
+
 See [DEVELOPER.md](./DEVELOPER.md#jwt-audience-au-164) for configuration, and
 [tenant-log-access-contract.md](./tenant-log-access-contract.md#34-audience-separation) for the
 normative rules on the API vs gateway split — in particular that a log-gateway token must be

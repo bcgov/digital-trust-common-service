@@ -415,6 +415,12 @@ config:
   # while retaining existing client_credentials support.
   OIDC_GRANT_TYPES: "client_credentials,authorization_code,refresh_token"
   JWT_AUDIENCE: "https://digital-trust-common-service"
+  # -- Comma-separated extra RFC 8707 resource indicators the OIDC provider may
+  # mint access tokens for (downstream gateways, e.g. the tenant log gateway).
+  # Each must be an absolute URI without a fragment. A token resolves to
+  # exactly one audience, and tokens minted for these resources are rejected
+  # by JwtGuard by design.
+  JWT_ADDITIONAL_AUDIENCES: ""
   AUDIT_AUTO_INTERCEPTOR_ENABLED: "false"
   AUDIT_PARTITION_CRON: "0 3 * * *"
   AUDIT_PARTITION_MONTHS_AHEAD: "3"
