@@ -615,15 +615,27 @@ complete within **ten seconds at p95**, and within **twice its uncontended basel
 increase in error rate over that baseline.
 
 The load is specified here rather than left to the measurer, because "typical query" and
-"heaviest load" are otherwise chosen by whoever wants the result to pass:
+"heaviest load" are otherwise chosen by whoever wants the result to pass. It is specified in
+terms of **service tenants and their composed scopes**, not single partitions: a tenant with a
+resolving connector already holds at least two partitions
+([G3](#61-the-header-is-computed-never-conveyed)) and may hold up to ten
+([M17](#46-multiple-connectors-are-not-ambiguous)), so a single-partition measurement omits the
+fan-out that determines the real cost of a query.
 
 | Term | Definition |
 |---|---|
-| Reference query | A query at the upper bound of what [L10](#55-preconditions-for-exposing-query-access) permits — the maximum permitted range length, returning up to the entry limit — against a partition holding representative production volume. |
-| Competing load | A **different** partition continuously saturating its full concurrency allowance with reference queries, for the whole measurement window. |
-| Baseline | The p95 of the reference query measured with no competing load. |
+| Reference query | A query at the upper bound of what [L10](#55-preconditions-for-exposing-query-access) permits — the maximum permitted range length, returning up to the entry limit — issued **through the deployed gateway** against a service tenant's full composed scope, never against a hand-picked single partition. |
+| Scope under test | Measured at both the ordinary case of **two** partitions and the permitted maximum of **ten** ([M17](#46-multiple-connectors-are-not-ambiguous)), with representative production volume in **every** partition of the scope. The ten-partition case is the one that decides whether rate control is required. |
+| Competing load | A **different service tenant**, over its own full composed scope, continuously saturating its concurrency allowance with reference queries for the whole measurement window. |
+| Baseline | The p95 of the reference query at the same scope size, measured with no competing load. |
 | Window | At least 20 runs over at least 10 minutes. |
-| Cache state | Each run **MUST** use a distinct time range, so no run is served from the results cache. A benchmark that measures cache hits proves nothing about contention. |
+| Cache state | The results cache **MUST** be bypassed or disabled for the baseline, measured and competing-load queries alike, and evidence recorded that no run was served from it. |
+
+Varying the time range is **not** sufficient to defeat the cache and **MUST NOT** be relied on.
+The backend splits a query into interval-aligned sub-queries and reuses overlapping cached
+intervals — including empty log-filter results — so shifting the outer range leaves much of the
+work cached. A benchmark measuring cache hits demonstrates nothing about contention, and would
+pass on a deployment with no fairness controls at all.
 
 This benchmark **MUST** be run and its result recorded before any tenant is granted query
 access, on the same schedule as the rest of [L10](#55-preconditions-for-exposing-query-access)'s
