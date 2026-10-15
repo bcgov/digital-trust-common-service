@@ -58,6 +58,13 @@ export const routes: RouteObject[] = [
                 ),
               },
               {
+                path: '/connectors',
+                lazy: lazyPage(
+                  () => import('@/pages/ConnectorsPage'),
+                  'ConnectorsPage',
+                ),
+              },
+              {
                 path: '/tenants/:tenantId',
                 lazy: lazyPage(
                   () => import('@/layouts/TenantLayout'),

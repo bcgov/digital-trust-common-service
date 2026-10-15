@@ -1851,14 +1851,19 @@ export interface components {
             credentials: {
                 api_key: string;
                 traction_tenant_id?: string;
+                /** @description Shared secret for inbound webhook callbacks */
+                webhook_secret?: string;
             };
         };
         UpdateConnectorRequest: {
             /** Format: uri */
             endpoint_url?: string;
-            /** @description New credentials (rotates existing) */
+            /** @description Credential fields to rotate. Omitted fields retain their current values. Secrets are encrypted at rest and never returned. */
             credentials?: {
                 api_key?: string;
+                traction_tenant_id?: string;
+                /** @description Shared secret for inbound webhook callbacks */
+                webhook_secret?: string;
             };
         };
         CredentialDefinition: {

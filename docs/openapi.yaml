@@ -3487,6 +3487,9 @@ components:
               type: string
             traction_tenant_id:
               type: string
+            webhook_secret:
+              type: string
+              description: Shared secret for inbound webhook callbacks
           required: [api_key]
 
     UpdateConnectorRequest:
@@ -3497,10 +3500,17 @@ components:
           format: uri
         credentials:
           type: object
-          description: New credentials (rotates existing)
+          description: >-
+            Credential fields to rotate. Omitted fields retain their current
+            values. Secrets are encrypted at rest and never returned.
           properties:
             api_key:
               type: string
+            traction_tenant_id:
+              type: string
+            webhook_secret:
+              type: string
+              description: Shared secret for inbound webhook callbacks
 
     # ─── Credential Definition ───────────────────────────────────────
     CredentialDefinition:

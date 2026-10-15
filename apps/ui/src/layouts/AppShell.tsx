@@ -1,4 +1,10 @@
-import { Building2, LayoutDashboard, LogOut, Settings } from 'lucide-react';
+import {
+  Building2,
+  LayoutDashboard,
+  LogOut,
+  Settings,
+  Share2,
+} from 'lucide-react';
 import { NavLink, Outlet } from 'react-router';
 
 import { BcGovHeader } from '@/components/bc-gov-header';
@@ -20,6 +26,7 @@ import { cn } from '@/lib/utils';
 const NAV_ITEMS = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { to: '/tenants', label: 'Tenants', icon: Building2 },
+  { to: '/connectors', label: 'Connectors', icon: Share2 },
   { to: '/settings', label: 'Settings', icon: Settings },
 ];
 
@@ -107,7 +114,11 @@ export function AppShell() {
         </aside>
 
         {/* tabIndex lets the skip link actually move keyboard focus here. */}
-        <main id="main-content" tabIndex={-1} className="min-w-0 flex-1 p-6">
+        <main
+          id="main-content"
+          tabIndex={-1}
+          className="flex min-w-0 flex-1 flex-col p-6"
+        >
           <Outlet />
         </main>
       </div>

@@ -320,37 +320,31 @@ export class ConnectorCredentialService {
 
     const updates: Partial<Omit<ConnectorCredential, 'tenant'>> = {};
     const endpointUrl = dto.endpointUrl ?? existing.endpointUrl;
+    let credentialsToPersist: ConnectorCredentialsDto | undefined;
 
     if (dto.endpointUrl !== undefined) {
       updates.endpointUrl = dto.endpointUrl;
     }
 
     if (dto.credentials !== undefined) {
-      if (
-        existing.connectorType === ConnectorType.TRACTION &&
-        !dto.credentials.webhookSecret
-      ) {
-        // A PATCH replaces the whole credentials object, so omitting
-        // webhook_secret here (e.g. when only rotating api_key) must not
-        // erase the secret Traction already sends back on callbacks.
-        const existingCredentials =
-          this.encryptionService.decrypt<ConnectorCredentialsDto>(
-            existing.credentialsEncrypted,
-            existing.keyVersion,
-          );
-
-        dto.credentials.webhookSecret = existingCredentials.webhookSecret;
-      }
+      const existingCredentials =
+        this.encryptionService.decrypt<ConnectorCredentialsDto>(
+          existing.credentialsEncrypted,
+          existing.keyVersion,
+        );
+      credentialsToPersist = {
+        ...existingCredentials,
+        ...dto.credentials,
+      };
 
       await this.assertHealthy(
         existing.connectorType,
         endpointUrl,
-        dto.credentials,
+        credentialsToPersist,
       );
 
-      const encryptedCredentials = this.encryptionService.encrypt(
-        dto.credentials,
-      );
+      const encryptedCredentials =
+        this.encryptionService.encrypt(credentialsToPersist);
 
       updates.credentialsEncrypted = encryptedCredentials.ciphertext;
       updates.keyVersion = encryptedCredentials.keyVersion;
@@ -376,14 +370,17 @@ export class ConnectorCredentialService {
       );
     }
 
-    if (existing.connectorType === ConnectorType.TRACTION && dto.credentials) {
+    if (
+      existing.connectorType === ConnectorType.TRACTION &&
+      credentialsToPersist
+    ) {
       const webhookUrl = this.buildWebhookUrl(existing.id);
-      const webhookSecret = dto.credentials.webhookSecret as string;
+      const webhookSecret = credentialsToPersist.webhookSecret as string;
       const context: ConnectorContext = {
         connectorId: existing.id,
         tenantId,
         endpointUrl,
-        credentials: { ...dto.credentials },
+        credentials: { ...credentialsToPersist },
       };
 
       try {

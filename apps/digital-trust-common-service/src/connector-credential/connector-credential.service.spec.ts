@@ -591,19 +591,66 @@ describe('ConnectorCredentialService', () => {
         auth,
       );
 
-      expect(dto.credentials?.webhookSecret).toEqual('whsec_existing');
       expect(mockEncrypt).toHaveBeenCalledWith(
-        expect.objectContaining({ webhookSecret: 'whsec_existing' }),
+        expect.objectContaining({
+          apiKey: 'sk_live_new456',
+          webhookSecret: 'whsec_existing',
+        }),
       );
       expect(mockEnsureWebhookRegistered).toHaveBeenCalledWith(
         {
           connectorId: mockCredential.id,
           tenantId: mockCredential.tenantId,
           endpointUrl: mockCredential.endpointUrl,
-          credentials: dto.credentials,
+          credentials: expect.objectContaining({
+            apiKey: 'sk_live_new456',
+            webhookSecret: 'whsec_existing',
+          }),
         },
         `https://app.localhost/api/v1/connectors/${mockCredential.id}/webhooks/traction`,
         'whsec_existing',
+      );
+    });
+
+    it('rotates only the Traction webhook secret while preserving other credentials', async () => {
+      const existingCredentials = {
+        apiKey: 'sk_live_existing',
+        tractionTenantId: 'sub-tenant-existing',
+        webhookSecret: 'whsec_existing',
+      };
+      const updatedCredentials = {
+        ...existingCredentials,
+        webhookSecret: 'whsec_rotated',
+      };
+      const dto: UpdateConnectorCredentialDto = {
+        credentials: { webhookSecret: 'whsec_rotated' },
+      };
+      mockDecrypt.mockReturnValue(existingCredentials);
+      mockFindById.mockResolvedValue(mockCredential);
+      mockUpdate.mockResolvedValue(mockCredential);
+
+      await service.update(
+        mockCredential.tenantId,
+        mockCredential.id,
+        dto,
+        auth,
+      );
+
+      expect(mockHealthCheck).toHaveBeenCalledWith(
+        mockCredential.connectorType,
+        mockCredential.endpointUrl,
+        updatedCredentials,
+      );
+      expect(mockEncrypt).toHaveBeenCalledWith(updatedCredentials);
+      expect(mockEnsureWebhookRegistered).toHaveBeenCalledWith(
+        {
+          connectorId: mockCredential.id,
+          tenantId: mockCredential.tenantId,
+          endpointUrl: mockCredential.endpointUrl,
+          credentials: updatedCredentials,
+        },
+        `https://app.localhost/api/v1/connectors/${mockCredential.id}/webhooks/traction`,
+        'whsec_rotated',
       );
     });
 
