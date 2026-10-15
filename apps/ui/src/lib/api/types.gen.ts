@@ -3240,7 +3240,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Connector registered */
+            /** @description Connector registered. The first connector for a tenant is set as its default connector. */
             201: {
                 headers: {
                     [name: string]: unknown;
@@ -4254,6 +4254,23 @@ export interface operations {
                      *     }
                      */
                     "application/json": components["schemas"]["Operation"];
+                };
+            };
+            /** @description Connector selection is ambiguous for the tenant */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "CONNECTOR_SELECTION_AMBIGUOUS",
+                     *         "message": "Multiple active connectors are configured; set default_connector or select a connector explicitly."
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
