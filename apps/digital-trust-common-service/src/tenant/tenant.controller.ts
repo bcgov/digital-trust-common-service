@@ -137,7 +137,7 @@ export class TenantController {
     @CurrentAuth() auth?: AuthContext,
   ): Promise<TenantResponseDto> {
     this.assertTenantAccess(auth, id);
-    const tenant = await this.tenantService.update(id, dto);
+    const tenant = await this.tenantService.update(id, dto, auth);
     return TenantResponseDto.fromEntity(tenant);
   }
 

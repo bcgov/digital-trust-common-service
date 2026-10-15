@@ -165,6 +165,67 @@ describe('ConnectorsPage', () => {
     ).toBeInTheDocument();
   });
 
+  it.each([404, 500])(
+    'shows a tenant-detail error for HTTP %s and restores the default badge on retry',
+    async (status) => {
+      const defaultConnectorId = 'connector-id';
+      let requestCount = 0;
+      server.use(
+        http.get(`${API_BASE_PATH}/tenants/:id`, ({ params }) => {
+          requestCount += 1;
+          if (requestCount === 1) {
+            return HttpResponse.json({ message: 'Request failed' }, { status });
+          }
+          const tenant = mockTenants.find((item) => item.id === params.id);
+          return HttpResponse.json({
+            ...tenant,
+            config: { default_connector: defaultConnectorId },
+          });
+        }),
+        http.get(`${API_BASE_PATH}/tenants/:id/connectors`, () =>
+          HttpResponse.json([
+            {
+              id: defaultConnectorId,
+              connector_type: 'traction',
+              endpoint_url: 'https://traction.example.test/api',
+              active: true,
+            },
+          ]),
+        ),
+      );
+      const client = createMockAuthClient();
+      await client.login();
+      const { queryClient } = renderWithAuth(
+        [{ path: '/connectors', element: <ConnectorsPage /> }],
+        { client, initialEntries: ['/connectors'] },
+      );
+
+      expect(await screen.findByRole('alert')).toHaveTextContent(
+        'Could not load tenant details.',
+      );
+      await waitFor(() => {
+        expect(
+          queryClient.getQueryState(
+            connectorKeys.list(mockTenants[0]?.id ?? ''),
+          )?.status,
+        ).toBe('success');
+      });
+      expect(screen.queryByRole('table')).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('heading', { name: 'No connectors yet' }),
+      ).not.toBeInTheDocument();
+
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Retry tenant details' }),
+      );
+
+      const table = await screen.findByRole('table', { name: 'Connectors' });
+      expect(within(table).getByText('Default')).toBeInTheDocument();
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+      expect(requestCount).toBe(2);
+    },
+  );
+
   it('shows the Default badge beneath the configured connector type only', async () => {
     const defaultConnectorId = 'connector-id';
     server.use(

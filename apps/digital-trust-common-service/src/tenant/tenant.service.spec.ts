@@ -78,6 +78,7 @@ describe('TenantService', () => {
       update: mockUpdate,
       findPage: mockFindPage,
       findById: mockFindById,
+      findByIdForUpdate: mockFindById,
       findBySlug: mockFindBySlug,
       setDefaultConnectorIfUnset: mockSetDefaultConnectorIfUnset,
       delete: mockDelete,
@@ -264,7 +265,7 @@ describe('TenantService', () => {
 
       const result = await service.update(id, dto);
 
-      expect(mockFindById).toHaveBeenCalledWith(id);
+      expect(mockFindById).toHaveBeenCalledWith(id, mockManager);
       expect(mockUpdate).toHaveBeenCalled();
       expect(mockEmit).toHaveBeenCalledWith({
         tenantId: updatedTenant.id,
@@ -282,7 +283,7 @@ describe('TenantService', () => {
       mockFindById.mockResolvedValue(null);
 
       await expect(service.update(id, dto)).rejects.toThrow(NotFoundException);
-      expect(mockFindById).toHaveBeenCalledWith(id);
+      expect(mockFindById).toHaveBeenCalledWith(id, mockManager);
       expect(mockUpdate).not.toHaveBeenCalled();
     });
   });
@@ -639,6 +640,7 @@ describe('TenantService', () => {
             allowed_formats: ['anoncreds'],
           },
         }),
+        mockManager,
       );
       expect(mockEmit).toHaveBeenCalledWith({
         tenantId: updated.id,
@@ -675,11 +677,13 @@ describe('TenantService', () => {
         id,
         connectorId,
         auth,
+        mockManager,
       );
       expect(mockUpdate).toHaveBeenCalledWith(
         expect.objectContaining({
           config: { default_connector: connectorId },
         }),
+        mockManager,
       );
       expect(result).toEqual(updated);
     });
@@ -746,6 +750,7 @@ describe('TenantService', () => {
       expect(mockFindConnectorCredentialById).not.toHaveBeenCalled();
       expect(mockUpdate).toHaveBeenCalledWith(
         expect.objectContaining({ config: { default_connector: null } }),
+        mockManager,
       );
       expect(result).toEqual(updated);
     });
@@ -773,6 +778,7 @@ describe('TenantService', () => {
             features: { beta: true },
           },
         }),
+        mockManager,
       );
     });
 
@@ -840,6 +846,7 @@ describe('TenantService', () => {
       expect(mockSetDefaultConnectorIfUnset).toHaveBeenCalledWith(
         mockTenant.id,
         connectorId,
+        mockManager,
       );
       expect(mockEmit).toHaveBeenCalledWith({
         tenantId: updated.id,

@@ -198,7 +198,10 @@ describe('TenantController', () => {
         tenantId: mockTenant.id,
       } as never);
 
-      expect(mockUpdate).toHaveBeenCalledWith(id, dto);
+      expect(mockUpdate).toHaveBeenCalledWith(id, dto, {
+        roles: [PLATFORM_ADMIN_ROLE],
+        tenantId: mockTenant.id,
+      });
       expect(result).toEqual(TenantResponseDto.fromEntity(updatedTenant));
     });
   });

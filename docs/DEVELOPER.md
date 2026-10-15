@@ -1242,7 +1242,12 @@ string, or names a row the tenant does not own is refused, never silently follow
 endpoint validates the same things on write, but that is not enough on its own: `config` is JSONB
 with no foreign key, and a connector can be deactivated after the default was set. Deleting the
 tenant's default connector returns HTTP 409; change or clear `default_connector` through the config
-endpoint before deleting it.
+endpoint before deleting it. Deletion and default selection serialize on a tenant-row lock, so a
+concurrent config update cannot select a connector that has been deleted. This also applies to
+automatic default assignment and config replacement through the general tenant update endpoint.
+Default selection also locks the connector row through active-state validation and assignment,
+preventing a concurrent deactivation between those steps. Deactivation after the assignment commits
+remains allowed; connectors are not automatically reactivated with their tenant.
 
 Note that `ConnectorCredentialService.findById()` is deliberately **not** used here. It is the
 HTTP-caller entry point and answers "not found" unless given an `AuthContext`, which an internal

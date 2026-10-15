@@ -100,6 +100,26 @@ export function ConnectorsPage() {
           Loading connectors...
         </p>
       )}
+      {tenant && tenantQuery.isLoading && (
+        <p role="status" className="text-sm text-muted-foreground">
+          Loading tenant details...
+        </p>
+      )}
+      {tenant && tenantQuery.isError && (
+        <div role="alert" className="flex items-center gap-3">
+          <p className="text-sm text-destructive">
+            Could not load tenant details.
+          </p>
+          <Button
+            type="button"
+            variant="outline"
+            aria-label="Retry tenant details"
+            onClick={() => void tenantQuery.refetch()}
+          >
+            Retry
+          </Button>
+        </div>
+      )}
       {tenant && connectorQuery.isError && (
         <div role="alert" className="flex items-center gap-3">
           <p className="text-sm text-destructive">
@@ -116,7 +136,7 @@ export function ConnectorsPage() {
           </Button>
         </div>
       )}
-      {isSuccess && connectors.data.length > 0 && (
+      {isSuccess && tenantQuery.isSuccess && connectors.data.length > 0 && (
         <ConnectorsTable
           connectors={connectors.data}
           defaultConnectorId={
@@ -129,7 +149,7 @@ export function ConnectorsPage() {
           onDelete={setConnectorToDelete}
         />
       )}
-      {isSuccess && connectors.data.length === 0 && (
+      {isSuccess && tenantQuery.isSuccess && connectors.data.length === 0 && (
         <div className="flex flex-1 flex-col items-center justify-center gap-4 text-center">
           <Share2
             className="size-16 text-muted-foreground"
