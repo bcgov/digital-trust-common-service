@@ -1,11 +1,15 @@
 import { Info, LoaderCircle } from 'lucide-react';
-import { Dialog } from 'radix-ui';
 import { useId, type FormEvent } from 'react';
 
 import { Button } from '@/components/ui/button';
+import {
+  DrawerBody,
+  DrawerClose,
+  DrawerDescription,
+  DrawerFooter,
+} from '@/components/ui/drawer';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Separator } from '@/components/ui/separator';
 import { ApiError } from '@/lib/api/errors';
 import type { useCreateConnector } from '@/lib/api/queries/connectors';
 
@@ -25,13 +29,20 @@ export function AddConnectorForm({
   const fieldId = useId();
 
   return (
-    <form onSubmit={onSubmit} noValidate>
-      <div className="relative py-6" aria-busy={mutation.isPending}>
-        <Dialog.Description className="px-6 text-sm leading-6 text-muted-foreground">
+    <form
+      onSubmit={onSubmit}
+      noValidate
+      className="flex min-h-0 flex-1 flex-col"
+    >
+      <DrawerBody
+        className="relative min-h-0 gap-0 px-0 py-6"
+        aria-busy={mutation.isPending}
+      >
+        <DrawerDescription className="px-6 text-sm leading-6 text-muted-foreground">
           This information will be used to configure your connector. The options
           are what is required to connect to an external digital credential
           agent.
-        </Dialog.Description>
+        </DrawerDescription>
         <fieldset
           disabled={mutation.isPending}
           className="mt-4 flex flex-col gap-4 px-6"
@@ -133,15 +144,14 @@ export function AddConnectorForm({
             <span className="text-sm font-medium">Testing connection...</span>
           </div>
         )}
-      </div>
-      <Separator />
-      <div className="mt-6 flex flex-wrap items-center gap-4 px-6 pb-6">
+      </DrawerBody>
+      <DrawerFooter className="shrink-0 items-center gap-4">
         <p className="flex min-w-40 flex-1 items-start gap-2 text-xs leading-5 text-muted-foreground">
           <Info className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
           <span>We test the connection before saving</span>
         </p>
         <div className="ml-auto flex gap-3">
-          <Dialog.Close asChild>
+          <DrawerClose asChild>
             <Button
               type="button"
               variant="outline"
@@ -150,7 +160,7 @@ export function AddConnectorForm({
             >
               Cancel
             </Button>
-          </Dialog.Close>
+          </DrawerClose>
           <Button
             type="submit"
             className="h-10 px-6"
@@ -159,7 +169,7 @@ export function AddConnectorForm({
             {mutation.isPending ? 'Creating...' : 'Create'}
           </Button>
         </div>
-      </div>
+      </DrawerFooter>
     </form>
   );
 }

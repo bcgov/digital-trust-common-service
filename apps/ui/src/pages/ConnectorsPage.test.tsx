@@ -307,6 +307,10 @@ describe('ConnectorsPage', () => {
       }),
     );
     await userEvent.click(screen.getByRole('menuitem', { name: 'Delete' }));
+    expect(screen.getByRole('alertdialog')).toHaveAttribute(
+      'data-vaul-drawer-direction',
+      'right',
+    );
     expect(
       screen.getByRole('alertdialog', { name: 'Delete connector' }),
     ).toHaveTextContent(
@@ -330,64 +334,75 @@ describe('ConnectorsPage', () => {
     ).toBeInTheDocument();
   });
 
-  it('opens read-only connector details from the row actions', async () => {
-    const tenantId = mockTenants[0]?.id ?? '';
-    const connector = {
-      id: 'connector-id',
-      connector_type: 'traction',
-      endpoint_url: 'https://traction.example.test/api',
-      active: true,
-    };
-    const requestedDetails = vi.fn();
-    server.use(
-      http.get(`${API_BASE_PATH}/tenants/:id/connectors`, () =>
-        HttpResponse.json([connector]),
-      ),
-      http.get(
-        `${API_BASE_PATH}/tenants/:tenantId/connectors/:connectorId`,
-        ({ params }) => {
-          requestedDetails(params.tenantId, params.connectorId);
-          return HttpResponse.json({
-            ...connector,
-            created_at: '2026-10-01T12:00:00.000Z',
-            updated_at: '2026-10-02T12:00:00.000Z',
-          });
-        },
-      ),
-    );
-    const client = createMockAuthClient();
-    await client.login();
-    renderWithAuth([{ path: '/connectors', element: <ConnectorsPage /> }], {
-      client,
-      initialEntries: ['/connectors'],
-    });
+  it.each([true, false])(
+    'opens connector details with matching status when active=%s',
+    async (active) => {
+      const tenantId = mockTenants[0]?.id ?? '';
+      const connector = {
+        id: 'connector-id',
+        connector_type: 'traction',
+        endpoint_url: 'https://traction.example.test/api',
+        active,
+      };
+      const requestedDetails = vi.fn();
+      server.use(
+        http.get(`${API_BASE_PATH}/tenants/:id/connectors`, () =>
+          HttpResponse.json([connector]),
+        ),
+        http.get(
+          `${API_BASE_PATH}/tenants/:tenantId/connectors/:connectorId`,
+          ({ params }) => {
+            requestedDetails(params.tenantId, params.connectorId);
+            return HttpResponse.json({
+              ...connector,
+              created_at: '2026-10-01T12:00:00.000Z',
+              updated_at: '2026-10-02T12:00:00.000Z',
+            });
+          },
+        ),
+      );
+      const client = createMockAuthClient();
+      await client.login();
+      renderWithAuth([{ path: '/connectors', element: <ConnectorsPage /> }], {
+        client,
+        initialEntries: ['/connectors'],
+      });
 
-    const table = await screen.findByRole('table', { name: 'Connectors' });
-    await userEvent.click(
-      within(table).getByRole('button', {
-        name: 'Actions for traction connector at https://traction.example.test/api',
-      }),
-    );
-    await userEvent.click(
-      screen.getByRole('menuitem', { name: 'View details' }),
-    );
+      const table = await screen.findByRole('table', { name: 'Connectors' });
+      await userEvent.click(
+        within(table).getByRole('button', {
+          name: 'Actions for traction connector at https://traction.example.test/api',
+        }),
+      );
+      await userEvent.click(
+        screen.getByRole('menuitem', { name: 'View details' }),
+      );
 
-    expect(
-      await screen.findByRole('dialog', { name: 'Connector details' }),
-    ).toBeInTheDocument();
-    expect(
-      await screen.findByText(
-        new Date('2026-10-01T12:00:00.000Z').toLocaleString(),
-      ),
-    ).toBeInTheDocument();
-    expect(requestedDetails).toHaveBeenCalledWith(tenantId, connector.id);
-    expect(
-      within(
+      expect(
+        await screen.findByRole('dialog', { name: 'Connector details' }),
+      ).toHaveAttribute('data-vaul-drawer-direction', 'right');
+      expect(
+        await screen.findByText(
+          new Date('2026-10-01T12:00:00.000Z').toLocaleString(),
+        ),
+      ).toBeInTheDocument();
+      expect(requestedDetails).toHaveBeenCalledWith(tenantId, connector.id);
+      const statusText = active ? 'Connected' : 'Inactive';
+      const tableStatus = within(table).getByText(statusText);
+      const drawerStatus = within(
         screen.getByRole('dialog', { name: 'Connector details' }),
-      ).getByText(connector.endpoint_url),
-    ).toBeInTheDocument();
-    expect(screen.queryByLabelText(/api key/i)).not.toBeInTheDocument();
-  });
+      ).getByText(statusText);
+      expect(drawerStatus).toHaveAttribute('data-slot', 'badge');
+      expect(drawerStatus.className).toBe(tableStatus.className);
+      expect(drawerStatus.querySelector('svg') !== null).toBe(active);
+      expect(
+        within(
+          screen.getByRole('dialog', { name: 'Connector details' }),
+        ).getByText(connector.endpoint_url),
+      ).toBeInTheDocument();
+      expect(screen.queryByLabelText(/api key/i)).not.toBeInTheDocument();
+    },
+  );
 
   it('saves connector edits, tests the saved connector, then closes', async () => {
     const tenantId = mockTenants[0]?.id ?? '';
@@ -442,6 +457,9 @@ describe('ConnectorsPage', () => {
       }),
     );
     await userEvent.click(screen.getByRole('menuitem', { name: 'Edit' }));
+    expect(
+      screen.getByRole('dialog', { name: 'Edit Connector' }),
+    ).toHaveAttribute('data-vaul-drawer-direction', 'right');
     const endpointInput = screen.getByRole('textbox', { name: 'Endpoint URL' });
     await userEvent.clear(endpointInput);
     await userEvent.type(endpointInput, 'https://traction.example.test/v2');
@@ -471,6 +489,10 @@ describe('ConnectorsPage', () => {
     );
     expect(screen.getByRole('button', { name: 'Testing...' })).toBeDisabled();
     expect(endpointInput).toBeDisabled();
+    await userEvent.keyboard('{Escape}');
+    expect(
+      screen.getByRole('dialog', { name: 'Edit Connector' }),
+    ).toBeInTheDocument();
 
     finishTest();
     await waitFor(() =>

@@ -1,5 +1,12 @@
-import { Button, Dialog, Modal } from '@bcgov/design-system-react-components';
-
+import { Button } from '@/components/ui/button';
+import {
+  Drawer,
+  DrawerBody,
+  DrawerContent,
+  DrawerFooter,
+  DrawerHeader,
+  DrawerTitle,
+} from '@/components/ui/drawer';
 import { useConnector } from '@/lib/api/queries/connectors';
 import type { Connector } from '@/lib/api/resources/connectors';
 
@@ -18,40 +25,38 @@ export function ConnectorDetailsDialog({
   const item = details.data;
 
   return (
-    <Modal
-      isOpen
-      isDismissable
+    <Drawer
+      direction="right"
+      open
       onOpenChange={(open) => {
         if (!open) onClose();
       }}
     >
-      <Dialog aria-label="Connector details">
-        <div className="w-full max-w-lg">
-          <div className="border-b px-6 py-4 pr-14">
-            <h2 className="text-xl font-bold">Connector details</h2>
-          </div>
-          <div className="flex flex-col gap-4 px-6 py-5">
-            {details.isPending && (
-              <p role="status" className="text-sm text-muted-foreground">
-                Loading connector details...
-              </p>
-            )}
-            {details.isError && (
-              <p role="alert" className="text-sm text-destructive">
-                {details.error instanceof Error
-                  ? details.error.message
-                  : 'Could not load connector details.'}
-              </p>
-            )}
-            {item && <ConnectorDetailsList item={item} />}
-          </div>
-          <div className="flex justify-end border-t px-6 py-4">
-            <Button variant="secondary" onPress={onClose}>
-              Close
-            </Button>
-          </div>
-        </div>
-      </Dialog>
-    </Modal>
+      <DrawerContent aria-describedby={undefined}>
+        <DrawerHeader>
+          <DrawerTitle>Connector details</DrawerTitle>
+        </DrawerHeader>
+        <DrawerBody className="min-h-0">
+          {details.isPending && (
+            <p role="status" className="text-sm text-muted-foreground">
+              Loading connector details...
+            </p>
+          )}
+          {details.isError && (
+            <p role="alert" className="text-sm text-destructive">
+              {details.error instanceof Error
+                ? details.error.message
+                : 'Could not load connector details.'}
+            </p>
+          )}
+          {item && <ConnectorDetailsList item={item} />}
+        </DrawerBody>
+        <DrawerFooter className="shrink-0">
+          <Button variant="outline" onClick={onClose}>
+            Close
+          </Button>
+        </DrawerFooter>
+      </DrawerContent>
+    </Drawer>
   );
 }

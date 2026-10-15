@@ -1,10 +1,13 @@
-import { X } from 'lucide-react';
-import { Dialog } from 'radix-ui';
 import { useState, type FormEvent, type ReactNode } from 'react';
 import { z } from 'zod';
 
-import { Button } from '@/components/ui/button';
-import { Separator } from '@/components/ui/separator';
+import {
+  Drawer,
+  DrawerContent,
+  DrawerHeader,
+  DrawerTitle,
+  DrawerTrigger,
+} from '@/components/ui/drawer';
 import { useCreateConnector } from '@/lib/api/queries/connectors';
 import { useActiveTenant } from '@/lib/tenant/active-tenant';
 
@@ -74,36 +77,24 @@ export function AddConnectorModal({ children }: { children: ReactNode }) {
   }
 
   return (
-    <Dialog.Root open={open} onOpenChange={changeOpen}>
-      <Dialog.Trigger asChild>{children}</Dialog.Trigger>
-      <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/50" />
-        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 max-h-[calc(100svh-2rem)] w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-lg border bg-background shadow-lg">
-          <Dialog.Title className="pl-6 pr-14 pt-6 text-lg font-semibold">
-            Add Connector
-          </Dialog.Title>
-          <Separator className="mt-4" />
-          <AddConnectorForm
-            onSubmit={submit}
-            errors={errors}
-            mutation={mutation}
-            canCreate={Boolean(tenant)}
-          />
-          <Dialog.Close asChild>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="absolute right-3 top-3"
-              aria-label="Close"
-              title="Close"
-              disabled={mutation.isPending}
-            >
-              <X aria-hidden="true" />
-            </Button>
-          </Dialog.Close>
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
+    <Drawer
+      direction="right"
+      open={open}
+      onOpenChange={changeOpen}
+      dismissible={!mutation.isPending}
+    >
+      <DrawerTrigger asChild>{children}</DrawerTrigger>
+      <DrawerContent showCloseButton={!mutation.isPending}>
+        <DrawerHeader>
+          <DrawerTitle>Add Connector</DrawerTitle>
+        </DrawerHeader>
+        <AddConnectorForm
+          onSubmit={submit}
+          errors={errors}
+          mutation={mutation}
+          canCreate={Boolean(tenant)}
+        />
+      </DrawerContent>
+    </Drawer>
   );
 }

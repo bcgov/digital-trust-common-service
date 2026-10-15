@@ -1,12 +1,21 @@
 import { LoaderCircle } from 'lucide-react';
-import { Dialog } from 'radix-ui';
 import { useState, type FormEvent } from 'react';
 import { z } from 'zod';
 
+import { ConnectorStatus } from '@/components/connector/ConnectorStatus';
 import { Button } from '@/components/ui/button';
+import {
+  Drawer,
+  DrawerBody,
+  DrawerClose,
+  DrawerContent,
+  DrawerDescription,
+  DrawerFooter,
+  DrawerHeader,
+  DrawerTitle,
+} from '@/components/ui/drawer';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Separator } from '@/components/ui/separator';
 import { ApiError } from '@/lib/api/errors';
 import {
   useTestConnector,
@@ -174,35 +183,48 @@ export function EditConnectorModal({
   }
 
   return (
-    <Dialog.Root open onOpenChange={changeOpen}>
-      <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/50" />
-        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 max-h-[calc(100svh-2rem)] w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-lg border bg-background shadow-lg">
-          <Dialog.Title className="pl-6 pr-14 pt-6 text-lg font-semibold">
-            Edit Connector
-          </Dialog.Title>
-          <Separator className="mt-4" />
-          <form
-            onSubmit={(event) => {
-              void submit(event);
-            }}
-            noValidate
+    <Drawer
+      direction="right"
+      open
+      onOpenChange={changeOpen}
+      dismissible={!isPending}
+    >
+      <DrawerContent showCloseButton={!isPending}>
+        <DrawerHeader className="gap-3">
+          <DrawerTitle>Edit Connector</DrawerTitle>
+          <div>
+            <ConnectorStatus active={connector.active} />
+          </div>
+        </DrawerHeader>
+        <form
+          onSubmit={(event) => {
+            void submit(event);
+          }}
+          noValidate
+          className="flex min-h-0 flex-1 flex-col"
+        >
+          <DrawerBody
+            className="relative min-h-0 gap-0 px-0 py-6"
+            aria-busy={isPending}
           >
-            <div className="relative py-6" aria-busy={isPending}>
-              <Dialog.Description className="px-6 text-sm leading-6 text-muted-foreground">
-                Update the endpoint or rotate the API key or webhook secret.
-              </Dialog.Description>
-              <fieldset
-                disabled={isPending}
-                className="mt-4 flex flex-col gap-4 px-6"
-              >
+            <DrawerDescription className="px-6 text-sm leading-6 text-muted-foreground">
+              Update the endpoint or rotate the API key or webhook secret.
+            </DrawerDescription>
+            <fieldset
+              disabled={isPending}
+              className="mt-6 flex min-w-0 flex-col gap-6 px-6 [&_input]:h-11 [&_input]:rounded-md [&_label]:font-bold"
+            >
+              <fieldset className="flex min-w-0 flex-col gap-5">
+                <legend className="mb-5 w-full border-b border-border pb-3 text-base font-bold">
+                  Connection
+                </legend>
                 <div className="flex flex-col gap-2">
                   <Label htmlFor="edit-connector-type">Connector type</Label>
                   <Input
                     id="edit-connector-type"
                     value={connector.connector_type ?? ''}
                     readOnly
-                    className="capitalize"
+                    className="border-transparent bg-muted font-medium capitalize text-muted-foreground shadow-none"
                   />
                 </div>
                 <div className="flex flex-col gap-2">
@@ -212,6 +234,7 @@ export function EditConnectorModal({
                     name="endpoint_url"
                     type="url"
                     required
+                    className="font-mono"
                     value={endpointUrl}
                     onChange={(event) => setEndpointUrl(event.target.value)}
                     aria-invalid={Boolean(fieldErrors.endpoint_url)}
@@ -231,9 +254,17 @@ export function EditConnectorModal({
                     </p>
                   )}
                 </div>
+              </fieldset>
+              <fieldset className="flex min-w-0 flex-col gap-5">
+                <legend className="mb-5 w-full border-b border-border pb-3 text-base font-bold">
+                  Credentials
+                </legend>
                 <div className="flex flex-col gap-2">
                   <Label htmlFor="edit-connector-api-key">
-                    New API key (optional)
+                    New API key{' '}
+                    <span className="font-normal text-muted-foreground">
+                      (optional)
+                    </span>
                   </Label>
                   <Input
                     id="edit-connector-api-key"
@@ -249,7 +280,10 @@ export function EditConnectorModal({
                   <>
                     <div className="flex flex-col gap-2">
                       <Label htmlFor="edit-connector-traction-tenant-id">
-                        Traction tenant ID (optional)
+                        Traction tenant ID{' '}
+                        <span className="font-normal text-muted-foreground">
+                          (optional)
+                        </span>
                       </Label>
                       <Input
                         id="edit-connector-traction-tenant-id"
@@ -262,7 +296,10 @@ export function EditConnectorModal({
                     </div>
                     <div className="flex flex-col gap-2">
                       <Label htmlFor="edit-connector-webhook-secret">
-                        New webhook secret (optional)
+                        New webhook secret{' '}
+                        <span className="font-normal text-muted-foreground">
+                          (optional)
+                        </span>
                       </Label>
                       <Input
                         id="edit-connector-webhook-secret"
@@ -279,57 +316,59 @@ export function EditConnectorModal({
                   </>
                 )}
               </fieldset>
-              {submitError && (
-                <p role="alert" className="mt-4 px-6 text-sm text-destructive">
-                  {submitError}
-                </p>
-              )}
-              {isPending && (
-                <div
-                  role="status"
-                  className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-background/90"
-                >
-                  <LoaderCircle
-                    className="size-10 animate-spin motion-reduce:animate-none"
-                    aria-hidden="true"
-                  />
-                  <span className="text-sm font-medium">
-                    {stage === 'saving'
-                      ? 'Saving changes...'
-                      : 'Testing connection...'}
-                  </span>
-                </div>
-              )}
-            </div>
-            <Separator />
-            <div className="mt-6 flex justify-end gap-3 px-6 pb-6">
-              <Dialog.Close asChild>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="h-10 bg-white px-6"
-                  disabled={isPending}
-                >
-                  Cancel
-                </Button>
-              </Dialog.Close>
-              <Button
-                type="submit"
-                className="h-10 px-6"
-                disabled={!canSubmit || isPending}
+            </fieldset>
+            {submitError && (
+              <p
+                role="alert"
+                className="mx-6 mt-6 border-l-2 border-destructive bg-destructive/5 px-4 py-3 text-sm leading-6 text-destructive"
               >
-                {stage === 'saving'
-                  ? 'Saving...'
-                  : stage === 'testing'
-                    ? 'Testing...'
-                    : hasUnverifiedSave && !hasChanges
-                      ? 'Retry test'
-                      : 'Save changes'}
+                {submitError}
+              </p>
+            )}
+            {isPending && (
+              <div
+                role="status"
+                className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-background/90"
+              >
+                <LoaderCircle
+                  className="size-10 animate-spin motion-reduce:animate-none"
+                  aria-hidden="true"
+                />
+                <span className="text-sm font-medium">
+                  {stage === 'saving'
+                    ? 'Saving changes...'
+                    : 'Testing connection...'}
+                </span>
+              </div>
+            )}
+          </DrawerBody>
+          <DrawerFooter className="shrink-0 gap-3 bg-muted/30">
+            <DrawerClose asChild>
+              <Button
+                type="button"
+                variant="outline"
+                className="h-11 px-6"
+                disabled={isPending}
+              >
+                Cancel
               </Button>
-            </div>
-          </form>
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
+            </DrawerClose>
+            <Button
+              type="submit"
+              className="h-11 px-6"
+              disabled={!canSubmit || isPending}
+            >
+              {stage === 'saving'
+                ? 'Saving...'
+                : stage === 'testing'
+                  ? 'Testing...'
+                  : hasUnverifiedSave && !hasChanges
+                    ? 'Retry test'
+                    : 'Save changes'}
+            </Button>
+          </DrawerFooter>
+        </form>
+      </DrawerContent>
+    </Drawer>
   );
 }

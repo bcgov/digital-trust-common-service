@@ -115,14 +115,6 @@ export const routes: RouteObject[] = [
                 ],
               },
               {
-                // Drawer preview (#467) — remove when a real screen uses it.
-                path: '/drawer-demo',
-                lazy: lazyPage(
-                  () => import('@/pages/DrawerDemo'),
-                  'DrawerDemo',
-                ),
-              },
-              {
                 path: '/settings',
                 lazy: lazyPage(
                   () => import('@/pages/SettingsPage'),

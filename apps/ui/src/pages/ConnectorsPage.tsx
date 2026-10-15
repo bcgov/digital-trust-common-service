@@ -1,12 +1,11 @@
-import { Check, Share2 } from 'lucide-react';
+import { Share2 } from 'lucide-react';
 import { useState } from 'react';
 
 import { AddConnectorButton } from '@/components/connector/AddConnectorButton';
 import { ConnectorDetailsDialog } from '@/components/connector/ConnectorDetailsDialog';
-import { ConnectorRowActions } from '@/components/connector/ConnectorRowActions';
+import { ConnectorsTable } from '@/components/connector/ConnectorsTable';
 import { DeleteConnectorDialog } from '@/components/connector/DeleteConnectorDialog';
 import { EditConnectorModal } from '@/components/connector/EditConnectorModal';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -14,14 +13,6 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
 import { useConnectors } from '@/lib/api/queries/connectors';
 import { useTenant } from '@/lib/api/queries/tenants';
 import { ApiError } from '@/lib/api/errors';
@@ -126,61 +117,17 @@ export function ConnectorsPage() {
         </div>
       )}
       {isSuccess && connectors.data.length > 0 && (
-        <Table aria-label="Connectors">
-          <TableHeader>
-            <TableRow>
-              <TableHead>Type</TableHead>
-              <TableHead>Endpoint</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="w-0">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {connectors.data.map((connector) => (
-              <TableRow key={connector.id}>
-                <TableCell>
-                  <div className="flex flex-col items-start gap-1">
-                    <span className="capitalize">
-                      {connector.connector_type}
-                    </span>
-                    {connector.id === defaultConnectorId && (
-                      <Badge
-                        variant="outline"
-                        className="border-blue-600 text-blue-700 dark:border-blue-400 dark:text-blue-400"
-                      >
-                        Default
-                      </Badge>
-                    )}
-                  </div>
-                </TableCell>
-                <TableCell className="max-w-md whitespace-normal break-all">
-                  {connector.endpoint_url}
-                </TableCell>
-                <TableCell>
-                  <Badge
-                    variant={connector.active ? 'outline' : 'secondary'}
-                    className={
-                      connector.active
-                        ? 'border-green-600 text-green-700 dark:border-green-400 dark:text-green-400'
-                        : undefined
-                    }
-                  >
-                    {connector.active && <Check aria-hidden="true" />}
-                    {connector.active ? 'Connected' : 'Inactive'}
-                  </Badge>
-                </TableCell>
-                <TableCell className="text-right">
-                  <ConnectorRowActions
-                    connector={connector}
-                    onViewDetails={() => setConnectorToView(connector)}
-                    onEdit={() => setConnectorToEdit(connector)}
-                    onDelete={() => setConnectorToDelete(connector)}
-                  />
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+        <ConnectorsTable
+          connectors={connectors.data}
+          defaultConnectorId={
+            typeof defaultConnectorId === 'string'
+              ? defaultConnectorId
+              : undefined
+          }
+          onViewDetails={setConnectorToView}
+          onEdit={setConnectorToEdit}
+          onDelete={setConnectorToDelete}
+        />
       )}
       {isSuccess && connectors.data.length === 0 && (
         <div className="flex flex-1 flex-col items-center justify-center gap-4 text-center">

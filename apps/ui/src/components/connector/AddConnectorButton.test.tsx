@@ -75,7 +75,7 @@ describe('AddConnectorButton', () => {
     ).toBe(true);
   });
 
-  it('keeps the modal open when the API rejects the request', async () => {
+  it('keeps the drawer open when the API rejects the request', async () => {
     const user = userEvent.setup();
     server.use(
       http.post(`${API_BASE_PATH}/tenants/:tenantId/connectors`, () =>
@@ -171,7 +171,7 @@ describe('AddConnectorButton', () => {
     );
   });
 
-  it('shows the footer actions and closes the modal with Cancel', async () => {
+  it('shows the footer actions and closes the drawer with Cancel', async () => {
     const user = userEvent.setup();
     render(<AddConnectorButton />);
     const trigger = screen.getByRole('button', { name: 'Add Connector' });
@@ -224,7 +224,7 @@ describe('AddConnectorButton', () => {
     );
   });
 
-  it('opens the modal from either button and restores focus on dismissal', async () => {
+  it('opens the right drawer from either button and restores focus on dismissal', async () => {
     const user = userEvent.setup();
     render(
       <>
@@ -237,6 +237,8 @@ describe('AddConnectorButton', () => {
     for (const button of buttons) {
       await user.click(button);
       const dialog = screen.getByRole('dialog', { name: 'Add Connector' });
+      expect(dialog).toHaveAttribute('data-slot', 'drawer-content');
+      expect(dialog).toHaveAttribute('data-vaul-drawer-direction', 'right');
       expect(
         within(dialog).getByRole('heading', { name: 'Add Connector' }),
       ).toBeInTheDocument();
