@@ -25,7 +25,9 @@ export function AddConnectorModal({ children }: { children: ReactNode }) {
   const { tenant } = useActiveTenant();
   const mutation = useCreateConnector(tenant?.id);
   const [open, setOpen] = useState(false);
-  const [errors, setErrors] = useState<Record<string, string[] | undefined>>({});
+  const [errors, setErrors] = useState<Record<string, string[] | undefined>>(
+    {},
+  );
 
   function changeOpen(nextOpen: boolean) {
     if (mutation.isPending) return;
@@ -43,7 +45,8 @@ export function AddConnectorModal({ children }: { children: ReactNode }) {
       connector_type: form.get('connector_type'),
       endpoint_url: form.get('endpoint_url'),
       api_key: form.get('credentials.api_key'),
-      traction_tenant_id: form.get('credentials.traction_tenant_id') || undefined,
+      traction_tenant_id:
+        form.get('credentials.traction_tenant_id') || undefined,
       webhook_secret: form.get('credentials.webhook_secret') || undefined,
     });
     if (!result.success) {

@@ -115,9 +115,7 @@ export function EditConnectorModal({
           connectorId: connector.id,
           body: {
             ...(endpointChanged ? { endpoint_url: values.endpoint_url } : {}),
-            ...(apiKeyChanged ||
-            tractionTenantIdChanged ||
-            webhookSecretChanged
+            ...(apiKeyChanged || tractionTenantIdChanged || webhookSecretChanged
               ? {
                   credentials: {
                     ...(apiKeyChanged ? { api_key: values.api_key } : {}),

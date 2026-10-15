@@ -441,14 +441,14 @@ describe('ConnectorsPage', () => {
     const endpointInput = screen.getByRole('textbox', { name: 'Endpoint URL' });
     await userEvent.clear(endpointInput);
     await userEvent.type(endpointInput, 'https://traction.example.test/v2');
-      await userEvent.type(
-        screen.getByLabelText('Traction tenant ID (optional)'),
-        'traction-tenant-test-id',
-      );
-      await userEvent.type(
-        screen.getByLabelText('New webhook secret (optional)'),
-        'test-only-webhook-placeholder',
-      );
+    await userEvent.type(
+      screen.getByLabelText('Traction tenant ID (optional)'),
+      'traction-tenant-test-id',
+    );
+    await userEvent.type(
+      screen.getByLabelText('New webhook secret (optional)'),
+      'test-only-webhook-placeholder',
+    );
     await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
 
     await waitFor(() =>
@@ -457,10 +457,10 @@ describe('ConnectorsPage', () => {
     expect(requests).toEqual(['update', 'test']);
     expect(updateBody).toHaveBeenCalledWith(tenantId, connector.id, {
       endpoint_url: 'https://traction.example.test/v2',
-        credentials: {
-          traction_tenant_id: 'traction-tenant-test-id',
-          webhook_secret: 'test-only-webhook-placeholder',
-        },
+      credentials: {
+        traction_tenant_id: 'traction-tenant-test-id',
+        webhook_secret: 'test-only-webhook-placeholder',
+      },
     });
     expect(screen.getByRole('status')).toHaveTextContent(
       'Testing connection...',

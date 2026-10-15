@@ -43,9 +43,7 @@ export function ConnectorDetailsDialog({
                   : 'Could not load connector details.'}
               </p>
             )}
-            {item && (
-              <ConnectorDetailsList item={item} />
-            )}
+            {item && <ConnectorDetailsList item={item} />}
           </div>
           <div className="flex justify-end border-t px-6 py-4">
             <Button variant="secondary" onPress={onClose}>

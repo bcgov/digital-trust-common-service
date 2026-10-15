@@ -1,10 +1,7 @@
 import { screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
-import {
-  createMockAuthClient,
-  MOCK_AUTH_TENANTS,
-} from '@/lib/auth/mock-auth';
+import { createMockAuthClient, MOCK_AUTH_TENANTS } from '@/lib/auth/mock-auth';
 import { renderWithAuth } from '@/test/render-with-auth';
 
 import { AppShell } from './AppShell';
