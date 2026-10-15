@@ -177,6 +177,13 @@ describe('AdapterRegistry (integration)', () => {
     );
   }
 
+  async function clearDefaultConnector(tenantId: string): Promise<void> {
+    await dataSource.query(
+      "UPDATE tenant SET config = config - 'default_connector' WHERE id = $1",
+      [tenantId],
+    );
+  }
+
   it('should resolve the connector named by tenant.config.default_connector', async () => {
     const tenantId = await createTenant();
     const connector = await createConnector(tenantId, {
@@ -220,7 +227,7 @@ describe('AdapterRegistry (integration)', () => {
     await setDefaultConnector(tenantId, connector.id);
 
     await expect(registry.resolve(tenantId)).rejects.toBeInstanceOf(
-      ConflictException,
+      ConnectorUnavailableError,
     );
   });
 
@@ -236,9 +243,10 @@ describe('AdapterRegistry (integration)', () => {
     const tenantId = await createTenant();
     await createConnector(tenantId);
     await createConnector(tenantId, { connectorType: ConnectorType.CREDO });
+    await clearDefaultConnector(tenantId);
 
     await expect(registry.resolve(tenantId)).rejects.toBeInstanceOf(
-      ConnectorUnavailableError,
+      ConflictException,
     );
   });
 
