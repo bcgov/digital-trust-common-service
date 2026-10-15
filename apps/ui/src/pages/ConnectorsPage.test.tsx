@@ -300,7 +300,7 @@ describe('ConnectorsPage', () => {
       { client, initialEntries: ['/connectors'] },
     );
 
-    const table = screen.getByRole('table', { name: 'Connectors' });
+    const table = await screen.findByRole('table', { name: 'Connectors' });
     await userEvent.click(
       within(table).getByRole('button', {
         name: 'Actions for traction connector at https://traction.example.test/api',
@@ -362,7 +362,7 @@ describe('ConnectorsPage', () => {
       initialEntries: ['/connectors'],
     });
 
-    const table = screen.getByRole('table', { name: 'Connectors' });
+    const table = await screen.findByRole('table', { name: 'Connectors' });
     await userEvent.click(
       within(table).getByRole('button', {
         name: 'Actions for traction connector at https://traction.example.test/api',
@@ -381,7 +381,11 @@ describe('ConnectorsPage', () => {
       ),
     ).toBeInTheDocument();
     expect(requestedDetails).toHaveBeenCalledWith(tenantId, connector.id);
-    expect(screen.getByText(connector.endpoint_url)).toBeInTheDocument();
+    expect(
+      within(screen.getByRole('dialog', { name: 'Connector details' })).getByText(
+        connector.endpoint_url,
+      ),
+    ).toBeInTheDocument();
     expect(screen.queryByLabelText(/api key/i)).not.toBeInTheDocument();
   });
 
@@ -431,7 +435,7 @@ describe('ConnectorsPage', () => {
       { client, initialEntries: ['/connectors'] },
     );
 
-    const table = screen.getByRole('table', { name: 'Connectors' });
+    const table = await screen.findByRole('table', { name: 'Connectors' });
     await userEvent.click(
       within(table).getByRole('button', {
         name: 'Actions for traction connector at https://traction.example.test/api',

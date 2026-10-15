@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { createMemoryRouter, RouterProvider } from 'react-router';
@@ -23,7 +23,7 @@ describe('routing', () => {
 
     await user.click(await screen.findByRole('button', { name: /sign in/i }));
     await screen.findByText('Coming soon.');
-    await user.click(screen.getByRole('link', { name: 'Connectors' }));
+    fireEvent.click(screen.getByRole('link', { name: 'Connectors' }));
 
     await waitFor(() => {
       expect(router.state.location.pathname).toBe('/connectors');
