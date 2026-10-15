@@ -36,13 +36,14 @@ describe('ConnectorCredentialRepository', () => {
     it('locks the connector row when using a transaction manager', async () => {
       const connector = { id: 'c1', tenantId: 't1', active: true };
       const findOne = jest.fn().mockResolvedValue(connector);
+      const getRepository = jest.fn().mockReturnValue({ findOne });
       const manager = {
-        getRepository: jest.fn().mockReturnValue({ findOne }),
+        getRepository,
       } as unknown as EntityManager;
 
       await expect(repository.findById('c1', manager)).resolves.toBe(connector);
 
-      expect(manager.getRepository).toHaveBeenCalledWith(ConnectorCredential);
+      expect(getRepository).toHaveBeenCalledWith(ConnectorCredential);
       expect(findOne).toHaveBeenCalledWith({
         where: { id: 'c1' },
         lock: { mode: 'pessimistic_write' },
@@ -72,8 +73,12 @@ describe('ConnectorCredentialRepository', () => {
         .mockResolvedValueOnce(updated);
       const update = jest.fn().mockResolvedValue({ affected: 1 });
       const getRepository = jest.fn().mockReturnValue({ findOne, update });
-      const transaction = jest.fn(async (callback) =>
-        callback({ getRepository }),
+      const transaction = jest.fn(
+        (
+          callback: (manager: {
+            getRepository: typeof getRepository;
+          }) => Promise<unknown>,
+        ) => callback({ getRepository }),
       );
       Object.assign(mockRepo, { manager: { transaction } });
       const buildUpdates = jest.fn().mockResolvedValue({ keyVersion: 2 });
@@ -102,8 +107,13 @@ describe('ConnectorCredentialRepository', () => {
     it('does not build updates when the tenant-scoped row is absent', async () => {
       const findOne = jest.fn().mockResolvedValue(null);
       const update = jest.fn();
-      const transaction = jest.fn(async (callback) =>
-        callback({ getRepository: () => ({ findOne, update }) }),
+      const getRepository = () => ({ findOne, update });
+      const transaction = jest.fn(
+        (
+          callback: (manager: {
+            getRepository: typeof getRepository;
+          }) => Promise<unknown>,
+        ) => callback({ getRepository }),
       );
       Object.assign(mockRepo, { manager: { transaction } });
       const buildUpdates = jest.fn();
@@ -128,8 +138,12 @@ describe('ConnectorCredentialRepository', () => {
         const getRepository = jest.fn((entity) =>
           entity === Tenant ? { findOne } : { delete: remove },
         );
-        const transaction = jest.fn(async (callback) =>
-          callback({ getRepository }),
+        const transaction = jest.fn(
+          (
+            callback: (manager: {
+              getRepository: typeof getRepository;
+            }) => Promise<unknown>,
+          ) => callback({ getRepository }),
         );
         Object.assign(mockRepo, { manager: { transaction } });
 

@@ -122,7 +122,10 @@ describe('ConnectorCredentialService', () => {
       updateWithLock: jest.fn(async (_tenantId, id, buildUpdates) => {
         const existing = await mockFindById(id);
         if (!existing) return null;
-        return mockUpdate(id, await buildUpdates(existing));
+        return mockUpdate(
+          id,
+          await buildUpdates(existing),
+        ) as Promise<ConnectorCredential | null>;
       }),
       delete: mockDelete,
       deleteUnlessDefault: mockDeleteUnlessDefault,

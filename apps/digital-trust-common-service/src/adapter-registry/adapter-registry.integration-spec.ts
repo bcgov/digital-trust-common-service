@@ -301,11 +301,17 @@ describe('AdapterRegistry (integration)', () => {
       const firstReleased = new Promise<void>((resolve) => {
         releaseFirst = resolve;
       });
-      const findOne = Repository.prototype.findOne;
+      const findOne = Object.getOwnPropertyDescriptor(
+        Repository.prototype,
+        'findOne',
+      )?.value as Repository<Tenant | ConnectorCredential>['findOne'];
       let lockRequests = 0;
       const lockSpy = jest
         .spyOn(Repository.prototype, 'findOne')
-        .mockImplementation(async function (options) {
+        .mockImplementation(async function (
+          this: Repository<Tenant | ConnectorCredential>,
+          options,
+        ) {
           if (
             this.metadata.target !== Tenant ||
             options.lock?.mode !== 'pessimistic_write' ||
@@ -352,12 +358,12 @@ describe('AdapterRegistry (integration)', () => {
         releaseFirst();
         const results = await settled;
         expect(results[0].status).toBe('fulfilled');
-        expect(results[1]).toMatchObject({
-          status: 'rejected',
-          reason: expect.any(
+        expect(results[1].status).toBe('rejected');
+        if (results[1].status === 'rejected') {
+          expect(results[1].reason).toBeInstanceOf(
             selectionWins ? ConflictException : NotFoundException,
-          ),
-        });
+          );
+        }
       } finally {
         releaseFirst();
         lockSpy.mockRestore();
@@ -394,10 +400,16 @@ describe('AdapterRegistry (integration)', () => {
       const readRequested = new Promise<void>((resolve) => {
         markReadRequested = resolve;
       });
-      const findOne = Repository.prototype.findOne;
+      const findOne = Object.getOwnPropertyDescriptor(
+        Repository.prototype,
+        'findOne',
+      )?.value as Repository<Tenant | ConnectorCredential>['findOne'];
       const readSpy = jest
         .spyOn(Repository.prototype, 'findOne')
-        .mockImplementation(async function (options) {
+        .mockImplementation(async function (
+          this: Repository<Tenant | ConnectorCredential>,
+          options,
+        ) {
           if (
             this.metadata.target === ConnectorCredential &&
             (options.where as { id?: string }).id === connector.id
@@ -434,9 +446,12 @@ describe('AdapterRegistry (integration)', () => {
         await readRequested;
         await runner.commitTransaction();
 
-        expect(await settled).toMatchObject([
-          { status: 'rejected', reason: expect.any(ConflictException) },
-        ]);
+        const results = await settled;
+        expect(results).toHaveLength(1);
+        expect(results[0].status).toBe('rejected');
+        if (results[0].status === 'rejected') {
+          expect(results[0].reason).toBeInstanceOf(ConflictException);
+        }
         expect(
           (await tenantService.findById(tenantId)).config.default_connector,
         ).toBeUndefined();
@@ -464,10 +479,16 @@ describe('AdapterRegistry (integration)', () => {
       const readReleased = new Promise<void>((resolve) => {
         releaseRead = resolve;
       });
-      const findOne = Repository.prototype.findOne;
+      const findOne = Object.getOwnPropertyDescriptor(
+        Repository.prototype,
+        'findOne',
+      )?.value as Repository<Tenant | ConnectorCredential>['findOne'];
       const readSpy = jest
         .spyOn(Repository.prototype, 'findOne')
-        .mockImplementation(async function (options) {
+        .mockImplementation(async function (
+          this: Repository<Tenant | ConnectorCredential>,
+          options,
+        ) {
           const row = await findOne.call(this, options);
           if (
             this.metadata.target === ConnectorCredential &&
