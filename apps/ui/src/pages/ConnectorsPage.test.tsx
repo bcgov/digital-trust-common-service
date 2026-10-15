@@ -382,9 +382,9 @@ describe('ConnectorsPage', () => {
     ).toBeInTheDocument();
     expect(requestedDetails).toHaveBeenCalledWith(tenantId, connector.id);
     expect(
-      within(screen.getByRole('dialog', { name: 'Connector details' })).getByText(
-        connector.endpoint_url,
-      ),
+      within(
+        screen.getByRole('dialog', { name: 'Connector details' }),
+      ).getByText(connector.endpoint_url),
     ).toBeInTheDocument();
     expect(screen.queryByLabelText(/api key/i)).not.toBeInTheDocument();
   });
