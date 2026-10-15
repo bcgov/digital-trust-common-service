@@ -35,7 +35,7 @@ const editConnectorSchema = z.object({
 
 type EditStage = 'saving' | 'testing' | null;
 
-export function EditConnectorModal({
+export function EditConnectorDrawer({
   connector,
   tenantId,
   onClose,

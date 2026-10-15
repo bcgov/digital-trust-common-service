@@ -11,7 +11,7 @@ import {
 import { useCreateConnector } from '@/lib/api/queries/connectors';
 import { useActiveTenant } from '@/lib/tenant/active-tenant';
 
-import { AddConnectorForm } from './AddConnectorForm';
+import { AddConnectorForm } from './AddConnectorForm.js';
 
 const connectorSchema = z.object({
   connector_type: z.literal('traction'),
@@ -24,7 +24,7 @@ const connectorSchema = z.object({
   webhook_secret: z.string().optional(),
 });
 
-export function AddConnectorModal({ children }: { children: ReactNode }) {
+export function AddConnectorDrawer({ children }: { children: ReactNode }) {
   const { tenant } = useActiveTenant();
   const mutation = useCreateConnector(tenant?.id);
   const [open, setOpen] = useState(false);

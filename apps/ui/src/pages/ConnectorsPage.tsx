@@ -5,7 +5,7 @@ import { AddConnectorButton } from '@/components/connector/AddConnectorButton';
 import { ConnectorDetailsDialog } from '@/components/connector/ConnectorDetailsDialog';
 import { ConnectorsTable } from '@/components/connector/ConnectorsTable';
 import { DeleteConnectorDialog } from '@/components/connector/DeleteConnectorDialog';
-import { EditConnectorModal } from '@/components/connector/EditConnectorModal';
+import { EditConnectorDrawer } from '@/components/connector/EditConnectorDrawer';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -159,7 +159,7 @@ export function ConnectorsPage() {
         />
       )}
       {connectorToEdit && (
-        <EditConnectorModal
+        <EditConnectorDrawer
           connector={connectorToEdit}
           tenantId={tenant?.id}
           onClose={() => setConnectorToEdit(null)}
