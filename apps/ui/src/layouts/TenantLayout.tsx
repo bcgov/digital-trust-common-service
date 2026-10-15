@@ -6,6 +6,7 @@ import {
   useParams,
 } from 'react-router';
 
+import { AccessDenied } from '@/components/access-denied';
 import { TenantStatusBadge } from '@/components/tenant-status-badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ApiError } from '@/lib/api/errors';
@@ -51,6 +52,10 @@ export function TenantLayout() {
   }
 
   if (error) {
+    if (error instanceof ApiError && error.status === 403) {
+      return <AccessDenied title="Tenant" description={error.message} />;
+    }
+
     return (
       <p role="alert" className="text-sm text-destructive">
         Failed to load tenant
