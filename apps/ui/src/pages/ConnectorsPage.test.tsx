@@ -114,6 +114,101 @@ describe('ConnectorsPage', () => {
     },
   );
 
+  it('shows a friendly forbidden state and skips connector queries without scope', async () => {
+    const client = createMockAuthClient();
+    await client.login();
+    const adminTenantId = mockTenants[1]?.id;
+    if (!adminTenantId) throw new Error('Expected mock admin tenant');
+    await client.switchTenant(adminTenantId);
+    const requestedConnectors = vi.fn();
+    server.use(
+      http.get(`${API_BASE_PATH}/tenants/:id/connectors`, () => {
+        requestedConnectors();
+        return HttpResponse.json([]);
+      }),
+    );
+    renderWithAuth([{ path: '/connectors', element: <ConnectorsPage /> }], {
+      client,
+      initialEntries: ['/connectors'],
+    });
+
+    expect(
+      screen.getByText(/need the tenants:admin scope/i),
+    ).toBeInTheDocument();
+    expect(requestedConnectors).not.toHaveBeenCalled();
+  });
+
+  it('shows a friendly forbidden state when a stale token receives 403', async () => {
+    const client = createMockAuthClient();
+    await client.login();
+    server.use(
+      http.get(`${API_BASE_PATH}/tenants/:id`, () =>
+        HttpResponse.json(
+          { error: { code: 'FORBIDDEN', message: 'Missing scope' } },
+          { status: 403 },
+        ),
+      ),
+      http.get(`${API_BASE_PATH}/tenants/:id/connectors`, () =>
+        HttpResponse.json(
+          { error: { code: 'FORBIDDEN', message: 'Missing scope' } },
+          { status: 403 },
+        ),
+      ),
+    );
+    renderWithAuth([{ path: '/connectors', element: <ConnectorsPage /> }], {
+      client,
+      initialEntries: ['/connectors'],
+    });
+
+    expect(
+      await screen.findByText(/need the tenants:admin scope/i),
+    ).toBeInTheDocument();
+  });
+
+  it('shows the Default badge beneath the configured connector type only', async () => {
+    const defaultConnectorId = 'connector-id';
+    server.use(
+      http.get(`${API_BASE_PATH}/tenants/:id`, ({ params }) => {
+        const tenant = mockTenants.find((item) => item.id === params.id);
+        return HttpResponse.json({
+          ...tenant,
+          config: { default_connector: defaultConnectorId },
+        });
+      }),
+      http.get(`${API_BASE_PATH}/tenants/:id/connectors`, () =>
+        HttpResponse.json([
+          {
+            id: defaultConnectorId,
+            connector_type: 'traction',
+            endpoint_url: 'https://traction.example.test/api',
+            active: true,
+          },
+          {
+            id: 'other-connector-id',
+            connector_type: 'credo',
+            endpoint_url: 'https://credo.example.test/api',
+            active: true,
+          },
+        ]),
+      ),
+    );
+    const client = createMockAuthClient();
+    await client.login();
+    renderWithAuth([{ path: '/connectors', element: <ConnectorsPage /> }], {
+      client,
+      initialEntries: ['/connectors'],
+    });
+
+    const table = await screen.findByRole('table', { name: 'Connectors' });
+    const defaultRow = within(table).getByRole('row', { name: /traction/ });
+    const otherRow = within(table).getByRole('row', { name: /credo/ });
+    expect(within(defaultRow).getByText('Default')).toHaveClass(
+      'border-blue-600',
+      'text-blue-700',
+    );
+    expect(within(otherRow).queryByText('Default')).not.toBeInTheDocument();
+  });
+
   it('shows loading feedback while the connector list request is pending', async () => {
     let finishRequest = () => {};
     const responseReady = new Promise<void>((resolve) => {

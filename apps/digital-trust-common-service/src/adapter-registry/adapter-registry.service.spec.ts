@@ -322,12 +322,14 @@ describe('AdapterRegistry', () => {
         buildConnector({ id: 'second', connectorType: ConnectorType.CREDO }),
       ]);
 
-      await expect(registry.resolve(TENANT_A)).rejects.toBeInstanceOf(
-        ConnectorUnavailableError,
-      );
-      await expect(registry.resolve(TENANT_A)).rejects.toThrow(
-        /no default_connector configured/,
-      );
+      await expect(registry.resolve(TENANT_A)).rejects.toMatchObject({
+        status: 409,
+        response: {
+          code: 'CONNECTOR_SELECTION_AMBIGUOUS',
+          message: expect.stringContaining('set default_connector'),
+          connectorCount: 2,
+        },
+      });
     });
 
     it('should treat a malformed default_connector as absent', async () => {
@@ -419,7 +421,14 @@ describe('AdapterRegistry', () => {
           adapterOverride: PortConnectorType.Credo,
           isPlatformAdmin: true,
         }),
-      ).rejects.toThrow(/2 active connectors of type 'credo'/);
+      ).rejects.toMatchObject({
+        status: 409,
+        response: {
+          code: 'CONNECTOR_SELECTION_AMBIGUOUS',
+          message: expect.stringContaining('select a connector explicitly'),
+          connectorCount: 2,
+        },
+      });
     });
 
     it('should reject the override when the feature flag is off', async () => {

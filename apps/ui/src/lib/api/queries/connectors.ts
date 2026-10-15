@@ -18,14 +18,17 @@ export const connectorKeys = {
     [...connectorKeys.all, 'detail', tenantId, connectorId] as const,
 };
 
-export function useConnectors(tenantId: string | undefined) {
+export function useConnectors(
+  tenantId: string | undefined,
+  options: { enabled?: boolean } = {},
+) {
   return useQuery({
     queryKey: connectorKeys.list(tenantId ?? ''),
     queryFn: () => {
       if (!tenantId) throw new Error('Tenant id is required');
       return listConnectors(tenantId);
     },
-    enabled: Boolean(tenantId),
+    enabled: Boolean(tenantId) && options.enabled !== false,
   });
 }
 

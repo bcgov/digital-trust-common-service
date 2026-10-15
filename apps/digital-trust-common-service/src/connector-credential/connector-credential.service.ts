@@ -114,6 +114,19 @@ export class ConnectorCredentialService {
       }
     }
 
+    const tenantConnectors =
+      await this.credentialRepository.findByTenant(tenantId);
+    if (
+      tenantConnectors.length === 1 &&
+      tenantConnectors[0]?.id === credential.id
+    ) {
+      await this.tenantService.updateConfig(
+        tenantId,
+        { defaultConnector: credential.id },
+        auth,
+      );
+    }
+
     return credential;
   }
 
@@ -334,7 +347,15 @@ export class ConnectorCredentialService {
         );
       credentialsToPersist = {
         ...existingCredentials,
-        ...dto.credentials,
+        ...(dto.credentials.apiKey !== undefined
+          ? { apiKey: dto.credentials.apiKey }
+          : {}),
+        ...(dto.credentials.tractionTenantId !== undefined
+          ? { tractionTenantId: dto.credentials.tractionTenantId }
+          : {}),
+        ...(dto.credentials.webhookSecret !== undefined
+          ? { webhookSecret: dto.credentials.webhookSecret }
+          : {}),
       };
 
       await this.assertHealthy(

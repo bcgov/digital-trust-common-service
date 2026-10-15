@@ -9,6 +9,12 @@ import { EditConnectorModal } from '@/components/connector/EditConnectorModal';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
+  Card,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
+import {
   Table,
   TableBody,
   TableCell,
@@ -17,17 +23,25 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { useConnectors } from '@/lib/api/queries/connectors';
+import { useTenant } from '@/lib/api/queries/tenants';
+import { ApiError } from '@/lib/api/errors';
 import type { Connector } from '@/lib/api/resources/connectors';
+import { useAuth } from '@/lib/auth/context';
+import { hasScope, TENANT_ADMIN_SCOPE } from '@/lib/auth/scopes';
 import { useActiveTenant } from '@/lib/tenant/active-tenant';
 
 export function ConnectorsPage() {
+  const { user } = useAuth();
+  const canManage = hasScope(user, TENANT_ADMIN_SCOPE);
   const {
     tenant,
     status: tenantStatus,
     refetch: refetchTenant,
   } = useActiveTenant();
-  const connectorQuery = useConnectors(tenant?.id);
+  const connectorQuery = useConnectors(tenant?.id, { enabled: canManage });
+  const tenantQuery = useTenant(tenant?.id, { enabled: canManage });
   const { data: connectors, isSuccess } = connectorQuery;
+  const defaultConnectorId = tenantQuery.data?.config?.default_connector;
   const [connectorToDelete, setConnectorToDelete] = useState<Connector | null>(
     null,
   );
@@ -37,6 +51,25 @@ export function ConnectorsPage() {
   const [connectorToEdit, setConnectorToEdit] = useState<Connector | null>(
     null,
   );
+  const isForbidden =
+    !canManage ||
+    [connectorQuery.error, tenantQuery.error].some(
+      (error) => error instanceof ApiError && error.status === 403,
+    );
+
+  if (isForbidden) {
+    return (
+      <Card className="max-w-lg">
+        <CardHeader>
+          <CardTitle>Connectors</CardTitle>
+          <CardDescription>
+            You need the tenants:admin scope to manage connectors in this
+            tenant.
+          </CardDescription>
+        </CardHeader>
+      </Card>
+    );
+  }
 
   return (
     <div className="flex flex-1 flex-col gap-4">
@@ -105,8 +138,20 @@ export function ConnectorsPage() {
           <TableBody>
             {connectors.data.map((connector) => (
               <TableRow key={connector.id}>
-                <TableCell className="capitalize">
-                  {connector.connector_type}
+                <TableCell>
+                  <div className="flex flex-col items-start gap-1">
+                    <span className="capitalize">
+                      {connector.connector_type}
+                    </span>
+                    {connector.id === defaultConnectorId && (
+                      <Badge
+                        variant="outline"
+                        className="border-blue-600 text-blue-700 dark:border-blue-400 dark:text-blue-400"
+                      >
+                        Default
+                      </Badge>
+                    )}
+                  </div>
                 </TableCell>
                 <TableCell className="max-w-md whitespace-normal break-all">
                   {connector.endpoint_url}

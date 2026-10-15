@@ -16,13 +16,16 @@ export function useTenants(params: CursorParams = {}) {
   });
 }
 
-export function useTenant(id: string | undefined) {
+export function useTenant(
+  id: string | undefined,
+  options: { enabled?: boolean } = {},
+) {
   return useQuery({
     queryKey: tenantKeys.detail(id ?? ''),
     queryFn: () => {
       if (!id) throw new Error('Tenant id is required');
       return getTenant(id);
     },
-    enabled: Boolean(id),
+    enabled: Boolean(id) && options.enabled !== false,
   });
 }

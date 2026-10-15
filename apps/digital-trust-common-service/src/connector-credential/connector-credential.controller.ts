@@ -64,7 +64,8 @@ export class ConnectorCredentialController {
 
   @Post()
   @ApiCreatedResponse({
-    description: 'Connector registered',
+    description:
+      'Connector registered. The first connector for a tenant is set as its default connector.',
     type: ConnectorCredentialResponseDto,
   })
   @ApiUnprocessableEntityResponse({

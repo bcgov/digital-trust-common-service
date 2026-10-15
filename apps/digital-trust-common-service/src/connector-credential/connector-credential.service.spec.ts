@@ -32,6 +32,7 @@ describe('ConnectorCredentialService', () => {
   let mockDelete: jest.Mock;
   let mockDeactivateAllForTenant: jest.Mock;
   let mockTenantServiceFindById: jest.Mock;
+  let mockTenantServiceUpdateConfig: jest.Mock;
   let mockEncrypt: jest.Mock;
   let mockDecrypt: jest.Mock;
   let mockRequiresRotation: jest.Mock;
@@ -82,6 +83,7 @@ describe('ConnectorCredentialService', () => {
     mockTenantServiceFindById = jest
       .fn()
       .mockResolvedValue({ id: mockCredential.tenantId });
+    mockTenantServiceUpdateConfig = jest.fn().mockResolvedValue(undefined);
     mockEncrypt = jest.fn().mockReturnValue({
       ciphertext: Buffer.from('encrypted_data'),
       keyVersion: 1,
@@ -123,6 +125,7 @@ describe('ConnectorCredentialService', () => {
           provide: TenantService,
           useValue: {
             findById: mockTenantServiceFindById,
+            updateConfig: mockTenantServiceUpdateConfig,
           },
         },
         {
@@ -179,6 +182,7 @@ describe('ConnectorCredentialService', () => {
         endpointUrl: 'https://traction.example.com/api',
         credentials: { ...mockCredentials },
       };
+      mockFindByTenant.mockResolvedValue([mockCredential]);
     });
 
     it('should validate the tenant and run a health check before creating', async () => {
@@ -204,6 +208,23 @@ describe('ConnectorCredentialService', () => {
         }),
       );
       expect(result).toEqual(mockCredential);
+      expect(mockTenantServiceUpdateConfig).toHaveBeenCalledWith(
+        mockCredential.tenantId,
+        { defaultConnector: mockCredential.id },
+        auth,
+      );
+    });
+
+    it('should not replace the default when another connector already exists', async () => {
+      mockCreate.mockResolvedValue(mockCredential);
+      mockFindByTenant.mockResolvedValue([
+        mockCredential,
+        { ...mockCredential, id: 'another-connector' },
+      ]);
+
+      await service.create(mockCredential.tenantId, dto, auth);
+
+      expect(mockTenantServiceUpdateConfig).not.toHaveBeenCalled();
     });
 
     it('should auto-generate a webhook secret and register the webhook for a Traction connector', async () => {

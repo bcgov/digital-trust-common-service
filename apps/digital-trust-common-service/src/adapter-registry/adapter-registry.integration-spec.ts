@@ -8,7 +8,7 @@ import {
   ConnectorType as PortConnectorType,
 } from '@app/credential-ports';
 import { PgBossService } from '@app/pg-boss';
-import { INestApplication } from '@nestjs/common';
+import { ConflictException, INestApplication } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { DataSource } from 'typeorm';
 
@@ -220,7 +220,7 @@ describe('AdapterRegistry (integration)', () => {
     await setDefaultConnector(tenantId, connector.id);
 
     await expect(registry.resolve(tenantId)).rejects.toBeInstanceOf(
-      ConnectorUnavailableError,
+      ConflictException,
     );
   });
 
