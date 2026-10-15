@@ -18,6 +18,7 @@ export function hasScope(
   if (!user) return false;
   return (
     user.roles?.includes('platform-admin') === true ||
-    user.scopes.includes(scope) || user.scopes.includes(TENANT_ADMIN_SCOPE)
+    user.scopes.includes(scope) ||
+    user.scopes.includes(TENANT_ADMIN_SCOPE)
   );
 }

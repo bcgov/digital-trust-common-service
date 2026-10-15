@@ -16,9 +16,9 @@ describe('hasScope', () => {
   });
 
   it('does not grant scope access from tenant role names alone', () => {
-    expect(
-      hasScope({ roles: ['admin'], scopes: [] }, TENANT_ADMIN_SCOPE),
-    ).toBe(false);
+    expect(hasScope({ roles: ['admin'], scopes: [] }, TENANT_ADMIN_SCOPE)).toBe(
+      false,
+    );
   });
 
   it('matches a scope the token carries', () => {
