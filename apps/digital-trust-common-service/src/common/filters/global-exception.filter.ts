@@ -1,5 +1,6 @@
 import { AuthenticationRequiredException } from '@app/auth';
 import { RequestContextService } from '@app/common/context/request-context.service';
+import { ConnectorSelectionAmbiguousError } from '@app/credential-ports';
 import {
   ArgumentsHost,
   Catch,
@@ -65,6 +66,16 @@ function isBareCodedBody(value: unknown): value is ErrorBody {
   );
 }
 
+function buildConnectorSelectionErrorBody(
+  exception: ConnectorSelectionAmbiguousError,
+): ErrorBody {
+  return {
+    code: exception.code,
+    message: exception.message,
+    ...exception.context,
+  };
+}
+
 /**
  * Terminus's `HealthCheckService.check()` and `HealthService.status()` both
  * raise `ServiceUnavailableException` carrying the full
@@ -82,6 +93,54 @@ function isHealthCheckBody(value: unknown): value is Record<string, unknown> {
     !('code' in value) &&
     !('message' in value)
   );
+}
+
+function extractHttpExceptionMessage(exception: HttpException): string {
+  const response = exception.getResponse();
+  if (typeof response === 'string') {
+    return response;
+  }
+
+  const message = (response as { message?: string | string[] }).message;
+  if (Array.isArray(message)) {
+    return message.join('; ');
+  }
+
+  return message ?? exception.message;
+}
+
+function buildNormalizedErrorBody(
+  exception: unknown,
+  status: HttpStatus,
+  rawResponse: unknown,
+): ErrorBody {
+  let error: ErrorBody;
+
+  switch (true) {
+    case exception instanceof ConnectorSelectionAmbiguousError:
+      error = buildConnectorSelectionErrorBody(exception);
+      break;
+    case isShapedErrorBody(rawResponse):
+      error = { ...(rawResponse.error as ErrorBody) };
+      break;
+    case isBareCodedBody(rawResponse):
+      error = { ...rawResponse };
+      break;
+    default:
+      error = {
+        code: STATUS_CODE_FALLBACKS[status] ?? `HTTP_${status}`,
+        message:
+          exception instanceof HttpException
+            ? extractHttpExceptionMessage(exception)
+            : GENERIC_SERVER_ERROR_MESSAGE,
+      };
+  }
+
+  if (status >= HttpStatus.INTERNAL_SERVER_ERROR) {
+    error.message = GENERIC_SERVER_ERROR_MESSAGE;
+  }
+
+  return error;
 }
 
 /**
@@ -107,9 +166,11 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     const request = ctx.getRequest<Request>();
 
     const status =
-      exception instanceof HttpException
-        ? exception.getStatus()
-        : HttpStatus.INTERNAL_SERVER_ERROR;
+      exception instanceof ConnectorSelectionAmbiguousError
+        ? HttpStatus.CONFLICT
+        : exception instanceof HttpException
+          ? exception.getStatus()
+          : HttpStatus.INTERNAL_SERVER_ERROR;
 
     if (exception instanceof AuthenticationRequiredException) {
       response.setHeader(
@@ -138,23 +199,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     status: HttpStatus,
     rawResponse: unknown,
   ): ErrorResponseBody {
-    const isServerError = status >= HttpStatus.INTERNAL_SERVER_ERROR;
-
-    const error: ErrorBody = isShapedErrorBody(rawResponse)
-      ? { ...(rawResponse.error as ErrorBody) }
-      : isBareCodedBody(rawResponse)
-        ? { ...rawResponse }
-        : {
-            code: STATUS_CODE_FALLBACKS[status] ?? `HTTP_${status}`,
-            message:
-              exception instanceof HttpException
-                ? this.extractMessage(exception)
-                : GENERIC_SERVER_ERROR_MESSAGE,
-          };
-
-    if (isServerError) {
-      error.message = GENERIC_SERVER_ERROR_MESSAGE;
-    }
+    const error = buildNormalizedErrorBody(exception, status, rawResponse);
 
     const requestId = this.requestContext.getRequestId();
     if (requestId !== undefined) {
@@ -167,20 +212,6 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     }
 
     return { error };
-  }
-
-  private extractMessage(exception: HttpException): string {
-    const response = exception.getResponse();
-    if (typeof response === 'string') {
-      return response;
-    }
-
-    const message = (response as { message?: string | string[] }).message;
-    if (Array.isArray(message)) {
-      return message.join('; ');
-    }
-
-    return message ?? exception.message;
   }
 
   private buildStackDetail(exception: unknown): ErrorResponseDetail | null {

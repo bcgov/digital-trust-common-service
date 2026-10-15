@@ -263,20 +263,58 @@ export class TenantService {
 
     const saved = await this.tenants.update(tenant);
 
+    await this.recordConfigUpdate(saved);
+
+    return saved;
+  }
+
+  public async setDefaultConnectorIfUnset(
+    tenantId: string,
+    connectorId: string,
+    auth: AuthContext,
+  ): Promise<boolean> {
+    const tenant = await this.tenants.findById(tenantId);
+
+    if (!tenant) {
+      throw new NotFoundException('Tenant not found');
+    }
+
+    const connector = await this.connectorCredentialService.findById(
+      tenantId,
+      connectorId,
+      auth,
+    );
+
+    if (!connector.active) {
+      throw new ConflictException('default_connector is not active');
+    }
+
+    const updated = await this.tenants.setDefaultConnectorIfUnset(
+      tenantId,
+      connectorId,
+    );
+
+    if (!updated) {
+      return false;
+    }
+
+    await this.recordConfigUpdate(updated);
+    return true;
+  }
+
+  private async recordConfigUpdate(tenant: Tenant): Promise<void> {
     await this.domainAudit.emit({
-      tenantId: saved.id,
+      tenantId: tenant.id,
       action: AuditAction.UPDATE,
       resourceType: 'tenant',
-      resourceId: saved.id,
+      resourceId: tenant.id,
       metadata: { config_change: true },
     });
 
     await this.publishConfigChange({
-      tenantId: saved.id,
-      config: saved.config,
+      tenantId: tenant.id,
+      config: tenant.config,
     });
-
-    return saved;
   }
 
   public async delete(id: string) {

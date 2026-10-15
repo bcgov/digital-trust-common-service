@@ -80,6 +80,30 @@ export class TenantRepository {
     return (manager ?? this.repo.manager).save(entity);
   }
 
+  public async setDefaultConnectorIfUnset(
+    tenantId: string,
+    connectorId: string,
+  ): Promise<Tenant | null> {
+    const result = await this.repo
+      .createQueryBuilder()
+      .update(Tenant)
+      .set({
+        config: () =>
+          `jsonb_set(COALESCE(config, '{}'::jsonb), '{default_connector}', to_jsonb(CAST(:connectorId AS text)), true)`,
+      })
+      .where("id = :tenantId AND config->>'default_connector' IS NULL", {
+        tenantId,
+      })
+      .setParameter('connectorId', connectorId)
+      .execute();
+
+    if (!result.affected) {
+      return null;
+    }
+
+    return await this.findById(tenantId);
+  }
+
   public async delete(id: string): Promise<void> {
     await this.repo.softDelete(id);
   }

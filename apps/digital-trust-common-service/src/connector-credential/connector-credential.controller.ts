@@ -172,7 +172,8 @@ export class ConnectorCredentialController {
   @ApiNoContentResponse({ description: 'Connector removed' })
   @ApiNotFoundResponse({ description: 'Connector not found' })
   @ApiConflictResponse({
-    description: 'Active credential records still reference this connector',
+    description:
+      'Connector is the tenant default or credential records still reference it',
   })
   public async delete(
     @Param('tenantId', ParseUUIDPipe) tenantId: string,

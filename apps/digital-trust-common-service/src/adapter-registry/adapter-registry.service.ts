@@ -1,17 +1,13 @@
 import {
   AgentAdapter,
   ConnectorContext,
+  ConnectorSelectionAmbiguousError,
   ConnectorUnavailableError,
   CredentialFormat,
   FormatNotSupportedError,
   ConnectorType as PortConnectorType,
 } from '@app/credential-ports';
-import {
-  ConflictException,
-  ForbiddenException,
-  Injectable,
-  Logger,
-} from '@nestjs/common';
+import { ForbiddenException, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
 import { EncryptionService } from '../common/crypto/encryption.service';
@@ -305,15 +301,12 @@ export class AdapterRegistry {
     if (connectors.length > 1) {
       // The cause differs by path: filtered means several connectors share the
       // requested type, unfiltered means the tenant has no default configured.
-      throw new ConflictException({
-        code: 'CONNECTOR_SELECTION_AMBIGUOUS',
-        message: connectorType
+      throw new ConnectorSelectionAmbiguousError(
+        connectorType
           ? `Multiple active connectors of type '${connectorType}' are configured; select a connector explicitly.`
           : 'Multiple active connectors are configured; set default_connector or select a connector explicitly.',
-        tenantId,
-        connectorType,
-        connectorCount: connectors.length,
-      });
+        { tenantId, connectorType, connectorCount: connectors.length },
+      );
     }
 
     return connectors[0];

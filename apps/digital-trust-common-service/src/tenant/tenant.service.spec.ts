@@ -28,6 +28,7 @@ describe('TenantService', () => {
   let mockFindPage: jest.Mock;
   let mockFindById: jest.Mock;
   let mockFindBySlug: jest.Mock;
+  let mockSetDefaultConnectorIfUnset: jest.Mock;
   let mockDelete: jest.Mock;
   let mockRestore: jest.Mock;
   let mockEmit: jest.Mock;
@@ -56,6 +57,7 @@ describe('TenantService', () => {
     mockFindPage = jest.fn();
     mockFindById = jest.fn();
     mockFindBySlug = jest.fn();
+    mockSetDefaultConnectorIfUnset = jest.fn();
     mockDelete = jest.fn();
     mockRestore = jest.fn();
     mockEmit = jest.fn().mockResolvedValue(undefined);
@@ -77,6 +79,7 @@ describe('TenantService', () => {
       findPage: mockFindPage,
       findById: mockFindById,
       findBySlug: mockFindBySlug,
+      setDefaultConnectorIfUnset: mockSetDefaultConnectorIfUnset,
       delete: mockDelete,
       restore: mockRestore,
     };
@@ -102,7 +105,10 @@ describe('TenantService', () => {
         },
         {
           provide: JobsService,
-          useValue: { sendInTransaction: mockSendInTransaction },
+          useValue: {
+            sendInTransaction: mockSendInTransaction,
+            publish: mockPublish,
+          },
         },
         {
           provide: ConnectorCredentialService,
@@ -795,6 +801,74 @@ describe('TenantService', () => {
         NotFoundException,
       );
       expect(mockUpdate).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('setDefaultConnectorIfUnset', () => {
+    const connectorId = '223e4567-e89b-12d3-a456-426614174000';
+    const auth: AuthContext = {
+      roles: [],
+      tenantId: mockTenant.id,
+      sub: '',
+      tokenType: 'user',
+      clientId: null,
+      scope: '',
+      scopes: [],
+      iss: '',
+      aud: '',
+      exp: 0,
+      iat: 0,
+    };
+
+    it('records config change only when the conditional update wins', async () => {
+      const updated = {
+        ...mockTenant,
+        config: { default_connector: connectorId },
+      };
+      mockFindById.mockResolvedValue(mockTenant);
+      mockFindConnectorCredentialById.mockResolvedValue({
+        id: connectorId,
+        tenantId: mockTenant.id,
+        active: true,
+      });
+      mockSetDefaultConnectorIfUnset.mockResolvedValue(updated);
+
+      await expect(
+        service.setDefaultConnectorIfUnset(mockTenant.id, connectorId, auth),
+      ).resolves.toBe(true);
+
+      expect(mockSetDefaultConnectorIfUnset).toHaveBeenCalledWith(
+        mockTenant.id,
+        connectorId,
+      );
+      expect(mockEmit).toHaveBeenCalledWith({
+        tenantId: updated.id,
+        action: AuditAction.UPDATE,
+        resourceType: 'tenant',
+        resourceId: updated.id,
+        metadata: { config_change: true },
+      });
+      expect(mockPublish).toHaveBeenCalledWith(
+        JOB_QUEUES.TENANT_CONFIG_CHANGE,
+        { tenantId: updated.id, config: updated.config },
+      );
+    });
+
+    it('does not publish or overwrite config when another create already set the default', async () => {
+      mockFindById.mockResolvedValue(mockTenant);
+      mockFindConnectorCredentialById.mockResolvedValue({
+        id: connectorId,
+        tenantId: mockTenant.id,
+        active: true,
+      });
+      mockSetDefaultConnectorIfUnset.mockResolvedValue(null);
+
+      await expect(
+        service.setDefaultConnectorIfUnset(mockTenant.id, connectorId, auth),
+      ).resolves.toBe(false);
+
+      expect(mockEmit).not.toHaveBeenCalled();
+      expect(mockPublish).not.toHaveBeenCalled();
     });
   });
 });

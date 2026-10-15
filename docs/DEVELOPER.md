@@ -1240,7 +1240,9 @@ own connectors rather than fetched by id, so isolation is structural: another te
 in the candidate list. It must also be `active`. A `default_connector` that is missing, not a
 string, or names a row the tenant does not own is refused, never silently followed. The config
 endpoint validates the same things on write, but that is not enough on its own: `config` is JSONB
-with no foreign key, and a connector can be deactivated or deleted after the default was set.
+with no foreign key, and a connector can be deactivated after the default was set. Deleting the
+tenant's default connector returns HTTP 409; change or clear `default_connector` through the config
+endpoint before deleting it.
 
 Note that `ConnectorCredentialService.findById()` is deliberately **not** used here. It is the
 HTTP-caller entry point and answers "not found" unless given an `AuthContext`, which an internal

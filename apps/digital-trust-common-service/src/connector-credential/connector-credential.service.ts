@@ -114,18 +114,11 @@ export class ConnectorCredentialService {
       }
     }
 
-    const tenantConnectors =
-      await this.credentialRepository.findByTenant(tenantId);
-    if (
-      tenantConnectors.length === 1 &&
-      tenantConnectors[0]?.id === credential.id
-    ) {
-      await this.tenantService.updateConfig(
-        tenantId,
-        { defaultConnector: credential.id },
-        auth,
-      );
-    }
+    await this.tenantService.setDefaultConnectorIfUnset(
+      tenantId,
+      credential.id,
+      auth,
+    );
 
     return credential;
   }
@@ -446,6 +439,13 @@ export class ConnectorCredentialService {
     auth: AuthContext,
   ): Promise<void> {
     await this.findById(tenantId, id, auth);
+
+    const tenant = await this.tenantService.findById(tenantId);
+    if (tenant.config?.default_connector === id) {
+      throw new ConflictException(
+        'Cannot delete the default connector. Select a different default connector in tenant settings first.',
+      );
+    }
 
     const hasDependents =
       await this.credentialUsageRepository.existsByConnectorId(id);

@@ -2,13 +2,14 @@ import { randomUUID } from 'crypto';
 
 import { AuthContext } from '@app/auth';
 import {
+  ConnectorSelectionAmbiguousError,
   ConnectorUnavailableError,
   CredentialFormat,
   MockAdapter,
   ConnectorType as PortConnectorType,
 } from '@app/credential-ports';
 import { PgBossService } from '@app/pg-boss';
-import { ConflictException, INestApplication } from '@nestjs/common';
+import { INestApplication } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { DataSource } from 'typeorm';
 
@@ -17,6 +18,7 @@ import { ConnectorType } from '../connection/connection.entity';
 import { ConnectorCredential } from '../connector-credential/connector-credential.entity';
 import { ConnectorCredentialService } from '../connector-credential/connector-credential.service';
 import { ConnectorHealthCheckService } from '../connector-credential/connector-health-check.service';
+import { TenantService } from '../tenant/tenant.service';
 import { TractionWebhookRegistrar } from '../traction/traction-webhook-registrar.service';
 
 import { AdapterRegistry } from './adapter-registry.service';
@@ -202,6 +204,7 @@ describe('AdapterRegistry (integration)', () => {
   it('should fall back to the tenant single active connector when no default is set', async () => {
     const tenantId = await createTenant();
     const connector = await createConnector(tenantId);
+    await clearDefaultConnector(tenantId);
 
     const resolved = await registry.resolve(tenantId);
 
@@ -215,10 +218,55 @@ describe('AdapterRegistry (integration)', () => {
       connectorType: ConnectorType.CREDO,
       active: false,
     });
+    await clearDefaultConnector(tenantId);
 
     const resolved = await registry.resolve(tenantId);
 
     expect(resolved.connector.id).toBe(active.id);
+  });
+
+  it('sets one default when two connectors are created concurrently', async () => {
+    const tenantId = await createTenant();
+    const tenantService = app.get(TenantService);
+    let releaseAssignments!: () => void;
+    const bothAssignmentsReady = new Promise<void>((resolve) => {
+      releaseAssignments = resolve;
+    });
+    let assignmentCount = 0;
+    const setDefault =
+      tenantService.setDefaultConnectorIfUnset.bind(tenantService);
+    const assignmentSpy = jest
+      .spyOn(tenantService, 'setDefaultConnectorIfUnset')
+      .mockImplementation(async (...args) => {
+        assignmentCount += 1;
+        if (assignmentCount === 2) {
+          releaseAssignments();
+        }
+        await bothAssignmentsReady;
+        return await setDefault(...args);
+      });
+
+    let created: ConnectorCredential[];
+    try {
+      created = await Promise.all([
+        createConnector(tenantId, {
+          endpointUrl: 'https://first-traction.example.com',
+        }),
+        createConnector(tenantId, {
+          endpointUrl: 'https://second-traction.example.com',
+        }),
+      ]);
+    } finally {
+      assignmentSpy.mockRestore();
+    }
+
+    const rows = await dataSource.query<
+      Array<{ config: { default_connector?: string } }>
+    >('SELECT config FROM tenant WHERE id = $1', [tenantId]);
+
+    expect(created.map(({ id }) => id)).toContain(
+      rows[0]?.config.default_connector,
+    );
   });
 
   it('should refuse an inactive default_connector', async () => {
@@ -246,7 +294,7 @@ describe('AdapterRegistry (integration)', () => {
     await clearDefaultConnector(tenantId);
 
     await expect(registry.resolve(tenantId)).rejects.toBeInstanceOf(
-      ConflictException,
+      ConnectorSelectionAmbiguousError,
     );
   });
 

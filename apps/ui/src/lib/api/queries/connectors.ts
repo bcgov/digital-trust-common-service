@@ -56,9 +56,14 @@ export function useCreateConnector(tenantId: string | undefined) {
       return createConnector(tenantId, body);
     },
     onSuccess: () =>
-      queryClient.invalidateQueries({
-        queryKey: connectorKeys.list(tenantId ?? ''),
-      }),
+      Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: connectorKeys.list(tenantId ?? ''),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ['tenants', 'detail', tenantId ?? ''],
+        }),
+      ]),
   });
 }
 

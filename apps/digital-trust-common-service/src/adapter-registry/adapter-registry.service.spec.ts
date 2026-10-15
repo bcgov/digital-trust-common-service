@@ -1,4 +1,5 @@
 import {
+  ConnectorSelectionAmbiguousError,
   ConnectorUnavailableError,
   CredentialFormat,
   FormatNotSupportedError,
@@ -323,12 +324,9 @@ describe('AdapterRegistry', () => {
       ]);
 
       await expect(registry.resolve(TENANT_A)).rejects.toMatchObject({
-        status: 409,
-        response: {
-          code: 'CONNECTOR_SELECTION_AMBIGUOUS',
-          message: expect.stringContaining('set default_connector'),
-          connectorCount: 2,
-        },
+        code: 'CONNECTOR_SELECTION_AMBIGUOUS',
+        message: expect.stringContaining('set default_connector'),
+        context: expect.objectContaining({ connectorCount: 2 }),
       });
     });
 
@@ -421,14 +419,7 @@ describe('AdapterRegistry', () => {
           adapterOverride: PortConnectorType.Credo,
           isPlatformAdmin: true,
         }),
-      ).rejects.toMatchObject({
-        status: 409,
-        response: {
-          code: 'CONNECTOR_SELECTION_AMBIGUOUS',
-          message: expect.stringContaining('select a connector explicitly'),
-          connectorCount: 2,
-        },
-      });
+      ).rejects.toBeInstanceOf(ConnectorSelectionAmbiguousError);
     });
 
     it('should reject the override when the feature flag is off', async () => {

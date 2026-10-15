@@ -32,7 +32,7 @@ describe('ConnectorCredentialService', () => {
   let mockDelete: jest.Mock;
   let mockDeactivateAllForTenant: jest.Mock;
   let mockTenantServiceFindById: jest.Mock;
-  let mockTenantServiceUpdateConfig: jest.Mock;
+  let mockTenantServiceSetDefaultConnectorIfUnset: jest.Mock;
   let mockEncrypt: jest.Mock;
   let mockDecrypt: jest.Mock;
   let mockRequiresRotation: jest.Mock;
@@ -83,7 +83,9 @@ describe('ConnectorCredentialService', () => {
     mockTenantServiceFindById = jest
       .fn()
       .mockResolvedValue({ id: mockCredential.tenantId });
-    mockTenantServiceUpdateConfig = jest.fn().mockResolvedValue(undefined);
+    mockTenantServiceSetDefaultConnectorIfUnset = jest
+      .fn()
+      .mockResolvedValue(true);
     mockEncrypt = jest.fn().mockReturnValue({
       ciphertext: Buffer.from('encrypted_data'),
       keyVersion: 1,
@@ -125,7 +127,8 @@ describe('ConnectorCredentialService', () => {
           provide: TenantService,
           useValue: {
             findById: mockTenantServiceFindById,
-            updateConfig: mockTenantServiceUpdateConfig,
+            setDefaultConnectorIfUnset:
+              mockTenantServiceSetDefaultConnectorIfUnset,
           },
         },
         {
@@ -182,7 +185,6 @@ describe('ConnectorCredentialService', () => {
         endpointUrl: 'https://traction.example.com/api',
         credentials: { ...mockCredentials },
       };
-      mockFindByTenant.mockResolvedValue([mockCredential]);
     });
 
     it('should validate the tenant and run a health check before creating', async () => {
@@ -208,23 +210,21 @@ describe('ConnectorCredentialService', () => {
         }),
       );
       expect(result).toEqual(mockCredential);
-      expect(mockTenantServiceUpdateConfig).toHaveBeenCalledWith(
+      expect(mockTenantServiceSetDefaultConnectorIfUnset).toHaveBeenCalledWith(
         mockCredential.tenantId,
-        { defaultConnector: mockCredential.id },
+        mockCredential.id,
         auth,
       );
     });
 
-    it('should not replace the default when another connector already exists', async () => {
+    it('should attempt the atomic default assignment after creation', async () => {
       mockCreate.mockResolvedValue(mockCredential);
-      mockFindByTenant.mockResolvedValue([
-        mockCredential,
-        { ...mockCredential, id: 'another-connector' },
-      ]);
 
       await service.create(mockCredential.tenantId, dto, auth);
 
-      expect(mockTenantServiceUpdateConfig).not.toHaveBeenCalled();
+      expect(mockTenantServiceSetDefaultConnectorIfUnset).toHaveBeenCalledTimes(
+        1,
+      );
     });
 
     it('should auto-generate a webhook secret and register the webhook for a Traction connector', async () => {
@@ -881,6 +881,40 @@ describe('ConnectorCredentialService', () => {
   });
 
   describe('delete', () => {
+    it('should reject deletion of the tenant default connector', async () => {
+      mockFindById.mockResolvedValue(mockCredential);
+      mockTenantServiceFindById.mockResolvedValue({
+        id: mockCredential.tenantId,
+        config: { default_connector: mockCredential.id },
+      });
+
+      await expect(
+        service.delete(mockCredential.tenantId, mockCredential.id, auth),
+      ).rejects.toThrow(
+        new ConflictException(
+          'Cannot delete the default connector. Select a different default connector in tenant settings first.',
+        ),
+      );
+
+      expect(mockTenantServiceFindById).toHaveBeenCalledWith(
+        mockCredential.tenantId,
+      );
+      expect(mockExistsByConnectorId).not.toHaveBeenCalled();
+      expect(mockDelete).not.toHaveBeenCalled();
+    });
+
+    it('should allow deletion when a different connector is the default', async () => {
+      mockFindById.mockResolvedValue(mockCredential);
+      mockTenantServiceFindById.mockResolvedValue({
+        id: mockCredential.tenantId,
+        config: { default_connector: 'another-connector' },
+      });
+
+      await service.delete(mockCredential.tenantId, mockCredential.id, auth);
+
+      expect(mockDelete).toHaveBeenCalledWith(mockCredential.id);
+    });
+
     it('should delete a connector credential with no dependents', async () => {
       mockFindById.mockResolvedValue(mockCredential);
       mockExistsByConnectorId.mockResolvedValue(false);
