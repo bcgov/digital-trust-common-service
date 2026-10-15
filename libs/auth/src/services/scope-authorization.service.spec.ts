@@ -45,6 +45,10 @@ describe('ScopeAuthorizationService', () => {
       expect(effective.has('tenants:admin')).toBe(true);
       expect(effective.has('credentials:offer')).toBe(true);
       expect(effective.has('audit:read')).toBe(true);
+      // The log gateway reuses this expansion rather than reimplementing it
+      // (Rule T6 of docs/tenant-log-access-contract.md): a tenant owner
+      // carrying only the superuser scope must still read logs.
+      expect(effective.has('logs:read')).toBe(true);
       expect(effective.size).toBeGreaterThan(1);
     });
 
@@ -53,6 +57,7 @@ describe('ScopeAuthorizationService', () => {
 
       expect(effective.has('credentials:offer')).toBe(true);
       expect(effective.has('audit:read')).toBe(false);
+      expect(effective.has('logs:read')).toBe(false);
     });
   });
 

@@ -316,6 +316,23 @@ describe('JwtValidationService', () => {
     });
   });
 
+  it('rejects tokens carrying both the API and a gateway audience', async () => {
+    const token = await new SignJWT({ sub: 'client:test-client' })
+      .setProtectedHeader({ alg: 'RS256', kid: 'test-key' })
+      .setIssuer(issuer)
+      .setAudience([DEFAULT_JWT_AUDIENCE, 'https://log-gateway.example'])
+      .setIssuedAt()
+      .setExpirationTime('5m')
+      .sign(privateKey);
+
+    await expect(
+      service.validateAuthorizationHeader(`Bearer ${token}`),
+    ).rejects.toMatchObject({
+      wwwAuthenticateError: 'invalid_token',
+      errorDescription: 'Token must carry exactly one audience',
+    });
+  });
+
   it('maps malformed tokens to invalid_token', async () => {
     await expect(
       service.validateAuthorizationHeader('Bearer not-a-jwt'),

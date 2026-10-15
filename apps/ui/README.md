@@ -18,6 +18,13 @@ onto shadcn's token layer in `src/index.css`, BC Sans as the app font
 where the BCDS package provides a component, prefer it; the vendored shadcn
 primitives fill the gaps it doesn't cover.
 
+The drawer is the worked example of that gap (#467): BCDS has no side sheet, so
+`components/ui/drawer.tsx` is shadcn's vaul-based drawer restyled onto the BCDS
+surface so it reads as the same family as the react-aria `Modal`. It is vendored
+from the `radix-nova` registry deliberately — the Base UI variant shadcn also
+publishes would add a third overlay primitive alongside `radix-ui` and
+react-aria.
+
 ## Development
 
 ```bash
