@@ -42,7 +42,7 @@ describe('AppShell', () => {
   it('hides connectors navigation from users without tenants:admin', async () => {
     const client = createMockAuthClient();
     await client.login();
-    await client.switchTenant(MOCK_AUTH_TENANTS[1]!.id);
+    await client.switchTenant(MOCK_AUTH_TENANTS[1].id);
     renderWithAuth(
       [
         {
