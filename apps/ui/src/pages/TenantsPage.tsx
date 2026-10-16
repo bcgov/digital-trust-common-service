@@ -1,6 +1,14 @@
+import { Building2 } from 'lucide-react';
 import { Link } from 'react-router';
 
 import { TenantStatusBadge } from '@/components/tenant-status-badge';
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from '@/components/ui/empty';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   Table,
@@ -15,6 +23,7 @@ import { ApiError } from '@/lib/api/errors';
 
 export function TenantsPage() {
   const { data, isLoading, error } = useTenants();
+  const isEmpty = !isLoading && data?.data.length === 0;
 
   return (
     <div className="flex flex-col gap-4">
@@ -25,6 +34,18 @@ export function TenantsPage() {
           Failed to load tenants
           {error instanceof ApiError ? `: ${error.message}` : '.'}
         </p>
+      ) : isEmpty ? (
+        <Empty>
+          <EmptyHeader>
+            <EmptyMedia>
+              <Building2 />
+            </EmptyMedia>
+            <EmptyTitle>No tenants yet</EmptyTitle>
+            <EmptyDescription>
+              Tenants you create will be listed here.
+            </EmptyDescription>
+          </EmptyHeader>
+        </Empty>
       ) : (
         <Table>
           <TableHeader>
@@ -46,16 +67,6 @@ export function TenantsPage() {
                   ))}
                 </TableRow>
               ))}
-            {!isLoading && data?.data.length === 0 && (
-              <TableRow>
-                <TableCell
-                  colSpan={4}
-                  className="text-center text-muted-foreground"
-                >
-                  No tenants yet.
-                </TableCell>
-              </TableRow>
-            )}
             {data?.data.map((tenant) => (
               <TableRow key={tenant.id}>
                 <TableCell>
