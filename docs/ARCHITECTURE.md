@@ -625,7 +625,7 @@ sequenceDiagram
     Worker->>PG: UPDATE Credential (state: issued, issued_at: now())
     Worker->>PG: pgboss.send webhook.dispatch
     PG->>WebhookW: Poll + process dispatch job
-    Note over WebhookW,Client: PLANNED — WebhookDispatchWorker currently only<br/>validates and acknowledges the job; it does not yet deliver.<br/>No tenant subscription, signing, or HTTP delivery exists.
+    Note over WebhookW,Client: PLANNED: WebhookDispatchWorker acknowledges jobs but does not deliver yet. Tenant subscriptions and webhook signing as well as HTTP delivery are not implemented.
     WebhookW-->>Client: POST tenant webhook URL (signed) [not yet implemented]
 
     Note over Client: Or poll for result...
@@ -1573,10 +1573,10 @@ sequenceDiagram
 
     User->>Grafana: Open dashboard (logged in via digital-trust-common-service oidc-provider)
     Grafana->>Gate: Query + forwarded app JWT (oauthPassThru)
-    Gate->>Gate: Validate JWT vs digital-trust-common-service JWKS; require logs:read (fail closed); extract tenant_id
+    Gate->>Gate: Validate JWT against digital-trust-common-service JWKS then check logs:read (fail closed) and extract tenant_id
     Gate->>DB: Resolve traction_tenant_id for tenant_id (cached)
     DB-->>Gate: traction_tenant_id
-    Gate->>Gate: Set X-Scope-OrgID (tenant_id and traction_tenant_id); strip Authorization
+    Gate->>Gate: Set X-Scope-OrgID (tenant_id and traction_tenant_id) and strip Authorization
     Gate->>Loki: Forward query (LogQL untouched)
     Loki-->>User: Only this tenant's digital-trust-common-service + Traction streams
 ```
