@@ -588,14 +588,14 @@ describe('AdapterRegistry (integration)', () => {
       healthSpy.mockRestore();
       webhookSpy.mockRestore();
       jest
-        .mocked(app.get(ConnectorHealthCheckService).check)
-        .mockResolvedValue({
+        .mocked(app.get(ConnectorHealthCheckService))
+        .check.mockResolvedValue({
           status: 'healthy',
           latencyMs: 1,
         });
       jest
-        .mocked(app.get(TractionWebhookRegistrar).ensureWebhookRegistered)
-        .mockResolvedValue(undefined);
+        .mocked(app.get(TractionWebhookRegistrar))
+        .ensureWebhookRegistered.mockResolvedValue(undefined);
     }
   });
 

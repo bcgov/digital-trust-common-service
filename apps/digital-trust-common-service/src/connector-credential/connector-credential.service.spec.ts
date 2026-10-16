@@ -26,7 +26,7 @@ import { UpdateConnectorCredentialDto } from './dto/update-connector-credential.
 
 describe('ConnectorCredentialService', () => {
   let service: ConnectorCredentialService;
-  let mockFindById: jest.Mock;
+  let mockFindById: jest.Mock<Promise<ConnectorCredential | null>, [string]>;
   let mockFindByTenant: jest.Mock;
   let mockFindByTenantAndConnectorType: jest.Mock;
   let mockFindByTenantAndConnectorTypeAndActive: jest.Mock;
@@ -76,7 +76,7 @@ describe('ConnectorCredentialService', () => {
   };
 
   beforeEach(async () => {
-    mockFindById = jest.fn();
+    mockFindById = jest.fn<Promise<ConnectorCredential | null>, [string]>();
     mockFindByTenant = jest.fn();
     mockFindByTenantAndConnectorType = jest.fn();
     mockFindByTenantAndConnectorTypeAndActive = jest.fn();
@@ -119,13 +119,21 @@ describe('ConnectorCredentialService', () => {
         mockFindByTenantAndConnectorTypeAndActive,
       create: mockCreate,
       update: mockUpdate,
-      updateWithLock: jest.fn(async (_tenantId, id, buildUpdates) => {
-        const existing = await mockFindById(id);
-        if (!existing) return null;
-        const updates = await buildUpdates(existing);
-        if (Object.keys(updates).length === 0) return existing;
-        return mockUpdate(id, updates) as Promise<ConnectorCredential | null>;
-      }),
+      updateWithLock: jest.fn(
+        async (
+          _tenantId: string,
+          id: string,
+          buildUpdates: Parameters<
+            ConnectorCredentialRepository['updateWithLock']
+          >[2],
+        ): Promise<ConnectorCredential | null> => {
+          const existing = await mockFindById(id);
+          if (!existing) return null;
+          const updates = await buildUpdates(existing);
+          if (Object.keys(updates).length === 0) return existing;
+          return mockUpdate(id, updates) as Promise<ConnectorCredential | null>;
+        },
+      ),
       delete: mockDelete,
       deleteUnlessDefault: mockDeleteUnlessDefault,
       deactivateAllForTenant: mockDeactivateAllForTenant,
