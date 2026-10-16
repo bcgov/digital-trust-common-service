@@ -25,6 +25,11 @@ from the `radix-nova` registry deliberately — the Base UI variant shadcn also
 publishes would add a third overlay primitive alongside `radix-ui` and
 react-aria.
 
+`components/ui/empty.tsx` is the same story for empty states: BCDS ships
+only `Callout` and `InlineAlert`, which are messaging rather than empty states,
+so the shadcn component is restyled onto the BCDS surface and bounded to the
+width the design calls for instead of filling its container.
+
 ## Development
 
 ```bash

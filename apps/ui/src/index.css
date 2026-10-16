@@ -59,6 +59,7 @@
   --color-accent: var(--accent);
   --color-muted-foreground: var(--muted-foreground);
   --color-muted: var(--muted);
+  --color-muted-icon: var(--muted-icon);
   --color-secondary-foreground: var(--secondary-foreground);
   --color-secondary: var(--secondary);
   --color-primary-foreground: var(--primary-foreground);
@@ -102,6 +103,10 @@
   --secondary-foreground: var(--typography-color-primary);
   --muted: var(--theme-gray-20);
   --muted-foreground: var(--typography-color-secondary);
+  /* Large decorative glyphs (empty states) sit a step lighter than the
+     secondary icon colour. BCDS also uses this step for disabled icons;
+     referencing the palette directly avoids implying a disabled state. */
+  --muted-icon: var(--theme-gray-70);
   --accent: var(--surface-color-tertiary-hover);
   --accent-foreground: var(--typography-color-primary);
   --destructive: var(--surface-color-primary-danger-button-default);
