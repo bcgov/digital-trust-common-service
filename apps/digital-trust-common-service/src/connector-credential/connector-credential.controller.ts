@@ -131,6 +131,9 @@ export class ConnectorCredentialController {
     type: ConnectorCredentialResponseDto,
   })
   @ApiNotFoundResponse({ description: 'Connector not found' })
+  @ApiConflictResponse({
+    description: 'Connector changed during validation; retry the update',
+  })
   @ApiUnprocessableEntityResponse({
     description: 'Connectivity to the connector endpoint could not be verified',
   })

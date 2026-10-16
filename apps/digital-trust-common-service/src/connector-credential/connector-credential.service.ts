@@ -251,7 +251,11 @@ export class ConnectorCredentialService {
     manager?: EntityManager,
   ): Promise<ConnectorCredential> {
     const credential = manager
-      ? await this.credentialRepository.findById(id, manager)
+      ? await this.credentialRepository.findByTenantAndIdForUpdate(
+          tenantId,
+          id,
+          manager,
+        )
       : await this.credentialRepository.findById(id);
     const notFound = `Connector credential with ID '${id}' was not found.`;
 
@@ -339,22 +343,43 @@ export class ConnectorCredentialService {
     dto: UpdateConnectorCredentialDto,
     auth: AuthContext,
   ): Promise<ConnectorCredential> {
-    await this.findById(tenantId, id, auth);
+    let snapshot = await this.findById(tenantId, id, auth);
 
-    const updated = await this.credentialRepository.updateWithLock(
-      tenantId,
-      id,
-      async (existing) => this.buildCredentialUpdates(existing, dto),
-    );
-
-    if (!updated) {
-      throw new NotFoundException(
-        `Connector credential with ID '${id}' was not found.`,
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const updates = await this.buildCredentialUpdates(snapshot, dto);
+      let stale = false;
+      const updated = await this.credentialRepository.updateWithLock(
+        tenantId,
+        id,
+        (current) => {
+          stale =
+            current.endpointUrl !== snapshot.endpointUrl ||
+            current.connectorType !== snapshot.connectorType ||
+            current.active !== snapshot.active ||
+            current.keyVersion !== snapshot.keyVersion ||
+            !current.credentialsEncrypted.equals(snapshot.credentialsEncrypted);
+          return stale ? {} : updates;
+        },
       );
+
+      if (!updated) {
+        throw new NotFoundException(
+          `Connector credential with ID '${id}' was not found.`,
+        );
+      }
+
+      if (stale) {
+        snapshot = updated;
+        continue;
+      }
+
+      await this.lazyRotateKeyIfNeeded(updated);
+      return updated;
     }
 
-    await this.lazyRotateKeyIfNeeded(updated);
-    return updated;
+    throw new ConflictException(
+      'Connector changed during validation. Retry the update.',
+    );
   }
 
   private async buildCredentialUpdates(

@@ -33,7 +33,7 @@ describe('ConnectorCredentialRepository', () => {
   });
 
   describe('findById', () => {
-    it('locks the connector row when using a transaction manager', async () => {
+    it('locks only the tenant-scoped connector row', async () => {
       const connector = { id: 'c1', tenantId: 't1', active: true };
       const findOne = jest.fn().mockResolvedValue(connector);
       const getRepository = jest.fn().mockReturnValue({ findOne });
@@ -41,11 +41,13 @@ describe('ConnectorCredentialRepository', () => {
         getRepository,
       } as unknown as EntityManager;
 
-      await expect(repository.findById('c1', manager)).resolves.toBe(connector);
+      await expect(
+        repository.findByTenantAndIdForUpdate('t1', 'c1', manager),
+      ).resolves.toBe(connector);
 
       expect(getRepository).toHaveBeenCalledWith(ConnectorCredential);
       expect(findOne).toHaveBeenCalledWith({
-        where: { id: 'c1' },
+        where: { tenantId: 't1', id: 'c1' },
         lock: { mode: 'pessimistic_write' },
       });
     });

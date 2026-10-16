@@ -122,10 +122,9 @@ describe('ConnectorCredentialService', () => {
       updateWithLock: jest.fn(async (_tenantId, id, buildUpdates) => {
         const existing = await mockFindById(id);
         if (!existing) return null;
-        return mockUpdate(
-          id,
-          await buildUpdates(existing),
-        ) as Promise<ConnectorCredential | null>;
+        const updates = await buildUpdates(existing);
+        if (Object.keys(updates).length === 0) return existing;
+        return mockUpdate(id, updates) as Promise<ConnectorCredential | null>;
       }),
       delete: mockDelete,
       deleteUnlessDefault: mockDeleteUnlessDefault,
@@ -525,6 +524,53 @@ describe('ConnectorCredentialService', () => {
   });
 
   describe('update', () => {
+    it('revalidates a fresh snapshot instead of persisting stale updates', async () => {
+      const current = {
+        ...mockCredential,
+        credentialsEncrypted: Buffer.from('new-envelope'),
+      };
+      mockFindById
+        .mockResolvedValueOnce(mockCredential)
+        .mockResolvedValue(current);
+      mockUpdate.mockResolvedValue(current);
+
+      await service.update(
+        mockCredential.tenantId,
+        mockCredential.id,
+        { endpointUrl: 'https://traction.example.com/new-endpoint' },
+        auth,
+      );
+
+      expect(mockHealthCheck).toHaveBeenCalledTimes(2);
+      expect(mockDecrypt).toHaveBeenLastCalledWith(
+        current.credentialsEncrypted,
+        current.keyVersion,
+      );
+      expect(mockUpdate).toHaveBeenCalledTimes(1);
+    });
+
+    it('returns a conflict after three stale validation attempts without writing', async () => {
+      mockFindById.mockResolvedValueOnce(mockCredential);
+      for (let version = 1; version <= 3; version += 1) {
+        mockFindById.mockResolvedValueOnce({
+          ...mockCredential,
+          credentialsEncrypted: Buffer.from(`envelope-${version}`),
+        });
+      }
+
+      await expect(
+        service.update(
+          mockCredential.tenantId,
+          mockCredential.id,
+          { endpointUrl: 'https://traction.example.com/new-endpoint' },
+          auth,
+        ),
+      ).rejects.toThrow(ConflictException);
+
+      expect(mockHealthCheck).toHaveBeenCalledTimes(3);
+      expect(mockUpdate).not.toHaveBeenCalled();
+    });
+
     it('should re-validate the endpoint against existing credentials when only the endpoint changes', async () => {
       const dto: UpdateConnectorCredentialDto = {
         endpointUrl: 'https://traction.example.com/api/v2',

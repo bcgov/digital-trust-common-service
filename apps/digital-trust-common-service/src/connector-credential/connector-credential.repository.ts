@@ -20,20 +20,21 @@ export class ConnectorCredentialRepository {
     private readonly repository: Repository<ConnectorCredential>,
   ) {}
 
-  public async findById(
-    id: string,
-    manager?: EntityManager,
-  ): Promise<ConnectorCredential | null> {
-    if (manager) {
-      return manager.getRepository(ConnectorCredential).findOne({
-        where: { id },
-        lock: { mode: 'pessimistic_write' },
-      });
-    }
-
+  public async findById(id: string): Promise<ConnectorCredential | null> {
     return await this.repository.findOne({
       where: { id },
       relations: { tenant: true },
+    });
+  }
+
+  public findByTenantAndIdForUpdate(
+    tenantId: string,
+    id: string,
+    manager: EntityManager,
+  ): Promise<ConnectorCredential | null> {
+    return manager.getRepository(ConnectorCredential).findOne({
+      where: { tenantId, id },
+      lock: { mode: 'pessimistic_write' },
     });
   }
 

@@ -545,6 +545,60 @@ describe('AdapterRegistry (integration)', () => {
     },
   );
 
+  it('does not hold a connector row lock during remote update checks', async () => {
+    const tenantId = await createTenant();
+    const connector = await createConnector(tenantId);
+    const assertUnlocked = async () => {
+      const runner = dataSource.createQueryRunner();
+      try {
+        await runner.connect();
+        await runner.startTransaction();
+        const row = await runner.manager
+          .getRepository(ConnectorCredential)
+          .findOne({
+            where: { tenantId, id: connector.id },
+            lock: { mode: 'pessimistic_write', onLocked: 'nowait' },
+          });
+        expect(row?.id).toBe(connector.id);
+      } finally {
+        if (runner.isTransactionActive) await runner.rollbackTransaction();
+        await runner.release();
+      }
+    };
+    const healthSpy = jest
+      .spyOn(app.get(ConnectorHealthCheckService), 'check')
+      .mockImplementationOnce(async () => {
+        await assertUnlocked();
+        return { status: 'healthy', latencyMs: 1 };
+      });
+    const webhookSpy = jest
+      .spyOn(app.get(TractionWebhookRegistrar), 'ensureWebhookRegistered')
+      .mockImplementationOnce(assertUnlocked);
+
+    try {
+      await connectors.update(
+        tenantId,
+        connector.id,
+        { credentials: { webhookSecret: randomUUID() } },
+        authFor(tenantId),
+      );
+      expect(healthSpy).toHaveBeenCalled();
+      expect(webhookSpy).toHaveBeenCalled();
+    } finally {
+      healthSpy.mockRestore();
+      webhookSpy.mockRestore();
+      jest
+        .mocked(app.get(ConnectorHealthCheckService).check)
+        .mockResolvedValue({
+          status: 'healthy',
+          latencyMs: 1,
+        });
+      jest
+        .mocked(app.get(TractionWebhookRegistrar).ensureWebhookRegistered)
+        .mockResolvedValue(undefined);
+    }
+  });
+
   it('preserves simultaneous partial connector credential rotations', async () => {
     const tenantId = await createTenant();
     const connector = await createConnector(tenantId);
@@ -643,6 +697,40 @@ describe('AdapterRegistry (integration)', () => {
     await expect(registry.resolve(tenantId)).rejects.toBeInstanceOf(
       ConnectorUnavailableError,
     );
+  });
+
+  it('rejects a foreign connector without contending on its row lock', async () => {
+    const ownerTenantId = await createTenant();
+    const callerTenantId = await createTenant();
+    const connector = await createConnector(ownerTenantId);
+    const owner = dataSource.createQueryRunner();
+    const caller = dataSource.createQueryRunner();
+
+    try {
+      await owner.connect();
+      await caller.connect();
+      await owner.startTransaction();
+      await caller.startTransaction();
+      await owner.manager.getRepository(ConnectorCredential).findOne({
+        where: { tenantId: ownerTenantId, id: connector.id },
+        lock: { mode: 'pessimistic_write' },
+      });
+      await caller.query("SET LOCAL lock_timeout = '500ms'");
+
+      await expect(
+        connectors.findById(
+          callerTenantId,
+          connector.id,
+          authFor(callerTenantId),
+          caller.manager,
+        ),
+      ).rejects.toThrow(NotFoundException);
+    } finally {
+      if (caller.isTransactionActive) await caller.rollbackTransaction();
+      if (owner.isTransactionActive) await owner.rollbackTransaction();
+      await caller.release();
+      await owner.release();
+    }
   });
 
   it('should never resolve another tenant connector', async () => {
