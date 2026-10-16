@@ -27,8 +27,9 @@ react-aria.
 
 `components/ui/empty.tsx` is the same story for empty states: BCDS ships
 only `Callout` and `InlineAlert`, which are messaging rather than empty states,
-so the shadcn component is restyled onto the BCDS surface and bounded to the
-width the design calls for instead of filling its container.
+so the shadcn component is rebuilt on BCDS type and spacing tokens, stripped of
+the surface the design does not call for, and bounded to the width in the design
+instead of filling its container.
 
 ## Development
 

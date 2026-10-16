@@ -58,17 +58,19 @@ describe('Empty', () => {
     const empty = container.querySelector('[data-slot="empty"]');
     // Regression guard: the stock component is `w-full flex-1`, which
     // stretches across the page instead of hugging its content.
-    expect(empty).toHaveClass('[--empty-width:19rem]');
+    expect(empty).toHaveClass('[--empty-width:23.75rem]');
     expect(empty).toHaveClass('max-w-[var(--empty-width)]');
     expect(empty).not.toHaveClass('flex-1');
   });
 
-  it('paints a solid border, not the stock dashed-but-widthless one', () => {
+  it('draws no surface of its own', () => {
     const { container } = renderEmpty();
 
+    // The design sits flat on the page: no box, fill or padding. The stock
+    // component asks for `border-dashed` without a border width, which
+    // paints nothing — easy to "fix" into a border that isn't in the design.
     const empty = container.querySelector('[data-slot="empty"]');
-    expect(empty).toHaveClass('border', 'border-border', 'bg-card');
-    expect(empty).not.toHaveClass('border-dashed');
+    expect(empty?.className).not.toMatch(/\b(border|bg-|p-|rounded)/);
   });
 
   it('takes a wider size variant and merges a caller className', () => {
@@ -76,7 +78,7 @@ describe('Empty', () => {
 
     const empty = container.querySelector('[data-slot="empty"]');
     expect(empty).toHaveClass('[--empty-width:28rem]', 'mt-8');
-    expect(empty).not.toHaveClass('[--empty-width:19rem]');
+    expect(empty).not.toHaveClass('[--empty-width:23.75rem]');
   });
 
   it('renders the description as a paragraph', () => {
@@ -85,5 +87,16 @@ describe('Empty', () => {
     expect(
       screen.getByText('Tenants you create will be listed here.').tagName,
     ).toBe('P');
+  });
+
+  it('applies the BCDS type scale to the title and description', () => {
+    renderEmpty();
+
+    // `text-body` looks like a colour utility to tailwind-merge, so it is
+    // dropped next to `text-muted-foreground` unless `cn` knows better.
+    expect(screen.getByText('No tenants yet')).toHaveClass('text-h5');
+    expect(
+      screen.getByText('Tenants you create will be listed here.'),
+    ).toHaveClass('text-body', 'text-muted-foreground');
   });
 });
