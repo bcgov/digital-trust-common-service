@@ -32,6 +32,18 @@ export class ConnectorUnavailableError extends AdapterError {
   }
 }
 
+// Error thrown when multiple active connectors require an explicit selection.
+export class ConnectorSelectionAmbiguousError extends AdapterError {
+  public readonly code = 'CONNECTOR_SELECTION_AMBIGUOUS';
+
+  public constructor(
+    message: string,
+    context?: Readonly<Record<string, unknown>>,
+  ) {
+    super(message, context);
+  }
+}
+
 // Error thrown when a credential format is not supported.
 export class FormatNotSupportedError extends AdapterError {
   // Stable machine-readable code.

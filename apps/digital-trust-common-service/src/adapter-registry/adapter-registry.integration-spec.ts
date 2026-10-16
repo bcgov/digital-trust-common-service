@@ -2,21 +2,29 @@ import { randomUUID } from 'crypto';
 
 import { AuthContext } from '@app/auth';
 import {
+  ConnectorSelectionAmbiguousError,
   ConnectorUnavailableError,
   CredentialFormat,
   MockAdapter,
   ConnectorType as PortConnectorType,
 } from '@app/credential-ports';
 import { PgBossService } from '@app/pg-boss';
-import { INestApplication } from '@nestjs/common';
+import {
+  ConflictException,
+  INestApplication,
+  NotFoundException,
+} from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
-import { DataSource } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 
 import { AppModule } from '../app.module';
+import { EncryptionService } from '../common/crypto/encryption.service';
 import { ConnectorType } from '../connection/connection.entity';
 import { ConnectorCredential } from '../connector-credential/connector-credential.entity';
 import { ConnectorCredentialService } from '../connector-credential/connector-credential.service';
 import { ConnectorHealthCheckService } from '../connector-credential/connector-health-check.service';
+import { Tenant } from '../tenant/tenant.entity';
+import { TenantService } from '../tenant/tenant.service';
 import { TractionWebhookRegistrar } from '../traction/traction-webhook-registrar.service';
 
 import { AdapterRegistry } from './adapter-registry.service';
@@ -177,6 +185,13 @@ describe('AdapterRegistry (integration)', () => {
     );
   }
 
+  async function clearDefaultConnector(tenantId: string): Promise<void> {
+    await dataSource.query(
+      "UPDATE tenant SET config = config - 'default_connector' WHERE id = $1",
+      [tenantId],
+    );
+  }
+
   it('should resolve the connector named by tenant.config.default_connector', async () => {
     const tenantId = await createTenant();
     const connector = await createConnector(tenantId, {
@@ -195,6 +210,7 @@ describe('AdapterRegistry (integration)', () => {
   it('should fall back to the tenant single active connector when no default is set', async () => {
     const tenantId = await createTenant();
     const connector = await createConnector(tenantId);
+    await clearDefaultConnector(tenantId);
 
     const resolved = await registry.resolve(tenantId);
 
@@ -208,10 +224,438 @@ describe('AdapterRegistry (integration)', () => {
       connectorType: ConnectorType.CREDO,
       active: false,
     });
+    await clearDefaultConnector(tenantId);
 
     const resolved = await registry.resolve(tenantId);
 
     expect(resolved.connector.id).toBe(active.id);
+  });
+
+  it('sets one default when two connectors are created concurrently', async () => {
+    const tenantId = await createTenant();
+    const tenantService = app.get(TenantService);
+    let releaseAssignments!: () => void;
+    const bothAssignmentsReady = new Promise<void>((resolve) => {
+      releaseAssignments = resolve;
+    });
+    let assignmentCount = 0;
+    const setDefault =
+      tenantService.setDefaultConnectorIfUnset.bind(tenantService);
+    const assignmentSpy = jest
+      .spyOn(tenantService, 'setDefaultConnectorIfUnset')
+      .mockImplementation(async (...args) => {
+        assignmentCount += 1;
+        if (assignmentCount === 2) {
+          releaseAssignments();
+        }
+        await bothAssignmentsReady;
+        return await setDefault(...args);
+      });
+
+    let created: ConnectorCredential[];
+    try {
+      created = await Promise.all([
+        createConnector(tenantId, {
+          endpointUrl: 'https://first-traction.example.com',
+        }),
+        createConnector(tenantId, {
+          endpointUrl: 'https://second-traction.example.com',
+        }),
+      ]);
+    } finally {
+      assignmentSpy.mockRestore();
+    }
+
+    const rows = await dataSource.query<
+      Array<{ config: { default_connector?: string } }>
+    >('SELECT config FROM tenant WHERE id = $1', [tenantId]);
+
+    expect(created.map(({ id }) => id)).toContain(
+      rows[0]?.config.default_connector,
+    );
+  });
+
+  it.each([
+    ['explicit', true],
+    ['explicit', false],
+    ['automatic', true],
+    ['automatic', false],
+    ['general', true],
+    ['general', false],
+  ] as const)(
+    'coordinates %s default selection and deletion when selection wins=%s',
+    async (selection, selectionWins) => {
+      const tenantId = await createTenant();
+      const connector = await createConnector(tenantId);
+      await clearDefaultConnector(tenantId);
+      const tenantService = app.get(TenantService);
+      let markFirstLocked!: () => void;
+      let markSecondRequested!: () => void;
+      let releaseFirst!: () => void;
+      const firstLocked = new Promise<void>((resolve) => {
+        markFirstLocked = resolve;
+      });
+      const secondRequested = new Promise<void>((resolve) => {
+        markSecondRequested = resolve;
+      });
+      const firstReleased = new Promise<void>((resolve) => {
+        releaseFirst = resolve;
+      });
+      const findOne = Object.getOwnPropertyDescriptor(
+        Repository.prototype,
+        'findOne',
+      )?.value as Repository<Tenant | ConnectorCredential>['findOne'];
+      let lockRequests = 0;
+      const lockSpy = jest
+        .spyOn(Repository.prototype, 'findOne')
+        .mockImplementation(async function (
+          this: Repository<Tenant | ConnectorCredential>,
+          options,
+        ) {
+          if (
+            this.metadata.target !== Tenant ||
+            options.lock?.mode !== 'pessimistic_write' ||
+            (options.where as { id?: string }).id !== tenantId
+          ) {
+            return findOne.call(this, options);
+          }
+          const request = ++lockRequests;
+          if (request === 2) markSecondRequested();
+          const tenant = await findOne.call(this, options);
+          if (request === 1) {
+            markFirstLocked();
+            await firstReleased;
+          }
+          return tenant;
+        });
+      const select = () =>
+        selection === 'general'
+          ? tenantService.update(
+              tenantId,
+              { config: { default_connector: connector.id } },
+              authFor(tenantId),
+            )
+          : selection === 'explicit'
+            ? tenantService.updateConfig(
+                tenantId,
+                { defaultConnector: connector.id },
+                authFor(tenantId),
+              )
+            : tenantService.setDefaultConnectorIfUnset(
+                tenantId,
+                connector.id,
+                authFor(tenantId),
+              );
+      const remove = () =>
+        connectors.delete(tenantId, connector.id, authFor(tenantId));
+
+      try {
+        const first = selectionWins ? select() : remove();
+        await firstLocked;
+        const second = selectionWins ? remove() : select();
+        const settled = Promise.allSettled([first, second]);
+        await secondRequested;
+        releaseFirst();
+        const results = await settled;
+        expect(results[0].status).toBe('fulfilled');
+        expect(results[1].status).toBe('rejected');
+        if (results[1].status === 'rejected') {
+          expect(results[1].reason).toBeInstanceOf(
+            selectionWins ? ConflictException : NotFoundException,
+          );
+        }
+      } finally {
+        releaseFirst();
+        lockSpy.mockRestore();
+      }
+
+      const tenant = await tenantService.findById(tenantId);
+      const persisted = await dataSource
+        .getRepository(ConnectorCredential)
+        .findOneBy({ tenantId, id: connector.id });
+      if (selectionWins) {
+        expect(tenant.config.default_connector).toBe(connector.id);
+        expect(persisted).not.toBeNull();
+        expect((await registry.resolve(tenantId)).connector.id).toBe(
+          connector.id,
+        );
+      } else {
+        expect(tenant.config.default_connector).toBeUndefined();
+        expect(persisted).toBeNull();
+      }
+    },
+  );
+
+  it.each(['automatic', 'explicit', 'general'] as const)(
+    'rejects %s default selection when an in-flight deactivation commits',
+    async (selection) => {
+      const tenantId = await createTenant();
+      const connector = await createConnector(tenantId);
+      await clearDefaultConnector(tenantId);
+      const tenantService = app.get(TenantService);
+      const runner = dataSource.createQueryRunner();
+      await runner.connect();
+      await runner.startTransaction();
+      let markReadRequested!: () => void;
+      const readRequested = new Promise<void>((resolve) => {
+        markReadRequested = resolve;
+      });
+      const findOne = Object.getOwnPropertyDescriptor(
+        Repository.prototype,
+        'findOne',
+      )?.value as Repository<Tenant | ConnectorCredential>['findOne'];
+      const readSpy = jest
+        .spyOn(Repository.prototype, 'findOne')
+        .mockImplementation(async function (
+          this: Repository<Tenant | ConnectorCredential>,
+          options,
+        ) {
+          if (
+            this.metadata.target === ConnectorCredential &&
+            (options.where as { id?: string }).id === connector.id
+          ) {
+            markReadRequested();
+          }
+          return findOne.call(this, options);
+        });
+      let settled: Promise<PromiseSettledResult<unknown>[]> | undefined;
+
+      try {
+        await runner.manager
+          .getRepository(ConnectorCredential)
+          .update({ tenantId, active: true }, { active: false });
+        const selecting =
+          selection === 'general'
+            ? tenantService.update(
+                tenantId,
+                { config: { default_connector: connector.id } },
+                authFor(tenantId),
+              )
+            : selection === 'explicit'
+              ? tenantService.updateConfig(
+                  tenantId,
+                  { defaultConnector: connector.id },
+                  authFor(tenantId),
+                )
+              : tenantService.setDefaultConnectorIfUnset(
+                  tenantId,
+                  connector.id,
+                  authFor(tenantId),
+                );
+        settled = Promise.allSettled([selecting]);
+        await readRequested;
+        await runner.commitTransaction();
+
+        const results = await settled;
+        expect(results).toHaveLength(1);
+        expect(results[0].status).toBe('rejected');
+        if (results[0].status === 'rejected') {
+          expect(results[0].reason).toBeInstanceOf(ConflictException);
+        }
+        expect(
+          (await tenantService.findById(tenantId)).config.default_connector,
+        ).toBeUndefined();
+      } finally {
+        if (runner.isTransactionActive) await runner.rollbackTransaction();
+        await settled;
+        readSpy.mockRestore();
+        await runner.release();
+      }
+    },
+  );
+
+  it.each(['automatic', 'explicit', 'general'] as const)(
+    'holds the connector lock between %s default validation and assignment',
+    async (selection) => {
+      const tenantId = await createTenant();
+      const connector = await createConnector(tenantId);
+      await clearDefaultConnector(tenantId);
+      const tenantService = app.get(TenantService);
+      let markReadComplete!: () => void;
+      let releaseRead!: () => void;
+      const readComplete = new Promise<void>((resolve) => {
+        markReadComplete = resolve;
+      });
+      const readReleased = new Promise<void>((resolve) => {
+        releaseRead = resolve;
+      });
+      const findOne = Object.getOwnPropertyDescriptor(
+        Repository.prototype,
+        'findOne',
+      )?.value as Repository<Tenant | ConnectorCredential>['findOne'];
+      const readSpy = jest
+        .spyOn(Repository.prototype, 'findOne')
+        .mockImplementation(async function (
+          this: Repository<Tenant | ConnectorCredential>,
+          options,
+        ) {
+          const row = await findOne.call(this, options);
+          if (
+            this.metadata.target === ConnectorCredential &&
+            (options.where as { id?: string }).id === connector.id
+          ) {
+            markReadComplete();
+            await readReleased;
+          }
+          return row;
+        });
+      const selecting =
+        selection === 'general'
+          ? tenantService.update(
+              tenantId,
+              { config: { default_connector: connector.id } },
+              authFor(tenantId),
+            )
+          : selection === 'explicit'
+            ? tenantService.updateConfig(
+                tenantId,
+                { defaultConnector: connector.id },
+                authFor(tenantId),
+              )
+            : tenantService.setDefaultConnectorIfUnset(
+                tenantId,
+                connector.id,
+                authFor(tenantId),
+              );
+      const settled = Promise.allSettled([selecting]);
+      const runner = dataSource.createQueryRunner();
+      try {
+        await readComplete;
+        await runner.connect();
+        await runner.startTransaction();
+        await expect(
+          runner.query(
+            'SELECT id FROM connector_credential WHERE tenant_id = $1 AND id = $2 FOR UPDATE NOWAIT',
+            [tenantId, connector.id],
+          ),
+        ).rejects.toMatchObject({ driverError: { code: '55P03' } });
+        await runner.rollbackTransaction();
+        releaseRead();
+        expect(await settled).toMatchObject([{ status: 'fulfilled' }]);
+        expect(
+          (await tenantService.findById(tenantId)).config.default_connector,
+        ).toBe(connector.id);
+      } finally {
+        releaseRead();
+        if (runner.isTransactionActive) await runner.rollbackTransaction();
+        await settled;
+        readSpy.mockRestore();
+        await runner.release();
+      }
+    },
+  );
+
+  it('does not hold a connector row lock during remote update checks', async () => {
+    const tenantId = await createTenant();
+    const connector = await createConnector(tenantId);
+    const assertUnlocked = async () => {
+      const runner = dataSource.createQueryRunner();
+      try {
+        await runner.connect();
+        await runner.startTransaction();
+        const row = await runner.manager
+          .getRepository(ConnectorCredential)
+          .findOne({
+            where: { tenantId, id: connector.id },
+            lock: { mode: 'pessimistic_write', onLocked: 'nowait' },
+          });
+        expect(row?.id).toBe(connector.id);
+      } finally {
+        if (runner.isTransactionActive) await runner.rollbackTransaction();
+        await runner.release();
+      }
+    };
+    const healthSpy = jest
+      .spyOn(app.get(ConnectorHealthCheckService), 'check')
+      .mockImplementationOnce(async () => {
+        await assertUnlocked();
+        return { status: 'healthy', latencyMs: 1 };
+      });
+    const webhookSpy = jest
+      .spyOn(app.get(TractionWebhookRegistrar), 'ensureWebhookRegistered')
+      .mockImplementationOnce(assertUnlocked);
+
+    try {
+      await connectors.update(
+        tenantId,
+        connector.id,
+        { credentials: { webhookSecret: randomUUID() } },
+        authFor(tenantId),
+      );
+      expect(healthSpy).toHaveBeenCalled();
+      expect(webhookSpy).toHaveBeenCalled();
+    } finally {
+      healthSpy.mockRestore();
+      webhookSpy.mockRestore();
+      jest
+        .mocked(app.get(ConnectorHealthCheckService))
+        .check.mockResolvedValue({
+          status: 'healthy',
+          latencyMs: 1,
+        });
+      jest
+        .mocked(app.get(TractionWebhookRegistrar))
+        .ensureWebhookRegistered.mockResolvedValue(undefined);
+    }
+  });
+
+  it('preserves simultaneous partial connector credential rotations', async () => {
+    const tenantId = await createTenant();
+    const connector = await createConnector(tenantId);
+    const apiKey = randomUUID();
+    const webhookSecret = randomUUID();
+    let releaseReads!: () => void;
+    const bothReadsReady = new Promise<void>((resolve) => {
+      releaseReads = resolve;
+    });
+    let readCount = 0;
+    const findById = connectors.findById.bind(connectors);
+    const readSpy = jest
+      .spyOn(connectors, 'findById')
+      .mockImplementation(async (...args) => {
+        const snapshot = await findById(...args);
+        readCount += 1;
+        if (readCount === 2) releaseReads();
+        await bothReadsReady;
+        return snapshot;
+      });
+
+    try {
+      const results = await Promise.allSettled([
+        connectors.update(
+          tenantId,
+          connector.id,
+          { credentials: { apiKey } },
+          authFor(tenantId),
+        ),
+        connectors.update(
+          tenantId,
+          connector.id,
+          { credentials: { webhookSecret } },
+          authFor(tenantId),
+        ),
+      ]);
+      expect(results.map(({ status }) => status)).toEqual([
+        'fulfilled',
+        'fulfilled',
+      ]);
+    } finally {
+      releaseReads();
+      readSpy.mockRestore();
+    }
+
+    const persisted = await connectors.findById(
+      tenantId,
+      connector.id,
+      authFor(tenantId),
+    );
+    const credentials = app.get(EncryptionService).decrypt<{
+      apiKey: string;
+      webhookSecret: string;
+    }>(persisted.credentialsEncrypted, persisted.keyVersion);
+
+    expect(credentials.apiKey === apiKey).toBe(true);
+    expect(credentials.webhookSecret === webhookSecret).toBe(true);
   });
 
   it('should refuse an inactive default_connector', async () => {
@@ -236,9 +680,10 @@ describe('AdapterRegistry (integration)', () => {
     const tenantId = await createTenant();
     await createConnector(tenantId);
     await createConnector(tenantId, { connectorType: ConnectorType.CREDO });
+    await clearDefaultConnector(tenantId);
 
     await expect(registry.resolve(tenantId)).rejects.toBeInstanceOf(
-      ConnectorUnavailableError,
+      ConnectorSelectionAmbiguousError,
     );
   });
 
@@ -252,6 +697,40 @@ describe('AdapterRegistry (integration)', () => {
     await expect(registry.resolve(tenantId)).rejects.toBeInstanceOf(
       ConnectorUnavailableError,
     );
+  });
+
+  it('rejects a foreign connector without contending on its row lock', async () => {
+    const ownerTenantId = await createTenant();
+    const callerTenantId = await createTenant();
+    const connector = await createConnector(ownerTenantId);
+    const owner = dataSource.createQueryRunner();
+    const caller = dataSource.createQueryRunner();
+
+    try {
+      await owner.connect();
+      await caller.connect();
+      await owner.startTransaction();
+      await caller.startTransaction();
+      await owner.manager.getRepository(ConnectorCredential).findOne({
+        where: { tenantId: ownerTenantId, id: connector.id },
+        lock: { mode: 'pessimistic_write' },
+      });
+      await caller.query("SET LOCAL lock_timeout = '500ms'");
+
+      await expect(
+        connectors.findById(
+          callerTenantId,
+          connector.id,
+          authFor(callerTenantId),
+          caller.manager,
+        ),
+      ).rejects.toThrow(NotFoundException);
+    } finally {
+      if (caller.isTransactionActive) await caller.rollbackTransaction();
+      if (owner.isTransactionActive) await owner.rollbackTransaction();
+      await caller.release();
+      await owner.release();
+    }
   });
 
   it('should never resolve another tenant connector', async () => {

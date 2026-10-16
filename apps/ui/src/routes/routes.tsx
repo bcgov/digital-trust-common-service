@@ -58,6 +58,13 @@ export const routes: RouteObject[] = [
                 ),
               },
               {
+                path: '/connectors',
+                lazy: lazyPage(
+                  () => import('@/pages/ConnectorsPage'),
+                  'ConnectorsPage',
+                ),
+              },
+              {
                 path: '/tenants/:tenantId',
                 lazy: lazyPage(
                   () => import('@/layouts/TenantLayout'),
@@ -106,14 +113,6 @@ export const routes: RouteObject[] = [
                     element: <PlaceholderPage title="Tenant settings" />,
                   },
                 ],
-              },
-              {
-                // Drawer preview (#467) — remove when a real screen uses it.
-                path: '/drawer-demo',
-                lazy: lazyPage(
-                  () => import('@/pages/DrawerDemo'),
-                  'DrawerDemo',
-                ),
               },
               {
                 path: '/settings',

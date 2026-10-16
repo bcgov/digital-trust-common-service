@@ -30,6 +30,7 @@ if (!Element.prototype.setPointerCapture) {
   Element.prototype.setPointerCapture = () => {};
   Element.prototype.releasePointerCapture = () => {};
   Element.prototype.hasPointerCapture = () => false;
+  HTMLElement.prototype.scrollTo = () => {};
 }
 
 // jsdom's CSS parser chokes on the modern syntax in the style-injected BCDS

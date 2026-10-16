@@ -1,9 +1,14 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { EntityManager, Repository } from 'typeorm';
+
+import { Tenant } from '../tenant/tenant.entity';
 
 import { ConnectorCredential } from './connector-credential.entity';
-import { ConnectorCredentialRepository } from './connector-credential.repository';
+import {
+  ConnectorCredentialRepository,
+  ConnectorDeletionResult,
+} from './connector-credential.repository';
 
 describe('ConnectorCredentialRepository', () => {
   let repository: ConnectorCredentialRepository;
@@ -25,6 +30,141 @@ describe('ConnectorCredentialRepository', () => {
     }).compile();
 
     repository = module.get(ConnectorCredentialRepository);
+  });
+
+  describe('findById', () => {
+    it('locks only the tenant-scoped connector row', async () => {
+      const connector = { id: 'c1', tenantId: 't1', active: true };
+      const findOne = jest.fn().mockResolvedValue(connector);
+      const getRepository = jest.fn().mockReturnValue({ findOne });
+      const manager = {
+        getRepository,
+      } as unknown as EntityManager;
+
+      await expect(
+        repository.findByTenantAndIdForUpdate('t1', 'c1', manager),
+      ).resolves.toBe(connector);
+
+      expect(getRepository).toHaveBeenCalledWith(ConnectorCredential);
+      expect(findOne).toHaveBeenCalledWith({
+        where: { tenantId: 't1', id: 'c1' },
+        lock: { mode: 'pessimistic_write' },
+      });
+    });
+
+    it('keeps ordinary reads unlocked and loads the tenant relation', async () => {
+      const findOne = jest.fn().mockResolvedValue(null);
+      Object.assign(mockRepo, { findOne });
+
+      await expect(repository.findById('c1')).resolves.toBeNull();
+
+      expect(findOne).toHaveBeenCalledWith({
+        where: { id: 'c1' },
+        relations: { tenant: true },
+      });
+    });
+  });
+
+  describe('updateWithLock', () => {
+    it('builds and persists updates inside a tenant-scoped row lock', async () => {
+      const existing = { id: 'c1', tenantId: 't1', keyVersion: 1 };
+      const updated = { ...existing, keyVersion: 2 };
+      const findOne = jest
+        .fn()
+        .mockResolvedValueOnce(existing)
+        .mockResolvedValueOnce(updated);
+      const update = jest.fn().mockResolvedValue({ affected: 1 });
+      const getRepository = jest.fn().mockReturnValue({ findOne, update });
+      const transaction = jest.fn(
+        (
+          callback: (manager: {
+            getRepository: typeof getRepository;
+          }) => Promise<unknown>,
+        ) => callback({ getRepository }),
+      );
+      Object.assign(mockRepo, { manager: { transaction } });
+      const buildUpdates = jest.fn().mockResolvedValue({ keyVersion: 2 });
+
+      await expect(
+        repository.updateWithLock('t1', 'c1', buildUpdates),
+      ).resolves.toEqual(updated);
+
+      expect(transaction).toHaveBeenCalledTimes(1);
+      expect(getRepository).toHaveBeenCalledWith(ConnectorCredential);
+      expect(findOne).toHaveBeenNthCalledWith(1, {
+        where: { tenantId: 't1', id: 'c1' },
+        lock: { mode: 'pessimistic_write' },
+      });
+      expect(buildUpdates).toHaveBeenCalledWith(existing);
+      expect(update).toHaveBeenCalledWith(
+        { tenantId: 't1', id: 'c1' },
+        { keyVersion: 2 },
+      );
+      expect(findOne).toHaveBeenNthCalledWith(2, {
+        where: { tenantId: 't1', id: 'c1' },
+        relations: { tenant: true },
+      });
+    });
+
+    it('does not build updates when the tenant-scoped row is absent', async () => {
+      const findOne = jest.fn().mockResolvedValue(null);
+      const update = jest.fn();
+      const getRepository = () => ({ findOne, update });
+      const transaction = jest.fn(
+        (
+          callback: (manager: {
+            getRepository: typeof getRepository;
+          }) => Promise<unknown>,
+        ) => callback({ getRepository }),
+      );
+      Object.assign(mockRepo, { manager: { transaction } });
+      const buildUpdates = jest.fn();
+
+      await expect(
+        repository.updateWithLock('other-tenant', 'c1', buildUpdates),
+      ).resolves.toBeNull();
+
+      expect(buildUpdates).not.toHaveBeenCalled();
+      expect(update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('deleteUnlessDefault', () => {
+    it.each([true, false])(
+      'checks the default under the tenant lock (default=%s)',
+      async (isDefault) => {
+        const findOne = jest.fn().mockResolvedValue({
+          config: { default_connector: isDefault ? 'c1' : 'another-connector' },
+        });
+        const remove = jest.fn().mockResolvedValue({ affected: 1 });
+        const getRepository = jest.fn((entity) =>
+          entity === Tenant ? { findOne } : { delete: remove },
+        );
+        const transaction = jest.fn(
+          (
+            callback: (manager: {
+              getRepository: typeof getRepository;
+            }) => Promise<unknown>,
+          ) => callback({ getRepository }),
+        );
+        Object.assign(mockRepo, { manager: { transaction } });
+
+        await expect(repository.deleteUnlessDefault('t1', 'c1')).resolves.toBe(
+          isDefault
+            ? ConnectorDeletionResult.DEFAULT
+            : ConnectorDeletionResult.DELETED,
+        );
+        expect(findOne).toHaveBeenCalledWith({
+          where: { id: 't1' },
+          lock: { mode: 'pessimistic_write' },
+        });
+        if (isDefault) {
+          expect(remove).not.toHaveBeenCalled();
+        } else {
+          expect(remove).toHaveBeenCalledWith({ tenantId: 't1', id: 'c1' });
+        }
+      },
+    );
   });
 
   describe('deactivateAllForTenant', () => {

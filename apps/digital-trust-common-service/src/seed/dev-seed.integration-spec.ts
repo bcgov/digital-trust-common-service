@@ -12,6 +12,8 @@ import {
   MULTI_TENANT_USER,
   UI_SPA_CLIENT_ID,
   seedApiClientId,
+  SEED_TENANTS,
+  UI_SPA_TENANT_SLUG,
   uiSpaOrigin,
   uiSpaPostLogoutRedirectUris,
   uiSpaRedirectUris,
@@ -103,12 +105,34 @@ describe('DevSeedService integration', () => {
   }
 
   it('seeds demo tenants and related data idempotently', async () => {
+    const expectedOAuthClientIds = SEED_TENANTS.flatMap(({ slug }) => [
+      seedApiClientId(slug),
+      ...(slug === UI_SPA_TENANT_SLUG ? [UI_SPA_CLIENT_ID] : []),
+    ]);
+    const existingOAuthClients = await queryDataSource.query<
+      Array<{ client_id: string }>
+    >('SELECT client_id FROM oauth_client WHERE client_id = ANY($1)', [
+      expectedOAuthClientIds,
+    ]);
+    const existingOAuthClientIds = new Set(
+      existingOAuthClients.map(({ client_id }) => client_id),
+    );
+    const expectedCreatedOAuthClients = expectedOAuthClientIds.filter(
+      (clientId) => !existingOAuthClientIds.has(clientId),
+    );
+
     const first = await seedService.run();
 
     expect(first.tenants).toBe(3);
-    // Three per-tenant API clients plus the SPA's public client.
-    expect(first.createdOAuthClients).toHaveLength(4);
-    expect(first.createdOAuthClients).toContain(UI_SPA_CLIENT_ID);
+    expect(first.createdOAuthClients).toEqual(expectedCreatedOAuthClients);
+    const seededOAuthClients = await queryDataSource.query<
+      Array<{ client_id: string }>
+    >('SELECT client_id FROM oauth_client WHERE client_id = ANY($1)', [
+      expectedOAuthClientIds,
+    ]);
+    expect(
+      new Set(seededOAuthClients.map(({ client_id }) => client_id)),
+    ).toEqual(new Set(expectedOAuthClientIds));
 
     const tenantCount = await countRows(
       'tenant',

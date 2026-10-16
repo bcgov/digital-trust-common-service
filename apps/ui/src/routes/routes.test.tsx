@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { createMemoryRouter, RouterProvider } from 'react-router';
@@ -17,6 +17,32 @@ function renderAt(path: string) {
 }
 
 describe('routing', () => {
+  it('opens the connectors page from the primary navigation', async () => {
+    const user = userEvent.setup();
+    const router = renderAt('/settings');
+
+    await user.click(await screen.findByRole('button', { name: /sign in/i }));
+    await screen.findByText('Coming soon.');
+    fireEvent.click(screen.getByRole('link', { name: 'Connectors' }));
+
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe('/connectors');
+      expect(
+        screen.getByRole('heading', { name: 'Connectors', level: 1 }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText('Connect your tenant to external providers'),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole('button', { name: 'Add Connector' }),
+      ).toBeInTheDocument();
+    });
+    expect(screen.getByRole('link', { name: 'Connectors' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+  });
+
   it('redirects unauthenticated visitors to /login', async () => {
     const router = renderAt('/dashboard');
 

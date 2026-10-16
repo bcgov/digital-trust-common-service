@@ -32,6 +32,7 @@ export type { FormatValidationIssue } from './dto/format-validation-issue.dto';
 // Errors (runtime classes)
 export {
   AdapterError,
+  ConnectorSelectionAmbiguousError,
   ConnectorUnavailableError,
   FormatNotSupportedError,
   FormatValidationError,

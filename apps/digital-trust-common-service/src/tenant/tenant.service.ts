@@ -175,26 +175,45 @@ export class TenantService {
     return tenant;
   }
 
-  public async update(id: string, dto: UpdateTenantDto) {
-    const tenant = await this.tenants.findById(id);
+  public async update(id: string, dto: UpdateTenantDto, auth?: AuthContext) {
+    const saved = await this.dataSource.transaction(async (manager) => {
+      const tenant = await this.tenants.findByIdForUpdate(id, manager);
 
-    if (!tenant) {
-      throw new NotFoundException('Tenant not found');
-    }
+      if (!tenant) {
+        throw new NotFoundException('Tenant not found');
+      }
 
-    if (dto.name !== undefined) {
-      tenant.name = dto.name;
-    }
+      if (dto.name !== undefined) {
+        tenant.name = dto.name;
+      }
 
-    if (dto.description !== undefined) {
-      tenant.description = dto.description;
-    }
+      if (dto.description !== undefined) {
+        tenant.description = dto.description;
+      }
 
-    if (dto.config !== undefined) {
-      tenant.config = dto.config;
-    }
+      if (dto.config !== undefined) {
+        const defaultConnector = dto.config.default_connector;
+        if (defaultConnector !== undefined && defaultConnector !== null) {
+          if (typeof defaultConnector !== 'string') {
+            throw new ConflictException(
+              'default_connector must be a connector ID',
+            );
+          }
+          const connector = await this.connectorCredentialService.findById(
+            id,
+            defaultConnector,
+            auth,
+            manager,
+          );
+          if (!connector.active) {
+            throw new ConflictException('default_connector is not active');
+          }
+        }
+        tenant.config = dto.config;
+      }
 
-    const saved = await this.tenants.update(tenant);
+      return this.tenants.update(tenant, manager);
+    });
 
     await this.domainAudit.emit({
       tenantId: saved.id,
@@ -221,62 +240,107 @@ export class TenantService {
     dto: UpdateTenantConfigDto,
     auth?: AuthContext,
   ) {
-    const tenant = await this.tenants.findById(id);
+    const saved = await this.dataSource.transaction(async (manager) => {
+      const tenant = await this.tenants.findByIdForUpdate(id, manager);
 
-    if (!tenant) {
-      throw new NotFoundException('Tenant not found');
-    }
+      if (!tenant) {
+        throw new NotFoundException('Tenant not found');
+      }
 
-    if (dto.defaultConnector !== undefined && dto.defaultConnector !== null) {
-      const credential = await this.connectorCredentialService.findById(
-        tenant.id,
-        dto.defaultConnector,
+      if (dto.defaultConnector !== undefined && dto.defaultConnector !== null) {
+        const credential = await this.connectorCredentialService.findById(
+          tenant.id,
+          dto.defaultConnector,
+          auth,
+          manager,
+        );
+
+        if (credential.tenantId !== tenant.id) {
+          throw new ConflictException(
+            'default_connector does not belong to this tenant',
+          );
+        }
+
+        if (!credential.active) {
+          throw new ConflictException('default_connector is not active');
+        }
+      }
+
+      const config: Record<string, unknown> = { ...tenant.config };
+
+      if (dto.allowedFormats !== undefined) {
+        config.allowed_formats = dto.allowedFormats;
+      }
+
+      if (dto.defaultConnector !== undefined) {
+        config.default_connector = dto.defaultConnector;
+      }
+
+      if (dto.features !== undefined) {
+        config.features = dto.features;
+      }
+
+      tenant.config = config;
+
+      return this.tenants.update(tenant, manager);
+    });
+
+    await this.recordConfigUpdate(saved);
+
+    return saved;
+  }
+
+  public async setDefaultConnectorIfUnset(
+    tenantId: string,
+    connectorId: string,
+    auth: AuthContext,
+  ): Promise<boolean> {
+    const updated = await this.dataSource.transaction(async (manager) => {
+      const tenant = await this.tenants.findByIdForUpdate(tenantId, manager);
+
+      if (!tenant) {
+        throw new NotFoundException('Tenant not found');
+      }
+
+      const connector = await this.connectorCredentialService.findById(
+        tenantId,
+        connectorId,
         auth,
+        manager,
       );
 
-      if (credential.tenantId !== tenant.id) {
-        throw new ConflictException(
-          'default_connector does not belong to this tenant',
-        );
-      }
-
-      if (!credential.active) {
+      if (!connector.active) {
         throw new ConflictException('default_connector is not active');
       }
+
+      return this.tenants.setDefaultConnectorIfUnset(
+        tenantId,
+        connectorId,
+        manager,
+      );
+    });
+
+    if (!updated) {
+      return false;
     }
 
-    const config: Record<string, unknown> = { ...tenant.config };
+    await this.recordConfigUpdate(updated);
+    return true;
+  }
 
-    if (dto.allowedFormats !== undefined) {
-      config.allowed_formats = dto.allowedFormats;
-    }
-
-    if (dto.defaultConnector !== undefined) {
-      config.default_connector = dto.defaultConnector;
-    }
-
-    if (dto.features !== undefined) {
-      config.features = dto.features;
-    }
-
-    tenant.config = config;
-
-    const saved = await this.tenants.update(tenant);
-
+  private async recordConfigUpdate(tenant: Tenant): Promise<void> {
     await this.domainAudit.emit({
-      tenantId: saved.id,
+      tenantId: tenant.id,
       action: AuditAction.UPDATE,
       resourceType: 'tenant',
-      resourceId: saved.id,
+      resourceId: tenant.id,
       metadata: { config_change: true },
     });
 
     await this.publishConfigChange({
-      tenantId: saved.id,
-      config: saved.config,
+      tenantId: tenant.id,
+      config: tenant.config,
     });
-
-    return saved;
   }
 
   public async delete(id: string) {

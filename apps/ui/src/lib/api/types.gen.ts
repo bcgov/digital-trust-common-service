@@ -1851,14 +1851,19 @@ export interface components {
             credentials: {
                 api_key: string;
                 traction_tenant_id?: string;
+                /** @description Shared secret for inbound webhook callbacks */
+                webhook_secret?: string;
             };
         };
         UpdateConnectorRequest: {
             /** Format: uri */
             endpoint_url?: string;
-            /** @description New credentials (rotates existing) */
+            /** @description Credential fields to rotate. Omitted fields retain their current values. Secrets are encrypted at rest and never returned. */
             credentials?: {
                 api_key?: string;
+                traction_tenant_id?: string;
+                /** @description Shared secret for inbound webhook callbacks */
+                webhook_secret?: string;
             };
         };
         CredentialDefinition: {
@@ -3235,7 +3240,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Connector registered */
+            /** @description Connector registered. The first connector for a tenant is set as its default connector. */
             201: {
                 headers: {
                     [name: string]: unknown;
@@ -4249,6 +4254,23 @@ export interface operations {
                      *     }
                      */
                     "application/json": components["schemas"]["Operation"];
+                };
+            };
+            /** @description Connector selection is ambiguous for the tenant */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "error": {
+                     *         "code": "CONNECTOR_SELECTION_AMBIGUOUS",
+                     *         "message": "Multiple active connectors are configured; set default_connector or select a connector explicitly."
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };

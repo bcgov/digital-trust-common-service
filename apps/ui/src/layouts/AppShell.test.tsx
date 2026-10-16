@@ -1,7 +1,8 @@
 import { screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 
-import { createMockAuthClient } from '@/lib/auth/mock-auth';
+import { createMockAuthClient, MOCK_AUTH_TENANTS } from '@/lib/auth/mock-auth';
 import { renderWithAuth } from '@/test/render-with-auth';
 
 import { AppShell } from './AppShell';
@@ -30,6 +31,52 @@ describe('AppShell', () => {
     expect(
       screen.getByRole('button', { name: /mock user/i }),
     ).toBeInTheDocument();
+    expect(
+      screen.getByRole('link', { name: 'Connectors' }),
+    ).toBeInTheDocument();
     expect(screen.getByText('page content')).toBeInTheDocument();
+  });
+
+  it('hides connectors navigation from users without tenants:admin', async () => {
+    const client = createMockAuthClient();
+    await client.login();
+    await client.switchTenant(MOCK_AUTH_TENANTS[1].id);
+    renderWithAuth(
+      [
+        {
+          path: '/',
+          element: <AppShell />,
+          children: [{ index: true, element: <p>page content</p> }],
+        },
+      ],
+      { client },
+    );
+
+    expect(
+      screen.queryByRole('link', { name: 'Connectors' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('navigates through the Connectors link for an authorized user', async () => {
+    const client = createMockAuthClient();
+    await client.login();
+    const { router } = renderWithAuth(
+      [
+        {
+          path: '/',
+          element: <AppShell />,
+          children: [
+            { index: true, element: <p>home page</p> },
+            { path: 'connectors', element: <p>connector route</p> },
+          ],
+        },
+      ],
+      { client },
+    );
+
+    await userEvent.click(screen.getByRole('link', { name: 'Connectors' }));
+
+    expect(await screen.findByText('connector route')).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe('/connectors');
   });
 });

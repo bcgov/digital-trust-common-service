@@ -4,9 +4,9 @@ import {
   IsDefined,
   IsEnum,
   IsNotEmpty,
-  IsOptional,
   IsString,
   IsUrl,
+  ValidateIf,
   ValidateNested,
 } from 'class-validator';
 
@@ -29,7 +29,7 @@ export class ConnectorCredentialsDto {
     example: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
     required: false,
   })
-  @IsOptional()
+  @ValidateIf((_object, value: unknown) => value !== undefined)
   @IsString()
   public tractionTenantId?: string;
 
@@ -40,7 +40,7 @@ export class ConnectorCredentialsDto {
     example: 'whsec_abc123',
     required: false,
   })
-  @IsOptional()
+  @ValidateIf((_object, value: unknown) => value !== undefined)
   @IsString()
   public webhookSecret?: string;
 }

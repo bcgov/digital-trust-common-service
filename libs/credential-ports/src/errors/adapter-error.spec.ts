@@ -1,5 +1,6 @@
 import {
   AdapterError,
+  ConnectorSelectionAmbiguousError,
   ConnectorUnavailableError,
   FormatNotSupportedError,
   FormatValidationError,
@@ -53,6 +54,21 @@ describe('ConnectorUnavailableError', () => {
     const error = new ConnectorUnavailableError();
 
     expect(error.message).toBe('Connector is unavailable');
+  });
+});
+
+describe('ConnectorSelectionAmbiguousError', () => {
+  it('is an AdapterError with a stable code and selection context', () => {
+    const error = new ConnectorSelectionAmbiguousError(
+      'Select a connector explicitly',
+      { tenantId: 'tenant-1', connectorCount: 2 },
+    );
+
+    expect(error).toBeInstanceOf(ConnectorSelectionAmbiguousError);
+    expect(error).toBeInstanceOf(AdapterError);
+    expect(error.code).toBe('CONNECTOR_SELECTION_AMBIGUOUS');
+    expect(error.message).toBe('Select a connector explicitly');
+    expect(error.context).toEqual({ tenantId: 'tenant-1', connectorCount: 2 });
   });
 });
 

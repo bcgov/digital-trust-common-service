@@ -177,6 +177,9 @@ export const handlers = [
       ),
   ),
   // Envelope: mirrors the spec shape, so both list shapes stay exercised.
+  http.get(`${API_BASE_PATH}/tenants/:id/connectors`, () =>
+    HttpResponse.json({ data: [] }),
+  ),
   http.get(`${API_BASE_PATH}/tenants/:id/connections`, ({ params }) =>
     HttpResponse.json({
       data: mockConnections.filter((c) => c.tenant_id === params.id),

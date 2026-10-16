@@ -23,6 +23,7 @@ import {
 } from '@nestjs/common';
 import {
   ApiBody,
+  ApiConflictResponse,
   ApiForbiddenResponse,
   ApiOkResponse,
   ApiNotFoundResponse,
@@ -67,6 +68,10 @@ export class ConnectionController {
   @ApiOkResponse({
     description: 'Invitation created or accepted (synchronous operation)',
     type: OperationResponseDto,
+  })
+  @ApiConflictResponse({
+    description:
+      'Multiple active connectors are configured; set default_connector or select a connector explicitly',
   })
   @ApiBody({
     description:

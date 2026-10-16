@@ -1240,7 +1240,21 @@ own connectors rather than fetched by id, so isolation is structural: another te
 in the candidate list. It must also be `active`. A `default_connector` that is missing, not a
 string, or names a row the tenant does not own is refused, never silently followed. The config
 endpoint validates the same things on write, but that is not enough on its own: `config` is JSONB
-with no foreign key, and a connector can be deactivated or deleted after the default was set.
+with no foreign key, and a connector can be deactivated after the default was set. Deleting the
+tenant's default connector returns HTTP 409; change or clear `default_connector` through the config
+endpoint before deleting it. Deletion and default selection serialize on a tenant-row lock, so a
+concurrent config update cannot select a connector that has been deleted. This also applies to
+automatic default assignment and config replacement through the general tenant update endpoint.
+Default selection also locks the connector row through active-state validation and assignment,
+preventing a concurrent deactivation between those steps. Deactivation after the assignment commits
+remains allowed; connectors are not automatically reactivated with their tenant.
+
+Connector updates run health checks and Traction webhook registration outside database transactions.
+Persistence briefly locks the tenant-scoped connector row and compares its endpoint, connector type,
+active state, encryption key version, and encrypted credentials with the validated snapshot. A changed
+snapshot triggers a fresh merge and remote validation, up to three attempts; continued contention
+returns HTTP 409 without persisting stale credentials. Remote webhook effects cannot be rolled back
+with the database, so a failed write or exhausted retries can still require webhook reconciliation.
 
 Note that `ConnectorCredentialService.findById()` is deliberately **not** used here. It is the
 HTTP-caller entry point and answers "not found" unless given an `AuthContext`, which an internal
