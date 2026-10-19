@@ -126,7 +126,7 @@ export const routes: RouteObject[] = [
                     {
                       path: '/dev/dialogs',
                       lazy: lazyPage(
-                        () => import('@/pages/DialogDemoPage'),
+                        () => import('@/demo/DialogDemoPage'),
                         'DialogDemoPage',
                       ),
                     },

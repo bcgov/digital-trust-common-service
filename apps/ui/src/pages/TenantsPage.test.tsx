@@ -1,36 +1,37 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor, within } from '@testing-library/react';
-import { http, HttpResponse } from 'msw';
-import { createMemoryRouter, RouterProvider } from 'react-router';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 
 import { API_BASE_PATH } from '@/lib/api/constants';
+import { createMockAuthClient } from '@/lib/auth/mock-auth';
 import { mockTenants } from '@/mocks/handlers';
 import { server } from '@/mocks/server';
+import { renderWithAuth } from '@/test/render-with-auth';
 
 import { TenantsPage } from './TenantsPage';
 
-function renderTenantsPage() {
-  const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
+// The mock session is a tenant owner; creating tenants needs platform-admin.
+async function renderTenantsPage({ platformAdmin = false } = {}) {
+  const client = createMockAuthClient();
+  await client.login();
+  if (platformAdmin) {
+    const state = client.getState();
+    const promoted = {
+      ...state,
+      user: state.user && { ...state.user, roles: ['platform-admin'] },
+    };
+    client.getState = () => promoted;
+  }
+  renderWithAuth([{ path: '/tenants', element: <TenantsPage /> }], {
+    client,
+    initialEntries: ['/tenants'],
   });
-  const router = createMemoryRouter(
-    [{ path: '/tenants', element: <TenantsPage /> }],
-    {
-      initialEntries: ['/tenants'],
-    },
-  );
-  render(
-    <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
-    </QueryClientProvider>,
-  );
 }
 
 describe('TenantsPage', () => {
   it('renders tenants from a bare-array response (current API shape)', async () => {
-    renderTenantsPage();
+    await renderTenantsPage();
 
     for (const tenant of mockTenants) {
       expect(await screen.findByText(tenant.name ?? '')).toBeInTheDocument();
@@ -46,13 +47,37 @@ describe('TenantsPage', () => {
       http.get(`${API_BASE_PATH}/tenants`, () => HttpResponse.json([])),
     );
 
-    renderTenantsPage();
+    await renderTenantsPage();
 
     expect(await screen.findByText('No tenants yet')).toBeInTheDocument();
     expect(
       screen.getByText('Tenants you create will be listed here.'),
     ).toBeInTheDocument();
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
+  });
+
+  it('hides tenant creation from users who are not platform admins', async () => {
+    await renderTenantsPage();
+
+    await screen.findByText(mockTenants[0]?.name ?? '');
+    expect(
+      screen.queryByRole('button', { name: 'Create tenant' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('lets the user cancel before filling in the form', async () => {
+    const user = userEvent.setup();
+    await renderTenantsPage({ platformAdmin: true });
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Create tenant' }),
+    );
+    const dialog = await screen.findByRole('dialog');
+    const cancel = within(dialog).getByRole('button', { name: 'Cancel' });
+    expect(cancel).toBeEnabled();
+    await user.click(cancel);
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
   });
 
   it('creates a tenant with a derived read-only slug', async () => {
@@ -64,7 +89,7 @@ describe('TenantsPage', () => {
       }),
     );
     const user = userEvent.setup();
-    renderTenantsPage();
+    await renderTenantsPage({ platformAdmin: true });
 
     await user.click(
       await screen.findByRole('button', { name: 'Create tenant' }),
@@ -103,7 +128,7 @@ describe('TenantsPage', () => {
       }),
     );
     const user = userEvent.setup();
-    renderTenantsPage();
+    await renderTenantsPage({ platformAdmin: true });
 
     await user.click(
       await screen.findByRole('button', { name: 'Create tenant' }),

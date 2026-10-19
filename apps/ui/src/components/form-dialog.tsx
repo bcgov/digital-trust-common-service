@@ -118,18 +118,22 @@ export function FormDialog({
 export function FormActions({
   submitLabel,
   isDisabled,
+  isPending,
   onClose,
 }: {
   submitLabel: string;
-  isDisabled: boolean;
+  // Validation or unchanged-value checks; these only hold back Submit.
+  isDisabled?: boolean;
+  // A request is in flight; this holds back Cancel as well.
+  isPending: boolean;
   onClose: () => void;
 }) {
   return (
     <>
-      <Button variant="secondary" isDisabled={isDisabled} onPress={onClose}>
+      <Button variant="secondary" isDisabled={isPending} onPress={onClose}>
         Cancel
       </Button>
-      <Button type="submit" isDisabled={isDisabled}>
+      <Button type="submit" isDisabled={isPending || isDisabled}>
         {submitLabel}
       </Button>
     </>

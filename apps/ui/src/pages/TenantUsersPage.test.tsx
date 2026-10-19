@@ -296,6 +296,20 @@ describe('TenantUsersPage', () => {
     );
   });
 
+  it('lets the user cancel the change role dialog before picking a role', async () => {
+    const user = userEvent.setup();
+    renderPage(await signedIn());
+    const { members } = await tables();
+    await within(members).findByText('Ada Admin');
+
+    await openAction(user, members, 'ada@example.com', /change role/i);
+    const dialog = await screen.findByRole('dialog', { name: 'Change role' });
+    expect(within(dialog).getByRole('button', { name: 'Save' })).toBeDisabled();
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  });
+
   it('removes a member only after confirmation', async () => {
     const user = userEvent.setup();
     let deleted = 0;

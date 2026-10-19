@@ -96,7 +96,7 @@ function DemoDialog({ demo, onClose }: { demo: DemoKey; onClose: () => void }) {
           actions={
             <FormActions
               submitLabel="Create tenant"
-              isDisabled={demo === 'create-loading'}
+              isPending={demo === 'create-loading'}
               onClose={onClose}
             />
           }
@@ -117,7 +117,7 @@ function DemoDialog({ demo, onClose }: { demo: DemoKey; onClose: () => void }) {
           actions={
             <FormActions
               submitLabel="Add"
-              isDisabled={demo === 'add-user-loading'}
+              isPending={demo === 'add-user-loading'}
               onClose={onClose}
             />
           }

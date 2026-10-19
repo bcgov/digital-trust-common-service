@@ -91,7 +91,7 @@ export function InviteTenantUserDialog({ tenantId, onClose }: DialogProps) {
       actions={
         <FormActions
           submitLabel="Invite"
-          isDisabled={invite.isPending}
+          isPending={invite.isPending}
           onClose={onClose}
         />
       }
@@ -136,7 +136,8 @@ export function ChangeTenantUserRoleDialog({
       actions={
         <FormActions
           submitLabel="Save"
-          isDisabled={update.isPending || role === current}
+          isPending={update.isPending}
+          isDisabled={role === current}
           onClose={onClose}
         />
       }

@@ -38,7 +38,8 @@ export function CreateTenantDialog({ onClose }: { onClose: () => void }) {
       actions={
         <FormActions
           submitLabel="Create tenant"
-          isDisabled={create.isPending || !slug}
+          isPending={create.isPending}
+          isDisabled={!slug}
           onClose={onClose}
         />
       }

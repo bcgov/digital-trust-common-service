@@ -1,6 +1,19 @@
 import { describe, expect, it } from 'vitest';
 
-import { hasScope, TENANT_ADMIN_SCOPE, USERS_MANAGE_SCOPE } from './scopes';
+import {
+  hasScope,
+  isPlatformAdmin,
+  TENANT_ADMIN_SCOPE,
+  USERS_MANAGE_SCOPE,
+} from './scopes';
+
+describe('isPlatformAdmin', () => {
+  it('is true only for the platform-admin role', () => {
+    expect(isPlatformAdmin({ roles: ['platform-admin'] })).toBe(true);
+    expect(isPlatformAdmin({ roles: ['owner', 'admin'] })).toBe(false);
+    expect(isPlatformAdmin(null)).toBe(false);
+  });
+});
 
 describe('hasScope', () => {
   it('allows platform admins without explicit scopes', () => {
