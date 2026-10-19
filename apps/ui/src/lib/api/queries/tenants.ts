@@ -1,6 +1,11 @@
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { getTenant, listTenants } from '../resources/tenants';
+import {
+  createTenant,
+  getTenant,
+  listTenants,
+  type CreateTenantRequest,
+} from '../resources/tenants';
 import type { CursorParams } from '../pagination';
 
 export const tenantKeys = {
@@ -27,5 +32,15 @@ export function useTenant(
       return getTenant(id);
     },
     enabled: Boolean(id) && options.enabled !== false,
+  });
+}
+
+export function useCreateTenant() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: CreateTenantRequest) => createTenant(body),
+    // Stays pending until the list refetches so the dialog can close on it.
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: tenantKeys.all }),
   });
 }

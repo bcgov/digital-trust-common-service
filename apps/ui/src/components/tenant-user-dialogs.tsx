@@ -1,16 +1,17 @@
 import {
   AlertDialog,
   Button,
-  ButtonGroup,
-  Dialog,
-  InlineAlert,
   Modal,
   Select,
   TextField,
 } from '@bcgov/design-system-react-components';
-import { useState, type FormEvent, type ReactNode } from 'react';
+import { useState } from 'react';
 
-import { ApiError } from '@/lib/api/errors';
+import {
+  FormActions,
+  FormDialog,
+  MutationError,
+} from '@/components/form-dialog';
 import { useTenantRoles } from '@/lib/api/queries/tenant-roles';
 import {
   useInviteTenantUser,
@@ -29,29 +30,6 @@ import { effectiveRoleOptions } from '@/lib/tenant/roles';
 interface DialogProps {
   tenantId: string;
   onClose: () => void;
-}
-
-function describeError(error: unknown, conflict?: string): string {
-  if (!(error instanceof ApiError)) return 'Something went wrong. Try again.';
-  if (error.status === 409 && conflict) return conflict;
-  return error.message;
-}
-
-function MutationError({
-  error,
-  conflict,
-}: {
-  error: unknown;
-  conflict?: string;
-}) {
-  if (!error) return null;
-  return (
-    <InlineAlert
-      variant="danger"
-      role="alert"
-      description={describeError(error, conflict)}
-    />
-  );
 }
 
 function RoleSelect({
@@ -91,70 +69,6 @@ function RoleSelect({
   );
 }
 
-// The same chrome AlertDialog ships (title row, body, button row) built on the
-// empty Dialog, so a form dialog looks like the confirmation dialogs. The
-// title row leaves room on the right for the Dialog's own close button.
-function FormDialog({
-  label,
-  onClose,
-  onSubmit,
-  actions,
-  children,
-}: {
-  label: string;
-  onClose: () => void;
-  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
-  actions: ReactNode;
-  children: ReactNode;
-}) {
-  return (
-    <Modal
-      isOpen
-      isDismissable
-      onOpenChange={(open) => {
-        if (!open) onClose();
-      }}
-    >
-      <Dialog aria-label={label}>
-        <form onSubmit={onSubmit}>
-          <div className="border-b px-6 py-4 pr-14">
-            <h2 className="text-xl font-bold">{label}</h2>
-          </div>
-          <div className="flex flex-col gap-4 border-b px-6 py-4">
-            {children}
-          </div>
-          <div className="px-6 py-4">
-            <ButtonGroup alignment="end" orientation="horizontal">
-              {actions}
-            </ButtonGroup>
-          </div>
-        </form>
-      </Dialog>
-    </Modal>
-  );
-}
-
-function FormActions({
-  submitLabel,
-  isDisabled,
-  onClose,
-}: {
-  submitLabel: string;
-  isDisabled: boolean;
-  onClose: () => void;
-}) {
-  return (
-    <>
-      <Button variant="secondary" onPress={onClose}>
-        Cancel
-      </Button>
-      <Button type="submit" isDisabled={isDisabled}>
-        {submitLabel}
-      </Button>
-    </>
-  );
-}
-
 export function InviteTenantUserDialog({ tenantId, onClose }: DialogProps) {
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<TenantRole>('member');
@@ -163,6 +77,12 @@ export function InviteTenantUserDialog({ tenantId, onClose }: DialogProps) {
   return (
     <FormDialog
       label="Invite user"
+      intro="Enter an email address and role to invite a user to this tenant."
+      isLoading={invite.isPending}
+      loadingMessage="Inviting user. Please wait..."
+      error={invite.error}
+      errorTitle="Could not invite user"
+      conflict="Someone with this email already belongs to this tenant or has a pending invitation."
       onClose={onClose}
       onSubmit={(event) => {
         event.preventDefault();
@@ -188,10 +108,6 @@ export function InviteTenantUserDialog({ tenantId, onClose }: DialogProps) {
         No invitation email is sent yet. Ask them to sign in with this email
         address to accept.
       </p>
-      <MutationError
-        error={invite.error}
-        conflict="Someone with this email already belongs to this tenant or has a pending invitation."
-      />
     </FormDialog>
   );
 }
@@ -208,6 +124,9 @@ export function ChangeTenantUserRoleDialog({
   return (
     <FormDialog
       label="Change role"
+      isLoading={update.isPending}
+      loadingMessage="Saving role. Please wait..."
+      error={update.error}
       onClose={onClose}
       onSubmit={(event) => {
         event.preventDefault();
@@ -226,7 +145,6 @@ export function ChangeTenantUserRoleDialog({
         Change the role of {user.email}.
       </p>
       <RoleSelect tenantId={tenantId} value={role} onChange={setRole} />
-      <MutationError error={update.error} />
     </FormDialog>
   );
 }
