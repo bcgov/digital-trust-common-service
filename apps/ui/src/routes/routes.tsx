@@ -121,6 +121,17 @@ export const routes: RouteObject[] = [
                   'SettingsPage',
                 ),
               },
+              ...(import.meta.env.DEV
+                ? [
+                    {
+                      path: '/dev/dialogs',
+                      lazy: lazyPage(
+                        () => import('@/pages/DialogDemoPage'),
+                        'DialogDemoPage',
+                      ),
+                    },
+                  ]
+                : []),
             ],
           },
         ],
