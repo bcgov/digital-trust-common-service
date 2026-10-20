@@ -69,6 +69,69 @@ describe('ConnectionRepository', () => {
     });
   });
 
+  describe('reconcile', () => {
+    const remote = { id: 'external-1', state: ConnectionState.COMPLETED };
+    let row: Partial<Connection> | null;
+    let findOne: jest.Mock;
+    let save: jest.Mock;
+
+    beforeEach(() => {
+      row = {
+        id: 'c1',
+        tenantId: 't1',
+        connectorId: null,
+        state: ConnectionState.INVITED,
+        protocol: ConnectionProtocol.DIDCOMM_V2,
+      };
+      findOne = jest.fn().mockImplementation(() => Promise.resolve(row));
+      save = jest.fn().mockImplementation((value) => Promise.resolve(value));
+      Object.assign(mockRepo.manager!, {
+        transaction: (callback: (manager: unknown) => Promise<unknown>) =>
+          callback({ findOne, save }),
+      });
+    });
+
+    const reconcile = () =>
+      repository.reconcile('t1', 'c1', 'wallet-1', remote, [
+        ConnectionState.INVITED,
+        ConnectionState.ACTIVE,
+      ]);
+
+    it('locks a tenant-scoped row before binding and correcting verified protocol', async () => {
+      const result = await reconcile();
+      expect(findOne).toHaveBeenCalledWith(Connection, {
+        where: { id: 'c1', tenantId: 't1' },
+        lock: { mode: 'pessimistic_write' },
+      });
+      expect(result).toMatchObject({
+        connectorId: 'wallet-1',
+        externalConnectionId: remote.id,
+        protocol: ConnectionProtocol.DIDCOMM_V1,
+        state: ConnectionState.COMPLETED,
+      });
+    });
+
+    it('preserves abandoned local state after a late successful handshake', async () => {
+      row!.state = ConnectionState.ABANDONED;
+      expect((await reconcile())?.state).toBe(ConnectionState.ABANDONED);
+    });
+
+    it.each([
+      { connectorId: 'other-wallet' },
+      { externalConnectionId: 'other-holder' },
+    ])('refuses concurrent binding changes %p', async (change) => {
+      Object.assign(row!, change);
+      expect(await reconcile()).toBeNull();
+      expect(save).not.toHaveBeenCalled();
+    });
+
+    it('does not write a missing or foreign tenant row', async () => {
+      row = null;
+      expect(await reconcile()).toBeNull();
+      expect(save).not.toHaveBeenCalled();
+    });
+  });
+
   describe('findPageForTenant', () => {
     const makeConnection = (id: string, createdAt: string): Connection =>
       ({

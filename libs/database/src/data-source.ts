@@ -35,6 +35,7 @@ import { AllowNullableConnectionExternalId1790703557000 } from './migrations/000
 import { AddTenantUserPlatformOperator1790900000000 } from './migrations/000032_add-tenant-user-platform-operator';
 import { ExtendCredentialDefinitionRegistration1792018018010 } from './migrations/000033_extend-credential-definition-registration';
 import { AddCredentialDefinitionLifecycle1792713600000 } from './migrations/000034_add-credential-definition-lifecycle';
+import { BindConnectionsToConnectors1792502783893 } from './migrations/000035_bind-connections-to-connectors';
 import { CreateAnoncredsPublicationIntent1793375200834 } from './migrations/000035_create-anoncreds-publication-intent';
 import { RemoveIssuanceProfileDerivedFields1793377253689 } from './migrations/000036_remove-issuance-profile-derived-fields';
 import { ConsolidateCredentialDefinitionConnector1793383965371 } from './migrations/000037_consolidate-credential-definition-connector';
@@ -94,6 +95,7 @@ export const AppDataSource = new DataSource({
     ConsolidateCredentialDefinitionConnector1793383965371,
     AddConnectorAgentLogIdHash1793385084139,
     AddAuditReadAction1793733978162,
+    BindConnectionsToConnectors1792502783893,
   ],
   ssl: buildSslConfig(
     process.env.DB_SSL,
