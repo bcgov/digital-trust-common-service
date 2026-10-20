@@ -1517,16 +1517,11 @@ paths:
       operationId: offerCredential
       summary: Offer/issue a credential
       description: |
-        Issue a credential via a published issuance profile.
-
-        **Delivery mode** is determined by the presence of `connection_id`:
-        - **Present** → DIDComm delivery (push offer to connected agent). Returns 202.
-        - **Absent** → OID4VCI delivery (generate credential_offer_uri). Returns 200.
-
-        MVP: Only DIDComm delivery is supported (Traction adapter). Omitting `connection_id` returns 400.
+        Offer unsigned subject claims via a ready definition or published profile.
+        Format is inferred from the stored source, not parsed from an identifier.
+        Currently only explicit didcomm-v1 delivery is supported. Its connection_id
+        is a tenant-owned local connection UUID resolved in the definition's wallet.
       tags: [Credentials]
-      parameters:
-        - $ref: "#/components/parameters/IdempotencyKey"
       requestBody:
         required: true
         content:
@@ -1538,43 +1533,34 @@ paths:
                 summary: Issue via profile (DIDComm)
                 value:
                   profile_id: "drivers-license/1.0"
-                  connection_id: "c3d4e5f6-7890-1234-abcd-ef0123456789"
-                  attributes:
-                    given_name: Alice
-                    family_name: Smith
-                    birth_date: "1995-03-15"
-              profile_oid4vci:
-                summary: Issue via profile (OID4VCI, post-MVP)
-                value:
-                  profile_id: "drivers-license/1.0"
-                  attributes:
-                    given_name: Alice
-                    family_name: Smith
-                    birth_date: "1995-03-15"
-              legacy:
-                summary: Legacy mode (direct cred_def)
+                  delivery:
+                    protocol: didcomm-v1
+                    connection_id: "c3d4e5f6-7890-1234-abcd-ef0123456789"
+                  options:
+                    auto_issue: true
+                  credential:
+                    credentialSubject:
+                      given_name: Alice
+                      family_name: Smith
+                      birth_date: "1995-03-15"
+              direct_definition:
+                summary: Direct definition (format inferred)
                 value:
                   credential_definition_id: "a1b2c3d4-5678-9012-abcd-ef0123456789"
-                  format: anoncreds
-                  connection_id: "c3d4e5f6-7890-1234-abcd-ef0123456789"
-                  attributes:
-                    given_name: Alice
-                    birth_date: "1995-03-15"
+                  delivery:
+                    protocol: didcomm-v1
+                    connection_id: "c3d4e5f6-7890-1234-abcd-ef0123456789"
+                  credential:
+                    credentialSubject:
+                      given_name: Alice
+                      birth_date: "1995-03-15"
       responses:
         "200":
-          description: Credential offer URI generated (OID4VCI, connectionless)
+          description: Offer operation already completed or failed synchronously
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Operation"
-              example:
-                id: "op-uuid"
-                type: credential.offer
-                state: completed
-                created_at: "2025-01-15T10:30:00.000Z"
-                updated_at: "2025-01-15T10:30:00.000Z"
-                result:
-                  credential_offer_uri: "openid-credential-offer://..."
         "202":
           description: Credential offer sent (DIDComm, async)
           content:
@@ -1592,6 +1578,36 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "422":
           $ref: "#/components/responses/ValidationError"
+
+  /api/v1/tenants/{tenantId}/credentials/offer/{operationId}/reconcile:
+    parameters:
+      - $ref: "#/components/parameters/TenantId"
+      - name: operationId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: reconcileCredentialOffer
+      summary: Reconcile an existing offer without resending
+      description: |
+        Requires credentials:offer. Reads the original exchange from its pinned
+        connector, verifies holder connection correlation, and applies the same
+        monotonic state transitions as authenticated webhooks. Missing or
+        inconsistent exchange correlation returns 409; it never retries submission.
+      tags: [Credentials]
+      responses:
+        "200":
+          description: Current operation (possibly still processing)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Operation"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
 
   /api/v1/tenants/{tenantId}/credentials/offer-batch:
     parameters:
@@ -4086,9 +4102,19 @@ components:
     # ─── Credential Operations ───────────────────────────────────────
     OfferCredentialRequest:
       type: object
+      additionalProperties: false
+      required: [credential, delivery]
+      oneOf:
+        - required: [profile_id]
+          not:
+            required: [credential_definition_id]
+        - required: [credential_definition_id]
+          not:
+            required: [profile_id]
       description: |
-        Either `profile_id` or `credential_definition_id` + `format` must be provided (not both).
-        `connection_id` determines delivery protocol (DIDComm if present, OID4VCI if absent).
+        Exactly one source is required. Format is inferred from stored metadata.
+        credential contains unsigned proposed claims, not a protocol offer or
+        a signed W3C credential. AnonCreds maps flat scalars to preview attributes.
       properties:
         profile_id:
           type: string
@@ -4096,17 +4122,41 @@ components:
         credential_definition_id:
           type: string
           format: uuid
-          description: Legacy mode — direct cred def reference (bypasses profile)
-        format:
-          $ref: "#/components/schemas/CredentialFormat"
-        connection_id:
-          type: string
-          format: uuid
-          description: Target connection (DIDComm). Omit for OID4VCI (post-MVP).
-        attributes:
+          description: Local definition reference (bypasses profile)
+        credential:
           type: object
-          additionalProperties: true
-          description: Credential claim values
+          additionalProperties: false
+          required: [credentialSubject]
+          properties:
+            credentialSubject:
+              type: object
+              additionalProperties: true
+              description: Flat scalar claims for AnonCreds; nested values are rejected
+        delivery:
+          type: object
+          additionalProperties: false
+          required: [protocol, connection_id]
+          properties:
+            protocol:
+              type: string
+              enum: [didcomm-v1]
+            connection_id:
+              type: string
+              format: uuid
+              description: Local tenant-owned holder connection in the definition's wallet
+        options:
+          type: object
+          additionalProperties: false
+          properties:
+            auto_issue:
+              type: boolean
+              default: true
+              description: |
+                Issue automatically after the holder requests the credential.
+                False waits for a future explicit issue action, not yet exposed.
+                This does not control holder acceptance or mediator delivery.
+                Exchange records are always retained; auto_remove and
+                auto_remove_on_failure cannot be overridden.
 
     OfferCredentialBatchRequest:
       type: object
@@ -4166,6 +4216,12 @@ components:
           format: uuid
         external_connection_id:
           type: string
+          nullable: true
+        connector_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: Pinned connector; null for unverified legacy connections
         their_label:
           type: string
           nullable: true

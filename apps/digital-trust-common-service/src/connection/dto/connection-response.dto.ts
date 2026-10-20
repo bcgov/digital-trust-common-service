@@ -70,6 +70,15 @@ export class ConnectionResponseDto {
   })
   public connectorType!: ConnectorType;
 
+  @Expose({ name: 'connector_id' })
+  @ApiProperty({
+    name: 'connector_id',
+    description: 'Pinned connector; null until a legacy binding is verified',
+    format: 'uuid',
+    nullable: true,
+  })
+  public connectorId!: string | null;
+
   @ApiProperty({
     description: 'The protocol used for this connection',
     enum: ConnectionProtocol,
@@ -108,6 +117,7 @@ export class ConnectionResponseDto {
     dto.theirDid = connection.theirDid;
     dto.state = connection.state;
     dto.connectorType = connection.connectorType;
+    dto.connectorId = connection.connectorId ?? null;
     dto.protocol = connection.protocol;
     dto.metadata = connection.metadata;
     dto.createdAt = connection.createdAt;

@@ -5,7 +5,11 @@ import {
   TimeoutError,
 } from '@app/credential-ports';
 import { JOB_QUEUES } from '@app/pg-boss';
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Test, TestingModule } from '@nestjs/testing';
 import { DataSource, EntityManager } from 'typeorm';
@@ -13,6 +17,7 @@ import { DataSource, EntityManager } from 'typeorm';
 import { AdapterRegistry } from '../adapter-registry/adapter-registry.service';
 import { AuditAction } from '../audit-log/audit-log.entity';
 import { DomainAuditService } from '../audit-log/domain-audit.service';
+import { ConnectionService } from '../connection/connection.service';
 import { CredentialDefinition } from '../credential-definition/credential-definition.entity';
 import {
   CredentialDefinitionFormat,
@@ -30,6 +35,7 @@ import { OPERATION_TYPE } from '../operation/operation-type.constants';
 import { Operation, OperationState } from '../operation/operation.entity';
 import { OperationRepository } from '../operation/operation.repository';
 import { OperationService } from '../operation/operation.service';
+import { ProtocolStateChangeService } from '../protocol-state-change/protocol-state-change.service';
 import {
   credentialStatesBelow,
   operationStatesBelow,
@@ -60,6 +66,10 @@ describe('CredentialOfferService', () => {
   let mockSendInTransaction: jest.Mock;
   let mockEventEmit: jest.Mock;
   let mockTransaction: jest.Mock;
+  let mockResolveConnection: jest.Mock;
+  let mockGetExchange: jest.Mock;
+  let mockProtocolProcess: jest.Mock;
+  let mockCredentialFindByExternalId: jest.Mock;
   const mockManager = {} as EntityManager;
 
   const tenantId = '123e4567-e89b-12d3-a456-426614174001';
@@ -78,8 +88,8 @@ describe('CredentialOfferService', () => {
   ): OfferCredentialRequestDto =>
     Object.assign(new OfferCredentialRequestDto(), {
       profileId,
-      connectionId,
-      attributes: { given_name: 'Alice' },
+      delivery: { protocol: 'didcomm-v1', connectionId },
+      credential: { credentialSubject: { given_name: 'Alice' } },
       ...overrides,
     });
 
@@ -161,6 +171,13 @@ describe('CredentialOfferService', () => {
 
   beforeEach(async () => {
     mockCredentialCreate = jest.fn();
+    mockResolveConnection = jest.fn().mockResolvedValue({
+      id: connectionId,
+      externalConnectionId: 'backend-connection',
+    });
+    mockGetExchange = jest.fn();
+    mockProtocolProcess = jest.fn().mockResolvedValue(undefined);
+    mockCredentialFindByExternalId = jest.fn();
     mockUpdateStateIfForward = jest.fn().mockResolvedValue(true);
     mockSetExternalId = jest.fn().mockResolvedValue(undefined);
     mockCredentialDefinitionFindById = jest.fn();
@@ -191,11 +208,20 @@ describe('CredentialOfferService', () => {
       providers: [
         CredentialOfferService,
         {
+          provide: ConnectionService,
+          useValue: { resolveForIssuance: mockResolveConnection },
+        },
+        {
+          provide: ProtocolStateChangeService,
+          useValue: { process: mockProtocolProcess },
+        },
+        {
           provide: CredentialRepository,
           useValue: {
             create: mockCredentialCreate,
             updateStateIfForward: mockUpdateStateIfForward,
             setExternalId: mockSetExternalId,
+            findByExternalId: mockCredentialFindByExternalId,
           },
         },
         {
@@ -211,7 +237,10 @@ describe('CredentialOfferService', () => {
         },
         {
           provide: OperationRepository,
-          useValue: { findById: mockOperationFindById },
+          useValue: {
+            findById: mockOperationFindById,
+            findByIdForTenant: mockOperationFindById,
+          },
         },
         {
           provide: OperationService,
@@ -259,7 +288,10 @@ describe('CredentialOfferService', () => {
     );
     mockCredentialCreate.mockResolvedValue(buildCredential());
     mockResolveAdapter.mockResolvedValue({
-      adapter: { offerCredential: mockOfferCredential },
+      adapter: {
+        offerCredential: mockOfferCredential,
+        getExchange: mockGetExchange,
+      },
       connector: { id: connectorId },
       context: { connectorId, tenantId },
       format: PortCredentialFormat.AnonCreds,
@@ -269,9 +301,152 @@ describe('CredentialOfferService', () => {
   describe('MVP DIDComm-only guard', () => {
     it('throws 400 when connection_id is missing', async () => {
       await expect(
-        service.offer(tenantId, buildDto({ connectionId: undefined })),
+        service.offer(tenantId, buildDto({ delivery: undefined })),
       ).rejects.toBeInstanceOf(BadRequestException);
       expect(mockCreateOperation).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('normalized subject and connection validation', () => {
+    it.each([
+      { options: undefined, expected: true },
+      { options: {}, expected: true },
+      { options: { autoIssue: true }, expected: true },
+      { options: { autoIssue: false }, expected: false },
+    ])('forwards auto issuance options %p', async ({ options, expected }) => {
+      await service.offer(tenantId, buildDto({ options }));
+      expect(mockOfferCredential).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ autoIssue: expected }),
+      );
+      expect(mockCreateOperation).toHaveBeenCalledWith(
+        expect.objectContaining({
+          request: expect.objectContaining({
+            body: expect.objectContaining(
+              options === undefined
+                ? {}
+                : { options: { auto_issue: expected } },
+            ),
+          }),
+        }),
+        expect.anything(),
+      );
+    });
+
+    it.each([null, {}, [], ['value']])(
+      'rejects non-scalar AnonCreds claim %p',
+      async (value) => {
+        await expect(
+          service.offer(
+            tenantId,
+            buildDto({
+              credential: { credentialSubject: { given_name: value } },
+            }),
+          ),
+        ).rejects.toBeInstanceOf(BadRequestException);
+        expect(mockCreateOperation).not.toHaveBeenCalled();
+        expect(mockOfferCredential).not.toHaveBeenCalled();
+      },
+    );
+
+    it('does not create records or submit an offer when connection resolution fails', async () => {
+      mockResolveConnection.mockRejectedValue(new NotFoundException());
+      await expect(service.offer(tenantId, buildDto())).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+      expect(mockCreateOperation).not.toHaveBeenCalled();
+      expect(mockOfferCredential).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('reconcile', () => {
+    beforeEach(() => {
+      mockOperationFindById.mockResolvedValue(buildOperation({ externalId }));
+      mockCredentialFindByExternalId.mockResolvedValue(
+        buildCredential({ externalId }),
+      );
+      mockGetExchange.mockResolvedValue({
+        id: externalId,
+        externalId,
+        connectionId: 'backend-connection',
+        state: CredentialExchangeState.Done,
+      });
+    });
+
+    it('reads the original wallet/exchange and reuses guarded state synchronization without resending', async () => {
+      await service.reconcile(tenantId, operationId);
+      expect(mockOperationFindById).toHaveBeenCalledWith(operationId, tenantId);
+      expect(mockCredentialFindByExternalId).toHaveBeenCalledWith(
+        tenantId,
+        externalId,
+      );
+      expect(mockResolveAdapter).toHaveBeenCalledWith(
+        tenantId,
+        PortCredentialFormat.AnonCreds,
+        { connectorId },
+      );
+      expect(mockGetExchange).toHaveBeenCalledWith(
+        expect.anything(),
+        externalId,
+      );
+      expect(mockProtocolProcess).toHaveBeenCalledWith({
+        tenantId,
+        topic: 'issue_credential',
+        externalId,
+        protocolState: CredentialExchangeState.Done,
+        payload: {
+          exchange_id: externalId,
+          state: CredentialExchangeState.Done,
+        },
+      });
+      expect(mockOfferCredential).not.toHaveBeenCalled();
+    });
+
+    it('hides another tenant operation', async () => {
+      mockOperationFindById.mockResolvedValue(null);
+      await expect(
+        service.reconcile(tenantId, operationId),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(mockGetExchange).not.toHaveBeenCalled();
+    });
+
+    it('refuses unknown submission outcomes instead of resending', async () => {
+      mockOperationFindById.mockResolvedValue(
+        buildOperation({ externalId: null }),
+      );
+      await expect(
+        service.reconcile(tenantId, operationId),
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(mockOfferCredential).not.toHaveBeenCalled();
+    });
+
+    it('refuses an exchange for another holder', async () => {
+      mockGetExchange.mockResolvedValue({
+        id: externalId,
+        externalId,
+        connectionId: 'different-holder',
+        state: CredentialExchangeState.Done,
+      });
+      await expect(
+        service.reconcile(tenantId, operationId),
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(mockProtocolProcess).not.toHaveBeenCalled();
+    });
+
+    it('leaves an in-progress exchange processing', async () => {
+      mockGetExchange.mockResolvedValue({
+        id: externalId,
+        externalId,
+        connectionId: 'backend-connection',
+        state: CredentialExchangeState.OfferSent,
+      });
+      await service.reconcile(tenantId, operationId);
+      expect(mockProtocolProcess).toHaveBeenCalledWith(
+        expect.objectContaining({
+          protocolState: CredentialExchangeState.OfferSent,
+        }),
+      );
+      expect(mockOfferCredential).not.toHaveBeenCalled();
     });
   });
 
@@ -289,7 +464,6 @@ describe('CredentialOfferService', () => {
           tenantId,
           buildDto({
             credentialDefinitionId,
-            format: CredentialDefinitionFormat.ANONCREDS,
           }),
         ),
       ).rejects.toBeInstanceOf(BadRequestException);
@@ -319,6 +493,29 @@ describe('CredentialOfferService', () => {
   });
 
   describe('profile mode', () => {
+    it.each(['unverified', 'pending', 'failed'] as const)(
+      'rejects a %s definition without creating an operation',
+      async (registrationState) => {
+        mockCredentialDefinitionFindById.mockResolvedValue({
+          ...buildCredentialDefinition(),
+          registrationState,
+        });
+        await expect(service.offer(tenantId, buildDto())).rejects.toThrow(
+          BadRequestException,
+        );
+        expect(mockCreateOperation).not.toHaveBeenCalled();
+      },
+    );
+
+    it('rejects a profile whose connector does not own the definition', async () => {
+      mockProfileFindById.mockResolvedValue(
+        buildProfile({ connectorId: 'other-wallet' }),
+      );
+      await expect(service.offer(tenantId, buildDto())).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(mockCreateOperation).not.toHaveBeenCalled();
+    });
     it('throws 400 when the profile is not found', async () => {
       mockProfileFindById.mockResolvedValue(null);
 
@@ -374,7 +571,9 @@ describe('CredentialOfferService', () => {
 
       await service.offer(
         tenantId,
-        buildDto({ attributes: { given_name: 'Alice' } }),
+        buildDto({
+          credential: { credentialSubject: { given_name: 'Alice' } },
+        }),
       );
 
       expect(mockValidateAttributes).toHaveBeenCalledWith(
@@ -392,18 +591,18 @@ describe('CredentialOfferService', () => {
       buildDto({
         profileId: undefined,
         credentialDefinitionId,
-        format: CredentialDefinitionFormat.ANONCREDS,
       });
 
-    it('throws 400 when format is missing', async () => {
-      await expect(
-        service.offer(
-          tenantId,
-          buildDto({ profileId: undefined, credentialDefinitionId }),
-        ),
-      ).rejects.toBeInstanceOf(BadRequestException);
-      expect(mockCredentialDefinitionFindById).not.toHaveBeenCalled();
-      expect(mockCreateOperation).not.toHaveBeenCalled();
+    it('infers format from the stored definition', async () => {
+      await service.offer(tenantId, legacyDto());
+      expect(mockOfferCredential).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          format: PortCredentialFormat.AnonCreds,
+          connectionId: 'backend-connection',
+          credentialDefinitionId: externalCredentialDefinitionId,
+        }),
+      );
     });
 
     it('throws 404 when the credential definition is not found', async () => {
@@ -422,19 +621,6 @@ describe('CredentialOfferService', () => {
       await expect(service.offer(tenantId, legacyDto())).rejects.toBeInstanceOf(
         NotFoundException,
       );
-    });
-
-    it('throws 400 when the given format does not match the credential definition', async () => {
-      await expect(
-        service.offer(
-          tenantId,
-          buildDto({
-            profileId: undefined,
-            credentialDefinitionId,
-            format: CredentialDefinitionFormat.MDL,
-          }),
-        ),
-      ).rejects.toBeInstanceOf(BadRequestException);
     });
 
     it('resolves the credential definition directly with no profile defaults', async () => {

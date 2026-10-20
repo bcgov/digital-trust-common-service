@@ -8,6 +8,7 @@ import {
 import {
   Body,
   Controller,
+  HttpCode,
   HttpStatus,
   Param,
   ParseUUIDPipe,
@@ -20,6 +21,8 @@ import {
   ApiBadRequestResponse,
   ApiBody,
   ApiForbiddenResponse,
+  ApiConflictResponse,
+  ApiNotFoundResponse,
   ApiOkResponse,
   ApiParam,
   ApiTags,
@@ -37,10 +40,7 @@ import { TenantStatusGuard } from '../tenant/tenant-status.guard';
 import { CredentialOfferService } from './credential-offer.service';
 import { OfferCredentialRequestDto } from './dto/offer-credential-request.dto';
 
-/**
- * Issuer-side credential offer submission. MVP only supports DIDComm
- * delivery (`connection_id` required) — see `docs/openapi.yaml`.
- */
+/** Issuer-side offers with explicit delivery and inferred credential format. */
 @SkipAutoAudit()
 @ApiTags('Credentials')
 @ApiJwtAuth()
@@ -64,7 +64,23 @@ export class CredentialOfferController {
 
   @Post('offer')
   @ApiParam({ name: 'tenantId', format: 'uuid' })
-  @ApiBody({ type: OfferCredentialRequestDto })
+  @ApiBody({
+    type: OfferCredentialRequestDto,
+    examples: {
+      anoncreds: {
+        summary: 'Offer unsigned subject claims over DIDComm v1',
+        value: {
+          credential_definition_id: '123e4567-e89b-12d3-a456-426614174001',
+          credential: { credentialSubject: { given_name: 'Alice' } },
+          delivery: {
+            protocol: 'didcomm-v1',
+            connection_id: '123e4567-e89b-12d3-a456-426614174002',
+          },
+          options: { auto_issue: true },
+        },
+      },
+    },
+  })
   @ApiOkResponse({
     description: 'Credential offer completed synchronously',
     type: OperationResponseDto,
@@ -75,7 +91,7 @@ export class CredentialOfferController {
   })
   @ApiBadRequestResponse({
     description:
-      'connection_id is missing (OID4VCI not yet supported), profile/' +
+      'delivery or subject claims are invalid, profile/' +
       'credential_definition_id resolution failed, or attribute validation failed',
   })
   public async offer(
@@ -88,6 +104,31 @@ export class CredentialOfferController {
     res.status(this.resolveStatus(operation.state));
 
     return OperationResponseDto.fromEntity(operation);
+  }
+
+  @Post('offer/:operationId/reconcile')
+  @HttpCode(HttpStatus.OK)
+  @ApiParam({ name: 'tenantId', format: 'uuid' })
+  @ApiParam({ name: 'operationId', format: 'uuid' })
+  @ApiOkResponse({
+    description:
+      'Offer reconciled from an authenticated backend read; never resends',
+    type: OperationResponseDto,
+  })
+  @ApiNotFoundResponse({
+    description: 'Offer operation not found for this tenant',
+  })
+  @ApiConflictResponse({
+    description:
+      'Exchange or wallet correlation is unavailable or inconsistent',
+  })
+  public async reconcile(
+    @Param('tenantId', ParseUUIDPipe) tenantId: string,
+    @Param('operationId', ParseUUIDPipe) operationId: string,
+  ): Promise<OperationResponseDto> {
+    return OperationResponseDto.fromEntity(
+      await this.credentialOffer.reconcile(tenantId, operationId),
+    );
   }
 
   /**
