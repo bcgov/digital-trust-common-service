@@ -7,6 +7,8 @@ import {
   CredentialDefinitionFormat,
 } from '../credential-definition.entity';
 
+import { AnonCredsRegistrationOptionsDto } from './create-credential-definition.dto';
+
 export class CredentialDefinitionResponseDto {
   @ApiProperty({
     description: 'The unique identifier of the credential definition',
@@ -49,10 +51,36 @@ export class CredentialDefinitionResponseDto {
   @Expose({ name: 'external_id' })
   @ApiProperty({
     name: 'external_id',
+    type: String,
+    nullable: true,
     description: 'The external ID from the connector system',
     example: 'cred-def-123456',
   })
-  public externalId!: string;
+  public externalId!: string | null;
+
+  @Expose({ name: 'connector_id' })
+  @ApiProperty({ name: 'connector_id', nullable: true, format: 'uuid' })
+  public connectorId!: string | null;
+
+  @Expose({ name: 'registration_state' })
+  @ApiProperty({
+    name: 'registration_state',
+    enum: ['unverified', 'pending', 'ready', 'failed'],
+  })
+  public registrationState!: string;
+
+  @Expose({ name: 'registration_operation_id' })
+  @ApiProperty({ name: 'registration_operation_id', nullable: true })
+  public registrationOperationId!: string | null;
+
+  @ApiProperty({ nullable: true, description: 'Resolved issuer identity' })
+  public issuer!: { id: string } | null;
+
+  @ApiProperty({ nullable: true, description: 'Resolved schema reference' })
+  public schema!: { type: string; id: string | null } | null;
+
+  @ApiProperty({ type: AnonCredsRegistrationOptionsDto, nullable: true })
+  public options!: AnonCredsRegistrationOptionsDto | null;
 
   @Expose({ name: 'connector_type' })
   @ApiProperty({
@@ -108,7 +136,22 @@ export class CredentialDefinitionResponseDto {
     dto.format = credentialDefinition.format;
     dto.schemaDefinition = credentialDefinition.schemaDefinition;
     dto.externalId = credentialDefinition.externalId;
+    dto.connectorId = credentialDefinition.connectorId ?? null;
+    dto.registrationState =
+      credentialDefinition.registrationState ?? 'unverified';
+    dto.registrationOperationId =
+      credentialDefinition.registrationOperationId ?? null;
+    dto.issuer = credentialDefinition.registration
+      ? { id: credentialDefinition.registration.issuerId }
+      : null;
+    dto.schema = credentialDefinition.registration
+      ? {
+          type: 'anoncreds',
+          id: credentialDefinition.registration.schemaId ?? null,
+        }
+      : null;
     dto.connectorType = credentialDefinition.connectorType;
+    dto.options = credentialDefinition.registration?.options ?? null;
     dto.isActive = credentialDefinition.isActive;
     dto.metadata = credentialDefinition.metadata;
     dto.createdAt = credentialDefinition.createdAt;

@@ -1,3 +1,4 @@
+import type { DefinitionOptions } from '@app/credential-ports';
 import { ApiProperty } from '@nestjs/swagger';
 import {
   Entity,
@@ -11,6 +12,7 @@ import {
   JoinColumn,
 } from 'typeorm';
 
+import type { OperationResult } from '../operation/operation.entity';
 import { Tenant } from '../tenant/tenant.entity';
 
 export enum CredentialDefinitionFormat {
@@ -25,6 +27,33 @@ export enum CredentialDefinitionConnectorType {
   CREDO = 'credo',
 }
 
+export type RegistrationState = 'unverified' | 'pending' | 'ready' | 'failed';
+
+export interface DefinitionRegistration {
+  issuerId: string;
+  schemaId?: string;
+  schemaJobId?: string;
+  schemaPendingId?: string;
+  schemaTransactionId?: string;
+  schemaTransactionState?: string;
+  schemaState?: 'finished' | 'wait' | 'action' | 'failed';
+  definitionJobId?: string;
+  definitionPendingId?: string;
+  definitionTransactionId?: string;
+  definitionTransactionState?: string;
+  definitionState?: 'finished' | 'wait' | 'action' | 'failed';
+  stage?: string;
+  schemaSubmitted?: boolean;
+  definitionSubmitted?: boolean;
+  recovery?: {
+    requestedAt: string;
+    schemaTransactionId?: string;
+    definitionTransactionId?: string;
+    history: { requestedAt: string; state: string; result: OperationResult }[];
+  };
+  options: DefinitionOptions;
+}
+
 @Entity({ name: 'credential_definition' })
 @Unique('uq_credential_definition_tenant_name_format', [
   'tenantId',
@@ -37,6 +66,16 @@ export enum CredentialDefinitionConnectorType {
   'connectorType',
 ])
 @Index('idx_credential_definition_external_id', ['externalId'])
+@Index(
+  'uq_credential_definition_request_fingerprint',
+  ['tenantId', 'requestFingerprint'],
+  { unique: true },
+)
+@Index(
+  'uq_credential_definition_artifact_fingerprint',
+  ['tenantId', 'artifactFingerprint'],
+  { unique: true },
+)
 export class CredentialDefinition {
   @ApiProperty({
     description: 'The unique identifier of the credential definition',
@@ -93,8 +132,40 @@ export class CredentialDefinition {
     description: 'The external ID from the connector system',
     example: 'cred-def-123456',
   })
-  @Column({ name: 'external_id', type: 'varchar', length: 255 })
-  public externalId!: string;
+  @Column({ name: 'external_id', type: 'text', nullable: true })
+  public externalId!: string | null;
+
+  @Column({ name: 'connector_id', type: 'uuid', nullable: true })
+  public connectorId?: string | null;
+
+  @Column({
+    name: 'registration_state',
+    type: 'varchar',
+    default: 'unverified',
+  })
+  public registrationState?: RegistrationState;
+
+  @Column({ name: 'registration_operation_id', type: 'uuid', nullable: true })
+  public registrationOperationId?: string | null;
+
+  @Column({
+    name: 'request_fingerprint',
+    type: 'varchar',
+    length: 47,
+    nullable: true,
+  })
+  public requestFingerprint?: string | null;
+
+  @Column({
+    name: 'artifact_fingerprint',
+    type: 'varchar',
+    length: 47,
+    nullable: true,
+  })
+  public artifactFingerprint?: string | null;
+
+  @Column({ name: 'registration', type: 'jsonb', nullable: true })
+  public registration?: DefinitionRegistration | null;
 
   @ApiProperty({
     description: 'The type of connector used for this credential definition',

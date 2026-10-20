@@ -25,7 +25,8 @@ import {
 import {
   ApiBadRequestResponse,
   ApiBody,
-  ApiCreatedResponse,
+  ApiConflictResponse,
+  ApiAcceptedResponse,
   ApiForbiddenResponse,
   ApiNoContentResponse,
   ApiNotFoundResponse,
@@ -35,6 +36,7 @@ import {
 
 import { SkipAutoAudit } from '../audit-log/skip-auto-audit.decorator';
 import { API_VERSION } from '../common/constants/api-version.constants';
+import { OperationResponseDto } from '../operation/dto/operation-response.dto';
 import { TenantTierRateLimitGuard } from '../rate-limit/tenant-tier-rate-limit.guard';
 import { TenantStatusGuard } from '../tenant/tenant-status.guard';
 
@@ -45,6 +47,7 @@ import {
 import { CredentialDefinitionService } from './credential-definition.service';
 import { CreateCredentialDefinitionDto } from './dto/create-credential-definition.dto';
 import { CredentialDefinitionResponseDto } from './dto/credential-definition-response.dto';
+import { RecoverCredentialDefinitionDto } from './dto/recover-credential-definition.dto';
 import { UpdateCredentialDefinitionDto } from './dto/update-credential-definition.dto';
 
 @SkipAutoAudit()
@@ -71,13 +74,19 @@ export class CredentialDefinitionController {
   ) {}
 
   @Post()
-  @ApiCreatedResponse({
-    description: 'Credential definition created successfully',
-    type: CredentialDefinitionResponseDto,
+  @HttpCode(HttpStatus.ACCEPTED)
+  @ApiAcceptedResponse({
+    description:
+      'Artifact registration accepted; equivalent normalized requests return the original operation, including failed operations, without resubmission. Poll the returned operation.',
+    type: OperationResponseDto,
+  })
+  @ApiConflictResponse({
+    description:
+      'Name or artifact intent already registered with different local content, or replay operation expired/inactive. Reconcile the existing registration; no publication is retried.',
   })
   @ApiBadRequestResponse({
     description:
-      'schema_definition failed format-specific structural validation',
+      'Invalid schema, issuer selection, registration options, or connector',
   })
   @ApiBody({
     description: 'Credential definition creation request',
@@ -88,13 +97,15 @@ export class CredentialDefinitionController {
         value: {
           name: 'Driver License Definition',
           format: 'anoncreds',
-          external_id: 'ext-cred-def-001',
-          connector_type: 'traction',
-          schema_definition: {
-            attr_names: ['name', 'age'],
-            schema_name: 'driver-license',
-            schema_version: '1.0',
+          schema: {
+            type: 'anoncreds',
+            definition: {
+              attr_names: ['name', 'age'],
+              schema_name: 'driver-license',
+              schema_version: '1.0',
+            },
           },
+          options: { revocation: { enabled: true } },
           metadata: { issuer: 'DMV' },
         },
       },
@@ -104,14 +115,46 @@ export class CredentialDefinitionController {
     @Param('tenantId', ParseUUIDPipe) tenantId: string,
     @Body() dto: CreateCredentialDefinitionDto,
     @CurrentAuth() auth: AuthContext,
-  ): Promise<CredentialDefinitionResponseDto> {
-    const credentialDefinition = await this.credentialDefinitionService.create(
+  ): Promise<OperationResponseDto> {
+    const operation = await this.credentialDefinitionService.create(
       tenantId,
       dto,
       auth,
     );
+    return OperationResponseDto.fromEntity(operation);
+  }
 
-    return CredentialDefinitionResponseDto.fromEntity(credentialDefinition);
+  @Post(':id/recover')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @ApiAcceptedResponse({
+    type: OperationResponseDto,
+    description:
+      'Resume the original registration operation with preserved write markers and history; no blind publication retries',
+  })
+  @ApiBody({
+    type: RecoverCredentialDefinitionDto,
+    examples: {
+      discover: {
+        summary: 'Discover existing wallet artifacts and transactions',
+        value: {},
+      },
+    },
+  })
+  @ApiNotFoundResponse({ description: 'Definition not found for this tenant' })
+  @ApiConflictResponse({
+    description:
+      'Recovery already processing, incompatible hints, or original operation unavailable',
+  })
+  @ApiBadRequestResponse({ description: 'Invalid transaction identifier' })
+  public async recover(
+    @Param('tenantId', ParseUUIDPipe) tenantId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: RecoverCredentialDefinitionDto,
+    @CurrentAuth() auth: AuthContext,
+  ): Promise<OperationResponseDto> {
+    return OperationResponseDto.fromEntity(
+      await this.credentialDefinitionService.recover(tenantId, id, dto, auth),
+    );
   }
 
   @Get()

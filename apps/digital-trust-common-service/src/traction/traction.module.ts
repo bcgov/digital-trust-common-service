@@ -3,6 +3,7 @@ import { Module } from '@nestjs/common';
 import { AdapterRegistryModule } from '../adapter-registry/adapter-registry.module';
 
 import { TractionClientModule } from './traction-client.module';
+import { TractionDefinitionRegistration } from './traction-definition-registration.service';
 import { TractionAdapter } from './traction.adapter';
 
 /**
@@ -15,7 +16,7 @@ import { TractionAdapter } from './traction.adapter';
  */
 @Module({
   imports: [AdapterRegistryModule, TractionClientModule],
-  providers: [TractionAdapter],
+  providers: [TractionAdapter, TractionDefinitionRegistration],
   exports: [TractionAdapter, TractionClientModule],
 })
 export class TractionModule {}
