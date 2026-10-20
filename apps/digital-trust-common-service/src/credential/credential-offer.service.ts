@@ -22,7 +22,10 @@ import { ResolvedAdapter } from '../adapter-registry/adapter-registry.types';
 import { AuditAction } from '../audit-log/audit-log.entity';
 import { DomainAuditService } from '../audit-log/domain-audit.service';
 import { API_BASE_PATH } from '../common/constants/api-version.constants';
-import { CredentialDefinitionFormat } from '../credential-definition/credential-definition.entity';
+import {
+  CredentialDefinition,
+  CredentialDefinitionFormat,
+} from '../credential-definition/credential-definition.entity';
 import { CredentialDefinitionRepository } from '../credential-definition/credential-definition.repository';
 import { toPortCredentialFormat } from '../credential-definition/credential-definition.service';
 import {
@@ -305,9 +308,15 @@ export class CredentialOfferService {
       );
     }
 
+    this.assertDefinitionReady(credentialDefinition);
+    if (profile.connectorId !== credentialDefinition.connectorId) {
+      throw new BadRequestException(
+        'Profile connector does not own this credential definition',
+      );
+    }
     return {
       credentialDefinitionId: credentialDefinition.id,
-      externalCredentialDefinitionId: credentialDefinition.externalId,
+      externalCredentialDefinitionId: credentialDefinition.externalId!,
       format: profile.format,
       connectorId: profile.connectorId ?? undefined,
       schemaDefinition: credentialDefinition.schemaDefinition,
@@ -316,11 +325,7 @@ export class CredentialOfferService {
     };
   }
 
-  /**
-   * Legacy escape hatch: bypasses profile resolution entirely. No defaults
-   * to merge and no profile-bound connector — AdapterRegistry.resolve()
-   * falls back to the tenant's default/sole active connector instead.
-   */
+  /** Direct mode uses the definition's pinned connector. */
   private async resolveFromCredentialDefinition(
     tenantId: string,
     credentialDefinitionId: string,
@@ -352,15 +357,28 @@ export class CredentialOfferService {
       );
     }
 
+    this.assertDefinitionReady(credentialDefinition);
     return {
       credentialDefinitionId: credentialDefinition.id,
-      externalCredentialDefinitionId: credentialDefinition.externalId,
+      externalCredentialDefinitionId: credentialDefinition.externalId!,
       format: credentialDefinition.format,
-      connectorId: undefined,
+      connectorId: credentialDefinition.connectorId ?? undefined,
       schemaDefinition: credentialDefinition.schemaDefinition,
       defaults: {},
       issuanceProfileId: null,
     };
+  }
+
+  private assertDefinitionReady(definition: CredentialDefinition): void {
+    if (
+      definition.registrationState !== 'ready' ||
+      !definition.externalId ||
+      !definition.connectorId
+    ) {
+      throw new BadRequestException(
+        'Credential definition is not ready for issuance',
+      );
+    }
   }
 
   /**

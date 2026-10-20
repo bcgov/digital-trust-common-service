@@ -9,6 +9,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 
 import { AdapterRegistry } from '../adapter-registry/adapter-registry.service';
 
+import { TractionDefinitionRegistration } from './traction-definition-registration.service';
 import { TractionHttpClient } from './traction-http-client.service';
 import { TractionTokenManager } from './traction-token-manager.service';
 import { TractionAdapter } from './traction.adapter';
@@ -33,6 +34,7 @@ describe('TractionAdapter', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         TractionAdapter,
+        { provide: TractionDefinitionRegistration, useValue: {} },
         {
           provide: AdapterRegistry,
           useValue: { register: mockRegister },

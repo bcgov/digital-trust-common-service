@@ -6,12 +6,16 @@ import {
   BadRequestException,
   ConflictException,
   NotFoundException,
-  NotImplementedException,
 } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
+import { DataSource } from 'typeorm';
 
+import { AdapterRegistry } from '../adapter-registry/adapter-registry.service';
 import { AuditAction } from '../audit-log/audit-log.entity';
 import { DomainAuditService } from '../audit-log/domain-audit.service';
+import { RegistrationBackendError } from '../common/registration-backend-error';
+import { JobsService } from '../jobs/jobs.service';
+import { OperationService } from '../operation/operation.service';
 import { TenantStatus } from '../tenant/tenant.entity';
 
 import {
@@ -40,6 +44,15 @@ describe('CredentialDefinitionService', () => {
   let mockHas: jest.Mock;
   let mockResolve: jest.Mock;
   let mockValidateSchema: jest.Mock;
+  const manager = { save: jest.fn(), query: jest.fn(), findOne: jest.fn() };
+  const findByFingerprint = jest.fn();
+  const register = {
+    resolveIssuer: jest.fn(),
+    resolveSchema: jest.fn(),
+  };
+  const resolveAdapter = jest.fn();
+  const createOperation = jest.fn();
+  const enqueue = jest.fn();
 
   const mockCredentialDefinition: CredentialDefinition = {
     id: '123e4567-e89b-12d3-a456-426614174000',
@@ -95,12 +108,29 @@ describe('CredentialDefinitionService', () => {
       .fn()
       .mockReturnValue({ validateSchema: mockValidateSchema });
     mockHas = jest.fn().mockReturnValue(false);
+    resolveAdapter.mockResolvedValue({
+      connector: { id: 'connector-1', connectorType: 'traction' },
+      context: {},
+      adapter: { definitionRegistration: register },
+    });
+    register.resolveIssuer.mockResolvedValue('did:indy:issuer');
+    register.resolveSchema.mockResolvedValue({
+      id: 'schema-1',
+      definition: mockCredentialDefinition.schemaDefinition,
+    });
+    createOperation.mockResolvedValue({ id: 'operation-1', state: 'pending' });
+    mockCreate.mockResolvedValue(mockCredentialDefinition);
+    mockFindByTenantAndNameAndFormat.mockResolvedValue(null);
+    findByFingerprint.mockResolvedValue(null);
+    manager.findOne.mockResolvedValue(null);
+    enqueue.mockResolvedValue('job-1');
 
     const mockRepository = {
       create: mockCreate,
       findById: mockFindById,
       findByTenantId: mockFindByTenantId,
       findByTenantAndNameAndFormat: mockFindByTenantAndNameAndFormat,
+      findByFingerprint,
       findByFormat: mockFindByFormat,
       findByConnector: mockFindByConnector,
       update: mockUpdate,
@@ -110,6 +140,17 @@ describe('CredentialDefinitionService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         CredentialDefinitionService,
+        { provide: AdapterRegistry, useValue: { resolve: resolveAdapter } },
+        { provide: OperationService, useValue: { createOperation } },
+        { provide: JobsService, useValue: { sendInTransaction: enqueue } },
+        {
+          provide: DataSource,
+          useValue: {
+            transaction: async (
+              fn: (value: typeof manager) => Promise<unknown>,
+            ) => fn(manager),
+          },
+        },
         {
           provide: CredentialDefinitionRepository,
           useValue: mockRepository,
@@ -135,14 +176,106 @@ describe('CredentialDefinitionService', () => {
   });
 
   describe('create', () => {
+    it('reports sanitized preflight rejection using the existing HTTP error envelope', async () => {
+      register.resolveIssuer.mockRejectedValueOnce(
+        new RegistrationBackendError(
+          400,
+          'INVALID_ISSUER',
+          'Issuer is not registered',
+        ),
+      );
+      await expect(
+        service.create(
+          auth.tenantId,
+          {
+            name: 'Employee',
+            format: CredentialDefinitionFormat.ANONCREDS,
+            schema: { definition: mockCredentialDefinition.schemaDefinition },
+          },
+          auth,
+        ),
+      ).rejects.toMatchObject({
+        response: {
+          code: 'REGISTRATION_BACKEND_REJECTED',
+          backend_status: 400,
+          backend_code: 'INVALID_ISSUER',
+          message: 'Issuer is not registered',
+        },
+      });
+      expect(enqueue).not.toHaveBeenCalled();
+    });
+
+    it.each(['pending', 'completed', 'failed'])(
+      'returns the existing %s operation for an equivalent request without enqueue or audit',
+      async (state) => {
+        findByFingerprint.mockResolvedValueOnce({
+          ...mockCredentialDefinition,
+          registrationOperationId: 'original-operation',
+        });
+        manager.findOne.mockResolvedValue({ id: 'original-operation', state });
+        const result = await service.create(
+          mockCredentialDefinition.tenantId,
+          {
+            name: 'Employee',
+            format: CredentialDefinitionFormat.ANONCREDS,
+            schema: { definition: mockCredentialDefinition.schemaDefinition },
+          },
+          auth,
+        );
+        expect(result).toEqual({ id: 'original-operation', state });
+        expect(manager.findOne).toHaveBeenCalledWith(expect.any(Function), {
+          where: { tenantId: auth.tenantId, id: 'original-operation' },
+        });
+        expect(enqueue).not.toHaveBeenCalled();
+        expect(mockCreate).not.toHaveBeenCalled();
+        expect(mockEmit).not.toHaveBeenCalled();
+      },
+    );
+
+    it('rejects a replay whose operation has expired without republishing', async () => {
+      findByFingerprint.mockResolvedValueOnce({
+        ...mockCredentialDefinition,
+        registrationOperationId: 'expired',
+      });
+      await expect(
+        service.create(
+          auth.tenantId,
+          {
+            name: 'Employee',
+            format: CredentialDefinitionFormat.ANONCREDS,
+            schema: { definition: mockCredentialDefinition.schemaDefinition },
+          },
+          auth,
+        ),
+      ).rejects.toThrow(ConflictException);
+      expect(enqueue).not.toHaveBeenCalled();
+    });
+
+    it('rejects different local requests for the same artifacts', async () => {
+      findByFingerprint.mockResolvedValueOnce(null).mockResolvedValueOnce({
+        ...mockCredentialDefinition,
+        registrationOperationId: 'original-operation',
+      });
+      await expect(
+        service.create(
+          auth.tenantId,
+          {
+            name: 'Other name',
+            format: CredentialDefinitionFormat.ANONCREDS,
+            schema: { definition: mockCredentialDefinition.schemaDefinition },
+          },
+          auth,
+        ),
+      ).rejects.toThrow(ConflictException);
+      expect(enqueue).not.toHaveBeenCalled();
+    });
+
     it('should create a new credential definition if name is unique for tenant', async () => {
       const tenantId = mockCredentialDefinition.tenantId;
       const dto: CreateCredentialDefinitionDto = {
         name: mockCredentialDefinition.name,
         format: mockCredentialDefinition.format,
-        schemaDefinition: mockCredentialDefinition.schemaDefinition,
-        externalId: mockCredentialDefinition.externalId,
-        connectorType: mockCredentialDefinition.connectorType,
+        schema: { definition: mockCredentialDefinition.schemaDefinition },
         metadata: mockCredentialDefinition.metadata,
       };
 
@@ -155,23 +288,33 @@ describe('CredentialDefinitionService', () => {
         tenantId,
         dto.name,
         dto.format,
+        manager,
       );
-      expect(mockCreate).toHaveBeenCalledWith({
-        tenantId,
-        name: dto.name,
-        format: dto.format,
-        schemaDefinition: dto.schemaDefinition,
-        externalId: dto.externalId,
-        connectorType: dto.connectorType,
-        metadata: dto.metadata,
-      });
+      expect(mockCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId,
+          name: dto.name,
+          format: dto.format,
+          schemaDefinition: dto.schema.definition,
+          externalId: null,
+          connectorId: 'connector-1',
+          registrationState: 'pending',
+          registration: {
+            issuerId: 'did:indy:issuer',
+            schemaId: undefined,
+            options: { tag: 'default', revocation: { enabled: true } },
+          },
+          metadata: dto.metadata,
+        }),
+        manager,
+      );
       expect(mockEmit).toHaveBeenCalledWith({
         tenantId: mockCredentialDefinition.tenantId,
         action: AuditAction.CREATE,
         resourceType: 'credential_definition',
         resourceId: mockCredentialDefinition.id,
       });
-      expect(result).toEqual(mockCredentialDefinition);
+      expect(result).toEqual(expect.objectContaining({ id: 'operation-1' }));
     });
 
     it('should throw ConflictException if name already exists for tenant', async () => {
@@ -179,9 +322,7 @@ describe('CredentialDefinitionService', () => {
       const dto: CreateCredentialDefinitionDto = {
         name: mockCredentialDefinition.name,
         format: mockCredentialDefinition.format,
-        schemaDefinition: mockCredentialDefinition.schemaDefinition,
-        externalId: mockCredentialDefinition.externalId,
-        connectorType: mockCredentialDefinition.connectorType,
+        schema: { definition: mockCredentialDefinition.schemaDefinition },
         metadata: mockCredentialDefinition.metadata,
       };
 
@@ -196,32 +337,33 @@ describe('CredentialDefinitionService', () => {
         tenantId,
         dto.name,
         dto.format,
+        manager,
       );
       expect(mockCreate).not.toHaveBeenCalled();
       expect(mockEmit).not.toHaveBeenCalled();
     });
 
-    it('skips schema validation when no validator is registered for the format', async () => {
+    it('rejects unsupported publishing formats', async () => {
       const tenantId = mockCredentialDefinition.tenantId;
       const dto: CreateCredentialDefinitionDto = {
         name: mockCredentialDefinition.name,
         format: CredentialDefinitionFormat.SD_JWT,
-        schemaDefinition: mockCredentialDefinition.schemaDefinition,
-        externalId: mockCredentialDefinition.externalId,
-        connectorType: mockCredentialDefinition.connectorType,
+        schema: { definition: mockCredentialDefinition.schemaDefinition },
         metadata: mockCredentialDefinition.metadata,
       };
 
       mockFindByTenantAndNameAndFormat.mockResolvedValue(null);
       mockCreate.mockResolvedValue(mockCredentialDefinition);
 
-      await service.create(tenantId, dto, auth);
+      await expect(service.create(tenantId, dto, auth)).rejects.toThrow(
+        BadRequestException,
+      );
 
       // SD_JWT has no matching port-layer format value, so the format
       // never resolves and the registry is never consulted.
       expect(mockHas).not.toHaveBeenCalled();
       expect(mockResolve).not.toHaveBeenCalled();
-      expect(mockCreate).toHaveBeenCalled();
+      expect(mockCreate).not.toHaveBeenCalled();
     });
 
     it('skips schema validation when a mapped format has no registered validator', async () => {
@@ -229,9 +371,7 @@ describe('CredentialDefinitionService', () => {
       const dto: CreateCredentialDefinitionDto = {
         name: mockCredentialDefinition.name,
         format: CredentialDefinitionFormat.ANONCREDS,
-        schemaDefinition: mockCredentialDefinition.schemaDefinition,
-        externalId: mockCredentialDefinition.externalId,
-        connectorType: mockCredentialDefinition.connectorType,
+        schema: { definition: mockCredentialDefinition.schemaDefinition },
         metadata: mockCredentialDefinition.metadata,
       };
 
@@ -251,9 +391,7 @@ describe('CredentialDefinitionService', () => {
       const dto: CreateCredentialDefinitionDto = {
         name: mockCredentialDefinition.name,
         format: CredentialDefinitionFormat.ANONCREDS,
-        schemaDefinition: mockCredentialDefinition.schemaDefinition,
-        externalId: mockCredentialDefinition.externalId,
-        connectorType: mockCredentialDefinition.connectorType,
+        schema: { definition: mockCredentialDefinition.schemaDefinition },
         metadata: mockCredentialDefinition.metadata,
       };
 
@@ -266,7 +404,7 @@ describe('CredentialDefinitionService', () => {
 
       expect(mockHas).toHaveBeenCalledWith(CredentialFormat.AnonCreds);
       expect(mockResolve).toHaveBeenCalledWith(CredentialFormat.AnonCreds);
-      expect(mockValidateSchema).toHaveBeenCalledWith(dto.schemaDefinition);
+      expect(mockValidateSchema).toHaveBeenCalledWith(dto.schema.definition);
       expect(mockCreate).toHaveBeenCalled();
     });
 
@@ -275,9 +413,7 @@ describe('CredentialDefinitionService', () => {
       const dto: CreateCredentialDefinitionDto = {
         name: mockCredentialDefinition.name,
         format: CredentialDefinitionFormat.ANONCREDS,
-        schemaDefinition: mockCredentialDefinition.schemaDefinition,
-        externalId: mockCredentialDefinition.externalId,
-        connectorType: mockCredentialDefinition.connectorType,
+        schema: { definition: mockCredentialDefinition.schemaDefinition },
         metadata: mockCredentialDefinition.metadata,
       };
       const issues = [{ path: 'attr_names', message: 'is required' }];
@@ -293,37 +429,60 @@ describe('CredentialDefinitionService', () => {
       expect(mockEmit).not.toHaveBeenCalled();
     });
 
-    it('fails closed rather than creating when the resolved validator refuses to validate', async () => {
-      // CredentialFormat.Mdl now has a registered validator (MdlFormatValidator),
-      // but that validator is an explicit post-MVP stub that throws
-      // NotImplementedException instead of returning issues. The create flow
-      // must propagate that failure rather than treat a thrown error as "no
-      // issues found" and create the definition anyway.
+    it('resolves imported schemas and permits explicitly non-revocable definitions', async () => {
       const tenantId = mockCredentialDefinition.tenantId;
       const dto: CreateCredentialDefinitionDto = {
         name: mockCredentialDefinition.name,
-        format: CredentialDefinitionFormat.MDL,
-        schemaDefinition: mockCredentialDefinition.schemaDefinition,
-        externalId: mockCredentialDefinition.externalId,
-        connectorType: mockCredentialDefinition.connectorType,
-        metadata: mockCredentialDefinition.metadata,
+        format: CredentialDefinitionFormat.ANONCREDS,
+        schema: { id: 'schema-1' },
+        issuer: { method: 'indy' },
+        options: { revocation: { enabled: false } },
       };
 
       mockFindByTenantAndNameAndFormat.mockResolvedValue(null);
       mockHas.mockReturnValue(true);
-      mockValidateSchema.mockImplementation(() => {
-        throw new NotImplementedException(
-          'mDL schema validation is not yet implemented',
-        );
-      });
-
-      await expect(service.create(tenantId, dto, auth)).rejects.toThrow(
-        NotImplementedException,
+      await service.create(tenantId, dto, auth);
+      expect(register.resolveSchema).toHaveBeenCalledWith({}, 'schema-1');
+      expect(register.resolveIssuer).toHaveBeenCalledWith(
+        {},
+        { method: 'indy' },
       );
-      expect(mockHas).toHaveBeenCalledWith(CredentialFormat.Mdl);
-      expect(mockResolve).toHaveBeenCalledWith(CredentialFormat.Mdl);
+      expect(mockCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          registration: expect.objectContaining({
+            schemaId: 'schema-1',
+            options: { tag: 'default', revocation: { enabled: false } },
+          }),
+        }),
+        manager,
+      );
+    });
+
+    it('rejects ambiguous schema and issuer selection before writing', async () => {
+      await expect(
+        service.create(
+          auth.tenantId,
+          {
+            name: 'test',
+            format: CredentialDefinitionFormat.ANONCREDS,
+            schema: { id: 'schema-1', definition: {} },
+          },
+          auth,
+        ),
+      ).rejects.toThrow(BadRequestException);
+      await expect(
+        service.create(
+          auth.tenantId,
+          {
+            name: 'test',
+            format: CredentialDefinitionFormat.ANONCREDS,
+            schema: { id: 'schema-1' },
+            issuer: {},
+          },
+          auth,
+        ),
+      ).rejects.toThrow(BadRequestException);
       expect(mockCreate).not.toHaveBeenCalled();
-      expect(mockEmit).not.toHaveBeenCalled();
     });
   });
 

@@ -64,6 +64,14 @@ export type {
   SupportedFormats,
 } from './ports/agent-adapter';
 export type { ConnectorContext } from './ports/connector-context';
+export type {
+  DefinitionOptions,
+  DefinitionRegistrationPort,
+  IssuerSelection,
+  RegisteredSchema,
+  RegistrationSubmission,
+  RegistrationObservation,
+} from './ports/definition-registration.port';
 
 // Testing helpers
 export {

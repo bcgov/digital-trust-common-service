@@ -58,6 +58,8 @@ describe('IssuanceProfileService', () => {
       schema_version: '1.0',
     },
     externalId: 'external-123',
+    connectorId: '123e4567-e89b-12d3-a456-426614174002',
+    registrationState: 'ready',
     connectorType: CredentialDefinitionConnectorType.TRACTION,
     isActive: true,
     metadata: {},
@@ -186,7 +188,7 @@ describe('IssuanceProfileService', () => {
       expect(mockResolve).toHaveBeenCalledWith(
         tenantId,
         CredentialFormat.AnonCreds,
-        { connectorId: undefined },
+        { connectorId: mockConnectorId },
       );
       expect(mockCreate).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -215,6 +217,35 @@ describe('IssuanceProfileService', () => {
         ConflictException,
       );
       expect(mockCreate).not.toHaveBeenCalled();
+    });
+
+    it.each(['unverified', 'pending', 'failed'] as const)(
+      'rejects a %s definition before resolving a connector',
+      async (registrationState) => {
+        mockCredentialDefinitionFindById.mockResolvedValue({
+          ...mockCredentialDefinition,
+          registrationState,
+        });
+        await expect(service.create(tenantId, dto, auth)).rejects.toThrow(
+          BadRequestException,
+        );
+        expect(mockResolve).not.toHaveBeenCalled();
+        expect(mockCreate).not.toHaveBeenCalled();
+      },
+    );
+
+    it('rejects a connector override from another wallet', async () => {
+      await expect(
+        service.create(
+          tenantId,
+          {
+            ...dto,
+            connectorId: 'another-connector',
+          },
+          auth,
+        ),
+      ).rejects.toThrow(BadRequestException);
+      expect(mockResolve).not.toHaveBeenCalled();
     });
 
     it('throws NotFoundException when the credential definition is cross-tenant', async () => {
@@ -281,7 +312,7 @@ describe('IssuanceProfileService', () => {
         mockProfile,
       );
       expect(mockResolve).toHaveBeenCalledWith(tenantId, CredentialFormat.Mdl, {
-        connectorId: undefined,
+        connectorId: mockConnectorId,
       });
     });
 

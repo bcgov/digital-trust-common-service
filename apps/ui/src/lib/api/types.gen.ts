@@ -507,7 +507,28 @@ export interface paths {
         /** List credential definitions */
         get: operations["listCredentialDefinitions"];
         put?: never;
-        /** Register a credential definition */
+        /**
+         * Register a credential definition
+         * @description Register AnonCreds issuer artifacts asynchronously. Supply exactly one of
+         *     schema.id (reuse a published schema) or schema.definition (publish one).
+         *     Traction must already have an askar-anoncreds wallet and a matching
+         *     ledger-registered public issuer DID. This endpoint does not create DIDs.
+         *     Connector selection is pinned for the entire registration and issuance
+         *     lifecycle. Revocation defaults to enabled; readiness includes initial
+         *     registry/status-list publication and public tails availability.
+         *     This replaces the former schema_definition/external_id/connector_type
+         *     request. Other publishing formats are not yet supported.
+         *     Idempotency is generated server-side from normalized content, using
+         *     versioned JCS SHA-256 multihash fingerprints encoded as base64url
+         *     multibase. Equivalent requests return the original operation without
+         *     resubmission, including failed operations. Local name and metadata are
+         *     included in request identity but excluded from artifact identity.
+         *     Differently named requests for identical artifact intent conflict.
+         *     Schema attributes are order-insensitive; other arrays preserve order.
+         *     Imported schema IDs and inline schema content are distinct intents.
+         *     Connector/issuer/schema resolution still runs on replays. Existing
+         *     records predating fingerprint migration retain their name conflicts.
+         */
         post: operations["createCredentialDefinition"];
         delete?: never;
         options?: never;
@@ -532,6 +553,39 @@ export interface paths {
         post?: never;
         /** Deactivate a credential definition */
         delete: operations["deleteCredentialDefinition"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tenants/{tenantId}/credential-definitions/{credDefId}/recover": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                credDefId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reconcile and resume the original credential registration
+         * @description Requires tenants:admin. Preserves local identity, fingerprints, original
+         *     operation and failure history. Returns the original operation with a
+         *     fresh bounded recovery window after failure. Repeated pending recovery
+         *     is idempotent; adding a previously absent transaction hint does not extend
+         *     its deadline. Hints are verified asynchronously in the pinned wallet
+         *     against issuer, schema, tag and revocation intent.
+         *     Adopts existing artifacts or endorsement progress before any missing
+         *     publication step. Never clears submission markers or blindly repeats an
+         *     uncertain write. This can publish a not-yet-submitted credential definition
+         *     after schema completion; it does not resend or sign endorsements.
+         */
+        post: operations["recoverCredentialDefinition"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1883,6 +1937,27 @@ export interface components {
             schema_definition?: Record<string, never>;
             /** @description Ledger/registry reference (e.g., cred_def_id) */
             external_id?: string | null;
+            /**
+             * Format: uuid
+             * @description Issuer wallet binding; cannot be substituted by a profile
+             */
+            connector_id?: string | null;
+            /**
+             * @description Existing records migrate as unverified, not ready to issue
+             * @enum {string}
+             */
+            registration_state?: "unverified" | "pending" | "ready" | "failed";
+            /** Format: uuid */
+            registration_operation_id?: string | null;
+            issuer?: {
+                id?: string;
+            } | null;
+            schema?: {
+                /** @enum {string} */
+                type?: "anoncreds";
+                id?: string | null;
+            } | null;
+            options?: components["schemas"]["AnonCredsRegistrationOptions"] | null;
             connector_type?: components["schemas"]["ConnectorType"];
             /** @description Whether this credential definition is currently active */
             is_active?: boolean;
@@ -1896,16 +1971,48 @@ export interface components {
         CredentialFormat: "anoncreds" | "sd-jwt" | "mdl" | "w3c-vc";
         CreateCredentialDefinitionRequest: {
             name: string;
-            format: components["schemas"]["CredentialFormat"];
+            /** @enum {string} */
+            format: "anoncreds";
             /**
-             * @description Format-specific schema.
-             *     - AnonCreds: { attr_names: string[], schema_name, schema_version }
-             *     - SD-JWT: JSON Schema object
-             *     - W3C VC: { @context: [], type: [], credentialSubject: {} }
+             * Format: uuid
+             * @description Defaults to the tenant default or sole active compatible connector
              */
-            schema_definition: Record<string, never>;
-            connector_type: components["schemas"]["ConnectorType"];
+            connector_id?: string;
+            schema: {
+                /**
+                 * @default anoncreds
+                 * @enum {string}
+                 */
+                type: "anoncreds";
+                /** @description Existing published schema; not a credential-definition import */
+                id?: string;
+                definition?: {
+                    schema_name: string;
+                    schema_version: string;
+                    attr_names: string[];
+                };
+            } & (unknown | unknown);
+            /**
+             * @description Existing identity selection, never DID creation. Omit to use the
+             *     configured public issuer. Traction currently requires the selection
+             *     to match its public DID; no arbitrary wallet DID promotion occurs.
+             */
+            issuer?: {
+                id?: string;
+                method?: string;
+            } & (unknown | unknown);
+            options?: components["schemas"]["AnonCredsRegistrationOptions"];
+            /** @description Local annotations only; never passed as backend options */
             metadata?: Record<string, never>;
+        };
+        AnonCredsRegistrationOptions: {
+            /** @default default */
+            tag: string;
+            /** @description Omission defaults to enabled; unsupported setup never downgrades silently */
+            revocation?: {
+                /** @default true */
+                enabled: boolean;
+            };
         };
         IssuanceProfile: {
             /** Format: uuid */
@@ -2147,7 +2254,7 @@ export interface components {
             batch_id?: string | null;
             /**
              * @description Operation type. Known values:
-             *     `credential.offer`, `credential.offer-batch`,
+             *     `credential-definition.register`, `credential.offer`, `credential.offer-batch`,
              *     `credential.accept`, `credential.reject`,
              *     `credential.revoke`, `credential.revoke-batch`,
              *     `presentation.request`, `connection.create`
@@ -2168,13 +2275,64 @@ export interface components {
             updated_at: string;
             /**
              * @description State-dependent result:
-             *     - pending/processing: null
+             *     - pending/processing: usually null; credential-definition.register
+             *       includes { credential_definition_id } immediately
              *     - completed: operation-type-specific data
-             *     - failed: { code, message }
+             *     - failed: { code, message }; credential registration additionally
+             *       retains credential_definition_id, external_id, and registration
+             *       progress/correlation identifiers.
              *     - batch processing: { total, completed, failed, pending }
              *     - batch completed: { total, completed, failed, errors }
+             *     Registration progress includes stage, schema_id, schema_job_id,
+             *     schema_transaction_id, schema_state, definition_id,
+             *     definition_job_id, definition_transaction_id, and definition_state.
+             *     IDs returned with wait/action are provisional, not readiness proof.
              */
             result: unknown;
+            /**
+             * @description Present for credential-definition.register, null when no diagnostic
+             *     is recorded; omitted for other operation types. A wait/action state
+             *     is normal progress, not a problem. Polling still returns HTTP 200;
+             *     backend_status is the upstream HTTP status, not this response status.
+             *     Older failures have no retroactively reconstructed backend details.
+             *     Uses the RFC 9457 data model embedded in an application/json resource,
+             *     not a standalone application/problem+json HTTP error response.
+             *     status is omitted to avoid contradicting HTTP 200/202. Match the
+             *     problem type URI for machine handling; do not parse title or detail.
+             */
+            problem_details?: components["schemas"]["RegistrationProblemDetails"] | null;
+        };
+        RegistrationProblemDetails: {
+            /**
+             * Format: uri
+             * @description Stable RFC 9457 problem-type identifier with documented semantics and resolution guidance.
+             * @enum {string}
+             */
+            type: "https://github.com/bcgov/digital-trust-common-service/blob/main/docs/DEVELOPER.md#credential-registration-failed" | "https://github.com/bcgov/digital-trust-common-service/blob/main/docs/DEVELOPER.md#credential-registration-reconciliation-required";
+            /** @example Credential registration failed */
+            title: string;
+            /** @description Bounded sanitized backend reason or safe local diagnostic; never raw headers, request configuration, or response objects. */
+            detail: string;
+            /**
+             * Format: uri
+             * @description Persisted opaque identifier for this occurrence. Not dereferenceable. Absent on legacy diagnostics recorded without an instance.
+             * @example urn:uuid:123e4567-e89b-42d3-a456-426614174000
+             */
+            instance?: string;
+            /**
+             * @description Registration step where the problem occurred.
+             * @example schema_publication
+             */
+            stage: string;
+            /** @description Automatic reconciliation will retry. This does not authorize repeating a publication POST. */
+            retryable: boolean;
+            /**
+             * @description Upstream HTTP status when available.
+             * @example 400
+             */
+            backend_status?: number;
+            /** @description Allowlisted upstream machine code or local response-validation code, when available. */
+            backend_code?: string;
         };
         /** @enum {string} */
         OperationState: "pending" | "processing" | "completed" | "failed";
@@ -3405,10 +3563,7 @@ export interface operations {
     createCredentialDefinition: {
         parameters: {
             query?: never;
-            header?: {
-                /** @description UUIDv4 idempotency key to prevent duplicate creation */
-                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
-            };
+            header?: never;
             path: {
                 /** @description Tenant UUID */
                 tenantId: components["parameters"]["TenantId"];
@@ -3421,14 +3576,34 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Credential definition registered */
-            201: {
+            /**
+             * @description Registration accepted. result.credential_definition_id identifies the
+             *     local definition; poll the operation until terminal. Equivalent
+             *     normalized requests return the existing operation, which may already
+             *     be completed or failed; publication is not retried.
+             */
+            202: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["CredentialDefinition"];
+                    "application/json": components["schemas"]["Operation"];
                 };
+            };
+            400: components["responses"]["ValidationError"];
+            /**
+             * @description Name/format already exists with different content, or identical
+             *     artifact intent has a different local request
+             *     (REGISTRATION_ARTIFACT_EXISTS, including credential_definition_id and
+             *     operation_id). Inactive registrations or missing replay operations
+             *     return REGISTRATION_REPLAY_UNAVAILABLE with credential_definition_id.
+             *     Reconcile the existing registration instead of resubmitting.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             422: components["responses"]["ValidationError"];
         };
@@ -3473,6 +3648,63 @@ export interface operations {
         responses: {
             /** @description Credential definition deactivated */
             204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    recoverCredentialDefinition: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                credDefId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /**
+                     * Format: uuid
+                     * @description Wallet-scoped schema endorsement transaction to verify
+                     */
+                    schema_transaction_id?: string;
+                    /**
+                     * Format: uuid
+                     * @description Wallet-scoped credential-definition endorsement transaction to verify
+                     */
+                    definition_transaction_id?: string;
+                };
+            };
+        };
+        responses: {
+            /**
+             * @description Original operation resumed, already pending, or already completed.
+             *     Poll for asynchronous verification and readiness. Prior results are
+             *     retained in result.registration.recovery_history; recovery_requested_at
+             *     and recovery_attempts identify the bounded recovery window.
+             */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Operation"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            404: components["responses"]["NotFound"];
+            /**
+             * @description Wallet currently processing, incompatible pending hints, unsupported
+             *     legacy registration, or original operation no longer available.
+             *     No replacement registration or blind publication is performed.
+             */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
