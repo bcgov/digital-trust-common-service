@@ -398,28 +398,24 @@ GET  /api/v1/issuers/:tenantSlug/.well-known/openid-credential-issuer → Public
 ```json
 {
   "profile_id": "drivers-license/1.0",
-  "connection_id": "uuid",
-  "attributes": { "given_name": "Alice", "family_name": "Smith", "birth_date": "1995-03-15" }
+  "delivery": { "protocol": "didcomm-v1", "connection_id": "local-uuid" },
+  "credential": {
+    "credentialSubject": { "given_name": "Alice", "family_name": "Smith", "birth_date": "1995-03-15" }
+  }
 }
 ```
 
-**Request body example (issue via profile — OID4VCI delivery, connectionless):**
+OID4VCI delivery is a future extension, not selected by omitting a connection.
+Only explicit `delivery.protocol: didcomm-v1` is currently accepted.
+
+**Direct definition mode** (format inferred from tenant-owned metadata):
 ```json
 {
-  "profile_id": "drivers-license/1.0",
-  "attributes": { "given_name": "Alice", "family_name": "Smith", "birth_date": "1995-03-15" }
-}
-```
-
-When `connection_id` is absent, the adapter generates a `credential_offer_uri` that the holder opens in their wallet. The profile's `protocol_hint` and adapter capabilities determine the exact protocol used.
-
-**Legacy mode** (direct format + cred_def — still supported):
-```json
-{
-  "connection_id": "uuid",
+  "delivery": { "protocol": "didcomm-v1", "connection_id": "local-uuid" },
   "credential_definition_id": "uuid",
-  "format": "anoncreds",
-  "attributes": { "given_name": "Alice", "birth_date": "1995-03-15" }
+  "credential": {
+    "credentialSubject": { "given_name": "Alice", "birth_date": "1995-03-15" }
+  }
 }
 ```
 
@@ -463,11 +459,15 @@ graph TD
 
 ### Multi-Protocol Delivery (DIDComm + OID4VCI/VP)
 
-The service supports two credential exchange protocols, selected at request time based on `connection_id` presence:
+The offer contract separates unsigned proposed content (`credential.credentialSubject`)
+from delivery. It infers format from the stored definition/profile and currently
+supports DIDComm v1 delivery only. AnonCreds scalar claims map to legacy preview
+attributes; the normalized input does not imply W3C-form AnonCreds output.
+OID4VCI/VP remain future capabilities:
 
 | | DIDComm | OID4VCI / OID4VP |
 |---|---|---|
-| **When** | `connection_id` provided | `connection_id` absent |
+| **When** | Explicit `delivery.protocol: didcomm-v1` for offers | Future explicit protocol |
 | **Prerequisite** | Existing peer connection (CA-06) | None — generates one-time URI |
 | **Issuance flow** | Issuer pushes offer → holder agent auto-negotiates | Holder opens `credential_offer_uri` → authorization → retrieves credential |
 | **Verification flow** | Verifier sends proof request → holder agent responds | Holder opens `authorization_request_uri` → presents via wallet |
@@ -478,11 +478,11 @@ The service supports two credential exchange protocols, selected at request time
 
 ```mermaid
 flowchart TD
-    REQ[POST /credentials/offer<br/>profile_id + attributes]
-    REQ --> CHECK{connection_id<br/>provided?}
+    REQ[POST /credentials/offer<br/>source + credential + delivery]
+    REQ --> CHECK{delivery.protocol}
 
-    CHECK -->|Yes| DIDCOMM[DIDComm Delivery]
-    CHECK -->|No| OID4VCI[OID4VCI Delivery]
+    CHECK -->|didcomm-v1| DIDCOMM[DIDComm Delivery]
+    CHECK -->|Other| UNSUPPORTED[400 unsupported delivery]
 
     DIDCOMM --> RESOLVE1[Resolve profile → adapter]
     RESOLVE1 --> SEND[adapter.offerCredential<br/>via DIDComm to connection]
@@ -490,11 +490,6 @@ flowchart TD
     OP1 --> WH[Webhook → ME-02<br/>updates state+result]
     WH --> DONE1[Operation: state=completed<br/>result=credential_exchange]
 
-    OID4VCI --> RESOLVE2[Resolve profile → adapter]
-    RESOLVE2 --> GEN[adapter.offerCredential<br/>generates credential_offer_uri]
-    GEN --> OP2[Operation: state=completed<br/>result=credential_offer_uri]
-    OP2 --> HOLDER[Holder opens URI in wallet]
-    HOLDER --> WH2[Webhook → ME-02<br/>updates when holder retrieves]
 ```
 
 **Why both protocols:**
@@ -513,7 +508,7 @@ sequenceDiagram
     participant Adapter as TractionAdapter
     participant Traction as Traction API
 
-    Client->>Controller: POST /tenants/:id/credentials/offer {profile_id: "drivers-license/1.0", connection_id, attributes}
+    Client->>Controller: POST /tenants/:id/credentials/offer {profile_id, credential, delivery}
     Controller->>ProfileSvc: resolve("drivers-license/1.0", tenantId)
     ProfileSvc-->>Controller: IssuanceProfile {cred_def_id, format: anoncreds, connector_id}
     Controller->>Controller: Validate attributes against profile.attribute_schema
@@ -521,8 +516,8 @@ sequenceDiagram
     Registry-->>Controller: TractionAdapter instance
     Controller->>Adapter: offerCredential(request)
     Adapter->>Adapter: Map OfferCredentialRequest → Traction payload
-    Adapter->>Traction: POST /issue-credential/send-offer
-    Traction-->>Adapter: {credential_exchange_id, state}
+    Adapter->>Traction: POST /issue-credential-2.0/send-offer (anoncreds filter)
+    Traction-->>Adapter: {cred_ex_id, state}
     Adapter->>Adapter: Map Traction response → CredentialExchange
     Adapter-->>Controller: CredentialExchange
     Controller-->>Client: 202 Accepted {id, type, state: pending, created_at, updated_at, result: null}
@@ -541,6 +536,24 @@ states use bounded delayed checks; failures are terminal until the client
 repeats POST. Existing definitions migrate to `unverified`; profiles and
 issuance require a ready definition on its pinned connector. See
 [AnonCreds credential-definition registration](DEVELOPER.md#anoncreds-credential-definition-registration).
+
+Local connection IDs resolve to external IDs only after verifying tenant, wallet,
+invitation correlation, and a completed DIDComm v1 handshake. New connections pin
+their connector; legacy rows require exact discovery in the definition's wallet,
+never an automatic binding to the current tenant default.
+
+`POST /credentials/offer/:operationId/reconcile` reads the existing exchange from
+the credential's pinned connector and checks holder correlation. It reuses
+`ProtocolStateChangeService` for monotonic transactional state updates and
+notifications without resending. This supports local development without an
+inbound webhook. Issuer-side `credential-issued` completion is distinct from
+holder acknowledgement (`done`).
+
+Offers accept optional `options.auto_issue` (boolean, default true), mapped to
+the issuer port's `autoIssue`. False waits for a future explicit issue action,
+which this API does not yet expose. It does not control wallet acceptance or
+transport delivery. Backend exchange retention is fixed on for reconciliation;
+auto-removal flags are not exposed.
 
 The MVP ships with **only the Traction adapter**. The adapter interfaces are designed and tested, but the Credo adapter is deferred to post-MVP.
 
@@ -827,8 +840,8 @@ sequenceDiagram
 
     Client->>API: POST /tenants/:id/credentials/offer
     API->>Adapter: offerCredential(req)
-    Adapter->>Traction: POST /issue-credential/send-offer
-    Traction-->>Adapter: {credential_exchange_id, state: offer_sent}
+    Adapter->>Traction: POST /issue-credential-2.0/send-offer (anoncreds filter)
+    Traction-->>Adapter: {cred_ex_id, state: offer-sent}
     Adapter-->>API: CredentialExchange (partial — state: pending)
     API->>DB: INSERT operation (state: pending, external_id: cred_exch_id)
     API->>DB: INSERT credential (state: offered, connector_id, external_id)

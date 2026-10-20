@@ -41,6 +41,50 @@ export class ConnectionRepository {
     });
   }
 
+  public async findByIdForTenant(
+    tenantId: string,
+    id: string,
+  ): Promise<Connection | null> {
+    return this.repository.findOne({ where: { id, tenantId } });
+  }
+
+  public async reconcile(
+    tenantId: string,
+    id: string,
+    connectorId: string,
+    remote: {
+      id: string;
+      state: ConnectionState;
+      theirLabel?: string;
+      theirDid?: string;
+    },
+    forwardStates: ConnectionState[],
+  ): Promise<Connection | null> {
+    return this.repository.manager.transaction(async (manager) => {
+      const connection = await manager.findOne(Connection, {
+        where: { id, tenantId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (
+        !connection ||
+        (connection.connectorId && connection.connectorId !== connectorId) ||
+        (connection.externalConnectionId &&
+          connection.externalConnectionId !== remote.id)
+      ) {
+        return null;
+      }
+      connection.connectorId = connectorId;
+      connection.externalConnectionId = remote.id;
+      connection.theirLabel = remote.theirLabel;
+      connection.theirDid = remote.theirDid;
+      connection.protocol = ConnectionProtocol.DIDCOMM_V1;
+      if (forwardStates.includes(connection.state)) {
+        connection.state = remote.state;
+      }
+      return manager.save(connection);
+    });
+  }
+
   public async findByExternalConnectionId(
     externalConnectionId: string,
   ): Promise<Connection | null> {

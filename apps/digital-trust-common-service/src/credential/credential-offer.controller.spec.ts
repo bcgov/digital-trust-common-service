@@ -21,6 +21,7 @@ class AllowGuard implements CanActivate {
 describe('CredentialOfferController', () => {
   let controller: CredentialOfferController;
   let mockOffer: jest.Mock;
+  let mockReconcile: jest.Mock;
   let res: jest.Mocked<Pick<Response, 'status'>>;
 
   const tenantId = '123e4567-e89b-12d3-a456-426614174001';
@@ -29,7 +30,11 @@ describe('CredentialOfferController', () => {
 
   const dto: OfferCredentialRequestDto = Object.assign(
     new OfferCredentialRequestDto(),
-    { profileId: 'diploma/1.0', connectionId, attributes: {} },
+    {
+      profileId: 'diploma/1.0',
+      delivery: { protocol: 'didcomm-v1', connectionId },
+      credential: { credentialSubject: {} },
+    },
   );
 
   const buildOperation = (overrides: Partial<Operation> = {}): Operation =>
@@ -51,6 +56,7 @@ describe('CredentialOfferController', () => {
 
   beforeEach(async () => {
     mockOffer = jest.fn();
+    mockReconcile = jest.fn();
     res = { status: jest.fn().mockReturnThis() };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -58,7 +64,7 @@ describe('CredentialOfferController', () => {
       providers: [
         {
           provide: CredentialOfferService,
-          useValue: { offer: mockOffer },
+          useValue: { offer: mockOffer, reconcile: mockReconcile },
         },
       ],
     })
@@ -147,5 +153,13 @@ describe('CredentialOfferController', () => {
     await expect(
       controller.offer(tenantId, dto, res as unknown as Response),
     ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('returns the current operation from explicit reconciliation', async () => {
+    mockReconcile.mockResolvedValue(buildOperation());
+    const result = await controller.reconcile(tenantId, 'offer-op-1');
+    expect(mockReconcile).toHaveBeenCalledWith(tenantId, 'offer-op-1');
+    expect(result.state).toBe(OperationState.PROCESSING);
+    expect(mockOffer).not.toHaveBeenCalled();
   });
 });

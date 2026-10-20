@@ -1372,6 +1372,71 @@ Profiles cannot substitute another connector wallet for a registered definition.
 The migration's rollback refuses null or oversized external identifiers instead
 of deleting data or fabricating references; resolve those records before rollback.
 
+The Traction issuer uses issue-credential v2 with the native `anoncreds` filter,
+automatic issuance after holder requests, and retained exchange records.
+State updates normally arrive through a reachable, authenticated Traction webhook.
+For local development without an inbound webhook, use the explicit offer
+reconciliation read below. OID4VCI and VC proof/envelope configuration remain
+out of scope.
+
+### Offering a credential
+
+`POST /api/v1/tenants/:tenantId/credentials/offer` requires `credentials:offer`:
+
+```json
+{
+  "credential_definition_id": "<local-definition-uuid>",
+  "credential": {
+    "credentialSubject": {
+      "given_name": "Alice",
+      "family_name": "Smith",
+      "employee_id": "TEST-001"
+    }
+  },
+  "delivery": {
+    "protocol": "didcomm-v1",
+    "connection_id": "<local-connection-uuid>"
+  }
+}
+```
+
+Use either `credential_definition_id` or a published `profile_id` (UUID or
+`name/version`), never both. The stored source determines format; identifiers
+are not parsed to guess it. Profile defaults merge into subject claims, with
+explicit claims taking precedence. AnonCreds supports flat strings, finite
+numbers, and booleans, converted to string preview attributes. Objects, arrays,
+and null claims are rejected rather than flattened. This unsigned input does
+not select W3C-form AnonCreds or supply a proof.
+
+The delivery connection is a tenant-owned local UUID, not Traction's ID. New
+connections pin the connector used to create them. Before offering, the service
+verifies the completed handshake in the definition's connector wallet and
+resolves its external connection ID. An unbound legacy row is adopted only by
+exact invitation correlation in that explicitly selected wallet; ambiguous,
+missing, cross-wallet, or abandoned connections cannot issue. The original
+top-level `format`, `attributes`, and `connection_id` fields are rejected.
+
+Optional `options: { "auto_issue": true }` preserves the default: the issuer
+automatically issues after a holder requests the credential. Set `auto_issue`
+to false to wait for a future explicit issue action, which this API does not
+yet expose. This flag does not control offer delivery or holder acceptance.
+Only actual booleans are accepted, not null or string values. Backend exchange
+records are always retained (`auto_remove: false`, `auto_remove_on_failure:
+false`) so reconciliation can read them. These retention flags and `auto_offer`
+are not caller options on this endpoint, which already sends an offer.
+
+If webhook delivery is unavailable, call
+`POST /api/v1/tenants/:tenantId/credentials/offer/:operationId/reconcile`
+with the same scope. It returns HTTP 200 with the current operation, which may
+still be processing. It reads the saved exchange in its pinned wallet, verifies
+holder correlation, and reuses webhook state handling, including guarded
+transitions and durable notifications. It never resends an offer. Missing or
+inconsistent exchange correlation returns 409. Do not retry offer submission
+after an uncertain response. `issued` means the issuer sent the credential;
+verify backend `done`/holder receipt separately before claiming wallet delivery.
+Existing operation IDs remain unchanged; no local credential-exchange resource
+or explicit issue endpoint is introduced here.
+
 ## Adapter registry (CA-02)
 
 `AdapterRegistry` (`apps/digital-trust-common-service/src/adapter-registry/`) maps a connector type
