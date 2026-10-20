@@ -775,15 +775,39 @@ export interface paths {
         put?: never;
         /**
          * Offer/issue a credential
-         * @description Issue a credential via a published issuance profile.
-         *
-         *     **Delivery mode** is determined by the presence of `connection_id`:
-         *     - **Present** → DIDComm delivery (push offer to connected agent). Returns 202.
-         *     - **Absent** → OID4VCI delivery (generate credential_offer_uri). Returns 200.
-         *
-         *     MVP: Only DIDComm delivery is supported (Traction adapter). Omitting `connection_id` returns 400.
+         * @description Offer unsigned subject claims via a ready definition or published profile.
+         *     Format is inferred from the stored source, not parsed from an identifier.
+         *     Currently only explicit didcomm-v1 delivery is supported. Its connection_id
+         *     is a tenant-owned local connection UUID resolved in the definition's wallet.
          */
         post: operations["offerCredential"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tenants/{tenantId}/credentials/offer/{operationId}/reconcile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                operationId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reconcile an existing offer without resending
+         * @description Requires credentials:offer. Reads the original exchange from its pinned
+         *     connector, verifies holder connection correlation, and applies the same
+         *     monotonic state transitions as authenticated webhooks. Missing or
+         *     inconsistent exchange correlation returns 409; it never retries submission.
+         */
+        post: operations["reconcileCredentialOffer"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2137,28 +2161,45 @@ export interface components {
             protocol_hint?: components["schemas"]["ProtocolHint"];
         };
         /**
-         * @description Either `profile_id` or `credential_definition_id` + `format` must be provided (not both).
-         *     `connection_id` determines delivery protocol (DIDComm if present, OID4VCI if absent).
+         * @description Exactly one source is required. Format is inferred from stored metadata.
+         *     credential contains unsigned proposed claims, not a protocol offer or
+         *     a signed W3C credential. AnonCreds maps flat scalars to preview attributes.
          */
         OfferCredentialRequest: {
             /** @description UUID or "name/version" string (e.g., "drivers-license/1.0") */
             profile_id?: string;
             /**
              * Format: uuid
-             * @description Legacy mode — direct cred def reference (bypasses profile)
+             * @description Local definition reference (bypasses profile)
              */
             credential_definition_id?: string;
-            format?: components["schemas"]["CredentialFormat"];
-            /**
-             * Format: uuid
-             * @description Target connection (DIDComm). Omit for OID4VCI (post-MVP).
-             */
-            connection_id?: string;
-            /** @description Credential claim values */
-            attributes?: {
-                [key: string]: unknown;
+            credential: {
+                /** @description Flat scalar claims for AnonCreds; nested values are rejected */
+                credentialSubject: {
+                    [key: string]: unknown;
+                };
             };
-        };
+            delivery: {
+                /** @enum {string} */
+                protocol: "didcomm-v1";
+                /**
+                 * Format: uuid
+                 * @description Local tenant-owned holder connection in the definition's wallet
+                 */
+                connection_id: string;
+            };
+            options?: {
+                /**
+                 * @description Issue automatically after the holder requests the credential.
+                 *     False waits for a future explicit issue action, not yet exposed.
+                 *     This does not control holder acceptance or mediator delivery.
+                 *     Exchange records are always retained; auto_remove and
+                 *     auto_remove_on_failure cannot be overridden.
+                 * @default true
+                 */
+                auto_issue: boolean;
+            };
+        } & (unknown | unknown);
         OfferCredentialBatchRequest: {
             /** @description UUID or "name/version" — applied to all items */
             profile_id?: string;
@@ -2194,7 +2235,12 @@ export interface components {
             id?: string;
             /** Format: uuid */
             tenant_id?: string;
-            external_connection_id?: string;
+            external_connection_id?: string | null;
+            /**
+             * Format: uuid
+             * @description Pinned connector; null for unverified legacy connections
+             */
+            connector_id?: string | null;
             their_label?: string | null;
             their_did?: string | null;
             state?: components["schemas"]["ConnectionState"];
@@ -4099,10 +4145,7 @@ export interface operations {
     offerCredential: {
         parameters: {
             query?: never;
-            header?: {
-                /** @description UUIDv4 idempotency key to prevent duplicate creation */
-                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
-            };
+            header?: never;
             path: {
                 /** @description Tenant UUID */
                 tenantId: components["parameters"]["TenantId"];
@@ -4115,24 +4158,12 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Credential offer URI generated (OID4VCI, connectionless) */
+            /** @description Offer operation already completed or failed synchronously */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    /**
-                     * @example {
-                     *       "id": "op-uuid",
-                     *       "type": "credential.offer",
-                     *       "state": "completed",
-                     *       "created_at": "2025-01-15T10:30:00.000Z",
-                     *       "updated_at": "2025-01-15T10:30:00.000Z",
-                     *       "result": {
-                     *         "credential_offer_uri": "openid-credential-offer://..."
-                     *       }
-                     *     }
-                     */
                     "application/json": components["schemas"]["Operation"];
                 };
             };
@@ -4157,6 +4188,32 @@ export interface operations {
             };
             400: components["responses"]["BadRequest"];
             422: components["responses"]["ValidationError"];
+        };
+    };
+    reconcileCredentialOffer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                operationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current operation (possibly still processing) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Operation"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
         };
     };
     offerCredentialBatch: {
