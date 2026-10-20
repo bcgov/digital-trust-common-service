@@ -20,6 +20,7 @@ import {
 import { API_BASE_PATH } from '../common/constants/api-version.constants';
 import { Tenant } from '../tenant/tenant.entity';
 
+import type { RegistrationProblemDetailsDto } from './dto/registration-problem-details.dto';
 import { OPERATION_TYPE } from './operation-type.constants';
 
 export enum OperationState {
@@ -38,6 +39,7 @@ export interface OperationRequest {
 export interface OperationFailure {
   code: string;
   message: string;
+  problem_details?: RegistrationProblemDetailsDto | null;
 }
 
 export type OperationResult = Record<string, unknown> | OperationFailure | null;

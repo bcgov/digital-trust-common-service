@@ -64,6 +64,24 @@ export class IssuanceProfileService {
         auth,
       );
 
+    if (
+      credentialDefinition.registrationState !== 'ready' ||
+      !credentialDefinition.externalId ||
+      !credentialDefinition.connectorId
+    ) {
+      throw new BadRequestException(
+        'Credential definition is not ready for issuance',
+      );
+    }
+    if (
+      dto.connectorId &&
+      dto.connectorId !== credentialDefinition.connectorId
+    ) {
+      throw new BadRequestException(
+        'Profile connector must match the credential definition issuer wallet',
+      );
+    }
+
     this.validateAttributeSchema(
       credentialDefinition.format,
       credentialDefinition.schemaDefinition,
@@ -85,7 +103,7 @@ export class IssuanceProfileService {
     const connectorId = await this.resolveConnector(
       tenantId,
       credentialDefinition.format,
-      dto.connectorId,
+      credentialDefinition.connectorId,
     );
 
     const created = await this.createProfile({
@@ -343,6 +361,21 @@ export class IssuanceProfileService {
     }
 
     const connectorId = await this.assertConnectorHealthy(profile);
+
+    const definition = await this.credentialDefinitionService.findById(
+      tenantId,
+      profile.credentialDefinitionId,
+      auth,
+    );
+    if (
+      definition.registrationState !== 'ready' ||
+      !definition.externalId ||
+      definition.connectorId !== connectorId
+    ) {
+      throw new BadRequestException(
+        'Credential definition is not ready on the profile connector',
+      );
+    }
 
     const transitioned = await this.issuanceProfileRepository.transitionStatus(
       tenantId,

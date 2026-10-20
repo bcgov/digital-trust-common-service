@@ -50,7 +50,7 @@ type ListedMethod = (typeof PORT_METHODS)[number];
 
 /** Every asynchronous method on the AgentAdapter surface. */
 type PortMethod = {
-  [K in keyof AgentAdapter]: AgentAdapter[K] extends (
+  [K in keyof AgentAdapter]-?: AgentAdapter[K] extends (
     ...args: never[]
   ) => Promise<unknown>
     ? K
