@@ -1,7 +1,10 @@
 import { Building2 } from 'lucide-react';
+import { useState } from 'react';
 import { Link } from 'react-router';
 
+import { CreateTenantDialog } from '@/components/create-tenant-dialog';
 import { TenantStatusBadge } from '@/components/tenant-status-badge';
+import { Button } from '@/components/ui/button';
 import {
   Empty,
   EmptyDescription,
@@ -20,14 +23,32 @@ import {
 } from '@/components/ui/table';
 import { useTenants } from '@/lib/api/queries/tenants';
 import { ApiError } from '@/lib/api/errors';
+import { useAuth } from '@/lib/auth/context';
+import { isPlatformAdmin } from '@/lib/auth/scopes';
 
 export function TenantsPage() {
+  const { user } = useAuth();
   const { data, isLoading, error } = useTenants();
   const isEmpty = !isLoading && data?.data.length === 0;
+  const [creating, setCreating] = useState(false);
+  const canCreate = isPlatformAdmin(user);
 
   return (
     <div className="flex flex-col gap-4">
-      <h1 className="text-xl font-semibold">Tenants</h1>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-xl font-semibold">Tenants</h1>
+          <p className="text-sm text-muted-foreground">
+            Create and manage the tenants on this platform.
+          </p>
+        </div>
+        {canCreate && (
+          <Button onClick={() => setCreating(true)}>Create tenant</Button>
+        )}
+      </div>
+      {canCreate && creating && (
+        <CreateTenantDialog onClose={() => setCreating(false)} />
+      )}
 
       {error ? (
         <p role="alert" className="text-sm text-destructive">

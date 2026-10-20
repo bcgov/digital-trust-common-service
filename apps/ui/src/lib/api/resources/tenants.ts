@@ -9,6 +9,8 @@ import type { components } from '../types.gen';
 export type Tenant = components['schemas']['Tenant'];
 export type TenantStatus = components['schemas']['TenantStatus'];
 
+export type CreateTenantRequest = components['schemas']['CreateTenantRequest'];
+
 export async function listTenants(
   params: CursorParams = {},
 ): Promise<Page<Tenant>> {
@@ -18,5 +20,10 @@ export async function listTenants(
 
 export async function getTenant(id: string): Promise<Tenant> {
   const response = await apiClient.get<Tenant>(`/tenants/${id}`);
+  return response.data;
+}
+
+export async function createTenant(body: CreateTenantRequest): Promise<Tenant> {
+  const response = await apiClient.post<Tenant>('/tenants', body);
   return response.data;
 }
