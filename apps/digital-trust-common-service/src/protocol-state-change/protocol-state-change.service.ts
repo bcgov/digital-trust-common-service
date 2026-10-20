@@ -9,6 +9,7 @@ import { ConnectionState } from '../connection/connection.entity';
 import { ConnectionService } from '../connection/connection.service';
 import { CredentialState } from '../credential/credential.entity';
 import { CredentialRepository } from '../credential/credential.repository';
+import { CredentialExchangeRepository } from '../credential-exchange/credential-exchange.repository';
 import { JobsService } from '../jobs/jobs.service';
 import { OPERATION_TYPE } from '../operation/operation-type.constants';
 import { OperationResult, OperationState } from '../operation/operation.entity';
@@ -68,9 +69,13 @@ export class ProtocolStateChangeService {
     private readonly domainAudit: DomainAuditService,
     private readonly eventEmitter: EventEmitter2,
     private readonly dataSource: DataSource,
+    private readonly exchanges: CredentialExchangeRepository,
   ) {}
 
-  public async process(data: ProtocolStateChangeJobData): Promise<void> {
+  public async process(
+    data: ProtocolStateChangeJobData,
+    exchangeCorrelation?: { exchangeId: string; connectorId: string },
+  ): Promise<void> {
     const outcome = resolveProtocolOutcome(data.topic, data.protocolState);
 
     if (!outcome) {
@@ -103,6 +108,26 @@ export class ProtocolStateChangeService {
     // the enqueue means a redelivery instead sees the pre-transition state
     // again and retries both together.
     const result = await this.dataSource.transaction(async (manager) => {
+      if (data.topic === 'issue_credential') {
+        const credential = exchangeCorrelation
+          ? null
+          : await this.credentialRepository.findByExternalId(
+              data.tenantId,
+              data.externalId,
+            );
+        const connectorId =
+          exchangeCorrelation?.connectorId ?? credential?.connectorId;
+        if (connectorId) {
+          await this.exchanges.observe(
+            data.tenantId,
+            connectorId,
+            data.externalId,
+            data.protocolState,
+            manager,
+            exchangeCorrelation?.exchangeId,
+          );
+        }
+      }
       const operationOutcome = await this.applyOperationOutcome(
         data,
         outcome,
@@ -280,6 +305,7 @@ export class ProtocolStateChangeService {
     // reached one.
     if (
       (operation.type === OPERATION_TYPE.CREDENTIAL_ACCEPT ||
+        operation.type === OPERATION_TYPE.CREDENTIAL_ISSUE ||
         operation.type === OPERATION_TYPE.CREDENTIAL_REJECT) &&
       (outcome.operationState === OperationState.COMPLETED ||
         outcome.operationState === OperationState.FAILED)

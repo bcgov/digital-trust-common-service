@@ -31,7 +31,7 @@ const logger = new Logger('AdapterCall');
  * from whatever a caller asks for.
  */
 const PORT_METHODS_BY_PORT = {
-  issuer: ['offerCredential', 'getExchange'],
+  issuer: ['offerCredential', 'getExchange', 'issueCredential'],
   verifier: ['requestPresentation', 'getPresentation'],
   holder: ['acceptOffer', 'rejectOffer'],
   connection: [
@@ -50,7 +50,7 @@ type ListedMethod = (typeof PORT_METHODS)[number];
 
 /** Every asynchronous method on the AgentAdapter surface. */
 type PortMethod = {
-  [K in keyof AgentAdapter]: AgentAdapter[K] extends (
+  [K in keyof AgentAdapter]-?: AgentAdapter[K] extends (
     ...args: never[]
   ) => Promise<unknown>
     ? K

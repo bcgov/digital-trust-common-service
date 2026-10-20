@@ -1,3 +1,5 @@
+import { randomBytes } from 'crypto';
+
 import { JwtGuard, TENANT_SUPERUSER_SCOPE } from '@app/auth';
 import { PgBossService } from '@app/pg-boss';
 import {
@@ -15,6 +17,8 @@ import { AdapterRegistry } from '../src/adapter-registry/adapter-registry.servic
 import { configureApp } from '../src/app.config';
 import { AppModule } from '../src/app.module';
 import { API_BASE_PATH } from '../src/common/constants/api-version.constants';
+import { ConnectorType } from '../src/connection/connection.entity';
+import { ConnectorCredential } from '../src/connector-credential/connector-credential.entity';
 import { Credential } from '../src/credential/credential.entity';
 import {
   CredentialDefinition,
@@ -75,6 +79,7 @@ describe('Credential offer (e2e)', () => {
   let registry: AdapterRegistry;
   let tenant: Tenant;
   let credentialDefinition: CredentialDefinition;
+  let connectorRepo: Repository<ConnectorCredential>;
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -102,6 +107,7 @@ describe('Credential offer (e2e)', () => {
     operationRepo = moduleFixture.get(getRepositoryToken(Operation));
     credentialRepo = moduleFixture.get(getRepositoryToken(Credential));
     registry = moduleFixture.get(AdapterRegistry);
+    connectorRepo = moduleFixture.get(getRepositoryToken(ConnectorCredential));
   });
 
   beforeEach(async () => {
@@ -118,6 +124,14 @@ describe('Credential offer (e2e)', () => {
       }),
     );
 
+    const connector = await connectorRepo.save({
+      tenantId: tenant.id,
+      connectorType: ConnectorType.TRACTION,
+      endpointUrl: 'https://agent.example.test',
+      credentialsEncrypted: randomBytes(32),
+      keyVersion: 1,
+      active: true,
+    });
     credentialDefinition = await credentialDefinitionRepo.save(
       credentialDefinitionRepo.create({
         tenantId: tenant.id,
@@ -126,6 +140,8 @@ describe('Credential offer (e2e)', () => {
         schemaDefinition: { attr_names: ['given_name'] },
         externalId: 'cred-def-external-e2e',
         connectorType: CredentialDefinitionConnectorType.TRACTION,
+        connectorId: connector.id,
+        registrationState: 'ready',
         isActive: true,
       }),
     );
@@ -139,6 +155,7 @@ describe('Credential offer (e2e)', () => {
       tenant.id,
     ]);
     await credentialDefinitionRepo.delete(credentialDefinition.id);
+    await connectorRepo.delete({ tenantId: tenant.id });
     await tenantRepo.delete(tenant.id);
   });
 
@@ -151,9 +168,11 @@ describe('Credential offer (e2e)', () => {
       .post(`${API_BASE_PATH}/tenants/${tenant.id}/credentials/offer`)
       .send({
         credential_definition_id: credentialDefinition.id,
-        format: CredentialDefinitionFormat.ANONCREDS,
-        connection_id: '123e4567-e89b-12d3-a456-426614174099',
-        attributes: { given_name: 'Alice' },
+        delivery: {
+          protocol: 'didcomm-v1',
+          connection_id: '123e4567-e89b-12d3-a456-426614174099',
+        },
+        credential: { credentialSubject: { given_name: 'Alice' } },
       })
       .expect(400);
 

@@ -152,6 +152,22 @@ export class MockAdapter implements AgentAdapter {
     });
   }
 
+  public async issueCredential(
+    context: ConnectorContext,
+    id: string,
+  ): Promise<CredentialExchange> {
+    return this.execute('issueCredential', [context, id], () => {
+      const exchange = this.getCredentialExchangeOrThrow(id);
+      const issued = {
+        ...exchange,
+        state: CredentialExchangeState.CredentialIssued,
+        updatedAt: this.createTimestamp(),
+      };
+      this.credentialExchanges.set(exchange.id, issued);
+      return issued;
+    });
+  }
+
   public async getExchange(
     context: ConnectorContext,
     id: string,

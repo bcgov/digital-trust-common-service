@@ -1199,6 +1199,358 @@ App-issued access tokens carry a stable API `aud`, not the OIDC issuer URL:
 
 `JWT_AUDIENCE` and extra resources must be absolute URIs without fragments (RFC 8707 / oidc-provider). Override via `.env` if needed; Helm `config.JWT_AUDIENCE` defaults to the same URI in every environment and `config.JWT_ADDITIONAL_AUDIENCES` defaults to empty.
 
+## AnonCreds credential-definition registration
+
+`POST /api/v1/tenants/{tenantId}/credential-definitions` now accepts
+`name`, `format: "anoncreds"`, `schema`, optional `issuer`, `connector_id`,
+format-specific `options`, and local-only `metadata`. This replaces the old
+`schema_definition`, `external_id`, and `connector_type` request fields.
+Independent schema management and existing credential-definition imports are
+not part of this workflow.
+
+```json
+{
+  "name": "Employee Credential",
+  "format": "anoncreds",
+  "schema": {
+    "type": "anoncreds",
+    "definition": {
+      "schema_name": "employee",
+      "schema_version": "1.0",
+      "attr_names": ["given_name", "family_name", "employee_id"]
+    }
+  },
+  "issuer": { "method": "indy" },
+  "options": {
+    "tag": "default",
+    "revocation": { "enabled": true }
+  }
+}
+```
+
+Alternatively, use `schema.id` to resolve an existing published schema and
+create this issuer's credential definition against it. Exactly one schema
+source is required. `schema.type` defaults to `anoncreds`. Select an existing
+issuer with either `issuer.id` or `issuer.method`, never both, or omit `issuer`
+to use the connector's default. Traction selections must match its configured
+public DID; the abstraction layer never creates, promotes, or endorses DIDs.
+The wallet must already use `askar-anoncreds` and its public DID's ledger key
+must match its wallet key.
+
+For ACA-Py 1.6.0 legacy-Indy registrar compatibility, the Traction adapter maps
+an unnamespaced `did:indy:<21-or-22-character-base58-identifier>` to the bare
+ledger identifier for schema/definition publication, issuer lookup filters,
+and definition ownership comparison. The canonical wallet DID remains unchanged
+in issuer selection, ledger-key verification, and local registration state.
+Namespaced or malformed `did:indy` identifiers are rejected rather than stripped.
+This workaround is marked `BUG`/`TODO` for removal when the deployed registrar
+supports the wallet representation; it does not establish end-to-end publication
+or revocation readiness.
+
+Revocation defaults to **enabled** and the tag defaults to `default`. Set
+`options.revocation.enabled` explicitly to false for non-revocable issuance.
+Unknown option fields and unsupported publishing formats are rejected.
+Signing keys never enter the registration request or application database.
+
+The response is a `202` Operation with `result.credential_definition_id`.
+Poll the existing operation endpoint; the definition's GET response includes
+`registration_state`, `registration_operation_id`, resolved `issuer`/`schema`,
+and its pinned `connector_id`. Publication is processed by the
+`credential-definition.register` worker, with a minute-by-minute reconciliation
+schedule enabled by the existing `PG_BOSS_WORKERS_ENABLED` switch.
+
+Registration idempotency is content-derived; callers do not supply an
+`Idempotency-Key` header for this endpoint. The server resolves the connector,
+issuer, and any imported schema, applies option defaults, and generates two
+versioned RFC 8785 (JCS) fingerprints. Each is a SHA-256 multihash (code `0x12`,
+length `0x20`) encoded as unpadded base64url multibase (`u`, 47 characters).
+Both include tenant, connector identity (the pinned wallet/ledger context),
+format, canonical issuer, schema reference/content, and normalized options.
+Only schema `attr_names` is sorted as an unordered collection, without mutating
+the publication request; other arrays, including metadata arrays, keep order.
+The request fingerprint additionally includes the local name and metadata
+(omitted and null metadata are equivalent). Display names and metadata are
+excluded from the artifact fingerprint. Fingerprints are identifiers, not
+encryption; never put secrets in metadata.
+
+Equivalent normalized requests return the original operation with `202`,
+including completed or failed operations, without another enqueue or CREATE
+audit event. Different names/metadata targeting the same artifact fingerprint
+return `409 REGISTRATION_ARTIFACT_EXISTS` with the existing definition and
+operation IDs; use PATCH for local edits. Missing/expired operations or inactive
+definitions return `409 REGISTRATION_REPLAY_UNAVAILABLE` rather than republish.
+The keys remain unchanged after local edits, registration completion, or
+deactivation. Transaction-scoped advisory locking and tenant-scoped unique
+indexes make concurrent submissions converge on one durable operation.
+
+The fingerprints cover requests created after migration 000034. Existing rows
+retain null keys because their original normalized request cannot reliably be
+reconstructed after edits; existing name conflicts and worker reconciliation
+still apply. An imported schema ID and an inline schema are distinct intents,
+even when their content matches: an imported schema may belong to another
+issuer. Wallet artifact lookup remains authoritative before publication.
+Changing a connector's wallet or ledger in place is not represented by a new
+key; provision a new connector for a different backend identity.
+Resolving prerequisites still requires an available connector on API replays.
+This is local API deduplication, not a backend idempotency guarantee. Use the
+recovery endpoint below for failed registrations or external/manual publications.
+Do not clear submission markers just to retry.
+
+Registration persists submission intent before backend writes. Restarts and
+ambiguous responses reconcile wallet-owned artifacts instead of resubmitting
+non-idempotent POSTs. Backend job identifiers and successful schema publication
+survive subsequent failures. A registration that does not resolve within 24
+hours fails explicitly; inspect the backend job/endorsement state and recover
+the existing registration rather than creating another. Published artifacts
+are not deleted on local failure.
+Revocable definitions remain pending until the backend's active registry is
+finished, an initial ledger accumulator exists, capacity remains, and its
+public tails file is reachable. ACA-Py owns registry initialization and rollover.
+
+Registration Operation responses include `problem_details: null` when no
+diagnostic is recorded. When a worker step encounters an error, this becomes
+an RFC 9457-aligned object with `type`, `title`, `detail`, `instance`,
+`stage`, `retryable`, and optional
+`backend_status`/`backend_code`. `detail` is a bounded, sanitized backend reason
+or a safe local message. Only selected backend error fields are read; headers,
+request configurations, response objects, credentials, and stack traces are
+not copied into this object. Polling remains HTTP 200 even when an operation
+has failed; `backend_status` describes the upstream request.
+This uses the RFC 9457 data model as an embedded diagnostic, not an
+`application/problem+json` HTTP error response. Successful POST and GET
+responses remain `application/json` Operation representations with HTTP
+202 and 200 respectively. `status` is deliberately omitted: an upstream
+400 must not be represented as the status of a successful polling response.
+`backend_status`, `backend_code`, `stage`, and `retryable` are documented
+extension members. Consumers must ignore extensions they do not recognize
+and must not parse `detail` or `title` for machine decisions.
+Each newly recorded occurrence gets a persisted `urn:uuid:` `instance`,
+an opaque identifier rather than a URL to fetch. Repeated reads retain
+that identifier. A later error occurrence has a new instance.
+The global synchronous HTTP `{ error: { code, message, ... } }` envelope and
+other operation types are unchanged. Historical failures without retained
+backend errors expose null rather than fabricated details.
+Earlier stored `about:blank` diagnostics are normalized to the appropriate
+documented registration type/title on reads, without fabricating an instance.
+
+The `result` retains `credential_definition_id` on failure, along with
+`external_id`, `code`, `message`, and `registration` progress. Progress includes
+the current stage and schema/definition IDs, backend job IDs, endorsement
+transaction IDs, and backend states. `wait`/`action` responses are accepted
+pending progress: their IDs are retained as provisional and never treated as
+published or issuance-ready. A schema must resolve before definition creation;
+definition lookup and revocation checks still gate readiness.
+
+Network errors, 404/408/429, 5xx, and malformed successful publication responses
+retain diagnostics while automatic reconciliation retries. They do not clear
+submission markers or repeat the publication POST. Permanent backend 4xx
+rejections and explicit failed registration states fail with diagnostic details.
+Uncertain-write diagnostics remain until correlated artifacts are found;
+successful reconciliation clears them. `retryable` means reconciliation, not
+permission for callers to publish again.
+
+### Recover a credential registration
+
+`POST /api/v1/tenants/{tenantId}/credential-definitions/{id}/recover` requires
+the same `tenants:admin` access as registration. Send `{}` to reconcile wallet
+artifacts and discover matching endorsement transactions, or supply optional
+wallet-scoped UUID hints:
+
+```json
+{
+  "schema_transaction_id": "1b0d887a-9131-4653-a05c-ab3486875d01"
+}
+```
+
+`definition_transaction_id` is the corresponding hint for a credential-definition
+endorsement. These are backend transaction IDs, not abstraction-layer operation
+IDs. Schema IDs, job IDs, retry flags and marker-reset flags are not accepted.
+Hints are verified asynchronously against the pinned connector wallet, expected
+issuer and exact artifact intent. Schema verification checks name, version and
+attribute set. Definition verification checks the resolved ledger schema sequence
+number, tag and revocation mode. A mismatched or ambiguous transaction fails
+explicitly instead of being adopted. Signed attachments are inspected server-side
+only; they are never persisted in recovery history or returned to callers.
+
+The `202` response is the **original Operation**, with the same local definition,
+fingerprints and creation timestamps. A wallet advisory lock serializes recovery
+against the worker. Restoring the pending definition, operation retention,
+durable enqueue and audit event is atomic. Missing/purged original operations
+return `409`; recovery does not invent replacement history. Inactive or
+cross-tenant definitions return `404`. A busy wallet returns `409`; retry later.
+An already-ready definition returns its existing operation without another job.
+
+Repeated recovery while pending returns the same operation without another
+enqueue or deadline extension. A previously absent transaction hint can be added
+to unresolved recovery without restarting its deadline; contradictory hints
+return `409`. Once failed, another explicit recovery can supply corrected hints.
+Each new recovery window is bounded to 24 hours from its request, not the original
+creation date. Operation retention uses this recovery timestamp too. Previous
+failure results are retained in `result.registration.recovery_history`, alongside
+`recovery_requested_at` and `recovery_attempts`; snapshots omit nested histories
+to avoid recursively duplicating prior attempts. The last problem remains visible
+until reconciliation advances or records a new diagnostic.
+
+The worker can adopt a matching schema/definition transaction, wait for
+endorsement, adopt verified published artifacts, and continue only steps that
+have **not** already been submitted. Transaction IDs, states and backend job IDs
+are exposed in registration progress. Endorsement acknowledgement is not itself
+proof of ledger visibility or wallet key ownership; normal artifact and revocation
+readiness checks still apply. A listed wallet artifact that returns 404 on
+resolution produces a transient diagnostic, not permission to republish.
+
+Recovery never clears submission markers, resends/signs endorsement transactions,
+or repeats an uncertain publication POST. Refused/cancelled endorsements fail
+explicitly and retain the markers: those transactions can still be resent outside
+this service. An empty ledger/wallet/transaction search is not proof an earlier
+write is safe to repeat. An uncorrelated prior submission reports
+`REGISTRATION_OUTCOME_UNKNOWN` and keeps reconciling, rather than claiming success.
+Backend remediation is still required when no verifiable progress exists.
+Recovery can publish the missing credential definition after the existing schema
+finishes; it is not a read-only inspection endpoint.
+
+### Credential registration failed
+
+Problem type:
+`https://github.com/bcgov/digital-trust-common-service/blob/main/docs/DEVELOPER.md#credential-registration-failed`
+
+Stable title: `Credential registration failed`. A prerequisite validation,
+explicit backend failure, or permanent backend rejection stopped this
+registration. The recommended status for a standalone HTTP representation of
+this domain problem is 422; this API currently embeds it in an Operation and
+does not use that status for polling. The upstream status, if known, is
+`backend_status`. `retryable` is false. Correct the reported prerequisite or
+backend rejection and reconcile any already-submitted artifacts before
+considering another write. Do not discard the existing idempotency record.
+
+### Credential registration reconciliation required
+
+Problem type:
+`https://github.com/bcgov/digital-trust-common-service/blob/main/docs/DEVELOPER.md#credential-registration-reconciliation-required`
+
+Stable title: `Credential registration requires reconciliation`. The backend
+was temporarily unavailable, returned an invalid response, or left a submission
+outcome uncertain. The recommended standalone HTTP status is 503; the embedded
+diagnostic omits `status` and does not change polling's HTTP 200.
+`retryable` is true: the worker can attempt reconciliation again, not repeat a
+publication blindly. Inspect the retained job, transaction, wallet, and ledger
+state. An empty artifact lookup alone is not evidence a submission failed.
+The worker reconciles wallet artifacts and legacy-Indy endorsement transactions.
+Use the recovery endpoint to resume a terminally failed registration after
+correcting its prerequisites or identifying existing backend progress.
+
+Existing database records migrate to `unverified`: an external identifier alone
+does not prove wallet ownership. They remain readable, but must be replaced with
+verified registrations before new profile creation/publication or issuance.
+Profiles cannot substitute another connector wallet for a registered definition.
+The migration's rollback refuses null or oversized external identifiers instead
+of deleting data or fabricating references; resolve those records before rollback.
+
+The Traction issuer uses issue-credential v2 with the native `anoncreds` filter,
+automatic issuance after holder requests, and retained exchange records.
+State updates normally arrive through a reachable, authenticated Traction webhook.
+For local development without an inbound webhook, use the explicit offer
+reconciliation read below. OID4VCI and VC proof/envelope configuration remain
+out of scope.
+
+### Offering a credential
+
+`POST /api/v1/tenants/:tenantId/credentials/offer` requires `credentials:offer`:
+
+```json
+{
+  "credential_definition_id": "<local-definition-uuid>",
+  "credential": {
+    "credentialSubject": {
+      "given_name": "Alice",
+      "family_name": "Smith",
+      "employee_id": "TEST-001"
+    }
+  },
+  "delivery": {
+    "protocol": "didcomm-v1",
+    "connection_id": "<local-connection-uuid>"
+  }
+}
+```
+
+Use either `credential_definition_id` or a published `profile_id` (UUID or
+`name/version`), never both. The stored source determines format; identifiers
+are not parsed to guess it. Profile defaults merge into subject claims, with
+explicit claims taking precedence. AnonCreds supports flat strings, finite
+numbers, and booleans, converted to string preview attributes. Objects, arrays,
+and null claims are rejected rather than flattened. This unsigned input does
+not select W3C-form AnonCreds or supply a proof.
+
+The delivery connection is a tenant-owned local UUID, not Traction's ID. New
+connections pin the connector used to create them. Before offering, the service
+verifies the completed handshake in the definition's connector wallet and
+resolves its external connection ID. An unbound legacy row is adopted only by
+exact invitation correlation in that explicitly selected wallet; ambiguous,
+missing, cross-wallet, or abandoned connections cannot issue. The original
+top-level `format`, `attributes`, and `connection_id` fields are rejected.
+
+Optional `options: { "auto_issue": true }` preserves the default: the issuer
+automatically issues after a holder requests the credential. Set `auto_issue`
+to false to pause for the explicit exchange issue action below.
+This flag does not control offer delivery or holder acceptance.
+Only actual booleans are accepted, not null or string values. Backend exchange
+records are always retained (`auto_remove: false`, `auto_remove_on_failure:
+false`) so reconciliation can read them. These retention flags and `auto_offer`
+are not caller options on this endpoint, which already sends an offer.
+
+If webhook delivery is unavailable, call
+`POST /api/v1/tenants/:tenantId/credentials/offer/:operationId/reconcile`
+with the same scope. It returns HTTP 200 with the current operation, which may
+still be processing. It reads the saved exchange in its pinned wallet, verifies
+holder correlation, and reuses webhook state handling, including guarded
+transitions and durable notifications. It never resends an offer. Missing or
+inconsistent exchange correlation returns 409. Do not retry offer submission
+after an uncertain response. `issued` means the issuer sent the credential;
+verify backend `done`/holder receipt separately before claiming wallet delivery.
+
+### Credential exchanges and explicit issuance
+
+An offer operation now includes `exchange_id`, a stable **local** UUID. The
+credential exchange tracks the protocol interaction; an Operation tracks an
+action, and a Credential tracks the resulting credential lifecycle. Backend
+exchange identifiers and connector internals are not part of the public exchange
+representation. Existing offer operation IDs and the operation-based reconcile
+endpoint remain valid; legacy accept/reject routes still take operation IDs.
+
+All three exchange endpoints require `credentials:offer`:
+
+| Method | Path (under `/api/v1/tenants/:tenantId`) | Result |
+| --- | --- | --- |
+| GET | `/credential-exchanges/:exchangeId` | Current durable exchange |
+| POST | `/credential-exchanges/:exchangeId/reconcile` | Authenticated backend observation, never resubmission |
+| POST | `/credential-exchanges/:exchangeId/issue` | `credential.issue` Operation |
+
+The POST actions have no request body. After offering with
+`options.auto_issue: false`, wait for the holder to accept, reconcile, and require
+exchange state `request-received`. Issuing checks tenant, pinned connector,
+backend exchange ID and holder connection. It does not create another offer.
+HTTP 202 means an action is pending/processing; HTTP 200 means the returned action
+is already terminal. `credential-issued` means sent by the issuer, whereas
+exchange `done` records holder acknowledgement. GET does not contact the backend.
+
+A transactional row lock claims the issue action before the outbound request.
+Concurrent or repeated calls return that same action; neither HTTP retries nor
+redirect following are allowed for the backend issue POST. A timeout, process
+crash or persistence failure after claiming is **not** permission to issue again.
+`issue_submission` is `not-submitted`, `submitting`, `submitted` or `uncertain`.
+A 503 with local exchange/operation references means reconcile instead of resend.
+Positive observed issuance settles uncertain/submitting status. If a crashed
+submission remains at `request-received`, operator investigation is required;
+this API deliberately provides no automatic reset.
+
+The exchange and submission guard survive Operation retention. When its issue
+operation is purged, `issue_operation_id` becomes null but issuing again returns
+409, never another submission. New offers link their Credential and Operation;
+migration 000036 backfills eligible tenant-consistent legacy issuer offers
+without replaying them. Exchange-linked completed action results contain the
+local `{ exchange_id }`, not a backend record.
+
 ## Adapter registry (CA-02)
 
 `AdapterRegistry` (`apps/digital-trust-common-service/src/adapter-registry/`) maps a connector type

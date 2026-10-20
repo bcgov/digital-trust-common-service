@@ -86,6 +86,21 @@ describe('TractionHttpClient', () => {
     expect(mockRequest).toHaveBeenCalledTimes(1);
   });
 
+  it('does not retry non-idempotent writes but retains the shared circuit breaker', async () => {
+    const error = axiosError(503);
+    mockRequest.mockRejectedValue(error);
+    for (let i = 0; i < 5; i++) {
+      await expect(
+        client.request({ method: 'POST', url: '/publish' }, false),
+      ).rejects.toBe(error);
+    }
+    expect(mockRequest).toHaveBeenCalledTimes(5);
+    await expect(
+      client.request({ method: 'POST', url: '/publish' }, false),
+    ).rejects.toBeInstanceOf(BrokenCircuitError);
+    expect(mockRequest).toHaveBeenCalledTimes(5);
+  });
+
   it('revalidates the endpoint on every request, not just on a cache miss', async () => {
     mockRequest.mockResolvedValue({ status: 200, data: { ok: true } });
 

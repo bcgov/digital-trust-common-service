@@ -20,6 +20,7 @@ import {
 import { API_BASE_PATH } from '../common/constants/api-version.constants';
 import { Tenant } from '../tenant/tenant.entity';
 
+import type { RegistrationProblemDetailsDto } from './dto/registration-problem-details.dto';
 import { OPERATION_TYPE } from './operation-type.constants';
 
 export enum OperationState {
@@ -38,6 +39,7 @@ export interface OperationRequest {
 export interface OperationFailure {
   code: string;
   message: string;
+  problem_details?: RegistrationProblemDetailsDto | null;
 }
 
 export type OperationResult = Record<string, unknown> | OperationFailure | null;
@@ -50,6 +52,10 @@ export type OperationResult = Record<string, unknown> | OperationFailure | null;
 @Index('idx_operation_expires_at', ['expiresAt'])
 @Index('idx_operation_batch_id', ['batchId'])
 export class Operation {
+  @ApiProperty({ description: 'Local credential exchange ID', nullable: true })
+  @Column({ name: 'exchange_id', type: 'uuid', nullable: true })
+  public exchangeId?: string | null;
+
   @ApiProperty({
     description: 'The unique identifier of the operation',
     example: '123e4567-e89b-12d3-a456-426614174000',

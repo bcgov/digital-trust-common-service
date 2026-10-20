@@ -7,7 +7,9 @@ import {
 describe('operation type constants', () => {
   it('matches the known values documented in openapi.yaml', () => {
     expect(Object.values(OPERATION_TYPE)).toEqual([
+      'credential-definition.register',
       'credential.offer',
+      'credential.issue',
       'credential.offer-batch',
       'credential.accept',
       'credential.reject',

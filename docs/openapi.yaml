@@ -1080,9 +1080,27 @@ paths:
     post:
       operationId: createCredentialDefinition
       summary: Register a credential definition
+      description: |
+        Register AnonCreds issuer artifacts asynchronously. Supply exactly one of
+        schema.id (reuse a published schema) or schema.definition (publish one).
+        Traction must already have an askar-anoncreds wallet and a matching
+        ledger-registered public issuer DID. This endpoint does not create DIDs.
+        Connector selection is pinned for the entire registration and issuance
+        lifecycle. Revocation defaults to enabled; readiness includes initial
+        registry/status-list publication and public tails availability.
+        This replaces the former schema_definition/external_id/connector_type
+        request. Other publishing formats are not yet supported.
+        Idempotency is generated server-side from normalized content, using
+        versioned JCS SHA-256 multihash fingerprints encoded as base64url
+        multibase. Equivalent requests return the original operation without
+        resubmission, including failed operations. Local name and metadata are
+        included in request identity but excluded from artifact identity.
+        Differently named requests for identical artifact intent conflict.
+        Schema attributes are order-insensitive; other arrays preserve order.
+        Imported schema IDs and inline schema content are distinct intents.
+        Connector/issuer/schema resolution still runs on replays. Existing
+        records predating fingerprint migration retain their name conflicts.
       tags: [Credential Definitions]
-      parameters:
-        - $ref: "#/components/parameters/IdempotencyKey"
       requestBody:
         required: true
         content:
@@ -1090,12 +1108,26 @@ paths:
             schema:
               $ref: "#/components/schemas/CreateCredentialDefinitionRequest"
       responses:
-        "201":
-          description: Credential definition registered
+        "202":
+          description: |
+            Registration accepted. result.credential_definition_id identifies the
+            local definition; poll the operation until terminal. Equivalent
+            normalized requests return the existing operation, which may already
+            be completed or failed; publication is not retried.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/CredentialDefinition"
+                $ref: "#/components/schemas/Operation"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "409":
+          description: |
+            Name/format already exists with different content, or identical
+            artifact intent has a different local request
+            (REGISTRATION_ARTIFACT_EXISTS, including credential_definition_id and
+            operation_id). Inactive registrations or missing replay operations
+            return REGISTRATION_REPLAY_UNAVAILABLE with credential_definition_id.
+            Reconcile the existing registration instead of resubmitting.
         "422":
           $ref: "#/components/responses/ValidationError"
     get:
@@ -1157,6 +1189,71 @@ paths:
       responses:
         "204":
           description: Credential definition deactivated
+
+  /api/v1/tenants/{tenantId}/credential-definitions/{credDefId}/recover:
+    parameters:
+      - $ref: "#/components/parameters/TenantId"
+      - name: credDefId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: recoverCredentialDefinition
+      summary: Reconcile and resume the original credential registration
+      description: |
+        Requires tenants:admin. Preserves local identity, fingerprints, original
+        operation and failure history. Returns the original operation with a
+        fresh bounded recovery window after failure. Repeated pending recovery
+        is idempotent; adding a previously absent transaction hint does not extend
+        its deadline. Hints are verified asynchronously in the pinned wallet
+        against issuer, schema, tag and revocation intent.
+        Adopts existing artifacts or endorsement progress before any missing
+        publication step. Never clears submission markers or blindly repeats an
+        uncertain write. This can publish a not-yet-submitted credential definition
+        after schema completion; it does not resend or sign endorsements.
+      tags: [Credential Definitions]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                schema_transaction_id:
+                  type: string
+                  format: uuid
+                  description: Wallet-scoped schema endorsement transaction to verify
+                definition_transaction_id:
+                  type: string
+                  format: uuid
+                  description: Wallet-scoped credential-definition endorsement transaction to verify
+            examples:
+              discover:
+                summary: Discover existing matching backend progress
+                value: {}
+      responses:
+        "202":
+          description: |
+            Original operation resumed, already pending, or already completed.
+            Poll for asynchronous verification and readiness. Prior results are
+            retained in result.registration.recovery_history; recovery_requested_at
+            and recovery_attempts identify the bounded recovery window.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Operation"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: |
+            Wallet currently processing, incompatible pending hints, unsupported
+            legacy registration, or original operation no longer available.
+            No replacement registration or blind publication is performed.
 
   # ─── Issuance Profiles ───────────────────────────────────────────────
   /api/v1/tenants/{tenantId}/profiles/issuance:
@@ -1454,16 +1551,11 @@ paths:
       operationId: offerCredential
       summary: Offer/issue a credential
       description: |
-        Issue a credential via a published issuance profile.
-
-        **Delivery mode** is determined by the presence of `connection_id`:
-        - **Present** → DIDComm delivery (push offer to connected agent). Returns 202.
-        - **Absent** → OID4VCI delivery (generate credential_offer_uri). Returns 200.
-
-        MVP: Only DIDComm delivery is supported (Traction adapter). Omitting `connection_id` returns 400.
+        Offer unsigned subject claims via a ready definition or published profile.
+        Format is inferred from the stored source, not parsed from an identifier.
+        Currently only explicit didcomm-v1 delivery is supported. Its connection_id
+        is a tenant-owned local connection UUID resolved in the definition's wallet.
       tags: [Credentials]
-      parameters:
-        - $ref: "#/components/parameters/IdempotencyKey"
       requestBody:
         required: true
         content:
@@ -1475,43 +1567,34 @@ paths:
                 summary: Issue via profile (DIDComm)
                 value:
                   profile_id: "drivers-license/1.0"
-                  connection_id: "c3d4e5f6-7890-1234-abcd-ef0123456789"
-                  attributes:
-                    given_name: Alice
-                    family_name: Smith
-                    birth_date: "1995-03-15"
-              profile_oid4vci:
-                summary: Issue via profile (OID4VCI, post-MVP)
-                value:
-                  profile_id: "drivers-license/1.0"
-                  attributes:
-                    given_name: Alice
-                    family_name: Smith
-                    birth_date: "1995-03-15"
-              legacy:
-                summary: Legacy mode (direct cred_def)
+                  delivery:
+                    protocol: didcomm-v1
+                    connection_id: "c3d4e5f6-7890-1234-abcd-ef0123456789"
+                  options:
+                    auto_issue: true
+                  credential:
+                    credentialSubject:
+                      given_name: Alice
+                      family_name: Smith
+                      birth_date: "1995-03-15"
+              direct_definition:
+                summary: Direct definition (format inferred)
                 value:
                   credential_definition_id: "a1b2c3d4-5678-9012-abcd-ef0123456789"
-                  format: anoncreds
-                  connection_id: "c3d4e5f6-7890-1234-abcd-ef0123456789"
-                  attributes:
-                    given_name: Alice
-                    birth_date: "1995-03-15"
+                  delivery:
+                    protocol: didcomm-v1
+                    connection_id: "c3d4e5f6-7890-1234-abcd-ef0123456789"
+                  credential:
+                    credentialSubject:
+                      given_name: Alice
+                      birth_date: "1995-03-15"
       responses:
         "200":
-          description: Credential offer URI generated (OID4VCI, connectionless)
+          description: Offer operation already completed or failed synchronously
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Operation"
-              example:
-                id: "op-uuid"
-                type: credential.offer
-                state: completed
-                created_at: "2025-01-15T10:30:00.000Z"
-                updated_at: "2025-01-15T10:30:00.000Z"
-                result:
-                  credential_offer_uri: "openid-credential-offer://..."
         "202":
           description: Credential offer sent (DIDComm, async)
           content:
@@ -1520,6 +1603,7 @@ paths:
                 $ref: "#/components/schemas/Operation"
               example:
                 id: "op-uuid"
+                exchange_id: "123e4567-e89b-12d3-a456-426614174000"
                 type: credential.offer
                 state: processing
                 created_at: "2025-01-15T10:30:00.000Z"
@@ -1529,6 +1613,136 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "422":
           $ref: "#/components/responses/ValidationError"
+
+  /api/v1/tenants/{tenantId}/credentials/offer/{operationId}/reconcile:
+    parameters:
+      - $ref: "#/components/parameters/TenantId"
+      - name: operationId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: reconcileCredentialOffer
+      summary: Reconcile an existing offer without resending
+      description: |
+        Requires credentials:offer. Reads the original exchange from its pinned
+        connector, verifies holder connection correlation, and applies the same
+        monotonic state transitions as authenticated webhooks. Missing or
+        inconsistent exchange correlation returns 409; it never retries submission.
+      tags: [Credentials]
+      responses:
+        "200":
+          description: Current operation (possibly still processing)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Operation"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /api/v1/tenants/{tenantId}/credential-exchanges/{exchangeId}:
+    parameters:
+      - $ref: "#/components/parameters/TenantId"
+      - name: exchangeId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: getCredentialExchange
+      summary: Read a durable credential exchange
+      description: Requires credentials:offer. Uses a local exchange UUID and never contacts the backend.
+      tags: [Credentials]
+      responses:
+        "200":
+          description: Tenant-owned exchange without backend identifiers
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CredentialExchange"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/tenants/{tenantId}/credential-exchanges/{exchangeId}/reconcile:
+    parameters:
+      - $ref: "#/components/parameters/TenantId"
+      - name: exchangeId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      operationId: reconcileCredentialExchange
+      summary: Observe an existing credential exchange without replaying it
+      description: |
+        Requires credentials:offer. No request body. Reads the retained backend
+        exchange in its pinned connector, checks holder correlation, and updates
+        monotonic progress, related actions and credential lifecycle. Works after
+        operation retention. Never sends another offer or issue request.
+      tags: [Credentials]
+      responses:
+        "200":
+          description: Current durable exchange
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CredentialExchange"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /api/v1/tenants/{tenantId}/credential-exchanges/{exchangeId}/issue:
+    parameters:
+      - $ref: "#/components/parameters/TenantId"
+      - name: exchangeId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      operationId: issueCredentialExchange
+      summary: Explicitly issue after a holder request
+      description: |
+        Requires credentials:offer. No request body. For issuer exchanges in
+        request-received state, creates a credential.issue action and claims the
+        exchange before a single backend issue POST. Concurrent/repeated calls
+        reuse that action; an uncertain or crashed submission is never replayed.
+        A purged action does not reset the durable submission guard.
+        Reconcile after 503; do not send a replacement offer or issue request.
+      tags: [Credentials]
+      responses:
+        "200":
+          description: Existing or synchronously completed issue action
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Operation"
+        "202":
+          description: Issue action pending or processing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Operation"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "503":
+          description: Submission outcome uncertain; reconcile the local exchange instead of resending
 
   /api/v1/tenants/{tenantId}/credentials/offer-batch:
     parameters:
@@ -1991,14 +2205,12 @@ paths:
                   value:
                     id: "op-uuid"
                     type: credential.offer
+                    exchange_id: "123e4567-e89b-12d3-a456-426614174000"
                     state: completed
                     created_at: "2025-01-15T10:30:00.000Z"
                     updated_at: "2025-01-15T10:30:05.000Z"
                     result:
-                      credential_exchange_id: "exch-uuid"
-                      state: credential_issued
-                      attributes:
-                        given_name: Alice
+                      exchange_id: "123e4567-e89b-12d3-a456-426614174000"
                 failed:
                   summary: Failed operation
                   value:
@@ -3523,6 +3735,39 @@ components:
           type: string
           nullable: true
           description: Ledger/registry reference (e.g., cred_def_id)
+        connector_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: Issuer wallet binding; cannot be substituted by a profile
+        registration_state:
+          type: string
+          enum: [unverified, pending, ready, failed]
+          description: Existing records migrate as unverified, not ready to issue
+        registration_operation_id:
+          type: string
+          format: uuid
+          nullable: true
+        issuer:
+          type: object
+          nullable: true
+          properties:
+            id:
+              type: string
+        schema:
+          type: object
+          nullable: true
+          properties:
+            type:
+              type: string
+              enum: [anoncreds]
+            id:
+              type: string
+              nullable: true
+        options:
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/AnonCredsRegistrationOptions"
         connector_type:
           $ref: "#/components/schemas/ConnectorType"
         is_active:
@@ -3543,25 +3788,103 @@ components:
 
     CreateCredentialDefinitionRequest:
       type: object
-      required: [name, format, schema_definition, connector_type]
+      additionalProperties: false
+      required: [name, format, schema]
       properties:
         name:
           type: string
           minLength: 1
-          maxLength: 100
+          maxLength: 255
         format:
-          $ref: "#/components/schemas/CredentialFormat"
-        schema_definition:
+          type: string
+          enum: [anoncreds]
+        connector_id:
+          type: string
+          format: uuid
+          description: Defaults to the tenant default or sole active compatible connector
+        schema:
           type: object
+          additionalProperties: false
+          oneOf:
+            - required: [id]
+              not:
+                required: [definition]
+            - required: [definition]
+              not:
+                required: [id]
+          properties:
+            type:
+              type: string
+              enum: [anoncreds]
+              default: anoncreds
+            id:
+              type: string
+              minLength: 1
+              maxLength: 2048
+              description: Existing published schema; not a credential-definition import
+            definition:
+              type: object
+              required: [schema_name, schema_version, attr_names]
+              properties:
+                schema_name:
+                  type: string
+                  minLength: 1
+                schema_version:
+                  type: string
+                  minLength: 1
+                attr_names:
+                  type: array
+                  minItems: 1
+                  uniqueItems: true
+                  items:
+                    type: string
+        issuer:
+          type: object
+          additionalProperties: false
           description: |
-            Format-specific schema.
-            - AnonCreds: { attr_names: string[], schema_name, schema_version }
-            - SD-JWT: JSON Schema object
-            - W3C VC: { @context: [], type: [], credentialSubject: {} }
-        connector_type:
-          $ref: "#/components/schemas/ConnectorType"
+            Existing identity selection, never DID creation. Omit to use the
+            configured public issuer. Traction currently requires the selection
+            to match its public DID; no arbitrary wallet DID promotion occurs.
+          oneOf:
+            - required: [id]
+              not:
+                required: [method]
+            - required: [method]
+              not:
+                required: [id]
+          properties:
+            id:
+              type: string
+              minLength: 1
+              maxLength: 2048
+            method:
+              type: string
+              minLength: 1
+              maxLength: 100
+        options:
+          $ref: "#/components/schemas/AnonCredsRegistrationOptions"
         metadata:
           type: object
+          description: Local annotations only; never passed as backend options
+
+    AnonCredsRegistrationOptions:
+      type: object
+      additionalProperties: false
+      properties:
+        tag:
+          type: string
+          minLength: 1
+          maxLength: 100
+          default: default
+        revocation:
+          type: object
+          additionalProperties: false
+          required: [enabled]
+          description: Omission defaults to enabled; unsupported setup never downgrades silently
+          properties:
+            enabled:
+              type: boolean
+              default: true
 
     # ─── Issuance Profile ────────────────────────────────────────────
     IssuanceProfile:
@@ -3801,9 +4124,19 @@ components:
     # ─── Credential Operations ───────────────────────────────────────
     OfferCredentialRequest:
       type: object
+      additionalProperties: false
+      required: [credential, delivery]
+      oneOf:
+        - required: [profile_id]
+          not:
+            required: [credential_definition_id]
+        - required: [credential_definition_id]
+          not:
+            required: [profile_id]
       description: |
-        Either `profile_id` or `credential_definition_id` + `format` must be provided (not both).
-        `connection_id` determines delivery protocol (DIDComm if present, OID4VCI if absent).
+        Exactly one source is required. Format is inferred from stored metadata.
+        credential contains unsigned proposed claims, not a protocol offer or
+        a signed W3C credential. AnonCreds maps flat scalars to preview attributes.
       properties:
         profile_id:
           type: string
@@ -3811,17 +4144,41 @@ components:
         credential_definition_id:
           type: string
           format: uuid
-          description: Legacy mode — direct cred def reference (bypasses profile)
-        format:
-          $ref: "#/components/schemas/CredentialFormat"
-        connection_id:
-          type: string
-          format: uuid
-          description: Target connection (DIDComm). Omit for OID4VCI (post-MVP).
-        attributes:
+          description: Local definition reference (bypasses profile)
+        credential:
           type: object
-          additionalProperties: true
-          description: Credential claim values
+          additionalProperties: false
+          required: [credentialSubject]
+          properties:
+            credentialSubject:
+              type: object
+              additionalProperties: true
+              description: Flat scalar claims for AnonCreds; nested values are rejected
+        delivery:
+          type: object
+          additionalProperties: false
+          required: [protocol, connection_id]
+          properties:
+            protocol:
+              type: string
+              enum: [didcomm-v1]
+            connection_id:
+              type: string
+              format: uuid
+              description: Local tenant-owned holder connection in the definition's wallet
+        options:
+          type: object
+          additionalProperties: false
+          properties:
+            auto_issue:
+              type: boolean
+              default: true
+              description: |
+                Issue automatically after the holder requests the credential.
+                False pauses for POST /credential-exchanges/{exchangeId}/issue
+                after a holder request. This does not control holder acceptance or mediator
+                delivery. Exchange records are always retained; auto_remove and
+                auto_remove_on_failure cannot be overridden.
 
     OfferCredentialBatchRequest:
       type: object
@@ -3881,6 +4238,12 @@ components:
           format: uuid
         external_connection_id:
           type: string
+          nullable: true
+        connector_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: Pinned connector; null for unverified legacy connections
         their_label:
           type: string
           nullable: true
@@ -3938,6 +4301,32 @@ components:
             goalCode: aries.rel.build
             multiUse: false
 
+    CredentialExchange:
+      type: object
+      additionalProperties: false
+      description: Durable protocol interaction; IDs are local, never backend exchange IDs.
+      required: [id, role, format, protocol, state, connection_id, issue_submission, issue_operation_id, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        role: { type: string, enum: [issuer, holder] }
+        format: { type: string }
+        protocol: { type: string }
+        state:
+          type: string
+          enum: [pending, proposal-sent, offer-sent, offer-received, request-sent, request-received, credential-issued, credential-received, done, abandoned, failed]
+        connection_id: { type: string, format: uuid, nullable: true }
+        issue_submission:
+          type: string
+          enum: [not-submitted, submitting, submitted, uncertain]
+          description: Durable single-submission guard; uncertain/submitting must not be reset or replayed.
+        issue_operation_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: Local issue action; null before explicit issue or after action retention.
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
     # ─── Operation ───────────────────────────────────────────────────
     Operation:
       type: object
@@ -3958,16 +4347,21 @@ components:
             created by a batch issuance or revocation request (`credential.offer-batch`,
             `credential.revoke-batch`). Use this to navigate to the parent via
             `GET /operations/{batch_id}`.
+        exchange_id:
+          type: string
+          format: uuid
+          description: Stable local credential exchange UUID, present when linked.
         type:
           type: string
           description: |
             Operation type. Known values:
-            `credential.offer`, `credential.offer-batch`,
+            `credential-definition.register`, `credential.offer`, `credential.issue`, `credential.offer-batch`,
             `credential.accept`, `credential.reject`,
             `credential.revoke`, `credential.revoke-batch`,
             `presentation.request`, `connection.create`
           examples:
             - credential.offer
+            - credential.issue
             - credential.offer-batch
             - credential.accept
             - credential.reject
@@ -3987,11 +4381,70 @@ components:
           nullable: true
           description: |
             State-dependent result:
-            - pending/processing: null
+            - pending/processing: usually null; credential-definition.register
+              includes { credential_definition_id } immediately
             - completed: operation-type-specific data
-            - failed: { code, message }
+              (exchange-linked actions return the local { exchange_id })
+            - failed: { code, message }; credential registration additionally
+              retains credential_definition_id, external_id, and registration
+              progress/correlation identifiers.
             - batch processing: { total, completed, failed, pending }
             - batch completed: { total, completed, failed, errors }
+            Registration progress includes stage, schema_id, schema_job_id,
+            schema_transaction_id, schema_state, definition_id,
+            definition_job_id, definition_transaction_id, and definition_state.
+            IDs returned with wait/action are provisional, not readiness proof.
+        problem_details:
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/RegistrationProblemDetails"
+          description: |
+            Present for credential-definition.register, null when no diagnostic
+            is recorded; omitted for other operation types. A wait/action state
+            is normal progress, not a problem. Polling still returns HTTP 200;
+            backend_status is the upstream HTTP status, not this response status.
+            Older failures have no retroactively reconstructed backend details.
+            Uses the RFC 9457 data model embedded in an application/json resource,
+            not a standalone application/problem+json HTTP error response.
+            status is omitted to avoid contradicting HTTP 200/202. Match the
+            problem type URI for machine handling; do not parse title or detail.
+
+    RegistrationProblemDetails:
+      type: object
+      required: [type, title, detail, stage, retryable]
+      properties:
+        type:
+          type: string
+          format: uri
+          enum:
+            - "https://github.com/bcgov/digital-trust-common-service/blob/main/docs/DEVELOPER.md#credential-registration-failed"
+            - "https://github.com/bcgov/digital-trust-common-service/blob/main/docs/DEVELOPER.md#credential-registration-reconciliation-required"
+          description: Stable RFC 9457 problem-type identifier with documented semantics and resolution guidance.
+        title:
+          type: string
+          example: Credential registration failed
+        detail:
+          type: string
+          description: Bounded sanitized backend reason or safe local diagnostic; never raw headers, request configuration, or response objects.
+        instance:
+          type: string
+          format: uri
+          example: "urn:uuid:123e4567-e89b-42d3-a456-426614174000"
+          description: Persisted opaque identifier for this occurrence. Not dereferenceable. Absent on legacy diagnostics recorded without an instance.
+        stage:
+          type: string
+          description: Registration step where the problem occurred.
+          example: schema_publication
+        retryable:
+          type: boolean
+          description: Automatic reconciliation will retry. This does not authorize repeating a publication POST.
+        backend_status:
+          type: integer
+          description: Upstream HTTP status when available.
+          example: 400
+        backend_code:
+          type: string
+          description: Allowlisted upstream machine code or local response-validation code, when available.
 
     OperationState:
       type: string

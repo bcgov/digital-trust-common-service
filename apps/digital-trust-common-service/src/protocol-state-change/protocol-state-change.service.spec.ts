@@ -9,6 +9,7 @@ import { Connection, ConnectionState } from '../connection/connection.entity';
 import { ConnectionService } from '../connection/connection.service';
 import { Credential, CredentialState } from '../credential/credential.entity';
 import { CredentialRepository } from '../credential/credential.repository';
+import { CredentialExchangeRepository } from '../credential-exchange/credential-exchange.repository';
 import { JobsService } from '../jobs/jobs.service';
 import { OPERATION_TYPE } from '../operation/operation-type.constants';
 import { Operation, OperationState } from '../operation/operation.entity';
@@ -143,6 +144,10 @@ describe('ProtocolStateChangeService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ProtocolStateChangeService,
+        {
+          provide: CredentialExchangeRepository,
+          useValue: { observe: jest.fn().mockResolvedValue(undefined) },
+        },
         { provide: OperationRepository, useValue: operationRepository },
         { provide: OperationService, useValue: operationService },
         { provide: CredentialRepository, useValue: credentialRepository },

@@ -11,7 +11,10 @@ import {
   computeOperationExpiresAt,
   isTerminalOperationState,
 } from './operation-ttl.util';
-import { isKnownOperationType } from './operation-type.constants';
+import {
+  isKnownOperationType,
+  OPERATION_TYPE,
+} from './operation-type.constants';
 import {
   Operation,
   OperationRequest,
@@ -26,6 +29,7 @@ export interface CreateOperationInput {
   request: OperationRequest;
   batchId?: string | null;
   externalId?: string | null;
+  exchangeId?: string | null;
 }
 
 @Injectable()
@@ -78,6 +82,7 @@ export class OperationService {
       request: input.request,
       batchId: input.batchId ?? null,
       externalId: input.externalId ?? null,
+      exchangeId: input.exchangeId ?? null,
       state: OperationState.PENDING,
       expiresAt: this.computeExpiresAt(
         OperationState.PENDING,
@@ -137,7 +142,7 @@ export class OperationService {
     const viewedAt = new Date();
     const expiresAt = this.computeExpiresAt(
       operation.state,
-      operation.createdAt,
+      this.lifetimeStart(operation),
       viewedAt,
       tenant.config,
     );
@@ -190,7 +195,7 @@ export class OperationService {
 
     operation.expiresAt = this.computeExpiresAt(
       state,
-      operation.createdAt,
+      this.lifetimeStart(operation),
       operation.viewedAt,
       tenant.config,
     );
@@ -200,6 +205,36 @@ export class OperationService {
     this.recordTerminalOutcome(saved.type, state, manager);
 
     return saved;
+  }
+
+  private lifetimeStart(operation: Operation): Date {
+    if (operation.type !== OPERATION_TYPE.CREDENTIAL_DEFINITION_REGISTER) {
+      return operation.createdAt;
+    }
+    const progress =
+      operation.result && 'registration' in operation.result
+        ? operation.result.registration
+        : undefined;
+    if (
+      typeof progress !== 'object' ||
+      progress === null ||
+      !('recovery_requested_at' in progress) ||
+      typeof progress.recovery_requested_at !== 'string'
+    ) {
+      return operation.createdAt;
+    }
+    const recoveredAt = new Date(progress.recovery_requested_at);
+    if (
+      !Number.isFinite(recoveredAt.getTime()) ||
+      recoveredAt < operation.createdAt ||
+      recoveredAt.getTime() > Date.now()
+    ) {
+      this.logger.warn(
+        `Invalid recovery timestamp for operation ${operation.id}`,
+      );
+      return operation.createdAt;
+    }
+    return recoveredAt;
   }
 
   /**
@@ -231,7 +266,7 @@ export class OperationService {
     manager?: EntityManager,
     externalId?: string | null,
   ): Promise<Operation | null> {
-    const operation = await this.operations.findById(id);
+    const operation = await this.operations.findById(id, manager);
 
     if (!operation) {
       throw new NotFoundException('Operation not found');

@@ -33,6 +33,10 @@ import { AddOperationInflightRevokeUniqueIndex1789751397831 } from './migrations
 import { RemoveVerificationProfileIssuanceProfileLink1790623456139 } from './migrations/000030_remove-verification-profile-issuance-profile-link';
 import { AllowNullableConnectionExternalId1790703557000 } from './migrations/000031_allow-nullable-connection-external-id';
 import { AddTenantUserPlatformOperator1790900000000 } from './migrations/000032_add-tenant-user-platform-operator';
+import { ExtendCredentialDefinitionRegistration1792018018010 } from './migrations/000033_extend-credential-definition-registration';
+import { AddRegistrationFingerprints1792028532450 } from './migrations/000034_add-registration-fingerprints';
+import { BindConnectionsToConnectors1792502783893 } from './migrations/000035_bind-connections-to-connectors';
+import { CreateCredentialExchanges1792506949095 } from './migrations/000036_create-credential-exchanges';
 import { buildSslConfig } from './ssl.util';
 
 export const AppDataSource = new DataSource({
@@ -80,6 +84,10 @@ export const AppDataSource = new DataSource({
     RemoveVerificationProfileIssuanceProfileLink1790623456139,
     AllowNullableConnectionExternalId1790703557000,
     AddTenantUserPlatformOperator1790900000000,
+    ExtendCredentialDefinitionRegistration1792018018010,
+    AddRegistrationFingerprints1792028532450,
+    BindConnectionsToConnectors1792502783893,
+    CreateCredentialExchanges1792506949095,
   ],
   ssl: buildSslConfig(
     process.env.DB_SSL,

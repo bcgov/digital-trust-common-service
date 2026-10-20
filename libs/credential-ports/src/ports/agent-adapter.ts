@@ -2,6 +2,7 @@ import { ConnectorType } from '../enums/connector-type.enum';
 import { CredentialFormat } from '../enums/credential-format.enum';
 
 import { ConnectionPort } from './connection.port';
+import { DefinitionRegistrationPort } from './definition-registration.port';
 import { HolderPort } from './holder.port';
 import { IssuerPort } from './issuer.port';
 import { RevocationPort } from './revocation.port';
@@ -23,6 +24,8 @@ export type SupportedFormats = readonly [
  * without hardcoding per-connector knowledge in the registry.
  */
 export interface AdapterCapabilities {
+  /** Absent unless this adapter supports AnonCreds artifact registration. */
+  readonly definitionRegistration?: DefinitionRegistrationPort;
   /** Connector this adapter implements; the registry key. */
   readonly connectorType: ConnectorType;
 

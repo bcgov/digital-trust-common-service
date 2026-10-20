@@ -501,7 +501,28 @@ export interface paths {
         /** List credential definitions */
         get: operations["listCredentialDefinitions"];
         put?: never;
-        /** Register a credential definition */
+        /**
+         * Register a credential definition
+         * @description Register AnonCreds issuer artifacts asynchronously. Supply exactly one of
+         *     schema.id (reuse a published schema) or schema.definition (publish one).
+         *     Traction must already have an askar-anoncreds wallet and a matching
+         *     ledger-registered public issuer DID. This endpoint does not create DIDs.
+         *     Connector selection is pinned for the entire registration and issuance
+         *     lifecycle. Revocation defaults to enabled; readiness includes initial
+         *     registry/status-list publication and public tails availability.
+         *     This replaces the former schema_definition/external_id/connector_type
+         *     request. Other publishing formats are not yet supported.
+         *     Idempotency is generated server-side from normalized content, using
+         *     versioned JCS SHA-256 multihash fingerprints encoded as base64url
+         *     multibase. Equivalent requests return the original operation without
+         *     resubmission, including failed operations. Local name and metadata are
+         *     included in request identity but excluded from artifact identity.
+         *     Differently named requests for identical artifact intent conflict.
+         *     Schema attributes are order-insensitive; other arrays preserve order.
+         *     Imported schema IDs and inline schema content are distinct intents.
+         *     Connector/issuer/schema resolution still runs on replays. Existing
+         *     records predating fingerprint migration retain their name conflicts.
+         */
         post: operations["createCredentialDefinition"];
         delete?: never;
         options?: never;
@@ -526,6 +547,39 @@ export interface paths {
         post?: never;
         /** Deactivate a credential definition */
         delete: operations["deleteCredentialDefinition"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tenants/{tenantId}/credential-definitions/{credDefId}/recover": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                credDefId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reconcile and resume the original credential registration
+         * @description Requires tenants:admin. Preserves local identity, fingerprints, original
+         *     operation and failure history. Returns the original operation with a
+         *     fresh bounded recovery window after failure. Repeated pending recovery
+         *     is idempotent; adding a previously absent transaction hint does not extend
+         *     its deadline. Hints are verified asynchronously in the pinned wallet
+         *     against issuer, schema, tag and revocation intent.
+         *     Adopts existing artifacts or endorsement progress before any missing
+         *     publication step. Never clears submission markers or blindly repeats an
+         *     uncertain write. This can publish a not-yet-submitted credential definition
+         *     after schema completion; it does not resend or sign endorsements.
+         */
+        post: operations["recoverCredentialDefinition"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -715,15 +769,119 @@ export interface paths {
         put?: never;
         /**
          * Offer/issue a credential
-         * @description Issue a credential via a published issuance profile.
-         *
-         *     **Delivery mode** is determined by the presence of `connection_id`:
-         *     - **Present** → DIDComm delivery (push offer to connected agent). Returns 202.
-         *     - **Absent** → OID4VCI delivery (generate credential_offer_uri). Returns 200.
-         *
-         *     MVP: Only DIDComm delivery is supported (Traction adapter). Omitting `connection_id` returns 400.
+         * @description Offer unsigned subject claims via a ready definition or published profile.
+         *     Format is inferred from the stored source, not parsed from an identifier.
+         *     Currently only explicit didcomm-v1 delivery is supported. Its connection_id
+         *     is a tenant-owned local connection UUID resolved in the definition's wallet.
          */
         post: operations["offerCredential"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tenants/{tenantId}/credentials/offer/{operationId}/reconcile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                operationId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reconcile an existing offer without resending
+         * @description Requires credentials:offer. Reads the original exchange from its pinned
+         *     connector, verifies holder connection correlation, and applies the same
+         *     monotonic state transitions as authenticated webhooks. Missing or
+         *     inconsistent exchange correlation returns 409; it never retries submission.
+         */
+        post: operations["reconcileCredentialOffer"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tenants/{tenantId}/credential-exchanges/{exchangeId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                exchangeId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Read a durable credential exchange
+         * @description Requires credentials:offer. Uses a local exchange UUID and never contacts the backend.
+         */
+        get: operations["getCredentialExchange"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tenants/{tenantId}/credential-exchanges/{exchangeId}/reconcile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                exchangeId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Observe an existing credential exchange without replaying it
+         * @description Requires credentials:offer. No request body. Reads the retained backend
+         *     exchange in its pinned connector, checks holder correlation, and updates
+         *     monotonic progress, related actions and credential lifecycle. Works after
+         *     operation retention. Never sends another offer or issue request.
+         */
+        post: operations["reconcileCredentialExchange"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tenants/{tenantId}/credential-exchanges/{exchangeId}/issue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                exchangeId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Explicitly issue after a holder request
+         * @description Requires credentials:offer. No request body. For issuer exchanges in
+         *     request-received state, creates a credential.issue action and claims the
+         *     exchange before a single backend issue POST. Concurrent/repeated calls
+         *     reuse that action; an uncertain or crashed submission is never replayed.
+         *     A purged action does not reset the durable submission guard.
+         *     Reconcile after 503; do not send a replacement offer or issue request.
+         */
+        post: operations["issueCredentialExchange"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1872,6 +2030,27 @@ export interface components {
             schema_definition?: Record<string, never>;
             /** @description Ledger/registry reference (e.g., cred_def_id) */
             external_id?: string | null;
+            /**
+             * Format: uuid
+             * @description Issuer wallet binding; cannot be substituted by a profile
+             */
+            connector_id?: string | null;
+            /**
+             * @description Existing records migrate as unverified, not ready to issue
+             * @enum {string}
+             */
+            registration_state?: "unverified" | "pending" | "ready" | "failed";
+            /** Format: uuid */
+            registration_operation_id?: string | null;
+            issuer?: {
+                id?: string;
+            } | null;
+            schema?: {
+                /** @enum {string} */
+                type?: "anoncreds";
+                id?: string | null;
+            } | null;
+            options?: components["schemas"]["AnonCredsRegistrationOptions"] | null;
             connector_type?: components["schemas"]["ConnectorType"];
             /** @description Whether this credential definition is currently active */
             is_active?: boolean;
@@ -1885,16 +2064,48 @@ export interface components {
         CredentialFormat: "anoncreds" | "sd-jwt" | "mdl" | "w3c-vc";
         CreateCredentialDefinitionRequest: {
             name: string;
-            format: components["schemas"]["CredentialFormat"];
+            /** @enum {string} */
+            format: "anoncreds";
             /**
-             * @description Format-specific schema.
-             *     - AnonCreds: { attr_names: string[], schema_name, schema_version }
-             *     - SD-JWT: JSON Schema object
-             *     - W3C VC: { @context: [], type: [], credentialSubject: {} }
+             * Format: uuid
+             * @description Defaults to the tenant default or sole active compatible connector
              */
-            schema_definition: Record<string, never>;
-            connector_type: components["schemas"]["ConnectorType"];
+            connector_id?: string;
+            schema: {
+                /**
+                 * @default anoncreds
+                 * @enum {string}
+                 */
+                type: "anoncreds";
+                /** @description Existing published schema; not a credential-definition import */
+                id?: string;
+                definition?: {
+                    schema_name: string;
+                    schema_version: string;
+                    attr_names: string[];
+                };
+            } & (unknown | unknown);
+            /**
+             * @description Existing identity selection, never DID creation. Omit to use the
+             *     configured public issuer. Traction currently requires the selection
+             *     to match its public DID; no arbitrary wallet DID promotion occurs.
+             */
+            issuer?: {
+                id?: string;
+                method?: string;
+            } & (unknown | unknown);
+            options?: components["schemas"]["AnonCredsRegistrationOptions"];
+            /** @description Local annotations only; never passed as backend options */
             metadata?: Record<string, never>;
+        };
+        AnonCredsRegistrationOptions: {
+            /** @default default */
+            tag: string;
+            /** @description Omission defaults to enabled; unsupported setup never downgrades silently */
+            revocation?: {
+                /** @default true */
+                enabled: boolean;
+            };
         };
         IssuanceProfile: {
             /** Format: uuid */
@@ -2019,28 +2230,45 @@ export interface components {
             protocol_hint?: components["schemas"]["ProtocolHint"];
         };
         /**
-         * @description Either `profile_id` or `credential_definition_id` + `format` must be provided (not both).
-         *     `connection_id` determines delivery protocol (DIDComm if present, OID4VCI if absent).
+         * @description Exactly one source is required. Format is inferred from stored metadata.
+         *     credential contains unsigned proposed claims, not a protocol offer or
+         *     a signed W3C credential. AnonCreds maps flat scalars to preview attributes.
          */
         OfferCredentialRequest: {
             /** @description UUID or "name/version" string (e.g., "drivers-license/1.0") */
             profile_id?: string;
             /**
              * Format: uuid
-             * @description Legacy mode — direct cred def reference (bypasses profile)
+             * @description Local definition reference (bypasses profile)
              */
             credential_definition_id?: string;
-            format?: components["schemas"]["CredentialFormat"];
-            /**
-             * Format: uuid
-             * @description Target connection (DIDComm). Omit for OID4VCI (post-MVP).
-             */
-            connection_id?: string;
-            /** @description Credential claim values */
-            attributes?: {
-                [key: string]: unknown;
+            credential: {
+                /** @description Flat scalar claims for AnonCreds; nested values are rejected */
+                credentialSubject: {
+                    [key: string]: unknown;
+                };
             };
-        };
+            delivery: {
+                /** @enum {string} */
+                protocol: "didcomm-v1";
+                /**
+                 * Format: uuid
+                 * @description Local tenant-owned holder connection in the definition's wallet
+                 */
+                connection_id: string;
+            };
+            options?: {
+                /**
+                 * @description Issue automatically after the holder requests the credential.
+                 *     False pauses for POST /credential-exchanges/{exchangeId}/issue
+                 *     after a holder request. This does not control holder acceptance or mediator
+                 *     delivery. Exchange records are always retained; auto_remove and
+                 *     auto_remove_on_failure cannot be overridden.
+                 * @default true
+                 */
+                auto_issue: boolean;
+            };
+        } & (unknown | unknown);
         OfferCredentialBatchRequest: {
             /** @description UUID or "name/version" — applied to all items */
             profile_id?: string;
@@ -2076,7 +2304,12 @@ export interface components {
             id?: string;
             /** Format: uuid */
             tenant_id?: string;
-            external_connection_id?: string;
+            external_connection_id?: string | null;
+            /**
+             * Format: uuid
+             * @description Pinned connector; null for unverified legacy connections
+             */
+            connector_id?: string | null;
             their_label?: string | null;
             their_did?: string | null;
             state?: components["schemas"]["ConnectionState"];
@@ -2119,6 +2352,33 @@ export interface components {
              */
             metadata?: Record<string, never>;
         };
+        /** @description Durable protocol interaction; IDs are local, never backend exchange IDs. */
+        CredentialExchange: {
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            role: "issuer" | "holder";
+            format: string;
+            protocol: string;
+            /** @enum {string} */
+            state: "pending" | "proposal-sent" | "offer-sent" | "offer-received" | "request-sent" | "request-received" | "credential-issued" | "credential-received" | "done" | "abandoned" | "failed";
+            /** Format: uuid */
+            connection_id: string | null;
+            /**
+             * @description Durable single-submission guard; uncertain/submitting must not be reset or replayed.
+             * @enum {string}
+             */
+            issue_submission: "not-submitted" | "submitting" | "submitted" | "uncertain";
+            /**
+             * Format: uuid
+             * @description Local issue action; null before explicit issue or after action retention.
+             */
+            issue_operation_id: string | null;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
         /**
          * @description Uniform envelope for all async and sync operations. The `result` field
          *     semantics depend on `(type, state)`.
@@ -2135,12 +2395,18 @@ export interface components {
              */
             batch_id?: string | null;
             /**
+             * Format: uuid
+             * @description Stable local credential exchange UUID, present when linked.
+             */
+            exchange_id?: string;
+            /**
              * @description Operation type. Known values:
-             *     `credential.offer`, `credential.offer-batch`,
+             *     `credential-definition.register`, `credential.offer`, `credential.issue`, `credential.offer-batch`,
              *     `credential.accept`, `credential.reject`,
              *     `credential.revoke`, `credential.revoke-batch`,
              *     `presentation.request`, `connection.create`
              * @example credential.offer
+             * @example credential.issue
              * @example credential.offer-batch
              * @example credential.accept
              * @example credential.reject
@@ -2157,13 +2423,65 @@ export interface components {
             updated_at: string;
             /**
              * @description State-dependent result:
-             *     - pending/processing: null
+             *     - pending/processing: usually null; credential-definition.register
+             *       includes { credential_definition_id } immediately
              *     - completed: operation-type-specific data
-             *     - failed: { code, message }
+             *       (exchange-linked actions return the local { exchange_id })
+             *     - failed: { code, message }; credential registration additionally
+             *       retains credential_definition_id, external_id, and registration
+             *       progress/correlation identifiers.
              *     - batch processing: { total, completed, failed, pending }
              *     - batch completed: { total, completed, failed, errors }
+             *     Registration progress includes stage, schema_id, schema_job_id,
+             *     schema_transaction_id, schema_state, definition_id,
+             *     definition_job_id, definition_transaction_id, and definition_state.
+             *     IDs returned with wait/action are provisional, not readiness proof.
              */
             result: unknown;
+            /**
+             * @description Present for credential-definition.register, null when no diagnostic
+             *     is recorded; omitted for other operation types. A wait/action state
+             *     is normal progress, not a problem. Polling still returns HTTP 200;
+             *     backend_status is the upstream HTTP status, not this response status.
+             *     Older failures have no retroactively reconstructed backend details.
+             *     Uses the RFC 9457 data model embedded in an application/json resource,
+             *     not a standalone application/problem+json HTTP error response.
+             *     status is omitted to avoid contradicting HTTP 200/202. Match the
+             *     problem type URI for machine handling; do not parse title or detail.
+             */
+            problem_details?: components["schemas"]["RegistrationProblemDetails"] | null;
+        };
+        RegistrationProblemDetails: {
+            /**
+             * Format: uri
+             * @description Stable RFC 9457 problem-type identifier with documented semantics and resolution guidance.
+             * @enum {string}
+             */
+            type: "https://github.com/bcgov/digital-trust-common-service/blob/main/docs/DEVELOPER.md#credential-registration-failed" | "https://github.com/bcgov/digital-trust-common-service/blob/main/docs/DEVELOPER.md#credential-registration-reconciliation-required";
+            /** @example Credential registration failed */
+            title: string;
+            /** @description Bounded sanitized backend reason or safe local diagnostic; never raw headers, request configuration, or response objects. */
+            detail: string;
+            /**
+             * Format: uri
+             * @description Persisted opaque identifier for this occurrence. Not dereferenceable. Absent on legacy diagnostics recorded without an instance.
+             * @example urn:uuid:123e4567-e89b-42d3-a456-426614174000
+             */
+            instance?: string;
+            /**
+             * @description Registration step where the problem occurred.
+             * @example schema_publication
+             */
+            stage: string;
+            /** @description Automatic reconciliation will retry. This does not authorize repeating a publication POST. */
+            retryable: boolean;
+            /**
+             * @description Upstream HTTP status when available.
+             * @example 400
+             */
+            backend_status?: number;
+            /** @description Allowlisted upstream machine code or local response-validation code, when available. */
+            backend_code?: string;
         };
         /** @enum {string} */
         OperationState: "pending" | "processing" | "completed" | "failed";
@@ -3387,10 +3705,7 @@ export interface operations {
     createCredentialDefinition: {
         parameters: {
             query?: never;
-            header?: {
-                /** @description UUIDv4 idempotency key to prevent duplicate creation */
-                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
-            };
+            header?: never;
             path: {
                 /** @description Tenant UUID */
                 tenantId: components["parameters"]["TenantId"];
@@ -3403,14 +3718,34 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Credential definition registered */
-            201: {
+            /**
+             * @description Registration accepted. result.credential_definition_id identifies the
+             *     local definition; poll the operation until terminal. Equivalent
+             *     normalized requests return the existing operation, which may already
+             *     be completed or failed; publication is not retried.
+             */
+            202: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["CredentialDefinition"];
+                    "application/json": components["schemas"]["Operation"];
                 };
+            };
+            400: components["responses"]["ValidationError"];
+            /**
+             * @description Name/format already exists with different content, or identical
+             *     artifact intent has a different local request
+             *     (REGISTRATION_ARTIFACT_EXISTS, including credential_definition_id and
+             *     operation_id). Inactive registrations or missing replay operations
+             *     return REGISTRATION_REPLAY_UNAVAILABLE with credential_definition_id.
+             *     Reconcile the existing registration instead of resubmitting.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             422: components["responses"]["ValidationError"];
         };
@@ -3455,6 +3790,63 @@ export interface operations {
         responses: {
             /** @description Credential definition deactivated */
             204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    recoverCredentialDefinition: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                credDefId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /**
+                     * Format: uuid
+                     * @description Wallet-scoped schema endorsement transaction to verify
+                     */
+                    schema_transaction_id?: string;
+                    /**
+                     * Format: uuid
+                     * @description Wallet-scoped credential-definition endorsement transaction to verify
+                     */
+                    definition_transaction_id?: string;
+                };
+            };
+        };
+        responses: {
+            /**
+             * @description Original operation resumed, already pending, or already completed.
+             *     Poll for asynchronous verification and readiness. Prior results are
+             *     retained in result.registration.recovery_history; recovery_requested_at
+             *     and recovery_attempts identify the bounded recovery window.
+             */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Operation"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            404: components["responses"]["NotFound"];
+            /**
+             * @description Wallet currently processing, incompatible pending hints, unsupported
+             *     legacy registration, or original operation no longer available.
+             *     No replacement registration or blind publication is performed.
+             */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -3849,10 +4241,7 @@ export interface operations {
     offerCredential: {
         parameters: {
             query?: never;
-            header?: {
-                /** @description UUIDv4 idempotency key to prevent duplicate creation */
-                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
-            };
+            header?: never;
             path: {
                 /** @description Tenant UUID */
                 tenantId: components["parameters"]["TenantId"];
@@ -3865,24 +4254,12 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Credential offer URI generated (OID4VCI, connectionless) */
+            /** @description Offer operation already completed or failed synchronously */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    /**
-                     * @example {
-                     *       "id": "op-uuid",
-                     *       "type": "credential.offer",
-                     *       "state": "completed",
-                     *       "created_at": "2025-01-15T10:30:00.000Z",
-                     *       "updated_at": "2025-01-15T10:30:00.000Z",
-                     *       "result": {
-                     *         "credential_offer_uri": "openid-credential-offer://..."
-                     *       }
-                     *     }
-                     */
                     "application/json": components["schemas"]["Operation"];
                 };
             };
@@ -3895,6 +4272,7 @@ export interface operations {
                     /**
                      * @example {
                      *       "id": "op-uuid",
+                     *       "exchange_id": "123e4567-e89b-12d3-a456-426614174000",
                      *       "type": "credential.offer",
                      *       "state": "processing",
                      *       "created_at": "2025-01-15T10:30:00.000Z",
@@ -3907,6 +4285,131 @@ export interface operations {
             };
             400: components["responses"]["BadRequest"];
             422: components["responses"]["ValidationError"];
+        };
+    };
+    reconcileCredentialOffer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                operationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current operation (possibly still processing) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Operation"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    getCredentialExchange: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                exchangeId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Tenant-owned exchange without backend identifiers */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CredentialExchange"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    reconcileCredentialExchange: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                exchangeId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current durable exchange */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CredentialExchange"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    issueCredentialExchange: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                exchangeId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Existing or synchronously completed issue action */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Operation"];
+                };
+            };
+            /** @description Issue action pending or processing */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Operation"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            /** @description Submission outcome uncertain; reconcile the local exchange instead of resending */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     offerCredentialBatch: {
