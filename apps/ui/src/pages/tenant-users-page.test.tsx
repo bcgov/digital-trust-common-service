@@ -754,9 +754,7 @@ describe('TenantUsersPage', () => {
     );
 
     await waitFor(() => expect(client.getState().user).toBeNull());
-    expect(router.state.location.pathname).toBe(
-      `/tenants/${tenantId}/users`,
-    );
+    expect(router.state.location.pathname).toBe(`/tenants/${tenantId}/users`);
   });
 
   it('hides the owner role from a caller without tenants:admin', async () => {

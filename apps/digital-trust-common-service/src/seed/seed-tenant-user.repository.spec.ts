@@ -204,9 +204,7 @@ describe('SeedTenantUserRepository', () => {
 
     it('rolls back demoting the tenant’s last owner', async () => {
       countActiveAdministratorsByTenant.mockResolvedValue(2);
-      countByTenantAndRole
-        .mockResolvedValueOnce(1)
-        .mockResolvedValueOnce(0);
+      countByTenantAndRole.mockResolvedValueOnce(1).mockResolvedValueOnce(0);
       countActiveOwnersByTenant
         .mockResolvedValueOnce(1)
         .mockResolvedValueOnce(0);
