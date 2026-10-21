@@ -333,7 +333,7 @@ describe('CredentialOfferService', () => {
       );
     });
 
-    it.each([null, {}, [], ['value']])(
+    it.each([null, {}, [], ['value'], NaN, Infinity, -Infinity])(
       'rejects non-scalar AnonCreds claim %p',
       async (value) => {
         await expect(
@@ -348,6 +348,34 @@ describe('CredentialOfferService', () => {
         expect(mockOfferCredential).not.toHaveBeenCalled();
       },
     );
+
+    it('maps finite numbers and booleans to preview strings without dropping false or zero', async () => {
+      await service.offer(
+        tenantId,
+        buildDto({
+          credential: {
+            credentialSubject: {
+              given_name: 'Alice',
+              active: false,
+              count: 0,
+              score: 1.25,
+            },
+          },
+        }),
+      );
+      expect(mockOfferCredential).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          attributes: [
+            { name: 'family_name', value: 'Doe' },
+            { name: 'given_name', value: 'Alice' },
+            { name: 'active', value: 'false' },
+            { name: 'count', value: '0' },
+            { name: 'score', value: '1.25' },
+          ],
+        }),
+      );
+    });
 
     it('does not create records or submit an offer when connection resolution fails', async () => {
       mockResolveConnection.mockRejectedValue(new NotFoundException());
@@ -446,6 +474,95 @@ describe('CredentialOfferService', () => {
           protocolState: CredentialExchangeState.OfferSent,
         }),
       );
+      expect(mockOfferCredential).not.toHaveBeenCalled();
+    });
+
+    it('does not reconcile an operation of another type', async () => {
+      mockOperationFindById.mockResolvedValue(
+        buildOperation({ type: OPERATION_TYPE.CREDENTIAL_ACCEPT, externalId }),
+      );
+      await expect(
+        service.reconcile(tenantId, operationId),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(mockCredentialFindByExternalId).not.toHaveBeenCalled();
+      expect(mockGetExchange).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      null,
+      { connectorId: null },
+      { connectionId: null },
+      { operationId: 'another-operation' },
+    ])(
+      'rejects a missing or inconsistent wallet-bound credential: %p',
+      async (change) => {
+        mockCredentialFindByExternalId.mockResolvedValue(
+          change === null ? null : buildCredential({ externalId, ...change }),
+        );
+        await expect(service.reconcile(tenantId, operationId)).rejects.toThrow(
+          'Offer has no matching wallet-bound credential',
+        );
+        expect(mockResolveAdapter).not.toHaveBeenCalled();
+        expect(mockProtocolProcess).not.toHaveBeenCalled();
+      },
+    );
+
+    it('refuses a response for a different backend exchange', async () => {
+      mockGetExchange.mockResolvedValue({
+        id: externalId,
+        externalId: 'another-exchange',
+        state: CredentialExchangeState.Done,
+      });
+      await expect(service.reconcile(tenantId, operationId)).rejects.toThrow(
+        'Backend returned a different credential exchange',
+      );
+      expect(mockResolveConnection).not.toHaveBeenCalled();
+      expect(mockProtocolProcess).not.toHaveBeenCalled();
+    });
+
+    it('uses the backend record ID when no separate external ID is returned', async () => {
+      mockGetExchange.mockResolvedValue({
+        id: externalId,
+        connectionId: 'backend-connection',
+        state: CredentialExchangeState.Done,
+      });
+      await service.reconcile(tenantId, operationId);
+      expect(mockProtocolProcess).toHaveBeenCalledWith(
+        expect.objectContaining({ externalId }),
+      );
+    });
+
+    it('does not synthesize protocol progress for an unmapped backend state', async () => {
+      mockGetExchange.mockResolvedValue({
+        id: externalId,
+        connectionId: 'backend-connection',
+        state: 'unknown-future-state',
+      });
+      const operation = buildOperation({ externalId });
+      mockOperationFindById.mockResolvedValue(operation);
+      expect(await service.reconcile(tenantId, operationId)).toBe(operation);
+      expect(mockProtocolProcess).not.toHaveBeenCalled();
+      expect(mockOfferCredential).not.toHaveBeenCalled();
+    });
+
+    it('reports a concurrently purged operation after observation', async () => {
+      mockOperationFindById
+        .mockResolvedValueOnce(buildOperation({ externalId }))
+        .mockResolvedValueOnce(null);
+      await expect(
+        service.reconcile(tenantId, operationId),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(mockProtocolProcess).toHaveBeenCalledTimes(1);
+      expect(mockOfferCredential).not.toHaveBeenCalled();
+    });
+
+    it('propagates failed authenticated reads without processing or resubmitting', async () => {
+      const error = new TimeoutError('Read timed out');
+      mockGetExchange.mockRejectedValue(error);
+      await expect(service.reconcile(tenantId, operationId)).rejects.toBe(
+        error,
+      );
+      expect(mockProtocolProcess).not.toHaveBeenCalled();
       expect(mockOfferCredential).not.toHaveBeenCalled();
     });
   });
