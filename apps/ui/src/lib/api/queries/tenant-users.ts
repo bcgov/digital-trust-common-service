@@ -1,6 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
-import type { CursorParams } from '../pagination';
 import {
   inviteTenantUser,
   listTenantUsers,
@@ -8,19 +7,20 @@ import {
   updateTenantUser,
   type InviteTenantUserRequest,
   type TenantRole,
+  type TenantUsersParams,
 } from '../resources/tenant-users';
 
 export const tenantUserKeys = {
   all: ['tenant-users'] as const,
   lists: (tenantId: string) =>
     [...tenantUserKeys.all, 'list', tenantId] as const,
-  list: (tenantId: string, params: CursorParams) =>
+  list: (tenantId: string, params: TenantUsersParams) =>
     [...tenantUserKeys.lists(tenantId), params] as const,
 };
 
 export function useTenantUsers(
   tenantId: string | undefined,
-  params: CursorParams = {},
+  params: TenantUsersParams = {},
   options: { enabled?: boolean } = {},
 ) {
   return useQuery({

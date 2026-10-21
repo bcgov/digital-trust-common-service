@@ -1,4 +1,4 @@
-import { JwtGuard, ScopeGuard, TenantGuard } from '@app/auth';
+import { JwtGuard, ScopeGuard, TenantGuard, type AuthContext } from '@app/auth';
 import { CanActivate } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 
@@ -43,6 +43,7 @@ describe('TenantUserController', () => {
     tenant: undefined as any,
     createdAt: new Date(),
     updatedAt: new Date(),
+    isPlatformOperator: false,
   };
 
   beforeEach(async () => {
@@ -128,18 +129,26 @@ describe('TenantUserController', () => {
       const page = {
         data: [mockTenantUser],
         pagination: { next_cursor: null, has_more: false },
+        self_actions_allowed: false,
       };
       mockList.mockResolvedValue(page);
 
       const result = await controller.list(tenantId, {});
 
-      expect(mockList).toHaveBeenCalledWith(tenantId, {
-        limit: undefined,
-        cursor: undefined,
-      });
+      expect(mockList).toHaveBeenCalledWith(
+        tenantId,
+        {
+          limit: undefined,
+          cursor: undefined,
+          search: undefined,
+        },
+        undefined,
+        undefined,
+      );
       expect(result).toEqual({
         data: [TenantUserResponseDto.fromEntity(mockTenantUser)],
         pagination: TenantUsersPaginationDto.from(page.pagination),
+        self_actions_allowed: false,
       });
     });
 
@@ -148,6 +157,7 @@ describe('TenantUserController', () => {
       const page = {
         data: [],
         pagination: { next_cursor: null, has_more: false },
+        self_actions_allowed: true,
       };
       mockList.mockResolvedValue(page);
 
@@ -156,14 +166,65 @@ describe('TenantUserController', () => {
         limit: 10,
       });
 
-      expect(mockList).toHaveBeenCalledWith(tenantId, {
-        limit: 10,
-        cursor: 'some-cursor',
-      });
+      expect(mockList).toHaveBeenCalledWith(
+        tenantId,
+        {
+          limit: 10,
+          cursor: 'some-cursor',
+          search: undefined,
+        },
+        undefined,
+        undefined,
+      );
       expect(result).toEqual({
         data: [],
         pagination: TenantUsersPaginationDto.from(page.pagination),
+        self_actions_allowed: true,
       });
+    });
+
+    it('forwards the active tenant user to calculate self-action eligibility', async () => {
+      const tenantId = mockTenantUser.tenantId;
+      const callerTenantUser = {
+        ...mockTenantUser,
+        role: TenantUserRole.ADMIN,
+      };
+      mockList.mockResolvedValue({
+        data: [],
+        pagination: { next_cursor: null, has_more: false },
+        self_actions_allowed: true,
+      });
+
+      await controller.list(tenantId, {}, callerTenantUser);
+
+      expect(mockList).toHaveBeenCalledWith(
+        tenantId,
+        { limit: undefined, cursor: undefined, search: undefined },
+        callerTenantUser,
+        undefined,
+      );
+    });
+
+    it('forwards the user token subject when the platform-admin guard bypasses membership resolution', async () => {
+      const tenantId = mockTenantUser.tenantId;
+      const auth = {
+        sub: mockTenantUser.id,
+        tokenType: 'user',
+      } as AuthContext;
+      mockList.mockResolvedValue({
+        data: [],
+        pagination: { next_cursor: null, has_more: false },
+        self_actions_allowed: true,
+      });
+
+      await controller.list(tenantId, {}, undefined, auth);
+
+      expect(mockList).toHaveBeenCalledWith(
+        tenantId,
+        { limit: undefined, cursor: undefined, search: undefined },
+        undefined,
+        mockTenantUser.id,
+      );
     });
   });
 

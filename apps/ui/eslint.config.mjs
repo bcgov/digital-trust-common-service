@@ -1,6 +1,7 @@
 // @ts-check
 import js from '@eslint/js';
 import prettier from 'eslint-config-prettier';
+import checkFile from 'eslint-plugin-check-file';
 import jsxA11y from 'eslint-plugin-jsx-a11y';
 import reactHooks from 'eslint-plugin-react-hooks';
 import reactRefresh from 'eslint-plugin-react-refresh';
@@ -21,6 +22,19 @@ export default tseslint.config(
   reactHooks.configs.flat['recommended-latest'],
   reactRefresh.configs.vite,
   jsxA11y.flatConfigs.recommended,
+  {
+    files: ['src/**/*.{js,jsx,ts,tsx}'],
+    plugins: {
+      'check-file': checkFile,
+    },
+    rules: {
+      'check-file/filename-naming-convention': [
+        'error',
+        { 'src/**/*.{js,jsx,ts,tsx}': 'KEBAB_CASE' },
+        { ignoreMiddleExtensions: true },
+      ],
+    },
+  },
   {
     languageOptions: {
       globals: globals.browser,

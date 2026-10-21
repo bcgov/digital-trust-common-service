@@ -1,6 +1,6 @@
 import { Navigate, Outlet, useLocation } from 'react-router';
 
-import { FullPageStatus } from '@/components/full-page-status';
+import { FullPageStatus } from '@/components/common/full-page-status';
 import { useAuth } from '@/lib/auth/context';
 
 /** Layout route guarding everything behind it; preserves the intended URL. */

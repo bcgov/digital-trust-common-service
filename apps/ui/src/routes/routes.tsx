@@ -1,11 +1,11 @@
 import type { ComponentType } from 'react';
 import { Navigate, type RouteObject } from 'react-router';
 
-import { AppShell } from '@/layouts/AppShell';
-import { RootLayout } from '@/layouts/RootLayout';
+import { AppShell } from '@/layouts/app-shell';
+import { RootLayout } from '@/layouts/root-layout';
 import { AUTH_CALLBACK_PATH, POST_LOGOUT_PATH } from '@/lib/auth/constants';
-import { PlaceholderPage } from '@/pages/PlaceholderPage';
-import { RouteErrorPage } from '@/pages/RouteErrorPage';
+import { PlaceholderPage } from '@/pages/placeholder-page';
+import { RouteErrorPage } from '@/pages/route-error-page';
 
 import { RequireAuth } from './require-auth';
 
@@ -26,13 +26,13 @@ export const routes: RouteObject[] = [
     children: [
       {
         path: POST_LOGOUT_PATH,
-        lazy: lazyPage(() => import('@/pages/LoginPage'), 'LoginPage'),
+        lazy: lazyPage(() => import('@/pages/login-page'), 'LoginPage'),
       },
       {
         // Outside RequireAuth: the redirect arrives before a session exists.
         path: AUTH_CALLBACK_PATH,
         lazy: lazyPage(
-          () => import('@/pages/AuthCallbackPage'),
+          () => import('@/pages/auth-callback-page'),
           'AuthCallbackPage',
         ),
       },
@@ -46,42 +46,42 @@ export const routes: RouteObject[] = [
               {
                 path: '/dashboard',
                 lazy: lazyPage(
-                  () => import('@/pages/DashboardPage'),
+                  () => import('@/pages/dashboard-page'),
                   'DashboardPage',
                 ),
               },
               {
                 path: '/tenants',
                 lazy: lazyPage(
-                  () => import('@/pages/TenantsPage'),
+                  () => import('@/pages/tenants-page'),
                   'TenantsPage',
                 ),
               },
               {
                 path: '/connectors',
                 lazy: lazyPage(
-                  () => import('@/pages/ConnectorsPage'),
+                  () => import('@/pages/connectors-page'),
                   'ConnectorsPage',
                 ),
               },
               {
                 path: '/tenants/:tenantId',
                 lazy: lazyPage(
-                  () => import('@/layouts/TenantLayout'),
+                  () => import('@/layouts/tenant-layout'),
                   'TenantLayout',
                 ),
                 children: [
                   {
                     index: true,
                     lazy: lazyPage(
-                      () => import('@/pages/TenantOverviewPage'),
+                      () => import('@/pages/tenant-overview-page'),
                       'TenantOverviewPage',
                     ),
                   },
                   {
                     path: 'users',
                     lazy: lazyPage(
-                      () => import('@/pages/TenantUsersPage'),
+                      () => import('@/pages/tenant-users-page'),
                       'TenantUsersPage',
                     ),
                   },
@@ -114,19 +114,12 @@ export const routes: RouteObject[] = [
                   },
                 ],
               },
-              {
-                path: '/settings',
-                lazy: lazyPage(
-                  () => import('@/pages/SettingsPage'),
-                  'SettingsPage',
-                ),
-              },
               ...(import.meta.env.DEV
                 ? [
                     {
                       path: '/dev/dialogs',
                       lazy: lazyPage(
-                        () => import('@/demo/DialogDemoPage'),
+                        () => import('@/demo/dialog-demo-page'),
                         'DialogDemoPage',
                       ),
                     },
@@ -138,7 +131,7 @@ export const routes: RouteObject[] = [
       },
       {
         path: '*',
-        lazy: lazyPage(() => import('@/pages/NotFoundPage'), 'NotFoundPage'),
+        lazy: lazyPage(() => import('@/pages/not-found-page'), 'NotFoundPage'),
       },
     ],
   },

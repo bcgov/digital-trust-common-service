@@ -9,7 +9,7 @@ jest.mock('oidc-provider', () => ({ default: class FakeProvider {} }));
 import { TenantAccessDeniedException, type AuthContext } from '@app/auth';
 import { OidcConfigService, OidcProviderService } from '@app/oidc';
 import { OidcAccountSessionRepository } from '@app/oidc/sessions';
-import { ForbiddenException } from '@nestjs/common';
+import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 
 import { DomainAuditService } from '../audit-log/domain-audit.service';
@@ -214,6 +214,20 @@ describe('AuthService', () => {
     ]);
   });
 
+  it('lists memberships from the signed identity after the current row is deleted', async () => {
+    tenantUsers.findById.mockRejectedValue(new NotFoundException());
+
+    const result = await service.listTenants({
+      ...userAuth,
+      externalUserId: 'keycloak-sub',
+    });
+
+    expect(tenantUsers.findActiveByExternalUserId).toHaveBeenCalledWith(
+      'keycloak-sub',
+    );
+    expect(result).toHaveLength(2);
+  });
+
   it('rejects listTenants when the subject has no external identity', async () => {
     tenantUsers.findById.mockResolvedValue({
       ...currentUser,
@@ -324,6 +338,29 @@ describe('AuthService', () => {
       currentUser.id,
     );
     expect(domainAudit.emit).toHaveBeenCalled();
+  });
+
+  it('switches from a deleted membership using the signed identity claim', async () => {
+    tenantUsers.findById.mockRejectedValue(new NotFoundException());
+
+    await service.switchTenant(
+      { ...userAuth, externalUserId: 'keycloak-sub' },
+      targetUser.tenantId,
+    );
+
+    expect(tenantUsers.findByTenantAndExternalUserId).toHaveBeenCalledWith(
+      targetUser.tenantId,
+      'keycloak-sub',
+    );
+    expect(accountSessions.rebindSessionsToAccount).toHaveBeenCalledWith(
+      userAuth.sub,
+      targetUser.id,
+      'spa-client',
+      'new-grant',
+    );
+    expect(accountSessions.deleteAllForAccount).toHaveBeenCalledWith(
+      userAuth.sub,
+    );
   });
 
   it('does not wipe the account when rotating within the same tenant', async () => {

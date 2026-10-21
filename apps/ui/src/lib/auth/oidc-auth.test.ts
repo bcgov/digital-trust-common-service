@@ -385,11 +385,11 @@ describe('oidc auth client', () => {
 
     it('completes the callback and reports where to go next', async () => {
       mocks.manager.signinRedirectCallback.mockResolvedValue(
-        makeUser({ name: 'Ada' }, { state: { returnTo: '/settings' } }),
+        makeUser({ name: 'Ada' }, { state: { returnTo: '/connectors' } }),
       );
       const client = createOidcAuthClient(config);
 
-      await expect(client.completeLogin()).resolves.toBe('/settings');
+      await expect(client.completeLogin()).resolves.toBe('/connectors');
       expect(client.getState().status).toBe('authenticated');
     });
 

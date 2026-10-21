@@ -123,4 +123,13 @@ export class PaginatedTenantUsersResponseDto {
 
   @ApiProperty({ type: TenantUsersPaginationDto })
   public pagination!: TenantUsersPaginationDto;
+
+  @Expose({ name: 'self_actions_allowed' })
+  @ApiProperty({
+    name: 'self_actions_allowed',
+    description:
+      'Whether the current caller may change or remove their own tenant membership without violating administrator or owner safeguards.',
+    example: false,
+  })
+  public selfActionsAllowed!: boolean;
 }

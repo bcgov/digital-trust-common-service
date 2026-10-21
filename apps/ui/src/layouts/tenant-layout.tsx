@@ -1,0 +1,117 @@
+import {
+  Navigate,
+  NavLink,
+  Outlet,
+  useLocation,
+  useMatch,
+  useParams,
+} from 'react-router';
+
+import { AccessDenied } from '@/components/common/access-denied';
+import { TenantStatusBadge } from '@/components/tenant/tenant-status-badge';
+import { Skeleton } from '@/components/common/skeleton';
+import { ApiError } from '@/lib/api/errors';
+import { useTenant } from '@/lib/api/queries/tenants';
+import { useAuth } from '@/lib/auth/context';
+import { hasScope, USERS_MANAGE_SCOPE } from '@/lib/auth/scopes';
+import { replaceTenantInPath } from '@/lib/tenant/active-tenant';
+import { cn } from '@/lib/utils';
+
+// A tab whose section the token cannot use is left out; the page behind it
+// still handles a 403 in case the token is stale.
+const TABS: { to: string; label: string; end?: boolean; scope?: string }[] = [
+  { to: '.', label: 'Overview', end: true },
+  { to: 'users', label: 'Users', scope: USERS_MANAGE_SCOPE },
+  { to: 'connections', label: 'Connections' },
+  { to: 'credentials', label: 'Credentials' },
+  { to: 'audit-logs', label: 'Audit logs' },
+  { to: 'logs', label: 'Logs' },
+  { to: 'settings', label: 'Settings' },
+];
+
+export function TenantLayout() {
+  const { tenantId } = useParams();
+  const location = useLocation();
+  const isUsersPage = useMatch('/tenants/:tenantId/users') !== null;
+  const { user } = useAuth();
+  const tabs = TABS.filter((tab) => !tab.scope || hasScope(user, tab.scope));
+
+  // Every API call is scoped to the token's tenant, so a URL naming another
+  // one can only 404. Land on the same section of the tenant the user is
+  // actually in; the header switcher is the way to the other one.
+  const redirectTo =
+    tenantId && user?.tenantId && tenantId !== user.tenantId
+      ? replaceTenantInPath(location.pathname, tenantId, user.tenantId)
+      : null;
+  const {
+    data: tenant,
+    isLoading,
+    error,
+  } = useTenant(redirectTo ? undefined : tenantId);
+
+  if (redirectTo) {
+    return <Navigate to={redirectTo} replace />;
+  }
+
+  if (error) {
+    if (error instanceof ApiError && error.status === 403) {
+      return (
+        <AccessDenied
+          title="Tenant"
+          headingLevel={1}
+          description={error.message}
+        />
+      );
+    }
+
+    return (
+      <p role="alert" className="text-sm text-destructive">
+        Failed to load tenant
+        {error instanceof ApiError ? `: ${error.message}` : '.'}
+      </p>
+    );
+  }
+
+  return (
+    <div className={cn('flex flex-col', !isUsersPage && 'gap-4')}>
+      {!isUsersPage && (
+        <>
+          <div className="flex items-center gap-3">
+            {isLoading ? (
+              <Skeleton className="h-7 w-48" />
+            ) : (
+              <>
+                <h1 className="text-xl font-semibold">
+                  {tenant?.name ?? 'Tenant'}
+                </h1>
+                {tenant?.status && <TenantStatusBadge status={tenant.status} />}
+              </>
+            )}
+          </div>
+
+          <nav aria-label="Tenant sections" className="flex gap-1 border-b">
+            {tabs.map(({ to, label, end }) => (
+              <NavLink
+                key={to}
+                to={to}
+                end={end}
+                className={({ isActive }) =>
+                  cn(
+                    '-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors',
+                    isActive
+                      ? 'border-primary text-foreground'
+                      : 'border-transparent text-muted-foreground hover:text-foreground',
+                  )
+                }
+              >
+                {label}
+              </NavLink>
+            ))}
+          </nav>
+        </>
+      )}
+
+      <Outlet />
+    </div>
+  );
+}

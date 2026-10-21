@@ -27,6 +27,7 @@ describe('jwt-validation helpers', () => {
       sub: 'a3f8c2d1-1111-4123-8123-123456789abc',
       scope: 'credentials:offer credentials:verify',
       tenant_id: 'tenant-1',
+      external_user_id: 'upstream-user-1',
       roles: ['admin'],
       iss: 'http://localhost:3000/oidc',
       aud: 'http://localhost:3000/oidc',
@@ -38,6 +39,7 @@ describe('jwt-validation helpers', () => {
     expect(user.clientId).toBeNull();
     expect(user.roles).toEqual(['admin']);
     expect(user.scopes).toEqual(['credentials:offer', 'credentials:verify']);
+    expect(user.externalUserId).toBe('upstream-user-1');
     expect(user.jti).toBeNull();
 
     const userWithClient = normalizeAuthPayload({

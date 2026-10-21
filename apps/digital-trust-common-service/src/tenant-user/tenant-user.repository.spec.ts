@@ -1,7 +1,12 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
+import { In } from 'typeorm';
 
-import { TenantUser, TenantUserStatus } from './tenant-user.entity';
+import {
+  TenantUser,
+  TenantUserRole,
+  TenantUserStatus,
+} from './tenant-user.entity';
 import { TenantUserRepository } from './tenant-user.repository';
 
 describe('TenantUserRepository', () => {
@@ -15,10 +20,12 @@ describe('TenantUserRepository', () => {
     andWhere: jest.Mock;
     orderBy: jest.Mock;
     addOrderBy: jest.Mock;
+    take: jest.Mock;
     getMany: jest.Mock;
     execute: jest.Mock;
   };
   let findOne: jest.Mock;
+  let count: jest.Mock;
 
   beforeEach(async () => {
     queryBuilder = {
@@ -30,10 +37,12 @@ describe('TenantUserRepository', () => {
       andWhere: jest.fn().mockReturnThis(),
       orderBy: jest.fn().mockReturnThis(),
       addOrderBy: jest.fn().mockReturnThis(),
+      take: jest.fn().mockReturnThis(),
       getMany: jest.fn().mockResolvedValue([]),
       execute: jest.fn().mockResolvedValue({ affected: 0 }),
     };
     findOne = jest.fn().mockResolvedValue(null);
+    count = jest.fn().mockResolvedValue(0);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -43,6 +52,7 @@ describe('TenantUserRepository', () => {
           useValue: {
             createQueryBuilder: jest.fn(() => queryBuilder),
             findOne,
+            count,
           },
         },
       ],
@@ -75,6 +85,47 @@ describe('TenantUserRepository', () => {
       'tenantUser.id',
       'ASC',
     );
+  });
+
+  it('counts only active owners and admins for a tenant', async () => {
+    await repository.countActiveAdministratorsByTenant('tenant-id');
+
+    expect(count).toHaveBeenCalledWith({
+      where: {
+        tenantId: 'tenant-id',
+        role: In([TenantUserRole.OWNER, TenantUserRole.ADMIN]),
+        status: TenantUserStatus.ACTIVE,
+      },
+    });
+  });
+
+  it('counts only active owners for a tenant', async () => {
+    await repository.countActiveOwnersByTenant('tenant-id');
+
+    expect(count).toHaveBeenCalledWith({
+      where: {
+        tenantId: 'tenant-id',
+        role: TenantUserRole.OWNER,
+        status: TenantUserStatus.ACTIVE,
+      },
+    });
+  });
+
+  it('applies a case-insensitive name/email search inside the tenant query', async () => {
+    await repository.findPageForTenant('tenant-id', {
+      limit: 10,
+      search: ' Ada ',
+    });
+
+    expect(queryBuilder.where).toHaveBeenCalledWith(
+      'tenantUser.tenant_id = :tenantId',
+      { tenantId: 'tenant-id' },
+    );
+    expect(queryBuilder.andWhere).toHaveBeenCalledWith(
+      "(LOWER(tenantUser.email) LIKE :search ESCAPE '!' OR LOWER(tenantUser.displayName) LIKE :search ESCAPE '!')",
+      { search: '%ada%' },
+    );
+    expect(queryBuilder.take).toHaveBeenCalledWith(11);
   });
 
   it('findUnclaimedInvitesByEmail normalizes the email and skips deleted tenants', async () => {

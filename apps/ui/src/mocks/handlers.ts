@@ -196,6 +196,7 @@ export const handlers = [
     HttpResponse.json({
       data: mockTenantUsers.filter((u) => u.tenant_id === params.id),
       pagination: { next_cursor: null, has_more: false },
+      self_actions_allowed: false,
     }),
   ),
   http.post(

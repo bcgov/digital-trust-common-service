@@ -6,8 +6,11 @@ import {
   type ReactNode,
 } from 'react';
 
-import { FullPageError, FullPageStatus } from '@/components/full-page-status';
-import { Button } from '@/components/ui/button';
+import {
+  FullPageError,
+  FullPageStatus,
+} from '@/components/common/full-page-status';
+import { Button } from '@/components/common/button';
 import { setAuthHandlers } from '@/lib/api/client';
 import { getAppConfig } from '@/lib/config';
 import { env } from '@/lib/env';

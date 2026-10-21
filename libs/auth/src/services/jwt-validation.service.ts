@@ -88,9 +88,11 @@ export function normalizeAuthPayload(payload: JWTPayload): AuthContext {
     (tokenType === 'client' ? deriveClientIdFromSub(sub) : null);
   const scope = readScope(payload.scope);
   const roles = readRoles(payload.roles);
+  const externalUserId = readOptionalString(payload.external_user_id);
 
   return {
     sub,
+    ...(externalUserId ? { externalUserId } : {}),
     tokenType,
     clientId,
     tenantId: readOptionalString(payload.tenant_id),

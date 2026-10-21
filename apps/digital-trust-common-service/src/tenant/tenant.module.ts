@@ -17,12 +17,12 @@ import { TenantService } from './tenant.service';
     TypeOrmModule.forFeature([Tenant]),
     AuditLogModule,
     AuthModule,
-    TenantUserModule,
+    forwardRef(() => TenantUserModule),
     TenantStatusModule,
     forwardRef(() => ConnectorCredentialModule),
   ],
   controllers: [TenantController],
   providers: [TenantService, TenantRepository],
-  exports: [TenantService],
+  exports: [TenantService, TenantRepository],
 })
 export class TenantModule {}
