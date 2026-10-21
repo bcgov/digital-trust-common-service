@@ -108,4 +108,15 @@ describe('registrationFingerprints', () => {
       ).toThrow(BadRequestException);
     },
   );
+
+  it('rejects content whose canonical representation is undefined', () => {
+    const unserializableIntent = {
+      ...intent,
+      toJSON: () => undefined,
+    };
+
+    expect(() =>
+      registrationFingerprints(unserializableIntent, 'Employee'),
+    ).toThrow(BadRequestException);
+  });
 });

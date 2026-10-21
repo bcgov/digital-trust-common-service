@@ -558,6 +558,20 @@ describe('IssuanceProfileService', () => {
       expect(result).toEqual(mockProfile);
     });
 
+    it('requires a ready definition on the selected connector before publishing', async () => {
+      mockFindById.mockResolvedValue({ ...mockProfile });
+      mockCredentialDefinitionFindById.mockResolvedValue({
+        ...mockCredentialDefinition,
+        registrationState: 'pending',
+      });
+
+      await expect(
+        service.publish(tenantId, mockProfile.id, auth),
+      ).rejects.toThrow(BadRequestException);
+
+      expect(mockTransitionStatus).not.toHaveBeenCalled();
+    });
+
     it('throws ConflictException when the profile is not in draft status', async () => {
       mockFindById.mockResolvedValue({
         ...mockProfile,

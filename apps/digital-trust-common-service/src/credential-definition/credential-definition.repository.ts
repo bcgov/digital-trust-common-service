@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, Repository } from 'typeorm';
+import type { QueryDeepPartialEntity } from 'typeorm/query-builder/QueryPartialEntity';
 
 import {
   CredentialDefinition,
@@ -96,6 +97,22 @@ export class CredentialDefinitionRepository {
       order: {
         createdAt: 'ASC',
       },
+    });
+  }
+
+  public async updateEditableFields(
+    tenantId: string,
+    id: string,
+    changes: Partial<Pick<CredentialDefinition, 'name' | 'metadata'>>,
+  ): Promise<CredentialDefinition | null> {
+    if (Object.keys(changes).length > 0) {
+      await this.repository.update(
+        { id, tenantId, isActive: true },
+        changes as QueryDeepPartialEntity<CredentialDefinition>,
+      );
+    }
+    return await this.repository.findOne({
+      where: { id, tenantId, isActive: true },
     });
   }
 

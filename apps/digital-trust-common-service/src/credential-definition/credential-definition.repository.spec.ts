@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { EntityManager, Repository } from 'typeorm';
 
 import {
   CredentialDefinition,
@@ -15,8 +15,10 @@ describe('CredentialDefinitionRepository', () => {
 
   beforeEach(async () => {
     mockRepo = {
+      create: jest.fn(),
       find: jest.fn(),
       findOne: jest.fn(),
+      save: jest.fn(),
       update: jest.fn(),
     };
 
@@ -31,6 +33,42 @@ describe('CredentialDefinitionRepository', () => {
     }).compile();
 
     repository = module.get(CredentialDefinitionRepository);
+  });
+
+  describe('create', () => {
+    it('creates and saves through the injected repository', async () => {
+      const created = { id: 'cd-1' } as CredentialDefinition;
+      (mockRepo.create as jest.Mock).mockReturnValue(created);
+      (mockRepo.save as jest.Mock).mockResolvedValue(created);
+
+      await expect(repository.create({ name: 'Employee' })).resolves.toBe(
+        created,
+      );
+      expect(mockRepo.create).toHaveBeenCalledWith({ name: 'Employee' });
+      expect(mockRepo.save).toHaveBeenCalledWith(created);
+    });
+
+    it('uses the transaction manager repository when supplied', async () => {
+      const created = { id: 'cd-1' } as CredentialDefinition;
+      const transactionRepository = {
+        create: jest.fn().mockReturnValue(created),
+        save: jest.fn().mockResolvedValue(created),
+      };
+      const getRepository = jest.fn().mockReturnValue(transactionRepository);
+      const manager = {
+        getRepository,
+      } as unknown as EntityManager;
+
+      await expect(
+        repository.create({ name: 'Employee' }, manager),
+      ).resolves.toBe(created);
+      expect(getRepository).toHaveBeenCalledWith(CredentialDefinition);
+      expect(transactionRepository.create).toHaveBeenCalledWith({
+        name: 'Employee',
+      });
+      expect(transactionRepository.save).toHaveBeenCalledWith(created);
+      expect(mockRepo.create).not.toHaveBeenCalled();
+    });
   });
 
   describe('deactivate', () => {
@@ -108,6 +146,28 @@ describe('CredentialDefinitionRepository', () => {
     });
   });
 
+  describe('findByFingerprint', () => {
+    it('scopes a fingerprint lookup to the tenant and selected fingerprint field', async () => {
+      const result = { id: 'cd-1' } as CredentialDefinition;
+      const findOne = jest.fn().mockResolvedValue(result);
+      const manager = {
+        getRepository: jest.fn().mockReturnValue({ findOne }),
+      } as unknown as EntityManager;
+
+      await expect(
+        repository.findByFingerprint(
+          'tenant-1',
+          'requestFingerprint',
+          'fingerprint',
+          manager,
+        ),
+      ).resolves.toBe(result);
+      expect(findOne).toHaveBeenCalledWith({
+        where: { tenantId: 'tenant-1', requestFingerprint: 'fingerprint' },
+      });
+    });
+  });
+
   describe('findByFormat', () => {
     it('only lists active definitions with the given format', async () => {
       (mockRepo.find as jest.Mock).mockResolvedValue([]);
@@ -144,6 +204,46 @@ describe('CredentialDefinitionRepository', () => {
           isActive: true,
         },
         order: { createdAt: 'ASC' },
+      });
+    });
+
+    describe('update', () => {
+      it('updates only editable fields within the active tenant row', async () => {
+        const updated = {
+          id: 'cd-1',
+          tenantId: 'tenant-1',
+          name: 'Updated',
+          registration: { schemaSubmitted: true },
+        } as CredentialDefinition;
+        (mockRepo.update as jest.Mock).mockResolvedValue({ affected: 1 });
+        (mockRepo.findOne as jest.Mock).mockResolvedValue(updated);
+
+        await expect(
+          repository.updateEditableFields('tenant-1', 'cd-1', {
+            name: 'Updated',
+          }),
+        ).resolves.toBe(updated);
+
+        expect(mockRepo.update).toHaveBeenCalledWith(
+          { id: 'cd-1', tenantId: 'tenant-1', isActive: true },
+          { name: 'Updated' },
+        );
+        expect(mockRepo.findOne).toHaveBeenCalledWith({
+          where: { id: 'cd-1', tenantId: 'tenant-1', isActive: true },
+        });
+      });
+
+      it('does not issue an empty update', async () => {
+        (mockRepo.findOne as jest.Mock).mockResolvedValue(null);
+
+        await expect(
+          repository.updateEditableFields('tenant-1', 'cd-1', {}),
+        ).resolves.toBeNull();
+
+        expect(mockRepo.update).not.toHaveBeenCalled();
+        expect(mockRepo.findOne).toHaveBeenCalledWith({
+          where: { id: 'cd-1', tenantId: 'tenant-1', isActive: true },
+        });
       });
     });
   });
