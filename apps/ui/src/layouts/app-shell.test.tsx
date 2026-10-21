@@ -90,6 +90,27 @@ describe('AppShell', () => {
     ).not.toBeInTheDocument();
   });
 
+  it('hides Manage Users when the token tenant is absent from memberships', async () => {
+    const client = createMockAuthClient();
+    await client.login();
+    client.listAuthTenants = () => Promise.resolve([]);
+    renderWithAuth(
+      [
+        {
+          path: '/',
+          element: <AppShell />,
+          children: [{ index: true, element: <p>page content</p> }],
+        },
+      ],
+      { client },
+    );
+
+    expect(await screen.findByText('Unknown tenant')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('link', { name: 'Manage Users' }),
+    ).not.toBeInTheDocument();
+  });
+
   it('navigates to the active tenant users route', async () => {
     const client = createMockAuthClient();
     await client.login();
@@ -110,7 +131,9 @@ describe('AppShell', () => {
       { client },
     );
 
-    await userEvent.click(screen.getByRole('link', { name: 'Manage Users' }));
+    await userEvent.click(
+      await screen.findByRole('link', { name: 'Manage Users' }),
+    );
 
     expect(await screen.findByText('tenant users route')).toBeInTheDocument();
     expect(router.state.location.pathname).toBe(

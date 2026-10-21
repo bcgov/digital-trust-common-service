@@ -61,8 +61,8 @@ export function AppShell() {
     ({ scope }) => !scope || hasScope(user, scope),
   );
   const manageUsersPath =
-    user?.tenantId && hasScope(user, USERS_MANAGE_SCOPE)
-      ? `/tenants/${user.tenantId}/users`
+    tenant?.id && hasScope(user, USERS_MANAGE_SCOPE)
+      ? `/tenants/${tenant.id}/users`
       : null;
 
   return (

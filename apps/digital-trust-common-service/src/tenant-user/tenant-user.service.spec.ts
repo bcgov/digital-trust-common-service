@@ -830,11 +830,9 @@ describe('TenantUserService', () => {
       mockCountActiveOwnersByTenant.mockResolvedValue(1);
 
       await expect(
-        service.update(
-          tenantId,
-          ownerCaller.id,
-          { status: TenantUserStatus.DISABLED },
-        ),
+        service.update(tenantId, ownerCaller.id, {
+          status: TenantUserStatus.DISABLED,
+        }),
       ).rejects.toThrow(ConflictException);
 
       expect(mockCountActiveOwnersByTenant).toHaveBeenCalledWith(
@@ -856,11 +854,9 @@ describe('TenantUserService', () => {
       mockCountActiveOwnersByTenant.mockResolvedValue(2);
       mockUpdate.mockResolvedValue(updatedOwner);
 
-      await service.update(
-        tenantId,
-        ownerCaller.id,
-        { status: TenantUserStatus.DISABLED },
-      );
+      await service.update(tenantId, ownerCaller.id, {
+        status: TenantUserStatus.DISABLED,
+      });
 
       expect(mockCountActiveOwnersByTenant).toHaveBeenCalledWith(
         tenantId,
