@@ -40,6 +40,7 @@ interface OperationOutcomeResult {
 interface ApplyOutcomeResult {
   readonly matched: boolean;
   readonly transitioned: boolean;
+  readonly established?: boolean;
 }
 
 /**
@@ -114,6 +115,7 @@ export class ProtocolStateChangeService {
       // best-effort (see applyOperationOutcome), and the Credential or
       // Connection below may still be this delivery's real target.
       let matched = operationOutcome.matched;
+      let established = false;
 
       if (data.topic === 'connections') {
         const connectionOutcome = await this.applyConnectionOutcome(
@@ -124,6 +126,12 @@ export class ProtocolStateChangeService {
 
         matched = connectionOutcome.matched || matched;
         transitioned = connectionOutcome.transitioned || transitioned;
+        // Connection notifications belong to the winning connection write,
+        // not an independently completing invitation operation.
+        if (!connectionOutcome.transitioned) {
+          return { matched, transitioned, event: null };
+        }
+        established = connectionOutcome.established ?? false;
       } else if (operationType === null || transitioned) {
         const credentialOutcome = await this.applyCredentialOutcome(
           data,
@@ -150,9 +158,10 @@ export class ProtocolStateChangeService {
       // HolderPort.rejectOffer always resolves synchronously (see
       // CredentialActionService.completeReject), so a CREDENTIAL_REJECT
       // Operation is never left in-flight for a later webhook to confirm.
-      const event =
-        outcome.event === 'credential.issued' &&
-        operationType === OPERATION_TYPE.CREDENTIAL_ACCEPT
+      const event = established
+        ? 'connection.established'
+        : outcome.event === 'credential.issued' &&
+            operationType === OPERATION_TYPE.CREDENTIAL_ACCEPT
           ? 'credential.accepted'
           : outcome.event;
 
@@ -520,9 +529,27 @@ export class ProtocolStateChangeService {
     // worst (outcome.connectionState may be INVITED itself, whose
     // `fromStates` guard is empty and could never match).
     if (createdFromTemplate) {
-      return { matched: true, transitioned: true };
+      return {
+        matched: true,
+        transitioned: true,
+        established: [
+          ConnectionState.ACTIVE,
+          ConnectionState.COMPLETED,
+        ].includes(outcome.connectionState),
+      };
     }
 
+    // Claim the same ACTIVE boundary as reconciliation even if the backend
+    // skips directly to completed. Both writes stay in this transaction.
+    const established =
+      outcome.connectionState === ConnectionState.COMPLETED
+        ? await this.connectionService.applyProtocolStateIfForward(
+            connection,
+            ConnectionState.ACTIVE,
+            connectionStatesBelow(ConnectionState.ACTIVE),
+            manager,
+          )
+        : null;
     const updated = await this.connectionService.applyProtocolStateIfForward(
       connection,
       outcome.connectionState,
@@ -530,7 +557,14 @@ export class ProtocolStateChangeService {
       manager,
     );
 
-    return { matched: true, transitioned: updated !== null };
+    return {
+      matched: true,
+      transitioned: updated !== null || established !== null,
+      established:
+        established !== null ||
+        (updated !== null &&
+          outcome.connectionState === ConnectionState.ACTIVE),
+    };
   }
 
   /**

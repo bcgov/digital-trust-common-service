@@ -128,6 +128,42 @@ describe('ConnectionRepository', () => {
       expect((await reconcile())?.state).toBe(ConnectionState.ABANDONED);
     });
 
+    it('enqueues only the first establishment under the row lock, never again after active', async () => {
+      const enqueue = jest.fn().mockResolvedValue(undefined);
+      const reconcileWithNotification = () =>
+        repository.reconcile(
+          't1',
+          'c1',
+          'wallet-1',
+          remote,
+          [ConnectionState.INVITED, ConnectionState.ACTIVE],
+          enqueue,
+        );
+      await reconcileWithNotification();
+      await reconcileWithNotification();
+      expect(enqueue).toHaveBeenCalledTimes(1);
+      expect(enqueue).toHaveBeenCalledWith(
+        expect.objectContaining({ findOne, save }),
+      );
+      row!.state = ConnectionState.ACTIVE;
+      await reconcileWithNotification();
+      expect(enqueue).toHaveBeenCalledTimes(1);
+    });
+
+    it('propagates an enqueue failure to roll back the enclosing transaction', async () => {
+      const error = new Error('outbox insert failed');
+      await expect(
+        repository.reconcile(
+          't1',
+          'c1',
+          'wallet-1',
+          remote,
+          [ConnectionState.INVITED],
+          jest.fn().mockRejectedValue(error),
+        ),
+      ).rejects.toBe(error);
+    });
+
     it.each([
       { connectorId: 'other-wallet' },
       { externalConnectionId: 'other-holder' },
