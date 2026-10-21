@@ -1,6 +1,7 @@
 import {
   AdapterError,
   AgentAdapter,
+  BackendNotFoundError,
   Connection,
   ConnectionFilters,
   ConnectionState,
@@ -470,6 +471,12 @@ export class TractionAdapter implements AgentAdapter, OnModuleInit {
 
     if (axios.isAxiosError(error)) {
       const status = error.response?.status;
+
+      if (status === 404) {
+        return new BackendNotFoundError('Traction record was not found', {
+          connectorId: context.connectorId,
+        });
+      }
 
       if (status !== undefined && status !== 429 && status < 500) {
         return new ValidationError(

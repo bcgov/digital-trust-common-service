@@ -59,6 +59,7 @@ export class ConnectionRepository {
       theirDid?: string;
     },
     forwardStates: ConnectionState[],
+    onEstablished?: (manager: EntityManager) => Promise<void>,
   ): Promise<Connection | null> {
     return this.repository.manager.transaction(async (manager) => {
       const connection = await manager.findOne(Connection, {
@@ -78,10 +79,19 @@ export class ConnectionRepository {
       connection.theirLabel = remote.theirLabel;
       connection.theirDid = remote.theirDid;
       connection.protocol = ConnectionProtocol.DIDCOMM_V1;
+      const established =
+        forwardStates.includes(connection.state) &&
+        ![ConnectionState.ACTIVE, ConnectionState.COMPLETED].includes(
+          connection.state,
+        );
       if (forwardStates.includes(connection.state)) {
         connection.state = remote.state;
       }
-      return manager.save(connection);
+      const saved = await manager.save(connection);
+      if (established && onEstablished) {
+        await onEstablished(manager);
+      }
+      return saved;
     });
   }
 
