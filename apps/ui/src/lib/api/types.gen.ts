@@ -2666,8 +2666,6 @@ export interface operations {
                 cursor?: components["parameters"]["Cursor"];
                 /** @description Number of items per page */
                 limit?: components["parameters"]["Limit"];
-                /** @description Case-insensitive substring matched against name and email */
-                search?: string;
             };
             header?: never;
             path?: never;
@@ -3063,6 +3061,8 @@ export interface operations {
                 cursor?: components["parameters"]["Cursor"];
                 /** @description Number of items per page */
                 limit?: components["parameters"]["Limit"];
+                /** @description Case-insensitive substring matched against name and email */
+                search?: string;
             };
             header?: never;
             path: {

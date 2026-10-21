@@ -1,9 +1,10 @@
 import { AuthModule } from '@app/auth';
-import { Module } from '@nestjs/common';
+import { forwardRef, Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { AuditLogModule } from '../audit-log/audit-log.module';
 import { TenantStatusModule } from '../tenant/tenant-status.module';
+import { TenantModule } from '../tenant/tenant.module';
 
 import { OidcTenantUserAdapter } from './oidc-tenant-user.adapter';
 import { TenantMembershipGuard } from './tenant-membership.guard';
@@ -17,6 +18,7 @@ import { TenantUserService } from './tenant-user.service';
     TypeOrmModule.forFeature([TenantUser]),
     AuditLogModule,
     AuthModule,
+    forwardRef(() => TenantModule),
     TenantStatusModule,
   ],
   controllers: [TenantUserController],
