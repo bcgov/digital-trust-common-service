@@ -15,7 +15,6 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { useAuth } from '@/lib/auth/context';
-import { isPlatformAdmin } from '@/lib/auth/scopes';
 import { cn } from '@/lib/utils';
 
 const NAV_ITEMS = [
@@ -40,11 +39,6 @@ export function AppShell() {
   return (
     <div className="flex min-h-svh flex-col">
       <BcGovHeader logoTo="/dashboard">
-        {isPlatformAdmin(user) && (
-          <Badge variant="outline" className="border-dashed">
-            Platform admin
-          </Badge>
-        )}
         <TenantSwitcher />
 
         <DropdownMenu>

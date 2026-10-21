@@ -53,7 +53,13 @@ export function TenantLayout() {
 
   if (error) {
     if (error instanceof ApiError && error.status === 403) {
-      return <AccessDenied title="Tenant" description={error.message} />;
+      return (
+        <AccessDenied
+          title="Tenant"
+          headingLevel={1}
+          description={error.message}
+        />
+      );
     }
 
     return (

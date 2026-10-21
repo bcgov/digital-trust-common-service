@@ -121,6 +121,9 @@ describe('TenantLayout', () => {
         'Tenant is suspended and cannot perform this action',
       ),
     ).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Tenant' }),
+    ).toBeInTheDocument();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     expect(screen.queryByText('overview content')).not.toBeInTheDocument();
   });

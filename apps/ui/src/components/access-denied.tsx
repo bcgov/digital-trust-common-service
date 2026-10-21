@@ -1,11 +1,6 @@
 import type { ReactNode } from 'react';
 
-import {
-  Card,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
+import { Card, CardDescription, CardHeader } from '@/components/ui/card';
 
 /**
  * Clear messaging for a route or section the caller's role/scope cannot use.
@@ -18,14 +13,20 @@ import {
 export function AccessDenied({
   title,
   description,
+  headingLevel,
 }: {
   title: string;
   description: ReactNode;
+  headingLevel: 1 | 2;
 }) {
+  const Heading = headingLevel === 1 ? 'h1' : 'h2';
+
   return (
     <Card className="max-w-lg">
       <CardHeader>
-        <CardTitle>{title}</CardTitle>
+        <Heading className="font-heading text-base leading-snug font-medium">
+          {title}
+        </Heading>
         <CardDescription>{description}</CardDescription>
       </CardHeader>
     </Card>

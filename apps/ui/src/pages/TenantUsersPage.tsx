@@ -129,6 +129,7 @@ export function TenantUsersPage() {
     return (
       <AccessDenied
         title="Users"
+        headingLevel={2}
         description="You need the owner or admin role in this tenant to manage its users."
       />
     );
