@@ -465,6 +465,12 @@ paths:
       parameters:
         - $ref: "#/components/parameters/Cursor"
         - $ref: "#/components/parameters/Limit"
+        - name: search
+          in: query
+          description: Case-insensitive substring matched against name and email
+          schema:
+            type: string
+            maxLength: 200
       responses:
         "200":
           description: Paginated tenant list
@@ -897,7 +903,10 @@ paths:
       summary: Update user role
       description: |
         Only an owner may grant the `owner` role or modify a row that already holds
-        it; an admin doing either gets a 403. Nobody may change their own role.
+        it; an admin doing either gets a 403. An active administrator may change
+        their own role when another active administrator remains. Owners are also
+        subject to the last-owner safeguard. Updates that would remove the tenant's
+        last active administrator, or change the role of its last owner, return 409.
       tags: [Tenant Users]
       requestBody:
         required: true
@@ -930,7 +939,9 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
         "409":
-          description: Cannot change the role of the tenant's last owner
+          description: >-
+            Cannot remove the tenant's last active administrator or change the
+            role of its last owner
           content:
             application/json:
               schema:
@@ -940,7 +951,8 @@ paths:
       summary: Remove user from tenant
       description: |
         Only an owner may remove a row that holds the `owner` role; an admin doing so
-        gets a 403.
+        gets a 403. An active administrator may remove themselves when another active
+        administrator remains. Owners are also subject to the last-owner safeguard.
       tags: [Tenant Users]
       responses:
         "204":
@@ -952,7 +964,8 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
         "409":
-          description: Cannot remove last owner
+          description: >-
+            Cannot remove the tenant's last active administrator or its last owner
           content:
             application/json:
               schema:

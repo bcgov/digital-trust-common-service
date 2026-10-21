@@ -496,6 +496,23 @@ describe('TenantUserService', () => {
       });
     });
 
+    it('trims and forwards a search term to the repository', async () => {
+      const tenantId = mockTenantUser.tenantId;
+      mockFindPageForTenant.mockResolvedValue({
+        items: [],
+        nextCursor: null,
+        hasMore: false,
+      });
+
+      await service.list(tenantId, { search: '  Ada Admin  ' });
+
+      expect(mockFindPageForTenant).toHaveBeenCalledWith(tenantId, {
+        limit: 20,
+        cursor: null,
+        search: 'Ada Admin',
+      });
+    });
+
     it('should throw BadRequestException for an invalid cursor', async () => {
       const tenantId = mockTenantUser.tenantId;
 

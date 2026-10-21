@@ -264,11 +264,50 @@ describe('TenantUsersPage', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('filters members and pending users by display name or email', async () => {
+  it('searches all tenant users and resets cursor pagination to matching results', async () => {
     const user = userEvent.setup();
+    const users = Array.from({ length: 11 }, (_, index) => ({
+      ...admin,
+      id: `search-user-${index}`,
+      email:
+        index === 10
+          ? 'needle@example.com'
+          : `user-${index}@example.com`,
+      display_name: index === 10 ? 'Needle User' : `User ${index}`,
+      status: 'active' as const,
+    }));
+    const requests: { cursor: string | null; search: string | null }[] = [];
+    server.use(
+      http.get(usersPath, ({ request }) => {
+        const params = new URL(request.url).searchParams;
+        const cursor = params.get('cursor');
+        const search = params.get('search');
+        requests.push({ cursor, search });
+
+        if (search) {
+          return HttpResponse.json({
+            data: [users[10]],
+            pagination: { next_cursor: null, has_more: false },
+            self_actions_allowed: false,
+          });
+        }
+
+        const secondPage = cursor === 'second-page';
+        return HttpResponse.json({
+          data: secondPage ? users.slice(10) : users.slice(0, 10),
+          pagination: {
+            next_cursor: secondPage ? null : 'second-page',
+            has_more: !secondPage,
+          },
+          self_actions_allowed: false,
+        });
+      }),
+    );
     renderPage(await signedIn());
     const { members } = await tables();
-    await within(members).findByText('Ada Admin');
+    await within(members).findByText('User 0');
+    await user.click(screen.getByRole('button', { name: 'Next' }));
+    await within(members).findByText('Needle User');
 
     const search = screen.getByRole('searchbox', {
       name: 'Search tenant users',
@@ -278,14 +317,16 @@ describe('TenantUsersPage', () => {
       'aria-hidden',
       'true',
     );
-    await user.type(search, 'invited@example.com');
+    await user.type(search, 'needle');
 
     expect(
       within(members).getByRole('row', {
-        name: /invited@example.com.*Pending/i,
+        name: /Needle User needle@example.com/i,
       }),
     ).toBeInTheDocument();
-    expect(within(members).queryByText('Ada Admin')).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(requests.at(-1)).toEqual({ cursor: null, search: 'needle' }),
+    );
   });
 
   it('invites a user by email and role', async () => {

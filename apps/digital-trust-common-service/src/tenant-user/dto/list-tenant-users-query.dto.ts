@@ -1,6 +1,13 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
+import {
+  IsInt,
+  IsOptional,
+  IsString,
+  Max,
+  MaxLength,
+  Min,
+} from 'class-validator';
 
 export class ListTenantUsersQueryDto {
   @ApiPropertyOptional({
@@ -9,6 +16,15 @@ export class ListTenantUsersQueryDto {
   @IsOptional()
   @IsString()
   public cursor?: string;
+
+  @ApiPropertyOptional({
+    description: 'Case-insensitive substring matched against name and email',
+    maxLength: 200,
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  public search?: string;
 
   @ApiPropertyOptional({ minimum: 1, maximum: 100, default: 20 })
   @IsOptional()

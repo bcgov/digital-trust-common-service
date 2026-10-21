@@ -48,15 +48,20 @@ export function TenantUsersPage() {
   const pageIndex = isCurrentTenant ? paginationState.pageIndex : 0;
   const cursor = pageCursors[pageIndex];
   const canManage = hasScope(user, USERS_MANAGE_SCOPE);
+  const [search, setSearch] = useState('');
+  const searchTerm = search.trim();
   const { data, isLoading, error, refetch } = useTenantUsers(
     tenantId,
-    { limit: PAGE_SIZE, ...(cursor ? { cursor } : {}) },
+    {
+      limit: PAGE_SIZE,
+      ...(cursor ? { cursor } : {}),
+      ...(searchTerm ? { search: searchTerm } : {}),
+    },
     { enabled: canManage },
   );
   // Warms the role picker, so a dialog rarely opens before the mapping loads.
   useTenantRoles(tenantId, { enabled: canManage });
   const [dialog, setDialog] = useState<DialogState>(null);
-  const [search, setSearch] = useState('');
   const [announcement, setAnnouncement] = useState('');
 
   // A token without the scope is the normal case for members and read-only
@@ -87,14 +92,12 @@ export function TenantUsersPage() {
 
   const rows = data?.data ?? [];
   const tenantUsers = rows;
-  const normalizedSearch = search.trim().toLowerCase();
-  const filteredTenantUsers = tenantUsers.filter((tenantUser) =>
-    [tenantUser.display_name, tenantUser.email].some((value) =>
-      value?.toLowerCase().includes(normalizedSearch),
-    ),
-  );
   const canManageOwners = hasScope(user, TENANT_ADMIN_SCOPE);
   const closeDialog = () => setDialog(null);
+  const handleSearchChange = (value: string) => {
+    setSearch(value);
+    setPaginationState({ tenantId, cursors: [undefined], pageIndex: 0 });
+  };
   const goToPreviousPage = () => {
     if (pageIndex === 0) return;
     setPaginationState({
@@ -195,14 +198,14 @@ export function TenantUsersPage() {
       )}
       <TenantUsersHeader
         search={search}
-        onSearchChange={setSearch}
+        onSearchChange={handleSearchChange}
         onAddUser={() => setDialog({ kind: 'invite' })}
       />
       <TenantUsersTable
-        users={filteredTenantUsers}
+        users={tenantUsers}
         isLoading={isLoading}
         emptyMessage={
-          normalizedSearch ? 'No users match your search.' : 'No users yet.'
+          searchTerm ? 'No users match your search.' : 'No users yet.'
         }
         tenantId={tenantId ?? ''}
         currentUserId={user?.sub}

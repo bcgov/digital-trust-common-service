@@ -79,6 +79,7 @@ export class TenantUserRepository {
     options: {
       limit: number;
       cursor?: Cursor | null;
+      search?: string;
     },
   ): Promise<TenantUserPage> {
     const qb = this.repository
@@ -95,6 +96,15 @@ export class TenantUserRepository {
           cursorCreatedAt: options.cursor.createdAt,
           cursorId: options.cursor.id,
         },
+      );
+    }
+
+    const normalizedSearch = options.search?.trim().toLowerCase();
+    if (normalizedSearch) {
+      const escapedSearch = normalizedSearch.replace(/[!%_]/g, '!$&');
+      qb.andWhere(
+        "(LOWER(tenantUser.email) LIKE :search ESCAPE '!' OR LOWER(tenantUser.displayName) LIKE :search ESCAPE '!')",
+        { search: `%${escapedSearch}%` },
       );
     }
 

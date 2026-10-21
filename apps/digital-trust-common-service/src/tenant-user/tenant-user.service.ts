@@ -141,7 +141,7 @@ export class TenantUserService {
 
   public async list(
     tenantId: string,
-    options: { limit?: number; cursor?: string | null },
+    options: { limit?: number; cursor?: string | null; search?: string },
     callerTenantUser?: TenantUser,
   ): Promise<PaginatedTenantUsers> {
     const limit = options.limit ?? 20;
@@ -150,6 +150,7 @@ export class TenantUserService {
     const page = await this.tenantUserRepository.findPageForTenant(tenantId, {
       limit,
       cursor,
+      ...(options.search?.trim() ? { search: options.search.trim() } : {}),
     });
     let selfActionsAllowed = false;
 

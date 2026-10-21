@@ -20,6 +20,7 @@ describe('TenantUserRepository', () => {
     andWhere: jest.Mock;
     orderBy: jest.Mock;
     addOrderBy: jest.Mock;
+    take: jest.Mock;
     getMany: jest.Mock;
     execute: jest.Mock;
   };
@@ -36,6 +37,7 @@ describe('TenantUserRepository', () => {
       andWhere: jest.fn().mockReturnThis(),
       orderBy: jest.fn().mockReturnThis(),
       addOrderBy: jest.fn().mockReturnThis(),
+      take: jest.fn().mockReturnThis(),
       getMany: jest.fn().mockResolvedValue([]),
       execute: jest.fn().mockResolvedValue({ affected: 0 }),
     };
@@ -95,6 +97,23 @@ describe('TenantUserRepository', () => {
         status: TenantUserStatus.ACTIVE,
       },
     });
+  });
+
+  it('applies a case-insensitive name/email search inside the tenant query', async () => {
+    await repository.findPageForTenant('tenant-id', {
+      limit: 10,
+      search: ' Ada ' ,
+    });
+
+    expect(queryBuilder.where).toHaveBeenCalledWith(
+      'tenantUser.tenant_id = :tenantId',
+      { tenantId: 'tenant-id' },
+    );
+    expect(queryBuilder.andWhere).toHaveBeenCalledWith(
+      "(LOWER(tenantUser.email) LIKE :search ESCAPE '!' OR LOWER(tenantUser.displayName) LIKE :search ESCAPE '!')",
+      { search: '%ada%' },
+    );
+    expect(queryBuilder.take).toHaveBeenCalledWith(11);
   });
 
   it('findUnclaimedInvitesByEmail normalizes the email and skips deleted tenants', async () => {

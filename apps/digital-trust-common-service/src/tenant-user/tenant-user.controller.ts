@@ -134,6 +134,7 @@ export class TenantUserController {
       {
         limit: query.limit,
         cursor: query.cursor,
+        search: query.search,
       },
       callerTenantUser,
     );

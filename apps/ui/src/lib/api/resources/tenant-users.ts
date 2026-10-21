@@ -8,6 +8,9 @@ export type TenantUserStatus = NonNullable<TenantUser['status']>;
 export type TenantUsersPage = Page<TenantUser> & {
   self_actions_allowed: boolean;
 };
+export interface TenantUsersParams extends CursorParams {
+  search?: string;
+}
 type TenantUsersListResponse =
   operations['listTenantUsers']['responses'][200]['content']['application/json'];
 export type InviteTenantUserRequest =
@@ -17,7 +20,7 @@ export type UpdateTenantUserRequest =
 
 export async function listTenantUsers(
   tenantId: string,
-  params: CursorParams = {},
+  params: TenantUsersParams = {},
 ): Promise<TenantUsersPage> {
   const response = await apiClient.get<TenantUsersListResponse | TenantUser[]>(
     `/tenants/${tenantId}/users`,

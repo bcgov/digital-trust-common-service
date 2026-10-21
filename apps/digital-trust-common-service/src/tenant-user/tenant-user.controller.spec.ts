@@ -139,6 +139,7 @@ describe('TenantUserController', () => {
         {
           limit: undefined,
           cursor: undefined,
+          search: undefined,
         },
         undefined,
       );
