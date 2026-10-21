@@ -420,6 +420,30 @@ describe('TenantUserService', () => {
       expect(mockCountByTenantAndRole).not.toHaveBeenCalled();
     });
 
+    it('resolves a platform admin user membership for self-action eligibility', async () => {
+      const tenantId = adminCaller.tenantId;
+      mockFindPageForTenant.mockResolvedValue({
+        items: [adminCaller],
+        nextCursor: null,
+        hasMore: false,
+      });
+      mockFindByTenantAndId.mockResolvedValue(adminCaller);
+      mockCountActiveAdministratorsByTenant.mockResolvedValue(2);
+
+      const result = await service.list(
+        tenantId,
+        {},
+        undefined,
+        adminCaller.id,
+      );
+
+      expect(mockFindByTenantAndId).toHaveBeenCalledWith(
+        tenantId,
+        adminCaller.id,
+      );
+      expect(result.self_actions_allowed).toBe(true);
+    });
+
     it('blocks self-actions for the sole active administrator', async () => {
       const tenantId = mockTenantUser.tenantId;
       mockFindPageForTenant.mockResolvedValue({

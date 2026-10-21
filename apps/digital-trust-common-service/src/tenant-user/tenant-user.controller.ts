@@ -1,10 +1,12 @@
 import {
   ApiJwtAuth,
+  CurrentAuth,
   JwtGuard,
   RequireScopes,
   ScopeGuard,
   TenantGuard,
   USERS_MANAGE_SCOPE,
+  type AuthContext,
 } from '@app/auth';
 import {
   Body,
@@ -124,6 +126,7 @@ export class TenantUserController {
     @Param('tenantId', ParseUUIDPipe) tenantId: string,
     @Query() query: ListTenantUsersQueryDto,
     @CurrentTenantUser() callerTenantUser?: TenantUser,
+    @CurrentAuth() auth?: AuthContext,
   ): Promise<{
     data: TenantUserResponseDto[];
     pagination: TenantUsersPaginationDto;
@@ -137,6 +140,7 @@ export class TenantUserController {
         search: query.search,
       },
       callerTenantUser,
+      auth?.tokenType === 'user' ? auth.sub : undefined,
     );
 
     return {

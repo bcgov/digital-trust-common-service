@@ -1,4 +1,9 @@
-import { JwtGuard, ScopeGuard, TenantGuard } from '@app/auth';
+import {
+  JwtGuard,
+  ScopeGuard,
+  TenantGuard,
+  type AuthContext,
+} from '@app/auth';
 import { CanActivate } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 
@@ -142,6 +147,7 @@ describe('TenantUserController', () => {
           search: undefined,
         },
         undefined,
+        undefined,
       );
       expect(result).toEqual({
         data: [TenantUserResponseDto.fromEntity(mockTenantUser)],
@@ -169,7 +175,9 @@ describe('TenantUserController', () => {
         {
           limit: 10,
           cursor: 'some-cursor',
+          search: undefined,
         },
+        undefined,
         undefined,
       );
       expect(result).toEqual({
@@ -197,6 +205,29 @@ describe('TenantUserController', () => {
         tenantId,
         { limit: undefined, cursor: undefined },
         callerTenantUser,
+        undefined,
+      );
+    });
+
+    it('forwards the user token subject when the platform-admin guard bypasses membership resolution', async () => {
+      const tenantId = mockTenantUser.tenantId;
+      const auth = {
+        sub: mockTenantUser.id,
+        tokenType: 'user',
+      } as AuthContext;
+      mockList.mockResolvedValue({
+        data: [],
+        pagination: { next_cursor: null, has_more: false },
+        self_actions_allowed: true,
+      });
+
+      await controller.list(tenantId, {}, undefined, auth);
+
+      expect(mockList).toHaveBeenCalledWith(
+        tenantId,
+        { limit: undefined, cursor: undefined, search: undefined },
+        undefined,
+        mockTenantUser.id,
       );
     });
   });

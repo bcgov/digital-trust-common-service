@@ -143,6 +143,7 @@ export class TenantUserService {
     tenantId: string,
     options: { limit?: number; cursor?: string | null; search?: string },
     callerTenantUser?: TenantUser,
+    callerUserId?: string,
   ): Promise<PaginatedTenantUsers> {
     const limit = options.limit ?? 20;
     const cursor = options.cursor ? decodeCursor(options.cursor) : null;
@@ -154,10 +155,11 @@ export class TenantUserService {
     });
     let selfActionsAllowed = false;
 
-    if (callerTenantUser) {
+    const callerId = callerTenantUser?.id ?? callerUserId;
+    if (callerId) {
       const caller = await this.tenantUserRepository.findByTenantAndId(
         tenantId,
-        callerTenantUser.id,
+        callerId,
       );
 
       if (
