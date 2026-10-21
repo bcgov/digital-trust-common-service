@@ -28,6 +28,8 @@ describe('SeedTenantUserRepository', () => {
   let transactionManager: EntityManager;
   let findTenantByIdForUpdate: jest.Mock;
   let countActiveAdministratorsByTenant: jest.Mock;
+  let countByTenantAndRole: jest.Mock;
+  let countActiveOwnersByTenant: jest.Mock;
 
   beforeEach(async () => {
     queryBuilder = {
@@ -51,6 +53,8 @@ describe('SeedTenantUserRepository', () => {
     dataSource = { transaction: mockTransaction };
     findTenantByIdForUpdate = jest.fn().mockResolvedValue({ id: 'tenant-1' });
     countActiveAdministratorsByTenant = jest.fn().mockResolvedValue(1);
+    countByTenantAndRole = jest.fn().mockResolvedValue(1);
+    countActiveOwnersByTenant = jest.fn().mockResolvedValue(1);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -62,7 +66,11 @@ describe('SeedTenantUserRepository', () => {
         },
         {
           provide: TenantUserRepository,
-          useValue: { countActiveAdministratorsByTenant },
+          useValue: {
+            countActiveAdministratorsByTenant,
+            countByTenantAndRole,
+            countActiveOwnersByTenant,
+          },
         },
       ],
     }).compile();
@@ -149,6 +157,20 @@ describe('SeedTenantUserRepository', () => {
         }),
       ).rejects.toThrow(ConflictException);
     });
+
+    it('rolls back disabling the last active owner even when another admin remains', async () => {
+      countActiveAdministratorsByTenant.mockResolvedValue(2);
+      countActiveOwnersByTenant
+        .mockResolvedValueOnce(1)
+        .mockResolvedValueOnce(0);
+
+      await expect(
+        repository.refreshSeeded('tenant-1', 'owner@example.test', {
+          ...fields,
+          status: TenantUserStatus.DISABLED,
+        }),
+      ).rejects.toThrow(ConflictException);
+    });
   });
 
   describe('setDisplayNameAndRole', () => {
@@ -178,6 +200,25 @@ describe('SeedTenantUserRepository', () => {
           TenantUserRole.MEMBER,
         ),
       ).resolves.toBe(false);
+    });
+
+    it('rolls back demoting the tenant’s last owner', async () => {
+      countActiveAdministratorsByTenant.mockResolvedValue(2);
+      countByTenantAndRole
+        .mockResolvedValueOnce(1)
+        .mockResolvedValueOnce(0);
+      countActiveOwnersByTenant
+        .mockResolvedValueOnce(1)
+        .mockResolvedValueOnce(0);
+
+      await expect(
+        repository.setDisplayNameAndRole(
+          'tenant-1',
+          'owner@example.test',
+          'Owner',
+          TenantUserRole.ADMIN,
+        ),
+      ).rejects.toThrow(ConflictException);
     });
   });
 });

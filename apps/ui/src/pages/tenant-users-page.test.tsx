@@ -736,7 +736,7 @@ describe('TenantUsersPage', () => {
     expect(client.getState().user?.tenantId).toBe(nextTenant.id);
   });
 
-  it('shows the no-membership screen after self-removal from the last tenant', async () => {
+  it('signs out after self-removal from the last tenant', async () => {
     const user = userEvent.setup();
     const client = await signedIn();
     allowSelfActions();
@@ -753,14 +753,9 @@ describe('TenantUsersPage', () => {
       within(dialog).getByRole('button', { name: 'Remove member' }),
     );
 
-    await waitFor(() =>
-      expect(router.state.location.pathname).toBe('/dashboard'),
-    );
-    expect(
-      await screen.findByText('No active tenant membership'),
-    ).toBeInTheDocument();
-    expect(await screen.findByRole('status')).toHaveTextContent(
-      'You were removed from this tenant.',
+    await waitFor(() => expect(client.getState().user).toBeNull());
+    expect(router.state.location.pathname).toBe(
+      `/tenants/${tenantId}/users`,
     );
   });
 

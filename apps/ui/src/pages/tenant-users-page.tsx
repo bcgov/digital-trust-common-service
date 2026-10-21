@@ -35,7 +35,7 @@ type DialogState =
 export function TenantUsersPage() {
   const { tenantId } = useParams();
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const { refetch: refetchMemberships } = useAuthTenants();
   const { switchTo } = useSwitchTenant();
   const [paginationState, setPaginationState] = useState<{
@@ -158,10 +158,7 @@ export function TenantUsersPage() {
             membership.id !== tenantId && membership.status === 'active',
         );
         if (!nextTenant) {
-          void navigate('/dashboard', {
-            replace: true,
-            state: { tenantUserNotice: 'You were removed from this tenant.' },
-          });
+          await logout();
           return;
         }
         try {

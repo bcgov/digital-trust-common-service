@@ -43,6 +43,7 @@ describe('TenantUserController', () => {
     tenant: undefined as any,
     createdAt: new Date(),
     updatedAt: new Date(),
+    isPlatformOperator: false,
   };
 
   beforeEach(async () => {
@@ -198,7 +199,7 @@ describe('TenantUserController', () => {
 
       expect(mockList).toHaveBeenCalledWith(
         tenantId,
-        { limit: undefined, cursor: undefined },
+        { limit: undefined, cursor: undefined, search: undefined },
         callerTenantUser,
         undefined,
       );

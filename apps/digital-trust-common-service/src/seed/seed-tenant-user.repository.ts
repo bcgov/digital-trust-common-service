@@ -93,19 +93,47 @@ export class SeedTenantUserRepository {
           tenantId,
           manager,
         );
+      const ownerCountBefore = await this.tenantUsers.countByTenantAndRole(
+        tenantId,
+        TenantUserRole.OWNER,
+        manager,
+      );
+      const activeOwnerCountBefore =
+        await this.tenantUsers.countActiveOwnersByTenant(tenantId, manager);
       const changed = await update(manager);
 
-      if (changed && administratorCountBefore > 0) {
-        const administratorCountAfter =
-          await this.tenantUsers.countActiveAdministratorsByTenant(
-            tenantId,
-            manager,
-          );
+      if (changed) {
+        const ownerCountAfter = await this.tenantUsers.countByTenantAndRole(
+          tenantId,
+          TenantUserRole.OWNER,
+          manager,
+        );
 
-        if (administratorCountAfter === 0) {
+        if (ownerCountBefore > 0 && ownerCountAfter === 0) {
+          throw new ConflictException("Cannot remove the tenant's last owner.");
+        }
+
+        const activeOwnerCountAfter =
+          await this.tenantUsers.countActiveOwnersByTenant(tenantId, manager);
+
+        if (activeOwnerCountBefore > 0 && activeOwnerCountAfter === 0) {
           throw new ConflictException(
-            "Cannot remove the tenant's last active administrator.",
+            "Cannot remove the tenant's last active owner.",
           );
+        }
+
+        if (administratorCountBefore > 0) {
+          const administratorCountAfter =
+            await this.tenantUsers.countActiveAdministratorsByTenant(
+              tenantId,
+              manager,
+            );
+
+          if (administratorCountAfter === 0) {
+            throw new ConflictException(
+              "Cannot remove the tenant's last active administrator.",
+            );
+          }
         }
       }
 
