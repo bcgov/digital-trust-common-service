@@ -19,6 +19,7 @@ import {
   CredentialDefinition,
   CredentialDefinitionFormat,
 } from './credential-definition.entity';
+import { CredentialDefinitionRepository } from './credential-definition.repository';
 import { CredentialDefinitionService } from './credential-definition.service';
 import { CreateCredentialDefinitionDto } from './dto/create-credential-definition.dto';
 
@@ -170,6 +171,58 @@ describe('credential definition registration (integration)', () => {
     expect(completed.state).toBe(OperationState.COMPLETED);
     expect(port.publishSchema).toHaveBeenCalledTimes(1);
     expect(port.publishDefinition).toHaveBeenCalledTimes(1);
+  });
+
+  it('preserves concurrent registration progress when a name patch follows a stale read', async () => {
+    const operation = await service.create(tenant.id, dto, auth);
+    const row = await db.getRepository(CredentialDefinition).findOneByOrFail({
+      tenantId: tenant.id,
+      registrationOperationId: operation.id,
+    });
+    const repository = app.get(CredentialDefinitionRepository);
+    const findById = repository.findById.bind(repository);
+    const findByIdSpy = jest
+      .spyOn(repository, 'findById')
+      .mockImplementation(async (id) => {
+        const stale = await findById(id);
+        if (id === row.id && stale?.registration) {
+          await db.getRepository(CredentialDefinition).update(
+            { id: row.id, tenantId: tenant.id },
+            {
+              registration: {
+                ...stale.registration,
+                schemaSubmitted: true,
+                schemaJobId: 'worker-progress',
+              },
+            },
+          );
+        }
+        return stale;
+      });
+
+    try {
+      const updated = await service.update(
+        tenant.id,
+        row.id,
+        { name: 'Updated Employee' },
+        auth,
+      );
+
+      expect(updated.name).toBe('Updated Employee');
+      expect(updated.registration).toMatchObject({
+        schemaSubmitted: true,
+        schemaJobId: 'worker-progress',
+      });
+      const persisted = await db
+        .getRepository(CredentialDefinition)
+        .findOneByOrFail({ id: row.id, tenantId: tenant.id });
+      expect(persisted.registration).toMatchObject({
+        schemaSubmitted: true,
+        schemaJobId: 'worker-progress',
+      });
+    } finally {
+      findByIdSpy.mockRestore();
+    }
   });
 
   const failRegistration = async () => {
