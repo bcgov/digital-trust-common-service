@@ -102,7 +102,7 @@ describe('TenantUserRepository', () => {
   it('applies a case-insensitive name/email search inside the tenant query', async () => {
     await repository.findPageForTenant('tenant-id', {
       limit: 10,
-      search: ' Ada ' ,
+      search: ' Ada ',
     });
 
     expect(queryBuilder.where).toHaveBeenCalledWith(

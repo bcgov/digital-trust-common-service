@@ -269,10 +269,7 @@ describe('TenantUsersPage', () => {
     const users = Array.from({ length: 11 }, (_, index) => ({
       ...admin,
       id: `search-user-${index}`,
-      email:
-        index === 10
-          ? 'needle@example.com'
-          : `user-${index}@example.com`,
+      email: index === 10 ? 'needle@example.com' : `user-${index}@example.com`,
       display_name: index === 10 ? 'Needle User' : `User ${index}`,
       status: 'active' as const,
     }));
