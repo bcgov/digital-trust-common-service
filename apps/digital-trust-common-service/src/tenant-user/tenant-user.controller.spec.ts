@@ -1,9 +1,4 @@
-import {
-  JwtGuard,
-  ScopeGuard,
-  TenantGuard,
-  type AuthContext,
-} from '@app/auth';
+import { JwtGuard, ScopeGuard, TenantGuard, type AuthContext } from '@app/auth';
 import { CanActivate } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 
