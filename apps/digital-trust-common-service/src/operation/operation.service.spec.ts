@@ -167,6 +167,42 @@ describe('OperationService', () => {
     );
   });
 
+  it.each([
+    null,
+    { registration: null },
+    { registration: { recovery_requested_at: 'not-a-date' } },
+    {
+      registration: {
+        recovery_requested_at: '2023-12-31T23:59:59.000Z',
+      },
+    },
+    {
+      registration: {
+        recovery_requested_at: '2024-01-02T00:00:01.000Z',
+      },
+    },
+  ])(
+    'uses operation creation time for invalid recovery timestamps %j',
+    async (result) => {
+      jest.useFakeTimers().setSystemTime(new Date('2024-01-02T00:00:00.000Z'));
+      const operation = buildOperation({
+        type: OPERATION_TYPE.CREDENTIAL_DEFINITION_REGISTER,
+        result,
+      });
+      mockFindById.mockResolvedValue(operation);
+      mockSave.mockImplementation((value: Operation) => Promise.resolve(value));
+
+      const updated = await service.transitionState(
+        operation.id,
+        OperationState.PROCESSING,
+      );
+
+      expect(updated.expiresAt).toEqual(
+        new Date(createdAt.getTime() + 72 * HOUR_MS),
+      );
+    },
+  );
+
   describe('computeExpiresAt', () => {
     it('pending → createdAt + 24h', () => {
       expect(

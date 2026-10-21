@@ -42,8 +42,9 @@ export class CredentialDefinitionRegistrationWorker implements OnModuleInit {
     }>(
       JOB_QUEUES.DEFINITION_REGISTER,
       async (job) => {
-        if (job.data.definitionId && job.data.tenantId) {
-          await this.process(job.data.tenantId, job.data.definitionId);
+        const data = job?.data;
+        if (data?.definitionId && data.tenantId) {
+          await this.process(data.tenantId, data.definitionId);
         } else {
           await this.reconcile();
         }
@@ -190,6 +191,8 @@ export class CredentialDefinitionRegistrationWorker implements OnModuleInit {
           }
           if (
             peer.registration.definitionSubmitted &&
+            definition.registration.schemaId &&
+            peer.registration.schemaId === definition.registration.schemaId &&
             peer.registration.options.tag ===
               definition.registration.options.tag
           ) {

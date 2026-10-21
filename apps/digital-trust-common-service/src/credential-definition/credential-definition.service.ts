@@ -576,18 +576,22 @@ export class CredentialDefinitionService {
     dto: UpdateCredentialDefinitionDto,
     auth: AuthContext,
   ): Promise<CredentialDefinition> {
-    const credentialDefinition = await this.findById(tenantId, id, auth);
-
-    if (dto.name !== undefined) {
-      credentialDefinition.name = dto.name;
-    }
-
-    if (dto.metadata !== undefined) {
-      credentialDefinition.metadata = dto.metadata;
-    }
-
+    await this.findById(tenantId, id, auth);
+    const changes: Partial<Pick<CredentialDefinition, 'name' | 'metadata'>> =
+      {};
+    if (dto.name !== undefined) changes.name = dto.name;
+    if (dto.metadata !== undefined) changes.metadata = dto.metadata;
     const updated =
-      await this.credentialDefinitionRepository.update(credentialDefinition);
+      await this.credentialDefinitionRepository.updateEditableFields(
+        tenantId,
+        id,
+        changes,
+      );
+    if (!updated) {
+      throw new NotFoundException(
+        `Credential definition '${id}' was not found.`,
+      );
+    }
 
     await this.domainAudit.emit({
       tenantId: updated.tenantId,

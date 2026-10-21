@@ -192,9 +192,6 @@ export class TractionDefinitionRegistration implements DefinitionRegistrationPor
         'Multiple matching endorsement transactions require manual reconciliation',
       ]);
     }
-    if (intent.transactionId && !matches.length) {
-      throw new ValidationError(['Recovery transaction could not be verified']);
-    }
     return matches[0] ?? null;
   }
 

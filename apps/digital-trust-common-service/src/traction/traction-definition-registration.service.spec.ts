@@ -189,6 +189,72 @@ describe('Traction artifact registration', () => {
     ).rejects.toMatchObject({ backendCode: 'INVALID_REGISTRATION_RESPONSE' });
   });
 
+  it('rejects a supplied transaction hint when discovery returns no transactions', async () => {
+    request.mockResolvedValueOnce({ data: { results: [] } });
+
+    await expect(
+      service.inspectRegistration(context, {
+        ...recoveryIntent(),
+        transactionId: 'missing-transaction',
+      }),
+    ).rejects.toMatchObject({
+      issues: [
+        expect.stringContaining(
+          'Recovery transaction does not match this issuer, artifact, or backend job',
+        ),
+      ],
+    });
+  });
+
+  it('ignores unrelated transactions during unpinned discovery', async () => {
+    request.mockResolvedValueOnce({
+      data: {
+        results: [
+          {
+            ...transaction(),
+            meta_data: { context: { schema_id: 'another-schema' } },
+          },
+        ],
+      },
+    });
+
+    await expect(
+      service.inspectRegistration(context, recoveryIntent()),
+    ).resolves.toBeNull();
+  });
+
+  it('requires a resolved schema before checking a definition endorsement', async () => {
+    await expect(
+      service.inspectRegistration(context, {
+        ...recoveryIntent(),
+        artifact: 'credential_definition',
+      }),
+    ).rejects.toMatchObject({
+      issues: [expect.stringContaining('Schema must be published')],
+    });
+    expect(request).not.toHaveBeenCalled();
+  });
+
+  it.each([0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1, '123'])(
+    'rejects an invalid schema sequence number during definition recovery: %s',
+    async (seqNo) => {
+      request.mockResolvedValueOnce({
+        data: { schema_metadata: { seqNo } },
+      });
+
+      await expect(
+        service.inspectRegistration(context, {
+          ...recoveryIntent(),
+          artifact: 'credential_definition',
+          schemaId: 'schema',
+        }),
+      ).rejects.toMatchObject({
+        issues: [expect.stringContaining('valid ledger schema reference')],
+      });
+      expect(request).toHaveBeenCalledTimes(1);
+    },
+  );
+
   it.each([true, false])(
     'verifies schema sequence number, tag and revocation for credential definitions (%s)',
     async (enabled) => {
@@ -277,6 +343,91 @@ describe('Traction artifact registration', () => {
       issues: [expect.stringContaining('PUBLIC_ISSUER_DID_REQUIRED')],
     });
     expect(request).toHaveBeenCalledTimes(2);
+  });
+
+  it('rejects a ledger key that does not match the public issuer DID', async () => {
+    request
+      .mockResolvedValueOnce({
+        data: { settings: { 'wallet.type': 'askar-anoncreds' } },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          result: {
+            did: walletIssuerId,
+            method: 'indy',
+            verkey: 'public-key',
+          },
+        },
+      })
+      .mockResolvedValueOnce({ data: { verkey: 'different-key' } });
+
+    await expect(service.resolveIssuer(context)).rejects.toMatchObject({
+      issues: [expect.stringContaining('verification key mismatch')],
+    });
+  });
+
+  it('rejects a resolved schema whose backend identity differs from the requested id', async () => {
+    request.mockResolvedValueOnce({
+      data: {
+        schema_id: 'another-schema',
+        schema: { name: 'employee', version: '1.0', attrNames: ['name'] },
+      },
+    });
+
+    await expect(
+      service.resolveSchema(context, 'schema'),
+    ).rejects.toMatchObject({
+      issues: [expect.stringContaining('Schema could not be resolved')],
+    });
+  });
+
+  it('returns null when no matching schema is present in the wallet', async () => {
+    request.mockResolvedValueOnce({ data: { schema_ids: [] } });
+
+    await expect(
+      service.findSchema(context, walletIssuerId, schema),
+    ).resolves.toBeNull();
+  });
+
+  it('rejects multiple schemas with the same wallet registration identity', async () => {
+    request.mockResolvedValueOnce({
+      data: { schema_ids: ['schema-a', 'schema-b'] },
+    });
+
+    await expect(
+      service.findSchema(context, walletIssuerId, schema),
+    ).rejects.toMatchObject({
+      issues: [expect.stringContaining('Ambiguous schema')],
+    });
+  });
+
+  it('returns an existing schema only when its attributes match the request', async () => {
+    request
+      .mockResolvedValueOnce({ data: { schema_ids: ['schema-id'] } })
+      .mockResolvedValueOnce({
+        data: {
+          schema_id: 'schema-id',
+          schema: { name: 'employee', version: '1.0', attrNames: ['name'] },
+        },
+      });
+
+    await expect(
+      service.findSchema(context, walletIssuerId, schema),
+    ).resolves.toMatchObject({ id: 'schema-id' });
+
+    request
+      .mockResolvedValueOnce({ data: { schema_ids: ['schema-id'] } })
+      .mockResolvedValueOnce({
+        data: {
+          schema_id: 'schema-id',
+          schema: { name: 'employee', version: '1.0', attrNames: ['other'] },
+        },
+      });
+    await expect(
+      service.findSchema(context, walletIssuerId, schema),
+    ).rejects.toMatchObject({
+      issues: [expect.stringContaining('different attributes')],
+    });
   });
 
   it('publishes schema content without automatic write retries', async () => {
@@ -397,16 +548,17 @@ describe('Traction artifact registration', () => {
 
   it('reports an explicit failed state with a bounded sanitized reason', async () => {
     const secret = randomUUID();
+    const securedContext = { ...context, credentials: { token: secret } };
     request.mockResolvedValueOnce({
       data: {
-        schema_state: { state: 'failed', reason: `Rejected api_key=${secret}` },
+        schema_state: { state: 'failed', reason: `Rejected ${secret}` },
       },
     });
     await expect(
-      service.publishSchema(context, 'issuer', schema),
+      service.publishSchema(securedContext, 'issuer', schema),
     ).rejects.toMatchObject({
       backendCode: 'REGISTRATION_REJECTED',
-      detail: 'Rejected api_key=[REDACTED]',
+      detail: 'Rejected [REDACTED]',
     });
   });
 
@@ -590,6 +742,62 @@ describe('Traction artifact registration', () => {
     });
   });
 
+  it('ignores other definition tags and rejects multiple matches for the requested tag', async () => {
+    request
+      .mockResolvedValueOnce({
+        data: { credential_definition_ids: ['other-tag'] },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          credential_definition: {
+            issuerId: 'issuer',
+            schemaId: 'schema',
+            tag: 'other',
+            value: { revocation: {} },
+          },
+        },
+      });
+    await expect(
+      service.findDefinition(context, 'issuer', 'schema', {
+        tag: 'default',
+        revocation: { enabled: true },
+      }),
+    ).resolves.toBeNull();
+
+    request
+      .mockResolvedValueOnce({
+        data: { credential_definition_ids: ['definition-a', 'definition-b'] },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          credential_definition: {
+            issuerId: 'issuer',
+            schemaId: 'schema',
+            tag: 'default',
+            value: { revocation: {} },
+          },
+        },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          credential_definition: {
+            issuerId: 'issuer',
+            schemaId: 'schema',
+            tag: 'default',
+            value: { revocation: {} },
+          },
+        },
+      });
+    await expect(
+      service.findDefinition(context, 'issuer', 'schema', {
+        tag: 'default',
+        revocation: { enabled: true },
+      }),
+    ).rejects.toMatchObject({
+      issues: [expect.stringContaining('Ambiguous credential definition')],
+    });
+  });
+
   it('requires finished registry, ledger accumulator, capacity and reachable public tails', async () => {
     request
       .mockResolvedValueOnce({
@@ -626,5 +834,56 @@ describe('Traction artifact registration', () => {
       false,
     );
     expect(request).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns false when the active registry is not found and propagates other backend errors', async () => {
+    request.mockRejectedValueOnce(
+      new RegistrationBackendError(404, 'NOT_FOUND', 'No active registry'),
+    );
+    await expect(service.verifyRevocation(context, 'definition')).resolves.toBe(
+      false,
+    );
+
+    request.mockRejectedValueOnce(
+      new RegistrationBackendError(503, 'UNAVAILABLE', 'Backend unavailable'),
+    );
+    await expect(
+      service.verifyRevocation(context, 'definition'),
+    ).rejects.toThrow('Backend unavailable');
+  });
+
+  it.each([
+    { rev_reg_delta: { value: {} } },
+    { rev_reg_delta: { value: { accum: 'accumulator' } } },
+  ])(
+    'does not report revocation readiness without valid accumulator/capacity %j',
+    async (delta) => {
+      request
+        .mockResolvedValueOnce({
+          data: {
+            result: {
+              cred_def_id: 'definition',
+              state: 'finished',
+              revoc_reg_id: 'registry',
+              tails_local_path: 'https://tails.example/tails',
+              max_cred_num: 10,
+            },
+          },
+        })
+        .mockResolvedValueOnce({ data: delta })
+        .mockResolvedValueOnce({ data: { result: 10 } });
+
+      await expect(
+        service.verifyRevocation(context, 'definition'),
+      ).resolves.toBe(false);
+      expect(request).toHaveBeenCalledTimes(3);
+    },
+  );
+
+  it('rethrows non-Axios failures from the backend client', async () => {
+    const failure = new Error('client failure');
+    request.mockRejectedValueOnce(failure);
+
+    await expect(service.resolveIssuer(context)).rejects.toBe(failure);
   });
 });
