@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 
+import { Toaster } from '@/components/common/sonner';
 import { API_BASE_PATH } from '@/lib/api/constants';
 import { createMockAuthClient } from '@/lib/auth/mock-auth';
 import { mockTenants } from '@/mocks/handlers';
@@ -23,10 +24,20 @@ async function renderTenantsPage({ platformAdmin = false } = {}) {
     };
     client.getState = () => promoted;
   }
-  renderWithAuth([{ path: '/tenants', element: <TenantsPage /> }], {
-    client,
-    initialEntries: ['/tenants'],
-  });
+  renderWithAuth(
+    [
+      {
+        path: '/tenants',
+        element: (
+          <>
+            <TenantsPage />
+            <Toaster />
+          </>
+        ),
+      },
+    ],
+    { client, initialEntries: ['/tenants'] },
+  );
 }
 
 describe('TenantsPage', () => {
@@ -109,6 +120,13 @@ describe('TenantsPage', () => {
     );
 
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(await screen.findByText('Tenant created')).toBeInTheDocument();
+    await user.click(
+      screen.getByRole('button', { name: 'Dismiss notification' }),
+    );
+    await waitFor(() =>
+      expect(screen.queryByText('Tenant created')).toBeNull(),
+    );
     expect(body).toEqual({
       name: 'Acme Ministry 2',
       slug: 'acme-ministry-2',

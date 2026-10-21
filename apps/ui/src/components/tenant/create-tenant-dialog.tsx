@@ -2,6 +2,7 @@ import { TextArea, TextField } from '@bcgov/design-system-react-components';
 import { useState } from 'react';
 
 import { FormActions, FormDialog } from '@/components/common/form-dialog';
+import { notify } from '@/components/common/sonner';
 import { useCreateTenant } from '@/lib/api/queries/tenants';
 import { slugify } from '@/lib/tenant/slug';
 
@@ -32,7 +33,12 @@ export function CreateTenantDialog({ onClose }: { onClose: () => void }) {
             ...(trimmed ? { description: trimmed } : {}),
             owner_email: ownerEmail.trim(),
           },
-          { onSuccess: onClose },
+          {
+            onSuccess: () => {
+              onClose();
+              notify.success('Tenant created');
+            },
+          },
         );
       }}
       actions={

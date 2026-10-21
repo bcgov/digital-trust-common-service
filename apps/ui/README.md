@@ -31,6 +31,11 @@ so the shadcn component is rebuilt on BCDS type and spacing tokens, stripped of
 the surface the design does not call for, and bounded to the width in the design
 instead of filling its container.
 
+`components/common/sonner.tsx` fills the toast gap the same way: BCDS has no toast,
+so Sonner supplies the stacking and timing while `notify.success()` (and
+`info`, `warning`, `danger`) renders the dark BCDS-styled toast. Mount one
+`<Toaster />` (already in `AppShell`) and call `notify` from anywhere.
+
 ## Development
 
 ```bash

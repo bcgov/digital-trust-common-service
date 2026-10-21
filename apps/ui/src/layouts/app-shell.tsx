@@ -20,6 +20,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/common/dropdown-menu';
+import { Toaster } from '@/components/common/sonner';
 import { useAuth } from '@/lib/auth/context';
 import { useActiveTenant } from '@/lib/tenant/active-tenant';
 import {
@@ -166,6 +167,7 @@ export function AppShell() {
           <Outlet />
         </main>
       </div>
+      <Toaster />
     </div>
   );
 }
