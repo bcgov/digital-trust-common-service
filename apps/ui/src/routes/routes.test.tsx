@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { createMemoryRouter, RouterProvider } from 'react-router';
@@ -19,11 +19,11 @@ function renderAt(path: string) {
 describe('routing', () => {
   it('opens the connectors page from the primary navigation', async () => {
     const user = userEvent.setup();
-    const router = renderAt('/settings');
+    const router = renderAt('/tenants');
 
     await user.click(await screen.findByRole('button', { name: /sign in/i }));
-    await screen.findByText('Coming soon.');
-    fireEvent.click(screen.getByRole('link', { name: 'Connectors' }));
+    await screen.findByRole('heading', { name: 'Tenants', level: 1 });
+    await user.click(screen.getByRole('link', { name: 'Connectors' }));
 
     await waitFor(() => {
       expect(router.state.location.pathname).toBe('/connectors');
@@ -54,11 +54,20 @@ describe('routing', () => {
 
   it('signs in (mock mode) and lands on the originally requested page', async () => {
     const user = userEvent.setup();
-    const router = renderAt('/settings');
+    const router = renderAt('/connectors');
 
     await user.click(await screen.findByRole('button', { name: /sign in/i }));
 
-    expect(await screen.findByText('Coming soon.')).toBeInTheDocument();
+    expect(
+      await screen.findByRole('heading', { name: 'Connectors', level: 1 }),
+    ).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe('/connectors');
+  });
+
+  it('returns 404 for the removed global settings mockup', async () => {
+    const router = renderAt('/settings');
+
+    expect(await screen.findByText('404')).toBeInTheDocument();
     expect(router.state.location.pathname).toBe('/settings');
   });
 
@@ -73,7 +82,9 @@ describe('routing', () => {
 
     await user.click(await screen.findByRole('button', { name: /sign in/i }));
 
-    expect(await screen.findByText('Acme Ministry')).toBeInTheDocument();
+    expect(
+      await screen.findByRole('heading', { name: 'Tenants', level: 1 }),
+    ).toBeInTheDocument();
     expect(router.state.location.pathname).toBe('/tenants');
   });
 

@@ -13,7 +13,7 @@ import { describe, expect, it } from 'vitest';
 
 const uiRoot = resolve(import.meta.dirname, '../..');
 
-const componentSources = import.meta.glob('../components/ui/*.tsx', {
+const componentSources = import.meta.glob('../components/common/*.tsx', {
   query: '?raw',
   import: 'default',
   eager: true,

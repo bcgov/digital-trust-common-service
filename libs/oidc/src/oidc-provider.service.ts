@@ -274,6 +274,9 @@ export function buildOidcConfiguration(
         return {
           tenant_id: user.tenantId,
           tenant_role: user.role,
+          ...(user.externalUserId
+            ? { external_user_id: user.externalUserId }
+            : {}),
           roles: user.isPlatformOperator
             ? [user.role, PLATFORM_ADMIN_ROLE]
             : [user.role],

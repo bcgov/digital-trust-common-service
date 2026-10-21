@@ -567,6 +567,7 @@ describe('buildOidcConfiguration', () => {
       expect(claims).toEqual({
         tenant_id: 'tenant-123',
         tenant_role: 'member',
+        external_user_id: 'external-user-123',
         roles: ['member'],
       });
     });
@@ -601,6 +602,7 @@ describe('buildOidcConfiguration', () => {
       expect(claims).toEqual({
         tenant_id: 'tenant-123',
         tenant_role: 'member',
+        external_user_id: 'external-user-123',
         roles: ['member', 'platform-admin'],
       });
     });

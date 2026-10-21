@@ -2,8 +2,8 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { createBrowserRouter, RouterProvider } from 'react-router';
 
-import { FullPageError } from '@/components/full-page-status';
-import { Button } from '@/components/ui/button';
+import { FullPageError } from '@/components/common/full-page-status';
+import { Button } from '@/components/common/button';
 import { loadAppConfig } from '@/lib/config';
 import { routes } from '@/routes/routes';
 

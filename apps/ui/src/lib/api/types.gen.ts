@@ -3075,6 +3075,11 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["PaginatedResponse"] & {
                         data?: components["schemas"]["TenantUser"][];
+                        /**
+                         * @description Whether the current caller may change or remove their own tenant membership without violating administrator or owner safeguards.
+                         * @example false
+                         */
+                        self_actions_allowed: boolean;
                     };
                 };
             };

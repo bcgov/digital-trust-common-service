@@ -872,6 +872,12 @@ paths:
                         type: array
                         items:
                           $ref: "#/components/schemas/TenantUser"
+                      self_actions_allowed:
+                        type: boolean
+                        description: Whether the current caller may change or remove their own tenant membership without violating administrator or owner safeguards.
+                        example: false
+                    required:
+                      - self_actions_allowed
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":

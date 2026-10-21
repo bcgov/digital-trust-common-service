@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { EntityManager, Repository } from 'typeorm';
+import { EntityManager, In, Repository } from 'typeorm';
 
 import { Cursor } from '../common/cursor-pagination';
 
@@ -41,8 +41,10 @@ export class TenantUserRepository {
   public async findByTenantAndId(
     tenantId: string,
     id: string,
+    manager?: EntityManager,
   ): Promise<TenantUser | null> {
-    return await this.repository.findOne({
+    const repo = manager ? manager.getRepository(TenantUser) : this.repository;
+    return await repo.findOne({
       where: { id, tenantId },
     });
   }
@@ -50,9 +52,25 @@ export class TenantUserRepository {
   public async countByTenantAndRole(
     tenantId: string,
     role: TenantUserRole,
+    manager?: EntityManager,
   ): Promise<number> {
-    return await this.repository.count({
+    const repo = manager ? manager.getRepository(TenantUser) : this.repository;
+    return await repo.count({
       where: { tenantId, role },
+    });
+  }
+
+  public async countActiveAdministratorsByTenant(
+    tenantId: string,
+    manager?: EntityManager,
+  ): Promise<number> {
+    const repo = manager ? manager.getRepository(TenantUser) : this.repository;
+    return await repo.count({
+      where: {
+        tenantId,
+        role: In([TenantUserRole.OWNER, TenantUserRole.ADMIN]),
+        status: TenantUserStatus.ACTIVE,
+      },
     });
   }
 
@@ -212,11 +230,16 @@ export class TenantUserRepository {
     return await this.findById(id);
   }
 
-  public async update(tenantUser: TenantUser): Promise<TenantUser> {
-    return await this.repository.save(tenantUser);
+  public async update(
+    tenantUser: TenantUser,
+    manager?: EntityManager,
+  ): Promise<TenantUser> {
+    const repo = manager ? manager.getRepository(TenantUser) : this.repository;
+    return await repo.save(tenantUser);
   }
 
-  public async delete(id: string): Promise<void> {
-    await this.repository.delete(id);
+  public async delete(id: string, manager?: EntityManager): Promise<void> {
+    const repo = manager ? manager.getRepository(TenantUser) : this.repository;
+    await repo.delete(id);
   }
 }

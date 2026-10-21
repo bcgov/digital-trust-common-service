@@ -1167,6 +1167,7 @@ grant at login and is not refreshed when a refresh token rotates.
   "client_id": null,
   "email": "user@example.com",
   "tenant_id": "b7e4a1f0-...",
+    "external_user_id": "upstream-identity-subject",
   "roles": ["admin"],
   "scope": "credentials:offer credentials:verify connections:manage profiles:manage",
   "aud": "https://digital-trust-common-service",
@@ -1175,6 +1176,11 @@ grant at login and is not refreshed when a refresh token rotates.
   "iat": 1718500000
 }
 ```
+
+Human API access tokens include the signed `external_user_id` claim so auth
+recovery endpoints can resolve the user's other memberships after the token's
+current tenant-user row is removed. Tenant-scoped authorization still requires
+an active membership row; the claim does not grant tenant access by itself.
 
 For API clients (`client_credentials` grant):
 ```json

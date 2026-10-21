@@ -4,11 +4,12 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { EntityManager } from 'typeorm';
+import { DataSource, EntityManager } from 'typeorm';
 
 import { AuditAction } from '../audit-log/audit-log.entity';
 import { DomainAuditService } from '../audit-log/domain-audit.service';
 import { decodeCursor, encodeCursor } from '../common/cursor-pagination';
+import { TenantRepository } from '../tenant/tenant.repository';
 
 import { CreateTenantUserDto } from './dto/create-tenant-user.dto';
 import { InviteTenantUserDto } from './dto/invite-tenant-user.dto';
@@ -26,13 +27,16 @@ export type PaginatedTenantUsers = {
     next_cursor: string | null;
     has_more: boolean;
   };
+  self_actions_allowed: boolean;
 };
 
 @Injectable()
 export class TenantUserService {
   public constructor(
     private readonly tenantUserRepository: TenantUserRepository,
+    private readonly tenantRepository: TenantRepository,
     private readonly domainAudit: DomainAuditService,
+    private readonly dataSource: DataSource,
   ) {}
 
   /**
@@ -138,6 +142,7 @@ export class TenantUserService {
   public async list(
     tenantId: string,
     options: { limit?: number; cursor?: string | null },
+    callerTenantUser?: TenantUser,
   ): Promise<PaginatedTenantUsers> {
     const limit = options.limit ?? 20;
     const cursor = options.cursor ? decodeCursor(options.cursor) : null;
@@ -146,6 +151,35 @@ export class TenantUserService {
       limit,
       cursor,
     });
+    let selfActionsAllowed = false;
+
+    if (callerTenantUser) {
+      const caller = await this.tenantUserRepository.findByTenantAndId(
+        tenantId,
+        callerTenantUser.id,
+      );
+
+      if (
+        caller?.status === TenantUserStatus.ACTIVE &&
+        this.isAdministrator(caller.role)
+      ) {
+        const administratorCount =
+          await this.tenantUserRepository.countActiveAdministratorsByTenant(
+            tenantId,
+          );
+        const ownerCount =
+          caller.role === TenantUserRole.OWNER
+            ? await this.tenantUserRepository.countByTenantAndRole(
+                tenantId,
+                TenantUserRole.OWNER,
+              )
+            : undefined;
+
+        selfActionsAllowed =
+          administratorCount > 1 &&
+          (ownerCount === undefined || ownerCount > 1);
+      }
+    }
 
     return {
       data: page.items,
@@ -153,6 +187,7 @@ export class TenantUserService {
         next_cursor: page.nextCursor ? encodeCursor(page.nextCursor) : null,
         has_more: page.hasMore,
       },
+      self_actions_allowed: selfActionsAllowed,
     };
   }
 
@@ -246,61 +281,79 @@ export class TenantUserService {
     dto: UpdateTenantUserDto,
     callerTenantUser?: TenantUser,
   ): Promise<TenantUser> {
-    const tenantUser = await this.tenantUserRepository.findByTenantAndId(
-      tenantId,
-      id,
-    );
+    const updated = await this.dataSource.transaction(async (manager) => {
+      await this.tenantRepository.findByIdForUpdate(tenantId, manager);
 
-    if (!tenantUser) {
-      throw new NotFoundException(`Tenant user '${id}' was not found.`);
-    }
-
-    this.assertMayManageOwner(
-      callerTenantUser,
-      dto.role === TenantUserRole.OWNER ||
-        tenantUser.role === TenantUserRole.OWNER,
-    );
-
-    if (dto.role !== undefined && callerTenantUser?.id === id) {
-      throw new ForbiddenException(
-        'Cannot change your own role; ask another tenant owner or admin to do this.',
-      );
-    }
-
-    if (
-      dto.role !== undefined &&
-      dto.role !== tenantUser.role &&
-      tenantUser.role === TenantUserRole.OWNER
-    ) {
-      const ownerCount = await this.tenantUserRepository.countByTenantAndRole(
+      const tenantUser = await this.tenantUserRepository.findByTenantAndId(
         tenantId,
-        TenantUserRole.OWNER,
+        id,
+        manager,
       );
 
-      if (ownerCount <= 1) {
-        throw new ConflictException(
-          "Cannot change the role of the tenant's last owner.",
-        );
+      if (!tenantUser) {
+        throw new NotFoundException(`Tenant user '${id}' was not found.`);
       }
-    }
 
-    if (dto.email !== undefined) {
-      tenantUser.email = dto.email;
-    }
+      const caller = await this.findCurrentCaller(
+        tenantId,
+        id,
+        tenantUser,
+        callerTenantUser,
+        manager,
+      );
 
-    if (dto.displayName !== undefined) {
-      tenantUser.displayName = dto.displayName;
-    }
+      this.assertMayManageOwner(
+        caller,
+        dto.role === TenantUserRole.OWNER ||
+          tenantUser.role === TenantUserRole.OWNER,
+      );
 
-    if (dto.role !== undefined) {
-      tenantUser.role = dto.role;
-    }
+      if (
+        dto.role !== undefined &&
+        dto.role !== tenantUser.role &&
+        tenantUser.role === TenantUserRole.OWNER
+      ) {
+        const ownerCount = await this.tenantUserRepository.countByTenantAndRole(
+          tenantId,
+          TenantUserRole.OWNER,
+          manager,
+        );
 
-    if (dto.status !== undefined) {
-      tenantUser.status = dto.status;
-    }
+        if (ownerCount <= 1) {
+          throw new ConflictException(
+            "Cannot change the role of the tenant's last owner.",
+          );
+        }
+      }
 
-    const updated = await this.tenantUserRepository.update(tenantUser);
+      const losesAdministratorAccess =
+        tenantUser.status === TenantUserStatus.ACTIVE &&
+        this.isAdministrator(tenantUser.role) &&
+        ((dto.role !== undefined && !this.isAdministrator(dto.role)) ||
+          (dto.status !== undefined && dto.status !== TenantUserStatus.ACTIVE));
+
+      if (losesAdministratorAccess) {
+        await this.assertAnotherAdministratorRemains(tenantId, manager);
+      }
+
+      if (dto.email !== undefined) {
+        tenantUser.email = dto.email;
+      }
+
+      if (dto.displayName !== undefined) {
+        tenantUser.displayName = dto.displayName;
+      }
+
+      if (dto.role !== undefined) {
+        tenantUser.role = dto.role;
+      }
+
+      if (dto.status !== undefined) {
+        tenantUser.status = dto.status;
+      }
+
+      return await this.tenantUserRepository.update(tenantUser, manager);
+    });
 
     await this.domainAudit.emit({
       tenantId: updated.tenantId,
@@ -344,35 +397,62 @@ export class TenantUserService {
     id: string,
     callerTenantUser?: TenantUser,
   ): Promise<void> {
-    const tenantUser = await this.tenantUserRepository.findByTenantAndId(
-      tenantId,
-      id,
+    const deletedTenantUser = await this.dataSource.transaction(
+      async (manager) => {
+        await this.tenantRepository.findByIdForUpdate(tenantId, manager);
+
+        const tenantUser = await this.tenantUserRepository.findByTenantAndId(
+          tenantId,
+          id,
+          manager,
+        );
+
+        if (!tenantUser) {
+          throw new NotFoundException(`Tenant user '${id}' was not found.`);
+        }
+
+        const caller = await this.findCurrentCaller(
+          tenantId,
+          id,
+          tenantUser,
+          callerTenantUser,
+          manager,
+        );
+
+        this.assertMayManageOwner(
+          caller,
+          tenantUser.role === TenantUserRole.OWNER,
+        );
+
+        if (tenantUser.role === TenantUserRole.OWNER) {
+          const ownerCount =
+            await this.tenantUserRepository.countByTenantAndRole(
+              tenantId,
+              TenantUserRole.OWNER,
+              manager,
+            );
+
+          if (ownerCount <= 1) {
+            throw new ConflictException(
+              "Cannot remove the tenant's last owner.",
+            );
+          }
+        }
+
+        if (
+          tenantUser.status === TenantUserStatus.ACTIVE &&
+          this.isAdministrator(tenantUser.role)
+        ) {
+          await this.assertAnotherAdministratorRemains(tenantId, manager);
+        }
+
+        await this.tenantUserRepository.delete(id, manager);
+        return tenantUser;
+      },
     );
-
-    if (!tenantUser) {
-      throw new NotFoundException(`Tenant user '${id}' was not found.`);
-    }
-
-    this.assertMayManageOwner(
-      callerTenantUser,
-      tenantUser.role === TenantUserRole.OWNER,
-    );
-
-    if (tenantUser.role === TenantUserRole.OWNER) {
-      const ownerCount = await this.tenantUserRepository.countByTenantAndRole(
-        tenantId,
-        TenantUserRole.OWNER,
-      );
-
-      if (ownerCount <= 1) {
-        throw new ConflictException("Cannot remove the tenant's last owner.");
-      }
-    }
-
-    await this.tenantUserRepository.delete(id);
 
     await this.domainAudit.emit({
-      tenantId: tenantUser.tenantId,
+      tenantId: deletedTenantUser.tenantId,
       action: AuditAction.DELETE,
       resourceType: 'tenant_user',
       resourceId: id,
@@ -402,5 +482,59 @@ export class TenantUserService {
         'Only an owner can grant the owner role or act on an owner.',
       );
     }
+  }
+
+  private async findCurrentCaller(
+    tenantId: string,
+    targetId: string,
+    target: TenantUser,
+    callerTenantUser: TenantUser | undefined,
+    manager: EntityManager,
+  ): Promise<TenantUser | undefined> {
+    if (!callerTenantUser) {
+      return undefined;
+    }
+
+    const caller =
+      callerTenantUser.id === targetId
+        ? target
+        : await this.tenantUserRepository.findByTenantAndId(
+            tenantId,
+            callerTenantUser.id,
+            manager,
+          );
+
+    if (
+      !caller ||
+      caller.status !== TenantUserStatus.ACTIVE ||
+      !this.isAdministrator(caller.role)
+    ) {
+      throw new ForbiddenException(
+        'An active tenant owner or admin is required to manage users.',
+      );
+    }
+
+    return caller;
+  }
+
+  private async assertAnotherAdministratorRemains(
+    tenantId: string,
+    manager: EntityManager,
+  ): Promise<void> {
+    const administratorCount =
+      await this.tenantUserRepository.countActiveAdministratorsByTenant(
+        tenantId,
+        manager,
+      );
+
+    if (administratorCount <= 1) {
+      throw new ConflictException(
+        "Cannot remove the tenant's last active administrator.",
+      );
+    }
+  }
+
+  private isAdministrator(role: TenantUserRole): boolean {
+    return role === TenantUserRole.OWNER || role === TenantUserRole.ADMIN;
   }
 }

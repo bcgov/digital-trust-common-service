@@ -1,12 +1,14 @@
-import { Injectable } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { ConflictException, Injectable } from '@nestjs/common';
+import { InjectDataSource } from '@nestjs/typeorm';
+import { DataSource, EntityManager } from 'typeorm';
 
+import { TenantRepository } from '../tenant/tenant.repository';
 import {
   TenantUser,
   TenantUserRole,
   TenantUserStatus,
 } from '../tenant-user/tenant-user.entity';
+import { TenantUserRepository } from '../tenant-user/tenant-user.repository';
 
 /**
  * The seed's own writes to tenant_user. They live here rather than on
@@ -16,8 +18,10 @@ import {
 @Injectable()
 export class SeedTenantUserRepository {
   public constructor(
-    @InjectRepository(TenantUser)
-    private readonly repository: Repository<TenantUser>,
+    @InjectDataSource()
+    private readonly dataSource: DataSource,
+    private readonly tenants: TenantRepository,
+    private readonly tenantUsers: TenantUserRepository,
   ) {}
 
   /**
@@ -37,22 +41,25 @@ export class SeedTenantUserRepository {
       role: TenantUserRole;
     },
   ): Promise<boolean> {
-    const result = await this.repository
-      .createQueryBuilder()
-      .update(TenantUser)
-      .set({
-        status: fields.status,
-        displayName: fields.displayName,
-        role: fields.role,
-      })
-      .where('tenant_id = :tenantId', { tenantId })
-      .andWhere('email = :email', { email })
-      .andWhere('external_user_id IS NOT DISTINCT FROM :externalUserId', {
-        externalUserId: fields.externalUserId,
-      })
-      .execute();
+    return await this.withTenantAdminGuard(tenantId, async (manager) => {
+      const result = await manager
+        .getRepository(TenantUser)
+        .createQueryBuilder()
+        .update(TenantUser)
+        .set({
+          status: fields.status,
+          displayName: fields.displayName,
+          role: fields.role,
+        })
+        .where('tenant_id = :tenantId', { tenantId })
+        .andWhere('email = :email', { email })
+        .andWhere('external_user_id IS NOT DISTINCT FROM :externalUserId', {
+          externalUserId: fields.externalUserId,
+        })
+        .execute();
 
-    return (result.affected ?? 0) > 0;
+      return (result.affected ?? 0) > 0;
+    });
   }
 
   /**
@@ -66,11 +73,43 @@ export class SeedTenantUserRepository {
     displayName: string,
     role: TenantUserRole,
   ): Promise<boolean> {
-    const result = await this.repository.update(
-      { tenantId, email },
-      { displayName, role },
-    );
+    return await this.withTenantAdminGuard(tenantId, async (manager) => {
+      const result = await manager
+        .getRepository(TenantUser)
+        .update({ tenantId, email }, { displayName, role });
 
-    return (result.affected ?? 0) > 0;
+      return (result.affected ?? 0) > 0;
+    });
+  }
+
+  private async withTenantAdminGuard(
+    tenantId: string,
+    update: (manager: EntityManager) => Promise<boolean>,
+  ): Promise<boolean> {
+    return await this.dataSource.transaction(async (manager) => {
+      await this.tenants.findByIdForUpdate(tenantId, manager);
+      const administratorCountBefore =
+        await this.tenantUsers.countActiveAdministratorsByTenant(
+          tenantId,
+          manager,
+        );
+      const changed = await update(manager);
+
+      if (changed && administratorCountBefore > 0) {
+        const administratorCountAfter =
+          await this.tenantUsers.countActiveAdministratorsByTenant(
+            tenantId,
+            manager,
+          );
+
+        if (administratorCountAfter === 0) {
+          throw new ConflictException(
+            "Cannot remove the tenant's last active administrator.",
+          );
+        }
+      }
+
+      return changed;
+    });
   }
 }

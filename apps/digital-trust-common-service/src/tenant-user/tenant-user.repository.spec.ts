@@ -1,7 +1,12 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
+import { In } from 'typeorm';
 
-import { TenantUser, TenantUserStatus } from './tenant-user.entity';
+import {
+  TenantUser,
+  TenantUserRole,
+  TenantUserStatus,
+} from './tenant-user.entity';
 import { TenantUserRepository } from './tenant-user.repository';
 
 describe('TenantUserRepository', () => {
@@ -19,6 +24,7 @@ describe('TenantUserRepository', () => {
     execute: jest.Mock;
   };
   let findOne: jest.Mock;
+  let count: jest.Mock;
 
   beforeEach(async () => {
     queryBuilder = {
@@ -34,6 +40,7 @@ describe('TenantUserRepository', () => {
       execute: jest.fn().mockResolvedValue({ affected: 0 }),
     };
     findOne = jest.fn().mockResolvedValue(null);
+    count = jest.fn().mockResolvedValue(0);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -43,6 +50,7 @@ describe('TenantUserRepository', () => {
           useValue: {
             createQueryBuilder: jest.fn(() => queryBuilder),
             findOne,
+            count,
           },
         },
       ],
@@ -75,6 +83,18 @@ describe('TenantUserRepository', () => {
       'tenantUser.id',
       'ASC',
     );
+  });
+
+  it('counts only active owners and admins for a tenant', async () => {
+    await repository.countActiveAdministratorsByTenant('tenant-id');
+
+    expect(count).toHaveBeenCalledWith({
+      where: {
+        tenantId: 'tenant-id',
+        role: In([TenantUserRole.OWNER, TenantUserRole.ADMIN]),
+        status: TenantUserStatus.ACTIVE,
+      },
+    });
   });
 
   it('findUnclaimedInvitesByEmail normalizes the email and skips deleted tenants', async () => {

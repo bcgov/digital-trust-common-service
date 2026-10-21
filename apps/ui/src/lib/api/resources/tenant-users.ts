@@ -5,6 +5,11 @@ import type { components, operations } from '../types.gen';
 export type TenantUser = components['schemas']['TenantUser'];
 export type TenantRole = components['schemas']['TenantRole'];
 export type TenantUserStatus = NonNullable<TenantUser['status']>;
+export type TenantUsersPage = Page<TenantUser> & {
+  self_actions_allowed: boolean;
+};
+type TenantUsersListResponse =
+  operations['listTenantUsers']['responses'][200]['content']['application/json'];
 export type InviteTenantUserRequest =
   components['schemas']['InviteUserRequest'];
 export type UpdateTenantUserRequest =
@@ -13,11 +18,18 @@ export type UpdateTenantUserRequest =
 export async function listTenantUsers(
   tenantId: string,
   params: CursorParams = {},
-): Promise<Page<TenantUser>> {
-  const response = await apiClient.get<unknown>(`/tenants/${tenantId}/users`, {
-    params,
-  });
-  return normalizePage<TenantUser>(response.data);
+): Promise<TenantUsersPage> {
+  const response = await apiClient.get<TenantUsersListResponse | TenantUser[]>(
+    `/tenants/${tenantId}/users`,
+    { params },
+  );
+
+  return {
+    ...normalizePage<TenantUser>(response.data),
+    self_actions_allowed: Array.isArray(response.data)
+      ? false
+      : response.data.self_actions_allowed,
+  };
 }
 
 export async function inviteTenantUser(

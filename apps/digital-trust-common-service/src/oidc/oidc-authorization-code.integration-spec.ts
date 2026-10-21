@@ -1517,4 +1517,41 @@ describe('OIDC authorization_code grant (integration)', () => {
       { external_user_id: null, status: 'invited', role: 'admin' },
     ]);
   });
+
+  it('recovers memberships and switches after the token subject membership is deleted', async () => {
+    const accessToken = await obtainUserAccessToken();
+    const claims = await verifyTokenAgainstJwks(
+      app.getHttpServer(),
+      accessToken,
+    );
+
+    expect(claims.external_user_id).toBe(federatedExternalUserId);
+
+    await dataSource.query('DELETE FROM tenant_user WHERE id = $1', [
+      claims.sub,
+    ]);
+
+    const membershipsResponse = await request(app.getHttpServer())
+      .get(`${API_BASE_PATH}/auth/tenants`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    const memberships = membershipsResponse.body as Array<{ id: string }>;
+    expect(memberships.map((membership) => membership.id)).toContain(
+      secondTenantId,
+    );
+
+    const switchResponse = await request(app.getHttpServer())
+      .post(`${API_BASE_PATH}/auth/switch-tenant`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ tenant_id: secondTenantId })
+      .expect(200);
+
+    const switchedClaims = await verifyTokenAgainstJwks(
+      app.getHttpServer(),
+      (switchResponse.body as { access_token: string }).access_token,
+    );
+    expect(switchedClaims.tenant_id).toBe(secondTenantId);
+    expect(switchedClaims.external_user_id).toBe(federatedExternalUserId);
+  });
 });

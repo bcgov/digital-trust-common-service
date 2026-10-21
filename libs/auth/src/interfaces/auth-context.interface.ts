@@ -7,6 +7,8 @@ export type AuthTokenType = 'user' | 'client';
  */
 export interface AuthContext {
   sub: string;
+  /** Signed upstream identity claim, available to recover after membership deletion. */
+  externalUserId?: string;
   tokenType: AuthTokenType;
   /**
    * OAuth client that requested the token. Present on user tokens (SPA

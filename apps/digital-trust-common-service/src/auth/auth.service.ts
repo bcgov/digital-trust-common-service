@@ -1,7 +1,12 @@
 import { TenantAccessDeniedException, type AuthContext } from '@app/auth';
 import { OidcConfigService, OidcProviderService } from '@app/oidc';
 import { OidcAccountSessionRepository } from '@app/oidc/sessions';
-import { ForbiddenException, Injectable, Logger } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 
 import { AuditAction } from '../audit-log/audit-log.entity';
 import { DomainAuditService } from '../audit-log/domain-audit.service';
@@ -42,16 +47,10 @@ export class AuthService {
   public async listTenants(auth: AuthContext): Promise<AuthTenantDto[]> {
     this.assertUserToken(auth);
 
-    const current = await this.tenantUsers.findById(auth.sub);
-    if (!current.externalUserId) {
-      throw new ForbiddenException(
-        'Token subject is not linked to an external identity',
-      );
-    }
+    const { externalUserId } = await this.resolveExternalIdentity(auth);
 
-    const memberships = await this.tenantUsers.findActiveByExternalUserId(
-      current.externalUserId,
-    );
+    const memberships =
+      await this.tenantUsers.findActiveByExternalUserId(externalUserId);
 
     // The membership query inner-joins non-deleted tenants, so `tenant` is
     // always present here.
@@ -76,16 +75,12 @@ export class AuthService {
       );
     }
 
-    const current = await this.tenantUsers.findById(auth.sub);
-    if (!current.externalUserId) {
-      throw new ForbiddenException(
-        'Token subject is not linked to an external identity',
-      );
-    }
+    const { current, externalUserId } =
+      await this.resolveExternalIdentity(auth);
 
     const target = await this.tenantUsers.findByTenantAndExternalUserId(
       targetTenantId,
-      current.externalUserId,
+      externalUserId,
     );
 
     if (!target || target.status !== TenantUserStatus.ACTIVE) {
@@ -93,7 +88,7 @@ export class AuthService {
         'User is not an active member of the target tenant',
         {
           requiredTenantId: targetTenantId,
-          tokenTenantId: current.tenantId,
+          tokenTenantId: current?.tenantId ?? auth.tenantId,
         },
       );
     }
@@ -119,14 +114,14 @@ export class AuthService {
     }
 
     await this.accountSessions.rebindSessionsToAccount(
-      current.id,
+      auth.sub,
       target.id,
       auth.clientId,
       issued.grantId,
     );
 
-    if (current.id !== target.id) {
-      await this.accountSessions.deleteAllForAccount(current.id);
+    if (auth.sub !== target.id) {
+      await this.accountSessions.deleteAllForAccount(auth.sub);
     }
 
     await this.domainAudit.emit({
@@ -135,13 +130,13 @@ export class AuthService {
       resourceType: 'oidc_grant',
       resourceId: issued.grantId,
       metadata: {
-        from_tenant_id: current.tenantId,
+        from_tenant_id: current?.tenantId ?? auth.tenantId,
         to_tenant_id: target.tenantId,
       },
     });
 
     this.logger.log(
-      `Switched tenant context for ${current.externalUserId} from ${current.tenantId} to ${target.tenantId}`,
+      `Switched tenant context for ${externalUserId} from ${current?.tenantId ?? auth.tenantId ?? 'unknown'} to ${target.tenantId}`,
     );
 
     return SwitchTenantResponseDto.from(
@@ -158,6 +153,38 @@ export class AuthService {
         'Machine clients cannot switch tenants; each client_id is bound to one tenant',
       );
     }
+  }
+
+  private async resolveExternalIdentity(
+    auth: AuthContext,
+  ): Promise<{ current?: TenantUser; externalUserId: string }> {
+    let current: TenantUser | undefined;
+
+    try {
+      current = await this.tenantUsers.findById(auth.sub);
+    } catch (error) {
+      if (!(error instanceof NotFoundException)) {
+        throw error;
+      }
+    }
+
+    if (current) {
+      if (!current.externalUserId) {
+        throw new ForbiddenException(
+          'Token subject is not linked to an external identity',
+        );
+      }
+
+      return { current, externalUserId: current.externalUserId };
+    }
+
+    if (auth.externalUserId) {
+      return { externalUserId: auth.externalUserId };
+    }
+
+    throw new ForbiddenException(
+      'Token subject is not linked to an external identity',
+    );
   }
 
   private async issueTokensForMembership(

@@ -123,20 +123,27 @@ export class TenantUserController {
   public async list(
     @Param('tenantId', ParseUUIDPipe) tenantId: string,
     @Query() query: ListTenantUsersQueryDto,
+    @CurrentTenantUser() callerTenantUser?: TenantUser,
   ): Promise<{
     data: TenantUserResponseDto[];
     pagination: TenantUsersPaginationDto;
+    self_actions_allowed: boolean;
   }> {
-    const page = await this.tenantUserService.list(tenantId, {
-      limit: query.limit,
-      cursor: query.cursor,
-    });
+    const page = await this.tenantUserService.list(
+      tenantId,
+      {
+        limit: query.limit,
+        cursor: query.cursor,
+      },
+      callerTenantUser,
+    );
 
     return {
       data: page.data.map((tenantUser) =>
         TenantUserResponseDto.fromEntity(tenantUser),
       ),
       pagination: TenantUsersPaginationDto.from(page.pagination),
+      self_actions_allowed: page.self_actions_allowed,
     };
   }
 
@@ -144,7 +151,7 @@ export class TenantUserController {
   @ApiOperation({
     summary: 'Update user role',
     description:
-      "Only an owner may grant the owner role or change an owner's row.",
+      "Only an owner may grant the owner role or change an owner's row. An active administrator may change their own role when another active administrator remains; owners are also subject to the last-owner safeguard.",
   })
   @ApiOkResponse({
     description: 'Tenant user updated successfully',
@@ -152,11 +159,12 @@ export class TenantUserController {
   })
   @ApiNotFoundResponse({ description: 'Tenant user not found' })
   @ApiConflictResponse({
-    description: "Cannot change the role of the tenant's last owner",
+    description:
+      "Cannot remove the tenant's last active administrator or change the role of its last owner",
   })
   @ApiForbiddenResponse({
     description:
-      'Caller lacks the required scope, is not an owner/admin of this tenant, is an admin acting on an owner or granting the owner role, or is attempting to change their own role',
+      'Caller lacks the required scope, is not an owner/admin of this tenant, or is an admin acting on an owner or granting the owner role',
   })
   @ApiUnauthorizedResponse({ description: 'Authentication is required' })
   @ApiBody({
@@ -197,12 +205,14 @@ export class TenantUserController {
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({
     summary: 'Remove user from tenant',
-    description: 'Only an owner may remove another owner.',
+    description:
+      'Only an owner may remove another owner. An active administrator may remove themselves when another active administrator remains; owners are also subject to the last-owner safeguard.',
   })
   @ApiNoContentResponse({ description: 'Tenant user deleted successfully' })
   @ApiNotFoundResponse({ description: 'Tenant user not found' })
   @ApiConflictResponse({
-    description: "Cannot remove the tenant's last owner",
+    description:
+      "Cannot remove the tenant's last active administrator or its last owner",
   })
   @ApiForbiddenResponse({
     description:

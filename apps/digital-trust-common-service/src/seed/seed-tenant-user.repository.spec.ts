@@ -1,11 +1,15 @@
+import { ConflictException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
-import { getRepositoryToken } from '@nestjs/typeorm';
+import { getDataSourceToken } from '@nestjs/typeorm';
+import { DataSource, EntityManager } from 'typeorm';
 
+import { TenantRepository } from '../tenant/tenant.repository';
 import {
   TenantUser,
   TenantUserRole,
   TenantUserStatus,
 } from '../tenant-user/tenant-user.entity';
+import { TenantUserRepository } from '../tenant-user/tenant-user.repository';
 
 import { SeedTenantUserRepository } from './seed-tenant-user.repository';
 
@@ -18,7 +22,12 @@ describe('SeedTenantUserRepository', () => {
     andWhere: jest.Mock;
     execute: jest.Mock;
   };
-  let ormRepository: { createQueryBuilder: jest.Mock; update: jest.Mock };
+  let managerRepository: { createQueryBuilder: jest.Mock; update: jest.Mock };
+  let dataSource: { transaction: jest.Mock };
+  let mockTransaction: jest.Mock;
+  let transactionManager: EntityManager;
+  let findTenantByIdForUpdate: jest.Mock;
+  let countActiveAdministratorsByTenant: jest.Mock;
 
   beforeEach(async () => {
     queryBuilder = {
@@ -28,15 +37,33 @@ describe('SeedTenantUserRepository', () => {
       andWhere: jest.fn().mockReturnThis(),
       execute: jest.fn().mockResolvedValue({ affected: 1 }),
     };
-    ormRepository = {
+    managerRepository = {
       createQueryBuilder: jest.fn(() => queryBuilder),
       update: jest.fn().mockResolvedValue({ affected: 1 }),
     };
+    transactionManager = {
+      getRepository: jest.fn(() => managerRepository),
+    } as unknown as EntityManager;
+    mockTransaction = jest.fn(
+      (callback: (manager: EntityManager) => Promise<boolean>) =>
+        callback(transactionManager),
+    );
+    dataSource = { transaction: mockTransaction };
+    findTenantByIdForUpdate = jest.fn().mockResolvedValue({ id: 'tenant-1' });
+    countActiveAdministratorsByTenant = jest.fn().mockResolvedValue(1);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         SeedTenantUserRepository,
-        { provide: getRepositoryToken(TenantUser), useValue: ormRepository },
+        { provide: getDataSourceToken(), useValue: dataSource as DataSource },
+        {
+          provide: TenantRepository,
+          useValue: { findByIdForUpdate: findTenantByIdForUpdate },
+        },
+        {
+          provide: TenantUserRepository,
+          useValue: { countActiveAdministratorsByTenant },
+        },
       ],
     }).compile();
 
@@ -59,6 +86,10 @@ describe('SeedTenantUserRepository', () => {
       );
 
       expect(changed).toBe(true);
+      expect(findTenantByIdForUpdate).toHaveBeenCalledWith(
+        'tenant-1',
+        transactionManager,
+      );
       expect(queryBuilder.update).toHaveBeenCalledWith(TenantUser);
       expect(queryBuilder.set).toHaveBeenCalledWith({
         status: TenantUserStatus.INVITED,
@@ -105,6 +136,19 @@ describe('SeedTenantUserRepository', () => {
         ),
       ).resolves.toBe(false);
     });
+
+    it('rolls back a refresh that would remove the last active administrator', async () => {
+      countActiveAdministratorsByTenant
+        .mockResolvedValueOnce(1)
+        .mockResolvedValueOnce(0);
+
+      await expect(
+        repository.refreshSeeded('tenant-1', 'owner@acme-corp.example.test', {
+          ...fields,
+          status: TenantUserStatus.DISABLED,
+        }),
+      ).rejects.toThrow(ConflictException);
+    });
   });
 
   describe('setDisplayNameAndRole', () => {
@@ -117,14 +161,14 @@ describe('SeedTenantUserRepository', () => {
       );
 
       expect(changed).toBe(true);
-      expect(ormRepository.update).toHaveBeenCalledWith(
+      expect(managerRepository.update).toHaveBeenCalledWith(
         { tenantId: 'tenant-1', email: 'owner@acme-corp.example.test' },
         { displayName: 'acme-corp Owner', role: TenantUserRole.OWNER },
       );
     });
 
     it('reports no change when no such row exists', async () => {
-      ormRepository.update.mockResolvedValue({ affected: 0 });
+      managerRepository.update.mockResolvedValue({ affected: 0 });
 
       await expect(
         repository.setDisplayNameAndRole(

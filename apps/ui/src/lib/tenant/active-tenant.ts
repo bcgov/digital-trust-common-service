@@ -59,6 +59,8 @@ interface SwitchVariables {
   from: string | null;
   /** Where the user was when the switch started. */
   pathname: string;
+  destinationPath?: string;
+  notice?: string;
 }
 
 /**
@@ -80,12 +82,18 @@ export function useSwitchTenant() {
       // would renew with a dead refresh token and sign the user out.
       await queryClient.cancelQueries();
     },
-    onSuccess: async (_result, { tenantId, from, pathname }) => {
-      const target = from
-        ? replaceTenantInPath(pathname, from, tenantId)
-        : pathname;
-      if (target !== pathname) {
-        void navigate(target, { replace: true });
+    onSuccess: async (
+      _result,
+      { tenantId, from, pathname, destinationPath, notice },
+    ) => {
+      const target =
+        destinationPath ??
+        (from ? replaceTenantInPath(pathname, from, tenantId) : pathname);
+      if (target !== pathname || notice) {
+        void navigate(target, {
+          replace: true,
+          state: notice ? { tenantUserNotice: notice } : undefined,
+        });
       }
 
       // Reset rather than invalidate: an invalidated query keeps serving the
@@ -99,13 +107,16 @@ export function useSwitchTenant() {
   });
 
   return {
-    switchTo: (tenantId: string) => {
-      mutation.mutate({
+    switchTo: (
+      tenantId: string,
+      options: { destinationPath?: string; notice?: string } = {},
+    ) =>
+      mutation.mutateAsync({
         tenantId,
         from: user?.tenantId ?? null,
         pathname: location.pathname,
-      });
-    },
+        ...options,
+      }),
     isSwitching: mutation.isPending,
     error: mutation.error,
   };
