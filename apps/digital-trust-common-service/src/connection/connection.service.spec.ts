@@ -339,6 +339,113 @@ describe('ConnectionService', () => {
       });
       await expect(resolve()).rejects.toBeInstanceOf(ConflictException);
     });
+
+    it('rejects a pinned backend response for a different holder', async () => {
+      mockFindByIdForTenant.mockResolvedValue({
+        ...mockConnection,
+        connectorId: mockConnector.id,
+      });
+      mockGetById.mockResolvedValue({ ...remote, id: 'different-holder' });
+      await expect(resolve()).rejects.toThrow(
+        'Backend returned a different connection',
+      );
+      expect(mockReconcile).not.toHaveBeenCalled();
+    });
+
+    it.each([undefined, '', 123])(
+      'refuses legacy adoption without a usable invitation ID: %p',
+      async (invitationId) => {
+        mockFindByIdForTenant.mockResolvedValue({
+          ...mockConnection,
+          connectorId: null,
+          externalConnectionId: null,
+          metadata: { invitationId },
+        });
+        await expect(resolve()).rejects.toThrow(
+          'Connection has no verifiable invitation correlation',
+        );
+        expect(mockList).not.toHaveBeenCalled();
+        expect(mockReconcile).not.toHaveBeenCalled();
+      },
+    );
+
+    it('rejects invitation discovery that conflicts with a saved external ID', async () => {
+      mockFindByIdForTenant.mockResolvedValue({
+        ...mockConnection,
+        connectorId: null,
+        metadata: { invitationId: remote.invitationId },
+      });
+      await expect(resolve()).rejects.toThrow(
+        'Invitation connection does not match the saved connection',
+      );
+      expect(mockReconcile).not.toHaveBeenCalled();
+    });
+
+    it('searches later pages without adopting unrelated invitation records', async () => {
+      const unrelated = {
+        ...remote,
+        id: 'unrelated-holder',
+        invitationId: 'different-invitation',
+      };
+      mockList
+        .mockResolvedValueOnce(Array.from({ length: 100 }, () => unrelated))
+        .mockResolvedValueOnce([remote]);
+      await resolve();
+      expect(mockList).toHaveBeenNthCalledWith(1, mockContext, {
+        limit: 100,
+        offset: 0,
+      });
+      expect(mockList).toHaveBeenNthCalledWith(2, mockContext, {
+        limit: 100,
+        offset: 100,
+      });
+      expect(mockReconcile).toHaveBeenCalledWith(
+        mockConnection.tenantId,
+        mockConnection.id,
+        mockConnector.id,
+        expect.objectContaining({ id: remote.id }),
+        expect.any(Array),
+      );
+    });
+
+    it('refuses even a unique match when the discovery limit prevents a complete search', async () => {
+      const page = Array.from({ length: 100 }, (_, index) => ({
+        ...remote,
+        id: `holder-${index}`,
+        invitationId: 'unrelated-invitation',
+      }));
+      mockList
+        .mockResolvedValue(page)
+        .mockResolvedValueOnce([remote, ...page.slice(1)]);
+      await expect(resolve()).rejects.toThrow(
+        'Connection discovery limit reached; reconciliation incomplete',
+      );
+      expect(mockList).toHaveBeenCalledTimes(100);
+      expect(mockList).toHaveBeenLastCalledWith(mockContext, {
+        limit: 100,
+        offset: 9900,
+      });
+      expect(mockReconcile).not.toHaveBeenCalled();
+    });
+
+    it('does not accept a completed handshake using a different protocol', async () => {
+      mockList.mockResolvedValue([{ ...remote, protocol: 'didcomm-v2' }]);
+      await expect(resolve()).rejects.toThrow(
+        'A completed DIDComm v1 handshake is required',
+      );
+      expect(mockReconcile).not.toHaveBeenCalled();
+    });
+
+    it('rejects a missing external ID after a concurrent reconciliation result', async () => {
+      mockReconcile.mockResolvedValue({
+        ...mockConnection,
+        state: ConnectionState.COMPLETED,
+        externalConnectionId: null,
+      });
+      await expect(resolve()).rejects.toThrow(
+        'Connection handshake is not complete',
+      );
+    });
   });
 
   describe('create', () => {
