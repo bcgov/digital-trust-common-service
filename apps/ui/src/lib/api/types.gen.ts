@@ -408,7 +408,8 @@ export interface paths {
          * Remove user from tenant
          * @description Only an owner may remove a row that holds the `owner` role; an admin doing so
          *     gets a 403. An active administrator may remove themselves when another active
-         *     administrator remains. Owners are also subject to the last-owner safeguard.
+         *     administrator remains. Removing an active owner requires another active owner
+         *     to remain.
          */
         delete: operations["removeTenantUser"];
         options?: never;
@@ -417,9 +418,10 @@ export interface paths {
          * Update user role
          * @description Only an owner may grant the `owner` role or modify a row that already holds
          *     it; an admin doing either gets a 403. An active administrator may change
-         *     their own role when another active administrator remains. Owners are also
-         *     subject to the last-owner safeguard. Updates that would remove the tenant's
-         *     last active administrator, or change the role of its last owner, return 409.
+         *     their own role when another active administrator remains. Demoting or
+         *     disabling an active owner requires another active owner to remain.
+         *     Updates that would remove the tenant's last active administrator or owner,
+         *     or change the role of its last owner, return 409.
          */
         patch: operations["updateTenantUser"];
         trace?: never;
@@ -3149,7 +3151,7 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
-            /** @description Cannot remove the tenant's last active administrator or its last owner */
+            /** @description Cannot remove the tenant's last active administrator or active owner, or remove the tenant's last owner */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -3196,7 +3198,7 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
-            /** @description Cannot remove the tenant's last active administrator or change the role of its last owner */
+            /** @description Cannot remove the tenant's last active administrator or owner, disable or demote its last active owner, or change the role of its last owner */
             409: {
                 headers: {
                     [name: string]: unknown;

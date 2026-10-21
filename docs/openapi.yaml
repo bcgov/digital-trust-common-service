@@ -904,9 +904,10 @@ paths:
       description: |
         Only an owner may grant the `owner` role or modify a row that already holds
         it; an admin doing either gets a 403. An active administrator may change
-        their own role when another active administrator remains. Owners are also
-        subject to the last-owner safeguard. Updates that would remove the tenant's
-        last active administrator, or change the role of its last owner, return 409.
+        their own role when another active administrator remains. Demoting or
+        disabling an active owner requires another active owner to remain.
+        Updates that would remove the tenant's last active administrator or owner,
+        or change the role of its last owner, return 409.
       tags: [Tenant Users]
       requestBody:
         required: true
@@ -940,8 +941,8 @@ paths:
           $ref: "#/components/responses/NotFound"
         "409":
           description: >-
-            Cannot remove the tenant's last active administrator or change the
-            role of its last owner
+            Cannot remove the tenant's last active administrator or owner, disable
+            or demote its last active owner, or change the role of its last owner
           content:
             application/json:
               schema:
@@ -952,7 +953,8 @@ paths:
       description: |
         Only an owner may remove a row that holds the `owner` role; an admin doing so
         gets a 403. An active administrator may remove themselves when another active
-        administrator remains. Owners are also subject to the last-owner safeguard.
+        administrator remains. Removing an active owner requires another active owner
+        to remain.
       tags: [Tenant Users]
       responses:
         "204":
@@ -965,7 +967,8 @@ paths:
           $ref: "#/components/responses/NotFound"
         "409":
           description: >-
-            Cannot remove the tenant's last active administrator or its last owner
+            Cannot remove the tenant's last active administrator or active owner, or
+            remove the tenant's last owner
           content:
             application/json:
               schema:

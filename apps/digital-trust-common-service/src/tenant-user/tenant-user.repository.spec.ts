@@ -99,6 +99,18 @@ describe('TenantUserRepository', () => {
     });
   });
 
+  it('counts only active owners for a tenant', async () => {
+    await repository.countActiveOwnersByTenant('tenant-id');
+
+    expect(count).toHaveBeenCalledWith({
+      where: {
+        tenantId: 'tenant-id',
+        role: TenantUserRole.OWNER,
+        status: TenantUserStatus.ACTIVE,
+      },
+    });
+  });
+
   it('applies a case-insensitive name/email search inside the tenant query', async () => {
     await repository.findPageForTenant('tenant-id', {
       limit: 10,

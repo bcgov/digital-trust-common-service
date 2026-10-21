@@ -60,6 +60,20 @@ export class TenantUserRepository {
     });
   }
 
+  public async countActiveOwnersByTenant(
+    tenantId: string,
+    manager?: EntityManager,
+  ): Promise<number> {
+    const repo = manager ? manager.getRepository(TenantUser) : this.repository;
+    return await repo.count({
+      where: {
+        tenantId,
+        role: TenantUserRole.OWNER,
+        status: TenantUserStatus.ACTIVE,
+      },
+    });
+  }
+
   public async countActiveAdministratorsByTenant(
     tenantId: string,
     manager?: EntityManager,

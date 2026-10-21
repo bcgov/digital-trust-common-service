@@ -152,7 +152,7 @@ export class TenantUserController {
   @ApiOperation({
     summary: 'Update user role',
     description:
-      "Only an owner may grant the owner role or change an owner's row. An active administrator may change their own role when another active administrator remains; owners are also subject to the last-owner safeguard.",
+      "Only an owner may grant the owner role or change an owner's row. An active administrator may change their own role when another active administrator remains. Demoting or disabling an active owner requires another active owner to remain.",
   })
   @ApiOkResponse({
     description: 'Tenant user updated successfully',
@@ -161,7 +161,7 @@ export class TenantUserController {
   @ApiNotFoundResponse({ description: 'Tenant user not found' })
   @ApiConflictResponse({
     description:
-      "Cannot remove the tenant's last active administrator or change the role of its last owner",
+      "Cannot remove the tenant's last active administrator or owner, disable/demote its last active owner, or change the role of its last owner",
   })
   @ApiForbiddenResponse({
     description:
@@ -207,13 +207,13 @@ export class TenantUserController {
   @ApiOperation({
     summary: 'Remove user from tenant',
     description:
-      'Only an owner may remove another owner. An active administrator may remove themselves when another active administrator remains; owners are also subject to the last-owner safeguard.',
+      'Only an owner may remove another owner. An active administrator may remove themselves when another active administrator remains. Removing an active owner requires another active owner to remain.',
   })
   @ApiNoContentResponse({ description: 'Tenant user deleted successfully' })
   @ApiNotFoundResponse({ description: 'Tenant user not found' })
   @ApiConflictResponse({
     description:
-      "Cannot remove the tenant's last active administrator or its last owner",
+      "Cannot remove the tenant's last active administrator or active owner, or remove the tenant's last owner",
   })
   @ApiForbiddenResponse({
     description:

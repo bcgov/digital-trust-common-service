@@ -168,17 +168,16 @@ export class TenantUserService {
           await this.tenantUserRepository.countActiveAdministratorsByTenant(
             tenantId,
           );
-        const ownerCount =
+        const activeOwnerCount =
           caller.role === TenantUserRole.OWNER
-            ? await this.tenantUserRepository.countByTenantAndRole(
+            ? await this.tenantUserRepository.countActiveOwnersByTenant(
                 tenantId,
-                TenantUserRole.OWNER,
               )
             : undefined;
 
         selfActionsAllowed =
           administratorCount > 1 &&
-          (ownerCount === undefined || ownerCount > 1);
+          (activeOwnerCount === undefined || activeOwnerCount > 1);
       }
     }
 
@@ -327,6 +326,26 @@ export class TenantUserService {
         }
       }
 
+      const losesActiveOwnerAccess =
+        tenantUser.status === TenantUserStatus.ACTIVE &&
+        tenantUser.role === TenantUserRole.OWNER &&
+        ((dto.role !== undefined && dto.role !== TenantUserRole.OWNER) ||
+          (dto.status !== undefined && dto.status !== TenantUserStatus.ACTIVE));
+
+      if (losesActiveOwnerAccess) {
+        const activeOwnerCount =
+          await this.tenantUserRepository.countActiveOwnersByTenant(
+            tenantId,
+            manager,
+          );
+
+        if (activeOwnerCount <= 1) {
+          throw new ConflictException(
+            "Cannot change access for the tenant's last active owner.",
+          );
+        }
+      }
+
       const losesAdministratorAccess =
         tenantUser.status === TenantUserStatus.ACTIVE &&
         this.isAdministrator(tenantUser.role) &&
@@ -437,6 +456,20 @@ export class TenantUserService {
             throw new ConflictException(
               "Cannot remove the tenant's last owner.",
             );
+          }
+
+          if (tenantUser.status === TenantUserStatus.ACTIVE) {
+            const activeOwnerCount =
+              await this.tenantUserRepository.countActiveOwnersByTenant(
+                tenantId,
+                manager,
+              );
+
+            if (activeOwnerCount <= 1) {
+              throw new ConflictException(
+                "Cannot remove the tenant's last active owner.",
+              );
+            }
           }
         }
 

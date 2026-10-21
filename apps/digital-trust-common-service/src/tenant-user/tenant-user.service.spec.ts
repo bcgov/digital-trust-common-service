@@ -28,6 +28,7 @@ describe('TenantUserService', () => {
   let mockFindById: jest.Mock;
   let mockFindByTenantAndId: jest.Mock;
   let mockCountActiveAdministratorsByTenant: jest.Mock;
+  let mockCountActiveOwnersByTenant: jest.Mock;
   let mockFindTenantByIdForUpdate: jest.Mock;
   let mockCountByTenantAndRole: jest.Mock;
   let mockFindPageForTenant: jest.Mock;
@@ -75,6 +76,7 @@ describe('TenantUserService', () => {
     mockFindById = jest.fn();
     mockFindByTenantAndId = jest.fn();
     mockCountActiveAdministratorsByTenant = jest.fn().mockResolvedValue(2);
+    mockCountActiveOwnersByTenant = jest.fn().mockResolvedValue(2);
     mockFindTenantByIdForUpdate = jest.fn().mockResolvedValue({
       id: mockTenantUser.tenantId,
     });
@@ -100,6 +102,7 @@ describe('TenantUserService', () => {
       findById: mockFindById,
       findByTenantAndId: mockFindByTenantAndId,
       countActiveAdministratorsByTenant: mockCountActiveAdministratorsByTenant,
+      countActiveOwnersByTenant: mockCountActiveOwnersByTenant,
       countByTenantAndRole: mockCountByTenantAndRole,
       findPageForTenant: mockFindPageForTenant,
       findByExternalUserId: mockFindByExternalUserId,
@@ -442,15 +445,12 @@ describe('TenantUserService', () => {
       });
       mockFindByTenantAndId.mockResolvedValue(ownerCaller);
       mockCountActiveAdministratorsByTenant.mockResolvedValue(2);
-      mockCountByTenantAndRole.mockResolvedValue(1);
+      mockCountActiveOwnersByTenant.mockResolvedValue(1);
 
       const result = await service.list(tenantId, {}, ownerCaller);
 
       expect(result.self_actions_allowed).toBe(false);
-      expect(mockCountByTenantAndRole).toHaveBeenCalledWith(
-        tenantId,
-        TenantUserRole.OWNER,
-      );
+      expect(mockCountActiveOwnersByTenant).toHaveBeenCalledWith(tenantId);
     });
 
     it('should encode a next_cursor when there is more data', async () => {
@@ -823,6 +823,52 @@ describe('TenantUserService', () => {
       expect(mockEmit).not.toHaveBeenCalled();
     });
 
+    it('prevents disabling the last active owner while another administrator remains', async () => {
+      const tenantId = ownerCaller.tenantId;
+      mockFindByTenantAndId.mockResolvedValue({ ...ownerCaller });
+      mockCountActiveAdministratorsByTenant.mockResolvedValue(2);
+      mockCountActiveOwnersByTenant.mockResolvedValue(1);
+
+      await expect(
+        service.update(
+          tenantId,
+          ownerCaller.id,
+          { status: TenantUserStatus.DISABLED },
+        ),
+      ).rejects.toThrow(ConflictException);
+
+      expect(mockCountActiveOwnersByTenant).toHaveBeenCalledWith(
+        tenantId,
+        transactionManager,
+      );
+      expect(mockUpdate).not.toHaveBeenCalled();
+      expect(mockEmit).not.toHaveBeenCalled();
+    });
+
+    it('allows disabling an active owner when another active owner remains', async () => {
+      const tenantId = ownerCaller.tenantId;
+      const updatedOwner = {
+        ...ownerCaller,
+        status: TenantUserStatus.DISABLED,
+      };
+      mockFindByTenantAndId.mockResolvedValue({ ...ownerCaller });
+      mockCountActiveAdministratorsByTenant.mockResolvedValue(2);
+      mockCountActiveOwnersByTenant.mockResolvedValue(2);
+      mockUpdate.mockResolvedValue(updatedOwner);
+
+      await service.update(
+        tenantId,
+        ownerCaller.id,
+        { status: TenantUserStatus.DISABLED },
+      );
+
+      expect(mockCountActiveOwnersByTenant).toHaveBeenCalledWith(
+        tenantId,
+        transactionManager,
+      );
+      expect(mockUpdate).toHaveBeenCalledWith(updatedOwner, transactionManager);
+    });
+
     it('allows a caller to update their own non-role fields', async () => {
       const tenantId = adminCaller.tenantId;
       const dto = { displayName: 'My New Name' };
@@ -957,6 +1003,10 @@ describe('TenantUserService', () => {
       expect(mockCountByTenantAndRole).toHaveBeenCalledWith(
         tenantId,
         TenantUserRole.OWNER,
+        transactionManager,
+      );
+      expect(mockCountActiveOwnersByTenant).toHaveBeenCalledWith(
+        tenantId,
         transactionManager,
       );
       expect(mockUpdate).toHaveBeenCalled();
@@ -1103,6 +1153,10 @@ describe('TenantUserService', () => {
       expect(mockCountByTenantAndRole).toHaveBeenCalledWith(
         tenantId,
         TenantUserRole.OWNER,
+        transactionManager,
+      );
+      expect(mockCountActiveOwnersByTenant).toHaveBeenCalledWith(
+        tenantId,
         transactionManager,
       );
       expect(mockCountActiveAdministratorsByTenant).toHaveBeenCalledWith(
