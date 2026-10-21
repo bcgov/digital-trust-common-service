@@ -1504,8 +1504,16 @@ If webhook delivery is unavailable, call
 with the same scope. It returns HTTP 200 with the current operation, which may
 still be processing. It reads the saved exchange in its pinned wallet, verifies
 holder correlation, and reuses webhook state handling, including guarded
-transitions and durable notifications. It never resends an offer. Missing or
-inconsistent exchange correlation returns 409. Do not retry offer submission
+transitions and durable notifications. Existing-exchange observation verifies
+tenant, pinned connector, and holder identity without requiring an active
+handshake or reviving an abandoned connection. Legacy connector bindings are
+adopted only through an exact, unambiguous invitation match in that pinned
+connector. New offers still require a completed handshake. A newly observed
+connection establishment and its durable notification commit together; delayed
+or racing webhooks do not send a second establishment notification.
+Reconciliation never resends an offer. Missing backend exchange or holder records
+and inconsistent exchange correlation return 409; transient backend failures
+remain failures, not missing-record conflicts. Do not retry offer submission
 after an uncertain response. `issued` means the issuer sent the credential;
 verify backend `done`/holder receipt separately before claiming wallet delivery.
 Existing operation IDs remain unchanged; no local credential-exchange resource

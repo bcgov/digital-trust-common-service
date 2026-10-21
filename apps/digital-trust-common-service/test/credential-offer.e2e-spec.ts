@@ -7,6 +7,7 @@ import {
   ExecutionContext,
   INestApplication,
 } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import request from 'supertest';
@@ -24,6 +25,7 @@ import {
   ConnectionState,
   ConnectorType,
 } from '../src/connection/connection.entity';
+import { ConnectionService } from '../src/connection/connection.service';
 import { ConnectorCredential } from '../src/connector-credential/connector-credential.entity';
 import { Credential } from '../src/credential/credential.entity';
 import {
@@ -31,7 +33,10 @@ import {
   CredentialDefinitionConnectorType,
   CredentialDefinitionFormat,
 } from '../src/credential-definition/credential-definition.entity';
-import { Operation } from '../src/operation/operation.entity';
+import { JobsService } from '../src/jobs/jobs.service';
+import { OPERATION_TYPE } from '../src/operation/operation-type.constants';
+import { Operation, OperationState } from '../src/operation/operation.entity';
+import { ProtocolStateChangeService } from '../src/protocol-state-change/protocol-state-change.service';
 import { Tenant } from '../src/tenant/tenant.entity';
 import { TractionHttpClient } from '../src/traction/traction-http-client.service';
 import { TractionTokenManager } from '../src/traction/traction-token-manager.service';
@@ -40,7 +45,9 @@ import { TractionAdapter } from '../src/traction/traction.adapter';
 const mockBoss = {
   start: jest.fn().mockResolvedValue(undefined),
   stop: jest.fn().mockResolvedValue(undefined),
-  send: jest.fn().mockResolvedValue(undefined),
+  send: jest
+    .fn<Promise<void>, [string, { event?: string }]>()
+    .mockResolvedValue(undefined),
   createQueue: jest.fn().mockResolvedValue(undefined),
   schedule: jest.fn().mockResolvedValue(undefined),
   work: jest.fn().mockResolvedValue(undefined),
@@ -364,6 +371,213 @@ describe('Credential offer (e2e)', () => {
     }
   });
 
+  it.each(['reconcile-first', 'webhook-first', 'race', 'completed-first'])(
+    'notifies establishment exactly once across %s arrival',
+    async (order) => {
+      prepareBackend();
+      await connectionRepo.update(connection.id, {
+        state: ConnectionState.INVITED,
+        connectorId: null,
+        metadata: { invitationId: `invitation-${tenant.id}` },
+      });
+      await operationRepo.save({
+        tenantId: tenant.id,
+        type: OPERATION_TYPE.CONNECTION_CREATE,
+        state: OperationState.PROCESSING,
+        externalId: connection.externalConnectionId,
+        request: { method: 'POST', path: '/connections', body: {} },
+        expiresAt: new Date(Date.now() + 60000),
+      });
+      const emit = jest.spyOn(app.get(EventEmitter2), 'emit');
+      const reconcile = () =>
+        app
+          .get(ConnectionService)
+          .resolveForIssuance(
+            tenant.id,
+            connection.id,
+            connection.connectorId!,
+          );
+      const webhook = () =>
+        app.get(ProtocolStateChangeService).process({
+          tenantId: tenant.id,
+          topic: 'connections',
+          externalId: connection.externalConnectionId!,
+          protocolState: order === 'completed-first' ? 'completed' : 'active',
+          payload: { invitation_msg_id: `invitation-${tenant.id}` },
+        });
+      try {
+        if (order === 'race') await Promise.all([reconcile(), webhook()]);
+        else if (order === 'reconcile-first') {
+          await reconcile();
+          await webhook();
+        } else {
+          await webhook();
+          await reconcile();
+        }
+        await webhook();
+        await reconcile();
+        expect(
+          mockBoss.send.mock.calls.filter(
+            ([queue, payload]) =>
+              queue === 'webhook.dispatch' &&
+              payload.event === 'connection.established',
+          ),
+        ).toHaveLength(1);
+        expect(
+          emit.mock.calls.filter(
+            ([event]) => event === 'connection.established',
+          ),
+        ).toHaveLength(1);
+        expect(
+          (await connectionRepo.findOneByOrFail({ id: connection.id })).state,
+        ).toBe(ConnectionState.COMPLETED);
+      } finally {
+        emit.mockRestore();
+      }
+    },
+  );
+
+  it('rolls the connection transition back when its durable notification fails', async () => {
+    prepareBackend();
+    await connectionRepo.update(connection.id, {
+      state: ConnectionState.INVITED,
+    });
+    const enqueue = jest
+      .spyOn(app.get(JobsService), 'sendInTransaction')
+      .mockRejectedValueOnce(new Error('notification unavailable'));
+    const emit = jest.spyOn(app.get(EventEmitter2), 'emit');
+    try {
+      await expect(
+        app
+          .get(ConnectionService)
+          .resolveForIssuance(
+            tenant.id,
+            connection.id,
+            connection.connectorId!,
+          ),
+      ).rejects.toThrow('notification unavailable');
+      expect(
+        (await connectionRepo.findOneByOrFail({ id: connection.id })).state,
+      ).toBe(ConnectionState.INVITED);
+      expect(
+        emit.mock.calls.filter(([event]) => event === 'connection.established'),
+      ).toHaveLength(0);
+    } finally {
+      enqueue.mockRestore();
+      emit.mockRestore();
+    }
+  });
+
+  it.each(['credential_issued', 'abandoned'])(
+    'reconciles %s after local and remote holder abandonment without allowing new offers',
+    async (state) => {
+      prepareBackend(state);
+      const offered = await request(app.getHttpServer())
+        .post(`${API_BASE_PATH}/tenants/${tenant.id}/credentials/offer`)
+        .send(offerBody())
+        .expect(202);
+      const operationId = (offered.body as { id: string }).id;
+      await connectionRepo.update(connection.id, {
+        state: ConnectionState.ABANDONED,
+        connectorId: null,
+        metadata: { invitationId: `invitation-${tenant.id}` },
+      });
+      const original = backendRequest.getMockImplementation()!;
+      backendRequest.mockImplementation((config, retry) => {
+        if (config.url.endsWith('/connections')) {
+          return Promise.resolve({
+            data: {
+              results: [
+                {
+                  connection_id: connection.externalConnectionId,
+                  invitation_msg_id: `invitation-${tenant.id}`,
+                  state: 'error',
+                },
+              ],
+            },
+          });
+        }
+        if (config.url.includes('/connections/')) {
+          return Promise.resolve({
+            data: {
+              connection_id: connection.externalConnectionId,
+              state: 'error',
+            },
+          });
+        }
+        return original(config, retry);
+      });
+      mockBoss.send.mockClear();
+      await request(app.getHttpServer())
+        .post(
+          `${API_BASE_PATH}/tenants/${tenant.id}/credentials/offer/${operationId}/reconcile`,
+        )
+        .expect(200)
+        .expect(({ body }: { body: { state: string } }) => {
+          expect(body.state).toBe(
+            state === 'abandoned' ? 'failed' : 'completed',
+          );
+        });
+      expect(
+        await connectionRepo.findOneByOrFail({ id: connection.id }),
+      ).toMatchObject({
+        state: ConnectionState.ABANDONED,
+        connectorId: connection.connectorId,
+      });
+      expect(
+        mockBoss.send.mock.calls.filter(
+          ([queue, payload]) =>
+            queue === 'webhook.dispatch' &&
+            payload.event ===
+              (state === 'abandoned'
+                ? 'credential.rejected'
+                : 'credential.issued'),
+        ),
+      ).toHaveLength(1);
+      await request(app.getHttpServer())
+        .post(`${API_BASE_PATH}/tenants/${tenant.id}/credentials/offer`)
+        .send(offerBody())
+        .expect(409);
+      expect(
+        backendRequest.mock.calls.filter(
+          ([config]) => config.method === 'POST',
+        ),
+      ).toHaveLength(1);
+    },
+  );
+
+  it.each(['/records/', '/connections/'])(
+    'returns 409 for a missing backend correlation at %s and never resends',
+    async (path) => {
+      prepareBackend();
+      const offered = await request(app.getHttpServer())
+        .post(`${API_BASE_PATH}/tenants/${tenant.id}/credentials/offer`)
+        .send(offerBody())
+        .expect(202);
+      const operationId = (offered.body as { id: string }).id;
+      const original = backendRequest.getMockImplementation()!;
+      backendRequest.mockImplementation((config, retry) =>
+        config.url.includes(path)
+          ? Promise.reject(
+              Object.assign(new Error('record deleted'), {
+                isAxiosError: true,
+                response: { status: 404 },
+              }),
+            )
+          : original(config, retry),
+      );
+      await request(app.getHttpServer())
+        .post(
+          `${API_BASE_PATH}/tenants/${tenant.id}/credentials/offer/${operationId}/reconcile`,
+        )
+        .expect(409);
+      expect(
+        backendRequest.mock.calls.filter(
+          ([config]) => config.method === 'POST',
+        ),
+      ).toHaveLength(1);
+    },
+  );
   it.each([ConnectionState.INVITED, ConnectionState.ABANDONED])(
     'adopts an exactly matched legacy invitation without reviving %s connections',
     async (state) => {

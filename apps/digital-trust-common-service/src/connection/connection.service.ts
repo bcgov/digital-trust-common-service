@@ -1,11 +1,13 @@
 import type { AuthContext } from '@app/auth';
 import {
   type AgentAdapter,
+  BackendNotFoundError,
   ConnectionState as AdapterConnectionState,
   type Connection as AdapterConnection,
   type ConnectorContext,
   type Invitation,
 } from '@app/credential-ports';
+import { JOB_QUEUES } from '@app/pg-boss';
 import {
   BadRequestException,
   ConflictException,
@@ -13,6 +15,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import type { EntityManager } from 'typeorm';
 
 import { AdapterRegistry } from '../adapter-registry/adapter-registry.service';
@@ -24,6 +27,7 @@ import {
 } from '../common/assert-tenant-access';
 import { API_BASE_PATH } from '../common/constants/api-version.constants';
 import { decodeCursor, encodeCursor } from '../common/cursor-pagination';
+import { JobsService } from '../jobs/jobs.service';
 import { OPERATION_TYPE } from '../operation/operation-type.constants';
 import { Operation, OperationState } from '../operation/operation.entity';
 import { OperationService } from '../operation/operation.service';
@@ -118,6 +122,8 @@ export class ConnectionService {
     private readonly domainAudit: DomainAuditService,
     private readonly adapterRegistry: AdapterRegistry,
     private readonly operationService: OperationService,
+    private readonly jobsService: JobsService,
+    private readonly eventEmitter: EventEmitter2,
   ) {}
 
   /**
@@ -344,6 +350,97 @@ export class ConnectionService {
     id: string,
     selectedConnectorId?: string,
   ): Promise<Connection> {
+    const { connection, remote, connectorId } =
+      await this.resolveRemoteIdentity(tenantId, id, selectedConnectorId);
+    if (
+      ![
+        AdapterConnectionState.Active,
+        AdapterConnectionState.Completed,
+      ].includes(remote.state)
+    ) {
+      throw new ConflictException(
+        'A completed DIDComm v1 handshake is required',
+      );
+    }
+    const state = mapAdapterConnectionState(remote.state);
+    let established = false;
+    const updated = await this.connectionRepository.reconcile(
+      tenantId,
+      id,
+      connectorId,
+      { ...remote, state },
+      connectionStatesBelow(state),
+      async (manager) => {
+        await this.jobsService.sendInTransaction(
+          manager,
+          JOB_QUEUES.WEBHOOK_DISPATCH,
+          {
+            tenantId,
+            event: 'connection.established',
+            resourceId: remote.id,
+            occurredAt: new Date().toISOString(),
+          },
+        );
+        established = true;
+      },
+    );
+    if (!updated) {
+      throw new ConflictException(
+        'Connection binding changed during reconciliation',
+      );
+    }
+    if (established) {
+      this.eventEmitter.emit('connection.established', {
+        tenantId,
+        externalId: remote.id,
+      });
+    }
+    await this.domainAudit.emit({
+      tenantId,
+      action: AuditAction.UPDATE,
+      resourceType: 'connection',
+      resourceId: connection.id,
+    });
+    return updated;
+  }
+
+  public async resolveIdentity(
+    tenantId: string,
+    id: string,
+    connectorId: string,
+  ): Promise<Connection> {
+    const { connection, remote } = await this.resolveRemoteIdentity(
+      tenantId,
+      id,
+      connectorId,
+    );
+    if (connection.connectorId && connection.externalConnectionId) {
+      return connection;
+    }
+    const adopted = await this.connectionRepository.reconcile(
+      tenantId,
+      id,
+      connectorId,
+      { ...remote, state: connection.state },
+      [],
+    );
+    if (!adopted) {
+      throw new ConflictException(
+        'Connection binding changed during reconciliation',
+      );
+    }
+    return adopted;
+  }
+
+  private async resolveRemoteIdentity(
+    tenantId: string,
+    id: string,
+    selectedConnectorId?: string,
+  ): Promise<{
+    connection: Connection;
+    remote: AdapterConnection;
+    connectorId: string;
+  }> {
     const connection = await this.connectionRepository.findByIdForTenant(
       tenantId,
       id,
@@ -376,7 +473,17 @@ export class ConnectionService {
     );
     let remote: AdapterConnection | undefined;
     if (connection.externalConnectionId && connection.connectorId) {
-      remote = await adapter.getById(context, connection.externalConnectionId);
+      try {
+        remote = await adapter.getById(
+          context,
+          connection.externalConnectionId,
+        );
+      } catch (error) {
+        if (error instanceof BackendNotFoundError) {
+          throw new ConflictException('Backend connection was not found');
+        }
+        throw error;
+      }
       if (remote.id !== connection.externalConnectionId) {
         throw new ConflictException('Backend returned a different connection');
       }
@@ -417,37 +524,12 @@ export class ConnectionService {
         );
       }
     }
-    if (
-      remote.protocol !== 'didcomm-v1' ||
-      ![
-        AdapterConnectionState.Active,
-        AdapterConnectionState.Completed,
-      ].includes(remote.state)
-    ) {
+    if (remote.protocol !== 'didcomm-v1') {
       throw new ConflictException(
         'A completed DIDComm v1 handshake is required',
       );
     }
-    const state = mapAdapterConnectionState(remote.state);
-    const updated = await this.connectionRepository.reconcile(
-      tenantId,
-      id,
-      connectorId,
-      { ...remote, state },
-      connectionStatesBelow(state),
-    );
-    if (!updated) {
-      throw new ConflictException(
-        'Connection binding changed during reconciliation',
-      );
-    }
-    await this.domainAudit.emit({
-      tenantId,
-      action: AuditAction.UPDATE,
-      resourceType: 'connection',
-      resourceId: id,
-    });
-    return updated;
+    return { connection, remote, connectorId };
   }
 
   /**

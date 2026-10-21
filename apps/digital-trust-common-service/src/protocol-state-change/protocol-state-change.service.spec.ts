@@ -574,6 +574,9 @@ describe('ProtocolStateChangeService', () => {
     connectionService.findByExternalConnectionIdForTenant.mockResolvedValue(
       connection({ state: ConnectionState.ACTIVE }),
     );
+    connectionService.applyProtocolStateIfForward
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(connection({ state: ConnectionState.COMPLETED }));
 
     await service.process(
       baseData({ topic: 'connections', protocolState: 'completed' }),
@@ -591,6 +594,35 @@ describe('ProtocolStateChangeService', () => {
       'webhook.dispatch',
       expect.objectContaining({ event: 'connections.completed' }),
     );
+  });
+
+  it('emits establishment when a completed webhook skips the active observation', async () => {
+    connectionService.findByExternalConnectionIdForTenant.mockResolvedValue(
+      connection(),
+    );
+    await service.process(
+      baseData({ topic: 'connections', protocolState: 'completed' }),
+    );
+    expect(eventEmitter.emit).toHaveBeenCalledWith('connection.established', {
+      tenantId: TENANT_ID,
+      externalId: 'ext-1',
+    });
+  });
+
+  it('does not repeat establishment when only the invitation operation wins after reconciliation', async () => {
+    operationRepository.findByExternalIdForTenant.mockResolvedValue(
+      operation(),
+    );
+    connectionService.findByExternalConnectionIdForTenant.mockResolvedValue(
+      connection({ state: ConnectionState.COMPLETED }),
+    );
+    connectionService.applyProtocolStateIfForward.mockResolvedValue(null);
+    await service.process(
+      baseData({ topic: 'connections', protocolState: 'active' }),
+    );
+    expect(operationService.transitionStateIfForward).toHaveBeenCalled();
+    expect(jobsService.sendInTransaction).not.toHaveBeenCalled();
+    expect(eventEmitter.emit).not.toHaveBeenCalled();
   });
 
   it('does not regress an already-active connection', async () => {
