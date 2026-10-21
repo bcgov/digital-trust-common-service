@@ -22,6 +22,15 @@ export class OperationResponseDto {
   })
   public id!: string;
 
+  @Expose({ name: 'exchange_id' })
+  @ApiPropertyOptional({
+    name: 'exchange_id',
+    description:
+      'Stable local credential exchange ID; backend IDs remain internal',
+    format: 'uuid',
+  })
+  declare public exchangeId?: string;
+
   @Expose({ name: 'batch_id' })
   @ApiProperty({
     name: 'batch_id',
@@ -88,12 +97,20 @@ export class OperationResponseDto {
   public static fromEntity(operation: Operation): OperationResponseDto {
     const dto = new OperationResponseDto();
     dto.id = operation.id;
+    if (operation.exchangeId) dto.exchangeId = operation.exchangeId;
     dto.batchId = operation.batchId ?? null;
     dto.type = operation.type;
     dto.state = operation.state;
     dto.createdAt = operation.createdAt;
     dto.updatedAt = operation.updatedAt;
     dto.result = operation.result ?? null;
+    if (
+      operation.exchangeId &&
+      operation.result &&
+      operation.state === OperationState.COMPLETED
+    ) {
+      dto.result = { exchange_id: operation.exchangeId };
+    }
     if (operation.type === OPERATION_TYPE.CREDENTIAL_DEFINITION_REGISTER) {
       const { problem_details: problem = null, ...result } =
         operation.result ?? {};

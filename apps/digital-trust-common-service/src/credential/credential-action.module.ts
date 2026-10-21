@@ -6,6 +6,8 @@ import { AdapterRegistryModule } from '../adapter-registry/adapter-registry.modu
 import { AuditLogModule } from '../audit-log/audit-log.module';
 import { ConnectionModule } from '../connection/connection.module';
 import { CredentialDefinitionModule } from '../credential-definition/credential-definition.module';
+import { CredentialExchangeController } from '../credential-exchange/credential-exchange.controller';
+import { CredentialExchangeService } from '../credential-exchange/credential-exchange.service';
 import { IssuanceProfileModule } from '../issuance-profile/issuance-profile.module';
 import { OperationModule } from '../operation/operation.module';
 import { ProtocolStateChangeModule } from '../protocol-state-change/protocol-state-change.module';
@@ -51,11 +53,13 @@ import { CredentialModule } from './credential.module';
     CredentialActionController,
     CredentialOfferController,
     CredentialRevokeController,
+    CredentialExchangeController,
   ],
   providers: [
     CredentialActionService,
     CredentialOfferService,
     CredentialRevokeService,
+    CredentialExchangeService,
   ],
 })
 export class CredentialActionModule {}

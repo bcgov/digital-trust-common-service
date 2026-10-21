@@ -26,6 +26,7 @@ export interface CreateOperationInput {
   request: OperationRequest;
   batchId?: string | null;
   externalId?: string | null;
+  exchangeId?: string | null;
 }
 
 @Injectable()
@@ -78,6 +79,7 @@ export class OperationService {
       request: input.request,
       batchId: input.batchId ?? null,
       externalId: input.externalId ?? null,
+      exchangeId: input.exchangeId ?? null,
       state: OperationState.PENDING,
       expiresAt: this.computeExpiresAt(
         OperationState.PENDING,
@@ -235,7 +237,7 @@ export class OperationService {
     manager?: EntityManager,
     externalId?: string | null,
   ): Promise<Operation | null> {
-    const operation = await this.operations.findById(id);
+    const operation = await this.operations.findById(id, manager);
 
     if (!operation) {
       throw new NotFoundException('Operation not found');

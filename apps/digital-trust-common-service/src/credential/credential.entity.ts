@@ -31,6 +31,10 @@ export enum CredentialState {
 @Index('idx_credential_connection_id', ['connectionId'])
 @Index('idx_credential_connector_id', ['connectorId'])
 export class Credential {
+  @ApiProperty({ description: 'Local credential exchange ID', nullable: true })
+  @Column({ name: 'exchange_id', type: 'uuid', nullable: true })
+  public exchangeId?: string | null;
+
   @ApiProperty({
     description: 'The unique identifier of the credential record',
     example: '123e4567-e89b-12d3-a456-426614174000',
