@@ -36,6 +36,8 @@ import { AddTenantUserPlatformOperator1790900000000 } from './migrations/000032_
 import { ExtendCredentialDefinitionRegistration1792018018010 } from './migrations/000033_extend-credential-definition-registration';
 import { AddCredentialDefinitionLifecycle1792713600000 } from './migrations/000034_add-credential-definition-lifecycle';
 import { BindConnectionsToConnectors1792502783893 } from './migrations/000035_bind-connections-to-connectors';
+import { CreateCredentialExchanges1792506949095 } from './migrations/000036_create-credential-exchanges';
+import { IndexExchangeIssueOperation1792543244948 } from './migrations/000037_index-exchange-issue-operation';
 import { RemoveIssuanceProfileDerivedFields1793377253689 } from './migrations/000036_remove-issuance-profile-derived-fields';
 import { ConsolidateCredentialDefinitionConnector1793383965371 } from './migrations/000037_consolidate-credential-definition-connector';
 import { AddConnectorAgentLogIdHash1793385084139 } from './migrations/000038_add-connector-agent-log-id-hash';
@@ -96,6 +98,8 @@ export const AppDataSource = new DataSource({
     AddConnectorAgentLogIdHash1793385084139,
     AddAuditReadAction1793733978162,
     BindConnectionsToConnectors1792502783893,
+    CreateCredentialExchanges1792506949095,
+    IndexExchangeIssueOperation1792543244948,
   ],
   ssl: buildSslConfig(
     process.env.DB_SSL,

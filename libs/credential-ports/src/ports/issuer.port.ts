@@ -7,6 +7,12 @@ import { ConnectorContext } from './connector-context';
  * Defines agent-agnostic issuer operations for credential offers and exchanges.
  */
 export abstract class IssuerPort {
+  /** Continues an existing holder-requested exchange; never creates an offer. */
+  public abstract issueCredential(
+    context: ConnectorContext,
+    id: string,
+  ): Promise<CredentialExchange>;
+
   /**
    * Sends a single offer request against the given connector and resolves to
    * the resulting credential exchange.

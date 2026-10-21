@@ -9,6 +9,7 @@ import { Connection, ConnectionState } from '../connection/connection.entity';
 import { ConnectionService } from '../connection/connection.service';
 import { Credential, CredentialState } from '../credential/credential.entity';
 import { CredentialRepository } from '../credential/credential.repository';
+import { CredentialExchangeRepository } from '../credential-exchange/credential-exchange.repository';
 import { JobsService } from '../jobs/jobs.service';
 import { OPERATION_TYPE } from '../operation/operation-type.constants';
 import { Operation, OperationState } from '../operation/operation.entity';
@@ -86,6 +87,9 @@ describe('ProtocolStateChangeService', () => {
   let credentialRepository: jest.Mocked<
     Pick<CredentialRepository, 'findByExternalId' | 'updateStateIfForward'>
   >;
+  let exchangeRepository: jest.Mocked<
+    Pick<CredentialExchangeRepository, 'observe'>
+  >;
   let connectionService: jest.Mocked<
     Pick<
       ConnectionService,
@@ -120,6 +124,7 @@ describe('ProtocolStateChangeService', () => {
       findByExternalId: jest.fn().mockResolvedValue(null),
       updateStateIfForward: jest.fn().mockResolvedValue(true),
     };
+    exchangeRepository = { observe: jest.fn().mockResolvedValue(undefined) };
     connectionService = {
       findByExternalConnectionIdForTenant: jest.fn().mockResolvedValue(null),
       findByInvitationMsgIdForTenant: jest.fn().mockResolvedValue(null),
@@ -146,6 +151,10 @@ describe('ProtocolStateChangeService', () => {
         { provide: OperationRepository, useValue: operationRepository },
         { provide: OperationService, useValue: operationService },
         { provide: CredentialRepository, useValue: credentialRepository },
+        {
+          provide: CredentialExchangeRepository,
+          useValue: exchangeRepository,
+        },
         { provide: ConnectionService, useValue: connectionService },
         { provide: JobsService, useValue: jobsService },
         { provide: DomainAuditService, useValue: domainAudit },
@@ -169,7 +178,7 @@ describe('ProtocolStateChangeService', () => {
 
   it('advances a credential to issued and completes its operation on credential-issued', async () => {
     const op = operation();
-    const cred = credential();
+    const cred = credential({ connectorId: 'connector-1' });
     operationRepository.findByExternalIdForTenant.mockResolvedValue(op);
     credentialRepository.findByExternalId.mockResolvedValue(cred);
 
@@ -194,6 +203,14 @@ describe('ProtocolStateChangeService', () => {
       credentialStatesBelow(CredentialState.ISSUED),
       { issuedAt: expect.any(Date), revokedAt: undefined },
       mockManager,
+    );
+    expect(exchangeRepository.observe).toHaveBeenCalledWith(
+      TENANT_ID,
+      cred.connectorId,
+      'ext-1',
+      'credential-issued',
+      mockManager,
+      undefined,
     );
     expect(domainAudit.emit).toHaveBeenCalledWith(
       {

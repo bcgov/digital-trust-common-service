@@ -69,8 +69,11 @@ export class OperationRepository {
   public findByIdForTenant(
     id: string,
     tenantId: string,
+    manager?: EntityManager,
   ): Promise<Operation | null> {
-    return this.repo.findOne({ where: { id, tenantId } });
+    return (manager?.getRepository(Operation) ?? this.repo).findOne({
+      where: { id, tenantId },
+    });
   }
 
   /**

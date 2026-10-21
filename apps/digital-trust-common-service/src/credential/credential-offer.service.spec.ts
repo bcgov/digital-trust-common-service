@@ -27,6 +27,7 @@ import {
   CredentialDefinitionConnectorType,
 } from '../credential-definition/credential-definition.entity';
 import { CredentialDefinitionRepository } from '../credential-definition/credential-definition.repository';
+import { CredentialExchangeRepository } from '../credential-exchange/credential-exchange.repository';
 import {
   IssuanceProfile,
   IssuanceProfileProtocolHint,
@@ -74,7 +75,9 @@ describe('CredentialOfferService', () => {
   let mockGetExchange: jest.Mock;
   let mockProtocolProcess: jest.Mock;
   let mockCredentialFindByExternalId: jest.Mock;
-  const mockManager = {} as EntityManager;
+  let mockExchangeObserve: jest.Mock;
+  const mockManagerUpdate = jest.fn();
+  const mockManager = { update: mockManagerUpdate } as unknown as EntityManager;
 
   const tenantId = '123e4567-e89b-12d3-a456-426614174001';
   const profileId = '123e4567-e89b-12d3-a456-426614174010';
@@ -187,6 +190,7 @@ describe('CredentialOfferService', () => {
     mockGetExchange = jest.fn();
     mockProtocolProcess = jest.fn().mockResolvedValue(undefined);
     mockCredentialFindByExternalId = jest.fn();
+    mockExchangeObserve = jest.fn().mockResolvedValue(undefined);
     mockUpdateStateIfForward = jest.fn().mockResolvedValue(true);
     mockSetExternalId = jest.fn().mockResolvedValue(undefined);
     mockCredentialDefinitionFindById = jest.fn();
@@ -216,6 +220,13 @@ describe('CredentialOfferService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         CredentialOfferService,
+        {
+          provide: CredentialExchangeRepository,
+          useValue: {
+            create: jest.fn().mockResolvedValue({ id: 'local-exchange' }),
+            observe: mockExchangeObserve,
+          },
+        },
         {
           provide: ConnectionService,
           useValue: {
@@ -1117,6 +1128,32 @@ describe('CredentialOfferService', () => {
       expect(mockEventEmit).not.toHaveBeenCalled();
       expect(result).toBe(alreadySettled);
     });
+
+    it('records the sent offer on its linked durable exchange', async () => {
+      mockCreateOperation.mockResolvedValue(
+        buildOperation({ exchangeId: 'local-exchange' }),
+      );
+      mockOfferCredential.mockResolvedValue({
+        id: 'exchange-1',
+        externalId,
+        state: CredentialExchangeState.OfferSent,
+        format: PortCredentialFormat.AnonCreds,
+        attributes: [],
+        createdAt: createdAt.toISOString(),
+        updatedAt: createdAt.toISOString(),
+      });
+
+      await service.offer(tenantId, buildDto());
+
+      expect(mockExchangeObserve).toHaveBeenCalledWith(
+        tenantId,
+        connectorId,
+        externalId,
+        CredentialExchangeState.OfferSent,
+        mockManager,
+        'local-exchange',
+      );
+    });
   });
 
   describe('adapter error handling', () => {
@@ -1160,6 +1197,26 @@ describe('CredentialOfferService', () => {
         }),
       );
       expect(result).toBe(failedOperation);
+    });
+
+    it('marks the linked durable exchange failed with the operation', async () => {
+      mockCreateOperation.mockResolvedValue(
+        buildOperation({ exchangeId: 'local-exchange' }),
+      );
+      mockOfferCredential.mockRejectedValue(
+        new TimeoutError('agent unreachable'),
+      );
+      mockTransitionStateIfForward.mockResolvedValue(
+        buildOperation({ state: OperationState.FAILED }),
+      );
+
+      await service.offer(tenantId, buildDto());
+
+      expect(mockManagerUpdate).toHaveBeenCalledWith(
+        'credential_exchange',
+        { id: 'local-exchange', tenantId },
+        { state: 'failed' },
+      );
     });
 
     it('propagates a non-adapter error from the adapter call untouched', async () => {

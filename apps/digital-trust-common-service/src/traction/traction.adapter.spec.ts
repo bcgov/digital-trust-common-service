@@ -168,6 +168,58 @@ describe('TractionAdapter', () => {
     );
   });
 
+  it('issues the retained exchange once with redirects and HTTP retries disabled', async () => {
+    mockRequest.mockResolvedValue({
+      data: {
+        cred_ex_record: {
+          cred_ex_id: 'exchange',
+          connection_id: 'connection',
+          state: 'credential_issued',
+        },
+      },
+    });
+    const context = {
+      tenantId: 'tenant',
+      connectorId: 'connector',
+      endpointUrl: 'https://traction.example.com',
+      credentials: {},
+    };
+    const issued = await adapter.issueCredential(context, 'exchange');
+    expect(mockGetToken).toHaveBeenCalledWith(context);
+    expect(mockRequest).toHaveBeenCalledTimes(1);
+    expect(mockRequest).toHaveBeenCalledWith(
+      expect.objectContaining({
+        method: 'POST',
+        url: 'https://traction.example.com/issue-credential-2.0/records/exchange/issue',
+        data: {},
+        maxRedirects: 0,
+        headers: expect.objectContaining({ Authorization: 'Bearer token-1' }),
+      }),
+      false,
+    );
+    expect(issued).toMatchObject({
+      id: 'exchange',
+      connectionId: 'connection',
+      state: 'credential-issued',
+    });
+  });
+
+  it('propagates uncertain issue errors without replaying the request', async () => {
+    mockRequest.mockRejectedValue(new TimeoutError('Response unavailable'));
+    await expect(
+      adapter.issueCredential(
+        {
+          tenantId: 'tenant',
+          connectorId: 'connector',
+          endpointUrl: 'https://traction.example.com',
+          credentials: {},
+        },
+        'exchange',
+      ),
+    ).rejects.toBeInstanceOf(TimeoutError);
+    expect(mockRequest).toHaveBeenCalledTimes(1);
+  });
+
   describe('offer and exchange validation', () => {
     const context = {
       tenantId: 'tenant',
