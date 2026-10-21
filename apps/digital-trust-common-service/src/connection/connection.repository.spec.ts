@@ -69,6 +69,18 @@ describe('ConnectionRepository', () => {
     });
   });
 
+  describe('findByIdForTenant', () => {
+    it('includes the tenant in the holder lookup and hides a foreign row', async () => {
+      (mockRepo.findOne as jest.Mock).mockResolvedValueOnce(null);
+      expect(
+        await repository.findByIdForTenant('tenant-1', 'foreign-holder'),
+      ).toBeNull();
+      expect(mockRepo.findOne).toHaveBeenCalledWith({
+        where: { id: 'foreign-holder', tenantId: 'tenant-1' },
+      });
+    });
+  });
+
   describe('reconcile', () => {
     const remote = { id: 'external-1', state: ConnectionState.COMPLETED };
     let row: Partial<Connection> | null;
