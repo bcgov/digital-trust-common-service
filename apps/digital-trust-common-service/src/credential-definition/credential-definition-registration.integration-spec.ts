@@ -19,6 +19,7 @@ import {
   CredentialDefinition,
   CredentialDefinitionFormat,
 } from './credential-definition.entity';
+import { CredentialDefinitionModule } from './credential-definition.module';
 import { CredentialDefinitionRepository } from './credential-definition.repository';
 import { CredentialDefinitionService } from './credential-definition.service';
 import { CreateCredentialDefinitionDto } from './dto/create-credential-definition.dto';
@@ -179,7 +180,10 @@ describe('credential definition registration (integration)', () => {
       tenantId: tenant.id,
       registrationOperationId: operation.id,
     });
-    const repository = app.get(CredentialDefinitionRepository);
+    // SeedModule registers its own CredentialDefinitionRepository instance.
+    const repository = app
+      .select(CredentialDefinitionModule)
+      .get(CredentialDefinitionRepository, { strict: true });
     const findById = repository.findById.bind(repository);
     const findByIdSpy = jest
       .spyOn(repository, 'findById')
@@ -208,6 +212,7 @@ describe('credential definition registration (integration)', () => {
         auth,
       );
 
+      expect(findByIdSpy).toHaveBeenCalledWith(row.id);
       expect(updated.name).toBe('Updated Employee');
       expect(updated.registration).toMatchObject({
         schemaSubmitted: true,
