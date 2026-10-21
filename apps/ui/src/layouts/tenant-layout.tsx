@@ -7,7 +7,7 @@ import {
   useParams,
 } from 'react-router';
 
-import { AccessDenied } from '@/components/access-denied';
+import { AccessDenied } from '@/components/common/access-denied';
 import { TenantStatusBadge } from '@/components/tenant/tenant-status-badge';
 import { Skeleton } from '@/components/common/skeleton';
 import { ApiError } from '@/lib/api/errors';

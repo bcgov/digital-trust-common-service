@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 
-import { Card, CardDescription, CardHeader } from '@/components/ui/card';
+import { Card, CardDescription, CardHeader } from '@/components/common/card';
 
 /**
  * Clear messaging for a route or section the caller's role/scope cannot use.

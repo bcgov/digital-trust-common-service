@@ -10,12 +10,6 @@ import { TenantUsersHeader } from '@/components/tenant-user/tenant-users-header'
 import { TenantUsersPagination } from '@/components/tenant-user/tenant-users-pagination';
 import { TenantUsersTable } from '@/components/tenant-user/tenant-users-table';
 import { Button } from '@/components/common/button';
-import {
-  Card,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/common/card';
 import { ApiError } from '@/lib/api/errors';
 import { useAuthTenants } from '@/lib/api/queries/auth';
 import { useTenantRoles } from '@/lib/api/queries/tenant-roles';
@@ -28,6 +22,7 @@ import {
   USERS_MANAGE_SCOPE,
 } from '@/lib/auth/scopes';
 import { useSwitchTenant } from '@/lib/tenant/active-tenant';
+import { AccessDenied } from '@/components/common/access-denied';
 
 const PAGE_SIZE = 10;
 
@@ -68,14 +63,11 @@ export function TenantUsersPage() {
   // users, not a failure; a 403 means the same thing from the API's side.
   if (!canManage || (error instanceof ApiError && error.status === 403)) {
     return (
-      <Card className="max-w-lg">
-        <CardHeader>
-          <CardTitle>Manage users</CardTitle>
-          <CardDescription>
-            You need the owner or admin role in this tenant to manage its users.
-          </CardDescription>
-        </CardHeader>
-      </Card>
+      <AccessDenied
+        title="Users"
+        headingLevel={2}
+        description="You need the owner or admin role in this tenant to manage its users."
+      />
     );
   }
 
