@@ -64,7 +64,8 @@ export class ConnectorCredentialController {
 
   @Post()
   @ApiCreatedResponse({
-    description: 'Connector registered',
+    description:
+      'Connector registered. The first connector for a tenant is set as its default connector.',
     type: ConnectorCredentialResponseDto,
   })
   @ApiUnprocessableEntityResponse({
@@ -130,6 +131,9 @@ export class ConnectorCredentialController {
     type: ConnectorCredentialResponseDto,
   })
   @ApiNotFoundResponse({ description: 'Connector not found' })
+  @ApiConflictResponse({
+    description: 'Connector changed during validation; retry the update',
+  })
   @ApiUnprocessableEntityResponse({
     description: 'Connectivity to the connector endpoint could not be verified',
   })
@@ -171,7 +175,8 @@ export class ConnectorCredentialController {
   @ApiNoContentResponse({ description: 'Connector removed' })
   @ApiNotFoundResponse({ description: 'Connector not found' })
   @ApiConflictResponse({
-    description: 'Active credential records still reference this connector',
+    description:
+      'Connector is the tenant default or credential records still reference it',
   })
   public async delete(
     @Param('tenantId', ParseUUIDPipe) tenantId: string,

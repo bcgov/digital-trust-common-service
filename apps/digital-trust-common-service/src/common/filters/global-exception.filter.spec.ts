@@ -1,5 +1,6 @@
 import { AuthenticationRequiredException } from '@app/auth';
 import { RequestContextService } from '@app/common/context/request-context.service';
+import { ConnectorSelectionAmbiguousError } from '@app/credential-ports';
 import {
   ArgumentsHost,
   ConflictException,
@@ -128,6 +129,35 @@ describe('GlobalExceptionFilter', () => {
         request_id: REQUEST_ID,
       },
     });
+  });
+
+  it('maps ambiguous connector selection to 409 while preserving its adapter error code', () => {
+    const { filter, requestContext } = buildFilter('production');
+    const { host, status, json } = buildHost();
+    const exception = new ConnectorSelectionAmbiguousError(
+      'Multiple active connectors are configured; set default_connector or select a connector explicitly.',
+      {
+        tenantId: 'tenant-1',
+        connectorCount: 2,
+      },
+    );
+
+    requestContext.run({ requestId: REQUEST_ID, source: 'api' }, () => {
+      filter.catch(exception, host);
+    });
+
+    expect(status).toHaveBeenCalledWith(409);
+    expect(json).toHaveBeenCalledWith({
+      error: {
+        code: 'CONNECTOR_SELECTION_AMBIGUOUS',
+        message: exception.message,
+        tenantId: 'tenant-1',
+        connectorCount: 2,
+        request_id: REQUEST_ID,
+      },
+    });
+    expect(warnSpy).toHaveBeenCalled();
+    expect(errorSpy).not.toHaveBeenCalled();
   });
 
   it('masks a non-HttpException as a generic 500 and logs the stack', () => {

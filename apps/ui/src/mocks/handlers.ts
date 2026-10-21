@@ -161,6 +161,10 @@ export const handlers = [
   // Bare array on purpose: mirrors the current (pre-envelope) implementation
   // so tests prove the client tolerates it.
   http.get(`${API_BASE_PATH}/tenants`, () => HttpResponse.json(mockTenants)),
+  http.post(`${API_BASE_PATH}/tenants`, async ({ request }) => {
+    const body = (await request.json()) as Partial<Tenant>;
+    return HttpResponse.json({ ...mockTenants[0], ...body }, { status: 201 });
+  }),
   http.get(`${API_BASE_PATH}/tenants/:id`, ({ params }) => {
     const tenant = mockTenants.find((t) => t.id === params.id);
     return tenant
@@ -177,6 +181,9 @@ export const handlers = [
       ),
   ),
   // Envelope: mirrors the spec shape, so both list shapes stay exercised.
+  http.get(`${API_BASE_PATH}/tenants/:id/connectors`, () =>
+    HttpResponse.json({ data: [] }),
+  ),
   http.get(`${API_BASE_PATH}/tenants/:id/connections`, ({ params }) =>
     HttpResponse.json({
       data: mockConnections.filter((c) => c.tenant_id === params.id),

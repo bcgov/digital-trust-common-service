@@ -970,7 +970,9 @@ paths:
               $ref: "#/components/schemas/CreateConnectorRequest"
       responses:
         "201":
-          description: Connector registered
+          description: >-
+            Connector registered. The first connector for a tenant is set as
+            its default connector.
           content:
             application/json:
               schema:
@@ -1854,6 +1856,16 @@ paths:
                 result:
                   invitation_url: "https://..."
                   connection_id: "uuid"
+        "409":
+          description: Connector selection is ambiguous for the tenant
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error:
+                  code: CONNECTOR_SELECTION_AMBIGUOUS
+                  message: Multiple active connectors are configured; set default_connector or select a connector explicitly.
     get:
       operationId: listConnections
       summary: List connections
@@ -3487,6 +3499,9 @@ components:
               type: string
             traction_tenant_id:
               type: string
+            webhook_secret:
+              type: string
+              description: Shared secret for inbound webhook callbacks
           required: [api_key]
 
     UpdateConnectorRequest:
@@ -3497,10 +3512,17 @@ components:
           format: uri
         credentials:
           type: object
-          description: New credentials (rotates existing)
+          description: >-
+            Credential fields to rotate. Omitted fields retain their current
+            values. Secrets are encrypted at rest and never returned.
           properties:
             api_key:
               type: string
+            traction_tenant_id:
+              type: string
+            webhook_secret:
+              type: string
+              description: Shared secret for inbound webhook callbacks
 
     # ─── Credential Definition ───────────────────────────────────────
     CredentialDefinition:

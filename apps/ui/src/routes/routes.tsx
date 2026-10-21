@@ -58,6 +58,13 @@ export const routes: RouteObject[] = [
                 ),
               },
               {
+                path: '/connectors',
+                lazy: lazyPage(
+                  () => import('@/pages/ConnectorsPage'),
+                  'ConnectorsPage',
+                ),
+              },
+              {
                 path: '/tenants/:tenantId',
                 lazy: lazyPage(
                   () => import('@/layouts/TenantLayout'),
@@ -108,20 +115,23 @@ export const routes: RouteObject[] = [
                 ],
               },
               {
-                // Drawer preview (#467) — remove when a real screen uses it.
-                path: '/drawer-demo',
-                lazy: lazyPage(
-                  () => import('@/pages/DrawerDemo'),
-                  'DrawerDemo',
-                ),
-              },
-              {
                 path: '/settings',
                 lazy: lazyPage(
                   () => import('@/pages/SettingsPage'),
                   'SettingsPage',
                 ),
               },
+              ...(import.meta.env.DEV
+                ? [
+                    {
+                      path: '/dev/dialogs',
+                      lazy: lazyPage(
+                        () => import('@/demo/DialogDemoPage'),
+                        'DialogDemoPage',
+                      ),
+                    },
+                  ]
+                : []),
             ],
           },
         ],

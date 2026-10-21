@@ -1,6 +1,7 @@
 import {
   AgentAdapter,
   ConnectorContext,
+  ConnectorSelectionAmbiguousError,
   ConnectorUnavailableError,
   CredentialFormat,
   FormatNotSupportedError,
@@ -300,11 +301,11 @@ export class AdapterRegistry {
     if (connectors.length > 1) {
       // The cause differs by path: filtered means several connectors share the
       // requested type, unfiltered means the tenant has no default configured.
-      throw new ConnectorUnavailableError(
+      throw new ConnectorSelectionAmbiguousError(
         connectorType
-          ? `Tenant '${tenantId}' has ${connectors.length} active connectors of type '${connectorType}'`
-          : `Tenant '${tenantId}' has ${connectors.length} active connectors and no default_connector configured`,
-        { tenantId, connectorType },
+          ? `Multiple active connectors of type '${connectorType}' are configured; select a connector explicitly.`
+          : 'Multiple active connectors are configured; set default_connector or select a connector explicitly.',
+        { tenantId, connectorType, connectorCount: connectors.length },
       );
     }
 

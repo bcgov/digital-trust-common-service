@@ -56,9 +56,19 @@ export class TenantRepository {
     return { items, nextCursor, hasMore };
   }
 
-  public findById(id: string): Promise<Tenant | null> {
-    return this.repo.findOne({
+  public findById(id: string, manager?: EntityManager): Promise<Tenant | null> {
+    return (manager?.getRepository(Tenant) ?? this.repo).findOne({
       where: { id },
+    });
+  }
+
+  public findByIdForUpdate(
+    id: string,
+    manager: EntityManager,
+  ): Promise<Tenant | null> {
+    return manager.getRepository(Tenant).findOne({
+      where: { id },
+      lock: { mode: 'pessimistic_write' },
     });
   }
 
@@ -78,6 +88,31 @@ export class TenantRepository {
 
   public update(entity: Tenant, manager?: EntityManager): Promise<Tenant> {
     return (manager ?? this.repo.manager).save(entity);
+  }
+
+  public async setDefaultConnectorIfUnset(
+    tenantId: string,
+    connectorId: string,
+    manager?: EntityManager,
+  ): Promise<Tenant | null> {
+    const result = await (manager?.getRepository(Tenant) ?? this.repo)
+      .createQueryBuilder()
+      .update(Tenant)
+      .set({
+        config: () =>
+          `jsonb_set(COALESCE(config, '{}'::jsonb), '{default_connector}', to_jsonb(CAST(:connectorId AS text)), true)`,
+      })
+      .where("id = :tenantId AND config->>'default_connector' IS NULL", {
+        tenantId,
+      })
+      .setParameter('connectorId', connectorId)
+      .execute();
+
+    if (!result.affected) {
+      return null;
+    }
+
+    return await this.findById(tenantId, manager);
   }
 
   public async delete(id: string): Promise<void> {

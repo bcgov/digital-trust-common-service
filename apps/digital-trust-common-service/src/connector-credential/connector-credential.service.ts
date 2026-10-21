@@ -13,6 +13,7 @@ import {
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
+import { EntityManager } from 'typeorm';
 
 import {
   assertResourceTenantOrNotFound,
@@ -27,7 +28,10 @@ import { TenantService } from '../tenant/tenant.service';
 import { TractionWebhookRegistrar } from '../traction/traction-webhook-registrar.service';
 
 import { ConnectorCredential } from './connector-credential.entity';
-import { ConnectorCredentialRepository } from './connector-credential.repository';
+import {
+  ConnectorCredentialRepository,
+  ConnectorDeletionResult,
+} from './connector-credential.repository';
 import { ConnectorHealthCheckService } from './connector-health-check.service';
 import {
   ConnectorCredentialsDto,
@@ -113,6 +117,12 @@ export class ConnectorCredentialService {
         }
       }
     }
+
+    await this.tenantService.setDefaultConnectorIfUnset(
+      tenantId,
+      credential.id,
+      auth,
+    );
 
     return credential;
   }
@@ -205,22 +215,32 @@ export class ConnectorCredentialService {
 
   private async lazyRotateKeyIfNeeded(
     credential: ConnectorCredential,
+    manager?: EntityManager,
   ): Promise<void> {
     if (this.encryptionService.requiresRotation(credential.keyVersion)) {
-      const decrypted = this.encryptionService.decrypt<ConnectorCredentialsDto>(
-        credential.credentialsEncrypted,
-        credential.keyVersion,
+      const rotated = await this.credentialRepository.updateWithLock(
+        credential.tenantId,
+        credential.id,
+        (current) => {
+          if (!this.encryptionService.requiresRotation(current.keyVersion)) {
+            return {};
+          }
+          const decrypted =
+            this.encryptionService.decrypt<ConnectorCredentialsDto>(
+              current.credentialsEncrypted,
+              current.keyVersion,
+            );
+          const encryptedCredentials =
+            this.encryptionService.encrypt(decrypted);
+          return {
+            credentialsEncrypted: encryptedCredentials.ciphertext,
+            keyVersion: encryptedCredentials.keyVersion,
+          };
+        },
+        manager,
       );
 
-      const encryptedCredentials = this.encryptionService.encrypt(decrypted);
-
-      credential.credentialsEncrypted = encryptedCredentials.ciphertext;
-      credential.keyVersion = encryptedCredentials.keyVersion;
-
-      await this.credentialRepository.update(credential.id, {
-        credentialsEncrypted: encryptedCredentials.ciphertext,
-        keyVersion: encryptedCredentials.keyVersion,
-      });
+      if (rotated) Object.assign(credential, rotated);
     }
   }
 
@@ -228,8 +248,15 @@ export class ConnectorCredentialService {
     tenantId: string,
     id: string,
     auth?: AuthContext,
+    manager?: EntityManager,
   ): Promise<ConnectorCredential> {
-    const credential = await this.credentialRepository.findById(id);
+    const credential = manager
+      ? await this.credentialRepository.findByTenantAndIdForUpdate(
+          tenantId,
+          id,
+          manager,
+        )
+      : await this.credentialRepository.findById(id);
     const notFound = `Connector credential with ID '${id}' was not found.`;
 
     if (!credential || credential.tenantId !== tenantId) {
@@ -237,7 +264,7 @@ export class ConnectorCredentialService {
     }
 
     assertResourceTenantOrNotFound(auth, credential.tenantId, notFound);
-    await this.lazyRotateKeyIfNeeded(credential);
+    await this.lazyRotateKeyIfNeeded(credential, manager);
 
     return credential;
   }
@@ -316,41 +343,84 @@ export class ConnectorCredentialService {
     dto: UpdateConnectorCredentialDto,
     auth: AuthContext,
   ): Promise<ConnectorCredential> {
-    const existing = await this.findById(tenantId, id, auth);
+    let snapshot = await this.findById(tenantId, id, auth);
 
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const updates = await this.buildCredentialUpdates(snapshot, dto);
+      let stale = false;
+      const updated = await this.credentialRepository.updateWithLock(
+        tenantId,
+        id,
+        (current) => {
+          stale =
+            current.endpointUrl !== snapshot.endpointUrl ||
+            current.connectorType !== snapshot.connectorType ||
+            current.active !== snapshot.active ||
+            current.keyVersion !== snapshot.keyVersion ||
+            !current.credentialsEncrypted.equals(snapshot.credentialsEncrypted);
+          return stale ? {} : updates;
+        },
+      );
+
+      if (!updated) {
+        throw new NotFoundException(
+          `Connector credential with ID '${id}' was not found.`,
+        );
+      }
+
+      if (stale) {
+        snapshot = updated;
+        continue;
+      }
+
+      await this.lazyRotateKeyIfNeeded(updated);
+      return updated;
+    }
+
+    throw new ConflictException(
+      'Connector changed during validation. Retry the update.',
+    );
+  }
+
+  private async buildCredentialUpdates(
+    existing: ConnectorCredential,
+    dto: UpdateConnectorCredentialDto,
+  ): Promise<Partial<Omit<ConnectorCredential, 'tenant'>>> {
     const updates: Partial<Omit<ConnectorCredential, 'tenant'>> = {};
     const endpointUrl = dto.endpointUrl ?? existing.endpointUrl;
+    let credentialsToPersist: ConnectorCredentialsDto | undefined;
 
     if (dto.endpointUrl !== undefined) {
       updates.endpointUrl = dto.endpointUrl;
     }
 
     if (dto.credentials !== undefined) {
-      if (
-        existing.connectorType === ConnectorType.TRACTION &&
-        !dto.credentials.webhookSecret
-      ) {
-        // A PATCH replaces the whole credentials object, so omitting
-        // webhook_secret here (e.g. when only rotating api_key) must not
-        // erase the secret Traction already sends back on callbacks.
-        const existingCredentials =
-          this.encryptionService.decrypt<ConnectorCredentialsDto>(
-            existing.credentialsEncrypted,
-            existing.keyVersion,
-          );
-
-        dto.credentials.webhookSecret = existingCredentials.webhookSecret;
-      }
+      const existingCredentials =
+        this.encryptionService.decrypt<ConnectorCredentialsDto>(
+          existing.credentialsEncrypted,
+          existing.keyVersion,
+        );
+      credentialsToPersist = {
+        ...existingCredentials,
+        ...(dto.credentials.apiKey !== undefined
+          ? { apiKey: dto.credentials.apiKey }
+          : {}),
+        ...(dto.credentials.tractionTenantId !== undefined
+          ? { tractionTenantId: dto.credentials.tractionTenantId }
+          : {}),
+        ...(dto.credentials.webhookSecret !== undefined
+          ? { webhookSecret: dto.credentials.webhookSecret }
+          : {}),
+      };
 
       await this.assertHealthy(
         existing.connectorType,
         endpointUrl,
-        dto.credentials,
+        credentialsToPersist,
       );
 
-      const encryptedCredentials = this.encryptionService.encrypt(
-        dto.credentials,
-      );
+      const encryptedCredentials =
+        this.encryptionService.encrypt(credentialsToPersist);
 
       updates.credentialsEncrypted = encryptedCredentials.ciphertext;
       updates.keyVersion = encryptedCredentials.keyVersion;
@@ -376,14 +446,17 @@ export class ConnectorCredentialService {
       );
     }
 
-    if (existing.connectorType === ConnectorType.TRACTION && dto.credentials) {
+    if (
+      existing.connectorType === ConnectorType.TRACTION &&
+      credentialsToPersist
+    ) {
       const webhookUrl = this.buildWebhookUrl(existing.id);
-      const webhookSecret = dto.credentials.webhookSecret as string;
+      const webhookSecret = credentialsToPersist.webhookSecret as string;
       const context: ConnectorContext = {
         connectorId: existing.id,
-        tenantId,
+        tenantId: existing.tenantId,
         endpointUrl,
-        credentials: { ...dto.credentials },
+        credentials: { ...credentialsToPersist },
       };
 
       try {
@@ -409,17 +482,7 @@ export class ConnectorCredentialService {
       }
     }
 
-    const updated = await this.credentialRepository.update(id, updates);
-
-    if (!updated) {
-      throw new NotFoundException(
-        `Connector credential with ID '${id}' was not found.`,
-      );
-    }
-
-    await this.lazyRotateKeyIfNeeded(updated);
-
-    return updated;
+    return updates;
   }
 
   public async delete(
@@ -439,7 +502,20 @@ export class ConnectorCredentialService {
     }
 
     try {
-      await this.credentialRepository.delete(id);
+      const result = await this.credentialRepository.deleteUnlessDefault(
+        tenantId,
+        id,
+      );
+      if (result === ConnectorDeletionResult.DEFAULT) {
+        throw new ConflictException(
+          'Cannot delete the default connector. Select a different default connector in tenant settings first.',
+        );
+      }
+      if (result === ConnectorDeletionResult.NOT_FOUND) {
+        throw new NotFoundException(
+          `Connector credential with ID '${id}' was not found.`,
+        );
+      }
     } catch (error) {
       // Defense in depth: the fk_credential_connector constraint is ON DELETE RESTRICT,
       // so a race can still fail here even if the pre-check passed.

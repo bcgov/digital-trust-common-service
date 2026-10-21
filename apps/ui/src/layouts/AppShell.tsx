@@ -1,4 +1,10 @@
-import { Building2, LayoutDashboard, LogOut, Settings } from 'lucide-react';
+import {
+  Building2,
+  LayoutDashboard,
+  LogOut,
+  Settings,
+  Share2,
+} from 'lucide-react';
 import { NavLink, Outlet } from 'react-router';
 
 import { BcGovHeader } from '@/components/bc-gov-header';
@@ -15,11 +21,23 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { useAuth } from '@/lib/auth/context';
+import { hasScope, TENANT_ADMIN_SCOPE } from '@/lib/auth/scopes';
 import { cn } from '@/lib/utils';
 
-const NAV_ITEMS = [
+const NAV_ITEMS: {
+  to: string;
+  label: string;
+  icon: typeof LayoutDashboard;
+  scope?: string;
+}[] = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { to: '/tenants', label: 'Tenants', icon: Building2 },
+  {
+    to: '/connectors',
+    label: 'Connectors',
+    icon: Share2,
+    scope: TENANT_ADMIN_SCOPE,
+  },
   { to: '/settings', label: 'Settings', icon: Settings },
 ];
 
@@ -35,6 +53,9 @@ function initialsOf(name: string | undefined): string {
 
 export function AppShell() {
   const { user, logout } = useAuth();
+  const navigationItems = NAV_ITEMS.filter(
+    ({ scope }) => !scope || hasScope(user, scope),
+  );
 
   return (
     <div className="flex min-h-svh flex-col">
@@ -86,7 +107,7 @@ export function AppShell() {
       <div className="flex flex-1">
         <aside className="w-60 shrink-0 border-r bg-sidebar text-sidebar-foreground">
           <nav aria-label="Primary" className="flex flex-col gap-1 p-2">
-            {NAV_ITEMS.map(({ to, label, icon: Icon }) => (
+            {navigationItems.map(({ to, label, icon: Icon }) => (
               <NavLink
                 key={to}
                 to={to}
@@ -107,7 +128,11 @@ export function AppShell() {
         </aside>
 
         {/* tabIndex lets the skip link actually move keyboard focus here. */}
-        <main id="main-content" tabIndex={-1} className="min-w-0 flex-1 p-6">
+        <main
+          id="main-content"
+          tabIndex={-1}
+          className="flex min-w-0 flex-1 flex-col p-6"
+        >
           <Outlet />
         </main>
       </div>
