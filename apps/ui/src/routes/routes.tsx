@@ -123,6 +123,13 @@ export const routes: RouteObject[] = [
                         'DialogDemoPage',
                       ),
                     },
+                    {
+                      path: '/dev/toasts',
+                      lazy: lazyPage(
+                        () => import('@/demo/ToastDemoPage'),
+                        'ToastDemoPage',
+                      ),
+                    },
                   ]
                 : []),
             ],
