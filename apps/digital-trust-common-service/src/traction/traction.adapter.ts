@@ -167,6 +167,30 @@ export class TractionAdapter implements AgentAdapter, OnModuleInit {
     }
   }
 
+  public async issueCredential(
+    context: ConnectorContext,
+    id: string,
+  ): Promise<CredentialExchange> {
+    const token = await this.tokenManager.getToken(context);
+    try {
+      const response = await this.httpClient.request<{
+        cred_ex_record: TractionCredentialExchange;
+      }>(
+        {
+          method: 'POST',
+          url: `${context.endpointUrl}/issue-credential-2.0/records/${encodeURIComponent(id)}/issue`,
+          headers: { Authorization: `Bearer ${token}` },
+          data: {},
+          maxRedirects: 0,
+        },
+        false,
+      );
+      return this.mapCredentialExchange(response.data.cred_ex_record);
+    } catch (error) {
+      throw this.mapHttpError(error, context);
+    }
+  }
+
   public async getExchange(
     context: ConnectorContext,
     id: string,
