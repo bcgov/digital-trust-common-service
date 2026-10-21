@@ -32,6 +32,17 @@ export class ConnectorUnavailableError extends AdapterError {
   }
 }
 
+export class BackendNotFoundError extends AdapterError {
+  public readonly code = 'BACKEND_NOT_FOUND';
+
+  public constructor(
+    message = 'Backend record was not found',
+    context?: Readonly<Record<string, unknown>>,
+  ) {
+    super(message, context);
+  }
+}
+
 // Error thrown when multiple active connectors require an explicit selection.
 export class ConnectorSelectionAmbiguousError extends AdapterError {
   public readonly code = 'CONNECTOR_SELECTION_AMBIGUOUS';

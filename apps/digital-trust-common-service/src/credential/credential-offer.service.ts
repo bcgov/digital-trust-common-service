@@ -1,6 +1,8 @@
 import {
   AdapterError,
+  BackendNotFoundError,
   CredentialAttribute,
+  CredentialExchange,
   CredentialFormat as PortCredentialFormat,
   FormatValidatorRegistry,
   OfferCredentialRequest,
@@ -144,14 +146,24 @@ export class CredentialOfferService {
       this.resolvePortFormat(credential.format),
       credential.connectorId,
     );
-    const exchange = await adapter.getExchange(context, operation.externalId);
+    let exchange: CredentialExchange;
+    try {
+      exchange = await adapter.getExchange(context, operation.externalId);
+    } catch (error) {
+      if (error instanceof BackendNotFoundError) {
+        throw new ConflictException(
+          'Backend credential exchange was not found',
+        );
+      }
+      throw error;
+    }
     if ((exchange.externalId ?? exchange.id) !== operation.externalId) {
       throw new ConflictException(
         'Backend returned a different credential exchange',
       );
     }
     if (credential.connectionId) {
-      const connection = await this.connectionService.resolveForIssuance(
+      const connection = await this.connectionService.resolveIdentity(
         tenantId,
         credential.connectionId,
         credential.connectorId,

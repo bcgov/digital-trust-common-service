@@ -1,4 +1,5 @@
 import {
+  BackendNotFoundError,
   CredentialExchangeState,
   CredentialFormat as PortCredentialFormat,
   FormatValidatorRegistry,
@@ -67,6 +68,7 @@ describe('CredentialOfferService', () => {
   let mockEventEmit: jest.Mock;
   let mockTransaction: jest.Mock;
   let mockResolveConnection: jest.Mock;
+  let mockResolveIdentity: jest.Mock;
   let mockGetExchange: jest.Mock;
   let mockProtocolProcess: jest.Mock;
   let mockCredentialFindByExternalId: jest.Mock;
@@ -175,6 +177,11 @@ describe('CredentialOfferService', () => {
       id: connectionId,
       externalConnectionId: 'backend-connection',
     });
+    mockResolveIdentity = jest.fn().mockResolvedValue({
+      id: connectionId,
+      externalConnectionId: 'backend-connection',
+      state: 'abandoned',
+    });
     mockGetExchange = jest.fn();
     mockProtocolProcess = jest.fn().mockResolvedValue(undefined);
     mockCredentialFindByExternalId = jest.fn();
@@ -209,7 +216,10 @@ describe('CredentialOfferService', () => {
         CredentialOfferService,
         {
           provide: ConnectionService,
-          useValue: { resolveForIssuance: mockResolveConnection },
+          useValue: {
+            resolveForIssuance: mockResolveConnection,
+            resolveIdentity: mockResolveIdentity,
+          },
         },
         {
           provide: ProtocolStateChangeService,
@@ -565,6 +575,38 @@ describe('CredentialOfferService', () => {
       expect(mockProtocolProcess).not.toHaveBeenCalled();
       expect(mockOfferCredential).not.toHaveBeenCalled();
     });
+
+    it('returns a correlation conflict for a deleted backend exchange', async () => {
+      mockGetExchange.mockRejectedValue(new BackendNotFoundError());
+      await expect(
+        service.reconcile(tenantId, operationId),
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(mockProtocolProcess).not.toHaveBeenCalled();
+      expect(mockResolveIdentity).not.toHaveBeenCalled();
+      expect(mockOfferCredential).not.toHaveBeenCalled();
+    });
+
+    it.each([CredentialExchangeState.Done, CredentialExchangeState.Abandoned])(
+      'observes terminal exchange %s after connection abandonment using identity only',
+      async (state) => {
+        mockGetExchange.mockResolvedValue({
+          id: externalId,
+          connectionId: 'backend-connection',
+          state,
+        });
+        await service.reconcile(tenantId, operationId);
+        expect(mockResolveIdentity).toHaveBeenCalledWith(
+          tenantId,
+          connectionId,
+          connectorId,
+        );
+        expect(mockResolveConnection).not.toHaveBeenCalled();
+        expect(mockProtocolProcess).toHaveBeenCalledWith(
+          expect.objectContaining({ protocolState: state }),
+        );
+        expect(mockOfferCredential).not.toHaveBeenCalled();
+      },
+    );
   });
 
   describe('profile_id / credential_definition_id resolution', () => {

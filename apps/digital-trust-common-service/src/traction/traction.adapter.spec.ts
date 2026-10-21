@@ -182,6 +182,23 @@ describe('TractionAdapter', () => {
       attributes: [{ name: 'name', value: 'Alice' }],
     };
 
+    it.each(['getExchange', 'getById'] as const)(
+      'preserves a backend 404 as distinguishable from an outage for %s',
+      async (method) => {
+        mockRequest.mockRejectedValue({
+          isAxiosError: true,
+          message: 'Missing record',
+          response: { status: 404 },
+        });
+        await expect(adapter[method](context, 'missing')).rejects.toMatchObject(
+          {
+            code: 'BACKEND_NOT_FOUND',
+            context: { connectorId: context.connectorId },
+          },
+        );
+      },
+    );
+
     it.each([
       { format: CredentialFormat.JsonLd },
       { connectionId: undefined },
