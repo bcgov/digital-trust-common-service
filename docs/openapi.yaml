@@ -1667,6 +1667,106 @@ paths:
         "409":
           $ref: "#/components/responses/Conflict"
 
+  /api/v1/tenants/{tenantId}/credential-exchanges/{exchangeId}:
+    parameters:
+      - $ref: "#/components/parameters/TenantId"
+      - name: exchangeId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: getCredentialExchange
+      summary: Read a durable credential exchange
+      description: Requires credentials:offer. Uses a local exchange UUID and never contacts the backend.
+      tags: [Credentials]
+      responses:
+        "200":
+          description: Tenant-owned exchange without backend identifiers
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CredentialExchange"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/tenants/{tenantId}/credential-exchanges/{exchangeId}/reconcile:
+    parameters:
+      - $ref: "#/components/parameters/TenantId"
+      - name: exchangeId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      operationId: reconcileCredentialExchange
+      summary: Observe an existing credential exchange without replaying it
+      description: |
+        Requires credentials:offer. No request body. Reads the retained backend
+        exchange in its pinned connector, checks holder correlation, and updates
+        monotonic progress, related actions and credential lifecycle. Works after
+        operation retention. Never sends another offer or issue request.
+      tags: [Credentials]
+      responses:
+        "200":
+          description: Current durable exchange
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CredentialExchange"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /api/v1/tenants/{tenantId}/credential-exchanges/{exchangeId}/issue:
+    parameters:
+      - $ref: "#/components/parameters/TenantId"
+      - name: exchangeId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      operationId: issueCredentialExchange
+      summary: Explicitly issue after a holder request
+      description: |
+        Requires credentials:offer. No request body. For issuer exchanges in
+        request-received state, creates a credential.issue action and claims the
+        exchange before a single backend issue POST. Concurrent/repeated calls
+        reuse that action; an uncertain or crashed submission is never replayed.
+        A purged action does not reset the durable submission guard.
+        Reconcile after 503; do not send a replacement offer or issue request.
+      tags: [Credentials]
+      responses:
+        "200":
+          description: Existing or synchronously completed issue action
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Operation"
+        "202":
+          description: Issue action pending or processing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Operation"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "503":
+          description: Submission outcome uncertain; reconcile the local exchange instead of resending
+
   /api/v1/tenants/{tenantId}/credentials/offer-batch:
     parameters:
       - $ref: "#/components/parameters/TenantId"
@@ -2138,14 +2238,12 @@ paths:
                   value:
                     id: "op-uuid"
                     type: credential.offer
+                    exchange_id: "123e4567-e89b-12d3-a456-426614174000"
                     state: completed
                     created_at: "2025-01-15T10:30:00.000Z"
                     updated_at: "2025-01-15T10:30:05.000Z"
                     result:
-                      credential_exchange_id: "exch-uuid"
-                      state: credential_issued
-                      attributes:
-                        given_name: Alice
+                      exchange_id: "123e4567-e89b-12d3-a456-426614174000"
                 failed:
                   summary: Failed operation
                   value:
@@ -4120,8 +4218,9 @@ components:
               default: true
               description: |
                 Issue automatically after the holder requests the credential.
-                False waits for a future explicit issue action, not yet exposed.
-                This does not control holder acceptance or mediator delivery.
+                False waits for POST /credential-exchanges/{exchangeId}/issue after
+                a holder request. This does not control holder acceptance or
+                mediator delivery.
                 Exchange records are always retained; auto_remove and
                 auto_remove_on_failure cannot be overridden.
 
@@ -4246,6 +4345,32 @@ components:
             goalCode: aries.rel.build
             multiUse: false
 
+    CredentialExchange:
+      type: object
+      additionalProperties: false
+      description: Durable protocol interaction; IDs are local, never backend exchange IDs.
+      required: [id, role, format, protocol, state, connection_id, issue_submission, issue_operation_id, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        role: { type: string, enum: [issuer, holder] }
+        format: { type: string }
+        protocol: { type: string }
+        state:
+          type: string
+          enum: [pending, proposal-sent, offer-sent, offer-received, request-sent, request-received, credential-issued, credential-received, done, abandoned, failed]
+        connection_id: { type: string, format: uuid, nullable: true }
+        issue_submission:
+          type: string
+          enum: [not-submitted, submitting, submitted, uncertain]
+          description: Durable single-submission guard; uncertain/submitting must not be reset or replayed.
+        issue_operation_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: Local issue action; null before explicit issue or after action retention.
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
     # ─── Operation ───────────────────────────────────────────────────
     Operation:
       type: object
@@ -4266,16 +4391,21 @@ components:
             created by a batch issuance or revocation request (`credential.offer-batch`,
             `credential.revoke-batch`). Use this to navigate to the parent via
             `GET /operations/{batch_id}`.
+        exchange_id:
+          type: string
+          format: uuid
+          description: Stable local credential exchange UUID, present when linked.
         type:
           type: string
           description: |
             Operation type. Known values:
-            `credential-definition.register`, `credential.offer`, `credential.offer-batch`,
+            `credential-definition.register`, `credential.offer`, `credential.issue`, `credential.offer-batch`,
             `credential.accept`, `credential.reject`,
             `credential.revoke`, `credential.revoke-batch`,
             `presentation.request`, `connection.create`
           examples:
             - credential.offer
+            - credential.issue
             - credential.offer-batch
             - credential.accept
             - credential.reject
@@ -4298,6 +4428,7 @@ components:
             - pending/processing: usually null; credential-definition.register
               includes { credential_definition_id } immediately
             - completed: operation-type-specific data
+              (exchange-linked actions return the local { exchange_id })
             - failed: { code, message }; credential registration additionally
               retains credential_definition_id, external_id, and registration
               progress/correlation identifiers.
@@ -4580,6 +4711,11 @@ components:
           format: uuid
           nullable: true
           description: "NULL for OID4VCI/connectionless issuance"
+        exchange_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: Stable local credential exchange UUID.
         connector_id:
           type: string
           format: uuid

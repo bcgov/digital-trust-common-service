@@ -33,6 +33,7 @@ import {
   CredentialDefinitionConnectorType,
   CredentialDefinitionFormat,
 } from '../src/credential-definition/credential-definition.entity';
+import { CredentialExchange } from '../src/credential-exchange/credential-exchange.entity';
 import { JobsService } from '../src/jobs/jobs.service';
 import { OPERATION_TYPE } from '../src/operation/operation-type.constants';
 import { Operation, OperationState } from '../src/operation/operation.entity';
@@ -92,6 +93,7 @@ describe('Credential offer (e2e)', () => {
   let credentialDefinitionRepo: Repository<CredentialDefinition>;
   let operationRepo: Repository<Operation>;
   let credentialRepo: Repository<Credential>;
+  let exchangeRepo: Repository<CredentialExchange>;
   let registry: AdapterRegistry;
   let tenant: Tenant;
   let credentialDefinition: CredentialDefinition;
@@ -136,6 +138,7 @@ describe('Credential offer (e2e)', () => {
     );
     operationRepo = moduleFixture.get(getRepositoryToken(Operation));
     credentialRepo = moduleFixture.get(getRepositoryToken(Credential));
+    exchangeRepo = moduleFixture.get(getRepositoryToken(CredentialExchange));
     registry = moduleFixture.get(AdapterRegistry);
     connectorRepo = moduleFixture.get(getRepositoryToken(ConnectorCredential));
     connectionRepo = moduleFixture.get(getRepositoryToken(Connection));
@@ -196,6 +199,7 @@ describe('Credential offer (e2e)', () => {
     await credentialRepo.query('DELETE FROM credential WHERE tenant_id = $1', [
       tenant.id,
     ]);
+    await exchangeRepo.delete({ tenantId: tenant.id });
     await operationRepo.query('DELETE FROM operation WHERE tenant_id = $1', [
       tenant.id,
     ]);
@@ -233,8 +237,10 @@ describe('Credential offer (e2e)', () => {
     const credentials = await credentialRepo.find({
       where: { tenantId: tenant.id },
     });
+    const exchanges = await exchangeRepo.countBy({ tenantId: tenant.id });
     expect(operations).toHaveLength(0);
     expect(credentials).toHaveLength(0);
+    expect(exchanges).toBe(0);
   });
 
   const offerBody = () => ({
@@ -292,8 +298,10 @@ describe('Credential offer (e2e)', () => {
       .send(offerBody())
       .expect(202);
     const operationId = (offered.body as { id: string }).id;
+    const exchangeId = (offered.body as { exchange_id: string }).exchange_id;
     expect(operationId).toEqual(expect.any(String));
-    expect(offered.body).not.toHaveProperty('exchange_id');
+    expect(exchangeId).toEqual(expect.any(String));
+    expect(exchangeId).not.toBe(`exchange-${tenant.id}`);
     const sent = backendRequest.mock.calls.find(
       ([config]) => config.method === 'POST',
     );
@@ -316,11 +324,25 @@ describe('Credential offer (e2e)', () => {
     });
     expect(savedCredential).toMatchObject({
       operationId,
+      exchangeId,
       connectionId: connection.id,
       connectorId: connection.connectorId,
       externalId: `exchange-${tenant.id}`,
       state: 'offered',
     });
+    const exchangeResponse = await request(app.getHttpServer())
+      .get(
+        `${API_BASE_PATH}/tenants/${tenant.id}/credential-exchanges/${exchangeId}`,
+      )
+      .expect(200);
+    expect(exchangeResponse.body).toMatchObject({
+      id: exchangeId,
+      role: 'issuer',
+      state: 'offer-sent',
+      issue_submission: 'not-submitted',
+    });
+    expect(exchangeResponse.body).not.toHaveProperty('external_id');
+    expect(exchangeResponse.body).not.toHaveProperty('connector_id');
     mockBoss.send.mockClear();
     for (let i = 0; i < 2; i++) {
       const reconciled = await request(app.getHttpServer())
@@ -348,6 +370,14 @@ describe('Credential offer (e2e)', () => {
     });
     expect(issued.state).toBe('issued');
     expect(issued.issuedAt).toBeInstanceOf(Date);
+    const reconciledExchange = await request(app.getHttpServer())
+      .get(
+        `${API_BASE_PATH}/tenants/${tenant.id}/credential-exchanges/${exchangeId}`,
+      )
+      .expect(200);
+    expect(reconciledExchange.body).toMatchObject({
+      state: 'credential-issued',
+    });
   });
 
   it('rejects a connection outside the tenant before submitting an offer', async () => {

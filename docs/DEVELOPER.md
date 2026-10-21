@@ -1492,12 +1492,12 @@ top-level `format`, `attributes`, and `connection_id` fields are rejected.
 
 Optional `options: { "auto_issue": true }` preserves the default: the issuer
 automatically issues after a holder requests the credential. Set `auto_issue`
-to false to wait for a future explicit issue action, which this API does not
-yet expose. This flag does not control offer delivery or holder acceptance.
-Only actual booleans are accepted, not null or string values. Backend exchange
-records are always retained (`auto_remove: false`, `auto_remove_on_failure:
-false`) so reconciliation can read them. These retention flags and `auto_offer`
-are not caller options on this endpoint, which already sends an offer.
+to false to wait for the explicit issuer action after a holder request. This
+flag does not control offer delivery or holder acceptance. Only actual booleans
+are accepted, not null or string values. Backend exchange records are always
+retained (`auto_remove: false`, `auto_remove_on_failure: false`) so
+reconciliation can read them. These retention flags and `auto_offer` are not
+caller options on this endpoint, which already sends an offer.
 
 If webhook delivery is unavailable, call
 `POST /api/v1/tenants/:tenantId/credentials/offer/:operationId/reconcile`
@@ -1516,8 +1516,20 @@ and inconsistent exchange correlation return 409; transient backend failures
 remain failures, not missing-record conflicts. Do not retry offer submission
 after an uncertain response. `issued` means the issuer sent the credential;
 verify backend `done`/holder receipt separately before claiming wallet delivery.
-Existing operation IDs remain unchanged; no local credential-exchange resource
-or explicit issue endpoint is introduced here.
+The offer response includes a local `exchange_id`; use it with
+`GET /api/v1/tenants/:tenantId/credential-exchanges/:exchangeId` to read its
+durable normalized state, or `POST .../:exchangeId/reconcile` to refresh it
+without resubmission. Explicit issuance is
+`POST .../:exchangeId/issue`: it is valid only for an issuer exchange after
+`request-received`, returns a `credential.issue` operation, and concurrent or
+repeated calls reuse the same retained tenant-owned action without contacting
+the backend, including during an outage. Use reconciliation to refresh its
+outcome. A timed-out, uncertain, or interrupted
+submission is never replayed, even after operation retention; reconcile the
+exchange instead. Existing offer operation IDs remain unchanged.
+Backfilled connections without a connector binding are adopted only through
+exact invitation identity in the exchange's pinned connector. Exchange
+observation does not require or advance the connection's handshake state.
 
 ## Adapter registry (CA-02)
 

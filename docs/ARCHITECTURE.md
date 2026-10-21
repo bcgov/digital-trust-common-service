@@ -550,9 +550,12 @@ holder acknowledgement (`done`).
 
 Offers accept optional `options.auto_issue` (boolean, default true), mapped to
 the issuer port's `autoIssue`. False waits for a future explicit issue action,
-which this API does not yet expose. It does not control wallet acceptance or
-transport delivery. Backend exchange retention is fixed on for reconciliation;
-auto-removal flags are not exposed.
+which is available on the durable local credential-exchange resource after a
+holder request. It does not control wallet acceptance or transport delivery.
+Backend exchange retention is fixed on for reconciliation; auto-removal flags
+are not exposed. The local exchange UUID is independent of operation retention;
+its row-lock-protected issue-submission marker prevents concurrent or ambiguous
+issue requests from replaying the backend call.
 
 The MVP ships with **only the Traction adapter**. The adapter interfaces are designed and tested, but the Credo adapter is deferred to post-MVP.
 
