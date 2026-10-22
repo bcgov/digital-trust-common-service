@@ -57,7 +57,7 @@ export default tseslint.config(
   },
   {
     // shadcn-managed primitives export variant helpers alongside components.
-    files: ['src/components/ui/**'],
+    files: ['src/components/common/**'],
     rules: {
       'react-refresh/only-export-components': 'off',
     },
