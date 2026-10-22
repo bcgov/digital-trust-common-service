@@ -28,6 +28,11 @@ describe('AppShell', () => {
     const navigation = screen.getByRole('navigation', { name: 'Primary' });
     expect(navigation).toBeInTheDocument();
     expect(
+      within(navigation)
+        .getAllByRole('link')
+        .map((link) => link.textContent?.trim()),
+    ).toEqual(['Dashboard', 'Connectors', 'API integrations', 'Manage Users']);
+    expect(
       within(screen.getByRole('complementary')).getByText('Acme Ministry'),
     ).toBeInTheDocument();
     expect(
@@ -64,6 +69,9 @@ describe('AppShell', () => {
     expect(
       screen.queryByRole('link', { name: 'Connectors' }),
     ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('link', { name: 'API integrations' }),
+    ).toHaveAttribute('href', '/api-clients');
   });
 
   it('hides Manage Users from users without the management scope', async () => {
@@ -87,6 +95,9 @@ describe('AppShell', () => {
 
     expect(
       screen.queryByRole('link', { name: 'Manage Users' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('link', { name: 'API integrations' }),
     ).not.toBeInTheDocument();
   });
 

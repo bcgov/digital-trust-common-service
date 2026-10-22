@@ -1,6 +1,11 @@
 import { http, HttpResponse } from 'msw';
 
 import { API_BASE_PATH } from '@/lib/api/constants';
+import type {
+  ApiClient,
+  CreateApiClient,
+  UpdateApiClient,
+} from '@/lib/api/resources/api-clients';
 import type { Connection } from '@/lib/api/resources/connections';
 import type { CredentialDefinition } from '@/lib/api/resources/credential-definitions';
 import type { TenantRoleMapping } from '@/lib/api/resources/tenant-roles';
@@ -157,7 +162,91 @@ export function mockSwitchedAccessToken(tenantId: string | undefined): string {
   });
 }
 
+const mockApiClients = new Map<string, ApiClient[]>();
+
 export const handlers = [
+  http.get(`${API_BASE_PATH}/scopes`, () =>
+    HttpResponse.json({
+      data: [...new Set(Object.values(DEFAULT_ROLE_SCOPES).flat())].map(
+        (name) => ({ name }),
+      ),
+    }),
+  ),
+  http.get(`${API_BASE_PATH}/tenants/:id/clients`, ({ params }) =>
+    HttpResponse.json(mockApiClients.get(String(params.id)) ?? []),
+  ),
+  http.post(
+    `${API_BASE_PATH}/tenants/:id/clients`,
+    async ({ params, request }) => {
+      const body = (await request.json()) as CreateApiClient;
+      const tenantId = String(params.id);
+      const client: ApiClient = {
+        ...body,
+        id: crypto.randomUUID(),
+        client_id: `dtcs_${crypto.randomUUID()}`,
+        tenant_id: tenantId,
+        is_public: false,
+        created_at: new Date().toISOString(),
+        revoked_at: null,
+      };
+      mockApiClients.set(tenantId, [
+        ...(mockApiClients.get(tenantId) ?? []),
+        client,
+      ]);
+      return HttpResponse.json(
+        { client, client_secret: crypto.randomUUID() + crypto.randomUUID() },
+        { status: 201 },
+      );
+    },
+  ),
+  http.patch(
+    `${API_BASE_PATH}/tenants/:id/clients/:clientId`,
+    async ({ params, request }) => {
+      const client = mockApiClients
+        .get(String(params.id))
+        ?.find((item) => item.client_id === params.clientId);
+      if (!client || client.revoked_at)
+        return new HttpResponse(null, { status: 404 });
+      Object.assign(client, (await request.json()) as UpdateApiClient);
+      return HttpResponse.json(client);
+    },
+  ),
+  http.delete(
+    `${API_BASE_PATH}/tenants/:id/clients/:clientId`,
+    ({ params }) => {
+      const client = mockApiClients
+        .get(String(params.id))
+        ?.find((item) => item.client_id === params.clientId);
+      if (!client) return new HttpResponse(null, { status: 404 });
+      client.revoked_at = new Date().toISOString();
+      return new HttpResponse(null, { status: 204 });
+    },
+  ),
+  http.post(
+    `${API_BASE_PATH}/tenants/:id/clients/:clientId/reactivate`,
+    ({ params }) => {
+      const client = mockApiClients
+        .get(String(params.id))
+        ?.find((item) => item.client_id === params.clientId);
+      if (!client) return new HttpResponse(null, { status: 404 });
+      client.revoked_at = null;
+      return HttpResponse.json(client);
+    },
+  ),
+  http.post(
+    `${API_BASE_PATH}/tenants/:id/clients/:clientId/rotate-secret`,
+    ({ params }) => {
+      const client = mockApiClients
+        .get(String(params.id))
+        ?.find((item) => item.client_id === params.clientId);
+      if (!client || client.revoked_at || client.is_public)
+        return new HttpResponse(null, { status: 404 });
+      return HttpResponse.json({
+        client,
+        client_secret: crypto.randomUUID() + crypto.randomUUID(),
+      });
+    },
+  ),
   // Bare array on purpose: mirrors the current (pre-envelope) implementation
   // so tests prove the client tolerates it.
   http.get(`${API_BASE_PATH}/tenants`, () => HttpResponse.json(mockTenants)),
