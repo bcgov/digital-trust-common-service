@@ -33,6 +33,7 @@ export const ATTR_OPERATION_OUTCOME = 'operation.outcome';
 export const ATTR_CONNECTOR_TYPE = 'connector.type';
 export const ATTR_ADAPTER_METHOD = 'adapter.method';
 export const ATTR_ADAPTER_OUTCOME = 'adapter.outcome';
+export const ATTR_QUEUE_NAME = 'queue.name';
 
 /**
  * Substituted for any dimension value that fails the shape check below. A

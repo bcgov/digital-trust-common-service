@@ -47,8 +47,8 @@ every request returning `200 OK` while not a single credential has been
 issued for hours, because the agent is rejecting them further down.
 
 Nothing counted the work itself. That is what business metrics are for, and
-two of them now exist: `credential.operations` and `adapter.calls`, described
-under [What shipped](#what-shipped) below.
+two counters (`credential.operations`, `adapter.calls`) and three queue gauges
+now exist, described under [What shipped](#what-shipped) below.
 
 ### They are one step of four
 
@@ -100,18 +100,19 @@ none of them can grow with traffic or tenant count:
 | --- | --- | --- | --- |
 | credential operation outcome | operation type (8 declared) x outcome (2) | 16 | built, see below |
 | adapter call outcome | adapter (2) x port method (12) x outcome or error class (6) | 144 | built, see below |
-| job queue depth | queue (9 registered) | 9 | not built |
+| job queue depth | queue (20 in pg-boss) x 3 gauges, dead-letter only where a partner exists | 49 | built, see below |
 
-That is **about 169 series at worst**, against the roughly 3,000 estimated
+That was **about 169 series at worst** (queue depth then counted as 9), against the roughly 3,000 estimated
 below — near enough 5%. The sets behind each number are `OPERATION_TYPE`,
 `OperationState`, `ConnectorType`, `QUEUE_DEFINITIONS`, the five port
 interfaces in `libs/credential-ports/src/ports/`, and the five adapter error
 classes in `libs/credential-ports/src/errors/`. Re-count them before
 building, since three of the six are still growing.
 
-Job queue depth is the one candidate still unbuilt. It is the case the
-instrument table below calls out as needing an observable rather than a
-counter, since nothing "happens" when a queue is 40 deep.
+Job queue depth is the case the instrument table below calls out as needing
+an observable rather than a counter, since nothing "happens" when a queue is
+40 deep. It is built as observable gauges; see
+[Job queue depth](#job-queue-depth).
 
 ### What shipped
 
@@ -161,6 +162,53 @@ error class already declares; anything else that throws is counted under a
 single `unknown` bucket, so the total still matches the number of calls without
 an arbitrary error becoming a label.
 
+#### Job queue depth
+
+Three observable gauges, read from pg-boss's `getQueues()` on every export
+cycle by `QueueMetricsService`, which sits next to the counters in
+`common/telemetry/` and is provided by `BusinessMetricsModule`. The only
+attribute is `queue.name`; job data never reaches a metric.
+
+| Instrument | Prometheus | Meaning |
+| --- | --- | --- |
+| `jobs.queue.waiting` | `jobs_queue_waiting` | Jobs ready to run but not yet picked up. This is pg-boss's `readyCount`, **not** `queuedCount`, which also includes deferred (future-dated, retry-backoff) jobs that are not yet runnable. |
+| `jobs.queue.running` | `jobs_queue_running` | Jobs picked up and in progress (`activeCount`). |
+| `jobs.queue.dead_lettered` | `jobs_queue_dead_lettered` | Jobs sitting in the queue's dead-letter partner (the queue named by its `deadLetter`), reported against the *parent* queue name. Absent for queues with no partner. Any non-zero value needs a look. |
+
+The queue list comes from pg-boss at runtime, not `QUEUE_DEFINITIONS`. Today
+that is 20 queues: the 9 in `QUEUE_DEFINITIONS`, their 9 `.dlq` partners, and
+`operation-purge` and `oidc-purge`, which are created outside that list.
+pg-boss's own `__pgboss__*` housekeeping queues are skipped. A new queue is
+covered with no change here, so the `QUEUE_DEFINITIONS` rule under
+[Coverage rule](#coverage-rule) is met automatically.
+
+Series: 20 waiting + 20 running + 9 dead-lettered = **49**.
+
+**Every pod reports, so query with `max`, never `sum`.** Queue counts are
+database-wide, so each pod exports the same value and summing multiplies it by
+the pod count. `max` is correct with any number of pods and survives one
+dying:
+
+```promql
+max by (queue_name) (jobs_queue_waiting{job="digital-trust-common-service"})
+max by (queue_name) (jobs_queue_running{job="digital-trust-common-service"})
+max by (queue_name) (jobs_queue_dead_lettered{job="digital-trust-common-service"})
+```
+
+Use `service_name` instead of `job` against the local stack. pg-boss refreshes
+its cached counts on its own maintenance interval, so a change can take a
+minute or two to show up.
+
+Expectations that are findings, not bugs:
+
+- `tenant.config-change` only ever grows: `TenantService` publishes to it on
+  every config update and no worker consumes it. An alert cannot use one
+  "waiting > N" threshold for every queue.
+- `credential.bulk-item` and `email.send` are defined but nothing sends to
+  them yet, so they read zero.
+- These only leave the app where OTel export is on (dev and PR previews);
+  they will not exist in test or prod until `otel.enabled` is turned on there.
+
 #### Recount
 
 The estimate above was made before building, and two of its numbers were low:
@@ -170,7 +218,7 @@ The estimate above was made before building, and two of its numbers were low:
 | `credential.operations` | 16 | 18 | 8 declared types plus one `unclassified` bucket, x 2 outcomes |
 | `adapter.calls` | 144 | 168 | outcome is 7, not 6 — `success`, five error codes, and `unknown` |
 
-**186 series at worst**, against the roughly 3,000 estimated below — about 6%,
+**186 series at worst** for the counters (235 with the queue gauges above), against the roughly 3,000 estimated below — about 6%,
 still inside the budget agreed for this work.
 
 Two things make the real figure much smaller. A series exists only once its
@@ -296,8 +344,9 @@ is. As built:
   outcome value and needs no change here. An error that is not an
   `AdapterError` has no code to read and is counted as `unknown`.
 
-That leaves `QUEUE_DEFINITIONS`, which is reviewer-enforced, because the queue
-depth candidate is not built.
+- **Queues.** The queue gauges read the list of queues from pg-boss, so a
+  queue added to `QUEUE_DEFINITIONS`, or created anywhere else, is reported
+  without a change to the metric.
 
 ## Metric catalog
 
@@ -311,6 +360,9 @@ instrumentation package that emits it.
 | Prometheus name | OTel instrument | Type | Dimensions (bounded by) |
 | --- | --- | --- | --- |
 | `credential_operations_total` | `credential.operations` | Counter | `operation_type` (`OPERATION_TYPE`, 8 declared, plus `unclassified`), `operation_outcome` (`completed`/`failed`) |
+| `jobs_queue_waiting` | `jobs.queue.waiting` | Gauge | `queue_name` (queues pg-boss holds, 20 today) |
+| `jobs_queue_running` | `jobs.queue.running` | Gauge | `queue_name` (20) |
+| `jobs_queue_dead_lettered` | `jobs.queue.dead_lettered` | Gauge | `queue_name` (queues with a `.dlq` partner, 9) |
 | `adapter_calls_total` | `adapter.calls` | Counter | `connector_type` (`ConnectorType`, 2), `adapter_method` (12 port methods), `adapter_outcome` (`success`, 5 `AdapterError` codes, `unknown`) |
 | `http_server_request_duration_seconds` | `http.server.request.duration` | Histogram (15 buckets) | `http_route` (declared controller routes, currently 58; absent — not a placeholder — when no route matches), `http_request_method`, `http_response_status_code`, `network_protocol_version`, `url_scheme` |
 | `http_client_request_duration_seconds` | `http.client.request.duration` | Histogram (15 buckets) | `server_address`/`server_port` (outbound hosts we call: upstream OIDC issuer today, adapter backends once instrumented), `http_request_method`, `http_response_status_code`, `url_scheme` |
@@ -404,7 +456,8 @@ route templates and which statement verbs get exercised, both fixed sets
 enumerable from the codebase — not from request content.
 
 The two business counters add at most 186 series on top, one row each rather
-than 17, for the reasons set out under [What shipped](#what-shipped).
+than 17, and the queue gauges 49 more, for the reasons set out under
+[What shipped](#what-shipped).
 
 ### Verified against the deployed backend
 
