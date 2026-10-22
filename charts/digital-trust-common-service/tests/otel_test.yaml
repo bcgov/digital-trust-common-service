@@ -121,7 +121,7 @@ tests:
             value: digital-trust-common-service-worker
         template: templates/worker/deployment.yaml
 
-  - it: reports the deployed image tag as service.version, in step with the image
+  - it: reports the pod name as service.instance.id and the image tag as service.version
     set:
       upstreamFederation:
         existingSecret:
@@ -138,13 +138,29 @@ tests:
           path: spec.template.spec.containers[0].env
           content:
             name: OTEL_RESOURCE_ATTRIBUTES
-            value: service.version=1.4.2
+            value: service.instance.id=$(POD_NAME),service.version=1.4.2
+        template: templates/deployment.yaml
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: POD_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.name
         template: templates/deployment.yaml
       - contains:
           path: spec.template.spec.containers[0].env
           content:
             name: OTEL_RESOURCE_ATTRIBUTES
-            value: service.version=1.4.2
+            value: service.instance.id=$(POD_NAME),service.version=1.4.2
+        template: templates/worker/deployment.yaml
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: POD_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.name
         template: templates/worker/deployment.yaml
       # Locks the point of the shared helper: the reported version and the image
       # actually deployed come from one expression and cannot drift apart.
