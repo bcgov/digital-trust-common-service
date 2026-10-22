@@ -110,7 +110,7 @@ export function ApiClientActionDialog({
             ? 'New token grants will be blocked, including those using this secret. Already-issued access tokens remain valid until they expire.'
             : action === 'revoke'
               ? 'This revokes the client and blocks new token grants. The client record is retained and can be reactivated later.'
-            : 'New token grants will be allowed again using the existing credentials.'}
+              : 'New token grants will be allowed again using the existing credentials.'}
       </p>
     </FormDialog>
   );

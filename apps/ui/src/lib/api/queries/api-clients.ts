@@ -65,8 +65,7 @@ export function useChangeApiClient(tenantId: string) {
     }: {
       clientId: string;
       action: 'disable' | 'reactivate' | 'rotate' | 'revoke';
-    }) =>
-      changeApiClient(tenantId, clientId, action),
+    }) => changeApiClient(tenantId, clientId, action),
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: apiClientKeys.list(tenantId) }),
   });
