@@ -38,6 +38,23 @@ them could identify one even if they were, per the labelling rule.
    adapter, protocol, route template, classified error code — never a raw
    identifier (operation id, connection id, credential id, user id).
 
+## Combining pods in a query
+
+Every pod exports its own series, distinguished by the `instance` label, which
+Alloy derives from `service.instance.id` (the pod name). A query that ignores
+`instance` aggregates across pods, so pick the aggregation by metric kind:
+
+| kind | example | across pods |
+| --- | --- | --- |
+| counter / histogram | `http_server_request_duration_seconds_count` | `sum by (...) (rate(...[5m]))` — aggregate the per-pod rates, never `rate()` an aggregate |
+| histogram quantile | `http_server_request_duration_seconds_bucket` | `histogram_quantile(0.95, sum by (le) (rate(...[5m])))` |
+| per-process gauge | `nodejs_eventloop_delay_mean_seconds`, `v8js_memory_heap_used_bytes` | keep `instance` for one line per pod, or `avg`/`max by (...)` for a fleet view |
+| additive gauge | `db_client_connection_count` | `sum by (...)`, each pod holds its own connections |
+| database-wide gauge | `jobs_queue_waiting` | `max by (queue_name)`, never `sum` (see [Job queue depth](#job-queue-depth)) |
+
+To look at one pod, select it by name: `{instance="<pod name>"}`. The same value
+is the `pod` label on that pod's logs in Loki.
+
 ## Business metrics
 
 Everything auto-instrumented measures plumbing: how many HTTP requests
@@ -419,10 +436,11 @@ Practical consequences:
 - **Filter on `job` deployed, `service_name` locally.** A query written
   against one returns nothing at all against the other — silently, since an
   empty result looks identical to "no traffic".
-- `host_name` is on `target_info` deployed, so a rollout adds **one** new
-  `target_info` series rather than churning every metric the process exports —
-  three over a recent 24 hours here, one per pod generation. Locally it is a
-  per-series label, so the same rollout churns all of them.
+- Deployed series carry an `instance` label equal to the pod name
+  (`service.instance.id`). Pod names change on every rollout, so a rollout
+  creates a new series for **every** metric the pod exports, not just
+  `target_info`; the old series go stale and age out. Locally the process sets
+  no `service.instance.id`, so there is no `instance` label.
 - Anything filtering on `deployment_environment_name` or `process_pid` needs a
   `target_info` join deployed. In practice environments are already separated
   by writing to different backends, so the join is rarely what you want.
@@ -443,6 +461,10 @@ Per unique `db_operation_name`: 12 rows (10 buckets + count + sum). Bounded
 by the statement verbs the codebase issues — verified locally as `SELECT`,
 `INSERT`, `UPDATE`, `DELETE`, `CREATE`, `WITH` and `BEGIN`, so seven verbs
 once the normalization below collapses the whitespace variants, or 84 rows.
+
+Every figure below is per pod, because each pod exports its own copy of every
+series. Multiply by the replica count: ×1 in dev, ×2 in test and in PR
+previews, ×3 in prod, with a rollout briefly adding a second generation.
 
 Runtime metrics (`nodejs_*`, `v8js_*`) are fixed per process regardless of
 traffic: 7 event-loop-delay gauges + 2 event-loop-time rows + 1 utilization +
@@ -478,7 +500,10 @@ described in the previous section was wrong.
 ### Preview environments multiply the whole set
 
 Each PR preview deploys with its own `OTEL_SERVICE_NAME`, so it becomes its
-own `job` and carries a **complete** copy of the catalog above. Observed with
+own `job` and carries a **complete** copy of the catalog above, **per pod**.
+The figures below were measured before pods were distinguished by `instance`,
+so each is one pod's worth: a two-pod preview now holds about twice that, and
+a three-pod prod deployment about three times the dev figure. Observed with
 two previews live alongside dev:
 
 ```text
@@ -489,8 +514,8 @@ two previews live alongside dev:
 941  total
 ```
 
-So the deployed cost is roughly `300 x (1 + open previews)` per environment,
-not 300. This is the dominant growth term in dev by a wide margin — larger
+So the deployed cost is roughly `300 x pods x (1 + open previews)` per
+environment, not 300. This is the dominant growth term in dev by a wide margin — larger
 than any single metric's dimensions — and it is invisible from the local
 stack, which only ever runs one instance. Previews are short-lived and their
 series go stale when the pods are removed, so this is a churn and
@@ -585,6 +610,17 @@ starting list didn't anticipate. Recorded here so they aren't rediscovered:
    several), but means per-endpoint OIDC latency isn't visible from this
    metric alone.
 
+5. **Pods shared one series before `service.instance.id` was set.** The chart
+   set `OTEL_RESOURCE_ATTRIBUTES` to `service.version` only, so no `instance`
+   label existed and every pod wrote into the same series. On a two-pod
+   preview each queue gauge had one series instead of two, and
+   `v8js_memory_heap_used_bytes` alternated between the two pods' values about
+   24 seconds apart. For counters and histograms this is worse than noise: a
+   series jumping between two pods' totals makes `rate()` read each drop as a
+   restart. It went unnoticed because dev runs one pod and health-check counts
+   happened to match on both. Fixed by setting `service.instance.id` to the pod
+   name in both deployments; data recorded before that stays mixed and ages out.
+
 ## OTLP export confirmed end to end
 
 Deployed, the full path is exercised: the app exports over OTLP to the
@@ -612,6 +648,9 @@ count({job="digital-trust-common-service"})
 
 # every instance reporting, dev and any live PR previews
 count by (job) ({job=~".*digital-trust-common-service.*"})
+
+# pods reporting for one deployment; expect one row per replica
+count by (instance) (nodejs_eventloop_delay_mean_seconds{job="digital-trust-common-service"})
 
 # resource attributes, which live here rather than on each series
 target_info{job="digital-trust-common-service"}
