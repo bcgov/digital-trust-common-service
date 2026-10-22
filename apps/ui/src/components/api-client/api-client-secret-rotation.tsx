@@ -65,11 +65,7 @@ export function ApiClientSecretRotation({
             shown once.
           </p>
         </div>
-        <Button
-          type="button"
-          variant="outline"
-          onClick={() => setIsOpen(true)}
-        >
+        <Button type="button" variant="outline" onClick={() => setIsOpen(true)}>
           Rotate secret
         </Button>
       </div>

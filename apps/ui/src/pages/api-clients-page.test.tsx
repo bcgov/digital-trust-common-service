@@ -167,10 +167,14 @@ describe('ApiClientsPage', () => {
     await user.click(
       screen.getByRole('button', { name: 'Actions for Issuance service' }),
     );
-    expect(screen.getByRole('menuitem', { name: 'View details' })).toBeVisible();
+    expect(
+      screen.getByRole('menuitem', { name: 'View details' }),
+    ).toBeVisible();
     expect(screen.getByRole('menuitem', { name: 'Edit' })).toBeVisible();
     expect(screen.getByRole('menuitem', { name: 'Revoke' })).toBeVisible();
-    expect(screen.queryByRole('menuitem', { name: 'Rotate secret' })).toBeNull();
+    expect(
+      screen.queryByRole('menuitem', { name: 'Rotate secret' }),
+    ).toBeNull();
     await user.click(screen.getByRole('menuitem', { name: 'View details' }));
     const details = await screen.findByRole('dialog');
     expect(within(details).getByText('dtcs_example')).toBeInTheDocument();
@@ -191,13 +195,17 @@ describe('ApiClientsPage', () => {
         'For server-side apps. Uses a client secret as well as PKCE.',
       ),
     ).toBeInTheDocument();
-    await user.click(within(details).getByText('Close', { selector: 'button' }));
+    await user.click(
+      within(details).getByText('Close', { selector: 'button' }),
+    );
     await user.click(
       screen.getByRole('button', { name: 'Actions for Issuance service' }),
     );
     await user.click(await screen.findByRole('menuitem', { name: 'Edit' }));
     const dialog = await screen.findByRole('dialog');
-    expect(within(dialog).queryByText('New client secret')).not.toBeInTheDocument();
+    expect(
+      within(dialog).queryByText('New client secret'),
+    ).not.toBeInTheDocument();
     expect(
       within(dialog).getByText('Client ID cannot be changed once created'),
     ).toBeInTheDocument();
@@ -304,14 +312,11 @@ describe('ApiClientsPage', () => {
         );
       else
         server.use(
-          http.post(
-            `${detailPath}/reactivate`,
-            ({ params }) => {
-              expect(params.clientId).toBe(existing.client_id);
-              changed = true;
-              return HttpResponse.json(existing);
-            },
-          ),
+          http.post(`${detailPath}/reactivate`, ({ params }) => {
+            expect(params.clientId).toBe(existing.client_id);
+            changed = true;
+            return HttpResponse.json(existing);
+          }),
         );
       await renderPage();
       const toggle = await screen.findByRole('switch', {
@@ -448,9 +453,7 @@ describe('ApiClientsPage', () => {
     );
     await renderPage();
     await user.click(
-      (
-        await screen.findAllByRole('button', { name: 'Create integration' })
-      )[0],
+      (await screen.findAllByRole('button', { name: 'Create integration' }))[0],
     );
     const dialog = await screen.findByRole('dialog');
     await user.type(
@@ -485,9 +488,7 @@ describe('ApiClientsPage', () => {
     );
     await renderPage();
     await user.click(
-      (
-        await screen.findAllByRole('button', { name: 'Create integration' })
-      )[0],
+      (await screen.findAllByRole('button', { name: 'Create integration' }))[0],
     );
     const dialog = await screen.findByRole('dialog');
     await user.type(

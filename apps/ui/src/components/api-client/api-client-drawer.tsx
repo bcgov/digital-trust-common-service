@@ -279,8 +279,7 @@ export function ApiClientDrawer({
                           .filter(
                             (scope) =>
                               !availableScopes.some(
-                                ({ name: scopeName }) =>
-                                  scopeName === scope,
+                                ({ name: scopeName }) => scopeName === scope,
                               ),
                           )
                           .map((scope) => (
