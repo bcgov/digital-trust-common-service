@@ -36,7 +36,7 @@ export function CreateTenantDialog({ onClose }: { onClose: () => void }) {
           {
             onSuccess: () => {
               onClose();
-              notify.success('Tenant created');
+              notify.success(`Tenant ${name.trim()} created.`);
             },
           },
         );
