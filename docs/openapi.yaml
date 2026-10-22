@@ -2216,6 +2216,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ClientWithSecret"
+        "409":
+          $ref: "#/components/responses/Conflict"
     get:
       operationId: listClients
       summary: List API clients
@@ -2275,6 +2277,30 @@ paths:
                 $ref: "#/components/schemas/Client"
         "404":
           description: Client not found
+
+  /api/v1/tenants/{tenantId}/clients/{clientId}/reactivate:
+    parameters:
+      - $ref: "#/components/parameters/TenantId"
+      - name: clientId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Public OAuth client_id
+    post:
+      operationId: reactivateClient
+      summary: Reactivate an API client
+      description: Allows new token grants using the existing credentials. Rotate the secret separately if it may have been compromised.
+      tags: [Clients]
+      responses:
+        "200":
+          description: Client reactivated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Client"
+        "404":
+          $ref: "#/components/responses/NotFound"
 
   /api/v1/tenants/{tenantId}/clients/{clientId}/rotate-secret:
     parameters:
@@ -4098,6 +4124,9 @@ components:
     Client:
       type: object
       properties:
+        is_public:
+          type: boolean
+          description: Public PKCE client without a secret
         id:
           type: string
           format: uuid
@@ -4158,6 +4187,15 @@ components:
         the authenticated user sub.
       required: [name, scopes]
       properties:
+        client_id:
+          type: string
+          minLength: 6
+          maxLength: 255
+          pattern: '^dtcs_[a-z0-9][a-z0-9_-]{0,249}$'
+          description: >-
+            Optional unique, immutable OAuth client ID. When omitted, a random ID
+            with the `dtcs_` prefix is generated. The UI suggests an ID derived
+            from the name. IDs are unique across all tenants and cannot be reused.
         name:
           type: string
           minLength: 1

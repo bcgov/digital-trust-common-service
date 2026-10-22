@@ -1174,6 +1174,31 @@ export interface paths {
         patch: operations["updateClient"];
         trace?: never;
     };
+    "/api/v1/tenants/{tenantId}/clients/{clientId}/reactivate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                /** @description Public OAuth client_id */
+                clientId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reactivate an API client
+         * @description Allows new token grants using the existing credentials. Rotate the secret separately if it may have been compromised.
+         */
+        post: operations["reactivateClient"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/tenants/{tenantId}/clients/{clientId}/rotate-secret": {
         parameters: {
             query?: never;
@@ -2200,6 +2225,8 @@ export interface components {
             events: ("credential.issued" | "credential.verified" | "credential.accepted" | "credential.rejected" | "credential.revoked" | "connection.established")[];
         };
         Client: {
+            /** @description Public PKCE client without a secret */
+            is_public?: boolean;
             /** Format: uuid */
             id?: string;
             /** Format: uuid */
@@ -2227,6 +2254,8 @@ export interface components {
         };
         /** @description Tenant is taken from the path, not this body. created_by is recorded from the authenticated user sub. */
         CreateClientRequest: {
+            /** @description Optional unique, immutable OAuth client ID. When omitted, a random ID with the `dtcs_` prefix is generated. The UI suggests an ID derived from the name. IDs are unique across all tenants and cannot be reused. */
+            client_id?: string;
             name: string;
             scopes: ("credentials:offer" | "credentials:verify" | "credentials:hold" | "credentials:revoke" | "connections:manage" | "profiles:manage" | "users:manage" | "clients:manage" | "logs:read" | "audit:read" | "tenants:admin")[];
             roles?: ("owner" | "admin" | "member" | "readonly" | "platform-admin")[];
@@ -4590,6 +4619,7 @@ export interface operations {
                     "application/json": components["schemas"]["ClientWithSecret"];
                 };
             };
+            409: components["responses"]["Conflict"];
         };
     };
     deleteClient: {
@@ -4647,6 +4677,32 @@ export interface operations {
                 };
                 content?: never;
             };
+        };
+    };
+    reactivateClient: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                /** @description Public OAuth client_id */
+                clientId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client reactivated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Client"];
+                };
+            };
+            404: components["responses"]["NotFound"];
         };
     };
     rotateClientSecret: {

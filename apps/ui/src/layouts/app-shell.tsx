@@ -1,13 +1,11 @@
 import type { ParseKeys } from 'i18next';
-import { LayoutDashboard, LogOut, Share2, UsersRound } from 'lucide-react';
+import { KeyRound, LayoutDashboard, LogOut, Share2, UsersRound } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { NavLink, Outlet, useMatches } from 'react-router';
 
-import { BcGovHeader } from '@/components/common/bc-gov-header';
-import { BuildingIcon } from '@/components/icons';
-import { TenantSwitcher } from '@/components/tenant/tenant-switcher';
 import { Avatar, AvatarFallback } from '@/components/common/avatar';
 import { Badge } from '@/components/common/badge';
+import { BcGovHeader } from '@/components/common/bc-gov-header';
 import { Button } from '@/components/common/button';
 import {
   DropdownMenu,
@@ -18,13 +16,15 @@ import {
   DropdownMenuTrigger,
 } from '@/components/common/dropdown-menu';
 import { Toaster } from '@/components/common/sonner';
+import { BuildingIcon } from '@/components/icons';
+import { TenantSwitcher } from '@/components/tenant/tenant-switcher';
 import { useAuth } from '@/lib/auth/context';
-import { useActiveTenant } from '@/lib/tenant/active-tenant';
 import {
   hasScope,
   TENANT_ADMIN_SCOPE,
   USERS_MANAGE_SCOPE,
 } from '@/lib/auth/scopes';
+import { useActiveTenant } from '@/lib/tenant/active-tenant';
 import { roleLabel } from '@/lib/tenant/roles';
 import { cn } from '@/lib/utils';
 
@@ -40,6 +40,12 @@ const NAV_ITEMS: {
     label: 'nav.connectors',
     icon: Share2,
     scope: TENANT_ADMIN_SCOPE,
+  },
+  {
+    to: '/api-clients',
+    label: 'API integrations',
+    icon: KeyRound,
+    scope: 'clients:manage',
   },
 ];
 
