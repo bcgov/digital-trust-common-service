@@ -165,6 +165,12 @@ export const handlers = [
     const body = (await request.json()) as Partial<Tenant>;
     return HttpResponse.json({ ...mockTenants[0], ...body }, { status: 201 });
   }),
+  http.patch(`${API_BASE_PATH}/tenants/:id`, async ({ params, request }) => {
+    const tenant = mockTenants.find((t) => t.id === params.id);
+    if (!tenant) return new HttpResponse(null, { status: 404 });
+    const body = (await request.json()) as Partial<Tenant>;
+    return HttpResponse.json({ ...tenant, ...body });
+  }),
   http.get(`${API_BASE_PATH}/tenants/:id`, ({ params }) => {
     const tenant = mockTenants.find((t) => t.id === params.id);
     return tenant

@@ -10,6 +10,7 @@ export type Tenant = components['schemas']['Tenant'];
 export type TenantStatus = components['schemas']['TenantStatus'];
 
 export type CreateTenantRequest = components['schemas']['CreateTenantRequest'];
+export type UpdateTenantRequest = components['schemas']['UpdateTenantRequest'];
 
 export async function listTenants(
   params: CursorParams = {},
@@ -25,5 +26,13 @@ export async function getTenant(id: string): Promise<Tenant> {
 
 export async function createTenant(body: CreateTenantRequest): Promise<Tenant> {
   const response = await apiClient.post<Tenant>('/tenants', body);
+  return response.data;
+}
+
+export async function updateTenant(
+  id: string,
+  body: UpdateTenantRequest,
+): Promise<Tenant> {
+  const response = await apiClient.patch<Tenant>(`/tenants/${id}`, body);
   return response.data;
 }

@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 
+import { Toaster } from '@/components/common/sonner';
 import { API_BASE_PATH } from '@/lib/api/constants';
 import { createMockAuthClient } from '@/lib/auth/mock-auth';
 import { mockTenants } from '@/mocks/handlers';
@@ -23,10 +24,20 @@ async function renderTenantsPage({ platformAdmin = false } = {}) {
     };
     client.getState = () => promoted;
   }
-  renderWithAuth([{ path: '/tenants', element: <TenantsPage /> }], {
-    client,
-    initialEntries: ['/tenants'],
-  });
+  renderWithAuth(
+    [
+      {
+        path: '/tenants',
+        element: (
+          <>
+            <TenantsPage />
+            <Toaster />
+          </>
+        ),
+      },
+    ],
+    { client, initialEntries: ['/tenants'] },
+  );
 }
 
 describe('TenantsPage', () => {
@@ -51,7 +62,9 @@ describe('TenantsPage', () => {
 
     expect(await screen.findByText('No tenants yet')).toBeInTheDocument();
     expect(
-      screen.getByText('Tenants you create will be listed here.'),
+      screen.getByText(
+        'Create a tenant so an organization can configure and issue digital credentials.',
+      ),
     ).toBeInTheDocument();
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
   });
@@ -109,11 +122,91 @@ describe('TenantsPage', () => {
     );
 
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(
+      await screen.findByText('Tenant Acme Ministry 2 created.'),
+    ).toBeInTheDocument();
+    await user.click(
+      screen.getByRole('button', { name: 'Dismiss notification' }),
+    );
+    await waitFor(() =>
+      expect(screen.queryByText('Tenant Acme Ministry 2 created.')).toBeNull(),
+    );
     expect(body).toEqual({
       name: 'Acme Ministry 2',
       slug: 'acme-ministry-2',
       owner_email: 'owner@example.com',
     });
+  });
+
+  it('filters tenants by name or slug', async () => {
+    const user = userEvent.setup();
+    await renderTenantsPage();
+
+    await user.type(
+      await screen.findByRole('searchbox', { name: 'Search tenants' }),
+      'example',
+    );
+
+    expect(screen.getByText('Example Agency')).toBeInTheDocument();
+    expect(screen.queryByText('Acme Ministry')).toBeNull();
+  });
+
+  it('edits a tenant from the row menu', async () => {
+    let body: unknown;
+    server.use(
+      http.patch(`${API_BASE_PATH}/tenants/:id`, async ({ request }) => {
+        body = await request.json();
+        return HttpResponse.json(mockTenants[0]);
+      }),
+    );
+    const user = userEvent.setup();
+    await renderTenantsPage({ platformAdmin: true });
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Actions for Acme Ministry' }),
+    );
+    await user.click(await screen.findByRole('menuitem', { name: 'Edit' }));
+    const dialog = await screen.findByRole('dialog');
+    const save = within(dialog).getByRole('button', { name: 'Save changes' });
+    expect(save).toBeDisabled();
+    await user.type(within(dialog).getByLabelText(/^Name/), ' Renamed');
+    await user.click(save);
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(
+      await screen.findByText('Tenant Acme Ministry Renamed updated.'),
+    ).toBeInTheDocument();
+    expect(body).toEqual({
+      name: 'Acme Ministry Renamed',
+      description: 'First mock tenant',
+    });
+  });
+
+  it('keeps the edit dialog open with an alert when saving fails', async () => {
+    server.use(
+      http.patch(`${API_BASE_PATH}/tenants/:id`, () =>
+        HttpResponse.json({ message: 'Boom' }, { status: 500 }),
+      ),
+    );
+    const user = userEvent.setup();
+    await renderTenantsPage({ platformAdmin: true });
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Actions for Acme Ministry' }),
+    );
+    await user.click(await screen.findByRole('menuitem', { name: 'Edit' }));
+    const dialog = await screen.findByRole('dialog');
+    await user.type(within(dialog).getByLabelText(/^Name/), ' Renamed');
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Save changes' }),
+    );
+
+    expect(
+      await within(dialog).findByText('Could not update tenant'),
+    ).toBeInTheDocument();
+    expect(within(dialog).getByLabelText(/^Name/)).toHaveValue(
+      'Acme Ministry Renamed',
+    );
   });
 
   it('shows a loading state, then an error alert when creation fails', async () => {

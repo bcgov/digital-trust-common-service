@@ -4,7 +4,9 @@ import {
   createTenant,
   getTenant,
   listTenants,
+  updateTenant,
   type CreateTenantRequest,
+  type UpdateTenantRequest,
 } from '../resources/tenants';
 import type { CursorParams } from '../pagination';
 
@@ -40,6 +42,15 @@ export function useCreateTenant() {
   return useMutation({
     mutationFn: (body: CreateTenantRequest) => createTenant(body),
     // Stays pending until the list refetches so the dialog can close on it.
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: tenantKeys.all }),
+  });
+}
+
+export function useUpdateTenant(id: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: UpdateTenantRequest) => updateTenant(id, body),
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: tenantKeys.all }),
   });
