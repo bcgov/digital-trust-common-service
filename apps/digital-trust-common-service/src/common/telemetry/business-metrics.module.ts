@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 
 import { BusinessMetricsService } from './business-metrics.service';
+import { QueueMetricsService } from './queue-metrics.service';
 import { TransactionalMetricsSubscriber } from './transactional-metrics.subscriber';
 
 /**
@@ -10,7 +11,11 @@ import { TransactionalMetricsSubscriber } from './transactional-metrics.subscrib
  * rather than one per consumer.
  */
 @Module({
-  providers: [BusinessMetricsService, TransactionalMetricsSubscriber],
+  providers: [
+    BusinessMetricsService,
+    QueueMetricsService,
+    TransactionalMetricsSubscriber,
+  ],
   exports: [BusinessMetricsService],
 })
 export class BusinessMetricsModule {}
