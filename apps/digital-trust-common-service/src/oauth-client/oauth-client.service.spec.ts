@@ -13,7 +13,10 @@ import {
 import { Test, TestingModule } from '@nestjs/testing';
 
 import { CreateOAuthClientDto } from './dto/create-oauth-client.dto';
-import { OAUTH_CLIENT_ID_PREFIX } from './oauth-client.constants';
+import {
+  OAUTH_CLIENT_ID_PREFIX,
+  RESERVED_OAUTH_CLIENT_IDS,
+} from './oauth-client.constants';
 import { OAuthClient } from './oauth-client.entity';
 import { OAuthClientRepository } from './oauth-client.repository';
 import { OAuthClientService } from './oauth-client.service';
@@ -618,6 +621,39 @@ describe('OAuthClientService', () => {
       expect(mockFindByTenant).toHaveBeenCalledWith(mockOAuthClient.tenantId);
       expect(result).toEqual([mockOAuthClient]);
     });
+  });
+
+  describe('reserved bootstrap clients', () => {
+    it.each([...RESERVED_OAUTH_CLIENT_IDS])(
+      'blocks tenant API mutations of %s',
+      async (clientId) => {
+        mockFindByTenantAndClientId.mockResolvedValue({
+          ...mockOAuthClient,
+          clientId,
+        });
+
+        await expect(
+          service.update(
+            mockOAuthClient.tenantId,
+            clientId,
+            { name: 'Altered system client' },
+            tenantAdminAuth,
+          ),
+        ).rejects.toThrow(ForbiddenException);
+        await expect(
+          service.revokeClient(mockOAuthClient.tenantId, clientId),
+        ).rejects.toThrow(ForbiddenException);
+        await expect(
+          service.rotateSecret(mockOAuthClient.tenantId, clientId),
+        ).rejects.toThrow(ForbiddenException);
+        await expect(
+          service.reactivateClient(mockOAuthClient.tenantId, clientId),
+        ).rejects.toThrow(ForbiddenException);
+
+        expect(mockUpdate).not.toHaveBeenCalled();
+        expect(mockRevoke).not.toHaveBeenCalled();
+      },
+    );
   });
 
   describe('revokeClient', () => {

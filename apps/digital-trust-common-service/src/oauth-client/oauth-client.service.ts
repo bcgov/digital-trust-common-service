@@ -23,7 +23,10 @@ import { isUniqueConstraintViolation } from '../common/postgres-error';
 
 import { CreateOAuthClientDto } from './dto/create-oauth-client.dto';
 import { UpdateOAuthClientDto } from './dto/update-oauth-client.dto';
-import { OAUTH_CLIENT_ID_PREFIX } from './oauth-client.constants';
+import {
+  OAUTH_CLIENT_ID_PREFIX,
+  RESERVED_OAUTH_CLIENT_IDS,
+} from './oauth-client.constants';
 import { OAuthClient } from './oauth-client.entity';
 import { OAuthClientRepository } from './oauth-client.repository';
 
@@ -131,6 +134,7 @@ export class OAuthClientService {
     const client = await this.requireTenantClient(tenantId, clientId, {
       active: true,
     });
+    this.assertNotReserved(client);
 
     const nextRoles = dto.roles !== undefined ? dto.roles : client.roles;
     const nextGrantTypes =
@@ -179,6 +183,7 @@ export class OAuthClientService {
 
   public async revokeClient(tenantId: string, clientId: string): Promise<void> {
     const client = await this.requireTenantClient(tenantId, clientId);
+    this.assertNotReserved(client);
 
     if (client.revokedAt) {
       return;
@@ -194,6 +199,7 @@ export class OAuthClientService {
     const client = await this.requireTenantClient(tenantId, clientId, {
       active: true,
     });
+    this.assertNotReserved(client);
     if (client.isPublic) {
       throw new BadRequestException(
         'Public clients do not have a client secret.',
@@ -213,6 +219,7 @@ export class OAuthClientService {
     clientId: string,
   ): Promise<OAuthClient> {
     const client = await this.requireTenantClient(tenantId, clientId);
+    this.assertNotReserved(client);
     client.revokedAt = null;
     client.revokedReason = null;
     return this.oauthClientRepository.update(client);
@@ -260,6 +267,14 @@ export class OAuthClientService {
     }
 
     return auth;
+  }
+
+  private assertNotReserved(client: OAuthClient): void {
+    if (RESERVED_OAUTH_CLIENT_IDS.has(client.clientId)) {
+      throw new ForbiddenException(
+        'System OAuth clients cannot be managed through tenant client APIs.',
+      );
+    }
   }
 
   private async requireTenantClient(

@@ -183,7 +183,7 @@ export const handlers = [
       const client: ApiClient = {
         ...body,
         id: crypto.randomUUID(),
-        client_id: `dtcs_${crypto.randomUUID()}`,
+        client_id: body.client_id ?? `dtcs_${crypto.randomUUID()}`,
         tenant_id: tenantId,
         is_public: false,
         created_at: new Date().toISOString(),

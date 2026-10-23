@@ -129,6 +129,9 @@ export class OAuthClientController {
     description: 'OAuth client updated successfully',
     type: OAuthClientResponseDto,
   })
+  @ApiForbiddenResponse({
+    description: 'Reserved system OAuth clients cannot be modified',
+  })
   @ApiNotFoundResponse({ description: 'OAuth client not found' })
   @ApiBody({
     description: 'OAuth client update request',
@@ -196,6 +199,9 @@ export class OAuthClientController {
     description: 'Public OAuth client_id (not the row UUID)',
   })
   @ApiNoContentResponse({ description: 'OAuth client revoked successfully' })
+  @ApiForbiddenResponse({
+    description: 'Reserved system OAuth clients cannot be revoked',
+  })
   @ApiNotFoundResponse({ description: 'OAuth client not found' })
   public async revokeClient(
     @Param('tenantId', ParseUUIDPipe) tenantId: string,
@@ -220,6 +226,9 @@ export class OAuthClientController {
     description: 'New secret generated',
     type: CreateOAuthClientResponseDto,
   })
+  @ApiForbiddenResponse({
+    description: 'Reserved system OAuth client secrets cannot be rotated',
+  })
   @ApiNotFoundResponse({ description: 'OAuth client not found' })
   public async rotateSecret(
     @Param('tenantId', ParseUUIDPipe) tenantId: string,
@@ -242,6 +251,9 @@ export class OAuthClientController {
   @ApiParam({ name: 'tenantId', format: 'uuid' })
   @ApiParam({ name: 'clientId', description: 'Public OAuth client_id' })
   @ApiOkResponse({ type: OAuthClientResponseDto })
+  @ApiForbiddenResponse({
+    description: 'Reserved system OAuth clients cannot be reactivated',
+  })
   @ApiNotFoundResponse({ description: 'OAuth client not found' })
   public async reactivateClient(
     @Param('tenantId', ParseUUIDPipe) tenantId: string,
