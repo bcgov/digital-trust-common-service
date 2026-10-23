@@ -58,99 +58,99 @@ export function ApiClientsTable({
 
             return (
               <TableRow key={client.client_id}>
-              <TableCell className="whitespace-normal">
-                <div className="font-semibold">{client.name}</div>
-                <div className="mt-1 break-all font-mono text-xs text-muted-foreground">
-                  {client.client_id}
-                </div>
-                {systemManaged && (
-                  <div className="text-xs text-muted-foreground">
-                    System managed
+                <TableCell className="whitespace-normal">
+                  <div className="font-semibold">{client.name}</div>
+                  <div className="mt-1 break-all font-mono text-xs text-muted-foreground">
+                    {client.client_id}
                   </div>
-                )}
-                {client.is_public && (
-                  <span className="text-xs text-muted-foreground">
-                    Public (PKCE)
-                  </span>
-                )}
-              </TableCell>
-              <TableCell className="whitespace-normal">
-                <div className="flex flex-wrap gap-1">
-                  {client.scopes?.map((scope) => (
-                    <ScopeBadge key={scope} scope={scope} />
-                  ))}
-                </div>
-              </TableCell>
-              <TableCell>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-checked={!client.revoked_at}
-                    aria-label={`Active status for ${client.name}${systemManaged ? ' (system managed)' : ''}`}
-                    disabled={systemManaged}
-                    onClick={() =>
-                      onAction(
-                        client,
-                        client.revoked_at ? 'reactivate' : 'disable',
-                      )
-                    }
-                    className={`inline-flex h-6 w-11 shrink-0 items-center rounded-full border-2 border-transparent transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${client.revoked_at ? 'bg-muted-foreground' : 'bg-primary'}`}
-                  >
-                    <span
-                      aria-hidden="true"
-                      className={`pointer-events-none block size-5 rounded-full bg-background shadow-sm transition-transform ${client.revoked_at ? 'translate-x-0' : 'translate-x-5'}`}
-                    />
-                  </button>
-                  <span className="text-sm">
-                    {client.revoked_at ? 'Disabled' : 'Enabled'}
-                  </span>
                   {systemManaged && (
-                    <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                      <LockKeyhole
-                        className="size-3 shrink-0"
-                        aria-hidden="true"
-                      />
-                      Managed by system
+                    <div className="text-xs text-muted-foreground">
+                      System managed
+                    </div>
+                  )}
+                  {client.is_public && (
+                    <span className="text-xs text-muted-foreground">
+                      Public (PKCE)
                     </span>
                   )}
-                </div>
-              </TableCell>
-              <TableCell className="text-right">
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      aria-label={`Actions for ${client.name}`}
+                </TableCell>
+                <TableCell className="whitespace-normal">
+                  <div className="flex flex-wrap gap-1">
+                    {client.scopes?.map((scope) => (
+                      <ScopeBadge key={scope} scope={scope} />
+                    ))}
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={!client.revoked_at}
+                      aria-label={`Active status for ${client.name}${systemManaged ? ' (system managed)' : ''}`}
+                      disabled={systemManaged}
+                      onClick={() =>
+                        onAction(
+                          client,
+                          client.revoked_at ? 'reactivate' : 'disable',
+                        )
+                      }
+                      className={`inline-flex h-6 w-11 shrink-0 items-center rounded-full border-2 border-transparent transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${client.revoked_at ? 'bg-muted-foreground' : 'bg-primary'}`}
                     >
-                      <EllipsisVertical aria-hidden="true" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem onSelect={() => onViewDetails(client)}>
-                      <Info aria-hidden="true" />
-                      View details
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      disabled={systemManaged || Boolean(client.revoked_at)}
-                      onSelect={() => onEdit(client)}
-                    >
-                      <Pencil aria-hidden="true" />
-                      Edit
-                    </DropdownMenuItem>
-                    <Separator />
-                    <DropdownMenuItem
-                      variant="destructive"
-                      disabled={systemManaged || Boolean(client.revoked_at)}
-                      onSelect={() => onRevoke(client)}
-                    >
-                      <Trash2 aria-hidden="true" />
-                      Revoke
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </TableCell>
+                      <span
+                        aria-hidden="true"
+                        className={`pointer-events-none block size-5 rounded-full bg-background shadow-sm transition-transform ${client.revoked_at ? 'translate-x-0' : 'translate-x-5'}`}
+                      />
+                    </button>
+                    <span className="text-sm">
+                      {client.revoked_at ? 'Disabled' : 'Enabled'}
+                    </span>
+                    {systemManaged && (
+                      <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                        <LockKeyhole
+                          className="size-3 shrink-0"
+                          aria-hidden="true"
+                        />
+                        Managed by system
+                      </span>
+                    )}
+                  </div>
+                </TableCell>
+                <TableCell className="text-right">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label={`Actions for ${client.name}`}
+                      >
+                        <EllipsisVertical aria-hidden="true" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onSelect={() => onViewDetails(client)}>
+                        <Info aria-hidden="true" />
+                        View details
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        disabled={systemManaged || Boolean(client.revoked_at)}
+                        onSelect={() => onEdit(client)}
+                      >
+                        <Pencil aria-hidden="true" />
+                        Edit
+                      </DropdownMenuItem>
+                      <Separator />
+                      <DropdownMenuItem
+                        variant="destructive"
+                        disabled={systemManaged || Boolean(client.revoked_at)}
+                        onSelect={() => onRevoke(client)}
+                      >
+                        <Trash2 aria-hidden="true" />
+                        Revoke
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </TableCell>
               </TableRow>
             );
           })}
