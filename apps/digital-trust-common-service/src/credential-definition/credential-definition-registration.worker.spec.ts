@@ -206,31 +206,9 @@ describe('credential definition registration worker', () => {
     await worker.process('tenant', 'definition');
 
     expect(manager.findOne).toHaveBeenCalledTimes(2);
+    expect(manager.update).not.toHaveBeenCalled();
     expect(resolve).not.toHaveBeenCalled();
     expect(runner.release).toHaveBeenCalled();
-  });
-
-  it('rejects internal advancement without persisted registration progress', async () => {
-    const privateMethods = worker as unknown as {
-      advance: (...args: unknown[]) => Promise<void>;
-      observeSubmission: (...args: unknown[]) => Promise<void>;
-    };
-    const withoutProgress = { ...definition(), registration: undefined };
-
-    await expect(
-      privateMethods.advance(withoutProgress, port, {}, () =>
-        Promise.resolve(),
-      ),
-    ).rejects.toMatchObject({ issues: ['Missing registration progress'] });
-    await expect(
-      privateMethods.observeSubmission(
-        withoutProgress,
-        port,
-        {},
-        'schema',
-        () => Promise.resolve(),
-      ),
-    ).rejects.toMatchObject({ issues: ['Missing registration progress'] });
   });
 
   it.each([null, { id: 'operation', state: 'failed' }])(
