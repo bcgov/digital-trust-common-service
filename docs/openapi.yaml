@@ -2246,10 +2246,13 @@ paths:
       description: |
         Soft-revokes the client. Further token grants fail immediately.
         Issued access tokens remain valid until their TTL.
+        Reserved system clients cannot be revoked through this endpoint.
       tags: [Clients]
       responses:
         "204":
           description: Client revoked
+        "403":
+          description: Reserved system client cannot be revoked
 
     patch:
       operationId: updateClient
@@ -2260,7 +2263,7 @@ paths:
         in the body. Scope assignment follows the same caller-subset rule as create.
         Role assignment is restricted to platform-admin callers.
         Issued access tokens remain valid until their TTL after a secret rotation
-        or revoke.
+        or revoke. Reserved system clients cannot be modified through this endpoint.
       tags: [Clients]
       requestBody:
         required: true
@@ -2277,6 +2280,8 @@ paths:
                 $ref: "#/components/schemas/Client"
         "404":
           description: Client not found
+        "403":
+          description: Reserved system client cannot be modified
 
   /api/v1/tenants/{tenantId}/clients/{clientId}/reactivate:
     parameters:
@@ -2290,7 +2295,7 @@ paths:
     post:
       operationId: reactivateClient
       summary: Reactivate an API client
-      description: Allows new token grants using the existing credentials. Rotate the secret separately if it may have been compromised.
+      description: Allows new token grants using the existing credentials. Rotate the secret separately if it may have been compromised. Reserved system clients cannot be reactivated through this endpoint.
       tags: [Clients]
       responses:
         "200":
@@ -2301,6 +2306,8 @@ paths:
                 $ref: "#/components/schemas/Client"
         "404":
           $ref: "#/components/responses/NotFound"
+        "403":
+          description: Reserved system client cannot be reactivated
 
   /api/v1/tenants/{tenantId}/clients/{clientId}/rotate-secret:
     parameters:
@@ -2315,7 +2322,8 @@ paths:
       summary: Rotate client secret
       description: |
         Generates a new secret. The old secret is immediately invalidated.
-        Issued access tokens remain valid until their TTL.
+        Issued access tokens remain valid until their TTL. Reserved system client
+        secrets cannot be rotated through this endpoint.
       tags: [Clients]
       responses:
         "200":
@@ -2324,6 +2332,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ClientWithSecret"
+        "403":
+          description: Reserved system client secret cannot be rotated
 
   # ─── Discovery (Public, Unauthenticated) ─────────────────────────────
   /api/v1/issuers/{tenantSlug}/.well-known/openid-credential-issuer:

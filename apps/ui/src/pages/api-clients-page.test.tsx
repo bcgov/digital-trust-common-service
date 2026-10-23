@@ -255,6 +255,54 @@ describe('ApiClientsPage', () => {
     expect(await screen.findByText('Client updated.')).toBeInTheDocument();
   });
 
+  it('disables management actions for reserved system clients', async () => {
+    const user = userEvent.setup();
+    const systemClients: ApiClient[] = [
+      {
+        ...existing,
+        client_id: 'dtsc-ui',
+        name: 'Digital Trust Common Service UI',
+        is_public: true,
+      },
+      {
+        ...existing,
+        client_id: 'dtsc-platform-admin',
+        name: 'Platform administration',
+      },
+    ];
+    server.use(
+      http.get(clientsPath, () => HttpResponse.json(systemClients)),
+    );
+    await renderPage();
+    const table = await screen.findByRole('table', { name: 'API clients' });
+
+    for (const client of systemClients) {
+      const row = within(table).getByRole('row', {
+        name: new RegExp(client.name ?? ''),
+      });
+      expect(within(row).getByText('System managed')).toBeInTheDocument();
+      expect(within(row).getByText('Managed by system')).toBeInTheDocument();
+      expect(
+        within(row).getByRole('switch', {
+          name: `Active status for ${client.name} (system managed)`,
+        }),
+      ).toBeDisabled();
+      await user.click(
+        within(row).getByRole('button', { name: `Actions for ${client.name}` }),
+      );
+      expect(
+        screen.getByRole('menuitem', { name: 'View details' }),
+      ).toBeVisible();
+      expect(
+        screen.getByRole('menuitem', { name: 'Edit' }),
+      ).toHaveAttribute('aria-disabled', 'true');
+      expect(
+        screen.getByRole('menuitem', { name: 'Revoke' }),
+      ).toHaveAttribute('aria-disabled', 'true');
+      await user.keyboard('{Escape}');
+    }
+  });
+
   it('rotates a confidential client secret from the edit drawer', async () => {
     const user = userEvent.setup();
     const secret = crypto.randomUUID();

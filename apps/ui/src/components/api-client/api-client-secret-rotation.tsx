@@ -12,6 +12,7 @@ import {
 } from '@/components/common/drawer';
 import { notify } from '@/components/common/sonner';
 import { useChangeApiClient } from '@/lib/api/queries/api-clients';
+import { isReservedApiClientId } from '@/lib/api/resources/api-clients';
 import type {
   ApiClient,
   ClientCredentials,
@@ -53,7 +54,7 @@ export function ApiClientSecretRotation({
     );
   };
 
-  if (client.is_public) return null;
+  if (client.is_public || isReservedApiClientId(client.client_id)) return null;
 
   return (
     <>

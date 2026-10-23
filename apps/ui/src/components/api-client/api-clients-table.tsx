@@ -1,4 +1,10 @@
-import { EllipsisVertical, Info, Pencil, Trash2 } from 'lucide-react';
+import {
+  EllipsisVertical,
+  Info,
+  LockKeyhole,
+  Pencil,
+  Trash2,
+} from 'lucide-react';
 
 import { Button } from '@/components/common/button';
 import {
@@ -17,7 +23,10 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/common/table';
-import type { ApiClient } from '@/lib/api/resources/api-clients';
+import {
+  isReservedApiClientId,
+  type ApiClient,
+} from '@/lib/api/resources/api-clients';
 
 export function ApiClientsTable({
   clients,
@@ -44,13 +53,21 @@ export function ApiClientsTable({
           </TableRow>
         </TableHeader>
         <TableBody className="[&_td]:px-5 [&_td]:py-4">
-          {clients.map((client) => (
-            <TableRow key={client.client_id}>
+          {clients.map((client) => {
+            const systemManaged = isReservedApiClientId(client.client_id);
+
+            return (
+              <TableRow key={client.client_id}>
               <TableCell className="whitespace-normal">
                 <div className="font-semibold">{client.name}</div>
                 <div className="mt-1 break-all font-mono text-xs text-muted-foreground">
                   {client.client_id}
                 </div>
+                {systemManaged && (
+                  <div className="text-xs text-muted-foreground">
+                    System managed
+                  </div>
+                )}
                 {client.is_public && (
                   <span className="text-xs text-muted-foreground">
                     Public (PKCE)
@@ -70,14 +87,15 @@ export function ApiClientsTable({
                     type="button"
                     role="switch"
                     aria-checked={!client.revoked_at}
-                    aria-label={`Active status for ${client.name}`}
+                    aria-label={`Active status for ${client.name}${systemManaged ? ' (system managed)' : ''}`}
+                    disabled={systemManaged}
                     onClick={() =>
                       onAction(
                         client,
                         client.revoked_at ? 'reactivate' : 'disable',
                       )
                     }
-                    className={`inline-flex h-6 w-11 shrink-0 items-center rounded-full border-2 border-transparent transition-colors ${client.revoked_at ? 'bg-muted-foreground' : 'bg-primary'}`}
+                    className={`inline-flex h-6 w-11 shrink-0 items-center rounded-full border-2 border-transparent transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${client.revoked_at ? 'bg-muted-foreground' : 'bg-primary'}`}
                   >
                     <span
                       aria-hidden="true"
@@ -87,6 +105,15 @@ export function ApiClientsTable({
                   <span className="text-sm">
                     {client.revoked_at ? 'Disabled' : 'Enabled'}
                   </span>
+                  {systemManaged && (
+                    <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                      <LockKeyhole
+                        className="size-3 shrink-0"
+                        aria-hidden="true"
+                      />
+                      Managed by system
+                    </span>
+                  )}
                 </div>
               </TableCell>
               <TableCell className="text-right">
@@ -106,7 +133,7 @@ export function ApiClientsTable({
                       View details
                     </DropdownMenuItem>
                     <DropdownMenuItem
-                      disabled={Boolean(client.revoked_at)}
+                      disabled={systemManaged || Boolean(client.revoked_at)}
                       onSelect={() => onEdit(client)}
                     >
                       <Pencil aria-hidden="true" />
@@ -115,7 +142,7 @@ export function ApiClientsTable({
                     <Separator />
                     <DropdownMenuItem
                       variant="destructive"
-                      disabled={Boolean(client.revoked_at)}
+                      disabled={systemManaged || Boolean(client.revoked_at)}
                       onSelect={() => onRevoke(client)}
                     >
                       <Trash2 aria-hidden="true" />
@@ -124,8 +151,9 @@ export function ApiClientsTable({
                   </DropdownMenuContent>
                 </DropdownMenu>
               </TableCell>
-            </TableRow>
-          ))}
+              </TableRow>
+            );
+          })}
         </TableBody>
       </Table>
     </div>

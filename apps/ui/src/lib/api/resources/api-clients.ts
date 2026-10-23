@@ -10,6 +10,17 @@ export type Scope = NonNullable<
   operations['listScopes']['responses'][200]['content']['application/json']['data']
 >[number];
 
+export const RESERVED_API_CLIENT_IDS: ReadonlySet<string> = new Set([
+  'dtsc-ui',
+  'dtsc-platform-admin',
+]);
+
+export function isReservedApiClientId(
+  clientId: string | null | undefined,
+): boolean {
+  return clientId != null && RESERVED_API_CLIENT_IDS.has(clientId);
+}
+
 const path = (tenantId: string, clientId?: string) =>
   `/tenants/${encodeURIComponent(tenantId)}/clients${clientId ? `/${encodeURIComponent(clientId)}` : ''}`;
 

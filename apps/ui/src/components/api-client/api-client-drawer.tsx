@@ -74,7 +74,7 @@ export function ApiClientDrawer({
   const availableScopes = (scopes.data ?? []).filter(
     (scope) => scope.name && hasScope(user, scope.name),
   );
-  const suggestedClientId = `dtcs_${slugify(name) || 'client'}`;
+  const suggestedClientId = `dtcs_${(slugify(name) || 'client').slice(0, 250)}`;
   const close = () => {
     if (mutation.isPending) return;
     setCredentials(null);

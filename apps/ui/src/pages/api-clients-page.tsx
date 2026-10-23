@@ -113,7 +113,7 @@ export function ApiClientsPage() {
             {addButton}
           </div>
         ))}
-      {clientToView && (
+      {clientToView && tenant?.id === clientToView.tenant_id && (
         <ApiClientDetailsDrawer
           client={clientToView}
           onClose={() => setClientToView(null)}
