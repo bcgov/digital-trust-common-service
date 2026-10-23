@@ -73,8 +73,14 @@ spec:
               value: {{ .Values.otel.metricsExporter | quote }}
             - name: OTEL_LOGS_EXPORTER
               value: {{ .Values.otel.logsExporter | quote }}
+            # Must precede OTEL_RESOURCE_ATTRIBUTES: Kubernetes only expands
+            # $(VAR) references to variables defined earlier in the list.
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
             - name: OTEL_RESOURCE_ATTRIBUTES
-              value: {{ printf "service.version=%s" (include "digital-trust-common-service.imageTag" .) | quote }}
+              value: {{ printf "service.instance.id=$(POD_NAME),service.version=%s" (include "digital-trust-common-service.imageTag" .) | quote }}
             {{- end }}
           {{- end }}
           {{- with .Values.worker.livenessProbe }}

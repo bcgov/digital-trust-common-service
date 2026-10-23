@@ -9,6 +9,13 @@ and this chart adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.h
 
 ### Added
 
+- `POD_NAME` (downward API, `metadata.name`) in the API and Worker, and
+  `OTEL_RESOURCE_ATTRIBUTES` now `service.instance.id=$(POD_NAME),service.version=<tag>`
+  when `otel.enabled`. Previously every pod exported into the same metric
+  series, so counters and histograms were corrupted and gauges interleaved
+  readings from different pods. Each pod now gets its own `instance` label,
+  matching the `pod` label on its logs. Series count scales with pod count,
+  and a rollout starts a fresh set.
 - `config.JWT_ADDITIONAL_AUDIENCES` (default `""`), comma-separated extra
   RFC 8707 resource indicators the OIDC provider may mint access tokens for,
   such as the tenant log gateway. Previously settable only through `.env`
