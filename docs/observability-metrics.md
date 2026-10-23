@@ -41,8 +41,9 @@ them could identify one even if they were, per the labelling rule.
 ## Combining pods in a query
 
 Every pod exports its own series, distinguished by the `instance` label, which
-Alloy derives from `service.instance.id` (the pod name). A query that ignores
-`instance` aggregates across pods, so pick the aggregation by metric kind:
+Alloy derives from `service.instance.id` (the pod name). A selector that omits
+`instance` still returns one series per pod, so combining pods needs an explicit
+aggregation. Pick it by metric kind:
 
 | kind | example | across pods |
 | --- | --- | --- |
@@ -402,20 +403,22 @@ instrumentation package that emits it.
 of it, and the two we run do it differently.** This changes what you can put
 in a selector, so it is worth reading before writing a query.
 
-Deployed, a series carries its identity in `job` and nothing else from the
+Deployed, a series carries its identity in `job` (from `service.name`) and
+`instance` (from `service.instance.id`, the pod name), and nothing else from the
 resource:
 
 ```text
 http_server_request_duration_seconds_count{
   job="digital-trust-common-service",
+  instance="digital-trust-common-service-6d5f8b7c9-x2k4q",
   http_route="/health/live", http_request_method="GET",
   http_response_status_code="200",
   network_protocol_version="1.1", url_scheme="http"
 }
 ```
 
-Alloy's `otelcol.exporter.prometheus` maps `service.name` onto `job` and puts
-the entire rest of the resource — `deployment_environment_name`, `host_name`,
+Alloy's `otelcol.exporter.prometheus` maps `service.name` onto `job` and
+`service.instance.id` onto `instance`, and puts the entire rest of the resource — `deployment_environment_name`, `host_name`,
 `host_arch`, `process_*`, `telemetry_sdk_*`, `service_version` — on a single
 `target_info` series that you join in at query time. There is **no
 `service_name` label deployed at all**.
@@ -514,8 +517,11 @@ two previews live alongside dev:
 941  total
 ```
 
-So the deployed cost is roughly `300 x pods x (1 + open previews)` per
-environment, not 300. This is the dominant growth term in dev by a wide margin — larger
+So the deployed cost is roughly 300 series per exporting pod, summed over every
+deployment in the environment (dev, each open preview), not 300. Every API and
+worker replica counts. Dev runs one API pod and previews two, so with two open
+previews the API baseline is about `300 x (1 + 2 x 2) = 1,500` series, plus the
+worker pods. This is the dominant growth term in dev by a wide margin — larger
 than any single metric's dimensions — and it is invisible from the local
 stack, which only ever runs one instance. Previews are short-lived and their
 series go stale when the pods are removed, so this is a churn and
@@ -533,6 +539,10 @@ backend**, because a different collector owns each signal.
 | metrics | Mimir | `{job="pr-401-digital-trust-common-service"}` |
 | traces | Tempo | `{resource.service.name="pr-401-digital-trust-common-service"}` |
 | logs | Loki | `{instance="pr-401-digital-trust-common-service"}` |
+
+The `instance` label means different things here: in Loki it is the Helm
+release, but on metrics it is the pod name, so the metrics selector for a
+deployment is `job`, not `instance`.
 
 Metrics and traces both derive theirs from `OTEL_SERVICE_NAME`, which the chart
 sets per environment and `pr-deploy.yml` makes per-PR, so the value is the same
