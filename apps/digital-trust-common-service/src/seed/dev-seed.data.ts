@@ -13,6 +13,7 @@ import {
   IssuanceProfileProtocolHint,
   IssuanceProfileStatus,
 } from '../issuance-profile/issuance-profile.entity';
+import { UI_CLIENT_ID } from '../oauth-client/oauth-client.constants';
 import { OPERATION_TYPE } from '../operation/operation-type.constants';
 import { OperationState } from '../operation/operation.entity';
 import { TenantStatus } from '../tenant/tenant.entity';
@@ -115,7 +116,7 @@ export function seedApiClientId(slug: string): string {
  * in `config.json`), which defaults to this value; an environment that
  * registers its client under another id sets it there.
  */
-export const UI_SPA_CLIENT_ID = 'dtsc-ui';
+export const UI_SPA_CLIENT_ID = UI_CLIENT_ID;
 
 /**
  * Interactive login is tenant-scoped through the client: the OIDC

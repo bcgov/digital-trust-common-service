@@ -428,6 +428,27 @@ Non-dev environments register their own `dtsc-ui` client. The tenant-facing
 `POST /api/v1/clients` API deliberately creates confidential clients only, so
 provisioning a public one is a platform/deployment step today.
 
+## API Client Management
+
+The UI's **API integrations** sidebar entry manages the signed-in user's active
+tenant and requires `clients:manage` (also implied by `tenants:admin`). The drawer
+creates confidential clients with generated IDs and secrets, selected scopes and
+grant types, and optional redirect URIs. Authorization Code needs a redirect URI;
+the deployment's grant-type and scope allowlists remain authoritative.
+
+Client secrets appear only immediately after creation or rotation. They are not
+stored in the client-list query cache, browser storage, or normal edit views.
+Closing the result discards it. Public PKCE clients have no secret and cannot
+rotate one. Existing clients can be renamed and have scopes, grants and redirect
+URIs edited; unchanged fields are omitted from PATCH.
+
+Disabling uses `DELETE /api/v1/tenants/{tenantId}/clients/{clientId}` and blocks
+new token grants. Existing access tokens remain valid until expiry. Reactivation
+uses `POST /api/v1/tenants/{tenantId}/clients/{clientId}/reactivate` and reuses the
+existing credentials. Rotate a confidential client's secret if the old value is
+compromised; rotation invalidates the old secret immediately. There is no separate
+secret-only revocation endpoint: disable the client to block secret-based grants.
+
 ## Running the Application
 
 ### Option 1: Docker Compose (Recommended for Development)
@@ -947,7 +968,7 @@ The canonical OAuth scope names live in `@app/auth` (`libs/auth/src/constants/sc
 1. Prefer the OAuth client API: `POST /api/v1/tenants/:tenantId/clients` with a `roles` array, or `PATCH /api/v1/tenants/:tenantId/clients/:clientId` with the same field. Tenant admins may assign tenant-scoped roles to their own clients. Only a `platform-admin` caller may assign or clear `platform-admin`. Responses include `roles`. `tenantId` comes from the path (not the body); `created_by` is recorded from the authenticated user `sub`.
 2. Tokens issued via `client_credentials` for that client include a `roles` claim, which `ScopeGuard` uses (e.g. for `GET /admin/operations/stats` when the claim is `platform-admin`).
 
-Generated `client_id` values are prefixed `dtcs_`. The plaintext `client_secret` is returned once on create and on `POST .../rotate-secret`; list/get responses never include it.
+Client IDs are globally unique, immutable, and prefixed `dtcs_`. The UI suggests an ID derived from the client name, which callers can customize. API callers may omit `client_id` to receive a random generated ID. The plaintext `client_secret` is returned once on create and on `POST .../rotate-secret`; list/get responses never include it.
 
 Assigned scopes must be in the published catalog, present in `OIDC_SCOPES`, and a subset of the caller's effective scopes (`tenants:admin` expands to all Level 2 + Level 3). `platform-admin` bypasses the caller-subset check.
 

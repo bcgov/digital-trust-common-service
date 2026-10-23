@@ -27,6 +27,7 @@ describe('OAuthClientController', () => {
   let mockRevokeClient: jest.Mock;
   let mockUpdate: jest.Mock;
   let mockRotateSecret: jest.Mock;
+  let mockReactivateClient: jest.Mock;
 
   const mockOAuthClient: OAuthClient = {
     id: '123e4567-e89b-12d3-a456-426614174000',
@@ -50,6 +51,7 @@ describe('OAuthClientController', () => {
     id: mockOAuthClient.id,
     tenantId: mockOAuthClient.tenantId,
     clientId: mockOAuthClient.clientId,
+    isPublic: mockOAuthClient.isPublic,
     name: mockOAuthClient.name,
     scopes: mockOAuthClient.scopes,
     roles: mockOAuthClient.roles,
@@ -81,6 +83,7 @@ describe('OAuthClientController', () => {
     mockRevokeClient = jest.fn();
     mockUpdate = jest.fn();
     mockRotateSecret = jest.fn();
+    mockReactivateClient = jest.fn();
 
     const mockService = {
       createClient: mockCreateClient,
@@ -88,6 +91,7 @@ describe('OAuthClientController', () => {
       revokeClient: mockRevokeClient,
       update: mockUpdate,
       rotateSecret: mockRotateSecret,
+      reactivateClient: mockReactivateClient,
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -114,6 +118,24 @@ describe('OAuthClientController', () => {
     controller = module.get<OAuthClientController>(OAuthClientController);
   });
 
+  it('reactivates a tenant-scoped client and returns no secret', async () => {
+    mockReactivateClient.mockResolvedValue({
+      ...mockOAuthClient,
+      revokedAt: null,
+    });
+    const result = await controller.reactivateClient(
+      mockOAuthClient.tenantId,
+      mockOAuthClient.clientId,
+    );
+    expect(mockReactivateClient).toHaveBeenCalledWith(
+      mockOAuthClient.tenantId,
+      mockOAuthClient.clientId,
+    );
+    expect(result.revokedAt).toBeNull();
+    expect(result).not.toHaveProperty('clientSecretHash');
+    expect(result).not.toHaveProperty('clientSecret');
+  });
+
   it('should be defined', () => {
     expect(controller).toBeDefined();
   });
@@ -130,6 +152,7 @@ describe('OAuthClientController', () => {
   describe('POST /tenants/:tenantId/clients', () => {
     it('should create a new OAuth client', async () => {
       const dto: CreateOAuthClientDto = {
+        clientId: 'dtcs_test-client',
         name: mockOAuthClient.name,
         scopes: mockOAuthClient.scopes,
         redirectUris: mockOAuthClient.redirectUris,

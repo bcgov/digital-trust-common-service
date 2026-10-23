@@ -1,5 +1,6 @@
 import {
   Building2,
+  KeyRound,
   LayoutDashboard,
   LogOut,
   Share2,
@@ -42,6 +43,12 @@ const NAV_ITEMS: {
     label: 'Connectors',
     icon: Share2,
     scope: TENANT_ADMIN_SCOPE,
+  },
+  {
+    to: '/api-clients',
+    label: 'API integrations',
+    icon: KeyRound,
+    scope: 'clients:manage',
   },
 ];
 
