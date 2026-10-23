@@ -75,6 +75,23 @@ describe('MockAdapter', () => {
       exchange,
     );
 
+    const pendingExchange = await adapter.offerCredential(context, {
+      format: CredentialFormat.AnonCreds,
+      attributes: [{ name: 'given_name', value: 'Avery' }],
+    });
+    const issuedExchange = await adapter.issueCredential(
+      context,
+      pendingExchange.id,
+    );
+
+    expect(issuedExchange).toMatchObject({
+      id: pendingExchange.id,
+      state: CredentialExchangeState.CredentialIssued,
+    });
+    await expect(
+      adapter.getExchange(context, pendingExchange.id),
+    ).resolves.toEqual(issuedExchange);
+
     const acceptedExchange = await adapter.acceptOffer(context, exchange.id);
 
     expect(acceptedExchange.id).toBe(exchange.id);

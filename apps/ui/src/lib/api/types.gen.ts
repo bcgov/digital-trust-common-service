@@ -814,6 +814,86 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/tenants/{tenantId}/credential-exchanges/{exchangeId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                exchangeId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Read a durable credential exchange
+         * @description Requires credentials:offer. Uses a local exchange UUID and never contacts the backend.
+         */
+        get: operations["getCredentialExchange"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tenants/{tenantId}/credential-exchanges/{exchangeId}/reconcile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                exchangeId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Observe an existing credential exchange without replaying it
+         * @description Requires credentials:offer. No request body. Reads the retained backend
+         *     exchange in its pinned connector, checks holder correlation, and updates
+         *     monotonic progress, related actions and credential lifecycle. Works after
+         *     operation retention. Never sends another offer or issue request.
+         */
+        post: operations["reconcileCredentialExchange"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tenants/{tenantId}/credential-exchanges/{exchangeId}/issue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                exchangeId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Explicitly issue after a holder request
+         * @description Requires credentials:offer. No request body. For issuer exchanges in
+         *     request-received state, creates a credential.issue action and claims the
+         *     exchange before a single backend issue POST. Concurrent/repeated calls
+         *     reuse that action; an uncertain or crashed submission is never replayed.
+         *     A purged action does not reset the durable submission guard.
+         *     Reconcile after 503; do not send a replacement offer or issue request.
+         */
+        post: operations["issueCredentialExchange"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/tenants/{tenantId}/credentials/offer-batch": {
         parameters: {
             query?: never;
@@ -2191,8 +2271,9 @@ export interface components {
             options?: {
                 /**
                  * @description Issue automatically after the holder requests the credential.
-                 *     False waits for a future explicit issue action, not yet exposed.
-                 *     This does not control holder acceptance or mediator delivery.
+                 *     False waits for POST /credential-exchanges/{exchangeId}/issue after
+                 *     a holder request. This does not control holder acceptance or
+                 *     mediator delivery.
                  *     Exchange records are always retained; auto_remove and
                  *     auto_remove_on_failure cannot be overridden.
                  * @default true
@@ -2283,6 +2364,33 @@ export interface components {
              */
             metadata?: Record<string, never>;
         };
+        /** @description Durable protocol interaction; IDs are local, never backend exchange IDs. */
+        CredentialExchange: {
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            role: "issuer" | "holder";
+            format: string;
+            protocol: string;
+            /** @enum {string} */
+            state: "pending" | "proposal-sent" | "offer-sent" | "offer-received" | "request-sent" | "request-received" | "credential-issued" | "credential-received" | "done" | "abandoned" | "failed";
+            /** Format: uuid */
+            connection_id: string | null;
+            /**
+             * @description Durable single-submission guard; uncertain/submitting must not be reset or replayed.
+             * @enum {string}
+             */
+            issue_submission: "not-submitted" | "submitting" | "submitted" | "uncertain";
+            /**
+             * Format: uuid
+             * @description Local issue action; null before explicit issue or after action retention.
+             */
+            issue_operation_id: string | null;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
         /**
          * @description Uniform envelope for all async and sync operations. The `result` field
          *     semantics depend on `(type, state)`.
@@ -2299,12 +2407,18 @@ export interface components {
              */
             batch_id?: string | null;
             /**
+             * Format: uuid
+             * @description Stable local credential exchange UUID, present when linked.
+             */
+            exchange_id?: string;
+            /**
              * @description Operation type. Known values:
-             *     `credential-definition.register`, `credential.offer`, `credential.offer-batch`,
+             *     `credential-definition.register`, `credential.offer`, `credential.issue`, `credential.offer-batch`,
              *     `credential.accept`, `credential.reject`,
              *     `credential.revoke`, `credential.revoke-batch`,
              *     `presentation.request`, `connection.create`
              * @example credential.offer
+             * @example credential.issue
              * @example credential.offer-batch
              * @example credential.accept
              * @example credential.reject
@@ -2324,6 +2438,7 @@ export interface components {
              *     - pending/processing: usually null; credential-definition.register
              *       includes { credential_definition_id } immediately
              *     - completed: operation-type-specific data
+             *       (exchange-linked actions return the local { exchange_id })
              *     - failed: { code, message }; credential registration additionally
              *       retains credential_definition_id, external_id, and registration
              *       progress/correlation identifiers.
@@ -2461,6 +2576,11 @@ export interface components {
              * @description NULL for OID4VCI/connectionless issuance
              */
             connection_id?: string | null;
+            /**
+             * Format: uuid
+             * @description Stable local credential exchange UUID.
+             */
+            exchange_id?: string | null;
             /** Format: uuid */
             connector_id?: string;
             /** @description Adapter-assigned exchange ID */
@@ -4214,6 +4334,105 @@ export interface operations {
             };
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+        };
+    };
+    getCredentialExchange: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                exchangeId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Tenant-owned exchange without backend identifiers */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CredentialExchange"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    reconcileCredentialExchange: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                exchangeId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current durable exchange */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CredentialExchange"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    issueCredentialExchange: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                exchangeId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Existing or synchronously completed issue action */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Operation"];
+                };
+            };
+            /** @description Issue action pending or processing */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Operation"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            /** @description Submission outcome uncertain; reconcile the local exchange instead of resending */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     offerCredentialBatch: {

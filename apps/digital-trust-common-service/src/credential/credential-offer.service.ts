@@ -32,6 +32,7 @@ import {
 } from '../credential-definition/credential-definition.entity';
 import { CredentialDefinitionRepository } from '../credential-definition/credential-definition.repository';
 import { toPortCredentialFormat } from '../credential-definition/credential-definition.service';
+import { CredentialExchangeRepository } from '../credential-exchange/credential-exchange.repository';
 import {
   IssuanceProfile,
   IssuanceProfileStatus,
@@ -109,6 +110,7 @@ export class CredentialOfferService {
     private readonly dataSource: DataSource,
     private readonly connectionService: ConnectionService,
     private readonly protocolStateChanges: ProtocolStateChangeService,
+    private readonly exchanges: CredentialExchangeRepository,
   ) {}
 
   public async reconcile(
@@ -267,9 +269,22 @@ export class CredentialOfferService {
 
     const { operation, credential } = await this.dataSource.transaction(
       async (manager) => {
+        const exchange = await this.exchanges.create(
+          {
+            tenantId,
+            connectorId: resolvedAdapter.connector.id,
+            connectionId: connection.id,
+            role: 'issuer',
+            protocol: dto.delivery.protocol,
+            format: source.format,
+            state: 'pending',
+          },
+          manager,
+        );
         const createdOperation = await this.operationService.createOperation(
           {
             tenantId,
+            exchangeId: exchange.id,
             type: OPERATION_TYPE.CREDENTIAL_OFFER,
             request: {
               method: 'POST',
@@ -289,6 +304,7 @@ export class CredentialOfferService {
             format: source.format,
             state: CredentialState.OFFERED,
             operationId: createdOperation.id,
+            exchangeId: exchange.id,
             metadata: source.issuanceProfileId
               ? {}
               : { credentialDefinitionId: source.credentialDefinitionId },
@@ -590,6 +606,16 @@ export class CredentialOfferService {
       // for issue_credential) is exactly what this guard protects against.
       const { current, won } = await this.dataSource.transaction(
         async (manager) => {
+          if (operation.exchangeId) {
+            await this.exchanges.observe(
+              tenantId,
+              resolvedAdapter.connector.id,
+              externalId,
+              exchange.state,
+              manager,
+              operation.exchangeId,
+            );
+          }
           const updatedOperation =
             await this.operationService.transitionStateIfForward(
               operation.id,
@@ -691,6 +717,13 @@ export class CredentialOfferService {
       // kept for consistency with the accept/reject/revoke templates and in
       // case of a duplicate delivery of this same request.
       const current = await this.dataSource.transaction(async (manager) => {
+        if (operation.exchangeId) {
+          await manager.update(
+            'credential_exchange',
+            { id: operation.exchangeId, tenantId },
+            { state: 'failed' },
+          );
+        }
         const failedOperation =
           await this.operationService.transitionStateIfForward(
             operation.id,
