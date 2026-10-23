@@ -29,6 +29,7 @@ import axios from 'axios';
 
 import { AdapterRegistry } from '../adapter-registry/adapter-registry.service';
 
+import { TractionDefinitionRegistration } from './traction-definition-registration.service';
 import { TractionHttpClient } from './traction-http-client.service';
 import { TractionTokenManager } from './traction-token-manager.service';
 
@@ -99,6 +100,7 @@ export class TractionAdapter implements AgentAdapter, OnModuleInit {
     private readonly adapterRegistry: AdapterRegistry,
     private readonly httpClient: TractionHttpClient,
     private readonly tokenManager: TractionTokenManager,
+    public readonly definitionRegistration: TractionDefinitionRegistration,
   ) {}
 
   public onModuleInit(): void {

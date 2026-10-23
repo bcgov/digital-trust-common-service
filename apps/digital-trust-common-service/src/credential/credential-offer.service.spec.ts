@@ -93,6 +93,8 @@ describe('CredentialOfferService', () => {
       format: CredentialDefinitionFormat.ANONCREDS,
       schemaDefinition: { attr_names: ['given_name'] },
       externalId: externalCredentialDefinitionId,
+      connectorId,
+      registrationState: 'ready',
       connectorType: CredentialDefinitionConnectorType.TRACTION,
       isActive: true,
       createdAt,
@@ -439,6 +441,11 @@ describe('CredentialOfferService', () => {
       await service.offer(tenantId, legacyDto());
 
       expect(mockProfileFindById).not.toHaveBeenCalled();
+      expect(mockResolveAdapter).toHaveBeenCalledWith(
+        tenantId,
+        PortCredentialFormat.AnonCreds,
+        { connectorId },
+      );
       expect(mockCredentialCreate).toHaveBeenCalledWith(
         expect.objectContaining({
           issuanceProfileId: null,
@@ -446,6 +453,42 @@ describe('CredentialOfferService', () => {
         }),
         mockManager,
       );
+    });
+  });
+
+  describe('registration readiness', () => {
+    it.each(['unverified', 'pending', 'failed'] as const)(
+      'rejects a %s definition before creating an offer',
+      async (registrationState) => {
+        mockCredentialDefinitionFindById.mockResolvedValue(
+          buildCredentialDefinition({ registrationState }),
+        );
+        await expect(service.offer(tenantId, buildDto())).rejects.toThrow(
+          'Credential definition is not ready for issuance',
+        );
+        expect(mockCreateOperation).not.toHaveBeenCalled();
+        expect(mockOfferCredential).not.toHaveBeenCalled();
+      },
+    );
+
+    it('rejects a definition without an external identifier', async () => {
+      mockCredentialDefinitionFindById.mockResolvedValue(
+        buildCredentialDefinition({ externalId: null }),
+      );
+      await expect(service.offer(tenantId, buildDto())).rejects.toThrow(
+        'Credential definition is not ready for issuance',
+      );
+      expect(mockOfferCredential).not.toHaveBeenCalled();
+    });
+
+    it('rejects a profile bound to another issuer wallet', async () => {
+      mockProfileFindById.mockResolvedValue(
+        buildProfile({ connectorId: 'another-connector' }),
+      );
+      await expect(service.offer(tenantId, buildDto())).rejects.toThrow(
+        'Profile connector does not own this credential definition',
+      );
+      expect(mockOfferCredential).not.toHaveBeenCalled();
     });
   });
 

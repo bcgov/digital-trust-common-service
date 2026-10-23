@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { EntityManager, Repository } from 'typeorm';
+import type { QueryDeepPartialEntity } from 'typeorm/query-builder/QueryPartialEntity';
 
 import {
   CredentialDefinition,
@@ -17,9 +18,12 @@ export class CredentialDefinitionRepository {
 
   public async create(
     credentialDefinition: Partial<CredentialDefinition>,
+    manager?: EntityManager,
   ): Promise<CredentialDefinition> {
-    const entity = this.repository.create(credentialDefinition);
-    return await this.repository.save(entity);
+    const repository =
+      manager?.getRepository(CredentialDefinition) ?? this.repository;
+    const entity = repository.create(credentialDefinition);
+    return await repository.save(entity);
   }
 
   public async findById(id: string): Promise<CredentialDefinition | null> {
@@ -52,9 +56,23 @@ export class CredentialDefinitionRepository {
     tenantId: string,
     name: string,
     format: CredentialDefinitionFormat,
+    manager?: EntityManager,
   ): Promise<CredentialDefinition | null> {
-    return await this.repository.findOne({
+    const repository =
+      manager?.getRepository(CredentialDefinition) ?? this.repository;
+    return await repository.findOne({
       where: { tenantId, name, format, isActive: true },
+    });
+  }
+
+  public async findByFingerprint(
+    tenantId: string,
+    field: 'requestFingerprint' | 'artifactFingerprint',
+    fingerprint: string,
+    manager: EntityManager,
+  ): Promise<CredentialDefinition | null> {
+    return await manager.getRepository(CredentialDefinition).findOne({
+      where: { tenantId, [field]: fingerprint },
     });
   }
 
@@ -79,6 +97,22 @@ export class CredentialDefinitionRepository {
       order: {
         createdAt: 'ASC',
       },
+    });
+  }
+
+  public async updateEditableFields(
+    tenantId: string,
+    id: string,
+    changes: Partial<Pick<CredentialDefinition, 'name' | 'metadata'>>,
+  ): Promise<CredentialDefinition | null> {
+    if (Object.keys(changes).length > 0) {
+      await this.repository.update(
+        { id, tenantId, isActive: true },
+        changes as QueryDeepPartialEntity<CredentialDefinition>,
+      );
+    }
+    return await this.repository.findOne({
+      where: { id, tenantId, isActive: true },
     });
   }
 

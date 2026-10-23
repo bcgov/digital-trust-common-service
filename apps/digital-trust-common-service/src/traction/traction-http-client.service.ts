@@ -56,6 +56,11 @@ export class TractionHttpClient {
     timeout: REQUEST_TIMEOUT_MS,
   });
 
+  private readonly breaker = circuitBreaker(handleWhen(isRetryableError), {
+    halfOpenAfter: CIRCUIT_BREAKER_HALF_OPEN_AFTER_MS,
+    breaker: new ConsecutiveBreaker(CIRCUIT_BREAKER_CONSECUTIVE_FAILURES),
+  });
+
   private readonly policy = wrap(
     retry(handleWhen(isRetryableError), {
       maxAttempts: RETRY_MAX_ATTEMPTS,
@@ -64,19 +69,19 @@ export class TractionHttpClient {
         maxDelay: RETRY_MAX_DELAY_MS,
       }),
     }),
-    circuitBreaker(handleWhen(isRetryableError), {
-      halfOpenAfter: CIRCUIT_BREAKER_HALF_OPEN_AFTER_MS,
-      breaker: new ConsecutiveBreaker(CIRCUIT_BREAKER_CONSECUTIVE_FAILURES),
-    }),
+    this.breaker,
   );
 
   public async request<T = unknown>(
     config: AxiosRequestConfig,
+    retrySafe = true,
   ): Promise<AxiosResponse<T>> {
     if (config.url) {
       await assertSafeConnectorUrl(config.url);
     }
 
-    return this.policy.execute(() => this.http.request<T>(config));
+    return retrySafe
+      ? this.policy.execute(() => this.http.request<T>(config))
+      : this.breaker.execute(() => this.http.request<T>(config));
   }
 }

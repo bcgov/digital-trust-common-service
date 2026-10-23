@@ -8,6 +8,7 @@ import {
 } from '../common/telemetry/business-metrics.service';
 import { TenantService } from '../tenant/tenant.service';
 
+import { OPERATION_TYPE } from './operation-type.constants';
 import {
   Operation,
   OperationRequest,
@@ -106,6 +107,101 @@ describe('OperationService', () => {
   afterEach(() => {
     jest.useRealTimers();
   });
+
+  it('keeps an old recovered registration alive across transitions without rewriting creation history', async () => {
+    const recoveredAt = new Date('2024-01-10T00:00:00Z');
+    jest.useFakeTimers().setSystemTime(recoveredAt);
+    const operation = buildOperation({
+      type: OPERATION_TYPE.CREDENTIAL_DEFINITION_REGISTER,
+      viewedAt,
+      result: {
+        registration: { recovery_requested_at: recoveredAt.toISOString() },
+      },
+    });
+    mockFindById.mockResolvedValue(operation);
+    mockSave.mockImplementation((value: Operation) => Promise.resolve(value));
+    const result = await service.transitionState(
+      operation.id,
+      OperationState.PROCESSING,
+    );
+    expect(result.createdAt).toEqual(createdAt);
+    expect(result.expiresAt).toEqual(
+      new Date(recoveredAt.getTime() + 72 * HOUR_MS),
+    );
+  });
+
+  it('uses recovery time for completed-but-unviewed registration retention', async () => {
+    const recoveredAt = new Date('2024-01-10T00:00:00Z');
+    jest.useFakeTimers().setSystemTime(recoveredAt);
+    const operation = buildOperation({
+      type: OPERATION_TYPE.CREDENTIAL_DEFINITION_REGISTER,
+      result: {
+        registration: { recovery_requested_at: recoveredAt.toISOString() },
+      },
+    });
+    mockFindById.mockResolvedValue(operation);
+    mockSave.mockImplementation((value: Operation) => Promise.resolve(value));
+    const result = await service.transitionState(
+      operation.id,
+      OperationState.COMPLETED,
+    );
+    expect(result.expiresAt).toEqual(
+      new Date(recoveredAt.getTime() + 72 * HOUR_MS),
+    );
+  });
+
+  it('does not change other operation retention based on registration-shaped results', async () => {
+    const operation = buildOperation({
+      result: {
+        registration: { recovery_requested_at: new Date().toISOString() },
+      },
+    });
+    mockFindById.mockResolvedValue(operation);
+    mockSave.mockImplementation((value: Operation) => Promise.resolve(value));
+    const result = await service.transitionState(
+      operation.id,
+      OperationState.PROCESSING,
+    );
+    expect(result.expiresAt).toEqual(
+      new Date(createdAt.getTime() + 72 * HOUR_MS),
+    );
+  });
+
+  it.each([
+    null,
+    { registration: null },
+    { registration: { recovery_requested_at: 'not-a-date' } },
+    {
+      registration: {
+        recovery_requested_at: '2023-12-31T23:59:59.000Z',
+      },
+    },
+    {
+      registration: {
+        recovery_requested_at: '2024-01-02T00:00:01.000Z',
+      },
+    },
+  ])(
+    'uses operation creation time for invalid recovery timestamps %j',
+    async (result) => {
+      jest.useFakeTimers().setSystemTime(new Date('2024-01-02T00:00:00.000Z'));
+      const operation = buildOperation({
+        type: OPERATION_TYPE.CREDENTIAL_DEFINITION_REGISTER,
+        result,
+      });
+      mockFindById.mockResolvedValue(operation);
+      mockSave.mockImplementation((value: Operation) => Promise.resolve(value));
+
+      const updated = await service.transitionState(
+        operation.id,
+        OperationState.PROCESSING,
+      );
+
+      expect(updated.expiresAt).toEqual(
+        new Date(createdAt.getTime() + 72 * HOUR_MS),
+      );
+    },
+  );
 
   describe('computeExpiresAt', () => {
     it('pending → createdAt + 24h', () => {

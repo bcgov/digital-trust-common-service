@@ -2,6 +2,8 @@ import { JwtGuard, ScopeGuard, TenantGuard, type AuthContext } from '@app/auth';
 import { CanActivate } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 
+import { OperationResponseDto } from '../operation/dto/operation-response.dto';
+import { Operation, OperationState } from '../operation/operation.entity';
 import { TenantTierRateLimitGuard } from '../rate-limit/tenant-tier-rate-limit.guard';
 import { TenantStatusGuard } from '../tenant/tenant-status.guard';
 import { TenantStatus } from '../tenant/tenant.entity';
@@ -26,6 +28,7 @@ describe('CredentialDefinitionController', () => {
   let controller: CredentialDefinitionController;
 
   let mockCreate: jest.Mock;
+  let mockRecover: jest.Mock;
   let mockFindById: jest.Mock;
   let mockFindByTenantId: jest.Mock;
   let mockFindByFormat: jest.Mock;
@@ -75,6 +78,7 @@ describe('CredentialDefinitionController', () => {
 
   beforeEach(async () => {
     mockCreate = jest.fn();
+    mockRecover = jest.fn();
     mockFindById = jest.fn();
     mockFindByTenantId = jest.fn();
     mockFindByFormat = jest.fn();
@@ -84,6 +88,7 @@ describe('CredentialDefinitionController', () => {
 
     const mockService = {
       create: mockCreate,
+      recover: mockRecover,
       findById: mockFindById,
       findByTenantId: mockFindByTenantId,
       findByFormat: mockFindByFormat,
@@ -122,26 +127,56 @@ describe('CredentialDefinitionController', () => {
     expect(controller).toBeDefined();
   });
 
+  it('delegates recovery with tenant, definition, hints and caller context', async () => {
+    const operation = Object.assign(new Operation(), {
+      id: 'original-operation',
+      type: 'credential-definition.register',
+      state: OperationState.PENDING,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    const hint = {
+      schemaTransactionId: '1b0d887a-9131-4653-a05c-ab3486875d01',
+    };
+    mockRecover.mockResolvedValue(operation);
+    const result = await controller.recover(
+      auth.tenantId!,
+      mockCredentialDefinition.id,
+      hint,
+      auth,
+    );
+    expect(mockRecover).toHaveBeenCalledWith(
+      auth.tenantId,
+      mockCredentialDefinition.id,
+      hint,
+      auth,
+    );
+    expect(result).toEqual(OperationResponseDto.fromEntity(operation));
+  });
+
   describe('POST /tenants/:tenantId/credential-definitions', () => {
     it('should create a new credential definition', async () => {
       const tenantId = mockCredentialDefinition.tenantId;
       const dto: CreateCredentialDefinitionDto = {
         name: mockCredentialDefinition.name,
         format: mockCredentialDefinition.format,
-        schemaDefinition: mockCredentialDefinition.schemaDefinition,
-        externalId: mockCredentialDefinition.externalId,
-        connectorType: mockCredentialDefinition.connectorType,
+        schema: { definition: mockCredentialDefinition.schemaDefinition },
         metadata: mockCredentialDefinition.metadata,
       };
 
-      mockCreate.mockResolvedValue(mockCredentialDefinition);
+      const operation = Object.assign(new Operation(), {
+        id: 'operation',
+        type: 'credential-definition.register',
+        state: OperationState.PENDING,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+      mockCreate.mockResolvedValue(operation);
 
       const result = await controller.create(tenantId, dto, auth);
 
       expect(mockCreate).toHaveBeenCalledWith(tenantId, dto, auth);
-      expect(result).toEqual(
-        CredentialDefinitionResponseDto.fromEntity(mockCredentialDefinition),
-      );
+      expect(result).toEqual(OperationResponseDto.fromEntity(operation));
     });
   });
 

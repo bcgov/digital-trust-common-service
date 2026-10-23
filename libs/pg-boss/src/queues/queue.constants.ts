@@ -2,6 +2,7 @@
  * Canonical pg-boss queue names (ME-01).
  */
 export const JOB_QUEUES = {
+  DEFINITION_REGISTER: 'credential-definition.register',
   PROTOCOL_STATE_CHANGE: 'protocol.state-change',
   CREDENTIAL_BULK_ITEM: 'credential.bulk-item',
   WEBHOOK_DISPATCH: 'webhook.dispatch',
@@ -16,6 +17,7 @@ export const JOB_QUEUES = {
 export type JobQueueName = (typeof JOB_QUEUES)[keyof typeof JOB_QUEUES];
 
 export const JOB_DEAD_LETTER_QUEUES = {
+  DEFINITION_REGISTER: 'credential-definition.register.dlq',
   PROTOCOL_STATE_CHANGE: 'protocol.state-change.dlq',
   CREDENTIAL_BULK_ITEM: 'credential.bulk-item.dlq',
   WEBHOOK_DISPATCH: 'webhook.dispatch.dlq',
@@ -36,6 +38,13 @@ export type QueueDefinition = {
 };
 
 export const QUEUE_DEFINITIONS: QueueDefinition[] = [
+  {
+    name: JOB_QUEUES.DEFINITION_REGISTER,
+    deadLetter: JOB_DEAD_LETTER_QUEUES.DEFINITION_REGISTER,
+    retryLimit: 5,
+    retryDelay: 30,
+    retryBackoff: true,
+  },
   {
     name: JOB_QUEUES.PROTOCOL_STATE_CHANGE,
     deadLetter: JOB_DEAD_LETTER_QUEUES.PROTOCOL_STATE_CHANGE,
