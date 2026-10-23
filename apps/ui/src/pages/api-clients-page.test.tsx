@@ -270,9 +270,7 @@ describe('ApiClientsPage', () => {
         name: 'Platform administration',
       },
     ];
-    server.use(
-      http.get(clientsPath, () => HttpResponse.json(systemClients)),
-    );
+    server.use(http.get(clientsPath, () => HttpResponse.json(systemClients)));
     await renderPage();
     const table = await screen.findByRole('table', { name: 'API clients' });
 
@@ -293,12 +291,14 @@ describe('ApiClientsPage', () => {
       expect(
         screen.getByRole('menuitem', { name: 'View details' }),
       ).toBeVisible();
-      expect(
-        screen.getByRole('menuitem', { name: 'Edit' }),
-      ).toHaveAttribute('aria-disabled', 'true');
-      expect(
-        screen.getByRole('menuitem', { name: 'Revoke' }),
-      ).toHaveAttribute('aria-disabled', 'true');
+      expect(screen.getByRole('menuitem', { name: 'Edit' })).toHaveAttribute(
+        'aria-disabled',
+        'true',
+      );
+      expect(screen.getByRole('menuitem', { name: 'Revoke' })).toHaveAttribute(
+        'aria-disabled',
+        'true',
+      );
       await user.keyboard('{Escape}');
     }
   });
