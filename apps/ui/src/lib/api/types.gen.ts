@@ -1158,6 +1158,7 @@ export interface paths {
          * Revoke an API client
          * @description Soft-revokes the client. Further token grants fail immediately.
          *     Issued access tokens remain valid until their TTL.
+         *     Reserved system clients cannot be revoked through this endpoint.
          */
         delete: operations["deleteClient"];
         options?: never;
@@ -1169,7 +1170,7 @@ export interface paths {
          *     in the body. Scope assignment follows the same caller-subset rule as create.
          *     Role assignment is restricted to platform-admin callers.
          *     Issued access tokens remain valid until their TTL after a secret rotation
-         *     or revoke.
+         *     or revoke. Reserved system clients cannot be modified through this endpoint.
          */
         patch: operations["updateClient"];
         trace?: never;
@@ -1190,7 +1191,7 @@ export interface paths {
         put?: never;
         /**
          * Reactivate an API client
-         * @description Allows new token grants using the existing credentials. Rotate the secret separately if it may have been compromised.
+         * @description Allows new token grants using the existing credentials. Rotate the secret separately if it may have been compromised. Reserved system clients cannot be reactivated through this endpoint.
          */
         post: operations["reactivateClient"];
         delete?: never;
@@ -1215,7 +1216,8 @@ export interface paths {
         /**
          * Rotate client secret
          * @description Generates a new secret. The old secret is immediately invalidated.
-         *     Issued access tokens remain valid until their TTL.
+         *     Issued access tokens remain valid until their TTL. Reserved system client
+         *     secrets cannot be rotated through this endpoint.
          */
         post: operations["rotateClientSecret"];
         delete?: never;
@@ -4642,6 +4644,13 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description Reserved system client cannot be revoked */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     updateClient: {
@@ -4669,6 +4678,13 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["Client"];
                 };
+            };
+            /** @description Reserved system client cannot be modified */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Client not found */
             404: {
@@ -4702,6 +4718,13 @@ export interface operations {
                     "application/json": components["schemas"]["Client"];
                 };
             };
+            /** @description Reserved system client cannot be reactivated */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             404: components["responses"]["NotFound"];
         };
     };
@@ -4726,6 +4749,13 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ClientWithSecret"];
                 };
+            };
+            /** @description Reserved system client secret cannot be rotated */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
