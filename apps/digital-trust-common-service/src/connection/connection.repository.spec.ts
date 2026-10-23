@@ -69,6 +69,117 @@ describe('ConnectionRepository', () => {
     });
   });
 
+  describe('findByIdForTenant', () => {
+    it('includes the tenant in the holder lookup and hides a foreign row', async () => {
+      (mockRepo.findOne as jest.Mock).mockResolvedValueOnce(null);
+      expect(
+        await repository.findByIdForTenant('tenant-1', 'foreign-holder'),
+      ).toBeNull();
+      expect(mockRepo.findOne).toHaveBeenCalledWith({
+        where: { id: 'foreign-holder', tenantId: 'tenant-1' },
+      });
+    });
+  });
+
+  describe('reconcile', () => {
+    const remote = { id: 'external-1', state: ConnectionState.COMPLETED };
+    let row: Partial<Connection> | null;
+    let findOne: jest.Mock;
+    let save: jest.Mock;
+
+    beforeEach(() => {
+      row = {
+        id: 'c1',
+        tenantId: 't1',
+        connectorId: null,
+        state: ConnectionState.INVITED,
+        protocol: ConnectionProtocol.DIDCOMM_V2,
+      };
+      findOne = jest.fn().mockImplementation(() => Promise.resolve(row));
+      save = jest.fn().mockImplementation((value) => Promise.resolve(value));
+      Object.assign(mockRepo.manager!, {
+        transaction: (callback: (manager: unknown) => Promise<unknown>) =>
+          callback({ findOne, save }),
+      });
+    });
+
+    const reconcile = () =>
+      repository.reconcile('t1', 'c1', 'wallet-1', remote, [
+        ConnectionState.INVITED,
+        ConnectionState.ACTIVE,
+      ]);
+
+    it('locks a tenant-scoped row before binding and correcting verified protocol', async () => {
+      const result = await reconcile();
+      expect(findOne).toHaveBeenCalledWith(Connection, {
+        where: { id: 'c1', tenantId: 't1' },
+        lock: { mode: 'pessimistic_write' },
+      });
+      expect(result).toMatchObject({
+        connectorId: 'wallet-1',
+        externalConnectionId: remote.id,
+        protocol: ConnectionProtocol.DIDCOMM_V1,
+        state: ConnectionState.COMPLETED,
+      });
+    });
+
+    it('preserves abandoned local state after a late successful handshake', async () => {
+      row!.state = ConnectionState.ABANDONED;
+      expect((await reconcile())?.state).toBe(ConnectionState.ABANDONED);
+    });
+
+    it('enqueues only the first establishment under the row lock, never again after active', async () => {
+      const enqueue = jest.fn().mockResolvedValue(undefined);
+      const reconcileWithNotification = () =>
+        repository.reconcile(
+          't1',
+          'c1',
+          'wallet-1',
+          remote,
+          [ConnectionState.INVITED, ConnectionState.ACTIVE],
+          enqueue,
+        );
+      await reconcileWithNotification();
+      await reconcileWithNotification();
+      expect(enqueue).toHaveBeenCalledTimes(1);
+      expect(enqueue).toHaveBeenCalledWith(
+        expect.objectContaining({ findOne, save }),
+      );
+      row!.state = ConnectionState.ACTIVE;
+      await reconcileWithNotification();
+      expect(enqueue).toHaveBeenCalledTimes(1);
+    });
+
+    it('propagates an enqueue failure to roll back the enclosing transaction', async () => {
+      const error = new Error('outbox insert failed');
+      await expect(
+        repository.reconcile(
+          't1',
+          'c1',
+          'wallet-1',
+          remote,
+          [ConnectionState.INVITED],
+          jest.fn().mockRejectedValue(error),
+        ),
+      ).rejects.toBe(error);
+    });
+
+    it.each([
+      { connectorId: 'other-wallet' },
+      { externalConnectionId: 'other-holder' },
+    ])('refuses concurrent binding changes %p', async (change) => {
+      Object.assign(row!, change);
+      expect(await reconcile()).toBeNull();
+      expect(save).not.toHaveBeenCalled();
+    });
+
+    it('does not write a missing or foreign tenant row', async () => {
+      row = null;
+      expect(await reconcile()).toBeNull();
+      expect(save).not.toHaveBeenCalled();
+    });
+  });
+
   describe('findPageForTenant', () => {
     const makeConnection = (id: string, createdAt: string): Connection =>
       ({

@@ -1,4 +1,5 @@
 import {
+  CredentialFormat,
   ConnectionState,
   ConnectorUnavailableError,
   TimeoutError,
@@ -64,7 +65,255 @@ describe('TractionAdapter', () => {
     expect(mockRegister).toHaveBeenCalledWith(adapter);
   });
 
-  it('rejects every port method with NotImplementedException', async () => {
+  it('sends a native AnonCreds v2 offer with auto issuance and retained records', async () => {
+    mockRequest.mockResolvedValue({
+      data: {
+        cred_ex_id: 'exchange',
+        state: 'offer_sent',
+        connection_id: 'connection',
+        created_at: 'created',
+        updated_at: 'updated',
+      },
+    });
+    const exchange = await adapter.offerCredential(
+      {
+        tenantId: 'tenant',
+        connectorId: 'connector',
+        endpointUrl: 'https://traction.example.com',
+        credentials: {},
+      },
+      {
+        format: CredentialFormat.AnonCreds,
+        connectionId: 'connection',
+        credentialDefinitionId: 'external-definition',
+        attributes: [{ name: 'name', value: 'Alice' }],
+      },
+    );
+    expect(mockRequest).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: 'https://traction.example.com/issue-credential-2.0/send-offer',
+        data: expect.objectContaining({
+          auto_issue: true,
+          auto_remove: false,
+          filter: { anoncreds: { cred_def_id: 'external-definition' } },
+          credential_preview: expect.objectContaining({
+            attributes: [{ name: 'name', value: 'Alice' }],
+          }),
+        }),
+      }),
+      false,
+    );
+    expect(exchange.state).toBe('offer-sent');
+    expect(exchange.externalId).toBe('exchange');
+  });
+
+  it('reads and maps a retained credential exchange', async () => {
+    mockRequest.mockResolvedValue({
+      data: {
+        cred_ex_record: {
+          cred_ex_id: 'exchange',
+          state: 'credential_issued',
+          created_at: 'created',
+          updated_at: 'updated',
+        },
+        anoncreds: null,
+      },
+    });
+    await expect(
+      adapter.getExchange(
+        {
+          tenantId: 'tenant',
+          connectorId: 'connector',
+          endpointUrl: 'https://traction.example.com',
+          credentials: {},
+        },
+        'exchange',
+      ),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        state: 'credential-issued',
+        id: 'exchange',
+      }),
+    );
+  });
+
+  it('honors explicitly disabled automatic issuance while retaining records', async () => {
+    mockRequest.mockResolvedValue({
+      data: { cred_ex_id: 'exchange', state: 'offer_sent' },
+    });
+    await adapter.offerCredential(
+      {
+        tenantId: 'tenant',
+        connectorId: 'connector',
+        endpointUrl: 'https://traction.example.com',
+        credentials: {},
+      },
+      {
+        format: CredentialFormat.AnonCreds,
+        connectionId: 'connection',
+        credentialDefinitionId: 'external-definition',
+        attributes: [{ name: 'name', value: 'Alice' }],
+        autoIssue: false,
+      },
+    );
+    expect(mockRequest).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          auto_issue: false,
+          auto_remove: false,
+          auto_remove_on_failure: false,
+        }),
+      }),
+      false,
+    );
+  });
+
+  describe('offer and exchange validation', () => {
+    const context = {
+      tenantId: 'tenant',
+      connectorId: 'connector',
+      endpointUrl: 'https://traction.example.com',
+      credentials: {},
+    };
+    const offer = {
+      format: CredentialFormat.AnonCreds,
+      connectionId: 'connection',
+      credentialDefinitionId: 'external-definition',
+      attributes: [{ name: 'name', value: 'Alice' }],
+    };
+
+    it.each(['getExchange', 'getById'] as const)(
+      'preserves a backend 404 as distinguishable from an outage for %s',
+      async (method) => {
+        mockRequest.mockRejectedValue({
+          isAxiosError: true,
+          message: 'Missing record',
+          response: { status: 404 },
+        });
+        await expect(adapter[method](context, 'missing')).rejects.toMatchObject(
+          {
+            code: 'BACKEND_NOT_FOUND',
+            context: { connectorId: context.connectorId },
+          },
+        );
+      },
+    );
+
+    it.each([
+      { format: CredentialFormat.JsonLd },
+      { connectionId: undefined },
+      { credentialDefinitionId: undefined },
+    ])(
+      'rejects unsupported or incomplete offers before authentication: %p',
+      async (change) => {
+        await expect(
+          adapter.offerCredential(context, { ...offer, ...change }),
+        ).rejects.toBeInstanceOf(ValidationError);
+        expect(mockGetToken).not.toHaveBeenCalled();
+        expect(mockRequest).not.toHaveBeenCalled();
+      },
+    );
+
+    it('preserves a supplied offer comment and the native preview attributes', async () => {
+      const attributes = [{ name: 'name', value: 'Alice' }];
+      mockRequest.mockResolvedValue({
+        data: {
+          cred_ex_id: 'exchange',
+          state: 'offer_sent',
+          connection_id: 'connection',
+          cred_preview: { attributes },
+          created_at: 'created',
+          updated_at: 'updated',
+        },
+      });
+      const exchange = await adapter.offerCredential(context, {
+        ...offer,
+        comment: 'Employee credential',
+      });
+      expect(mockRequest).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ comment: 'Employee credential' }),
+          maxRedirects: 0,
+        }),
+        false,
+      );
+      expect(exchange).toEqual({
+        id: 'exchange',
+        externalId: 'exchange',
+        connectionId: 'connection',
+        state: 'offer-sent',
+        format: CredentialFormat.AnonCreds,
+        attributes,
+        createdAt: 'created',
+        updatedAt: 'updated',
+        error: undefined,
+      });
+    });
+
+    it.each([
+      undefined,
+      {},
+      { cred_ex_id: 'exchange', state: null },
+      { state: 'offer_sent' },
+      { cred_ex_id: 'exchange', state: 'unrecognized-state' },
+    ])('rejects malformed retained exchange records: %p', async (record) => {
+      mockRequest.mockResolvedValue({ data: { cred_ex_record: record } });
+      await expect(
+        adapter.getExchange(context, 'exchange'),
+      ).rejects.toBeInstanceOf(ValidationError);
+    });
+
+    it('encodes the retained exchange ID and returns backend failure details', async () => {
+      mockRequest.mockResolvedValue({
+        data: {
+          cred_ex_record: {
+            cred_ex_id: 'exchange/id',
+            state: 'abandoned',
+            error_msg: 'Holder declined',
+          },
+        },
+      });
+      const exchange = await adapter.getExchange(context, 'exchange/id');
+      expect(mockGetToken).toHaveBeenCalledWith(context);
+      expect(mockRequest).toHaveBeenCalledWith({
+        method: 'GET',
+        url: 'https://traction.example.com/issue-credential-2.0/records/exchange%2Fid',
+        headers: { Authorization: 'Bearer token-1' },
+        maxRedirects: 0,
+      });
+      expect(exchange).toMatchObject({
+        id: 'exchange/id',
+        state: 'abandoned',
+        attributes: [],
+        error: 'Holder declined',
+      });
+    });
+
+    it('propagates an uncertain offer failure without replaying submission', async () => {
+      const error = new TimeoutError('Offer response unavailable');
+      mockRequest.mockRejectedValue(error);
+      await expect(adapter.offerCredential(context, offer)).rejects.toBe(error);
+      expect(mockRequest).toHaveBeenCalledTimes(1);
+      expect(mockRequest).toHaveBeenCalledWith(expect.anything(), false);
+    });
+
+    it('maps backend read errors without issuing a write', async () => {
+      mockRequest.mockRejectedValue({
+        isAxiosError: true,
+        message: 'Backend unavailable',
+        response: { status: 503 },
+      });
+      await expect(
+        adapter.getExchange(context, 'exchange'),
+      ).rejects.toBeInstanceOf(ConnectorUnavailableError);
+      expect(mockRequest).toHaveBeenCalledTimes(1);
+      expect(mockRequest).toHaveBeenCalledWith(
+        expect.objectContaining({ method: 'GET' }),
+      );
+    });
+  });
+
+  it('rejects remaining unimplemented port methods with NotImplementedException', async () => {
     const context = {
       connectorId: 'connector-1',
       tenantId: 'tenant-1',
@@ -72,15 +321,6 @@ describe('TractionAdapter', () => {
       credentials: {},
     };
 
-    await expect(
-      adapter.offerCredential(context, {
-        format: 'anoncreds' as never,
-        attributes: [],
-      }),
-    ).rejects.toBeInstanceOf(NotImplementedException);
-    await expect(adapter.getExchange(context, 'id')).rejects.toBeInstanceOf(
-      NotImplementedException,
-    );
     await expect(
       adapter.requestPresentation(context, {
         requestedAttributes: [],

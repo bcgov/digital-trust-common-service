@@ -1,6 +1,8 @@
 import {
   AdapterError,
+  BackendNotFoundError,
   CredentialAttribute,
+  CredentialExchange,
   CredentialFormat as PortCredentialFormat,
   FormatValidatorRegistry,
   OfferCredentialRequest,
@@ -9,6 +11,7 @@ import {
 import { JOB_QUEUES } from '@app/pg-boss';
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   Logger,
   NotFoundException,
@@ -22,6 +25,7 @@ import { ResolvedAdapter } from '../adapter-registry/adapter-registry.types';
 import { AuditAction } from '../audit-log/audit-log.entity';
 import { DomainAuditService } from '../audit-log/domain-audit.service';
 import { API_BASE_PATH } from '../common/constants/api-version.constants';
+import { ConnectionService } from '../connection/connection.service';
 import {
   CredentialDefinition,
   CredentialDefinitionFormat,
@@ -38,6 +42,7 @@ import { OPERATION_TYPE } from '../operation/operation-type.constants';
 import { Operation, OperationState } from '../operation/operation.entity';
 import { OperationRepository } from '../operation/operation.repository';
 import { OperationService } from '../operation/operation.service';
+import { ProtocolStateChangeService } from '../protocol-state-change/protocol-state-change.service';
 import {
   credentialStatesBelow,
   operationStatesBelow,
@@ -76,16 +81,15 @@ interface ResolvedCredentialSource {
 /**
  * Backs POST /tenants/:tenantId/credentials/offer.
  *
- * MVP only supports DIDComm delivery (Traction) — `connection_id` is
- * required; OID4VCI (connectionless, `connection_id` absent) is rejected
- * with 400 until that flow is implemented. See `docs/openapi.yaml`.
+ * Format comes from stored metadata; delivery is explicit and currently
+ * limited to DIDComm v1. Subject claims are unsigned proposed content.
  *
  * The resulting Operation's `externalId` carries the back-end agent's
  * exchange id: the already-wired protocol.state-change worker correlates
  * later `issue_credential` webhooks back to this Operation/Credential pair
  * by that id (state-mapping.ts's `TOPIC_OPERATION_TYPES.issue_credential`
- * already includes `CREDENTIAL_OFFER`) — this service only performs the
- * initial synchronous submission and does not duplicate that handling.
+ * already includes `CREDENTIAL_OFFER`). Explicit reconciliation reuses
+ * that same guarded state handling without resending.
  */
 @Injectable()
 export class CredentialOfferService {
@@ -103,21 +107,122 @@ export class CredentialOfferService {
     private readonly jobsService: JobsService,
     private readonly eventEmitter: EventEmitter2,
     private readonly dataSource: DataSource,
+    private readonly connectionService: ConnectionService,
+    private readonly protocolStateChanges: ProtocolStateChangeService,
   ) {}
+
+  public async reconcile(
+    tenantId: string,
+    operationId: string,
+  ): Promise<Operation> {
+    const operation = await this.operationRepository.findByIdForTenant(
+      operationId,
+      tenantId,
+    );
+    if (!operation || operation.type !== OPERATION_TYPE.CREDENTIAL_OFFER) {
+      throw new NotFoundException('Credential offer operation not found');
+    }
+    if (!operation.externalId) {
+      throw new ConflictException(
+        'Offer submission has no verified exchange correlation; do not resend',
+      );
+    }
+    const credential = await this.credentialRepository.findByExternalId(
+      tenantId,
+      operation.externalId,
+    );
+    if (
+      !credential?.connectorId ||
+      !credential.connectionId ||
+      credential.operationId !== operation.id
+    ) {
+      throw new ConflictException(
+        'Offer has no matching wallet-bound credential',
+      );
+    }
+    const { adapter, context } = await this.resolveAdapter(
+      tenantId,
+      this.resolvePortFormat(credential.format),
+      credential.connectorId,
+    );
+    let exchange: CredentialExchange;
+    try {
+      exchange = await adapter.getExchange(context, operation.externalId);
+    } catch (error) {
+      if (error instanceof BackendNotFoundError) {
+        throw new ConflictException(
+          'Backend credential exchange was not found',
+        );
+      }
+      throw error;
+    }
+    if ((exchange.externalId ?? exchange.id) !== operation.externalId) {
+      throw new ConflictException(
+        'Backend returned a different credential exchange',
+      );
+    }
+    if (credential.connectionId) {
+      const connection = await this.connectionService.resolveIdentity(
+        tenantId,
+        credential.connectionId,
+        credential.connectorId,
+      );
+      if (exchange.connectionId !== connection.externalConnectionId) {
+        throw new ConflictException(
+          'Exchange does not belong to the expected holder connection',
+        );
+      }
+    }
+    if (resolveProtocolOutcome('issue_credential', exchange.state)) {
+      await this.protocolStateChanges.process({
+        tenantId,
+        topic: 'issue_credential',
+        externalId: operation.externalId,
+        protocolState: exchange.state,
+        payload: {
+          exchange_id: operation.externalId,
+          state: exchange.state,
+        },
+      });
+    }
+    const updated = await this.operationRepository.findByIdForTenant(
+      operationId,
+      tenantId,
+    );
+    if (!updated)
+      throw new NotFoundException('Credential offer operation not found');
+    return updated;
+  }
 
   public async offer(
     tenantId: string,
     dto: OfferCredentialRequestDto,
   ): Promise<Operation> {
-    this.assertMvpDidcommOnly(dto);
+    if (dto.delivery?.protocol !== 'didcomm-v1' || !dto.delivery.connectionId) {
+      throw new BadRequestException(
+        'A didcomm-v1 delivery connection is required',
+      );
+    }
 
     const source = await this.resolveCredentialSource(tenantId, dto);
     const portFormat = this.resolvePortFormat(source.format);
 
     const attributes = mergeAttributeDefaults(
       source.defaults,
-      dto.attributes ?? {},
+      dto.credential.credentialSubject,
     );
+    if (
+      portFormat === PortCredentialFormat.AnonCreds &&
+      Object.values(attributes).some(
+        (value) =>
+          !['string', 'number', 'boolean'].includes(typeof value) ||
+          (typeof value === 'number' && !Number.isFinite(value)),
+      )
+    ) {
+      throw new BadRequestException(
+        'AnonCreds subject claims must be flat strings, finite numbers, or booleans',
+      );
+    }
     const credentialAttributes = toCredentialAttributes(attributes);
 
     this.assertAttributesValid(
@@ -127,10 +232,11 @@ export class CredentialOfferService {
     );
 
     const offerRequest: OfferCredentialRequest = {
-      connectionId: dto.connectionId,
+      connectionId: dto.delivery.connectionId,
       credentialDefinitionId: source.externalCredentialDefinitionId,
       format: portFormat,
       attributes: credentialAttributes,
+      autoIssue: dto.options?.autoIssue ?? true,
     };
 
     // Final structural gate — the only current caller of this previously
@@ -153,6 +259,11 @@ export class CredentialOfferService {
       portFormat,
       source.connectorId,
     );
+    const connection = await this.connectionService.resolveForIssuance(
+      tenantId,
+      dto.delivery.connectionId,
+      resolvedAdapter.connector.id,
+    );
 
     const { operation, credential } = await this.dataSource.transaction(
       async (manager) => {
@@ -173,7 +284,7 @@ export class CredentialOfferService {
           {
             tenantId,
             issuanceProfileId: source.issuanceProfileId,
-            connectionId: dto.connectionId ?? null,
+            connectionId: connection.id,
             connectorId: resolvedAdapter.connector.id,
             format: source.format,
             state: CredentialState.OFFERED,
@@ -189,21 +300,10 @@ export class CredentialOfferService {
       },
     );
 
-    return this.executeOffer(
-      tenantId,
-      operation,
-      credential,
-      resolvedAdapter,
-      offerRequest,
-    );
-  }
-
-  private assertMvpDidcommOnly(dto: OfferCredentialRequestDto): void {
-    if (!dto.connectionId) {
-      throw new BadRequestException(
-        'OID4VCI (connectionless) issuance is not yet supported; connection_id is required',
-      );
-    }
+    return this.executeOffer(tenantId, operation, credential, resolvedAdapter, {
+      ...offerRequest,
+      connectionId: connection.externalConnectionId!,
+    });
   }
 
   private async resolveCredentialSource(
@@ -224,7 +324,6 @@ export class CredentialOfferService {
       : this.resolveFromCredentialDefinition(
           tenantId,
           dto.credentialDefinitionId as string,
-          dto.format,
         );
   }
 
@@ -325,21 +424,11 @@ export class CredentialOfferService {
     };
   }
 
-  /** Direct mode uses the definition's pinned connector. */
+  /** Direct mode uses the definition's format and pinned connector. */
   private async resolveFromCredentialDefinition(
     tenantId: string,
     credentialDefinitionId: string,
-    format?: CredentialDefinitionFormat,
   ): Promise<ResolvedCredentialSource> {
-    // The OpenAPI contract requires credential_definition_id + format
-    // together in legacy mode; silently deriving the format from the
-    // stored definition would let a malformed client bypass that pairing.
-    if (format === undefined) {
-      throw new BadRequestException(
-        'format is required when credential_definition_id is provided',
-      );
-    }
-
     const credentialDefinition =
       await this.credentialDefinitionRepository.findById(
         credentialDefinitionId,
@@ -348,12 +437,6 @@ export class CredentialOfferService {
     if (!credentialDefinition || credentialDefinition.tenantId !== tenantId) {
       throw new NotFoundException(
         `Credential definition '${credentialDefinitionId}' was not found`,
-      );
-    }
-
-    if (format !== credentialDefinition.format) {
-      throw new BadRequestException(
-        `format '${format}' does not match credential definition '${credentialDefinitionId}''s format '${credentialDefinition.format}'`,
       );
     }
 
@@ -453,11 +536,14 @@ export class CredentialOfferService {
       ...(dto.credentialDefinitionId !== undefined
         ? { credential_definition_id: dto.credentialDefinitionId }
         : {}),
-      ...(dto.format !== undefined ? { format: dto.format } : {}),
-      ...(dto.connectionId !== undefined
-        ? { connection_id: dto.connectionId }
+      credential: { credentialSubject: dto.credential.credentialSubject },
+      delivery: {
+        protocol: dto.delivery.protocol,
+        connection_id: dto.delivery.connectionId,
+      },
+      ...(dto.options !== undefined
+        ? { options: { auto_issue: dto.options.autoIssue ?? true } }
         : {}),
-      attributes: dto.attributes ?? {},
     };
   }
 
