@@ -1,7 +1,11 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import {
+  ApiProperty,
+  ApiPropertyOptional,
+  getSchemaPath,
+} from '@nestjs/swagger';
 import { Expose, Type } from 'class-transformer';
 import {
-  Equals,
+  IsEnum,
   IsDefined,
   IsObject,
   IsOptional,
@@ -15,12 +19,14 @@ import {
 
 import { CredentialDefinitionFormat } from '../credential-definition.entity';
 
-export class RegistrationSchemaDto {
-  @ApiPropertyOptional({ enum: ['anoncreds'], default: 'anoncreds' })
-  @ValidateIf((_object: unknown, value: unknown) => value !== undefined)
-  @Equals('anoncreds')
-  public type?: 'anoncreds';
+import {
+  AnonCredsCredentialDefinitionOptionsDto,
+  MdlCredentialDefinitionOptionsDto,
+  SdJwtCredentialDefinitionOptionsDto,
+  W3cVcCredentialDefinitionOptionsDto,
+} from './credential-definition-options.dto';
 
+export class RegistrationSchemaDto {
   @ApiPropertyOptional({
     description: 'Published schema ID; excludes definition',
   })
@@ -59,8 +65,8 @@ export class CreateCredentialDefinitionDto {
   @MaxLength(255)
   public name!: string;
 
-  @ApiProperty({ enum: ['anoncreds'] })
-  @Equals(CredentialDefinitionFormat.ANONCREDS)
+  @ApiProperty({ enum: CredentialDefinitionFormat })
+  @IsEnum(CredentialDefinitionFormat)
   public format!: CredentialDefinitionFormat;
 
   @Expose({ name: 'connector_id' })
@@ -86,15 +92,22 @@ export class CreateCredentialDefinitionDto {
   @ApiPropertyOptional({
     type: 'object',
     additionalProperties: true,
-    description:
-      'Local metadata. Reserved keys: tag (1–100 characters, default "default") and revocation { enabled: boolean } (default true). Other keys are annotations.',
-    example: {
-      tag: 'default',
-      revocation: { enabled: true },
-      issuer: 'DMV',
-    },
+    description: 'Client annotations for this credential definition.',
   })
   @IsOptional()
   @IsObject()
   public metadata?: Record<string, unknown>;
+
+  @ApiPropertyOptional({
+    description: 'Immutable, format-specific publication options.',
+    oneOf: [
+      { $ref: getSchemaPath(AnonCredsCredentialDefinitionOptionsDto) },
+      { $ref: getSchemaPath(SdJwtCredentialDefinitionOptionsDto) },
+      { $ref: getSchemaPath(MdlCredentialDefinitionOptionsDto) },
+      { $ref: getSchemaPath(W3cVcCredentialDefinitionOptionsDto) },
+    ],
+  })
+  @IsOptional()
+  @IsObject()
+  public options?: Record<string, unknown>;
 }

@@ -1,5 +1,6 @@
 import {
   CredentialFormat,
+  DefinitionOptions,
   DefinitionRegistrationPort,
   ConnectorContext,
   ValidationError,
@@ -299,7 +300,7 @@ export class AnonCredsCredentialDefinitionRegistrationWorker implements OnModule
         peer.registration.definitionSubmitted &&
         progress.schemaId &&
         peer.registration.schemaId === progress.schemaId &&
-        peer.registration.options.tag === progress.options.tag
+        peer.options?.tag === definition.options?.tag
       ) {
         progress.definitionSubmitted = true;
       }
@@ -562,12 +563,13 @@ export class AnonCredsCredentialDefinitionRegistrationWorker implements OnModule
     backend: RegistrationBackend,
   ): Promise<void> {
     const { definition, progress } = work;
+    const options = this.definitionOptions(definition);
     progress.stage = 'definition_lookup';
     const found = await backend.port.findDefinition(
       backend.context,
       progress.issuerId,
       schemaId,
-      progress.options,
+      options,
     );
     if (!found) {
       if (progress.definitionSubmitted) {
@@ -594,7 +596,7 @@ export class AnonCredsCredentialDefinitionRegistrationWorker implements OnModule
     definition.externalId = found;
     progress.stage = 'revocation_readiness';
     if (
-      progress.options.revocation.enabled &&
+      options.revocation.enabled &&
       !(await backend.port.verifyRevocation(backend.context, found))
     ) {
       return;
@@ -609,6 +611,7 @@ export class AnonCredsCredentialDefinitionRegistrationWorker implements OnModule
     backend: RegistrationBackend,
   ): Promise<void> {
     const { definition, progress, save } = work;
+    const options = this.definitionOptions(definition);
     progress.stage = 'definition_publication';
     progress.definitionSubmitted = true;
     await save();
@@ -616,7 +619,7 @@ export class AnonCredsCredentialDefinitionRegistrationWorker implements OnModule
       backend.context,
       progress.issuerId,
       schemaId,
-      progress.options,
+      options,
     );
     progress.definitionJobId = submitted.jobId;
     progress.definitionState = submitted.state;
@@ -649,7 +652,7 @@ export class AnonCredsCredentialDefinitionRegistrationWorker implements OnModule
         issuerId: progress.issuerId,
         schema: definition.schemaDefinition,
         schemaId: progress.schemaId,
-        options: progress.options,
+        options: this.definitionOptions(definition),
         transactionId: previousTransactionId,
         jobId:
           artifact === 'schema'
@@ -753,6 +756,29 @@ export class AnonCredsCredentialDefinitionRegistrationWorker implements OnModule
             ? 'finished'
             : (progress.definitionState ?? null)
           : null,
+    };
+  }
+
+  private definitionOptions(
+    definition: CredentialDefinition,
+  ): DefinitionOptions {
+    const options = definition.options;
+    const revocation = options?.revocation;
+    if (
+      typeof options?.tag !== 'string' ||
+      typeof revocation !== 'object' ||
+      revocation === null ||
+      !('enabled' in revocation) ||
+      typeof revocation.enabled !== 'boolean'
+    ) {
+      throw new ValidationError([
+        'Normalized AnonCreds registration options are unavailable',
+      ]);
+    }
+
+    return {
+      tag: options.tag,
+      revocation: { enabled: revocation.enabled },
     };
   }
 }

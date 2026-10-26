@@ -71,9 +71,9 @@ describe('credential definition registration worker', () => {
       schema_version: '1.0',
       attr_names: ['name'],
     },
+    options: { tag: 'default', revocation: { enabled: true } },
     registration: {
       issuerId: 'issuer',
-      options: { tag: 'default', revocation: { enabled: true } },
     } as DefinitionRegistration,
   });
 
@@ -700,7 +700,7 @@ describe('credential definition registration worker', () => {
   it('skips revocation infrastructure only when explicitly disabled', async () => {
     const row = definition();
     row.registration.schemaId = 'schema';
-    row.registration.options.revocation.enabled = false;
+    row.options.revocation = { enabled: false };
     manager.findOne.mockResolvedValue(row);
     port.findDefinition.mockResolvedValue('external-definition');
     await worker.process('tenant', 'definition');
@@ -805,7 +805,7 @@ describe('credential definition registration worker', () => {
       {},
       'issuer',
       'current-schema',
-      row.registration.options,
+      row.options,
     );
   });
 
@@ -825,7 +825,7 @@ describe('credential definition registration worker', () => {
       {},
       'issuer',
       'imported-schema-current',
-      row.registration.options,
+      row.options,
     );
   });
 

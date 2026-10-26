@@ -59,6 +59,7 @@ describe('CredentialDefinitionController', () => {
     connectorType: CredentialDefinitionConnectorType.TRACTION,
     isActive: true,
     metadata: { key: 'value' },
+    options: { tag: 'default', revocation: { enabled: true } },
     createdAt: new Date(),
     updatedAt: new Date(),
     tenant: {
@@ -162,7 +163,7 @@ describe('CredentialDefinitionController', () => {
       expect(result).toEqual(
         CredentialDefinitionResponseDto.fromEntity(mockCredentialDefinition),
       );
-      expect(result).not.toHaveProperty('options');
+      expect(result.options).toEqual(mockCredentialDefinition.options);
       expect(result.metadata).toEqual(mockCredentialDefinition.metadata);
     });
 

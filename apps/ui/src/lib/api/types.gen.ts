@@ -509,15 +509,17 @@ export interface paths {
         put?: never;
         /**
          * Register a credential definition
-         * @description Register AnonCreds issuer artifacts asynchronously. Supply exactly one of
-         *     schema.id (reuse a published schema) or schema.definition (publish one).
+         * @description Create a credential definition for any declared credential format.
+         *     AnonCreds issuer artifact registration runs asynchronously; formats
+         *     without a registration step complete immediately. Supply exactly one of
+         *     schema.id or schema.definition. Format-specific options are immutable
+         *     after creation and returned read-only. For AnonCreds, tag defaults to
+         *     "default" and revocation.enabled defaults to true. Metadata remains
+         *     free-form client annotations.
          *     Traction must already have an askar-anoncreds wallet and a matching
-         *     ledger-registered public issuer DID. This endpoint does not create DIDs.
-         *     Connector selection is pinned for the entire registration and issuance
-         *     lifecycle. Revocation defaults to enabled; readiness includes initial
-         *     registry/status-list publication and public tails availability.
-         *     This replaces the former schema_definition/external_id/connector_type
-         *     request. Other publishing formats are not yet supported.
+         *     public issuer DID for AnonCreds registration. This endpoint does not
+         *     create DIDs. Connector selection is pinned for registration and
+         *     issuance.
          *     Idempotency is generated server-side from normalized content, using
          *     versioned JCS SHA-256 multihash fingerprints encoded as base64url
          *     multibase. Equivalent requests return the original operation without
@@ -1927,20 +1929,12 @@ export interface components {
             connector_type?: components["schemas"]["ConnectorType"];
             /** @description Whether this credential definition is currently active */
             is_active?: boolean;
-            /**
-             * @description Local annotations and normalized publication settings. New
-             *     registrations include tag (1-100 characters, default "default")
-             *     and revocation ({ enabled: boolean }, default enabled). Older
-             *     unverified records may not include these reserved keys.
-             */
-            metadata?: ({
-                tag?: string;
-                revocation?: {
-                    enabled: boolean;
-                };
-            } & {
+            /** @description Free-form client annotations */
+            metadata?: {
                 [key: string]: unknown;
-            }) | null;
+            } | null;
+            /** @description Immutable, normalized format-specific publication options */
+            readonly options?: (components["schemas"]["AnonCredsCredentialDefinitionOptionsDto"] | components["schemas"]["SdJwtCredentialDefinitionOptionsDto"] | components["schemas"]["MdlCredentialDefinitionOptionsDto"] | components["schemas"]["W3cVcCredentialDefinitionOptionsDto"]) | null;
             /** Format: date-time */
             created_at?: string;
             /** Format: date-time */
@@ -1948,21 +1942,27 @@ export interface components {
         };
         /** @enum {string} */
         CredentialFormat: "anoncreds" | "sd-jwt" | "mdl" | "w3c-vc";
+        AnonCredsCredentialDefinitionOptionsDto: {
+            /** @default default */
+            tag: string;
+            revocation?: {
+                /** @default true */
+                enabled: boolean;
+            };
+        };
+        SdJwtCredentialDefinitionOptionsDto: Record<string, never>;
+        MdlCredentialDefinitionOptionsDto: Record<string, never>;
+        W3cVcCredentialDefinitionOptionsDto: Record<string, never>;
         CreateCredentialDefinitionRequest: {
             name: string;
             /** @enum {string} */
-            format: "anoncreds";
+            format: "anoncreds" | "sd-jwt" | "mdl" | "w3c-vc";
             /**
              * Format: uuid
              * @description Defaults to the tenant default or sole active compatible connector
              */
             connector_id?: string;
             schema: {
-                /**
-                 * @default anoncreds
-                 * @enum {string}
-                 */
-                type: "anoncreds";
                 /** @description Existing published schema; not a credential-definition import */
                 id?: string;
                 definition?: {
@@ -1980,19 +1980,12 @@ export interface components {
                 id?: string;
                 method?: string;
             } & (unknown | unknown);
-            /**
-             * @description Local annotations and publication settings. Reserved keys are
-             *     tag (1-100 characters, default "default") and revocation
-             *     ({ enabled: boolean }, default enabled). Other keys are annotations.
-             */
+            /** @description Free-form client annotations */
             metadata?: {
-                tag?: string;
-                revocation?: {
-                    enabled: boolean;
-                };
-            } & {
                 [key: string]: unknown;
             };
+            /** @description Immutable, format-specific publication options */
+            options?: components["schemas"]["AnonCredsCredentialDefinitionOptionsDto"] | components["schemas"]["SdJwtCredentialDefinitionOptionsDto"] | components["schemas"]["MdlCredentialDefinitionOptionsDto"] | components["schemas"]["W3cVcCredentialDefinitionOptionsDto"];
         };
         IssuanceProfile: {
             /** Format: uuid */

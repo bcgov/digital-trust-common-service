@@ -1,6 +1,5 @@
 import { createHash } from 'crypto';
 
-import type { DefinitionOptions } from '@app/credential-ports';
 import { BadRequestException } from '@nestjs/common';
 import canonicalize from 'canonicalize';
 
@@ -10,7 +9,7 @@ interface RegistrationIntent {
   issuerId: string;
   format: string;
   schema: { id?: string; definition: Record<string, unknown> };
-  options: DefinitionOptions;
+  options: Record<string, unknown>;
 }
 
 export function registrationFingerprints(
