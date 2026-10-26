@@ -1218,7 +1218,8 @@ App-issued access tokens carry a stable API `aud`, not the OIDC issuer URL:
 
 `POST /api/v1/tenants/{tenantId}/credential-definitions` now accepts
 `name`, `format: "anoncreds"`, `schema`, optional `issuer`, `connector_id`,
-format-specific `options`, and local-only `metadata`. This replaces the old
+and `metadata`. Metadata carries the publication settings `tag` and
+`revocation.enabled` alongside arbitrary local annotations. This replaces the old
 `schema_definition`, `external_id`, and `connector_type` request fields.
 Independent schema management and existing credential-definition imports are
 not part of this workflow.
@@ -1236,9 +1237,10 @@ not part of this workflow.
     }
   },
   "issuer": { "method": "indy" },
-  "options": {
+  "metadata": {
     "tag": "default",
-    "revocation": { "enabled": true }
+    "revocation": { "enabled": true },
+    "issuer": "DMV"
   }
 }
 ```
@@ -1263,9 +1265,12 @@ supports the wallet representation; it does not establish end-to-end publication
 or revocation readiness.
 
 Revocation defaults to **enabled** and the tag defaults to `default`. Set
-`options.revocation.enabled` explicitly to false for non-revocable issuance.
-Unknown option fields and unsupported publishing formats are rejected.
-Signing keys never enter the registration request or application database.
+`metadata.revocation.enabled` explicitly to false for non-revocable issuance.
+Reserved metadata settings are validated; other metadata keys are annotations.
+PATCH may replace annotations but cannot change the registration tag or
+revocation setting. Omitted reserved settings retain their normalized values.
+Unsupported publishing formats are rejected. Signing keys never enter the
+registration request or application database.
 
 The response is a `202` Operation with `result.credential_definition_id`.
 Poll the existing operation endpoint; the definition's GET response includes
@@ -1276,17 +1281,18 @@ schedule enabled by the existing `PG_BOSS_WORKERS_ENABLED` switch.
 
 Registration idempotency is content-derived; callers do not supply an
 `Idempotency-Key` header for this endpoint. The server resolves the connector,
-issuer, and any imported schema, applies option defaults, and generates two
+issuer, and any imported schema, normalizes metadata publication settings, and generates two
 versioned RFC 8785 (JCS) fingerprints. Each is a SHA-256 multihash (code `0x12`,
 length `0x20`) encoded as unpadded base64url multibase (`u`, 47 characters).
-Both include tenant, connector identity (the pinned wallet/ledger context),
-format, canonical issuer, schema reference/content, and normalized options.
+Both include tenant, connector identity (the pinned wallet/backend context),
+format, canonical issuer, schema reference/content, and normalized publication
+settings. Annotation changes do not change artifact identity.
 Only schema `attr_names` is sorted as an unordered collection, without mutating
 the publication request; other arrays, including metadata arrays, keep order.
-The request fingerprint additionally includes the local name and metadata
-(omitted and null metadata are equivalent). Display names and metadata are
-excluded from the artifact fingerprint. Fingerprints are identifiers, not
-encryption; never put secrets in metadata.
+The request fingerprint additionally includes the local name and normalized
+metadata (omitted and null metadata use the default settings). Display names
+and annotations are excluded from the artifact fingerprint. Fingerprints are
+identifiers, not encryption; never put secrets in metadata.
 
 Equivalent normalized requests return the original operation with `202`,
 including completed or failed operations, without another enqueue or CREATE
@@ -1304,20 +1310,18 @@ reconstructed after edits; existing name conflicts and worker reconciliation
 still apply. An imported schema ID and an inline schema are distinct intents,
 even when their content matches: an imported schema may belong to another
 issuer. Wallet artifact lookup remains authoritative before publication.
-Changing a connector's wallet or ledger in place is not represented by a new
-key; provision a new connector for a different backend identity.
+Changing a connector's wallet or backend registry in place is not represented
+by a new key; provision a new connector for a different backend identity.
 Resolving prerequisites still requires an available connector on API replays.
-This is local API deduplication, not a backend idempotency guarantee. Use the
-recovery endpoint below for failed registrations or external/manual publications.
-Do not clear submission markers just to retry.
+This is local API deduplication, not a backend idempotency guarantee. Failed
+registrations can be deactivated and recreated when the stored submission
+evidence makes retry safe. Do not clear submission markers just to retry.
 
 Registration persists submission intent before backend writes. Restarts and
 ambiguous responses reconcile wallet-owned artifacts instead of resubmitting
 non-idempotent POSTs. Backend job identifiers and successful schema publication
 survive subsequent failures. A registration that does not resolve within 24
-hours fails explicitly; inspect the backend job/endorsement state and recover
-the existing registration rather than creating another. Published artifacts
-are not deleted on local failure.
+hours fails explicitly. Published artifacts are not deleted on local failure.
 Revocable definitions remain pending until the backend's active registry is
 finished, an initial ledger accumulator exists, capacity remains, and its
 public tails file is reachable. ACA-Py owns registry initialization and rollover.
@@ -1349,80 +1353,22 @@ Earlier stored `about:blank` diagnostics are normalized to the appropriate
 documented registration type/title on reads, without fabricating an instance.
 
 The `result` retains `credential_definition_id` on failure, along with
-`external_id`, `code`, `message`, and `registration` progress. Progress includes
-the current stage and schema/definition IDs, backend job IDs, endorsement
-transaction IDs, and backend states. `wait`/`action` responses are accepted
-pending progress: their IDs are retained as provisional and never treated as
-published or issuance-ready. A schema must resolve before definition creation;
-definition lookup and revocation checks still gate readiness.
+`external_id`, `code`, `message`, and `registration` progress. Progress exposes
+the current artifact and its generic `job_id`, `transaction_id`,
+`transaction_state`, `state`, and `pending_id`. Resolved `schema_id` and
+`definition_id` remain separate from provisional pending IDs. Per-artifact
+correlations remain persisted internally for automatic reconciliation.
+`wait`/`action` responses are accepted pending progress, never proof of
+publication or issuance-readiness. A schema must resolve before definition
+creation; definition lookup and revocation checks still gate readiness.
 
-Network errors, 404/408/429, 5xx, and malformed successful publication responses
-retain diagnostics while automatic reconciliation retries. They do not clear
-submission markers or repeat the publication POST. Permanent backend 4xx
-rejections and explicit failed registration states fail with diagnostic details.
-Uncertain-write diagnostics remain until correlated artifacts are found;
-successful reconciliation clears them. `retryable` means reconciliation, not
-permission for callers to publish again.
-
-### Recover a credential registration
-
-`POST /api/v1/tenants/{tenantId}/credential-definitions/{id}/recover` requires
-the same `tenants:admin` access as registration. Send `{}` to reconcile wallet
-artifacts and discover matching endorsement transactions, or supply optional
-wallet-scoped UUID hints:
-
-```json
-{
-  "schema_transaction_id": "1b0d887a-9131-4653-a05c-ab3486875d01"
-}
-```
-
-`definition_transaction_id` is the corresponding hint for a credential-definition
-endorsement. These are backend transaction IDs, not abstraction-layer operation
-IDs. Schema IDs, job IDs, retry flags and marker-reset flags are not accepted.
-Hints are verified asynchronously against the pinned connector wallet, expected
-issuer and exact artifact intent. Schema verification checks name, version and
-attribute set. Definition verification checks the resolved ledger schema sequence
-number, tag and revocation mode. A mismatched or ambiguous transaction fails
-explicitly instead of being adopted. Signed attachments are inspected server-side
-only; they are never persisted in recovery history or returned to callers.
-
-The `202` response is the **original Operation**, with the same local definition,
-fingerprints and creation timestamps. A wallet advisory lock serializes recovery
-against the worker. Restoring the pending definition, operation retention,
-durable enqueue and audit event is atomic. Missing/purged original operations
-return `409`; recovery does not invent replacement history. Inactive or
-cross-tenant definitions return `404`. A busy wallet returns `409`; retry later.
-An already-ready definition returns its existing operation without another job.
-
-Repeated recovery while pending returns the same operation without another
-enqueue or deadline extension. A previously absent transaction hint can be added
-to unresolved recovery without restarting its deadline; contradictory hints
-return `409`. Once failed, another explicit recovery can supply corrected hints.
-Each new recovery window is bounded to 24 hours from its request, not the original
-creation date. Operation retention uses this recovery timestamp too. Previous
-failure results are retained in `result.registration.recovery_history`, alongside
-`recovery_requested_at` and `recovery_attempts`; snapshots omit nested histories
-to avoid recursively duplicating prior attempts. The last problem remains visible
-until reconciliation advances or records a new diagnostic.
-
-The worker can adopt a matching schema/definition transaction, wait for
-endorsement, adopt verified published artifacts, and continue only steps that
-have **not** already been submitted. Transaction IDs, states and backend job IDs
-are exposed in registration progress. Endorsement acknowledgement is not itself
-proof of ledger visibility or wallet key ownership; normal artifact and revocation
-readiness checks still apply. A listed wallet artifact that returns 404 on
-resolution produces a transient diagnostic, not permission to republish.
-
-Recovery never clears submission markers, resends/signs endorsement transactions,
-or repeats an uncertain publication POST. Refused/cancelled endorsements fail
-explicitly and retain the markers: those transactions can still be resent outside
-this service. An empty ledger/wallet/transaction search is not proof an earlier
-write is safe to repeat. An uncorrelated prior submission reports
-`REGISTRATION_OUTCOME_UNKNOWN` and keeps reconciling, rather than claiming success.
-Backend remediation is still required when no verifiable progress exists.
-Recovery can publish the missing credential definition after the existing schema
-finishes; it is not a read-only inspection endpoint.
+The worker automatically retries transient failures up to three attempts with
+exponential backoff, beginning at 30 seconds. Permanent backend rejections fail
+immediately. An uncertain non-idempotent publication outcome is terminal: the
+worker preserves its submission marker and never repeats the write. If a
+registration is terminally failed, deactivate it and recreate the same request
+to retry only when its persisted evidence confirms that retry is safe. An
+uncertain outcome cannot be retried this way.
 
 ### Credential registration failed
 
@@ -1445,14 +1391,13 @@ Problem type:
 
 Stable title: `Credential registration requires reconciliation`. The backend
 was temporarily unavailable, returned an invalid response, or left a submission
-outcome uncertain. The recommended standalone HTTP status is 503; the embedded
-diagnostic omits `status` and does not change polling's HTTP 200.
-`retryable` is true: the worker can attempt reconciliation again, not repeat a
-publication blindly. Inspect the retained job, transaction, wallet, and ledger
-state. An empty artifact lookup alone is not evidence a submission failed.
-The worker reconciles wallet artifacts and legacy-Indy endorsement transactions.
-Use the recovery endpoint to resume a terminally failed registration after
-correcting its prerequisites or identifying existing backend progress.
+outcome that is still safe to reconcile. The recommended standalone HTTP status
+is 503; the embedded diagnostic omits `status` and does not change polling's
+HTTP 200.
+`retryable` is true while the worker performs its bounded automatic retries; it
+does not permit repeating a publication blindly. An uncertain write outcome is
+terminal and requires backend remediation. The worker reconciles wallet
+artifacts and legacy-Indy endorsement transactions.
 
 Existing database records migrate to `unverified`: an external identifier alone
 does not prove wallet ownership. They remain readable, but must be replaced with

@@ -14,7 +14,7 @@ import { ConnectorCredential } from '../connector-credential/connector-credentia
 import { Operation, OperationState } from '../operation/operation.entity';
 import { Tenant } from '../tenant/tenant.entity';
 
-import { CredentialDefinitionRegistrationWorker } from './credential-definition-registration.worker';
+import { AnonCredsCredentialDefinitionRegistrationWorker } from './anoncreds-credential-definition-registration.worker';
 import {
   CredentialDefinition,
   CredentialDefinitionFormat,
@@ -28,7 +28,7 @@ describe('credential definition registration (integration)', () => {
   let app: INestApplication;
   let db: DataSource;
   let service: CredentialDefinitionService;
-  let worker: CredentialDefinitionRegistrationWorker;
+  let worker: AnonCredsCredentialDefinitionRegistrationWorker;
   let tenant: Tenant;
   let connector: ConnectorCredential;
   let auth: AuthContext;
@@ -82,7 +82,7 @@ describe('credential definition registration (integration)', () => {
     await app.init();
     db = module.get(DataSource);
     service = module.get(CredentialDefinitionService);
-    worker = module.get(CredentialDefinitionRegistrationWorker);
+    worker = module.get(AnonCredsCredentialDefinitionRegistrationWorker);
   });
 
   beforeEach(async () => {
@@ -230,323 +230,6 @@ describe('credential definition registration (integration)', () => {
     }
   });
 
-  const failRegistration = async () => {
-    const operation = await service.create(tenant.id, dto, auth);
-    const definition = await db
-      .getRepository(CredentialDefinition)
-      .findOneByOrFail({
-        tenantId: tenant.id,
-        registrationOperationId: operation.id,
-      });
-    port.publishSchema.mockRejectedValueOnce(
-      new RegistrationBackendError(
-        400,
-        'REGISTRAR_REJECTED',
-        'Registrar rejected schema',
-      ),
-    );
-    await worker.process(tenant.id, definition.id);
-    const failed = await db.getRepository(Operation).findOneByOrFail({
-      tenantId: tenant.id,
-      id: operation.id,
-    });
-    send.mockClear();
-    return { definition, failed };
-  };
-
-  it('recovers the original failed identity, preserves history and deduplicates repeated recovery', async () => {
-    const { definition, failed } = await failRegistration();
-    const original = await db
-      .getRepository(CredentialDefinition)
-      .findOneByOrFail({
-        tenantId: tenant.id,
-        id: definition.id,
-      });
-    const hints = { schemaTransactionId: randomUUID() };
-    const resumed = await service.recover(
-      tenant.id,
-      definition.id,
-      hints,
-      auth,
-    );
-    const replay = await service.recover(tenant.id, definition.id, hints, auth);
-    expect(resumed.id).toBe(failed.id);
-    expect(replay.id).toBe(failed.id);
-    expect(resumed.state).toBe(OperationState.PENDING);
-    expect(resumed.createdAt).toEqual(failed.createdAt);
-    expect(resumed.viewedAt).toBeNull();
-    expect(resumed.expiresAt.getTime()).toBeGreaterThan(Date.now());
-    const recovered = await db
-      .getRepository(CredentialDefinition)
-      .findOneByOrFail({
-        tenantId: tenant.id,
-        id: definition.id,
-      });
-    expect(recovered.requestFingerprint).toBe(original.requestFingerprint);
-    expect(recovered.artifactFingerprint).toBe(original.artifactFingerprint);
-    expect(recovered.registration?.schemaSubmitted).toBe(true);
-    expect(recovered.registration?.recovery?.history).toHaveLength(1);
-    expect(recovered.registration?.recovery?.history[0].result).toMatchObject({
-      code: 'REGISTRATION_FAILED',
-      problem_details: failed.result?.problem_details,
-    });
-    expect(
-      recovered.registration?.recovery?.history[0].result,
-    ).not.toHaveProperty('registration.recovery_history');
-    expect(
-      send.mock.calls.filter(
-        (call: unknown[]) => call[0] === JOB_QUEUES.DEFINITION_REGISTER,
-      ),
-    ).toHaveLength(1);
-    expect((await service.create(tenant.id, dto, auth)).id).toBe(failed.id);
-  });
-
-  it('adopts verified manual progress without repeating schema POST and completes the same operation', async () => {
-    const { definition, failed } = await failRegistration();
-    const transactionId = randomUUID();
-    await service.recover(
-      tenant.id,
-      definition.id,
-      { schemaTransactionId: transactionId },
-      auth,
-    );
-    port.publishSchema.mockClear();
-    port.inspectRegistration.mockResolvedValue({
-      id: 'schema',
-      jobId: 'manual-job',
-      transactionId,
-      state: 'request_sent',
-    });
-    await worker.process(tenant.id, definition.id);
-    expect(port.publishSchema).not.toHaveBeenCalled();
-    expect(port.publishDefinition).not.toHaveBeenCalled();
-    port.findSchema.mockResolvedValue({
-      id: 'schema',
-      definition: dto.schema.definition,
-    });
-    port.inspectRegistration
-      .mockResolvedValueOnce({
-        id: 'schema',
-        jobId: 'manual-job',
-        transactionId,
-        state: 'transaction_acked',
-      })
-      .mockResolvedValueOnce(null);
-    await worker.process(tenant.id, definition.id);
-    expect(port.publishDefinition).toHaveBeenCalledTimes(1);
-    port.findDefinition.mockResolvedValue('cred-def');
-    await worker.process(tenant.id, definition.id);
-    const completed = await db.getRepository(Operation).findOneByOrFail({
-      tenantId: tenant.id,
-      id: failed.id,
-    });
-    expect(completed.state).toBe(OperationState.COMPLETED);
-    expect(completed.result).toMatchObject({
-      credential_definition_id: definition.id,
-      problem_details: null,
-      registration: { recovery_attempts: 1 },
-    });
-    expect(port.publishSchema).not.toHaveBeenCalled();
-  });
-
-  it('rolls back recovery state and history if durable enqueue fails', async () => {
-    const { definition, failed } = await failRegistration();
-    send.mockRejectedValueOnce(new Error('queue unavailable'));
-    await expect(
-      service.recover(tenant.id, definition.id, {}, auth),
-    ).rejects.toThrow('queue unavailable');
-    const unchanged = await db
-      .getRepository(CredentialDefinition)
-      .findOneByOrFail({
-        tenantId: tenant.id,
-        id: definition.id,
-      });
-    expect(unchanged.registrationState).toBe('failed');
-    expect(unchanged.registration?.recovery).toBeUndefined();
-    expect(
-      (
-        await db.getRepository(Operation).findOneByOrFail({
-          tenantId: tenant.id,
-          id: failed.id,
-        })
-      ).result,
-    ).toEqual(failed.result);
-  });
-
-  it('retains successive failures without recursively duplicating recovery history', async () => {
-    const { definition } = await failRegistration();
-    await service.recover(tenant.id, definition.id, {}, auth);
-    port.inspectRegistration.mockRejectedValueOnce(
-      new RegistrationBackendError(
-        400,
-        'WALLET_STATE',
-        'Backend state requires remediation',
-      ),
-    );
-    await worker.process(tenant.id, definition.id);
-    await service.recover(tenant.id, definition.id, {}, auth);
-    const row = await db.getRepository(CredentialDefinition).findOneByOrFail({
-      tenantId: tenant.id,
-      id: definition.id,
-    });
-    expect(row.registration?.recovery?.history).toHaveLength(2);
-    expect(row.registration?.recovery?.history[0].result).toHaveProperty(
-      'problem_details.backend_code',
-      'REGISTRAR_REJECTED',
-    );
-    expect(row.registration?.recovery?.history[1].result).toHaveProperty(
-      'problem_details.backend_code',
-      'WALLET_STATE',
-    );
-    expect(row.registration?.recovery?.history[1].result).not.toHaveProperty(
-      'registration.recovery_history',
-    );
-    expect(row.registration?.schemaSubmitted).toBe(true);
-    expect(port.publishSchema).toHaveBeenCalledTimes(1);
-  });
-
-  it('renews retention for old registrations across reconciliation and completion without changing createdAt', async () => {
-    const { definition, failed } = await failRegistration();
-    const old = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000);
-    await db
-      .getRepository(Operation)
-      .update(
-        { tenantId: tenant.id, id: failed.id },
-        { createdAt: old, viewedAt: old, expiresAt: old },
-      );
-    await db
-      .getRepository(CredentialDefinition)
-      .update({ tenantId: tenant.id, id: definition.id }, { createdAt: old });
-    await service.recover(tenant.id, definition.id, {}, auth);
-    port.findSchema.mockResolvedValue({
-      id: 'schema',
-      definition: dto.schema.definition,
-    });
-    port.findDefinition.mockResolvedValue('cred-def');
-    await worker.process(tenant.id, definition.id);
-    const operation = await db.getRepository(Operation).findOneByOrFail({
-      tenantId: tenant.id,
-      id: failed.id,
-    });
-    expect(operation.state).toBe(OperationState.COMPLETED);
-    expect(operation.createdAt).toEqual(old);
-    expect(operation.viewedAt).toBeNull();
-    expect(operation.expiresAt.getTime()).toBeGreaterThan(Date.now());
-    send.mockClear();
-    expect((await service.recover(tenant.id, definition.id, {}, auth)).id).toBe(
-      failed.id,
-    );
-    expect(send).not.toHaveBeenCalled();
-  });
-
-  it('never recovers a different tenant, missing operation or inactive definition', async () => {
-    const { definition, failed } = await failRegistration();
-    await expect(
-      service.recover(randomUUID(), definition.id, {}, auth),
-    ).rejects.toMatchObject({ status: 404 });
-    await expect(
-      service.recover(
-        tenant.id,
-        definition.id,
-        {},
-        { ...auth, tenantId: randomUUID() },
-      ),
-    ).rejects.toMatchObject({ status: 404 });
-    await db
-      .getRepository(CredentialDefinition)
-      .update({ tenantId: tenant.id, id: definition.id }, { isActive: false });
-    await expect(
-      service.recover(tenant.id, definition.id, {}, auth),
-    ).rejects.toMatchObject({ status: 404 });
-    await db
-      .getRepository(CredentialDefinition)
-      .update({ tenantId: tenant.id, id: definition.id }, { isActive: true });
-    await db
-      .getRepository(Operation)
-      .delete({ tenantId: tenant.id, id: failed.id });
-    await expect(
-      service.recover(tenant.id, definition.id, {}, auth),
-    ).rejects.toMatchObject({ status: 409 });
-    expect(send).not.toHaveBeenCalled();
-  });
-
-  it('rejects recovery during wallet processing and concurrent recovery converges on one enqueue', async () => {
-    const { definition, failed } = await failRegistration();
-    const runner = db.createQueryRunner();
-    await runner.connect();
-    const key = `${tenant.id}:${connector.id}:registration`;
-    await runner.query('SELECT pg_advisory_lock(hashtextextended($1, 0))', [
-      key,
-    ]);
-    try {
-      await expect(
-        service.recover(tenant.id, definition.id, {}, auth),
-      ).rejects.toMatchObject({ status: 409 });
-      expect(send).not.toHaveBeenCalled();
-    } finally {
-      await runner.query('SELECT pg_advisory_unlock(hashtextextended($1, 0))', [
-        key,
-      ]);
-      await runner.release();
-    }
-    const outcomes = await Promise.allSettled([
-      service.recover(tenant.id, definition.id, {}, auth),
-      service.recover(tenant.id, definition.id, {}, auth),
-    ]);
-    expect(outcomes.some((result) => result.status === 'fulfilled')).toBe(true);
-    for (const outcome of outcomes) {
-      if (outcome.status === 'fulfilled') {
-        expect(outcome.value.id).toBe(failed.id);
-      } else {
-        expect(outcome.reason).toMatchObject({ status: 409 });
-      }
-    }
-    expect(
-      send.mock.calls.filter(
-        (call: unknown[]) => call[0] === JOB_QUEUES.DEFINITION_REGISTER,
-      ),
-    ).toHaveLength(1);
-  });
-
-  it('can enrich an unresolved recovery with a hint without extending its deadline or losing history', async () => {
-    const { definition } = await failRegistration();
-    await service.recover(tenant.id, definition.id, {}, auth);
-    const first = await db.getRepository(CredentialDefinition).findOneByOrFail({
-      tenantId: tenant.id,
-      id: definition.id,
-    });
-    const hint = randomUUID();
-    await service.recover(
-      tenant.id,
-      definition.id,
-      { schemaTransactionId: hint },
-      auth,
-    );
-    const enriched = await db
-      .getRepository(CredentialDefinition)
-      .findOneByOrFail({
-        tenantId: tenant.id,
-        id: definition.id,
-      });
-    expect(enriched.registration?.recovery?.requestedAt).toBe(
-      first.registration?.recovery?.requestedAt,
-    );
-    expect(enriched.registration?.recovery?.history).toEqual(
-      first.registration?.recovery?.history,
-    );
-    expect(enriched.registration?.recovery?.schemaTransactionId).toBe(hint);
-    await expect(
-      service.recover(
-        tenant.id,
-        definition.id,
-        {
-          schemaTransactionId: randomUUID(),
-        },
-        auth,
-      ),
-    ).rejects.toMatchObject({ status: 409 });
-  });
-
   it('rolls back both records when durable enqueue fails', async () => {
     send.mockRejectedValueOnce(new Error('queue unavailable'));
     await expect(service.create(tenant.id, dto, auth)).rejects.toThrow(
@@ -578,7 +261,7 @@ describe('credential definition registration (integration)', () => {
           ...dto,
           connectorId: connector.id,
           issuer: { id: 'did:indy:issuer' },
-          options: { tag: 'default', revocation: { enabled: true } },
+          metadata: { tag: 'default', revocation: { enabled: true } },
         },
         auth,
       ),
@@ -681,7 +364,15 @@ describe('credential definition registration (integration)', () => {
     expect(processing.result).toMatchObject({
       credential_definition_id: row.id,
       problem_details: null,
-      registration: { schema_id: 'provisional-schema', schema_state: 'wait' },
+      registration: {
+        artifact: 'schema',
+        schema_id: null,
+        pending_id: 'provisional-schema',
+        job_id: 'schema-job',
+        transaction_id: 'schema-transaction',
+        transaction_state: null,
+        state: 'wait',
+      },
     });
     expect(port.publishDefinition).not.toHaveBeenCalled();
   });

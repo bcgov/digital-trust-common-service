@@ -40,7 +40,7 @@ describe('Traction artifact registration', () => {
     service = module.get(TractionDefinitionRegistration);
   });
 
-  const recoveryIntent = () => ({
+  const inspectionIntent = () => ({
     artifact: 'schema' as const,
     issuerId: walletIssuerId,
     schema,
@@ -77,7 +77,7 @@ describe('Traction artifact registration', () => {
   it('discovers exact matching wallet endorsement without returning signed attachments', async () => {
     request.mockResolvedValueOnce({ data: { results: [transaction()] } });
     await expect(
-      service.inspectRegistration(context, recoveryIntent()),
+      service.inspectRegistration(context, inspectionIntent()),
     ).resolves.toEqual({
       id: `${ledgerIssuerId}:2:employee:1.0`,
       jobId: 'job',
@@ -102,7 +102,7 @@ describe('Traction artifact registration', () => {
       request.mockResolvedValueOnce({ data: { ...transaction(), state } });
       await expect(
         service.inspectRegistration(context, {
-          ...recoveryIntent(),
+          ...inspectionIntent(),
           transactionId: 'transaction',
         }),
       ).resolves.toHaveProperty('state', state);
@@ -158,7 +158,7 @@ describe('Traction artifact registration', () => {
       request.mockResolvedValueOnce({ data: { ...transaction(), ...change } });
       await expect(
         service.inspectRegistration(context, {
-          ...recoveryIntent(),
+          ...inspectionIntent(),
           transactionId: 'transaction',
         }),
       ).rejects.toThrow();
@@ -176,7 +176,7 @@ describe('Traction artifact registration', () => {
       },
     });
     await expect(
-      service.inspectRegistration(context, recoveryIntent()),
+      service.inspectRegistration(context, inspectionIntent()),
     ).rejects.toMatchObject({
       issues: [expect.stringContaining('Multiple matching')],
     });
@@ -185,7 +185,7 @@ describe('Traction artifact registration', () => {
   it('does not interpret an invalid listing as proof no submission exists', async () => {
     request.mockResolvedValueOnce({ data: {} });
     await expect(
-      service.inspectRegistration(context, recoveryIntent()),
+      service.inspectRegistration(context, inspectionIntent()),
     ).rejects.toMatchObject({ backendCode: 'INVALID_REGISTRATION_RESPONSE' });
   });
 
@@ -194,7 +194,7 @@ describe('Traction artifact registration', () => {
 
     await expect(
       service.inspectRegistration(context, {
-        ...recoveryIntent(),
+        ...inspectionIntent(),
         transactionId: 'missing-transaction',
       }),
     ).rejects.toMatchObject({
@@ -219,14 +219,14 @@ describe('Traction artifact registration', () => {
     });
 
     await expect(
-      service.inspectRegistration(context, recoveryIntent()),
+      service.inspectRegistration(context, inspectionIntent()),
     ).resolves.toBeNull();
   });
 
   it('requires a resolved schema before checking a definition endorsement', async () => {
     await expect(
       service.inspectRegistration(context, {
-        ...recoveryIntent(),
+        ...inspectionIntent(),
         artifact: 'credential_definition',
       }),
     ).rejects.toMatchObject({
@@ -236,7 +236,7 @@ describe('Traction artifact registration', () => {
   });
 
   it.each([0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1, '123'])(
-    'rejects an invalid schema sequence number during definition recovery: %s',
+    'rejects an invalid schema sequence number during definition reconciliation: %s',
     async (seqNo) => {
       request.mockResolvedValueOnce({
         data: { schema_metadata: { seqNo } },
@@ -244,7 +244,7 @@ describe('Traction artifact registration', () => {
 
       await expect(
         service.inspectRegistration(context, {
-          ...recoveryIntent(),
+          ...inspectionIntent(),
           artifact: 'credential_definition',
           schemaId: 'schema',
         }),
@@ -288,7 +288,7 @@ describe('Traction artifact registration', () => {
         .mockResolvedValueOnce({ data: txn });
       await expect(
         service.inspectRegistration(context, {
-          ...recoveryIntent(),
+          ...inspectionIntent(),
           artifact: 'credential_definition',
           schemaId: `${ledgerIssuerId}:2:employee:1.0`,
           options: { tag: 'default', revocation: { enabled } },

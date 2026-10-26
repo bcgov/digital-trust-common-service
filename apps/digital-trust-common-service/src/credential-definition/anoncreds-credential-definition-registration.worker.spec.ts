@@ -8,7 +8,7 @@ import { RegistrationBackendError } from '../common/registration-backend-error';
 import { JobsService } from '../jobs/jobs.service';
 import { OperationService } from '../operation/operation.service';
 
-import { CredentialDefinitionRegistrationWorker } from './credential-definition-registration.worker';
+import { AnonCredsCredentialDefinitionRegistrationWorker } from './anoncreds-credential-definition-registration.worker';
 import { DefinitionRegistration } from './credential-definition.entity';
 
 describe('credential definition registration worker', () => {
@@ -20,7 +20,7 @@ describe('credential definition registration worker', () => {
     job: Job<RegistrationJobData>,
   ) => Promise<void>;
 
-  let worker: CredentialDefinitionRegistrationWorker;
+  let worker: AnonCredsCredentialDefinitionRegistrationWorker;
   let registeredHandler: RegistrationJobHandler | undefined;
   const configGet = jest.fn();
   const registerWorker =
@@ -59,6 +59,7 @@ describe('credential definition registration worker', () => {
   const definition = () => ({
     id: 'definition',
     tenantId: 'tenant',
+    format: 'anoncreds',
     connectorId: 'connector',
     isActive: true,
     registrationState: 'pending',
@@ -102,7 +103,7 @@ describe('credential definition registration worker', () => {
     });
     const module = await Test.createTestingModule({
       providers: [
-        CredentialDefinitionRegistrationWorker,
+        AnonCredsCredentialDefinitionRegistrationWorker,
         {
           provide: JobsService,
           useValue: { registerWorker, schedule },
@@ -122,7 +123,7 @@ describe('credential definition registration worker', () => {
         { provide: OperationService, useValue: { transitionState } },
       ],
     }).compile();
-    worker = module.get(CredentialDefinitionRegistrationWorker);
+    worker = module.get(AnonCredsCredentialDefinitionRegistrationWorker);
   });
 
   it('reconciles scheduled jobs with a null payload', async () => {
@@ -177,7 +178,10 @@ describe('credential definition registration worker', () => {
     await worker.reconcile();
 
     expect(pendingRepository.find).toHaveBeenCalledWith({
-      where: { registrationState: 'pending' },
+      where: {
+        format: 'anoncreds',
+        registrationState: 'pending',
+      },
       order: { updatedAt: 'ASC' },
       take: 50,
     });
@@ -190,12 +194,23 @@ describe('credential definition registration worker', () => {
       ...definition(),
       connectorId: null,
     });
-
     await worker.process('tenant', 'definition');
 
     expect(runner.query).not.toHaveBeenCalled();
     expect(resolve).not.toHaveBeenCalled();
     expect(runner.release).toHaveBeenCalled();
+  });
+
+  it('bypasses credential definitions that are not AnonCreds format', async () => {
+    const row = definition();
+    row.format = 'sd-jwt';
+    manager.findOne.mockResolvedValue(row);
+
+    await worker.process('tenant', 'definition');
+
+    expect(runner.query).not.toHaveBeenCalled();
+    expect(resolve).not.toHaveBeenCalled();
+    expect(port.publishSchema).not.toHaveBeenCalled();
   });
 
   it('stops when registration progress is missing after acquiring the wallet lock', async () => {
@@ -280,109 +295,26 @@ describe('credential definition registration worker', () => {
     expect(port.publishDefinition).toHaveBeenCalledTimes(1);
   });
 
-  it('does not resubmit an ambiguous schema write after a restart', async () => {
+  it('terminally fails an ambiguous schema write without resubmitting it', async () => {
     const row = definition();
     row.registration.schemaSubmitted = true;
     manager.findOne.mockResolvedValue(row);
-    await expect(worker.process('tenant', 'definition')).rejects.toThrow(
-      'retry reconciliation',
-    );
+    await worker.process('tenant', 'definition');
     expect(port.publishSchema).not.toHaveBeenCalled();
     expect(port.publishDefinition).not.toHaveBeenCalled();
-    expect(row.registrationState).toBe('pending');
-  });
-
-  it('adopts manual schema endorsement, waits, then publishes only the missing definition', async () => {
-    const row = definition();
-    row.registration.schemaSubmitted = true;
-    row.registration.schemaJobId = 'previous-failed-job';
-    row.registration.schemaTransactionId = 'previous-transaction';
-    row.registration.recovery = {
-      requestedAt: new Date().toISOString(),
-      history: [],
-      schemaTransactionId: 'manual-transaction',
-    };
-    manager.findOne.mockResolvedValue(row);
-    port.inspectRegistration.mockResolvedValue({
-      id: 'schema',
-      jobId: 'manual-job',
-      transactionId: 'manual-transaction',
-      state: 'request_sent',
-    });
-    await worker.process('tenant', 'definition');
-    expect(port.inspectRegistration).toHaveBeenCalledWith(
-      {},
-      expect.objectContaining({
-        transactionId: 'manual-transaction',
-        jobId: undefined,
-      }),
-    );
-    expect(row.registration).toMatchObject({
-      schemaPendingId: 'schema',
-      schemaJobId: 'manual-job',
-      schemaTransactionId: 'manual-transaction',
-      schemaTransactionState: 'request_sent',
-    });
-    expect(row.registration.schemaId).toBeUndefined();
-    expect(port.publishSchema).not.toHaveBeenCalled();
-    expect(port.publishDefinition).not.toHaveBeenCalled();
-    port.findSchema.mockResolvedValue({
-      id: 'schema',
-      definition: row.schemaDefinition,
-    });
-    port.inspectRegistration
-      .mockResolvedValueOnce({
-        id: 'schema',
-        jobId: 'manual-job',
-        transactionId: 'manual-transaction',
-        state: 'request_sent',
-      })
-      .mockResolvedValueOnce(null);
-    await worker.process('tenant', 'definition');
-    expect(port.publishSchema).not.toHaveBeenCalled();
-    expect(port.publishDefinition).toHaveBeenCalledTimes(1);
-  });
-
-  it('discovers manual publication before a previously unsubmitted recovery write', async () => {
-    const row = definition();
-    row.registration.recovery = {
-      requestedAt: new Date().toISOString(),
-      history: [],
-    };
-    manager.findOne.mockResolvedValue(row);
-    port.inspectRegistration.mockResolvedValue({
-      id: 'schema',
-      transactionId: 'discovered',
-      state: 'request_sent',
-    });
-    await worker.process('tenant', 'definition');
-    expect(row.registration.schemaSubmitted).toBe(true);
-    expect(port.publishSchema).not.toHaveBeenCalled();
-  });
-
-  it('allows a failed prerequisite to resume with a fresh bounded timeout, not a new creation date', async () => {
-    const row = definition();
-    row.createdAt = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-    row.registration.recovery = {
-      requestedAt: new Date().toISOString(),
-      history: [],
-    };
-    manager.findOne.mockResolvedValue(row);
-    await worker.process('tenant', 'definition');
-    expect(port.publishSchema).toHaveBeenCalledTimes(1);
-  });
-
-  it('does not renew the recovery deadline on worker redelivery', async () => {
-    const row = definition();
-    row.registration.recovery = {
-      requestedAt: new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString(),
-      history: [],
-    };
-    manager.findOne.mockResolvedValue(row);
-    await worker.process('tenant', 'definition');
     expect(row.registrationState).toBe('failed');
-    expect(port.publishSchema).not.toHaveBeenCalled();
-    expect(port.inspectRegistration).not.toHaveBeenCalled();
+    expect(row.registration.publicationOutcomeUnknown).toBe(true);
+    expect(transitionState).toHaveBeenLastCalledWith(
+      'operation',
+      'failed',
+      expect.objectContaining({
+        problem_details: expect.objectContaining({
+          backend_code: 'REGISTRATION_OUTCOME_UNKNOWN',
+          retryable: false,
+        }),
+      }),
+      manager,
+    );
   });
 
   it.each(['transaction_refused', 'transaction_cancelled'])(
@@ -413,47 +345,60 @@ describe('credential definition registration worker', () => {
     },
   );
 
-  it('validates recovery hints even if a matching published artifact exists', async () => {
-    const row = definition();
-    row.registration.recovery = {
-      requestedAt: new Date().toISOString(),
-      history: [],
-      schemaTransactionId: 'wrong',
-    };
-    manager.findOne.mockResolvedValue(row);
-    port.findSchema.mockResolvedValue({
-      id: 'schema',
-      definition: row.schemaDefinition,
-    });
-    port.inspectRegistration.mockRejectedValue(
-      new RegistrationBackendError(400, 'MISMATCH', 'Wrong transaction'),
-    );
-    await worker.process('tenant', 'definition');
-    expect(row.registrationState).toBe('failed');
-    expect(port.findSchema).not.toHaveBeenCalled();
-    expect(port.publishDefinition).not.toHaveBeenCalled();
-  });
-
-  it('never repeats an uncertain credential-definition POST during recovery', async () => {
+  it('terminally fails an uncertain credential-definition write without repeating it', async () => {
     const row = definition();
     row.registration.schemaId = 'schema';
     row.registration.definitionSubmitted = true;
-    row.registration.recovery = {
-      requestedAt: new Date().toISOString(),
-      history: [],
-    };
     manager.findOne.mockResolvedValue(row);
-    await expect(worker.process('tenant', 'definition')).rejects.toThrow(
-      'retry reconciliation',
-    );
+    await worker.process('tenant', 'definition');
     expect(port.publishDefinition).not.toHaveBeenCalled();
+    expect(row.registrationState).toBe('failed');
+    expect(row.registration.publicationOutcomeUnknown).toBe(true);
     expect(transitionState).toHaveBeenLastCalledWith(
       'operation',
-      'processing',
+      'failed',
       expect.objectContaining({
         problem_details: expect.objectContaining({
           stage: 'definition_reconciliation',
           backend_code: 'REGISTRATION_OUTCOME_UNKNOWN',
+          retryable: false,
+        }),
+      }),
+      manager,
+    );
+  });
+
+  it('backs off transient failures and terminally fails after three attempts', async () => {
+    const row = definition();
+    manager.findOne.mockResolvedValue(row);
+    port.resolveIssuer.mockRejectedValue(
+      new RegistrationBackendError(503, 'TEMPORARY', 'Temporary backend error'),
+    );
+
+    await worker.process('tenant', 'definition');
+    expect(row.registration.retryCount).toBe(1);
+    expect(row.registrationState).toBe('pending');
+    expect(row.registration.retryAfter).toBeDefined();
+
+    row.registration.retryAfter = new Date(Date.now() - 1).toISOString();
+    await worker.process('tenant', 'definition');
+    expect(row.registration.retryCount).toBe(2);
+    expect(row.registrationState).toBe('pending');
+
+    row.registration.retryAfter = new Date(Date.now() - 1).toISOString();
+    await worker.process('tenant', 'definition');
+
+    expect(row.registration.retryCount).toBe(3);
+    expect(row.registration.retryAfter).toBeUndefined();
+    expect(row.registrationState).toBe('failed');
+    expect(port.resolveIssuer).toHaveBeenCalledTimes(3);
+    expect(transitionState).toHaveBeenLastCalledWith(
+      'operation',
+      'failed',
+      expect.objectContaining({
+        problem_details: expect.objectContaining({
+          retryable: false,
+          detail: 'Registration did not complete after 3 attempts',
         }),
       }),
       manager,
@@ -485,7 +430,7 @@ describe('credential definition registration worker', () => {
     expect(row.registrationState).toBe('ready');
   });
 
-  it('records unknown endorsement states as reconciliation diagnostics without republishing', async () => {
+  it('terminally fails unknown endorsement states without republishing', async () => {
     const row = definition();
     row.registration.schemaSubmitted = true;
     manager.findOne.mockResolvedValue(row);
@@ -494,10 +439,9 @@ describe('credential definition registration worker', () => {
       transactionId: 'txn',
       state: 'unrecognized',
     });
-    await expect(worker.process('tenant', 'definition')).rejects.toThrow(
-      'retry reconciliation',
-    );
-    expect(row.registrationState).toBe('pending');
+    await worker.process('tenant', 'definition');
+    expect(row.registrationState).toBe('failed');
+    expect(row.registration.publicationOutcomeUnknown).toBe(true);
     expect(port.publishSchema).not.toHaveBeenCalled();
   });
 
@@ -556,10 +500,12 @@ describe('credential definition registration worker', () => {
           credential_definition_id: 'definition',
           problem_details: null,
           registration: expect.objectContaining({
-            schema_id: 'provisional-schema',
-            schema_state: state,
-            schema_job_id: 'job',
-            schema_transaction_id: 'transaction',
+            artifact: 'schema',
+            schema_id: null,
+            pending_id: 'provisional-schema',
+            job_id: 'job',
+            transaction_id: 'transaction',
+            state,
           }),
         }),
         manager,
@@ -598,6 +544,44 @@ describe('credential definition registration worker', () => {
     expect(port.publishDefinition).toHaveBeenCalledTimes(1);
   });
 
+  it('projects only active correlation and separates resolved from pending IDs', async () => {
+    const row = definition();
+    row.registration.schemaId = 'resolved-schema';
+    row.registration.schemaPendingId = 'old-schema-pending';
+    row.registration.schemaJobId = 'schema-job';
+    row.registration.schemaTransactionId = 'schema-transaction';
+    row.registration.schemaState = 'finished';
+    row.registration.definitionSubmitted = true;
+    row.registration.definitionPendingId = 'pending-definition';
+    row.registration.definitionJobId = 'definition-job';
+    row.registration.definitionTransactionId = 'definition-transaction';
+    row.registration.definitionState = 'wait';
+    manager.findOne.mockResolvedValue(row);
+
+    await worker.process('tenant', 'definition');
+
+    expect(transitionState).toHaveBeenLastCalledWith(
+      'operation',
+      'processing',
+      expect.objectContaining({
+        registration: expect.objectContaining({
+          stage: 'definition_reconciliation',
+          artifact: 'credential_definition',
+          schema_id: 'resolved-schema',
+          definition_id: null,
+          pending_id: 'pending-definition',
+          job_id: 'definition-job',
+          transaction_id: 'definition-transaction',
+          state: 'wait',
+        }),
+      }),
+      manager,
+    );
+    const progress = transitionState.mock.lastCall?.[2]?.registration;
+    expect(progress).not.toHaveProperty('schema_job_id');
+    expect(progress).not.toHaveProperty('schema_transaction_id');
+  });
+
   it.each([
     { status: 400, permanent: true },
     { status: 401, permanent: true },
@@ -618,13 +602,7 @@ describe('credential definition registration worker', () => {
           'Sanitized backend reason',
         ),
       );
-      if (permanent) {
-        await worker.process('tenant', 'definition');
-      } else {
-        await expect(worker.process('tenant', 'definition')).rejects.toThrow(
-          'retry reconciliation',
-        );
-      }
+      await worker.process('tenant', 'definition');
       expect(transitionState).toHaveBeenLastCalledWith(
         'operation',
         permanent ? 'failed' : 'processing',
@@ -651,43 +629,6 @@ describe('credential definition registration worker', () => {
     },
   );
 
-  it('keeps uncertain-write diagnostics until artifacts are reconciled and clears them on success', async () => {
-    const row = definition();
-    row.registration.schemaSubmitted = true;
-    const problem = { detail: 'Earlier publication timed out' };
-    manager.findOne
-      .mockResolvedValueOnce(row)
-      .mockResolvedValueOnce(row)
-      .mockResolvedValueOnce({ result: { problem_details: problem } });
-    await expect(worker.process('tenant', 'definition')).rejects.toThrow(
-      'retry reconciliation',
-    );
-    expect(transitionState).toHaveBeenLastCalledWith(
-      'operation',
-      'processing',
-      expect.objectContaining({
-        problem_details: expect.objectContaining({
-          backend_code: 'REGISTRATION_OUTCOME_UNKNOWN',
-        }),
-      }),
-      manager,
-    );
-    manager.findOne.mockResolvedValue(row);
-    port.findSchema.mockResolvedValue({
-      id: 'schema',
-      definition: row.schemaDefinition,
-    });
-    port.findDefinition.mockResolvedValue('external-definition');
-    port.verifyRevocation.mockResolvedValue(true);
-    await worker.process('tenant', 'definition');
-    expect(transitionState).toHaveBeenLastCalledWith(
-      'operation',
-      'completed',
-      expect.objectContaining({ problem_details: null }),
-      manager,
-    );
-  });
-
   it('preserves correlation returned alongside an explicit backend failure', async () => {
     const row = definition();
     manager.findOne.mockResolvedValue(row);
@@ -713,10 +654,12 @@ describe('credential definition registration worker', () => {
       expect.objectContaining({
         credential_definition_id: 'definition',
         registration: expect.objectContaining({
-          schema_id: 'partial-schema',
-          schema_state: 'failed',
-          schema_job_id: 'job',
-          schema_transaction_id: 'transaction',
+          artifact: 'schema',
+          schema_id: null,
+          pending_id: 'partial-schema',
+          state: 'failed',
+          job_id: 'job',
+          transaction_id: 'transaction',
         }),
       }),
       manager,
@@ -754,35 +697,6 @@ describe('credential definition registration worker', () => {
     });
   });
 
-  it('adopts a supplied credential-definition transaction before wallet discovery', async () => {
-    const row = definition();
-    row.registration.schemaId = 'schema';
-    row.registration.recovery = {
-      requestedAt: new Date().toISOString(),
-      history: [],
-      definitionTransactionId: 'definition-transaction',
-    };
-    manager.findOne.mockResolvedValue(row);
-    port.inspectRegistration.mockResolvedValue({
-      id: 'external-definition',
-      transactionId: 'definition-transaction',
-      state: 'transaction_acked',
-    });
-    port.findDefinition.mockResolvedValue('external-definition');
-    port.verifyRevocation.mockResolvedValue(true);
-
-    await worker.process('tenant', 'definition');
-
-    expect(port.inspectRegistration).toHaveBeenCalledWith(
-      {},
-      expect.objectContaining({
-        artifact: 'credential_definition',
-        transactionId: 'definition-transaction',
-      }),
-    );
-    expect(row.registrationState).toBe('ready');
-  });
-
   it('skips revocation infrastructure only when explicitly disabled', async () => {
     const row = definition();
     row.registration.schemaId = 'schema';
@@ -801,6 +715,7 @@ describe('credential definition registration worker', () => {
       where: {
         id: 'definition',
         tenantId: 'other-tenant',
+        format: 'anoncreds',
         registrationState: 'pending',
       },
     });
@@ -864,9 +779,8 @@ describe('credential definition registration worker', () => {
     peer.registration.schemaSubmitted = true;
     manager.findOne.mockResolvedValue(row);
     manager.find.mockResolvedValue([peer]);
-    await expect(worker.process('tenant', 'definition')).rejects.toThrow(
-      'retry reconciliation',
-    );
+    await worker.process('tenant', 'definition');
+    expect(row.registrationState).toBe('failed');
     expect(port.publishSchema).not.toHaveBeenCalled();
     expect(port.publishDefinition).not.toHaveBeenCalled();
     expect(manager.find).toHaveBeenCalledWith(expect.anything(), {
@@ -925,9 +839,8 @@ describe('credential definition registration worker', () => {
     manager.findOne.mockResolvedValue(row);
     manager.find.mockResolvedValue([peer]);
 
-    await expect(worker.process('tenant', 'definition')).rejects.toThrow(
-      'retry reconciliation',
-    );
+    await worker.process('tenant', 'definition');
+    expect(row.registrationState).toBe('failed');
 
     expect(port.publishDefinition).not.toHaveBeenCalled();
   });

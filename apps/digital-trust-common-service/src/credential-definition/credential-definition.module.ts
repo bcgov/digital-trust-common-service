@@ -10,7 +10,7 @@ import { OperationModule } from '../operation/operation.module';
 import { RateLimitModule } from '../rate-limit/rate-limit.module';
 import { TenantStatusModule } from '../tenant/tenant-status.module';
 
-import { CredentialDefinitionRegistrationWorker } from './credential-definition-registration.worker';
+import { AnonCredsCredentialDefinitionRegistrationWorker } from './anoncreds-credential-definition-registration.worker';
 import { CredentialDefinitionController } from './credential-definition.controller';
 import { CredentialDefinition } from './credential-definition.entity';
 import { CredentialDefinitionRepository } from './credential-definition.repository';
@@ -32,7 +32,7 @@ import { CredentialDefinitionService } from './credential-definition.service';
   providers: [
     CredentialDefinitionService,
     CredentialDefinitionRepository,
-    CredentialDefinitionRegistrationWorker,
+    AnonCredsCredentialDefinitionRegistrationWorker,
   ],
   exports: [CredentialDefinitionService, CredentialDefinitionRepository],
 })

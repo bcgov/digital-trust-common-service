@@ -558,39 +558,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/tenants/{tenantId}/credential-definitions/{credDefId}/recover": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Tenant UUID */
-                tenantId: components["parameters"]["TenantId"];
-                credDefId: string;
-            };
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Reconcile and resume the original credential registration
-         * @description Requires tenants:admin. Preserves local identity, fingerprints, original
-         *     operation and failure history. Returns the original operation with a
-         *     fresh bounded recovery window after failure. Repeated pending recovery
-         *     is idempotent; adding a previously absent transaction hint does not extend
-         *     its deadline. Hints are verified asynchronously in the pinned wallet
-         *     against issuer, schema, tag and revocation intent.
-         *     Adopts existing artifacts or endorsement progress before any missing
-         *     publication step. Never clears submission markers or blindly repeats an
-         *     uncertain write. This can publish a not-yet-submitted credential definition
-         *     after schema completion; it does not resend or sign endorsements.
-         */
-        post: operations["recoverCredentialDefinition"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/tenants/{tenantId}/profiles/issuance": {
         parameters: {
             query?: never;
@@ -1935,7 +1902,7 @@ export interface components {
             format?: components["schemas"]["CredentialFormat"];
             /** @description Format-specific schema definition */
             schema_definition?: Record<string, never>;
-            /** @description Ledger/registry reference (e.g., cred_def_id) */
+            /** @description Backend registry reference (e.g., cred_def_id) */
             external_id?: string | null;
             /**
              * Format: uuid
@@ -1957,11 +1924,23 @@ export interface components {
                 type?: "anoncreds";
                 id?: string | null;
             } | null;
-            options?: components["schemas"]["AnonCredsRegistrationOptions"] | null;
             connector_type?: components["schemas"]["ConnectorType"];
             /** @description Whether this credential definition is currently active */
             is_active?: boolean;
-            metadata?: Record<string, never>;
+            /**
+             * @description Local annotations and normalized publication settings. New
+             *     registrations include tag (1-100 characters, default "default")
+             *     and revocation ({ enabled: boolean }, default enabled). Older
+             *     unverified records may not include these reserved keys.
+             */
+            metadata?: ({
+                tag?: string;
+                revocation?: {
+                    enabled: boolean;
+                };
+            } & {
+                [key: string]: unknown;
+            }) | null;
             /** Format: date-time */
             created_at?: string;
             /** Format: date-time */
@@ -2001,17 +1980,18 @@ export interface components {
                 id?: string;
                 method?: string;
             } & (unknown | unknown);
-            options?: components["schemas"]["AnonCredsRegistrationOptions"];
-            /** @description Local annotations only; never passed as backend options */
-            metadata?: Record<string, never>;
-        };
-        AnonCredsRegistrationOptions: {
-            /** @default default */
-            tag: string;
-            /** @description Omission defaults to enabled; unsupported setup never downgrades silently */
-            revocation?: {
-                /** @default true */
-                enabled: boolean;
+            /**
+             * @description Local annotations and publication settings. Reserved keys are
+             *     tag (1-100 characters, default "default") and revocation
+             *     ({ enabled: boolean }, default enabled). Other keys are annotations.
+             */
+            metadata?: {
+                tag?: string;
+                revocation?: {
+                    enabled: boolean;
+                };
+            } & {
+                [key: string]: unknown;
             };
         };
         IssuanceProfile: {
@@ -2283,12 +2263,21 @@ export interface components {
              *       progress/correlation identifiers.
              *     - batch processing: { total, completed, failed, pending }
              *     - batch completed: { total, completed, failed, errors }
-             *     Registration progress includes stage, schema_id, schema_job_id,
-             *     schema_transaction_id, schema_state, definition_id,
-             *     definition_job_id, definition_transaction_id, and definition_state.
+             *     Registration progress includes the active artifact and its generic
+             *     job_id, transaction_id, transaction_state, state, and pending_id.
+             *     Resolved schema_id and definition_id are separate from pending_id.
              *     IDs returned with wait/action are provisional, not readiness proof.
              */
-            result: unknown;
+            result: ({
+                /** Format: uuid */
+                credential_definition_id?: string;
+                external_id?: string | null;
+                code?: string;
+                message?: string;
+                registration?: components["schemas"]["CredentialDefinitionRegistrationProgress"];
+            } & {
+                [key: string]: unknown;
+            }) | null;
             /**
              * @description Present for credential-definition.register, null when no diagnostic
              *     is recorded; omitted for other operation types. A wait/action state
@@ -2301,6 +2290,28 @@ export interface components {
              *     problem type URI for machine handling; do not parse title or detail.
              */
             problem_details?: components["schemas"]["RegistrationProblemDetails"] | null;
+        };
+        CredentialDefinitionRegistrationProgress: {
+            stage?: string;
+            /**
+             * @description Artifact associated with the active stage, if any
+             * @enum {string|null}
+             */
+            artifact?: "schema" | "credential_definition" | null;
+            /** @description Resolved schema identity; never a provisional backend ID */
+            schema_id?: string | null;
+            /** @description Resolved definition identity; never a provisional backend ID */
+            definition_id?: string | null;
+            /** @description Provisional ID for the active artifact, if unresolved */
+            pending_id?: string | null;
+            job_id?: string | null;
+            transaction_id?: string | null;
+            transaction_state?: string | null;
+            /**
+             * @description Publication state for the active artifact
+             * @enum {string|null}
+             */
+            state?: "finished" | "wait" | "action" | "failed" | null;
         };
         RegistrationProblemDetails: {
             /**
@@ -3648,63 +3659,6 @@ export interface operations {
         responses: {
             /** @description Credential definition deactivated */
             204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    recoverCredentialDefinition: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Tenant UUID */
-                tenantId: components["parameters"]["TenantId"];
-                credDefId: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": {
-                    /**
-                     * Format: uuid
-                     * @description Wallet-scoped schema endorsement transaction to verify
-                     */
-                    schema_transaction_id?: string;
-                    /**
-                     * Format: uuid
-                     * @description Wallet-scoped credential-definition endorsement transaction to verify
-                     */
-                    definition_transaction_id?: string;
-                };
-            };
-        };
-        responses: {
-            /**
-             * @description Original operation resumed, already pending, or already completed.
-             *     Poll for asynchronous verification and readiness. Prior results are
-             *     retained in result.registration.recovery_history; recovery_requested_at
-             *     and recovery_attempts identify the bounded recovery window.
-             */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Operation"];
-                };
-            };
-            400: components["responses"]["ValidationError"];
-            404: components["responses"]["NotFound"];
-            /**
-             * @description Wallet currently processing, incompatible pending hints, unsupported
-             *     legacy registration, or original operation no longer available.
-             *     No replacement registration or blind publication is performed.
-             */
-            409: {
                 headers: {
                     [name: string]: unknown;
                 };
