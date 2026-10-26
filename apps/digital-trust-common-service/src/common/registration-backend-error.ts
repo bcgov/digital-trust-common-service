@@ -39,13 +39,6 @@ export class RegistrationBackendError extends Error {
     public readonly backendCode: string | undefined,
     public readonly detail: string,
     public readonly responseInvalid = false,
-    public readonly correlation?: {
-      artifact: 'schema' | 'credential_definition';
-      id?: string;
-      jobId?: string;
-      transactionId?: string;
-      state?: 'failed';
-    },
   ) {
     super(detail);
     this.name = RegistrationBackendError.name;

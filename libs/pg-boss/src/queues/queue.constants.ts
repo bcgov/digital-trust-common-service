@@ -1,3 +1,5 @@
+import type { QueuePolicy } from 'pg-boss';
+
 /**
  * Canonical pg-boss queue names (ME-01).
  */
@@ -35,15 +37,17 @@ export type QueueDefinition = {
   retryLimit: number;
   retryDelay: number;
   retryBackoff: boolean;
+  policy?: QueuePolicy;
 };
 
 export const QUEUE_DEFINITIONS: QueueDefinition[] = [
   {
     name: JOB_QUEUES.DEFINITION_REGISTER,
     deadLetter: JOB_DEAD_LETTER_QUEUES.DEFINITION_REGISTER,
-    retryLimit: 5,
+    retryLimit: 0,
     retryDelay: 30,
-    retryBackoff: true,
+    retryBackoff: false,
+    policy: 'stately',
   },
   {
     name: JOB_QUEUES.PROTOCOL_STATE_CHANGE,

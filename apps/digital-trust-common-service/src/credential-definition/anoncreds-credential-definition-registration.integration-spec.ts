@@ -35,7 +35,6 @@ describe('credential definition registration (integration)', () => {
   const resolve = jest.fn();
   const send = jest.fn();
   const port = {
-    inspectRegistration: jest.fn().mockResolvedValue(null),
     resolveIssuer: jest.fn().mockResolvedValue('did:indy:issuer'),
     resolveSchema: jest.fn().mockResolvedValue({ id: 'schema' }),
     findSchema: jest.fn().mockResolvedValue(null),
@@ -89,7 +88,6 @@ describe('credential definition registration (integration)', () => {
   beforeEach(async () => {
     jest.clearAllMocks();
     send.mockResolvedValue(randomUUID());
-    port.inspectRegistration.mockResolvedValue(null);
     port.findSchema.mockResolvedValue(null);
     port.findDefinition.mockResolvedValue(null);
     port.publishSchema.mockResolvedValue({ state: 'finished', id: 'schema' });
@@ -139,7 +137,7 @@ describe('credential definition registration (integration)', () => {
     await app?.close();
   });
 
-  it('persists operation and write markers, then reconciles to ready', async () => {
+  it('persists operation and artifact identities, then completes registration', async () => {
     const operation = await service.create(tenant.id, dto, auth);
     const definitions = db.getRepository(CredentialDefinition);
     let row = await definitions.findOneByOrFail({
@@ -159,16 +157,13 @@ describe('credential definition registration (integration)', () => {
       tenantId: tenant.id,
       id: row.id,
     });
-    expect(row.registration?.schemaSubmitted).toBe(true);
-    expect(row.registration?.definitionSubmitted).toBe(true);
-    port.findDefinition.mockResolvedValue('cred-def');
-    await worker.process(tenant.id, row.id);
-    row = await definitions.findOneByOrFail({
-      tenantId: tenant.id,
-      id: row.id,
-    });
     expect(row.registrationState).toBe('ready');
     expect(row.externalId).toBe('cred-def');
+    expect(row.registration).toMatchObject({
+      schema: { id: 'schema', state: 'finished' },
+      definition: { id: 'cred-def', state: 'finished' },
+      stage: 'completed',
+    });
     const completed = await db.getRepository(Operation).findOneByOrFail({
       id: operation.id,
       tenantId: tenant.id,
@@ -199,8 +194,10 @@ describe('credential definition registration (integration)', () => {
             {
               registration: {
                 ...stale.registration,
-                schemaSubmitted: true,
-                schemaJobId: 'worker-progress',
+                schema: {
+                  jobId: 'worker-progress',
+                  state: 'wait',
+                },
               },
             },
           );
@@ -219,15 +216,13 @@ describe('credential definition registration (integration)', () => {
       expect(findByIdSpy).toHaveBeenCalledWith(row.id);
       expect(updated.name).toBe('Updated Employee');
       expect(updated.registration).toMatchObject({
-        schemaSubmitted: true,
-        schemaJobId: 'worker-progress',
+        schema: { jobId: 'worker-progress', state: 'wait' },
       });
       const persisted = await db
         .getRepository(CredentialDefinition)
         .findOneByOrFail({ id: row.id, tenantId: tenant.id });
       expect(persisted.registration).toMatchObject({
-        schemaSubmitted: true,
-        schemaJobId: 'worker-progress',
+        schema: { jobId: 'worker-progress', state: 'wait' },
       });
     } finally {
       findByIdSpy.mockRestore();
@@ -256,7 +251,7 @@ describe('credential definition registration (integration)', () => {
     ).toBe(1);
   });
 
-  it('serializes concurrent equivalent requests into one operation and enqueue', async () => {
+  it('returns one operation for concurrent equivalent requests and keys both jobs', async () => {
     const [first, second] = await Promise.all([
       service.create(tenant.id, dto, auth),
       service.create(
@@ -271,20 +266,26 @@ describe('credential definition registration (integration)', () => {
       ),
     ]);
     expect(second.id).toBe(first.id);
-    expect(
-      send.mock.calls.filter(
-        (call: unknown[]) => call[0] === JOB_QUEUES.DEFINITION_REGISTER,
-      ),
-    ).toHaveLength(1);
-    expect(
-      await db.getRepository(Operation).countBy({ tenantId: tenant.id }),
-    ).toBe(1);
     const row = await db.getRepository(CredentialDefinition).findOneByOrFail({
       tenantId: tenant.id,
       registrationOperationId: first.id,
     });
-    expect(row.requestFingerprint).toMatch(/^u[A-Za-z0-9_-]{46}$/);
-    expect(row.artifactFingerprint).toMatch(/^u[A-Za-z0-9_-]{46}$/);
+    expect(send).toHaveBeenCalledTimes(2);
+    expect(send).toHaveBeenNthCalledWith(
+      1,
+      JOB_QUEUES.DEFINITION_REGISTER,
+      expect.any(Object),
+      expect.objectContaining({ singletonKey: row.id }),
+    );
+    expect(send).toHaveBeenNthCalledWith(
+      2,
+      JOB_QUEUES.DEFINITION_REGISTER,
+      expect.any(Object),
+      expect.objectContaining({ singletonKey: row.id }),
+    );
+    expect(
+      await db.getRepository(Operation).countBy({ tenantId: tenant.id }),
+    ).toBe(1);
   });
 
   it('persists failure diagnostics and definition references atomically', async () => {
@@ -355,12 +356,14 @@ describe('credential definition registration (integration)', () => {
       id: row.id,
     });
     expect(saved.registration).toMatchObject({
-      schemaPendingId: 'provisional-schema',
-      schemaState: 'wait',
-      schemaJobId: 'schema-job',
-      schemaTransactionId: 'schema-transaction',
+      schema: {
+        id: 'provisional-schema',
+        state: 'wait',
+        jobId: 'schema-job',
+        transactionId: 'schema-transaction',
+      },
     });
-    expect(saved.registration?.schemaId).toBeUndefined();
+    expect(saved.registration?.schema.id).toBe('provisional-schema');
     const processing = await db.getRepository(Operation).findOneByOrFail({
       tenantId: tenant.id,
       id: operation.id,
@@ -374,58 +377,55 @@ describe('credential definition registration (integration)', () => {
         pending_id: 'provisional-schema',
         job_id: 'schema-job',
         transaction_id: 'schema-transaction',
-        transaction_state: null,
+        transaction_state: 'wait',
         state: 'wait',
       },
     });
     expect(port.publishDefinition).not.toHaveBeenCalled();
   });
 
-  it('rejects competing local names for the same artifact intent', async () => {
-    const results = await Promise.allSettled([
-      service.create(tenant.id, dto, auth),
-      service.create(tenant.id, { ...dto, name: 'Another name' }, auth),
-    ]);
-    expect(
-      results.filter((result) => result.status === 'fulfilled'),
-    ).toHaveLength(1);
-    const rejected = results.find((result) => result.status === 'rejected');
-    expect(rejected).toMatchObject({
-      status: 'rejected',
-      reason: { status: 409 },
-    });
-    expect(
-      send.mock.calls.filter(
-        (call: unknown[]) => call[0] === JOB_QUEUES.DEFINITION_REGISTER,
-      ),
-    ).toHaveLength(1);
-  });
-
-  it('retains deduplication after failure and operation deletion', async () => {
+  it('continues a failed definition with a new operation while retaining its progress', async () => {
     const operation = await service.create(tenant.id, dto, auth);
+    const repository = db.getRepository(CredentialDefinition);
+    const definition = await repository.findOneByOrFail({
+      tenantId: tenant.id,
+      registrationOperationId: operation.id,
+    });
     await db
       .getRepository(Operation)
       .update(
         { tenantId: tenant.id, id: operation.id },
         { state: OperationState.FAILED },
       );
-    expect((await service.create(tenant.id, dto, auth)).state).toBe(
-      OperationState.FAILED,
+    await repository.update(
+      { tenantId: tenant.id, id: definition.id },
+      {
+        registrationState: 'failed',
+        registration: {
+          ...definition.registration!,
+          schema: { id: 'schema', state: 'finished' },
+        },
+      },
     );
+    const continued = await service.create(tenant.id, dto, auth);
+    expect(continued.id).not.toBe(operation.id);
+    const resumed = await repository.findOneByOrFail({
+      tenantId: tenant.id,
+      id: definition.id,
+    });
+    expect(resumed.registrationState).toBe('pending');
+    expect(resumed.registration).toMatchObject({
+      schema: { id: 'schema', state: 'finished' },
+    });
     await db
       .getRepository(Operation)
-      .delete({ tenantId: tenant.id, id: operation.id });
+      .delete({ tenantId: tenant.id, id: continued.id });
     await expect(service.create(tenant.id, dto, auth)).rejects.toMatchObject({
       response: { code: 'REGISTRATION_REPLAY_UNAVAILABLE' },
     });
-    expect(
-      send.mock.calls.filter(
-        (call: unknown[]) => call[0] === JOB_QUEUES.DEFINITION_REGISTER,
-      ),
-    ).toHaveLength(1);
   });
 
-  it('enforces database uniqueness and scopes fingerprint lookup to the tenant', async () => {
+  it('enforces active name/format uniqueness within a tenant', async () => {
     await service.create(tenant.id, dto, auth);
     const repository = db.getRepository(CredentialDefinition);
     const row = await repository.findOneByOrFail({
@@ -440,37 +440,21 @@ describe('credential definition registration (integration)', () => {
     try {
       const copy = { ...row };
       await expect(
-        repository.insert({ ...copy, id: randomUUID(), name: 'duplicate' }),
+        repository.insert({ ...copy, id: randomUUID() }),
       ).rejects.toMatchObject({ driverError: { code: '23505' } });
-      await expect(
-        repository.insert({
-          ...copy,
-          id: randomUUID(),
-          name: 'same artifacts',
-          requestFingerprint: null,
-        }),
-      ).rejects.toMatchObject({
-        driverError: {
-          code: '23505',
-          constraint: 'uq_credential_definition_artifact_fingerprint',
-        },
-      });
       await repository.insert({
         ...copy,
         id: randomUUID(),
         tenantId: other.id,
         connectorId: null,
       });
-      await repository.delete({ tenantId: tenant.id, id: row.id });
-      const recreated = await service.create(tenant.id, dto, auth);
-      expect(recreated.id).not.toBe(row.registrationOperationId);
     } finally {
       await repository.delete({ tenantId: other.id });
       await db.getRepository(Tenant).delete({ id: other.id });
     }
   });
 
-  it('does not access another tenant wallet or bypass the wallet advisory lock', async () => {
+  it('does not access another tenant wallet', async () => {
     await service.create(tenant.id, dto, auth);
     const row = await db.getRepository(CredentialDefinition).findOneByOrFail({
       tenantId: tenant.id,
@@ -479,20 +463,5 @@ describe('credential definition registration (integration)', () => {
     resolve.mockClear();
     await worker.process(randomUUID(), row.id);
     expect(resolve).not.toHaveBeenCalled();
-    const runner = db.createQueryRunner();
-    await runner.connect();
-    const key = `${tenant.id}:${connector.id}:registration`;
-    try {
-      await runner.query('SELECT pg_advisory_lock(hashtextextended($1, 0))', [
-        key,
-      ]);
-      await worker.process(tenant.id, row.id);
-      expect(resolve).not.toHaveBeenCalled();
-    } finally {
-      await runner.query('SELECT pg_advisory_unlock(hashtextextended($1, 0))', [
-        key,
-      ]);
-      await runner.release();
-    }
   });
 });

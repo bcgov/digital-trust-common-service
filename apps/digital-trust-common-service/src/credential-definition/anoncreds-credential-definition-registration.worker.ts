@@ -1,19 +1,17 @@
 import {
   CredentialFormat,
-  DefinitionOptions,
   DefinitionRegistrationPort,
-  ConnectorContext,
   ValidationError,
+  type ConnectorContext,
+  type RegistrationSubmission,
 } from '@app/credential-ports';
 import { JOB_QUEUES } from '@app/pg-boss';
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
 import { DataSource } from 'typeorm';
-import type { QueryRunner } from 'typeorm';
 
 import { AdapterRegistry } from '../adapter-registry/adapter-registry.service';
-import { isAdvisoryLockAcquired } from '../common/postgres-advisory-lock';
 import { RegistrationBackendError } from '../common/registration-backend-error';
 import { JobsService } from '../jobs/jobs.service';
 import { RegistrationProblemDetailsDto } from '../operation/dto/registration-problem-details.dto';
@@ -21,26 +19,27 @@ import { Operation, OperationState } from '../operation/operation.entity';
 import { OperationService } from '../operation/operation.service';
 
 import {
+  ArtifactProgress,
   CredentialDefinition,
   CredentialDefinitionFormat,
+  DefinitionRegistration,
 } from './credential-definition.entity';
-import type { DefinitionRegistration } from './credential-definition.entity';
 
-const MAX_REGISTRATION_ATTEMPTS = 3;
-const INITIAL_RETRY_DELAY_MS = 30_000;
+const WAIT_INTERVAL_SECONDS = 15;
+const MAX_WAIT_CHECKS = 20;
 
-interface RegistrationAttempt {
-  tenantId: string;
-  id: string;
-  definition: CredentialDefinition;
-  progress: DefinitionRegistration;
-  operationId: string;
-  runner: QueryRunner;
+interface RegistrationJobData {
+  tenantId?: string;
+  definitionId?: string;
+  checks?: number;
 }
 
-interface RegistrationWork extends RegistrationAttempt {
-  operation: Operation;
-  save: () => Promise<void>;
+interface RegistrationWork {
+  tenantId: string;
+  definition: CredentialDefinition;
+  registration: DefinitionRegistration;
+  operationId: string;
+  checks: number;
 }
 
 interface RegistrationBackend {
@@ -49,8 +48,9 @@ interface RegistrationBackend {
 }
 
 interface RegistrationFailure {
-  permanent: boolean;
+  detail: string;
   status?: number;
+  code?: string;
   problem: RegistrationProblemDetailsDto;
 }
 
@@ -71,339 +71,332 @@ export class AnonCredsCredentialDefinitionRegistrationWorker implements OnModule
   public async onModuleInit(): Promise<void> {
     const enabled =
       this.config.get<string>('PG_BOSS_WORKERS_ENABLED', 'true') !== 'false';
-    await this.jobs.registerWorker<{
-      tenantId?: string;
-      definitionId?: string;
-    }>(
+    await this.jobs.registerWorker<RegistrationJobData>(
       JOB_QUEUES.DEFINITION_REGISTER,
       async (job) => {
         const data = job?.data;
-        if (data?.definitionId && data.tenantId) {
-          await this.process(data.tenantId, data.definitionId);
-        } else {
-          await this.reconcile();
+        if (!data?.tenantId || !data.definitionId) {
+          return;
         }
+        await this.process(
+          data.tenantId,
+          data.definitionId,
+          Number.isSafeInteger(data.checks) && (data.checks ?? 0) >= 0
+            ? (data.checks ?? 0)
+            : 0,
+        );
       },
       { enabled },
     );
-    if (enabled) {
-      await this.jobs.schedule(JOB_QUEUES.DEFINITION_REGISTER, '* * * * *');
-    }
   }
 
-  public async reconcile(): Promise<void> {
-    const pending = await this.dataSource
-      .getRepository(CredentialDefinition)
-      .find({
-        where: {
-          format: CredentialDefinitionFormat.ANONCREDS,
-          registrationState: 'pending',
-        },
-        order: { updatedAt: 'ASC' },
-        take: 50,
-      });
-    for (const definition of pending) {
-      try {
-        await this.process(definition.tenantId, definition.id);
-      } catch {
-        this.logger.warn(
-          `Registration ${definition.id} will be reconciled again`,
-        );
-      }
-    }
-  }
-
-  private retryIsScheduled(
-    progress: DefinitionRegistration | null | undefined,
-  ): boolean {
-    if (!progress?.retryAfter) {
-      return false;
-    }
-    return new Date(progress.retryAfter).getTime() > Date.now();
-  }
-
-  public async process(tenantId: string, id: string): Promise<void> {
-    const runner = this.dataSource.createQueryRunner();
-    await runner.connect();
-    let lockId = '';
-    let locked = false;
-    try {
-      const binding = await runner.manager.findOne(CredentialDefinition, {
-        where: {
-          id,
-          tenantId,
-          format: CredentialDefinitionFormat.ANONCREDS,
-          registrationState: 'pending',
-        },
-      });
-      if (
-        !binding?.connectorId ||
-        binding.format !== CredentialDefinitionFormat.ANONCREDS ||
-        this.retryIsScheduled(binding.registration)
-      ) {
-        return;
-      }
-      // Serialize this wallet's publications, including differently named
-      // local registrations sharing a schema or credential-definition tag.
-      lockId = `${tenantId}:${binding.connectorId}:registration`;
-      const locks: unknown = await runner.query(
-        'SELECT pg_try_advisory_lock(hashtextextended($1, 0)) AS locked',
-        [lockId],
-      );
-      const lock: unknown = Array.isArray(locks) ? locks[0] : null;
-      locked = isAdvisoryLockAcquired(lock);
-      if (!locked) {
-        return;
-      }
-      const definition = await runner.manager.findOne(CredentialDefinition, {
-        where: {
-          id,
-          tenantId,
-          format: CredentialDefinitionFormat.ANONCREDS,
-          registrationState: 'pending',
-        },
-      });
-      const progress = definition?.registration;
-      const operationId = definition?.registrationOperationId;
-      if (
-        !definition ||
-        definition.format !== CredentialDefinitionFormat.ANONCREDS ||
-        !progress ||
-        !operationId ||
-        this.retryIsScheduled(progress)
-      ) {
-        return;
-      }
-      await this.processRegistration({
-        tenantId,
-        id,
-        definition,
-        progress,
-        operationId,
-        runner,
-      });
-    } finally {
-      try {
-        if (runner.isTransactionActive) {
-          await runner.rollbackTransaction();
-        }
-        if (locked) {
-          await runner.query(
-            'SELECT pg_advisory_unlock(hashtextextended($1, 0))',
-            [lockId],
-          );
-        }
-      } finally {
-        await runner.release();
-      }
-    }
-  }
-
-  private async processRegistration(
-    attempt: RegistrationAttempt,
+  public async process(
+    tenantId: string,
+    id: string,
+    checks = 0,
   ): Promise<void> {
-    const { tenantId, id, operationId, progress, runner } = attempt;
-    const operation = await runner.manager.findOne(Operation, {
-      where: { id: operationId, tenantId },
-    });
-    if (!operation || operation.state === OperationState.FAILED) {
-      await runner.manager.update(
-        CredentialDefinition,
-        { id, tenantId },
-        {
-          registrationState: 'failed',
+    const definition = await this.dataSource
+      .getRepository(CredentialDefinition)
+      .findOne({
+        where: {
+          id,
+          tenantId,
+          format: CredentialDefinitionFormat.ANONCREDS,
+          registrationState: 'pending',
         },
-      );
-      this.logger.warn(
-        `Registration ${id} has no live operation; backend reconciliation is required`,
-      );
+      });
+    if (!definition) {
       return;
     }
+
+    const registration = definition.registration
+      ? {
+          ...definition.registration,
+          schema: definition.registration.schema ?? {},
+          definition: definition.registration.definition ?? {},
+        }
+      : null;
+    const operationId = definition.registrationOperationId;
+    if (!registration || !operationId) {
+      await this.failWithoutOperation(definition, 'preflight');
+      return;
+    }
+
     const work: RegistrationWork = {
-      ...attempt,
-      operation,
-      save: async () => {
-        await this.updateDefinition(attempt);
-      },
+      tenantId,
+      definition,
+      registration,
+      operationId,
+      checks,
     };
-    progress.stage = 'preflight';
+    const operation = await this.dataSource
+      .getRepository(Operation)
+      .findOne({ where: { id: operationId, tenantId } });
+    if (!operation || operation.state === OperationState.FAILED) {
+      await this.failWithoutOperation(definition, 'preflight');
+      return;
+    }
+
     try {
-      await this.advanceRegistration(work);
-      await this.persistProgress(work);
+      if (!definition.isActive || !definition.connectorId) {
+        throw new ValidationError([
+          'The credential definition or its connector is unavailable',
+        ]);
+      }
+      const resolved = await this.adapters.resolve(
+        tenantId,
+        CredentialFormat.AnonCreds,
+        { connectorId: definition.connectorId },
+      );
+      const port = resolved.adapter.definitionRegistration;
+      if (!port) {
+        throw new ValidationError([
+          'The selected connector does not support AnonCreds registration',
+        ]);
+      }
+      const backend = { port, context: resolved.context };
+      await this.transitionOperation(work, OperationState.PROCESSING);
+      const issuerId = await port.resolveIssuer(resolved.context, {
+        id: registration.issuerId,
+      });
+      if (issuerId !== registration.issuerId) {
+        throw new ValidationError(['The configured issuer no longer matches']);
+      }
+      await this.advance(work, backend);
     } catch (error) {
-      await this.persistFailure(error, work);
+      await this.persistFailure(error, work, registration.stage ?? 'preflight');
     }
   }
 
-  private async advanceRegistration(work: RegistrationWork): Promise<void> {
-    const { definition, operationId, tenantId, runner, progress } = work;
-    if (!definition.isActive) {
-      throw new ValidationError(['Definition was deactivated']);
+  private async advance(
+    work: RegistrationWork,
+    backend: RegistrationBackend,
+  ): Promise<void> {
+    const schemaId = await this.advanceSchema(work, backend);
+    if (!schemaId) {
+      await this.persistWaiting(work);
+      return;
     }
-    const startedAt = definition.createdAt;
-    if (Date.now() - startedAt.getTime() > 24 * 60 * 60 * 1000) {
+
+    const options = this.definitionOptions(work.definition);
+    work.registration.stage = 'definition_lookup';
+    const found = await backend.port.findDefinition(
+      backend.context,
+      work.registration.issuerId,
+      schemaId,
+      options,
+    );
+    if (found) {
+      work.definition.externalId = found;
+      work.registration.definition = {
+        ...work.registration.definition,
+        id: found,
+        state: 'finished',
+      };
+      await this.saveProgress(work);
+    } else if (this.hasSubmission(work.registration.definition)) {
+      if (work.registration.definition.state === 'failed') {
+        throw new ValidationError([
+          'The backend rejected credential-definition publication',
+        ]);
+      }
+      if (
+        work.registration.definition.state === 'finished' &&
+        !work.registration.definition.id
+      ) {
+        throw new ValidationError([
+          'Completed credential-definition registration has no ID',
+        ]);
+      }
+      work.registration.stage = 'awaiting_definition_endorsement';
+      await this.persistWaiting(work);
+      return;
+    } else {
+      work.registration.stage = 'definition_publication';
+      const submitted = await backend.port.publishDefinition(
+        backend.context,
+        work.registration.issuerId,
+        schemaId,
+        options,
+      );
+      work.registration.definition = this.toProgress(submitted);
+      if (submitted.state === 'failed') {
+        await this.saveProgress(work);
+        throw this.submissionFailure(submitted);
+      }
+      if (submitted.state !== 'finished') {
+        work.registration.stage = 'awaiting_definition_endorsement';
+        await this.saveProgress(work);
+        await this.persistWaiting(work);
+        return;
+      }
+      if (!submitted.id) {
+        throw new RegistrationBackendError(
+          undefined,
+          'INVALID_REGISTRATION_RESPONSE',
+          'Backend reported a completed credential definition without an ID',
+        );
+      }
+      work.definition.externalId = submitted.id;
+      await this.saveProgress(work);
+    }
+
+    if (
+      options.revocation.enabled &&
+      !(await backend.port.verifyRevocation(
+        backend.context,
+        work.definition.externalId,
+      ))
+    ) {
+      work.registration.stage = 'awaiting_revocation_registry';
+      await this.persistWaiting(work);
+      return;
+    }
+
+    work.registration.stage = 'completed';
+    work.definition.registrationState = 'ready';
+    await this.persistOutcome(work, OperationState.COMPLETED);
+  }
+
+  private async advanceSchema(
+    work: RegistrationWork,
+    backend: RegistrationBackend,
+  ): Promise<string | null> {
+    const progress = work.registration.schema;
+    if (progress.state === 'finished' && !progress.id) {
       throw new ValidationError([
-        'Registration timed out; reconcile backend artifacts before resubmitting',
+        'Completed schema registration has no resolvable ID',
       ]);
     }
-    const resolved = await this.adapters.resolve(
-      tenantId,
-      CredentialFormat.AnonCreds,
-      {
-        connectorId: definition.connectorId ?? undefined,
-      },
-    );
-    if (!definition.connectorId || !resolved.adapter.definitionRegistration) {
-      throw new ValidationError(['Registration connector is unavailable']);
+    if (progress.state === 'finished' && progress.id) {
+      work.registration.stage = 'schema_resolution';
+      await backend.port.resolveSchema(backend.context, progress.id);
+      return progress.id;
     }
-    await this.operations.transitionState(
-      operationId,
-      OperationState.PROCESSING,
+
+    work.registration.stage = 'schema_lookup';
+    const found = await backend.port.findSchema(
+      backend.context,
+      work.registration.issuerId,
+      work.definition.schemaDefinition,
     );
-    const port = resolved.adapter.definitionRegistration;
-    progress.stage = 'issuer_resolution';
-    await port.resolveIssuer(resolved.context, {
-      id: progress.issuerId,
-    });
-    const peers = await runner.manager.find(CredentialDefinition, {
-      where: { tenantId, connectorId: definition.connectorId },
-    });
-    this.inheritPeerSubmissions(work, peers);
-    const backend = {
-      port,
-      context: resolved.context,
+    if (found) {
+      work.registration.schema = {
+        ...progress,
+        id: found.id,
+        state: 'finished',
+      };
+      await this.saveProgress(work);
+      return found.id;
+    }
+    if (this.hasSubmission(progress)) {
+      if (progress.state === 'failed') {
+        throw new ValidationError(['The backend rejected schema publication']);
+      }
+      work.registration.stage = 'awaiting_schema_endorsement';
+      return null;
+    }
+
+    work.registration.stage = 'schema_publication';
+    const submitted = await backend.port.publishSchema(
+      backend.context,
+      work.registration.issuerId,
+      work.definition.schemaDefinition,
+    );
+    work.registration.schema = this.toProgress(submitted);
+    await this.saveProgress(work);
+    if (submitted.state === 'failed') {
+      throw this.submissionFailure(submitted);
+    }
+    if (submitted.state !== 'finished') {
+      work.registration.stage = 'awaiting_schema_endorsement';
+      return null;
+    }
+    if (!submitted.id) {
+      throw new RegistrationBackendError(
+        undefined,
+        'INVALID_REGISTRATION_RESPONSE',
+        'Backend reported a completed schema without an ID',
+      );
+    }
+    return submitted.id;
+  }
+
+  private hasSubmission(progress: ArtifactProgress): boolean {
+    return Boolean(
+      progress.id || progress.jobId || progress.transactionId || progress.state,
+    );
+  }
+
+  private toProgress(submission: RegistrationSubmission): ArtifactProgress {
+    return {
+      ...(submission.id ? { id: submission.id } : {}),
+      ...(submission.jobId ? { jobId: submission.jobId } : {}),
+      ...(submission.transactionId
+        ? { transactionId: submission.transactionId }
+        : {}),
+      state: submission.state,
     };
-    await this.advance(work, backend);
   }
 
-  private inheritPeerSubmissions(
-    work: RegistrationWork,
-    peers: CredentialDefinition[],
-  ): void {
-    const { definition, progress } = work;
-    for (const peer of peers) {
-      if (
-        peer.id === definition.id ||
-        !peer.registration ||
-        peer.registration.issuerId !== progress.issuerId ||
-        peer.schemaDefinition.schema_name !==
-          definition.schemaDefinition.schema_name ||
-        peer.schemaDefinition.schema_version !==
-          definition.schemaDefinition.schema_version
-      ) {
-        continue;
-      }
-      if (peer.registration.schemaSubmitted) {
-        progress.schemaSubmitted = true;
-      }
-      if (
-        peer.registration.definitionSubmitted &&
-        progress.schemaId &&
-        peer.registration.schemaId === progress.schemaId &&
-        peer.options?.tag === definition.options?.tag
-      ) {
-        progress.definitionSubmitted = true;
-      }
-    }
-  }
-
-  private async persistProgress(work: RegistrationWork): Promise<void> {
-    const { definition, operation, progress } = work;
-    const ready = definition.registrationState === 'ready';
-    const unknownSubmission =
-      (progress.schemaSubmitted &&
-        !progress.schemaId &&
-        !progress.schemaPendingId &&
-        !progress.schemaJobId) ||
-      (progress.definitionSubmitted &&
-        !definition.externalId &&
-        !progress.definitionPendingId &&
-        !progress.definitionJobId);
-    await this.persistOutcome(
-      work,
-      ready ? OperationState.COMPLETED : OperationState.PROCESSING,
-      ready || !unknownSubmission
-        ? null
-        : (operation.result?.problem_details ?? null),
+  private submissionFailure(
+    submission: RegistrationSubmission,
+  ): RegistrationBackendError {
+    return new RegistrationBackendError(
+      submission.status,
+      submission.backendCode ?? 'REGISTRATION_REJECTED',
+      submission.detail ?? 'The backend rejected artifact publication',
     );
+  }
+
+  private definitionOptions(definition: CredentialDefinition): {
+    tag: string;
+    revocation: { enabled: boolean };
+  } {
+    const options = definition.options ?? {};
+    const revocation = options.revocation as { enabled?: boolean } | undefined;
+    return {
+      tag: typeof options.tag === 'string' ? options.tag : 'default',
+      revocation: { enabled: revocation?.enabled ?? true },
+    };
+  }
+
+  private async saveProgress(work: RegistrationWork): Promise<void> {
+    await this.dataSource.transaction(async (manager) => {
+      const result = await manager.update(
+        CredentialDefinition,
+        { id: work.definition.id, tenantId: work.tenantId, isActive: true },
+        {
+          registration: work.registration,
+          externalId: work.definition.externalId,
+        },
+      );
+      if (!result.affected) {
+        throw new Error('Credential definition is no longer active');
+      }
+    });
+  }
+
+  private async persistWaiting(work: RegistrationWork): Promise<void> {
+    work.definition.registrationState = 'pending';
+    await this.persistOutcome(work, OperationState.PROCESSING, undefined, true);
   }
 
   private async persistFailure(
     error: unknown,
     work: RegistrationWork,
+    stage: string,
   ): Promise<void> {
-    const { definition, progress, runner, id } = work;
-    if (runner.isTransactionActive) {
-      await runner.rollbackTransaction();
-    }
-    if (error instanceof RegistrationBackendError && error.correlation) {
-      const correlation = error.correlation;
-      if (correlation.artifact === 'schema') {
-        progress.schemaPendingId = correlation.id;
-        progress.schemaJobId = correlation.jobId;
-        progress.schemaTransactionId = correlation.transactionId;
-        progress.schemaState = correlation.state;
-      } else {
-        progress.definitionPendingId = correlation.id;
-        progress.definitionJobId = correlation.jobId;
-        progress.definitionTransactionId = correlation.transactionId;
-        progress.definitionState = correlation.state;
-      }
-    }
-    const failure = this.classifyFailure(error, progress.stage ?? 'preflight');
-    progress.retryCount = (progress.retryCount ?? 0) + 1;
-    const publicationOutcomeUnknown =
-      error instanceof RegistrationBackendError &&
-      error.backendCode === 'REGISTRATION_OUTCOME_UNKNOWN';
-    const retryExhausted = progress.retryCount >= MAX_REGISTRATION_ATTEMPTS;
-    const permanent =
-      failure.permanent || publicationOutcomeUnknown || retryExhausted;
-    if (publicationOutcomeUnknown) {
-      progress.publicationOutcomeUnknown = true;
-    }
-    if (publicationOutcomeUnknown) {
-      failure.problem.detail =
-        'Publication outcome is uncertain; the write will not be repeated';
-    } else if (retryExhausted && !failure.permanent) {
-      failure.problem.detail = `Registration did not complete after ${MAX_REGISTRATION_ATTEMPTS} attempts`;
-    }
-    if (failure.problem.retryable !== !permanent) {
-      const problem = RegistrationProblemDetailsDto.create({
-        detail: failure.problem.detail,
-        stage: failure.problem.stage,
-        retryable: !permanent,
-        ...(failure.problem.backend_status === undefined
-          ? {}
-          : { backend_status: failure.problem.backend_status }),
-        ...(failure.problem.backend_code === undefined
-          ? {}
-          : { backend_code: failure.problem.backend_code }),
-      });
-      problem.instance = failure.problem.instance;
-      failure.problem = problem;
-    }
-    if (permanent) {
-      delete progress.retryAfter;
-    } else {
-      progress.retryAfter = new Date(
-        Date.now() + INITIAL_RETRY_DELAY_MS * 2 ** (progress.retryCount - 1),
-      ).toISOString();
-    }
+    const failure = this.classifyFailure(error, stage);
     this.logger.warn({
-      message: `Registration ${id} could not advance`,
-      stage: failure.problem.stage,
+      message: `AnonCreds registration ${work.definition.id} failed`,
+      stage,
       backend_status: failure.status,
-      retryable: failure.problem.retryable,
+      backend_code: failure.code,
     });
-    definition.registrationState = permanent ? 'failed' : 'pending';
-    await this.persistOutcome(
-      work,
-      permanent ? OperationState.FAILED : OperationState.PROCESSING,
-      failure.problem,
-      permanent
-        ? { code: 'REGISTRATION_FAILED', message: failure.problem.detail }
-        : undefined,
-    );
+    work.registration.stage = stage;
+    work.definition.registrationState = 'failed';
+    await this.persistOutcome(work, OperationState.FAILED, failure);
   }
 
   private classifyFailure(error: unknown, stage: string): RegistrationFailure {
@@ -413,372 +406,146 @@ export class AnonCredsCredentialDefinitionRegistrationWorker implements OnModule
         : axios.isAxiosError(error)
           ? error.response?.status
           : undefined;
-    const permanent =
-      error instanceof ValidationError ||
-      (error instanceof RegistrationBackendError &&
-        ['REGISTRATION_REJECTED', 'REGISTRATION_OUTCOME_UNKNOWN'].includes(
-          error.backendCode ?? '',
-        )) ||
-      (status !== undefined &&
-        status >= 400 &&
-        status < 500 &&
-        ![404, 408, 429].includes(status));
+    const code =
+      error instanceof RegistrationBackendError ? error.backendCode : undefined;
+    const detail =
+      error instanceof RegistrationBackendError
+        ? error.detail
+        : error instanceof ValidationError
+          ? error.issues.join('; ')
+          : 'AnonCreds registration could not be completed';
     const problem = RegistrationProblemDetailsDto.create({
-      detail:
-        error instanceof RegistrationBackendError
-          ? error.detail
-          : error instanceof ValidationError
-            ? error.issues.join('; ')
-            : 'Registration could not advance; backend artifacts will be reconciled before any further publication',
+      detail,
       stage,
-      retryable: !permanent,
+      retryable: false,
       ...(status !== undefined ? { backend_status: status } : {}),
-      ...(error instanceof RegistrationBackendError && error.backendCode
-        ? { backend_code: error.backendCode }
-        : {}),
+      ...(code ? { backend_code: code } : {}),
     });
-    return { permanent, status, problem };
+    return { detail, status, code, problem };
   }
 
   private async persistOutcome(
     work: RegistrationWork,
-    operationState: OperationState,
-    problemDetails: unknown,
-    failure?: { code: string; message: string },
+    state: OperationState,
+    failure?: RegistrationFailure,
+    scheduleFollowUp = false,
   ): Promise<void> {
-    const { definition, operationId, runner } = work;
-    await runner.startTransaction();
-    await this.updateDefinition(work);
-    await this.operations.transitionState(
-      operationId,
-      operationState,
-      {
-        credential_definition_id: definition.id,
-        external_id: definition.externalId,
-        registration: this.progressResult(work),
-        ...(failure ? { code: failure.code, message: failure.message } : {}),
-        problem_details: problemDetails,
-      },
-      runner.manager,
-    );
-    await runner.commitTransaction();
-  }
-
-  private async updateDefinition(work: RegistrationAttempt): Promise<void> {
-    const { id, tenantId, definition, progress, runner } = work;
-    await runner.manager.update(
-      CredentialDefinition,
-      { id, tenantId },
-      {
-        registrationState: definition.registrationState,
-        registration: progress,
-        externalId: definition.externalId,
-      },
-    );
-  }
-
-  private async advance(
-    work: RegistrationWork,
-    backend: RegistrationBackend,
-  ): Promise<void> {
-    const { progress } = work;
-    const schemaId = await this.resolveSchema(work, backend);
-    if (!schemaId) {
-      return;
-    }
-    progress.stage = 'schema_resolution';
-    await backend.port.resolveSchema(backend.context, schemaId);
-    await this.advanceDefinition(work, schemaId, backend);
-  }
-
-  private async resolveSchema(
-    work: RegistrationWork,
-    backend: RegistrationBackend,
-  ): Promise<string | null> {
-    const { definition, progress } = work;
-    if (progress.schemaId) {
-      return progress.schemaId;
-    }
-    progress.stage = 'schema_lookup';
-    const found = await backend.port.findSchema(
-      backend.context,
-      progress.issuerId,
-      definition.schemaDefinition,
-    );
-    if (found) {
-      progress.schemaId = found.id;
-      definition.schemaDefinition = found.definition;
-      return found.id;
-    }
-    if (progress.schemaSubmitted) {
-      await this.observeSubmission(work, backend, 'schema');
-    }
-    if (progress.schemaSubmitted) {
-      if (
-        !progress.schemaTransactionId &&
-        !progress.schemaJobId &&
-        !progress.schemaPendingId
-      ) {
-        throw new RegistrationBackendError(
-          undefined,
-          'REGISTRATION_OUTCOME_UNKNOWN',
-          'Schema submission outcome is unknown; supply a matching endorsement transaction or reconcile the wallet and backend registry. Publication will not be repeated',
+    await this.dataSource.transaction(async (manager) => {
+      await manager.update(
+        CredentialDefinition,
+        { id: work.definition.id, tenantId: work.tenantId },
+        {
+          registrationState: work.definition.registrationState,
+          registration: work.registration,
+          externalId: work.definition.externalId,
+        },
+      );
+      await this.operations.transitionState(
+        work.operationId,
+        state,
+        {
+          credential_definition_id: work.definition.id,
+          external_id: work.definition.externalId,
+          registration: this.progressResult(work),
+          ...(failure
+            ? {
+                code: 'REGISTRATION_FAILED',
+                message: failure.detail,
+                problem_details: failure.problem,
+              }
+            : {}),
+        },
+        manager,
+        work.tenantId,
+      );
+      if (scheduleFollowUp && work.checks < MAX_WAIT_CHECKS) {
+        await this.jobs.sendInTransaction(
+          manager,
+          JOB_QUEUES.DEFINITION_REGISTER,
+          {
+            tenantId: work.tenantId,
+            definitionId: work.definition.id,
+            checks: work.checks + 1,
+          },
+          {
+            startAfter: WAIT_INTERVAL_SECONDS,
+            singletonKey: work.definition.id,
+          },
         );
       }
-      return null;
-    }
-    await this.publishSchema(work, backend);
-    return progress.schemaId ?? null;
+    });
   }
 
-  private async publishSchema(
+  private async transitionOperation(
     work: RegistrationWork,
-    backend: RegistrationBackend,
+    state: OperationState,
   ): Promise<void> {
-    const { definition, progress, save } = work;
-    progress.stage = 'schema_publication';
-    // Commit intent before the non-idempotent write so a restart or timeout
-    // reconciles instead of blindly repeating backend publication.
-    progress.schemaSubmitted = true;
-    await save();
-    const submitted = await backend.port.publishSchema(
-      backend.context,
-      progress.issuerId,
-      definition.schemaDefinition,
-    );
-    progress.schemaJobId = submitted.jobId;
-    progress.schemaState = submitted.state;
-    progress.schemaTransactionId = submitted.transactionId;
-    if (submitted.state === 'finished') {
-      progress.schemaId = submitted.id;
-    } else {
-      progress.schemaPendingId = submitted.id;
-    }
-    await save();
-  }
-
-  private async advanceDefinition(
-    work: RegistrationWork,
-    schemaId: string,
-    backend: RegistrationBackend,
-  ): Promise<void> {
-    const { definition, progress } = work;
-    const options = this.definitionOptions(definition);
-    progress.stage = 'definition_lookup';
-    const found = await backend.port.findDefinition(
-      backend.context,
-      progress.issuerId,
-      schemaId,
-      options,
-    );
-    if (!found) {
-      if (progress.definitionSubmitted) {
-        await this.observeSubmission(work, backend, 'credential_definition');
-      }
-      if (progress.definitionSubmitted) {
-        if (
-          !progress.definitionTransactionId &&
-          !progress.definitionJobId &&
-          !progress.definitionPendingId &&
-          !definition.externalId
-        ) {
-          throw new RegistrationBackendError(
-            undefined,
-            'REGISTRATION_OUTCOME_UNKNOWN',
-            'Credential definition submission outcome is unknown; reconcile the wallet and backend registry before any new publication',
-          );
-        }
-        return;
-      }
-      await this.publishDefinition(work, schemaId, backend);
-      return;
-    }
-    definition.externalId = found;
-    progress.stage = 'revocation_readiness';
-    if (
-      options.revocation.enabled &&
-      !(await backend.port.verifyRevocation(backend.context, found))
-    ) {
-      return;
-    }
-    definition.registrationState = 'ready';
-    progress.stage = 'completed';
-  }
-
-  private async publishDefinition(
-    work: RegistrationWork,
-    schemaId: string,
-    backend: RegistrationBackend,
-  ): Promise<void> {
-    const { definition, progress, save } = work;
-    const options = this.definitionOptions(definition);
-    progress.stage = 'definition_publication';
-    progress.definitionSubmitted = true;
-    await save();
-    const submitted = await backend.port.publishDefinition(
-      backend.context,
-      progress.issuerId,
-      schemaId,
-      options,
-    );
-    progress.definitionJobId = submitted.jobId;
-    progress.definitionState = submitted.state;
-    progress.definitionTransactionId = submitted.transactionId;
-    if (submitted.state === 'finished') {
-      definition.externalId = submitted.id ?? null;
-    } else {
-      progress.definitionPendingId = submitted.id;
-    }
-  }
-
-  private async observeSubmission(
-    work: RegistrationWork,
-    backend: RegistrationBackend,
-    artifact: 'schema' | 'credential_definition',
-  ): Promise<void> {
-    const { definition, progress, save } = work;
-    progress.stage =
-      artifact === 'schema'
-        ? 'schema_reconciliation'
-        : 'definition_reconciliation';
-    const previousTransactionId =
-      artifact === 'schema'
-        ? progress.schemaTransactionId
-        : progress.definitionTransactionId;
-    const observation = await backend.port.inspectRegistration(
-      backend.context,
-      {
-        artifact,
-        issuerId: progress.issuerId,
-        schema: definition.schemaDefinition,
-        schemaId: progress.schemaId,
-        options: this.definitionOptions(definition),
-        transactionId: previousTransactionId,
-        jobId:
-          artifact === 'schema'
-            ? progress.schemaJobId
-            : progress.definitionJobId,
-      },
-    );
-    if (!observation) {
-      return;
-    }
-    const rejected = ['transaction_refused', 'transaction_cancelled'].includes(
-      observation.state,
-    );
-    if (artifact === 'schema') {
-      progress.schemaSubmitted = true;
-      progress.schemaPendingId = observation.id;
-      progress.schemaJobId = observation.jobId;
-      progress.schemaTransactionId = observation.transactionId;
-      progress.schemaTransactionState = observation.state;
-      progress.schemaState = rejected ? 'failed' : 'wait';
-    } else {
-      progress.definitionSubmitted = true;
-      progress.definitionPendingId = observation.id;
-      progress.definitionJobId = observation.jobId;
-      progress.definitionTransactionId = observation.transactionId;
-      progress.definitionTransactionState = observation.state;
-      progress.definitionState = rejected ? 'failed' : 'wait';
-    }
-    await save();
-    if (rejected) {
-      throw new ValidationError([
-        `Endorsement ${observation.state}; publication remains blocked until backend state is definitively resolved`,
-      ]);
-    }
-    if (
-      ![
-        'transaction_acked',
-        'transaction_endorsed',
-        'request_sent',
-        'request_received',
-        'transaction_created',
-        'transaction_resent',
-        'transaction_resent_received',
-      ].includes(observation.state)
-    ) {
-      throw new RegistrationBackendError(
-        undefined,
-        'REGISTRATION_OUTCOME_UNKNOWN',
-        'Endorsement transaction has an unrecognized state; publication will not be repeated',
+    await this.dataSource.transaction(async (manager) => {
+      await this.operations.transitionState(
+        work.operationId,
+        state,
+        {
+          credential_definition_id: work.definition.id,
+          external_id: work.definition.externalId,
+          registration: this.progressResult(work),
+        },
+        manager,
+        work.tenantId,
       );
-    }
-    // Endorsement acknowledgement alone does not prove registry visibility or
-    // wallet key ownership. The normal artifact reads still gate advancement.
+    });
+  }
+
+  private async failWithoutOperation(
+    definition: CredentialDefinition,
+    stage: string,
+  ): Promise<void> {
+    await this.dataSource.transaction(async (manager) => {
+      await manager.update(
+        CredentialDefinition,
+        { id: definition.id, tenantId: definition.tenantId },
+        { registrationState: 'failed' },
+      );
+    });
+    this.logger.warn({
+      message: `AnonCreds registration ${definition.id} failed without an operation`,
+      stage,
+    });
   }
 
   private progressResult(work: RegistrationWork): Record<string, unknown> {
-    const { definition, progress } = work;
-    const stage = progress.stage ?? 'preflight';
-    const artifact = stage.startsWith('schema_')
-      ? 'schema'
-      : stage.startsWith('definition_') || stage === 'revocation_readiness'
-        ? 'credential_definition'
-        : null;
-    const isSchemaStage = artifact === 'schema';
-    const isDefinitionStage = artifact === 'credential_definition';
+    const { definition, registration } = work;
+    const stage = registration.stage ?? 'preflight';
+    const artifact =
+      stage.startsWith('schema_') || stage === 'awaiting_schema_endorsement'
+        ? 'schema'
+        : stage.startsWith('definition_') ||
+            stage === 'awaiting_definition_endorsement' ||
+            stage === 'awaiting_revocation_registry'
+          ? 'credential_definition'
+          : null;
+    const active =
+      artifact === 'schema'
+        ? registration.schema
+        : artifact === 'credential_definition'
+          ? registration.definition
+          : undefined;
     return {
       stage,
       artifact,
-      schema_id: progress.schemaId ?? null,
-      definition_id: definition.externalId ?? null,
-      pending_id: isSchemaStage
-        ? progress.schemaId
-          ? null
-          : (progress.schemaPendingId ?? null)
-        : isDefinitionStage
-          ? definition.externalId
-            ? null
-            : (progress.definitionPendingId ?? null)
+      schema_id:
+        registration.schema.state === 'finished'
+          ? (registration.schema.id ?? null)
           : null,
-      job_id: isSchemaStage
-        ? (progress.schemaJobId ?? null)
-        : isDefinitionStage
-          ? (progress.definitionJobId ?? null)
-          : null,
-      transaction_id: isSchemaStage
-        ? (progress.schemaTransactionId ?? null)
-        : isDefinitionStage
-          ? (progress.definitionTransactionId ?? null)
-          : null,
-      transaction_state: isSchemaStage
-        ? (progress.schemaTransactionState ?? null)
-        : isDefinitionStage
-          ? (progress.definitionTransactionState ?? null)
-          : null,
-      state: isSchemaStage
-        ? progress.schemaId
-          ? 'finished'
-          : (progress.schemaState ?? null)
-        : isDefinitionStage
-          ? definition.registrationState === 'ready'
-            ? 'finished'
-            : (progress.definitionState ?? null)
-          : null,
-    };
-  }
-
-  private definitionOptions(
-    definition: CredentialDefinition,
-  ): DefinitionOptions {
-    const options = definition.options;
-    const revocation = options?.revocation;
-    if (
-      typeof options?.tag !== 'string' ||
-      typeof revocation !== 'object' ||
-      revocation === null ||
-      !('enabled' in revocation) ||
-      typeof revocation.enabled !== 'boolean'
-    ) {
-      throw new ValidationError([
-        'Normalized AnonCreds registration options are unavailable',
-      ]);
-    }
-
-    return {
-      tag: options.tag,
-      revocation: { enabled: revocation.enabled },
+      definition_id:
+        registration.definition.state === 'finished'
+          ? (registration.definition.id ?? null)
+          : (definition.externalId ?? null),
+      pending_id:
+        active && active.state !== 'finished' ? (active.id ?? null) : null,
+      job_id: active?.jobId ?? null,
+      transaction_id: active?.transactionId ?? null,
+      transaction_state: active?.state ?? null,
+      state: active?.state ?? null,
     };
   }
 }

@@ -40,263 +40,53 @@ describe('Traction artifact registration', () => {
     service = module.get(TractionDefinitionRegistration);
   });
 
-  const inspectionIntent = () => ({
-    artifact: 'schema' as const,
-    issuerId: walletIssuerId,
-    schema,
-    options: { tag: 'default', revocation: { enabled: true } },
-  });
-  const transaction = () => ({
-    transaction_id: 'transaction',
-    state: 'request_sent',
-    meta_data: {
-      context: {
-        schema_id: `${ledgerIssuerId}:2:employee:1.0`,
-        job_id: 'job',
-      },
-    },
-    messages_attach: [
-      {
-        data: {
-          json: JSON.stringify({
-            identifier: ledgerIssuerId,
-            operation: {
-              type: '101',
-              data: {
-                name: 'employee',
-                version: '1.0',
-                attr_names: ['name'],
-              },
-            },
-          }),
+  it.each([
+    ['finished', 'finished'],
+    ['action', 'action'],
+    ['wait', 'wait'],
+    ['failed', 'failed'],
+    ['transaction_created', 'action'],
+    ['request_received', 'action'],
+    ['request_sent', 'wait'],
+    ['transaction_acked', 'wait'],
+    ['transaction_endorsed', 'wait'],
+    ['transaction_refused', 'failed'],
+    ['transaction_cancelled', 'failed'],
+  ])('normalizes backend state %s to %s', async (rawState, state) => {
+    request.mockResolvedValueOnce({
+      data: {
+        schema_state: {
+          state: rawState,
+          schema_id: `${ledgerIssuerId}:2:employee:1.0`,
+          reason: 'backend rejection',
         },
+        job_id: 'job',
+        registration_metadata: { txn: { transaction_id: 'transaction' } },
       },
-    ],
-  });
+    });
 
-  it('discovers exact matching wallet endorsement without returning signed attachments', async () => {
-    request.mockResolvedValueOnce({ data: { results: [transaction()] } });
     await expect(
-      service.inspectRegistration(context, inspectionIntent()),
-    ).resolves.toEqual({
+      service.publishSchema(context, walletIssuerId, schema),
+    ).resolves.toMatchObject({
+      state,
       id: `${ledgerIssuerId}:2:employee:1.0`,
       jobId: 'job',
       transactionId: 'transaction',
-      state: 'request_sent',
+      ...(state === 'failed' ? { detail: 'backend rejection' } : {}),
     });
-    expect(request).toHaveBeenCalledWith(
-      expect.objectContaining({
-        url: 'https://agent.example/transactions',
-      }),
-      true,
-    );
   });
 
-  it.each([
-    'transaction_acked',
-    'transaction_refused',
-    'transaction_cancelled',
-  ])(
-    'reports endorsement state %s without assuming publication succeeded or is safe to repeat',
-    async (state) => {
-      request.mockResolvedValueOnce({ data: { ...transaction(), state } });
-      await expect(
-        service.inspectRegistration(context, {
-          ...inspectionIntent(),
-          transactionId: 'transaction',
-        }),
-      ).resolves.toHaveProperty('state', state);
-    },
-  );
-
-  it.each([
-    { meta_data: { context: { schema_id: 'another-schema' } } },
-    { transaction_id: 'another-transaction' },
-    { messages_attach: [{ data: { json: '{invalid' } }] },
-    { messages_attach: [] },
-    {
-      messages_attach: [
-        {
-          data: {
-            json: JSON.stringify({
-              identifier: 'another-issuer',
-              operation: {
-                type: '101',
-                data: {
-                  name: 'employee',
-                  version: '1.0',
-                  attr_names: ['name'],
-                },
-              },
-            }),
-          },
-        },
-      ],
-    },
-    {
-      messages_attach: [
-        {
-          data: {
-            json: JSON.stringify({
-              identifier: ledgerIssuerId,
-              operation: {
-                type: '101',
-                data: {
-                  name: 'employee',
-                  version: '1.0',
-                  attr_names: ['unexpected'],
-                },
-              },
-            }),
-          },
-        },
-      ],
-    },
-  ])(
-    'rejects contradictory or unverifiable transaction content %j',
-    async (change) => {
-      request.mockResolvedValueOnce({ data: { ...transaction(), ...change } });
-      await expect(
-        service.inspectRegistration(context, {
-          ...inspectionIntent(),
-          transactionId: 'transaction',
-        }),
-      ).rejects.toThrow();
-      expect(request).toHaveBeenCalledTimes(1);
-    },
-  );
-
-  it('rejects ambiguous discovery and never selects an arbitrary transaction', async () => {
+  it('rejects unknown backend states instead of guessing registration progress', async () => {
     request.mockResolvedValueOnce({
-      data: {
-        results: [
-          transaction(),
-          { ...transaction(), transaction_id: 'second' },
-        ],
-      },
+      data: { schema_state: { state: 'unexpected', schema_id: 'schema' } },
     });
+
     await expect(
-      service.inspectRegistration(context, inspectionIntent()),
+      service.publishSchema(context, walletIssuerId, schema),
     ).rejects.toMatchObject({
-      issues: [expect.stringContaining('Multiple matching')],
+      backendCode: 'INVALID_REGISTRATION_RESPONSE',
     });
   });
-
-  it('does not interpret an invalid listing as proof no submission exists', async () => {
-    request.mockResolvedValueOnce({ data: {} });
-    await expect(
-      service.inspectRegistration(context, inspectionIntent()),
-    ).rejects.toMatchObject({ backendCode: 'INVALID_REGISTRATION_RESPONSE' });
-  });
-
-  it('rejects a supplied transaction hint when discovery returns no transactions', async () => {
-    request.mockResolvedValueOnce({ data: { results: [] } });
-
-    await expect(
-      service.inspectRegistration(context, {
-        ...inspectionIntent(),
-        transactionId: 'missing-transaction',
-      }),
-    ).rejects.toMatchObject({
-      issues: [
-        expect.stringContaining(
-          'Recovery transaction does not match this issuer, artifact, or backend job',
-        ),
-      ],
-    });
-  });
-
-  it('ignores unrelated transactions during unpinned discovery', async () => {
-    request.mockResolvedValueOnce({
-      data: {
-        results: [
-          {
-            ...transaction(),
-            meta_data: { context: { schema_id: 'another-schema' } },
-          },
-        ],
-      },
-    });
-
-    await expect(
-      service.inspectRegistration(context, inspectionIntent()),
-    ).resolves.toBeNull();
-  });
-
-  it('requires a resolved schema before checking a definition endorsement', async () => {
-    await expect(
-      service.inspectRegistration(context, {
-        ...inspectionIntent(),
-        artifact: 'credential_definition',
-      }),
-    ).rejects.toMatchObject({
-      issues: [expect.stringContaining('Schema must be published')],
-    });
-    expect(request).not.toHaveBeenCalled();
-  });
-
-  it.each([0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1, '123'])(
-    'rejects an invalid schema sequence number during definition reconciliation: %s',
-    async (seqNo) => {
-      request.mockResolvedValueOnce({
-        data: { schema_metadata: { seqNo } },
-      });
-
-      await expect(
-        service.inspectRegistration(context, {
-          ...inspectionIntent(),
-          artifact: 'credential_definition',
-          schemaId: 'schema',
-        }),
-      ).rejects.toMatchObject({
-        issues: [expect.stringContaining('valid ledger schema reference')],
-      });
-      expect(request).toHaveBeenCalledTimes(1);
-    },
-  );
-
-  it.each([true, false])(
-    'verifies schema sequence number, tag and revocation for credential definitions (%s)',
-    async (enabled) => {
-      const txn = {
-        ...transaction(),
-        meta_data: {
-          context: {
-            cred_def_id: `${ledgerIssuerId}:3:CL:123:default`,
-            job_id: 'job',
-          },
-        },
-        messages_attach: [
-          {
-            data: {
-              json: JSON.stringify({
-                identifier: ledgerIssuerId,
-                operation: {
-                  type: '102',
-                  ref: 123,
-                  signature_type: 'CL',
-                  tag: 'default',
-                  data: { primary: {}, ...(enabled ? { revocation: {} } : {}) },
-                },
-              }),
-            },
-          },
-        ],
-      };
-      request
-        .mockResolvedValueOnce({ data: { schema_metadata: { seqNo: 123 } } })
-        .mockResolvedValueOnce({ data: txn });
-      await expect(
-        service.inspectRegistration(context, {
-          ...inspectionIntent(),
-          artifact: 'credential_definition',
-          schemaId: `${ledgerIssuerId}:2:employee:1.0`,
-          options: { tag: 'default', revocation: { enabled } },
-          transactionId: 'transaction',
-        }),
-      ).resolves.toHaveProperty('id', `${ledgerIssuerId}:3:CL:123:default`);
-    },
-  );
 
   it('verifies wallet, public identity, selection and ledger key', async () => {
     request
@@ -546,7 +336,7 @@ describe('Traction artifact registration', () => {
     },
   );
 
-  it('reports an explicit failed state with a bounded sanitized reason', async () => {
+  it('returns an explicit failed state with a bounded sanitized reason', async () => {
     const secret = randomUUID();
     const securedContext = { ...context, credentials: { token: secret } };
     request.mockResolvedValueOnce({
@@ -556,7 +346,8 @@ describe('Traction artifact registration', () => {
     });
     await expect(
       service.publishSchema(securedContext, 'issuer', schema),
-    ).rejects.toMatchObject({
+    ).resolves.toMatchObject({
+      state: 'failed',
       backendCode: 'REGISTRATION_REJECTED',
       detail: 'Rejected [REDACTED]',
     });

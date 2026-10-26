@@ -146,8 +146,8 @@ describe('CredentialDefinitionRepository', () => {
     });
   });
 
-  describe('findByFingerprint', () => {
-    it('scopes a fingerprint lookup to the tenant and selected fingerprint field', async () => {
+  describe('findExistingByTenantAndNameAndFormat', () => {
+    it('looks up the tenant/name/format identity including inactive rows', async () => {
       const result = { id: 'cd-1' } as CredentialDefinition;
       const findOne = jest.fn().mockResolvedValue(result);
       const manager = {
@@ -155,15 +155,19 @@ describe('CredentialDefinitionRepository', () => {
       } as unknown as EntityManager;
 
       await expect(
-        repository.findByFingerprint(
+        repository.findExistingByTenantAndNameAndFormat(
           'tenant-1',
-          'requestFingerprint',
-          'fingerprint',
+          'Employee',
+          CredentialDefinitionFormat.ANONCREDS,
           manager,
         ),
       ).resolves.toBe(result);
       expect(findOne).toHaveBeenCalledWith({
-        where: { tenantId: 'tenant-1', requestFingerprint: 'fingerprint' },
+        where: {
+          tenantId: 'tenant-1',
+          name: 'Employee',
+          format: CredentialDefinitionFormat.ANONCREDS,
+        },
       });
     });
   });
@@ -213,7 +217,11 @@ describe('CredentialDefinitionRepository', () => {
           id: 'cd-1',
           tenantId: 'tenant-1',
           name: 'Updated',
-          registration: { schemaSubmitted: true },
+          registration: {
+            issuerId: 'issuer',
+            schema: { jobId: 'schema-job', state: 'wait' },
+            definition: {},
+          },
         } as CredentialDefinition;
         (mockRepo.update as jest.Mock).mockResolvedValue({ affected: 1 });
         (mockRepo.findOne as jest.Mock).mockResolvedValue(updated);

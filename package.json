@@ -48,7 +48,6 @@
     "@opentelemetry/semantic-conventions": "^1.43.0",
     "argon2": "^0.45.1",
     "axios": "^1.20.0",
-    "canonicalize": "^5.1.0",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.15.1",
     "cockatiel": "^4.0.0",
@@ -120,7 +119,7 @@
       "^.+\\.(t|j)s$": "ts-jest"
     },
     "transformIgnorePatterns": [
-      "node_modules/(?!(canonicalize|jose|oidc-provider|openid-client|oauth4webapi|quick-lru|nanoid|eta|jsesc|raw-body|@nestjs/terminus|cockatiel)/)"
+      "node_modules/(?!(jose|oidc-provider|openid-client|oauth4webapi|quick-lru|nanoid|eta|jsesc|raw-body|@nestjs/terminus|cockatiel)/)"
     ],
     "collectCoverageFrom": [
       "**/*.{ts,js}",

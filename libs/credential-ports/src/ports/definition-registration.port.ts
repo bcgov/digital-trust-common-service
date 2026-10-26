@@ -16,33 +16,17 @@ export interface DefinitionOptions {
 }
 
 export interface RegistrationSubmission {
-  readonly state: 'finished' | 'wait' | 'action';
+  readonly state: 'finished' | 'wait' | 'action' | 'failed';
   readonly id?: string;
   readonly jobId?: string;
   readonly transactionId?: string;
-}
-
-export interface RegistrationObservation {
-  readonly id: string;
-  readonly jobId?: string;
-  readonly transactionId: string;
-  readonly state: string;
+  readonly detail?: string;
+  readonly status?: number;
+  readonly backendCode?: string;
 }
 
 /** Agent-owned artifact registration, separate from credential exchanges. */
 export interface DefinitionRegistrationPort {
-  inspectRegistration(
-    context: ConnectorContext,
-    intent: {
-      artifact: 'schema' | 'credential_definition';
-      issuerId: string;
-      schema: Record<string, unknown>;
-      schemaId?: string;
-      options: DefinitionOptions;
-      transactionId?: string;
-      jobId?: string;
-    },
-  ): Promise<RegistrationObservation | null>;
   resolveIssuer(
     context: ConnectorContext,
     selection?: IssuerSelection,

@@ -65,14 +65,16 @@ export class CredentialDefinitionRepository {
     });
   }
 
-  public async findByFingerprint(
+  public async findExistingByTenantAndNameAndFormat(
     tenantId: string,
-    field: 'requestFingerprint' | 'artifactFingerprint',
-    fingerprint: string,
-    manager: EntityManager,
+    name: string,
+    format: CredentialDefinitionFormat,
+    manager?: EntityManager,
   ): Promise<CredentialDefinition | null> {
-    return await manager.getRepository(CredentialDefinition).findOne({
-      where: { tenantId, [field]: fingerprint },
+    const repository =
+      manager?.getRepository(CredentialDefinition) ?? this.repository;
+    return await repository.findOne({
+      where: { tenantId, name, format },
     });
   }
 
