@@ -12,6 +12,7 @@ import { DataSource } from 'typeorm';
 import type { QueryRunner } from 'typeorm';
 
 import { AdapterRegistry } from '../adapter-registry/adapter-registry.service';
+import { isAdvisoryLockAcquired } from '../common/postgres-advisory-lock';
 import { RegistrationBackendError } from '../common/registration-backend-error';
 import { JobsService } from '../jobs/jobs.service';
 import { RegistrationProblemDetailsDto } from '../operation/dto/registration-problem-details.dto';
@@ -122,11 +123,7 @@ export class CredentialDefinitionRegistrationWorker implements OnModuleInit {
         [lockId],
       );
       const lock: unknown = Array.isArray(locks) ? locks[0] : null;
-      locked =
-        typeof lock === 'object' &&
-        lock !== null &&
-        'locked' in lock &&
-        lock.locked === true;
+      locked = isAdvisoryLockAcquired(lock);
       if (!locked) {
         return;
       }
@@ -652,33 +649,58 @@ export class CredentialDefinitionRegistrationWorker implements OnModuleInit {
         'Endorsement transaction has an unrecognized state; publication will not be repeated',
       );
     }
-    // Endorsement acknowledgement alone does not prove ledger visibility or
+    // Endorsement acknowledgement alone does not prove backend registry visibility or
     // wallet key ownership. The normal artifact reads still gate advancement.
   }
 
   private progressResult(work: RegistrationWork): Record<string, unknown> {
     const { definition, progress } = work;
+    const stage = progress.stage ?? 'preflight';
+    const artifact = stage.startsWith('schema_')
+      ? 'schema'
+      : stage.startsWith('definition_') || stage === 'revocation_readiness'
+        ? 'credential_definition'
+        : null;
+    const isSchemaStage = artifact === 'schema';
+    const isDefinitionStage = artifact === 'credential_definition';
     return {
-      stage: progress.stage ?? 'preflight',
-      schema_id: progress.schemaId ?? progress.schemaPendingId ?? null,
-      schema_job_id: progress.schemaJobId ?? null,
-      schema_transaction_id: progress.schemaTransactionId ?? null,
-      schema_transaction_state: progress.schemaTransactionState ?? null,
-      schema_state: progress.schemaId
-        ? 'finished'
-        : (progress.schemaState ?? null),
-      definition_id:
-        definition.externalId ?? progress.definitionPendingId ?? null,
-      definition_job_id: progress.definitionJobId ?? null,
-      definition_transaction_id: progress.definitionTransactionId ?? null,
-      definition_transaction_state: progress.definitionTransactionState ?? null,
-      recovery_requested_at: progress.recovery?.requestedAt ?? null,
-      recovery_attempts: progress.recovery?.history.length ?? 0,
-      recovery_history: progress.recovery?.history ?? [],
-      definition_state:
-        definition.registrationState === 'ready'
+      stage,
+      artifact,
+      schema_id: progress.schemaId ?? null,
+      definition_id: definition.externalId ?? null,
+      pending_id: isSchemaStage
+        ? progress.schemaId
+          ? null
+          : (progress.schemaPendingId ?? null)
+        : isDefinitionStage
+          ? definition.externalId
+            ? null
+            : (progress.definitionPendingId ?? null)
+          : null,
+      job_id: isSchemaStage
+        ? (progress.schemaJobId ?? null)
+        : isDefinitionStage
+          ? (progress.definitionJobId ?? null)
+          : null,
+      transaction_id: isSchemaStage
+        ? (progress.schemaTransactionId ?? null)
+        : isDefinitionStage
+          ? (progress.definitionTransactionId ?? null)
+          : null,
+      transaction_state: isSchemaStage
+        ? (progress.schemaTransactionState ?? null)
+        : isDefinitionStage
+          ? (progress.definitionTransactionState ?? null)
+          : null,
+      state: isSchemaStage
+        ? progress.schemaId
           ? 'finished'
-          : (progress.definitionState ?? null),
+          : (progress.schemaState ?? null)
+        : isDefinitionStage
+          ? definition.registrationState === 'ready'
+            ? 'finished'
+            : (progress.definitionState ?? null)
+          : null,
     };
   }
 }
