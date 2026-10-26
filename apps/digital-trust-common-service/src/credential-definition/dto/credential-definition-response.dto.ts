@@ -1,4 +1,4 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Expose } from 'class-transformer';
 
 import {
@@ -6,8 +6,6 @@ import {
   CredentialDefinitionConnectorType,
   CredentialDefinitionFormat,
 } from '../credential-definition.entity';
-
-import { AnonCredsRegistrationOptionsDto } from './create-credential-definition.dto';
 
 export class CredentialDefinitionResponseDto {
   @ApiProperty({
@@ -79,9 +77,6 @@ export class CredentialDefinitionResponseDto {
   @ApiProperty({ nullable: true, description: 'Resolved schema reference' })
   public schema!: { type: string; id: string | null } | null;
 
-  @ApiProperty({ type: AnonCredsRegistrationOptionsDto, nullable: true })
-  public options!: AnonCredsRegistrationOptionsDto | null;
-
   @Expose({ name: 'connector_type' })
   @ApiProperty({
     name: 'connector_type',
@@ -99,13 +94,16 @@ export class CredentialDefinitionResponseDto {
   })
   public isActive!: boolean;
 
-  @ApiProperty({
-    description: 'Additional metadata for the credential definition',
+  @ApiPropertyOptional({
+    description:
+      'Local annotations and normalized publication settings. New registrations include tag (default "default") and revocation.enabled (default true).',
+    nullable: true,
     example: {
+      tag: 'default',
+      revocation: { enabled: true },
       issuer: 'Example University',
       version: '2.0',
     },
-    required: false,
   })
   public metadata?: Record<string, unknown>;
 
@@ -151,7 +149,6 @@ export class CredentialDefinitionResponseDto {
         }
       : null;
     dto.connectorType = credentialDefinition.connectorType;
-    dto.options = credentialDefinition.registration?.options ?? null;
     dto.isActive = credentialDefinition.isActive;
     dto.metadata = credentialDefinition.metadata;
     dto.createdAt = credentialDefinition.createdAt;
