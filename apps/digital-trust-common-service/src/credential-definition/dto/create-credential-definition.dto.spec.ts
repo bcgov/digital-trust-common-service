@@ -1,6 +1,7 @@
 import { ValidationPipe } from '@nestjs/common';
 
 import { CreateCredentialDefinitionDto } from './create-credential-definition.dto';
+import { UpdateCredentialDefinitionDto } from './update-credential-definition.dto';
 
 describe('credential definition registration contract', () => {
   const pipe = new ValidationPipe({
@@ -19,11 +20,15 @@ describe('credential definition registration contract', () => {
       metatype: CreateCredentialDefinitionDto,
     });
 
-  it('transforms connector_id and accepts registration settings in metadata', async () => {
+  it('transforms connector_id and accepts format options separately from metadata', async () => {
     const result = await validate({
       ...input,
       connector_id: '123e4567-e89b-42d3-a456-426614174001',
       issuer: { method: 'indy' },
+      options: {
+        tag: 'test',
+        revocation: { enabled: true },
+      },
       metadata: {
         tag: 'test',
         revocation: { enabled: true },
@@ -31,15 +36,39 @@ describe('credential definition registration contract', () => {
       },
     });
     expect(result.connectorId).toBe('123e4567-e89b-42d3-a456-426614174001');
+    expect(result.options.tag).toBe('test');
     expect(result.metadata.revocation.enabled).toBe(true);
     expect(result.metadata.issuer).toBe('DMV');
+  });
+
+  it.each(['anoncreds', 'sd-jwt', 'mdl', 'w3c-vc'])(
+    'accepts the %s credential format',
+    async (format) => {
+      await expect(validate({ ...input, format })).resolves.toMatchObject({
+        format,
+      });
+    },
+  );
+
+  it('does not accept options on PATCH', async () => {
+    const patchPipe = new ValidationPipe({
+      transform: true,
+      whitelist: true,
+      forbidNonWhitelisted: true,
+    });
+
+    await expect(
+      patchPipe.transform(
+        { options: { tag: 'changed' } },
+        { type: 'body', metatype: UpdateCredentialDefinitionDto },
+      ),
+    ).rejects.toThrow();
   });
 
   it.each([
     { external_id: 'legacy' },
     { connector_type: 'traction' },
     { schema_definition: {} },
-    { options: { tag: 'test' } },
     { issuer: { private_key: 'not-accepted' } },
     { schema: { id: 'schema-id', unexpected: true } },
     { schema: { type: 'json-schema', id: 'schema-id' } },

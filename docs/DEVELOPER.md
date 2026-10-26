@@ -1217,9 +1217,9 @@ App-issued access tokens carry a stable API `aud`, not the OIDC issuer URL:
 ## AnonCreds credential-definition registration
 
 `POST /api/v1/tenants/{tenantId}/credential-definitions` now accepts
-`name`, `format: "anoncreds"`, `schema`, optional `issuer`, `connector_id`,
-and `metadata`. Metadata carries the publication settings `tag` and
-`revocation.enabled` alongside arbitrary local annotations. This replaces the old
+`name`, `format`, `schema`, optional `issuer`, `connector_id`, `options`, and
+`metadata`. Immutable format-specific publication settings belong in `options`;
+`metadata` remains free-form client annotations. This replaces the old
 `schema_definition`, `external_id`, and `connector_type` request fields.
 Independent schema management and existing credential-definition imports are
 not part of this workflow.
@@ -1229,7 +1229,6 @@ not part of this workflow.
   "name": "Employee Credential",
   "format": "anoncreds",
   "schema": {
-    "type": "anoncreds",
     "definition": {
       "schema_name": "employee",
       "schema_version": "1.0",
@@ -1237,9 +1236,11 @@ not part of this workflow.
     }
   },
   "issuer": { "method": "indy" },
-  "metadata": {
+  "options": {
     "tag": "default",
-    "revocation": { "enabled": true },
+    "revocation": { "enabled": true }
+  },
+  "metadata": {
     "issuer": "DMV"
   }
 }
@@ -1247,7 +1248,7 @@ not part of this workflow.
 
 Alternatively, use `schema.id` to resolve an existing published schema and
 create this issuer's credential definition against it. Exactly one schema
-source is required. `schema.type` defaults to `anoncreds`. Select an existing
+source is required. The top-level `format` selects the schema format. Select an existing
 issuer with either `issuer.id` or `issuer.method`, never both, or omit `issuer`
 to use the connector's default. Traction selections must match its configured
 public DID; the abstraction layer never creates, promotes, or endorses DIDs.
@@ -1264,12 +1265,13 @@ This workaround is marked `BUG`/`TODO` for removal when the deployed registrar
 supports the wallet representation; it does not establish end-to-end publication
 or revocation readiness.
 
-Revocation defaults to **enabled** and the tag defaults to `default`. Set
-`metadata.revocation.enabled` explicitly to false for non-revocable issuance.
-Reserved metadata settings are validated; other metadata keys are annotations.
-PATCH may replace annotations but cannot change the registration tag or
-revocation setting. Omitted reserved settings retain their normalized values.
-Unsupported publishing formats are rejected. Signing keys never enter the
+For AnonCreds, revocation defaults to **enabled** and the tag defaults to
+`default`. Set `options.revocation.enabled` to false for non-revocable
+issuance. Each format handler strictly validates and normalizes its own options.
+Options are stored in a separate JSONB column, returned read-only, and rejected
+on PATCH; metadata remains editable free-form annotations. All declared
+credential-definition formats are accepted, with formats that have no
+registration step completing immediately. Signing keys never enter the
 registration request or application database.
 
 The response is a `202` Operation with `result.credential_definition_id`.

@@ -2,12 +2,14 @@ import type { AuthContext } from '@app/auth';
 import {
   AdapterError,
   CredentialFormat,
+  FormatNotSupportedError,
   FormatValidatorRegistry,
 } from '@app/credential-ports';
 import { JOB_QUEUES } from '@app/pg-boss';
 import {
   BadRequestException,
   ConflictException,
+  Inject,
   Injectable,
   NotFoundException,
   ServiceUnavailableException,
@@ -15,7 +17,6 @@ import {
 import axios from 'axios';
 import { DataSource, QueryFailedError } from 'typeorm';
 
-import { AdapterRegistry } from '../adapter-registry/adapter-registry.service';
 import { AuditAction } from '../audit-log/audit-log.entity';
 import { DomainAuditService } from '../audit-log/domain-audit.service';
 import {
@@ -26,9 +27,13 @@ import { API_BASE_PATH } from '../common/constants/api-version.constants';
 import { RegistrationBackendError } from '../common/registration-backend-error';
 import { JobsService } from '../jobs/jobs.service';
 import { OPERATION_TYPE } from '../operation/operation-type.constants';
-import { Operation } from '../operation/operation.entity';
+import { Operation, OperationState } from '../operation/operation.entity';
 import { OperationService } from '../operation/operation.service';
 
+import {
+  CREDENTIAL_DEFINITION_FORMAT_HANDLERS,
+  type CredentialDefinitionFormatHandler,
+} from './credential-definition-format-handler';
 import {
   CredentialDefinition,
   CredentialDefinitionConnectorType,
@@ -38,7 +43,6 @@ import { CredentialDefinitionRepository } from './credential-definition.reposito
 import { CreateCredentialDefinitionDto } from './dto/create-credential-definition.dto';
 import { UpdateCredentialDefinitionDto } from './dto/update-credential-definition.dto';
 import { registrationFingerprints } from './registration-fingerprint';
-import { normalizeRegistrationMetadata } from './registration-metadata';
 
 /**
  * Maps the `format` stored on credential definitions onto the port-layer
@@ -51,11 +55,15 @@ import { normalizeRegistrationMetadata } from './registration-metadata';
 export function toPortCredentialFormat(
   format: CredentialDefinitionFormat,
 ): CredentialFormat | undefined {
-  const candidate: string = format;
+  const formats: Partial<Record<CredentialDefinitionFormat, CredentialFormat>> =
+    {
+      [CredentialDefinitionFormat.ANONCREDS]: CredentialFormat.AnonCreds,
+      [CredentialDefinitionFormat.SD_JWT]: CredentialFormat.SdJwtVc,
+      [CredentialDefinitionFormat.MDL]: CredentialFormat.Mdl,
+      [CredentialDefinitionFormat.W3C_VC]: CredentialFormat.JsonLd,
+    };
 
-  return Object.values(CredentialFormat).find(
-    (value) => (value as string) === candidate,
-  );
+  return formats[format];
 }
 
 @Injectable()
@@ -64,10 +72,11 @@ export class CredentialDefinitionService {
     private readonly credentialDefinitionRepository: CredentialDefinitionRepository,
     private readonly domainAudit: DomainAuditService,
     private readonly formatValidatorRegistry: FormatValidatorRegistry,
-    private readonly adapters: AdapterRegistry,
     private readonly operations: OperationService,
     private readonly jobs: JobsService,
     private readonly dataSource: DataSource,
+    @Inject(CREDENTIAL_DEFINITION_FORMAT_HANDLERS)
+    private readonly formatHandlers: CredentialDefinitionFormatHandler[],
   ) {}
 
   public async create(
@@ -76,59 +85,31 @@ export class CredentialDefinitionService {
     auth: AuthContext,
   ): Promise<Operation> {
     assertTenantAccess(auth, tenantId);
-    if (dto.format !== CredentialDefinitionFormat.ANONCREDS) {
-      throw new BadRequestException('Only AnonCreds registration is supported');
+    const handler = this.formatHandlers.find(
+      (candidate) => candidate.format === dto.format,
+    );
+    if (!handler) {
+      this.registrationError(new FormatNotSupportedError(dto.format));
     }
-    if (
-      !dto.schema ||
-      (dto.schema.id !== undefined) === (dto.schema.definition !== undefined)
-    ) {
-      throw new BadRequestException(
-        'Supply schema.id or schema.definition, not both',
-      );
-    }
-    if (
-      dto.issuer &&
-      (dto.issuer.id !== undefined) === (dto.issuer.method !== undefined)
-    ) {
-      throw new BadRequestException(
-        'Supply issuer.id or issuer.method, not both',
-      );
-    }
-
-    const resolved = await this.adapters
-      .resolve(tenantId, CredentialFormat.AnonCreds, {
-        connectorId: dto.connectorId,
-      })
+    const options = handler.normalizeOptions(dto.options);
+    const prepared = await handler
+      .prepare(tenantId, dto)
       .catch((error: unknown) => this.registrationError(error));
-    const registration = resolved.adapter.definitionRegistration;
-    if (!registration) {
-      throw new BadRequestException(
-        'Connector does not support artifact registration',
-      );
-    }
-    const issuerId = await registration
-      .resolveIssuer(resolved.context, dto.issuer)
-      .catch((error: unknown) => this.registrationError(error));
-    const schema = dto.schema.id
-      ? await registration
-          .resolveSchema(resolved.context, dto.schema.id)
-          .catch((error: unknown) => this.registrationError(error))
-      : { definition: dto.schema.definition ?? {}, id: undefined };
-    this.validateSchemaDefinition(dto.format, schema.definition);
-    const normalizedMetadata = normalizeRegistrationMetadata(dto.metadata);
-    const { metadata, options } = normalizedMetadata;
+    this.validateSchemaDefinition(dto.format, prepared.schemaDefinition);
     const fingerprints = registrationFingerprints(
       {
         tenantId,
-        connectorId: resolved.connector.id,
-        issuerId,
+        connectorId: prepared.connectorId,
+        issuerId: prepared.registration?.issuerId ?? '',
         format: dto.format,
-        schema,
+        schema: {
+          id: prepared.registration?.schemaId,
+          definition: prepared.schemaDefinition,
+        },
         options,
       },
       dto.name,
-      metadata,
+      dto.metadata,
     );
 
     const { created, operation } = await this.dataSource
@@ -246,47 +227,38 @@ export class CredentialDefinitionService {
           },
           manager,
         );
-        const connectorType = Object.values(
-          CredentialDefinitionConnectorType,
-        ).find(
-          (type) =>
-            (type as string) === (resolved.connector.connectorType as string),
-        );
-        if (!connectorType) {
-          throw new BadRequestException('Unknown registration connector type');
-        }
         const created = await this.credentialDefinitionRepository.create(
           {
             tenantId,
             name: dto.name,
             format: dto.format,
-            connectorId: resolved.connector.id,
-            connectorType,
-            schemaDefinition: schema.definition,
+            connectorId: prepared.connectorId,
+            connectorType: prepared.connectorType,
+            schemaDefinition: prepared.schemaDefinition,
             externalId: null,
-            metadata,
+            metadata: dto.metadata,
+            options,
             registrationState: 'pending',
             registrationOperationId: operation.id,
             requestFingerprint: fingerprints.request,
             artifactFingerprint: fingerprints.artifact,
-            registration: {
-              issuerId,
-              schemaId: schema.id,
-              options,
-            },
+            registration: prepared.registration,
           },
           manager,
         );
         operation.result = { credential_definition_id: created.id };
         await manager.save(Operation, operation);
-        await this.jobs.sendInTransaction(
-          manager,
-          JOB_QUEUES.DEFINITION_REGISTER,
-          {
+        await handler.register(created, manager);
+        if (created.registrationState === 'ready') {
+          const completedOperation = await this.operations.transitionState(
+            operation.id,
+            OperationState.COMPLETED,
+            operation.result,
+            manager,
             tenantId,
-            definitionId: created.id,
-          },
-        );
+          );
+          Object.assign(operation, completedOperation);
+        }
         return { created, operation };
       })
       .catch((error: unknown) => {
@@ -436,23 +408,12 @@ export class CredentialDefinitionService {
     dto: UpdateCredentialDefinitionDto,
     auth: AuthContext,
   ): Promise<CredentialDefinition> {
-    const credentialDefinition = await this.findById(tenantId, id, auth);
+    await this.findById(tenantId, id, auth);
     const changes: Partial<Pick<CredentialDefinition, 'name' | 'metadata'>> =
       {};
     if (dto.name !== undefined) changes.name = dto.name;
     if (dto.metadata !== undefined) {
-      const options = credentialDefinition.registration?.options;
-      const normalized = normalizeRegistrationMetadata(dto.metadata, options);
-      if (
-        options &&
-        (normalized.options.tag !== options.tag ||
-          normalized.options.revocation.enabled !== options.revocation.enabled)
-      ) {
-        throw new ConflictException(
-          'Registration tag and revocation settings cannot be changed',
-        );
-      }
-      changes.metadata = normalized.metadata;
+      changes.metadata = dto.metadata;
     }
     const updated =
       await this.credentialDefinitionRepository.updateEditableFields(

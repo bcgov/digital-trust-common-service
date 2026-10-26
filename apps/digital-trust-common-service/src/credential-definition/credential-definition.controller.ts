@@ -27,6 +27,7 @@ import {
   ApiBody,
   ApiConflictResponse,
   ApiAcceptedResponse,
+  ApiExtraModels,
   ApiForbiddenResponse,
   ApiNoContentResponse,
   ApiNotFoundResponse,
@@ -46,11 +47,23 @@ import {
 } from './credential-definition.entity';
 import { CredentialDefinitionService } from './credential-definition.service';
 import { CreateCredentialDefinitionDto } from './dto/create-credential-definition.dto';
+import {
+  AnonCredsCredentialDefinitionOptionsDto,
+  MdlCredentialDefinitionOptionsDto,
+  SdJwtCredentialDefinitionOptionsDto,
+  W3cVcCredentialDefinitionOptionsDto,
+} from './dto/credential-definition-options.dto';
 import { CredentialDefinitionResponseDto } from './dto/credential-definition-response.dto';
 import { UpdateCredentialDefinitionDto } from './dto/update-credential-definition.dto';
 
 @SkipAutoAudit()
 @ApiJwtAuth()
+@ApiExtraModels(
+  AnonCredsCredentialDefinitionOptionsDto,
+  SdJwtCredentialDefinitionOptionsDto,
+  MdlCredentialDefinitionOptionsDto,
+  W3cVcCredentialDefinitionOptionsDto,
+)
 @UseGuards(
   JwtGuard,
   ScopeGuard,
@@ -76,16 +89,15 @@ export class CredentialDefinitionController {
   @HttpCode(HttpStatus.ACCEPTED)
   @ApiAcceptedResponse({
     description:
-      'Artifact registration accepted; equivalent normalized requests return the original operation, including failed operations, without resubmission. Poll the returned operation.',
+      'Credential definition accepted. AnonCreds registration runs asynchronously; other formats complete immediately.',
     type: OperationResponseDto,
   })
   @ApiConflictResponse({
     description:
-      'Name or artifact intent already registered with different local content, or replay operation expired/inactive. Reconcile the existing registration; no publication is retried.',
+      'A credential definition with this name and format already exists.',
   })
   @ApiBadRequestResponse({
-    description:
-      'Invalid schema, issuer selection, registration metadata, or connector',
+    description: 'Invalid schema, issuer selection, options, or connector',
   })
   @ApiBody({
     description: 'Credential definition creation request',
@@ -97,16 +109,17 @@ export class CredentialDefinitionController {
           name: 'Driver License Definition',
           format: 'anoncreds',
           schema: {
-            type: 'anoncreds',
             definition: {
               attr_names: ['name', 'age'],
               schema_name: 'driver-license',
               schema_version: '1.0',
             },
           },
-          metadata: {
+          options: {
             tag: 'default',
             revocation: { enabled: true },
+          },
+          metadata: {
             issuer: 'DMV',
           },
         },

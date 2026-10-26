@@ -173,8 +173,12 @@ export class OperationService {
     state: OperationState,
     result?: OperationResult,
     manager?: EntityManager,
+    tenantId?: string,
   ): Promise<Operation> {
-    const operation = await this.operations.findById(id);
+    const operation =
+      manager && tenantId
+        ? await manager.findOne(Operation, { where: { id, tenantId } })
+        : await this.operations.findById(id);
 
     if (!operation) {
       throw new NotFoundException('Operation not found');

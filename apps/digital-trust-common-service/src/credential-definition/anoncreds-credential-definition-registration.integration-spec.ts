@@ -51,6 +51,7 @@ describe('credential definition registration (integration)', () => {
   const dto: CreateCredentialDefinitionDto = {
     name: 'Employee',
     format: CredentialDefinitionFormat.ANONCREDS,
+    options: { tag: 'default', revocation: { enabled: true } },
     schema: {
       definition: {
         schema_name: 'employee',
@@ -148,7 +149,10 @@ describe('credential definition registration (integration)', () => {
     expect(row.registrationState).toBe('pending');
     expect(row.externalId).toBeNull();
     expect(row.registrationOperationId).toBe(operation.id);
-    expect(row.registration?.options.revocation.enabled).toBe(true);
+    expect(row.options).toEqual({
+      tag: 'default',
+      revocation: { enabled: true },
+    });
 
     await worker.process(tenant.id, row.id);
     row = await definitions.findOneByOrFail({
@@ -261,7 +265,7 @@ describe('credential definition registration (integration)', () => {
           ...dto,
           connectorId: connector.id,
           issuer: { id: 'did:indy:issuer' },
-          metadata: { tag: 'default', revocation: { enabled: true } },
+          options: { tag: 'default', revocation: { enabled: true } },
         },
         auth,
       ),

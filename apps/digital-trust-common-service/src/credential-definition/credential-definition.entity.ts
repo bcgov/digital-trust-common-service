@@ -1,4 +1,3 @@
-import type { DefinitionOptions } from '@app/credential-ports';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   Entity,
@@ -7,7 +6,6 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
   Index,
-  Unique,
   ManyToOne,
   JoinColumn,
 } from 'typeorm';
@@ -47,15 +45,14 @@ export interface DefinitionRegistration {
   publicationOutcomeUnknown?: boolean;
   schemaSubmitted?: boolean;
   definitionSubmitted?: boolean;
-  options: DefinitionOptions;
 }
 
 @Entity({ name: 'credential_definition' })
-@Unique('uq_credential_definition_tenant_name_format', [
-  'tenantId',
-  'name',
-  'format',
-])
+@Index(
+  'uq_credential_definition_tenant_name_format',
+  ['tenantId', 'name', 'format'],
+  { unique: true, where: '"is_active" = true' },
+)
 @Index('idx_credential_definition_format', ['format'])
 @Index('idx_credential_definition_tenant_connector', [
   'tenantId',
@@ -65,12 +62,12 @@ export interface DefinitionRegistration {
 @Index(
   'uq_credential_definition_request_fingerprint',
   ['tenantId', 'requestFingerprint'],
-  { unique: true },
+  { unique: true, where: '"is_active" = true' },
 )
 @Index(
   'uq_credential_definition_artifact_fingerprint',
   ['tenantId', 'artifactFingerprint'],
-  { unique: true },
+  { unique: true, where: '"is_active" = true' },
 )
 export class CredentialDefinition {
   @ApiProperty({
@@ -144,6 +141,14 @@ export class CredentialDefinition {
   @Column({ name: 'registration_operation_id', type: 'uuid', nullable: true })
   public registrationOperationId?: string | null;
 
+  @ApiPropertyOptional({
+    description: 'Immutable, normalized format-specific publication options',
+    readOnly: true,
+    nullable: true,
+  })
+  @Column({ type: 'jsonb', nullable: true })
+  public options?: Record<string, unknown> | null;
+
   @Column({
     name: 'request_fingerprint',
     type: 'varchar',
@@ -176,12 +181,9 @@ export class CredentialDefinition {
   public connectorType!: CredentialDefinitionConnectorType;
 
   @ApiPropertyOptional({
-    description:
-      'Local annotations and normalized publication settings. New registrations include tag (default "default") and revocation.enabled (default true).',
+    description: 'Free-form client annotations',
     nullable: true,
     example: {
-      tag: 'default',
-      revocation: { enabled: true },
       issuer: 'Example University',
       version: '2.0',
     },

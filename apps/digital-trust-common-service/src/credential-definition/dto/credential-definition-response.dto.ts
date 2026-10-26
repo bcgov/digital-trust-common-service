@@ -95,17 +95,21 @@ export class CredentialDefinitionResponseDto {
   public isActive!: boolean;
 
   @ApiPropertyOptional({
-    description:
-      'Local annotations and normalized publication settings. New registrations include tag (default "default") and revocation.enabled (default true).',
+    description: 'Free-form client annotations',
     nullable: true,
     example: {
-      tag: 'default',
-      revocation: { enabled: true },
       issuer: 'Example University',
       version: '2.0',
     },
   })
   public metadata?: Record<string, unknown>;
+
+  @ApiPropertyOptional({
+    description: 'Immutable, normalized format-specific publication options',
+    readOnly: true,
+    nullable: true,
+  })
+  public options?: Record<string, unknown> | null;
 
   @Expose({ name: 'created_at' })
   @ApiProperty({
@@ -151,6 +155,7 @@ export class CredentialDefinitionResponseDto {
     dto.connectorType = credentialDefinition.connectorType;
     dto.isActive = credentialDefinition.isActive;
     dto.metadata = credentialDefinition.metadata;
+    dto.options = credentialDefinition.options ?? null;
     dto.createdAt = credentialDefinition.createdAt;
     dto.updatedAt = credentialDefinition.updatedAt;
     return dto;

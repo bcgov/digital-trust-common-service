@@ -573,6 +573,27 @@ describe('OperationService', () => {
 
       expect(mockSave).toHaveBeenCalledWith(operation, manager);
     });
+
+    it('reads transaction-owned operations by both id and tenant', async () => {
+      const operation = buildOperation();
+      const findOne = jest.fn().mockResolvedValue(operation);
+      mockSave.mockImplementation((op: Operation) => Promise.resolve(op));
+      const manager = { findOne } as unknown as EntityManager;
+
+      await service.transitionState(
+        'op-1',
+        OperationState.COMPLETED,
+        { id: 'definition-1' },
+        manager,
+        't1',
+      );
+
+      expect(findOne).toHaveBeenCalledWith(Operation, {
+        where: { id: 'op-1', tenantId: 't1' },
+      });
+      expect(mockSave).toHaveBeenCalledWith(operation, manager);
+      expect(mockFindById).not.toHaveBeenCalled();
+    });
   });
 
   describe('transitionStateIfForward', () => {

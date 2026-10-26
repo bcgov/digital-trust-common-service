@@ -4,7 +4,6 @@ import { BadRequestException } from '@nestjs/common';
 import canonicalize from 'canonicalize';
 
 import { registrationFingerprints } from './registration-fingerprint';
-import { normalizeRegistrationMetadata } from './registration-metadata';
 
 describe('registrationFingerprints', () => {
   const intent = {
@@ -76,32 +75,6 @@ describe('registrationFingerprints', () => {
       registrationFingerprints(intent, 'Employee', { labels: ['b', 'a'] })
         .request,
     ).not.toBe(first.request);
-  });
-
-  it('uses normalized reserved metadata for artifact identity, not annotations', () => {
-    const first = normalizeRegistrationMetadata({
-      tag: 'employee',
-      revocation: { enabled: false },
-      issuer: 'DMV',
-    });
-    const second = normalizeRegistrationMetadata({
-      tag: 'employee',
-      revocation: { enabled: false },
-      issuer: 'Transport Authority',
-    });
-    const firstFingerprints = registrationFingerprints(
-      { ...intent, options: first.options },
-      'Employee',
-      first.metadata,
-    );
-    const secondFingerprints = registrationFingerprints(
-      { ...intent, options: second.options },
-      'Employee',
-      second.metadata,
-    );
-
-    expect(firstFingerprints.artifact).toBe(secondFingerprints.artifact);
-    expect(firstFingerprints.request).not.toBe(secondFingerprints.request);
   });
 
   it.each([
