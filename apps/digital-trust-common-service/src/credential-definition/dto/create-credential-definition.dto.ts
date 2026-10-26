@@ -2,7 +2,6 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Expose, Type } from 'class-transformer';
 import {
   Equals,
-  IsBoolean,
   IsDefined,
   IsObject,
   IsOptional,
@@ -53,31 +52,6 @@ export class RegistrationIssuerDto {
   public method?: string;
 }
 
-export class RegistrationRevocationDto {
-  @ApiProperty()
-  @IsBoolean()
-  public enabled!: boolean;
-}
-
-export class AnonCredsRegistrationOptionsDto {
-  @ApiPropertyOptional({ default: 'default' })
-  @ValidateIf((_object: unknown, value: unknown) => value !== undefined)
-  @IsString()
-  @MinLength(1)
-  @MaxLength(100)
-  public tag?: string;
-
-  @ApiPropertyOptional({
-    type: RegistrationRevocationDto,
-    description: 'Omission defaults to revocable issuance',
-  })
-  @ValidateIf((_object: unknown, value: unknown) => value !== undefined)
-  @IsObject()
-  @ValidateNested()
-  @Type(() => RegistrationRevocationDto)
-  public revocation?: RegistrationRevocationDto;
-}
-
 export class CreateCredentialDefinitionDto {
   @ApiProperty()
   @IsString()
@@ -109,14 +83,17 @@ export class CreateCredentialDefinitionDto {
   @Type(() => RegistrationIssuerDto)
   public issuer?: RegistrationIssuerDto;
 
-  @ApiPropertyOptional({ type: AnonCredsRegistrationOptionsDto })
-  @ValidateIf((_object: unknown, value: unknown) => value !== undefined)
-  @IsObject()
-  @ValidateNested()
-  @Type(() => AnonCredsRegistrationOptionsDto)
-  public options?: AnonCredsRegistrationOptionsDto;
-
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({
+    type: 'object',
+    additionalProperties: true,
+    description:
+      'Local metadata. Reserved keys: tag (1–100 characters, default "default") and revocation { enabled: boolean } (default true). Other keys are annotations.',
+    example: {
+      tag: 'default',
+      revocation: { enabled: true },
+      issuer: 'DMV',
+    },
+  })
   @IsOptional()
   @IsObject()
   public metadata?: Record<string, unknown>;
