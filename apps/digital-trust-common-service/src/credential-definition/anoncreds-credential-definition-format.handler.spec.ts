@@ -18,7 +18,8 @@ describe('credential definition format options', () => {
   );
 
   it('fills AnonCreds option defaults', () => {
-    expect(anonCreds.normalizeOptions(undefined)).toEqual({
+    expect(anonCreds.normalizeOptions({ format: 'anoncreds' })).toEqual({
+      format: 'anoncreds',
       tag: 'default',
       revocation: { enabled: true },
     });
@@ -27,21 +28,36 @@ describe('credential definition format options', () => {
   it('normalizes explicit AnonCreds options', () => {
     expect(
       anonCreds.normalizeOptions({
+        format: 'anoncreds',
         tag: 'employee',
         revocation: { enabled: false },
       }),
-    ).toEqual({ tag: 'employee', revocation: { enabled: false } });
+    ).toEqual({
+      format: 'anoncreds',
+      tag: 'employee',
+      revocation: { enabled: false },
+    });
   });
 
   it.each([
-    { tag: 'employee', unexpected: true },
-    { tag: '' },
-    { tag: 'employee', revocation: { enabled: 'false' } },
-    { tag: 'employee', revocation: { enabled: false, extra: true } },
+    { format: 'anoncreds', tag: 'employee', unexpected: true },
+    { format: 'anoncreds', tag: '' },
+    { format: 'anoncreds', tag: 'employee', revocation: { enabled: 'false' } },
+    {
+      format: 'anoncreds',
+      tag: 'employee',
+      revocation: { enabled: false, extra: true },
+    },
   ])('rejects invalid AnonCreds options %#', (options) => {
     expect(() => anonCreds.normalizeOptions(options)).toThrow(
       BadRequestException,
     );
+  });
+
+  it('rejects a format that does not match the selected options class', () => {
+    expect(() =>
+      anonCreds.normalizeOptions({ format: CredentialDefinitionFormat.MDL }),
+    ).toThrow(BadRequestException);
   });
 
   it.each([
@@ -54,8 +70,14 @@ describe('credential definition format options', () => {
       optionsDto,
       {} as never,
     );
-    expect(() => handler.normalizeOptions({ unexpected: true })).toThrow(
-      BadRequestException,
-    );
+    expect(() =>
+      handler.normalizeOptions({ format, unexpected: true }),
+    ).toThrow(BadRequestException);
+    expect(() => handler.normalizeOptions({ format })).not.toThrow();
+    expect(() =>
+      handler.normalizeOptions({
+        format: CredentialDefinitionFormat.ANONCREDS,
+      }),
+    ).toThrow(BadRequestException);
   });
 });

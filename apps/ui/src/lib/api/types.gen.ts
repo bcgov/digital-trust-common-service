@@ -511,7 +511,11 @@ export interface paths {
          * Register a credential definition
          * @description Create a credential definition for any declared credential format.
          *     AnonCreds issuer artifact registration runs asynchronously; formats
-         *     without a registration step complete immediately. Supply exactly one of
+         *     without a registration step complete immediately. The required format
+         *     discriminator is inside immutable options (not a root request field),
+         *     and selects the format-specific options schema. This intentionally
+         *     differs from the review's wording that described format as a shared
+         *     root field. Supply exactly one of
          *     schema.id or schema.definition. Format-specific options are immutable
          *     after creation and returned read-only. For AnonCreds, tag defaults to
          *     "default" and revocation.enabled defaults to true. Metadata remains
@@ -1930,8 +1934,12 @@ export interface components {
             metadata?: {
                 [key: string]: unknown;
             } | null;
-            /** @description Immutable, normalized format-specific publication options */
-            readonly options?: (components["schemas"]["AnonCredsCredentialDefinitionOptionsDto"] | components["schemas"]["SdJwtCredentialDefinitionOptionsDto"] | components["schemas"]["MdlCredentialDefinitionOptionsDto"] | components["schemas"]["W3cVcCredentialDefinitionOptionsDto"]) | null;
+            /**
+             * @description Immutable, normalized format-specific publication options, including
+             *     the format discriminator. The root response format is kept in sync
+             *     with options.format.
+             */
+            readonly options: components["schemas"]["AnonCredsCredentialDefinitionOptionsDto"] | components["schemas"]["SdJwtCredentialDefinitionOptionsDto"] | components["schemas"]["MdlCredentialDefinitionOptionsDto"] | components["schemas"]["W3cVcCredentialDefinitionOptionsDto"];
             /** Format: date-time */
             created_at?: string;
             /** Format: date-time */
@@ -1940,20 +1948,41 @@ export interface components {
         /** @enum {string} */
         CredentialFormat: "anoncreds" | "sd-jwt" | "mdl" | "w3c-vc";
         AnonCredsCredentialDefinitionOptionsDto: {
-            /** @default default */
-            tag: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            format: "anoncreds";
+            /** @description Defaults to "default" when omitted */
+            tag?: string;
             revocation?: {
-                /** @default true */
-                enabled: boolean;
+                /** @description Defaults to true when omitted */
+                enabled?: boolean;
             };
         };
-        SdJwtCredentialDefinitionOptionsDto: Record<string, never>;
-        MdlCredentialDefinitionOptionsDto: Record<string, never>;
-        W3cVcCredentialDefinitionOptionsDto: Record<string, never>;
+        SdJwtCredentialDefinitionOptionsDto: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            format: "sd-jwt";
+        };
+        MdlCredentialDefinitionOptionsDto: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            format: "mdl";
+        };
+        W3cVcCredentialDefinitionOptionsDto: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            format: "w3c-vc";
+        };
         CreateCredentialDefinitionRequest: {
             name: string;
-            /** @enum {string} */
-            format: "anoncreds" | "sd-jwt" | "mdl" | "w3c-vc";
             /**
              * Format: uuid
              * @description Defaults to the tenant default or sole active compatible connector
@@ -1981,8 +2010,11 @@ export interface components {
             metadata?: {
                 [key: string]: unknown;
             };
-            /** @description Immutable, format-specific publication options */
-            options?: components["schemas"]["AnonCredsCredentialDefinitionOptionsDto"] | components["schemas"]["SdJwtCredentialDefinitionOptionsDto"] | components["schemas"]["MdlCredentialDefinitionOptionsDto"] | components["schemas"]["W3cVcCredentialDefinitionOptionsDto"];
+            /**
+             * @description Required immutable options object. Its required format discriminator
+             *     selects the format-specific publication options.
+             */
+            options: components["schemas"]["AnonCredsCredentialDefinitionOptionsDto"] | components["schemas"]["SdJwtCredentialDefinitionOptionsDto"] | components["schemas"]["MdlCredentialDefinitionOptionsDto"] | components["schemas"]["W3cVcCredentialDefinitionOptionsDto"];
         };
         IssuanceProfile: {
             /** Format: uuid */
@@ -3594,12 +3626,10 @@ export interface operations {
             };
             400: components["responses"]["ValidationError"];
             /**
-             * @description Name/format already exists with different content, or identical
-             *     artifact intent has a different local request
-             *     (REGISTRATION_ARTIFACT_EXISTS, including credential_definition_id and
-             *     operation_id). Inactive registrations or missing replay operations
-             *     return REGISTRATION_REPLAY_UNAVAILABLE with credential_definition_id.
-             *     Reconcile the existing registration instead of resubmitting.
+             * @description A definition with this tenant, name, and format exists with different
+             *     connector, issuer, schema, or normalized options. Inactive
+             *     registrations or missing replay operations return
+             *     REGISTRATION_REPLAY_UNAVAILABLE with credential_definition_id.
              */
             409: {
                 headers: {

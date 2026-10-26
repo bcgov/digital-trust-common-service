@@ -68,6 +68,7 @@ describe('CredentialDefinitionService', () => {
       const revocation = options.revocation as
         { enabled?: boolean } | undefined;
       return {
+        format: options.format,
         tag: options.tag ?? 'default',
         revocation: { enabled: revocation?.enabled ?? true },
       };
@@ -314,7 +315,7 @@ describe('CredentialDefinitionService', () => {
           auth.tenantId,
           {
             name: 'Employee',
-            format: CredentialDefinitionFormat.ANONCREDS,
+            options: { format: CredentialDefinitionFormat.ANONCREDS },
             schema: { definition: mockCredentialDefinition.schemaDefinition },
           },
           auth,
@@ -337,7 +338,11 @@ describe('CredentialDefinitionService', () => {
       connectorId: 'connector-1',
       registrationState: 'pending',
       registrationOperationId: 'existing-operation',
-      options: { tag: 'default', revocation: { enabled: true } },
+      options: {
+        format: CredentialDefinitionFormat.ANONCREDS,
+        tag: 'default',
+        revocation: { enabled: true },
+      },
       registration: {
         issuerId: 'did:indy:issuer',
         schema: {},
@@ -359,7 +364,7 @@ describe('CredentialDefinitionService', () => {
         auth.tenantId,
         {
           name: 'Employee',
-          format: CredentialDefinitionFormat.ANONCREDS,
+          options: { format: CredentialDefinitionFormat.ANONCREDS },
           schema: { definition: mockCredentialDefinition.schemaDefinition },
         },
         auth,
@@ -396,7 +401,7 @@ describe('CredentialDefinitionService', () => {
           auth.tenantId,
           {
             name: 'Employee',
-            format: CredentialDefinitionFormat.ANONCREDS,
+            options: { format: CredentialDefinitionFormat.ANONCREDS },
             schema: { definition: mockCredentialDefinition.schemaDefinition },
             metadata: { changed: true },
           },
@@ -427,7 +432,7 @@ describe('CredentialDefinitionService', () => {
         auth.tenantId,
         {
           name: 'Employee',
-          format: CredentialDefinitionFormat.ANONCREDS,
+          options: { format: CredentialDefinitionFormat.ANONCREDS },
           schema: { definition: mockCredentialDefinition.schemaDefinition },
         },
         auth,
@@ -467,7 +472,7 @@ describe('CredentialDefinitionService', () => {
           auth.tenantId,
           {
             name: 'Other name',
-            format: CredentialDefinitionFormat.ANONCREDS,
+            options: { format: CredentialDefinitionFormat.ANONCREDS },
             schema: { definition: mockCredentialDefinition.schemaDefinition },
           },
           auth,
@@ -482,13 +487,13 @@ describe('CredentialDefinitionService', () => {
       const tenantId = mockCredentialDefinition.tenantId;
       const dto: CreateCredentialDefinitionDto = {
         name: mockCredentialDefinition.name,
-        format: mockCredentialDefinition.format,
-        schema: { definition: mockCredentialDefinition.schemaDefinition },
-        metadata: mockCredentialDefinition.metadata,
         options: {
+          format: CredentialDefinitionFormat.ANONCREDS,
           tag: 'department',
           revocation: { enabled: false },
         },
+        schema: { definition: mockCredentialDefinition.schemaDefinition },
+        metadata: mockCredentialDefinition.metadata,
       };
 
       mockFindByTenantAndNameAndFormat.mockResolvedValue(null);
@@ -499,14 +504,14 @@ describe('CredentialDefinitionService', () => {
       expect(mockFindByTenantAndNameAndFormat).toHaveBeenCalledWith(
         tenantId,
         dto.name,
-        dto.format,
+        dto.options.format,
         manager,
       );
       expect(mockCreate).toHaveBeenCalledWith(
         expect.objectContaining({
           tenantId,
           name: dto.name,
-          format: dto.format,
+          format: dto.options.format,
           schemaDefinition: dto.schema.definition,
           externalId: null,
           connectorId: 'connector-1',
@@ -516,7 +521,11 @@ describe('CredentialDefinitionService', () => {
             schema: {},
             definition: {},
           },
-          options: { tag: 'department', revocation: { enabled: false } },
+          options: {
+            format: CredentialDefinitionFormat.ANONCREDS,
+            tag: 'department',
+            revocation: { enabled: false },
+          },
           metadata: dto.metadata,
         }),
         manager,
@@ -534,7 +543,7 @@ describe('CredentialDefinitionService', () => {
       const tenantId = mockCredentialDefinition.tenantId;
       const dto: CreateCredentialDefinitionDto = {
         name: mockCredentialDefinition.name,
-        format: mockCredentialDefinition.format,
+        options: { format: CredentialDefinitionFormat.ANONCREDS },
         schema: { definition: mockCredentialDefinition.schemaDefinition },
         metadata: mockCredentialDefinition.metadata,
       };
@@ -549,7 +558,7 @@ describe('CredentialDefinitionService', () => {
       expect(mockFindByTenantAndNameAndFormat).toHaveBeenCalledWith(
         tenantId,
         dto.name,
-        dto.format,
+        dto.options.format,
         manager,
       );
       expect(mockCreate).not.toHaveBeenCalled();
@@ -560,7 +569,7 @@ describe('CredentialDefinitionService', () => {
       const tenantId = mockCredentialDefinition.tenantId;
       const dto: CreateCredentialDefinitionDto = {
         name: mockCredentialDefinition.name,
-        format: CredentialDefinitionFormat.SD_JWT,
+        options: { format: CredentialDefinitionFormat.SD_JWT },
         schema: { definition: mockCredentialDefinition.schemaDefinition },
         metadata: mockCredentialDefinition.metadata,
       };
@@ -575,7 +584,7 @@ describe('CredentialDefinitionService', () => {
           format: CredentialDefinitionFormat.SD_JWT,
           registrationState: 'pending',
           registration: null,
-          options: {},
+          options: { format: CredentialDefinitionFormat.SD_JWT },
         }),
         manager,
       );
@@ -593,7 +602,7 @@ describe('CredentialDefinitionService', () => {
       const tenantId = mockCredentialDefinition.tenantId;
       const dto: CreateCredentialDefinitionDto = {
         name: mockCredentialDefinition.name,
-        format: CredentialDefinitionFormat.ANONCREDS,
+        options: { format: CredentialDefinitionFormat.ANONCREDS },
         schema: { definition: mockCredentialDefinition.schemaDefinition },
         metadata: mockCredentialDefinition.metadata,
       };
@@ -613,7 +622,7 @@ describe('CredentialDefinitionService', () => {
       const tenantId = mockCredentialDefinition.tenantId;
       const dto: CreateCredentialDefinitionDto = {
         name: mockCredentialDefinition.name,
-        format: CredentialDefinitionFormat.ANONCREDS,
+        options: { format: CredentialDefinitionFormat.ANONCREDS },
         schema: { definition: mockCredentialDefinition.schemaDefinition },
         metadata: mockCredentialDefinition.metadata,
       };
@@ -635,7 +644,7 @@ describe('CredentialDefinitionService', () => {
       const tenantId = mockCredentialDefinition.tenantId;
       const dto: CreateCredentialDefinitionDto = {
         name: mockCredentialDefinition.name,
-        format: CredentialDefinitionFormat.ANONCREDS,
+        options: { format: CredentialDefinitionFormat.ANONCREDS },
         schema: { definition: mockCredentialDefinition.schemaDefinition },
         metadata: mockCredentialDefinition.metadata,
       };
@@ -656,10 +665,13 @@ describe('CredentialDefinitionService', () => {
       const tenantId = mockCredentialDefinition.tenantId;
       const dto: CreateCredentialDefinitionDto = {
         name: mockCredentialDefinition.name,
-        format: CredentialDefinitionFormat.ANONCREDS,
+        options: { format: CredentialDefinitionFormat.ANONCREDS },
         schema: { id: 'schema-1' },
         issuer: { method: 'indy' },
-        options: { revocation: { enabled: false } },
+        options: {
+          format: CredentialDefinitionFormat.ANONCREDS,
+          revocation: { enabled: false },
+        },
         metadata: {
           revocation: { enabled: false },
           issuer: 'DMV',
@@ -679,7 +691,12 @@ describe('CredentialDefinitionService', () => {
           registration: expect.objectContaining({
             schema: { id: 'schema-1', state: 'finished' },
           }),
-          options: { tag: 'default', revocation: { enabled: false } },
+          options: {
+            format: CredentialDefinitionFormat.ANONCREDS,
+            format: CredentialDefinitionFormat.ANONCREDS,
+            tag: 'default',
+            revocation: { enabled: false },
+          },
           metadata: {
             revocation: { enabled: false },
             issuer: 'DMV',
@@ -695,7 +712,7 @@ describe('CredentialDefinitionService', () => {
           auth.tenantId,
           {
             name: 'test',
-            format: CredentialDefinitionFormat.ANONCREDS,
+            options: { format: CredentialDefinitionFormat.ANONCREDS },
             schema: { id: 'schema-1', definition: {} },
           },
           auth,
@@ -706,7 +723,7 @@ describe('CredentialDefinitionService', () => {
           auth.tenantId,
           {
             name: 'test',
-            format: CredentialDefinitionFormat.ANONCREDS,
+            options: { format: CredentialDefinitionFormat.ANONCREDS },
             schema: { id: 'schema-1' },
             issuer: {},
           },
@@ -723,7 +740,7 @@ describe('CredentialDefinitionService', () => {
           auth.tenantId,
           {
             name: 'Employee',
-            format: CredentialDefinitionFormat.ANONCREDS,
+            options: { format: CredentialDefinitionFormat.ANONCREDS },
             schema: {},
           },
           auth,
@@ -744,7 +761,7 @@ describe('CredentialDefinitionService', () => {
           auth.tenantId,
           {
             name: 'Employee',
-            format: CredentialDefinitionFormat.ANONCREDS,
+            options: { format: CredentialDefinitionFormat.ANONCREDS },
             schema: { definition: mockCredentialDefinition.schemaDefinition },
           },
           auth,
@@ -786,7 +803,7 @@ describe('CredentialDefinitionService', () => {
             auth.tenantId,
             {
               name: 'Employee',
-              format: CredentialDefinitionFormat.ANONCREDS,
+              options: { format: CredentialDefinitionFormat.ANONCREDS },
               schema: {
                 definition: mockCredentialDefinition.schemaDefinition,
               },
@@ -807,7 +824,7 @@ describe('CredentialDefinitionService', () => {
           auth.tenantId,
           {
             name: 'Employee',
-            format: CredentialDefinitionFormat.ANONCREDS,
+            options: { format: CredentialDefinitionFormat.ANONCREDS },
             schema: { id: 'schema-1' },
           },
           auth,
@@ -827,7 +844,7 @@ describe('CredentialDefinitionService', () => {
           auth.tenantId,
           {
             name: 'Employee',
-            format: CredentialDefinitionFormat.ANONCREDS,
+            options: { format: CredentialDefinitionFormat.ANONCREDS },
             schema: { definition: mockCredentialDefinition.schemaDefinition },
           },
           auth,
@@ -850,7 +867,7 @@ describe('CredentialDefinitionService', () => {
           auth.tenantId,
           {
             name: 'Employee',
-            format: CredentialDefinitionFormat.ANONCREDS,
+            options: { format: CredentialDefinitionFormat.ANONCREDS },
             schema: { definition: mockCredentialDefinition.schemaDefinition },
           },
           auth,
@@ -869,7 +886,7 @@ describe('CredentialDefinitionService', () => {
           auth.tenantId,
           {
             name: 'Employee',
-            format: CredentialDefinitionFormat.ANONCREDS,
+            options: { format: CredentialDefinitionFormat.ANONCREDS },
             schema: { definition: mockCredentialDefinition.schemaDefinition },
           },
           auth,
@@ -889,7 +906,7 @@ describe('CredentialDefinitionService', () => {
           auth.tenantId,
           {
             name: 'Employee',
-            format: CredentialDefinitionFormat.ANONCREDS,
+            options: { format: CredentialDefinitionFormat.ANONCREDS },
             schema: { definition: mockCredentialDefinition.schemaDefinition },
           },
           auth,
@@ -911,7 +928,7 @@ describe('CredentialDefinitionService', () => {
           auth.tenantId,
           {
             name: 'Employee',
-            format: CredentialDefinitionFormat.ANONCREDS,
+            options: { format: CredentialDefinitionFormat.ANONCREDS },
             schema: { definition: mockCredentialDefinition.schemaDefinition },
           },
           auth,
@@ -932,7 +949,7 @@ describe('CredentialDefinitionService', () => {
           auth.tenantId,
           {
             name: 'Employee',
-            format: CredentialDefinitionFormat.ANONCREDS,
+            options: { format: CredentialDefinitionFormat.ANONCREDS },
             schema: { definition: mockCredentialDefinition.schemaDefinition },
           },
           auth,

@@ -1107,7 +1107,11 @@ paths:
       description: |
         Create a credential definition for any declared credential format.
         AnonCreds issuer artifact registration runs asynchronously; formats
-        without a registration step complete immediately. Supply exactly one of
+        without a registration step complete immediately. The required format
+        discriminator is inside immutable options (not a root request field),
+        and selects the format-specific options schema. This intentionally
+        differs from the review's wording that described format as a shared
+        root field. Supply exactly one of
         schema.id or schema.definition. Format-specific options are immutable
         after creation and returned read-only. For AnonCreds, tag defaults to
         "default" and revocation.enabled defaults to true. Metadata remains
@@ -1146,12 +1150,10 @@ paths:
           $ref: "#/components/responses/ValidationError"
         "409":
           description: |
-            Name/format already exists with different content, or identical
-            artifact intent has a different local request
-            (REGISTRATION_ARTIFACT_EXISTS, including credential_definition_id and
-            operation_id). Inactive registrations or missing replay operations
-            return REGISTRATION_REPLAY_UNAVAILABLE with credential_definition_id.
-            Reconcile the existing registration instead of resubmitting.
+            A definition with this tenant, name, and format exists with different
+            connector, issuer, schema, or normalized options. Inactive
+            registrations or missing replay operations return
+            REGISTRATION_REPLAY_UNAVAILABLE with credential_definition_id.
         "422":
           $ref: "#/components/responses/ValidationError"
     get:
@@ -3581,6 +3583,7 @@ components:
     # ─── Credential Definition ───────────────────────────────────────
     CredentialDefinition:
       type: object
+      required: [options]
       properties:
         id:
           type: string
@@ -3640,14 +3643,23 @@ components:
           additionalProperties: true
         options:
           type: object
-          nullable: true
           readOnly: true
-          description: Immutable, normalized format-specific publication options
+          description: |
+            Immutable, normalized format-specific publication options, including
+            the format discriminator. The root response format is kept in sync
+            with options.format.
           oneOf:
             - $ref: "#/components/schemas/AnonCredsCredentialDefinitionOptionsDto"
             - $ref: "#/components/schemas/SdJwtCredentialDefinitionOptionsDto"
             - $ref: "#/components/schemas/MdlCredentialDefinitionOptionsDto"
             - $ref: "#/components/schemas/W3cVcCredentialDefinitionOptionsDto"
+          discriminator:
+            propertyName: format
+            mapping:
+              anoncreds: "#/components/schemas/AnonCredsCredentialDefinitionOptionsDto"
+              sd-jwt: "#/components/schemas/SdJwtCredentialDefinitionOptionsDto"
+              mdl: "#/components/schemas/MdlCredentialDefinitionOptionsDto"
+              w3c-vc: "#/components/schemas/W3cVcCredentialDefinitionOptionsDto"
         created_at:
           type: string
           format: date-time
@@ -3662,47 +3674,60 @@ components:
     AnonCredsCredentialDefinitionOptionsDto:
       type: object
       additionalProperties: false
+      required: [format]
       properties:
+        format:
+          type: string
+          enum: [anoncreds]
         tag:
           type: string
           minLength: 1
           maxLength: 100
-          default: default
+          description: Defaults to "default" when omitted
         revocation:
           type: object
           additionalProperties: false
           properties:
             enabled:
               type: boolean
-              default: true
+              description: Defaults to true when omitted
 
     SdJwtCredentialDefinitionOptionsDto:
       type: object
       additionalProperties: false
-      properties: {}
+      required: [format]
+      properties:
+        format:
+          type: string
+          enum: [sd-jwt]
 
     MdlCredentialDefinitionOptionsDto:
       type: object
       additionalProperties: false
-      properties: {}
+      required: [format]
+      properties:
+        format:
+          type: string
+          enum: [mdl]
 
     W3cVcCredentialDefinitionOptionsDto:
       type: object
       additionalProperties: false
-      properties: {}
+      required: [format]
+      properties:
+        format:
+          type: string
+          enum: [w3c-vc]
 
     CreateCredentialDefinitionRequest:
       type: object
       additionalProperties: false
-      required: [name, format, schema]
+      required: [name, schema, options]
       properties:
         name:
           type: string
           minLength: 1
           maxLength: 255
-        format:
-          type: string
-          enum: [anoncreds, sd-jwt, mdl, w3c-vc]
         connector_id:
           type: string
           format: uuid
@@ -3767,12 +3792,21 @@ components:
           description: Free-form client annotations
           additionalProperties: true
         options:
-          description: Immutable, format-specific publication options
+          description: |
+            Required immutable options object. Its required format discriminator
+            selects the format-specific publication options.
           oneOf:
             - $ref: "#/components/schemas/AnonCredsCredentialDefinitionOptionsDto"
             - $ref: "#/components/schemas/SdJwtCredentialDefinitionOptionsDto"
             - $ref: "#/components/schemas/MdlCredentialDefinitionOptionsDto"
             - $ref: "#/components/schemas/W3cVcCredentialDefinitionOptionsDto"
+          discriminator:
+            propertyName: format
+            mapping:
+              anoncreds: "#/components/schemas/AnonCredsCredentialDefinitionOptionsDto"
+              sd-jwt: "#/components/schemas/SdJwtCredentialDefinitionOptionsDto"
+              mdl: "#/components/schemas/MdlCredentialDefinitionOptionsDto"
+              w3c-vc: "#/components/schemas/W3cVcCredentialDefinitionOptionsDto"
 
     # ─── Issuance Profile ────────────────────────────────────────────
     IssuanceProfile:

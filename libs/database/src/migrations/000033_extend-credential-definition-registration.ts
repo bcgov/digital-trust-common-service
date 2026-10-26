@@ -15,6 +15,19 @@ export class ExtendCredentialDefinitionRegistration1792018018010 implements Migr
         ADD COLUMN registration_operation_id uuid,
         ADD COLUMN registration jsonb,
         ADD COLUMN options jsonb;
+      UPDATE credential_definition
+      SET options = CASE
+        WHEN format::text = 'anoncreds' THEN jsonb_build_object(
+          'format', format::text,
+          'tag', 'default',
+          'revocation', jsonb_build_object('enabled', true)
+        )
+        ELSE jsonb_build_object('format', format::text)
+      END;
+      ALTER TABLE credential_definition
+        ALTER COLUMN options SET NOT NULL,
+        ADD CONSTRAINT chk_credential_definition_options_format
+          CHECK (options ->> 'format' = format::text);
       CREATE INDEX idx_credential_definition_registration
         ON credential_definition (registration_state)
         WHERE registration_state = 'pending';
@@ -25,6 +38,7 @@ export class ExtendCredentialDefinitionRegistration1792018018010 implements Migr
     await queryRunner.query(`
       DROP INDEX IF EXISTS idx_credential_definition_registration;
       ALTER TABLE credential_definition
+        DROP CONSTRAINT IF EXISTS chk_credential_definition_options_format,
         DROP COLUMN IF EXISTS options,
         DROP COLUMN IF EXISTS registration,
         DROP COLUMN IF EXISTS registration_operation_id,
