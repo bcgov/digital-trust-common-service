@@ -335,7 +335,11 @@ describe('CredentialDefinitionService', () => {
             schemaId: undefined,
             options: { tag: 'default', revocation: { enabled: true } },
           },
-          metadata: dto.metadata,
+          metadata: {
+            ...dto.metadata,
+            tag: 'default',
+            revocation: { enabled: true },
+          },
         }),
         manager,
       );
@@ -467,7 +471,10 @@ describe('CredentialDefinitionService', () => {
         format: CredentialDefinitionFormat.ANONCREDS,
         schema: { id: 'schema-1' },
         issuer: { method: 'indy' },
-        options: { revocation: { enabled: false } },
+        metadata: {
+          revocation: { enabled: false },
+          issuer: 'DMV',
+        },
       };
 
       mockFindByTenantAndNameAndFormat.mockResolvedValue(null);
@@ -484,6 +491,11 @@ describe('CredentialDefinitionService', () => {
             schemaId: 'schema-1',
             options: { tag: 'default', revocation: { enabled: false } },
           }),
+          metadata: {
+            tag: 'default',
+            revocation: { enabled: false },
+            issuer: 'DMV',
+          },
         }),
         manager,
       );
@@ -1172,17 +1184,98 @@ describe('CredentialDefinitionService', () => {
       const tenantId = mockCredentialDefinition.tenantId;
       const id = mockCredentialDefinition.id;
       const dto = { metadata: { issuer: 'DMV', version: '2.0' } };
-      const updatedDefinition = { ...mockCredentialDefinition, ...dto };
+      const updatedDefinition = {
+        ...mockCredentialDefinition,
+        metadata: {
+          ...dto.metadata,
+          tag: 'employee',
+          revocation: { enabled: false },
+        },
+      };
 
-      mockFindById.mockResolvedValue({ ...mockCredentialDefinition });
+      mockFindById.mockResolvedValue({
+        ...mockCredentialDefinition,
+        registration: {
+          issuerId: 'issuer',
+          options: { tag: 'employee', revocation: { enabled: false } },
+        },
+      });
       mockUpdate.mockResolvedValue(updatedDefinition);
 
       const result = await service.update(tenantId, id, dto, auth);
 
       expect(mockUpdate).toHaveBeenCalledWith(tenantId, id, {
-        metadata: dto.metadata,
+        metadata: {
+          ...dto.metadata,
+          tag: 'employee',
+          revocation: { enabled: false },
+        },
       });
-      expect(result.metadata).toEqual(dto.metadata);
+      expect(result.metadata).toEqual({
+        ...dto.metadata,
+        tag: 'employee',
+        revocation: { enabled: false },
+      });
+    });
+
+    it('rejects metadata changes to immutable registration settings', async () => {
+      const credentialDefinition = {
+        ...mockCredentialDefinition,
+        registration: {
+          issuerId: 'issuer',
+          options: { tag: 'employee', revocation: { enabled: false } },
+        },
+      };
+      mockFindById.mockResolvedValue(credentialDefinition);
+
+      await expect(
+        service.update(
+          auth.tenantId,
+          credentialDefinition.id,
+          {
+            metadata: {
+              tag: 'employee',
+              revocation: { enabled: true },
+              issuer: 'DMV',
+            },
+          },
+          auth,
+        ),
+      ).rejects.toThrow(ConflictException);
+      expect(mockUpdate).not.toHaveBeenCalled();
+    });
+
+    it('validates and normalizes metadata when registration settings are absent', async () => {
+      mockFindById.mockResolvedValue(mockCredentialDefinition);
+      mockUpdate.mockResolvedValue(mockCredentialDefinition);
+
+      await expect(
+        service.update(
+          auth.tenantId,
+          mockCredentialDefinition.id,
+          { metadata: { revocation: { enabled: 'true' } } },
+          auth,
+        ),
+      ).rejects.toThrow(BadRequestException);
+      expect(mockUpdate).not.toHaveBeenCalled();
+
+      await service.update(
+        auth.tenantId,
+        mockCredentialDefinition.id,
+        { metadata: { issuer: 'DMV' } },
+        auth,
+      );
+      expect(mockUpdate).toHaveBeenCalledWith(
+        auth.tenantId,
+        mockCredentialDefinition.id,
+        {
+          metadata: {
+            issuer: 'DMV',
+            tag: 'default',
+            revocation: { enabled: true },
+          },
+        },
+      );
     });
 
     it('should throw NotFoundException if credential definition not found', async () => {

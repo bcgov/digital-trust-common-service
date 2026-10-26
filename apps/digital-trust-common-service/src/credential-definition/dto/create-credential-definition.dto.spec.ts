@@ -19,24 +19,27 @@ describe('credential definition registration contract', () => {
       metatype: CreateCredentialDefinitionDto,
     });
 
-  it('transforms connector_id and strictly validates nested options', async () => {
+  it('transforms connector_id and accepts registration settings in metadata', async () => {
     const result = await validate({
       ...input,
       connector_id: '123e4567-e89b-42d3-a456-426614174001',
       issuer: { method: 'indy' },
-      options: { tag: 'test', revocation: { enabled: true } },
+      metadata: {
+        tag: 'test',
+        revocation: { enabled: true },
+        issuer: 'DMV',
+      },
     });
     expect(result.connectorId).toBe('123e4567-e89b-42d3-a456-426614174001');
-    expect(result.options.revocation.enabled).toBe(true);
+    expect(result.metadata.revocation.enabled).toBe(true);
+    expect(result.metadata.issuer).toBe('DMV');
   });
 
   it.each([
     { external_id: 'legacy' },
     { connector_type: 'traction' },
     { schema_definition: {} },
-    { options: { proof: {} } },
-    { options: { revocation: { enabled: 'true' } } },
-    { options: { revocation: {} } },
+    { options: { tag: 'test' } },
     { issuer: { private_key: 'not-accepted' } },
     { schema: { id: 'schema-id', unexpected: true } },
     { schema: { type: 'json-schema', id: 'schema-id' } },
@@ -46,9 +49,6 @@ describe('credential definition registration contract', () => {
     { schema: { id: null } },
     { issuer: { id: null } },
     { issuer: null },
-    { options: null },
-    { options: { tag: null } },
-    { options: { revocation: null } },
     { connector_id: null },
   ])('rejects unsupported or malformed input %j', async (change) => {
     await expect(validate({ ...input, ...change })).rejects.toThrow();

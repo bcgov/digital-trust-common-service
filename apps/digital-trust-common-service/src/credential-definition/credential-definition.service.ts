@@ -39,6 +39,7 @@ import { CreateCredentialDefinitionDto } from './dto/create-credential-definitio
 import { RecoverCredentialDefinitionDto } from './dto/recover-credential-definition.dto';
 import { UpdateCredentialDefinitionDto } from './dto/update-credential-definition.dto';
 import { registrationFingerprints } from './registration-fingerprint';
+import { normalizeRegistrationMetadata } from './registration-metadata';
 
 /**
  * Maps the `format` stored on credential definitions onto the port-layer
@@ -116,10 +117,8 @@ export class CredentialDefinitionService {
           .catch((error: unknown) => this.registrationError(error))
       : { definition: dto.schema.definition ?? {}, id: undefined };
     this.validateSchemaDefinition(dto.format, schema.definition);
-    const options = {
-      tag: dto.options?.tag ?? 'default',
-      revocation: { enabled: dto.options?.revocation?.enabled ?? true },
-    };
+    const normalizedMetadata = normalizeRegistrationMetadata(dto.metadata);
+    const { metadata, options } = normalizedMetadata;
     const fingerprints = registrationFingerprints(
       {
         tenantId,
@@ -130,7 +129,7 @@ export class CredentialDefinitionService {
         options,
       },
       dto.name,
-      dto.metadata,
+      metadata,
     );
 
     const { created, operation } = await this.dataSource
@@ -220,7 +219,7 @@ export class CredentialDefinitionService {
             connectorType,
             schemaDefinition: schema.definition,
             externalId: null,
-            metadata: dto.metadata,
+            metadata,
             registrationState: 'pending',
             registrationOperationId: operation.id,
             requestFingerprint: fingerprints.request,
@@ -576,11 +575,24 @@ export class CredentialDefinitionService {
     dto: UpdateCredentialDefinitionDto,
     auth: AuthContext,
   ): Promise<CredentialDefinition> {
-    await this.findById(tenantId, id, auth);
+    const credentialDefinition = await this.findById(tenantId, id, auth);
     const changes: Partial<Pick<CredentialDefinition, 'name' | 'metadata'>> =
       {};
     if (dto.name !== undefined) changes.name = dto.name;
-    if (dto.metadata !== undefined) changes.metadata = dto.metadata;
+    if (dto.metadata !== undefined) {
+      const options = credentialDefinition.registration?.options;
+      const normalized = normalizeRegistrationMetadata(dto.metadata, options);
+      if (
+        options &&
+        (normalized.options.tag !== options.tag ||
+          normalized.options.revocation.enabled !== options.revocation.enabled)
+      ) {
+        throw new ConflictException(
+          'Registration tag and revocation settings cannot be changed',
+        );
+      }
+      changes.metadata = normalized.metadata;
+    }
     const updated =
       await this.credentialDefinitionRepository.updateEditableFields(
         tenantId,
