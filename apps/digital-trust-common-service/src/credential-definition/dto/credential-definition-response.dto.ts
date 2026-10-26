@@ -1,4 +1,8 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import {
+  ApiProperty,
+  ApiPropertyOptional,
+  getSchemaPath,
+} from '@nestjs/swagger';
 import { Expose } from 'class-transformer';
 
 import {
@@ -6,6 +10,13 @@ import {
   CredentialDefinitionConnectorType,
   CredentialDefinitionFormat,
 } from '../credential-definition.entity';
+
+import {
+  AnonCredsCredentialDefinitionOptionsDto,
+  MdlCredentialDefinitionOptionsDto,
+  SdJwtCredentialDefinitionOptionsDto,
+  W3cVcCredentialDefinitionOptionsDto,
+} from './credential-definition-options.dto';
 
 export class CredentialDefinitionResponseDto {
   @ApiProperty({
@@ -104,12 +115,19 @@ export class CredentialDefinitionResponseDto {
   })
   public metadata?: Record<string, unknown>;
 
-  @ApiPropertyOptional({
-    description: 'Immutable, normalized format-specific publication options',
+  @ApiProperty({
+    description:
+      'Immutable, normalized publication options. options.format matches the root format.',
     readOnly: true,
-    nullable: true,
+    oneOf: [
+      { $ref: getSchemaPath(AnonCredsCredentialDefinitionOptionsDto) },
+      { $ref: getSchemaPath(SdJwtCredentialDefinitionOptionsDto) },
+      { $ref: getSchemaPath(MdlCredentialDefinitionOptionsDto) },
+      { $ref: getSchemaPath(W3cVcCredentialDefinitionOptionsDto) },
+    ],
+    discriminator: { propertyName: 'format' },
   })
-  public options?: Record<string, unknown> | null;
+  public options!: Record<string, unknown>;
 
   @Expose({ name: 'created_at' })
   @ApiProperty({
@@ -158,7 +176,7 @@ export class CredentialDefinitionResponseDto {
     dto.connectorType = credentialDefinition.connectorType;
     dto.isActive = credentialDefinition.isActive;
     dto.metadata = credentialDefinition.metadata;
-    dto.options = credentialDefinition.options ?? null;
+    dto.options = credentialDefinition.options;
     dto.createdAt = credentialDefinition.createdAt;
     dto.updatedAt = credentialDefinition.updatedAt;
     return dto;

@@ -5,7 +5,6 @@ import {
 } from '@nestjs/swagger';
 import { Expose, Type } from 'class-transformer';
 import {
-  IsEnum,
   IsDefined,
   IsObject,
   IsOptional,
@@ -17,10 +16,9 @@ import {
   ValidateIf,
 } from 'class-validator';
 
-import { CredentialDefinitionFormat } from '../credential-definition.entity';
-
 import {
   AnonCredsCredentialDefinitionOptionsDto,
+  CredentialDefinitionOptionsBase,
   MdlCredentialDefinitionOptionsDto,
   SdJwtCredentialDefinitionOptionsDto,
   W3cVcCredentialDefinitionOptionsDto,
@@ -65,10 +63,6 @@ export class CreateCredentialDefinitionDto {
   @MaxLength(255)
   public name!: string;
 
-  @ApiProperty({ enum: CredentialDefinitionFormat })
-  @IsEnum(CredentialDefinitionFormat)
-  public format!: CredentialDefinitionFormat;
-
   @Expose({ name: 'connector_id' })
   @ApiPropertyOptional({ name: 'connector_id', format: 'uuid' })
   @ValidateIf((_object: unknown, value: unknown) => value !== undefined)
@@ -89,7 +83,7 @@ export class CreateCredentialDefinitionDto {
   @Type(() => RegistrationIssuerDto)
   public issuer?: RegistrationIssuerDto;
 
-  @ApiPropertyOptional({
+  @ApiProperty({
     type: 'object',
     additionalProperties: true,
     description: 'Client annotations for this credential definition.',
@@ -98,7 +92,7 @@ export class CreateCredentialDefinitionDto {
   @IsObject()
   public metadata?: Record<string, unknown>;
 
-  @ApiPropertyOptional({
+  @ApiProperty({
     description: 'Immutable, format-specific publication options.',
     oneOf: [
       { $ref: getSchemaPath(AnonCredsCredentialDefinitionOptionsDto) },
@@ -106,8 +100,37 @@ export class CreateCredentialDefinitionDto {
       { $ref: getSchemaPath(MdlCredentialDefinitionOptionsDto) },
       { $ref: getSchemaPath(W3cVcCredentialDefinitionOptionsDto) },
     ],
+    discriminator: {
+      propertyName: 'format',
+      mapping: {
+        anoncreds: getSchemaPath(AnonCredsCredentialDefinitionOptionsDto),
+        'sd-jwt': getSchemaPath(SdJwtCredentialDefinitionOptionsDto),
+        mdl: getSchemaPath(MdlCredentialDefinitionOptionsDto),
+        'w3c-vc': getSchemaPath(W3cVcCredentialDefinitionOptionsDto),
+      },
+    },
   })
-  @IsOptional()
+  @IsDefined()
   @IsObject()
-  public options?: Record<string, unknown>;
+  @ValidateNested()
+  @Type(() => CredentialDefinitionOptionsBase, {
+    discriminator: {
+      property: 'format',
+      subTypes: [
+        {
+          name: 'anoncreds',
+          value: AnonCredsCredentialDefinitionOptionsDto,
+        },
+        { name: 'sd-jwt', value: SdJwtCredentialDefinitionOptionsDto },
+        { name: 'mdl', value: MdlCredentialDefinitionOptionsDto },
+        { name: 'w3c-vc', value: W3cVcCredentialDefinitionOptionsDto },
+      ],
+    },
+    keepDiscriminatorProperty: true,
+  })
+  public options!:
+    | AnonCredsCredentialDefinitionOptionsDto
+    | SdJwtCredentialDefinitionOptionsDto
+    | MdlCredentialDefinitionOptionsDto
+    | W3cVcCredentialDefinitionOptionsDto;
 }

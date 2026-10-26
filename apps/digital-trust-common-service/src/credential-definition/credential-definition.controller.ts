@@ -49,6 +49,7 @@ import { CredentialDefinitionService } from './credential-definition.service';
 import { CreateCredentialDefinitionDto } from './dto/create-credential-definition.dto';
 import {
   AnonCredsCredentialDefinitionOptionsDto,
+  CredentialDefinitionOptionsBase,
   MdlCredentialDefinitionOptionsDto,
   SdJwtCredentialDefinitionOptionsDto,
   W3cVcCredentialDefinitionOptionsDto,
@@ -59,6 +60,7 @@ import { UpdateCredentialDefinitionDto } from './dto/update-credential-definitio
 @SkipAutoAudit()
 @ApiJwtAuth()
 @ApiExtraModels(
+  CredentialDefinitionOptionsBase,
   AnonCredsCredentialDefinitionOptionsDto,
   SdJwtCredentialDefinitionOptionsDto,
   MdlCredentialDefinitionOptionsDto,
@@ -107,7 +109,6 @@ export class CredentialDefinitionController {
         summary: 'Create a credential definition',
         value: {
           name: 'Driver License Definition',
-          format: 'anoncreds',
           schema: {
             definition: {
               attr_names: ['name', 'age'],
@@ -116,6 +117,7 @@ export class CredentialDefinitionController {
             },
           },
           options: {
+            format: 'anoncreds',
             tag: 'default',
             revocation: { enabled: true },
           },

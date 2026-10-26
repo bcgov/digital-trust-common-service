@@ -59,7 +59,11 @@ describe('CredentialDefinitionController', () => {
     connectorType: CredentialDefinitionConnectorType.TRACTION,
     isActive: true,
     metadata: { key: 'value' },
-    options: { tag: 'default', revocation: { enabled: true } },
+    options: {
+      format: CredentialDefinitionFormat.ANONCREDS,
+      tag: 'default',
+      revocation: { enabled: true },
+    },
     createdAt: new Date(),
     updatedAt: new Date(),
     tenant: {
@@ -130,7 +134,11 @@ describe('CredentialDefinitionController', () => {
       const tenantId = mockCredentialDefinition.tenantId;
       const dto: CreateCredentialDefinitionDto = {
         name: mockCredentialDefinition.name,
-        format: mockCredentialDefinition.format,
+        options: {
+          format: CredentialDefinitionFormat.ANONCREDS,
+          tag: 'default',
+          revocation: { enabled: true },
+        },
         schema: { definition: mockCredentialDefinition.schemaDefinition },
         metadata: mockCredentialDefinition.metadata,
       };
@@ -164,6 +172,7 @@ describe('CredentialDefinitionController', () => {
         CredentialDefinitionResponseDto.fromEntity(mockCredentialDefinition),
       );
       expect(result.options).toEqual(mockCredentialDefinition.options);
+      expect(result.format).toBe(mockCredentialDefinition.options.format);
       expect(result.metadata).toEqual(mockCredentialDefinition.metadata);
     });
 

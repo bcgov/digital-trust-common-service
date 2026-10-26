@@ -49,8 +49,11 @@ describe('credential definition registration (integration)', () => {
   };
   const dto: CreateCredentialDefinitionDto = {
     name: 'Employee',
-    format: CredentialDefinitionFormat.ANONCREDS,
-    options: { tag: 'default', revocation: { enabled: true } },
+    options: {
+      format: CredentialDefinitionFormat.ANONCREDS,
+      tag: 'default',
+      revocation: { enabled: true },
+    },
     schema: {
       definition: {
         schema_name: 'employee',
@@ -260,7 +263,11 @@ describe('credential definition registration (integration)', () => {
           ...dto,
           connectorId: connector.id,
           issuer: { id: 'did:indy:issuer' },
-          options: { tag: 'default', revocation: { enabled: true } },
+          options: {
+            format: CredentialDefinitionFormat.ANONCREDS,
+            tag: 'default',
+            revocation: { enabled: true },
+          },
         },
         auth,
       ),

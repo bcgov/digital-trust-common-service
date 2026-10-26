@@ -77,17 +77,18 @@ export class CredentialDefinitionService {
     auth: AuthContext,
   ): Promise<Operation> {
     assertTenantAccess(auth, tenantId);
+    const format = dto.options.format;
     const handler = this.formatHandlers.find(
-      (candidate) => candidate.format === dto.format,
+      (candidate) => candidate.format === format,
     );
     if (!handler) {
-      this.registrationError(new FormatNotSupportedError(dto.format));
+      this.registrationError(new FormatNotSupportedError(format));
     }
     const options = handler.normalizeOptions(dto.options);
     const prepared = await handler
       .prepare(tenantId, dto)
       .catch((error: unknown) => this.registrationError(error));
-    this.validateSchemaDefinition(dto.format, prepared.schemaDefinition);
+    this.validateSchemaDefinition(format, prepared.schemaDefinition);
     let result: {
       definition: CredentialDefinition;
       operation: Operation;
@@ -113,7 +114,7 @@ export class CredentialDefinitionService {
           await this.credentialDefinitionRepository.findExistingByTenantAndNameAndFormat(
             tenantId,
             dto.name,
-            dto.format,
+            format,
             manager,
           );
         if (!existing) {
@@ -161,7 +162,7 @@ export class CredentialDefinitionService {
       await this.credentialDefinitionRepository.findExistingByTenantAndNameAndFormat(
         tenantId,
         dto.name,
-        dto.format,
+        dto.options.format,
         manager,
       );
     if (existing) {
@@ -185,7 +186,7 @@ export class CredentialDefinitionService {
       {
         tenantId,
         name: dto.name,
-        format: dto.format,
+        format: dto.options.format,
         connectorId: prepared.connectorId,
         connectorType: prepared.connectorType,
         schemaDefinition: prepared.schemaDefinition,
@@ -340,7 +341,7 @@ export class CredentialDefinitionService {
         request: {
           method: 'POST',
           path: `${API_BASE_PATH}/tenants/${tenantId}/credential-definitions`,
-          body: { name: dto.name, format: dto.format },
+          body: { name: dto.name, options: { format: dto.options.format } },
         },
       },
       manager,

@@ -1217,17 +1217,21 @@ App-issued access tokens carry a stable API `aud`, not the OIDC issuer URL:
 ## AnonCreds credential-definition registration
 
 `POST /api/v1/tenants/{tenantId}/credential-definitions` now accepts
-`name`, `format`, `schema`, optional `issuer`, `connector_id`, `options`, and
+`name`, `schema`, required `options`, and optional `issuer`, `connector_id`, and
 `metadata`. Immutable format-specific publication settings belong in `options`;
 `metadata` remains free-form client annotations. This replaces the old
 `schema_definition`, `external_id`, and `connector_type` request fields.
+The required `options.format` enum selects the format-specific options class;
+there is no root-level `format` request field. This deliberately differs from
+the review wording that described `format` as a shared root field. Responses
+continue to expose their root `format` value, which is kept equal to
+`options.format`.
 Independent schema management and existing credential-definition imports are
 not part of this workflow.
 
 ```json
 {
   "name": "Employee Credential",
-  "format": "anoncreds",
   "schema": {
     "definition": {
       "schema_name": "employee",
@@ -1237,6 +1241,7 @@ not part of this workflow.
   },
   "issuer": { "method": "indy" },
   "options": {
+    "format": "anoncreds",
     "tag": "default",
     "revocation": { "enabled": true }
   },

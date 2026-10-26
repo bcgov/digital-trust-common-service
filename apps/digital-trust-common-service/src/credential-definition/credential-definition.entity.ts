@@ -3,6 +3,7 @@ import {
   Entity,
   PrimaryGeneratedColumn,
   Column,
+  Check,
   CreateDateColumn,
   UpdateDateColumn,
   Index,
@@ -41,6 +42,10 @@ export interface DefinitionRegistration {
 }
 
 @Entity({ name: 'credential_definition' })
+@Check(
+  'chk_credential_definition_options_format',
+  `"options" ->> 'format' = "format"::text`,
+)
 @Index(
   'uq_credential_definition_tenant_name_format',
   ['tenantId', 'name', 'format'],
@@ -124,13 +129,12 @@ export class CredentialDefinition {
   @Column({ name: 'registration_operation_id', type: 'uuid', nullable: true })
   public registrationOperationId?: string | null;
 
-  @ApiPropertyOptional({
+  @ApiProperty({
     description: 'Immutable, normalized format-specific publication options',
     readOnly: true,
-    nullable: true,
   })
-  @Column({ type: 'jsonb', nullable: true })
-  public options?: Record<string, unknown> | null;
+  @Column({ type: 'jsonb' })
+  public options!: Record<string, unknown>;
 
   @Column({ name: 'registration', type: 'jsonb', nullable: true })
   public registration?: DefinitionRegistration | null;
