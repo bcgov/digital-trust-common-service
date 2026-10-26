@@ -70,7 +70,6 @@ export type {
   IssuerSelection,
   RegisteredSchema,
   RegistrationSubmission,
-  RegistrationObservation,
 } from './ports/definition-registration.port';
 
 // Testing helpers

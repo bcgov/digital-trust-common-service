@@ -37,6 +37,7 @@ describe('CredentialDefinitionService', () => {
   let mockCreate: jest.Mock;
   let mockFindById: jest.Mock;
   let mockFindByTenantId: jest.Mock;
+  let mockFindExistingByTenantAndNameAndFormat: jest.Mock;
   let mockFindByTenantAndNameAndFormat: jest.Mock;
   let mockFindByFormat: jest.Mock;
   let mockFindByConnector: jest.Mock;
@@ -52,7 +53,6 @@ describe('CredentialDefinitionService', () => {
     findOne: jest.fn(),
     update: jest.fn(),
   };
-  const findByFingerprint = jest.fn();
   const register = {
     resolveIssuer: jest.fn(),
     resolveSchema: jest.fn(),
@@ -120,16 +120,25 @@ describe('CredentialDefinitionService', () => {
           connectorId: resolved.connector.id,
           connectorType,
           schemaDefinition: schema.definition,
-          registration: { issuerId, schemaId: schema.id },
+          registration: {
+            issuerId,
+            schema: schema.id ? { id: schema.id, state: 'finished' } : {},
+            definition: {},
+          },
         };
       },
     ),
     register: jest.fn(
       async (definition: CredentialDefinition, managerArg: typeof manager) => {
-        await enqueue(managerArg, 'credential-definition.register', {
-          tenantId: definition.tenantId,
-          definitionId: definition.id,
-        });
+        await enqueue(
+          managerArg,
+          'credential-definition.register',
+          {
+            tenantId: definition.tenantId,
+            definitionId: definition.id,
+          },
+          { singletonKey: definition.id },
+        );
       },
     ),
   };
@@ -200,7 +209,8 @@ describe('CredentialDefinitionService', () => {
     mockCreate = jest.fn();
     mockFindById = jest.fn();
     mockFindByTenantId = jest.fn();
-    mockFindByTenantAndNameAndFormat = jest.fn();
+    mockFindExistingByTenantAndNameAndFormat = jest.fn();
+    mockFindByTenantAndNameAndFormat = mockFindExistingByTenantAndNameAndFormat;
     mockFindByFormat = jest.fn();
     mockFindByConnector = jest.fn();
     mockUpdate = jest.fn();
@@ -225,7 +235,7 @@ describe('CredentialDefinitionService', () => {
     computeExpiresAt.mockReturnValue(new Date('2030-01-01T00:00:00.000Z'));
     mockCreate.mockResolvedValue(mockCredentialDefinition);
     mockFindByTenantAndNameAndFormat.mockResolvedValue(null);
-    findByFingerprint.mockResolvedValue(null);
+    mockFindExistingByTenantAndNameAndFormat.mockResolvedValue(null);
     manager.findOne.mockResolvedValue(null);
     enqueue.mockResolvedValue('job-1');
     transitionState.mockResolvedValue({
@@ -237,8 +247,8 @@ describe('CredentialDefinitionService', () => {
       create: mockCreate,
       findById: mockFindById,
       findByTenantId: mockFindByTenantId,
-      findByTenantAndNameAndFormat: mockFindByTenantAndNameAndFormat,
-      findByFingerprint,
+      findExistingByTenantAndNameAndFormat:
+        mockFindExistingByTenantAndNameAndFormat,
       findByFormat: mockFindByFormat,
       findByConnector: mockFindByConnector,
       update: mockUpdate,
@@ -320,38 +330,67 @@ describe('CredentialDefinitionService', () => {
       expect(enqueue).not.toHaveBeenCalled();
     });
 
-    it.each(['pending', 'completed', 'failed'])(
-      'returns the existing %s operation for an equivalent request without enqueue or audit',
-      async (state) => {
-        findByFingerprint.mockResolvedValueOnce({
-          ...mockCredentialDefinition,
-          registrationOperationId: 'original-operation',
-        });
-        manager.findOne.mockResolvedValue({ id: 'original-operation', state });
-        const result = await service.create(
-          mockCredentialDefinition.tenantId,
-          {
-            name: 'Employee',
-            format: CredentialDefinitionFormat.ANONCREDS,
-            schema: { definition: mockCredentialDefinition.schemaDefinition },
-          },
-          auth,
-        );
-        expect(result).toEqual({ id: 'original-operation', state });
-        expect(manager.findOne).toHaveBeenCalledWith(expect.any(Function), {
-          where: { tenantId: auth.tenantId, id: 'original-operation' },
-        });
-        expect(enqueue).not.toHaveBeenCalled();
-        expect(mockCreate).not.toHaveBeenCalled();
-        expect(mockEmit).not.toHaveBeenCalled();
+    const sameDefinition = (
+      overrides: Partial<CredentialDefinition> = {},
+    ): CredentialDefinition => ({
+      ...mockCredentialDefinition,
+      connectorId: 'connector-1',
+      registrationState: 'pending',
+      registrationOperationId: 'existing-operation',
+      options: { tag: 'default', revocation: { enabled: true } },
+      registration: {
+        issuerId: 'did:indy:issuer',
+        schema: {},
+        definition: {},
       },
-    );
+      ...overrides,
+    });
 
-    it('rejects a replay whose operation has expired without republishing', async () => {
-      findByFingerprint.mockResolvedValueOnce({
-        ...mockCredentialDefinition,
-        registrationOperationId: 'expired',
+    it('queues one keyed continuation and returns the pending operation', async () => {
+      mockFindExistingByTenantAndNameAndFormat.mockResolvedValueOnce(
+        sameDefinition(),
+      );
+      manager.findOne.mockResolvedValue({
+        id: 'existing-operation',
+        state: 'processing',
       });
+
+      const result = await service.create(
+        auth.tenantId,
+        {
+          name: 'Employee',
+          format: CredentialDefinitionFormat.ANONCREDS,
+          schema: { definition: mockCredentialDefinition.schemaDefinition },
+        },
+        auth,
+      );
+
+      expect(result).toEqual({
+        id: 'existing-operation',
+        state: 'processing',
+      });
+      expect(enqueue).toHaveBeenCalledWith(
+        manager,
+        'credential-definition.register',
+        { tenantId: auth.tenantId, definitionId: mockCredentialDefinition.id },
+        { singletonKey: mockCredentialDefinition.id },
+      );
+      expect(mockCreate).not.toHaveBeenCalled();
+      expect(mockEmit).not.toHaveBeenCalled();
+    });
+
+    it('returns an existing completed operation without queueing or auditing', async () => {
+      mockFindExistingByTenantAndNameAndFormat.mockResolvedValueOnce(
+        sameDefinition({
+          registrationState: 'ready',
+          registrationOperationId: 'completed-operation',
+        }),
+      );
+      manager.findOne.mockResolvedValue({
+        id: 'completed-operation',
+        state: 'completed',
+      });
+
       await expect(
         service.create(
           auth.tenantId,
@@ -359,29 +398,31 @@ describe('CredentialDefinitionService', () => {
             name: 'Employee',
             format: CredentialDefinitionFormat.ANONCREDS,
             schema: { definition: mockCredentialDefinition.schemaDefinition },
+            metadata: { changed: true },
           },
           auth,
         ),
-      ).rejects.toThrow(ConflictException);
+      ).resolves.toEqual({ id: 'completed-operation', state: 'completed' });
       expect(enqueue).not.toHaveBeenCalled();
+      expect(mockEmit).not.toHaveBeenCalled();
     });
 
-    it('retries a safely failed inactive registration without clearing submission evidence', async () => {
-      const inactive = {
-        ...mockCredentialDefinition,
-        isActive: false,
+    it('creates a new operation and continues a failed registration from saved progress', async () => {
+      const failed = sameDefinition({
         registrationState: 'failed',
-        registrationOperationId: 'inactive-operation',
-        options: { tag: 'default', revocation: { enabled: false } },
+        registrationOperationId: 'failed-operation',
         registration: {
           issuerId: 'did:indy:issuer',
-          schemaSubmitted: true,
-          schemaTransactionId: 'schema-transaction',
-          retryAfter: new Date().toISOString(),
-          retryCount: 2,
+          schema: { transactionId: 'saved-transaction', state: 'wait' },
+          definition: {},
         },
-      };
-      findByFingerprint.mockResolvedValueOnce(inactive);
+      });
+      mockFindExistingByTenantAndNameAndFormat.mockResolvedValueOnce(failed);
+      createOperation.mockResolvedValueOnce({
+        id: 'continued-operation',
+        state: 'pending',
+      });
+
       const result = await service.create(
         auth.tenantId,
         {
@@ -394,61 +435,33 @@ describe('CredentialDefinitionService', () => {
 
       expect(manager.update).toHaveBeenCalledWith(
         CredentialDefinition,
-        { id: inactive.id, tenantId: auth.tenantId, isActive: false },
+        { id: failed.id, tenantId: auth.tenantId },
         expect.objectContaining({
           isActive: true,
           registrationState: 'pending',
-          registration: expect.objectContaining({
-            schemaSubmitted: true,
-            schemaTransactionId: 'schema-transaction',
-            retryCount: 0,
-          }),
+          registrationOperationId: 'continued-operation',
         }),
       );
-      expect(manager.update.mock.calls[0][2].registration).not.toHaveProperty(
-        'retryAfter',
+      expect(failed.registration?.schema.transactionId).toBe(
+        'saved-transaction',
       );
       expect(enqueue).toHaveBeenCalledWith(
         manager,
         'credential-definition.register',
-        { tenantId: auth.tenantId, definitionId: inactive.id },
+        { tenantId: auth.tenantId, definitionId: failed.id },
+        { singletonKey: failed.id },
       );
-      expect(result.id).toBe('operation-1');
+      expect(result.id).toBe('continued-operation');
       expect(mockCreate).not.toHaveBeenCalled();
     });
 
-    it('rejects an inactive registration whose publication outcome is unknown', async () => {
-      findByFingerprint.mockResolvedValueOnce({
-        ...mockCredentialDefinition,
-        isActive: false,
-        registrationState: 'failed',
-        registrationOperationId: 'inactive-operation',
-        options: { tag: 'default', revocation: { enabled: false } },
-        registration: {
-          issuerId: 'did:indy:issuer',
-          schemaSubmitted: true,
-          publicationOutcomeUnknown: true,
-        },
-      });
-      await expect(
-        service.create(
-          auth.tenantId,
-          {
-            name: 'Employee',
-            format: CredentialDefinitionFormat.ANONCREDS,
-            schema: { definition: mockCredentialDefinition.schemaDefinition },
-          },
-          auth,
-        ),
-      ).rejects.toThrow(ConflictException);
-      expect(enqueue).not.toHaveBeenCalled();
-    });
-
-    it('rejects different local requests for the same artifacts', async () => {
-      findByFingerprint.mockResolvedValueOnce(null).mockResolvedValueOnce({
-        ...mockCredentialDefinition,
-        registrationOperationId: 'original-operation',
-      });
+    it('rejects replay of a deactivated ready definition', async () => {
+      mockFindExistingByTenantAndNameAndFormat.mockResolvedValueOnce(
+        sameDefinition({
+          isActive: false,
+          registrationState: 'ready',
+        }),
+      );
       await expect(
         service.create(
           auth.tenantId,
@@ -459,7 +472,9 @@ describe('CredentialDefinitionService', () => {
           },
           auth,
         ),
-      ).rejects.toThrow(ConflictException);
+      ).rejects.toMatchObject({
+        response: { code: 'REGISTRATION_REPLAY_UNAVAILABLE' },
+      });
       expect(enqueue).not.toHaveBeenCalled();
     });
 
@@ -498,7 +513,8 @@ describe('CredentialDefinitionService', () => {
           registrationState: 'pending',
           registration: {
             issuerId: 'did:indy:issuer',
-            schemaId: undefined,
+            schema: {},
+            definition: {},
           },
           options: { tag: 'department', revocation: { enabled: false } },
           metadata: dto.metadata,
@@ -661,7 +677,7 @@ describe('CredentialDefinitionService', () => {
       expect(mockCreate).toHaveBeenCalledWith(
         expect.objectContaining({
           registration: expect.objectContaining({
-            schemaId: 'schema-1',
+            schema: { id: 'schema-1', state: 'finished' },
           }),
           options: { tag: 'default', revocation: { enabled: false } },
           metadata: {
@@ -938,13 +954,13 @@ describe('CredentialDefinitionService', () => {
       );
     });
 
-    it('maps supported formats whose stored values differ from the port enum', () => {
-      expect(toPortCredentialFormat(CredentialDefinitionFormat.SD_JWT)).toBe(
-        CredentialFormat.SdJwtVc,
-      );
-      expect(toPortCredentialFormat(CredentialDefinitionFormat.W3C_VC)).toBe(
-        CredentialFormat.JsonLd,
-      );
+    it('does not map entity formats that have no matching port-layer value', () => {
+      expect(
+        toPortCredentialFormat(CredentialDefinitionFormat.SD_JWT),
+      ).toBeUndefined();
+      expect(
+        toPortCredentialFormat(CredentialDefinitionFormat.W3C_VC),
+      ).toBeUndefined();
     });
   });
 

@@ -5,21 +5,15 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 const PROBLEM_DOCUMENT =
   'https://github.com/bcgov/digital-trust-common-service/blob/main/docs/DEVELOPER.md';
 
-const REGISTRATION_PROBLEMS = {
-  failed: {
-    type: `${PROBLEM_DOCUMENT}#credential-registration-failed`,
-    title: 'Credential registration failed',
-  },
-  reconciliation: {
-    type: `${PROBLEM_DOCUMENT}#credential-registration-reconciliation-required`,
-    title: 'Credential registration requires reconciliation',
-  },
+const REGISTRATION_PROBLEM = {
+  type: `${PROBLEM_DOCUMENT}#credential-registration-failed`,
+  title: 'Credential registration failed',
 };
 
 export class RegistrationProblemDetailsDto {
   @ApiProperty({
     format: 'uri',
-    example: REGISTRATION_PROBLEMS.failed.type,
+    example: REGISTRATION_PROBLEM.type,
     description:
       'RFC 9457 problem-type URI; clients identify the problem by this value, not the title or detail',
   })
@@ -46,7 +40,7 @@ export class RegistrationProblemDetailsDto {
 
   @ApiProperty({
     description:
-      'Whether automatic reconciliation will retry; never permission to repeat a publication POST',
+      'Whether the system is scheduling an automatic retry; terminal failures are not retried',
   })
   public retryable!: boolean;
 
@@ -65,7 +59,7 @@ export class RegistrationProblemDetailsDto {
     >,
   ): RegistrationProblemDetailsDto {
     return {
-      ...REGISTRATION_PROBLEMS[input.retryable ? 'reconciliation' : 'failed'],
+      ...REGISTRATION_PROBLEM,
       ...input,
       instance: `urn:uuid:${randomUUID()}`,
     };
@@ -94,7 +88,7 @@ export class RegistrationProblemDetailsDto {
     // occurrence identifier or changing the recorded backend information.
     const identity =
       value.type === 'about:blank'
-        ? REGISTRATION_PROBLEMS[value.retryable ? 'reconciliation' : 'failed']
+        ? REGISTRATION_PROBLEM
         : { type: value.type, title: value.title };
     return {
       ...identity,

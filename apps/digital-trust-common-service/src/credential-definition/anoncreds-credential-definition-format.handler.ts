@@ -113,7 +113,8 @@ export class AnonCredsCredentialDefinitionFormatHandler implements CredentialDef
       schemaDefinition: schema.definition,
       registration: {
         issuerId,
-        schemaId: schema.id,
+        schema: schema.id ? { id: schema.id, state: 'finished' } : {},
+        definition: {},
       },
     };
   }
@@ -122,10 +123,15 @@ export class AnonCredsCredentialDefinitionFormatHandler implements CredentialDef
     definition: CredentialDefinition,
     manager: EntityManager,
   ): Promise<void> {
-    await this.jobs.sendInTransaction(manager, JOB_QUEUES.DEFINITION_REGISTER, {
-      tenantId: definition.tenantId,
-      definitionId: definition.id,
-    });
+    await this.jobs.sendInTransaction(
+      manager,
+      JOB_QUEUES.DEFINITION_REGISTER,
+      {
+        tenantId: definition.tenantId,
+        definitionId: definition.id,
+      },
+      { singletonKey: definition.id },
+    );
   }
 
   private validateSchemaSource(dto: CreateCredentialDefinitionDto): void {

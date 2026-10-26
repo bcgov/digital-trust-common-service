@@ -33,8 +33,8 @@ describe('registration RFC 9457 problem details', () => {
     },
   );
 
-  it('uses distinct types for terminal failure and reconciliation', () => {
-    expect(RegistrationProblemDetailsDto.create(input).type).not.toBe(
+  it('uses the same stable problem type regardless of retry scheduling', () => {
+    expect(RegistrationProblemDetailsDto.create(input).type).toBe(
       RegistrationProblemDetailsDto.create({ ...input, retryable: true }).type,
     );
   });

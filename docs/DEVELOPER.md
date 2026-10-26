@@ -1237,14 +1237,14 @@ source is required. The top-level `format` selects the schema format. Select an 
 issuer with either `issuer.id` or `issuer.method`, never both, or omit `issuer`
 to use the connector's default. Traction selections must match its configured
 public DID; the abstraction layer never creates, promotes, or endorses DIDs.
-The wallet must already use `askar-anoncreds` and its public DID's ledger key
+The wallet must already use `askar-anoncreds` and its public DID's registry key
 must match its wallet key.
 
 For ACA-Py 1.6.0 legacy-Indy registrar compatibility, the Traction adapter maps
 an unnamespaced `did:indy:<21-or-22-character-base58-identifier>` to the bare
-ledger identifier for schema/definition publication, issuer lookup filters,
+backend registry identifier for schema/definition publication, issuer lookup filters,
 and definition ownership comparison. The canonical wallet DID remains unchanged
-in issuer selection, ledger-key verification, and local registration state.
+in issuer selection, registry-key verification, and local registration state.
 Namespaced or malformed `did:indy` identifiers are rejected rather than stripped.
 This workaround is marked `BUG`/`TODO` for removal when the deployed registrar
 supports the wallet representation; it does not establish end-to-end publication
@@ -1262,56 +1262,45 @@ registration request or application database.
 The response is a `202` Operation with `result.credential_definition_id`.
 Poll the existing operation endpoint; the definition's GET response includes
 `registration_state`, `registration_operation_id`, resolved `issuer`/`schema`,
-and its pinned `connector_id`. Publication is processed by the
-`credential-definition.register` worker, with a minute-by-minute reconciliation
-schedule enabled by the existing `PG_BOSS_WORKERS_ENABLED` switch.
+and its pinned `connector_id`. The `credential-definition.register` queue
+processes AnonCreds definitions only; it has no recurring reconciliation job.
 
-Registration idempotency is content-derived; callers do not supply an
-`Idempotency-Key` header for this endpoint. The server resolves the connector,
-issuer, and any imported schema, normalizes metadata publication settings, and generates two
-versioned RFC 8785 (JCS) fingerprints. Each is a SHA-256 multihash (code `0x12`,
-length `0x20`) encoded as unpadded base64url multibase (`u`, 47 characters).
-Both include tenant, connector identity (the pinned wallet/backend context),
-format, canonical issuer, schema reference/content, and normalized publication
-settings. Annotation changes do not change artifact identity.
-Only schema `attr_names` is sorted as an unordered collection, without mutating
-the publication request; other arrays, including metadata arrays, keep order.
-The request fingerprint additionally includes the local name and normalized
-metadata (omitted and null metadata use the default settings). Display names
-and annotations are excluded from the artifact fingerprint. Fingerprints are
-identifiers, not encryption; never put secrets in metadata.
+Create is idempotent by `(tenantId, name, format)`. A matching request must
+resolve to the same connector, issuer, schema, and normalized immutable options;
+otherwise it returns `409`. Metadata is free-form annotation data and does not
+affect publication identity. A ready definition returns its completed
+operation. A pending definition returns its current operation and enqueues a
+singleton-keyed continuation. A failed definition gets a new operation and
+continues from its saved progress. A deactivated ready definition returns
+`409 REGISTRATION_REPLAY_UNAVAILABLE`.
 
-Equivalent normalized requests return the original operation with `202`,
-including completed or failed operations, without another enqueue or CREATE
-audit event. Different names/metadata targeting the same artifact fingerprint
-return `409 REGISTRATION_ARTIFACT_EXISTS` with the existing definition and
-operation IDs; use PATCH for local edits. Missing/expired operations or inactive
-definitions return `409 REGISTRATION_REPLAY_UNAVAILABLE` rather than republish.
-The keys remain unchanged after local edits, registration completion, or
-deactivation. Transaction-scoped advisory locking and tenant-scoped unique
-indexes make concurrent submissions converge on one durable operation.
+The worker looks up deterministic schema and definition IDs before publishing.
+It stores the backend job/transaction correlation as soon as a publication
+response arrives, then checks the deterministic lookup on later runs instead
+of repeating a pending publication. Endorsement (`wait`/`action`) and
+revocation-registry readiness are pending states: the worker schedules one
+follow-up after 15 seconds, up to 20 checks (about five minutes). When that
+window ends the operation remains `PROCESSING`; repeating POST queues another
+check. Backend rejection or another error settles the operation as `FAILED`;
+there is no automatic failure retry. Repeating POST creates a new operation
+and resumes from the definition's saved progress.
 
-The fingerprints cover requests created after migration 000034. Existing rows
-retain null keys because their original normalized request cannot reliably be
-reconstructed after edits; existing name conflicts and worker reconciliation
-still apply. An imported schema ID and an inline schema are distinct intents,
-even when their content matches: an imported schema may belong to another
-issuer. Wallet artifact lookup remains authoritative before publication.
-Changing a connector's wallet or backend registry in place is not represented
-by a new key; provision a new connector for a different backend identity.
-Resolving prerequisites still requires an available connector on API replays.
-This is local API deduplication, not a backend idempotency guarantee. Failed
-registrations can be deactivated and recreated when the stored submission
-evidence makes retry safe. Do not clear submission markers just to retry.
-
-Registration persists submission intent before backend writes. Restarts and
-ambiguous responses reconcile wallet-owned artifacts instead of resubmitting
-non-idempotent POSTs. Backend job identifiers and successful schema publication
-survive subsequent failures. A registration that does not resolve within 24
-hours fails explicitly. Published artifacts are not deleted on local failure.
+Two edge cases still need backend-aware handling. If publication succeeds but
+times out before the job/transaction ID is saved, a repeated POST may submit
+again and the backend may reject the duplicate; repeat POST after confirming
+the artifact state so deterministic lookup can adopt a completed artifact.
+Two different definitions can also look up the same schema concurrently and
+both attempt publication; the backend may reject one duplicate. Repeat POST
+for the rejected definition after the schema is visible so it can continue
+using that schema. Published artifacts are not deleted on local failure.
 Revocable definitions remain pending until the backend's active registry is
-finished, an initial ledger accumulator exists, capacity remains, and its
-public tails file is reachable. ACA-Py owns registry initialization and rollover.
+finished, an initial accumulator exists, capacity remains, and its public
+tails file is reachable. ACA-Py owns registry initialization and rollover.
+
+Webhook-driven progress is a follow-up, not implemented here. A later change
+can use `endorse_transaction` and `revocation_registry` topics matched against
+the saved transaction ID; note that ACA-Py's wire topic `revocation_registry`
+differs from our internal `ProtocolTopic` of the same name.
 
 Registration Operation responses include `problem_details: null` when no
 diagnostic is recorded. When a worker step encounters an error, this becomes
@@ -1336,26 +1325,18 @@ that identifier. A later error occurrence has a new instance.
 The global synchronous HTTP `{ error: { code, message, ... } }` envelope and
 other operation types are unchanged. Historical failures without retained
 backend errors expose null rather than fabricated details.
-Earlier stored `about:blank` diagnostics are normalized to the appropriate
-documented registration type/title on reads, without fabricating an instance.
+Earlier stored `about:blank` diagnostics are normalized to the documented
+registration type/title on reads, without fabricating an instance.
 
 The `result` retains `credential_definition_id` on failure, along with
 `external_id`, `code`, `message`, and `registration` progress. Progress exposes
 the current artifact and its generic `job_id`, `transaction_id`,
 `transaction_state`, `state`, and `pending_id`. Resolved `schema_id` and
 `definition_id` remain separate from provisional pending IDs. Per-artifact
-correlations remain persisted internally for automatic reconciliation.
+correlations remain persisted internally so a repeated POST can continue.
 `wait`/`action` responses are accepted pending progress, never proof of
 publication or issuance-readiness. A schema must resolve before definition
 creation; definition lookup and revocation checks still gate readiness.
-
-The worker automatically retries transient failures up to three attempts with
-exponential backoff, beginning at 30 seconds. Permanent backend rejections fail
-immediately. An uncertain non-idempotent publication outcome is terminal: the
-worker preserves its submission marker and never repeats the write. If a
-registration is terminally failed, deactivate it and recreate the same request
-to retry only when its persisted evidence confirms that retry is safe. An
-uncertain outcome cannot be retried this way.
 
 ### Credential registration failed
 
@@ -1368,23 +1349,8 @@ registration. The recommended status for a standalone HTTP representation of
 this domain problem is 422; this API currently embeds it in an Operation and
 does not use that status for polling. The upstream status, if known, is
 `backend_status`. `retryable` is false. Correct the reported prerequisite or
-backend rejection and reconcile any already-submitted artifacts before
-considering another write. Do not discard the existing idempotency record.
-
-### Credential registration reconciliation required
-
-Problem type:
-`https://github.com/bcgov/digital-trust-common-service/blob/main/docs/DEVELOPER.md#credential-registration-reconciliation-required`
-
-Stable title: `Credential registration requires reconciliation`. The backend
-was temporarily unavailable, returned an invalid response, or left a submission
-outcome that is still safe to reconcile. The recommended standalone HTTP status
-is 503; the embedded diagnostic omits `status` and does not change polling's
-HTTP 200.
-`retryable` is true while the worker performs its bounded automatic retries; it
-does not permit repeating a publication blindly. An uncertain write outcome is
-terminal and requires backend remediation. The worker reconciles wallet
-artifacts and legacy-Indy endorsement transactions.
+backend rejection, then repeat POST to start a new operation from saved
+progress. Do not clear the progress or publication correlations.
 
 Existing database records migrate to `unverified`: an external identifier alone
 does not prove wallet ownership. They remain readable, but must be replaced with

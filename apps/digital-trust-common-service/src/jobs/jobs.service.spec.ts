@@ -99,6 +99,19 @@ describe('JobsService', () => {
     expect(emit).toHaveBeenCalledWith('jobs.queues.ready');
   });
 
+  it('creates the registration queue with stately singletons and no automatic retries', async () => {
+    await service.ensureQueues();
+
+    expect(createQueue).toHaveBeenCalledWith(
+      'credential-definition.register',
+      expect.objectContaining({
+        retryLimit: 0,
+        retryBackoff: false,
+        policy: 'stately',
+      }),
+    );
+  });
+
   it('should publish a job', async () => {
     const jobId = 'job-123';
     const payload = { foo: 'bar' };
@@ -190,6 +203,32 @@ describe('JobsService', () => {
       'audit.write',
       { a: 1 },
       expect.objectContaining({
+        db: expect.objectContaining({
+          executeSql: expect.any(Function),
+        }),
+      }),
+    );
+  });
+
+  it('passes delayed and singleton options with transactional jobs', async () => {
+    send.mockResolvedValue('job-tx');
+    const manager = {
+      query: jest.fn(),
+    } as unknown as import('typeorm').EntityManager;
+
+    await service.sendInTransaction(
+      manager,
+      'credential-definition.register',
+      { tenantId: 'tenant-1', definitionId: 'definition-1' },
+      { startAfter: 15, singletonKey: 'definition-1' },
+    );
+
+    expect(send).toHaveBeenCalledWith(
+      'credential-definition.register',
+      { tenantId: 'tenant-1', definitionId: 'definition-1' },
+      expect.objectContaining({
+        startAfter: 15,
+        singletonKey: 'definition-1',
         db: expect.objectContaining({
           executeSql: expect.any(Function),
         }),

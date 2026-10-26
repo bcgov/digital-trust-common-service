@@ -26,25 +26,18 @@ export enum CredentialDefinitionConnectorType {
 
 export type RegistrationState = 'unverified' | 'pending' | 'ready' | 'failed';
 
+export interface ArtifactProgress {
+  id?: string;
+  jobId?: string;
+  transactionId?: string;
+  state?: 'finished' | 'wait' | 'action' | 'failed';
+}
+
 export interface DefinitionRegistration {
   issuerId: string;
-  schemaId?: string;
-  schemaJobId?: string;
-  schemaPendingId?: string;
-  schemaTransactionId?: string;
-  schemaTransactionState?: string;
-  schemaState?: 'finished' | 'wait' | 'action' | 'failed';
-  definitionJobId?: string;
-  definitionPendingId?: string;
-  definitionTransactionId?: string;
-  definitionTransactionState?: string;
-  definitionState?: 'finished' | 'wait' | 'action' | 'failed';
+  schema: ArtifactProgress;
+  definition: ArtifactProgress;
   stage?: string;
-  retryCount?: number;
-  retryAfter?: string;
-  publicationOutcomeUnknown?: boolean;
-  schemaSubmitted?: boolean;
-  definitionSubmitted?: boolean;
 }
 
 @Entity({ name: 'credential_definition' })
@@ -59,16 +52,6 @@ export interface DefinitionRegistration {
   'connectorType',
 ])
 @Index('idx_credential_definition_external_id', ['externalId'])
-@Index(
-  'uq_credential_definition_request_fingerprint',
-  ['tenantId', 'requestFingerprint'],
-  { unique: true, where: '"is_active" = true' },
-)
-@Index(
-  'uq_credential_definition_artifact_fingerprint',
-  ['tenantId', 'artifactFingerprint'],
-  { unique: true, where: '"is_active" = true' },
-)
 export class CredentialDefinition {
   @ApiProperty({
     description: 'The unique identifier of the credential definition',
@@ -148,22 +131,6 @@ export class CredentialDefinition {
   })
   @Column({ type: 'jsonb', nullable: true })
   public options?: Record<string, unknown> | null;
-
-  @Column({
-    name: 'request_fingerprint',
-    type: 'varchar',
-    length: 47,
-    nullable: true,
-  })
-  public requestFingerprint?: string | null;
-
-  @Column({
-    name: 'artifact_fingerprint',
-    type: 'varchar',
-    length: 47,
-    nullable: true,
-  })
-  public artifactFingerprint?: string | null;
 
   @Column({ name: 'registration', type: 'jsonb', nullable: true })
   public registration?: DefinitionRegistration | null;

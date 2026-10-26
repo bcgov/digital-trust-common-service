@@ -67,7 +67,7 @@ export class OperationResponseDto {
 
   @ApiProperty({
     description:
-      'State-dependent result. Usually null while pending or processing; registration retains credential_definition_id, external_id, and progress/correlation IDs, including on failure. Type-specific data when completed; { code, message } when failed.',
+      'State-dependent result. Usually null while pending or processing; registration retains credential_definition_id, external_id, and current progress, including on failure. Type-specific data when completed; { code, message } when failed.',
     type: 'object',
     additionalProperties: true,
     example: null,

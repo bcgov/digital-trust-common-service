@@ -520,16 +520,13 @@ export interface paths {
          *     public issuer DID for AnonCreds registration. This endpoint does not
          *     create DIDs. Connector selection is pinned for registration and
          *     issuance.
-         *     Idempotency is generated server-side from normalized content, using
-         *     versioned JCS SHA-256 multihash fingerprints encoded as base64url
-         *     multibase. Equivalent requests return the original operation without
-         *     resubmission, including failed operations. Local name and metadata are
-         *     included in request identity but excluded from artifact identity.
-         *     Differently named requests for identical artifact intent conflict.
-         *     Schema attributes are order-insensitive; other arrays preserve order.
-         *     Imported schema IDs and inline schema content are distinct intents.
-         *     Connector/issuer/schema resolution still runs on replays. Existing
-         *     records predating fingerprint migration retain their name conflicts.
+         *     Idempotency is scoped to tenant, name, and format. The server compares
+         *     connector, issuer, schema, and normalized options on a replay; free-form
+         *     metadata is not part of publication identity. A ready registration
+         *     returns its completed operation, a pending registration queues one
+         *     singleton continuation, and a failed registration starts a new operation
+         *     from saved progress. A deactivated ready definition returns
+         *     REGISTRATION_REPLAY_UNAVAILABLE.
          */
         post: operations["createCredentialDefinition"];
         delete?: never;
@@ -2312,7 +2309,7 @@ export interface components {
              * @description Stable RFC 9457 problem-type identifier with documented semantics and resolution guidance.
              * @enum {string}
              */
-            type: "https://github.com/bcgov/digital-trust-common-service/blob/main/docs/DEVELOPER.md#credential-registration-failed" | "https://github.com/bcgov/digital-trust-common-service/blob/main/docs/DEVELOPER.md#credential-registration-reconciliation-required";
+            type: "https://github.com/bcgov/digital-trust-common-service/blob/main/docs/DEVELOPER.md#credential-registration-failed";
             /** @example Credential registration failed */
             title: string;
             /** @description Bounded sanitized backend reason or safe local diagnostic; never raw headers, request configuration, or response objects. */
@@ -2328,7 +2325,7 @@ export interface components {
              * @example schema_publication
              */
             stage: string;
-            /** @description Automatic reconciliation will retry. This does not authorize repeating a publication POST. */
+            /** @description Whether the system is scheduling an automatic retry; terminal failures are not retried. */
             retryable: boolean;
             /**
              * @description Upstream HTTP status when available.
@@ -3583,8 +3580,9 @@ export interface operations {
             /**
              * @description Registration accepted. result.credential_definition_id identifies the
              *     local definition; poll the operation until terminal. Equivalent
-             *     normalized requests return the existing operation, which may already
-             *     be completed or failed; publication is not retried.
+             *     matching ready requests return the completed operation; pending
+             *     requests enqueue a keyed continuation. Failed requests create a new
+             *     operation and resume from saved progress.
              */
             202: {
                 headers: {

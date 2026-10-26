@@ -5,7 +5,6 @@ import {
   IssuerSelection,
   RegisteredSchema,
   RegistrationSubmission,
-  RegistrationObservation,
   ValidationError,
 } from '@app/credential-ports';
 import { Injectable } from '@nestjs/common';
@@ -45,155 +44,6 @@ export class TractionDefinitionRegistration implements DefinitionRegistrationPor
     private readonly http: TractionHttpClient,
     private readonly tokens: TractionTokenManager,
   ) {}
-
-  public async inspectRegistration(
-    context: ConnectorContext,
-    intent: Parameters<DefinitionRegistrationPort['inspectRegistration']>[1],
-  ): Promise<RegistrationObservation | null> {
-    const issuer = this.toRegistrationIssuerId(intent.issuerId);
-    let expectedId: string;
-    let schemaReference: string | undefined;
-    if (intent.artifact === 'schema') {
-      expectedId = `${issuer}:2:${String(intent.schema.schema_name)}:${String(intent.schema.schema_version)}`;
-    } else {
-      if (!intent.schemaId) {
-        throw new ValidationError([
-          'Schema must be published before definition reconciliation',
-        ]);
-      }
-      const schema = await this.call<unknown>(
-        context,
-        `/anoncreds/schema/${encodeURIComponent(intent.schemaId)}`,
-      );
-      const metadata = this.record(this.record(schema)?.schema_metadata);
-      const seqNo = metadata?.seqNo;
-      if (
-        !Number.isSafeInteger(seqNo) ||
-        typeof seqNo !== 'number' ||
-        seqNo <= 0
-      ) {
-        throw new ValidationError([
-          'Backend did not provide a valid ledger schema reference',
-        ]);
-      }
-      schemaReference = String(seqNo);
-      expectedId = `${issuer}:3:CL:${schemaReference}:${intent.options.tag}`;
-    }
-    const response = await this.call<unknown>(
-      context,
-      intent.transactionId
-        ? `/transactions/${encodeURIComponent(intent.transactionId)}`
-        : '/transactions',
-    );
-    const records = intent.transactionId
-      ? [response]
-      : this.record(response)?.results;
-    if (!Array.isArray(records)) {
-      throw new RegistrationBackendError(
-        undefined,
-        'INVALID_REGISTRATION_RESPONSE',
-        'Backend returned an invalid transaction listing; reconciliation cannot establish submission state',
-        true,
-      );
-    }
-    const matches: RegistrationObservation[] = [];
-    for (const value of records) {
-      const transaction = this.record(value);
-      const metadata = this.record(
-        this.record(transaction?.meta_data)?.context,
-      );
-      const artifactId =
-        metadata?.[intent.artifact === 'schema' ? 'schema_id' : 'cred_def_id'];
-      if (
-        artifactId !== expectedId ||
-        (intent.jobId && metadata?.job_id !== intent.jobId)
-      ) {
-        if (intent.transactionId) {
-          throw new ValidationError([
-            'Recovery transaction does not match this issuer, artifact, or backend job',
-          ]);
-        }
-        continue;
-      }
-      if (
-        typeof transaction?.transaction_id !== 'string' ||
-        typeof transaction.state !== 'string' ||
-        (intent.transactionId &&
-          transaction.transaction_id !== intent.transactionId)
-      ) {
-        throw new ValidationError([
-          'Recovery transaction has invalid correlation fields',
-        ]);
-      }
-      const attachments = transaction.messages_attach;
-      if (!Array.isArray(attachments) || attachments.length !== 1) {
-        throw new ValidationError([
-          'Recovery transaction must have one verifiable ledger operation',
-        ]);
-      }
-      const attached: unknown = this.record(
-        this.record(attachments[0])?.data,
-      )?.json;
-      let signed = this.record(attached);
-      if (typeof attached === 'string') {
-        try {
-          const parsed: unknown = JSON.parse(attached);
-          signed = this.record(parsed);
-        } catch {
-          throw new ValidationError([
-            'Recovery transaction has an invalid ledger operation',
-          ]);
-        }
-      }
-      const operation = this.record(signed?.operation);
-      const data = this.record(operation?.data);
-      const attributes = data?.attr_names;
-      const expectedAttributes = intent.schema.attr_names;
-      const matchesSchema =
-        intent.artifact === 'schema' &&
-        String(operation?.type) === '101' &&
-        data?.name === intent.schema.schema_name &&
-        data?.version === intent.schema.schema_version &&
-        Array.isArray(attributes) &&
-        Array.isArray(expectedAttributes) &&
-        new Set(attributes).size === attributes.length &&
-        attributes.every(
-          (attribute: unknown) => typeof attribute === 'string',
-        ) &&
-        attributes.length === expectedAttributes.length &&
-        attributes.every((attribute: unknown) =>
-          expectedAttributes.includes(attribute),
-        );
-      const matchesDefinition =
-        intent.artifact === 'credential_definition' &&
-        String(operation?.type) === '102' &&
-        String(operation?.ref) === schemaReference &&
-        operation?.signature_type === 'CL' &&
-        operation?.tag === intent.options.tag &&
-        Boolean(data?.revocation) === intent.options.revocation.enabled;
-      if (
-        signed?.identifier !== issuer ||
-        (!matchesSchema && !matchesDefinition)
-      ) {
-        throw new ValidationError([
-          'Recovery transaction content differs from the registration intent',
-        ]);
-      }
-      matches.push({
-        id: expectedId,
-        transactionId: transaction.transaction_id,
-        jobId:
-          typeof metadata?.job_id === 'string' ? metadata.job_id : undefined,
-        state: transaction.state,
-      });
-    }
-    if (matches.length > 1) {
-      throw new ValidationError([
-        'Multiple matching endorsement transactions require manual reconciliation',
-      ]);
-    }
-    return matches[0] ?? null;
-  }
 
   public async resolveIssuer(
     context: ConnectorContext,
@@ -460,7 +310,8 @@ export class TractionDefinitionRegistration implements DefinitionRegistrationPor
   ): RegistrationSubmission {
     const result = this.record(response);
     const artifactState = this.record(result?.[`${artifact}_state`]);
-    const state = artifactState?.state;
+    const rawState = artifactState?.state;
+    const state = this.registrationState(rawState);
     const identifier = (value: unknown): string | undefined =>
       typeof value === 'string' &&
       value.length > 0 &&
@@ -475,43 +326,67 @@ export class TractionDefinitionRegistration implements DefinitionRegistrationPor
     const jobId = identifier(result?.job_id);
     const txn = this.record(this.record(result?.registration_metadata)?.txn);
     const transactionId = identifier(txn?.transaction_id);
-    if (state !== 'finished' && state !== 'action' && state !== 'wait') {
+    if (!state) {
+      throw new RegistrationBackendError(
+        undefined,
+        'INVALID_REGISTRATION_RESPONSE',
+        'Backend returned an unrecognized artifact registration state',
+        true,
+      );
+    }
+    if (state === 'failed') {
       const reason = registrationErrorText(
         artifactState?.reason,
         Object.values(context.credentials).filter(
           (value): value is string => typeof value === 'string',
         ),
       );
-      throw new RegistrationBackendError(
-        undefined,
-        state === 'failed'
-          ? 'REGISTRATION_REJECTED'
-          : 'INVALID_REGISTRATION_RESPONSE',
-        state === 'failed'
-          ? (reason ?? 'Backend reported artifact registration failure')
-          : 'Backend returned an invalid artifact registration state; reconcile before resubmitting',
-        state !== 'failed',
-        {
-          artifact,
-          id,
-          jobId,
-          transactionId,
-          ...(state === 'failed' ? { state: 'failed' } : {}),
-        },
-      );
+      return {
+        state,
+        id,
+        jobId,
+        transactionId,
+        backendCode: 'REGISTRATION_REJECTED',
+        detail: reason ?? 'Backend reported artifact registration failure',
+      };
     }
-    if (
-      (state === 'finished' && !id) ||
-      (state !== 'finished' && !id && !jobId && !transactionId)
-    ) {
+    if ((state === 'finished' && !id) || (!id && !jobId && !transactionId)) {
       throw new RegistrationBackendError(
         undefined,
         'INVALID_REGISTRATION_RESPONSE',
-        'Backend registration response has no usable correlation identifier; reconcile before resubmitting',
+        'Backend registration response has no usable correlation identifier',
         true,
       );
     }
     return { state, id, jobId, transactionId };
+  }
+
+  private registrationState(
+    state: unknown,
+  ): RegistrationSubmission['state'] | undefined {
+    if (state === 'finished' || state === 'action' || state === 'wait') {
+      return state;
+    }
+    if (
+      state === 'failed' ||
+      state === 'transaction_refused' ||
+      state === 'transaction_cancelled'
+    ) {
+      return 'failed';
+    }
+    if (state === 'transaction_created' || state === 'request_received') {
+      return 'action';
+    }
+    if (
+      state === 'request_sent' ||
+      state === 'transaction_acked' ||
+      state === 'transaction_endorsed' ||
+      state === 'transaction_resent' ||
+      state === 'transaction_resent_received'
+    ) {
+      return 'wait';
+    }
+    return undefined;
   }
 
   private record(value: unknown): Record<string, unknown> | undefined {

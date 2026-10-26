@@ -149,7 +149,10 @@ export class CredentialDefinitionResponseDto {
     dto.schema = credentialDefinition.registration
       ? {
           type: 'anoncreds',
-          id: credentialDefinition.registration.schemaId ?? null,
+          id:
+            credentialDefinition.registration.schema?.state === 'finished'
+              ? (credentialDefinition.registration.schema.id ?? null)
+              : null,
         }
       : null;
     dto.connectorType = credentialDefinition.connectorType;
