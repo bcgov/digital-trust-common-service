@@ -1,7 +1,7 @@
 # Build context is apps/ui (the UI is a self-contained npm project with its
 # own lockfile; src/lib/api/types.gen.ts is committed, so no access to the
 # repo-root OpenAPI spec is needed here).
-FROM node:24-alpine AS build
+FROM node:24.22.1-alpine AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
