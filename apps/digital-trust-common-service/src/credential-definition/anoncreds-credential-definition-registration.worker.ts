@@ -19,8 +19,14 @@ import { RegistrationProblemDetailsDto } from '../operation/dto/registration-pro
 import { Operation, OperationState } from '../operation/operation.entity';
 import { OperationService } from '../operation/operation.service';
 
-import { CredentialDefinition } from './credential-definition.entity';
+import {
+  CredentialDefinition,
+  CredentialDefinitionFormat,
+} from './credential-definition.entity';
 import type { DefinitionRegistration } from './credential-definition.entity';
+
+const MAX_REGISTRATION_ATTEMPTS = 3;
+const INITIAL_RETRY_DELAY_MS = 30_000;
 
 interface RegistrationAttempt {
   tenantId: string;
@@ -48,9 +54,9 @@ interface RegistrationFailure {
 }
 
 @Injectable()
-export class CredentialDefinitionRegistrationWorker implements OnModuleInit {
+export class AnonCredsCredentialDefinitionRegistrationWorker implements OnModuleInit {
   private readonly logger = new Logger(
-    CredentialDefinitionRegistrationWorker.name,
+    AnonCredsCredentialDefinitionRegistrationWorker.name,
   );
 
   public constructor(
@@ -88,7 +94,10 @@ export class CredentialDefinitionRegistrationWorker implements OnModuleInit {
     const pending = await this.dataSource
       .getRepository(CredentialDefinition)
       .find({
-        where: { registrationState: 'pending' },
+        where: {
+          format: CredentialDefinitionFormat.ANONCREDS,
+          registrationState: 'pending',
+        },
         order: { updatedAt: 'ASC' },
         take: 50,
       });
@@ -103,6 +112,15 @@ export class CredentialDefinitionRegistrationWorker implements OnModuleInit {
     }
   }
 
+  private retryIsScheduled(
+    progress: DefinitionRegistration | null | undefined,
+  ): boolean {
+    if (!progress?.retryAfter) {
+      return false;
+    }
+    return new Date(progress.retryAfter).getTime() > Date.now();
+  }
+
   public async process(tenantId: string, id: string): Promise<void> {
     const runner = this.dataSource.createQueryRunner();
     await runner.connect();
@@ -110,9 +128,18 @@ export class CredentialDefinitionRegistrationWorker implements OnModuleInit {
     let locked = false;
     try {
       const binding = await runner.manager.findOne(CredentialDefinition, {
-        where: { id, tenantId, registrationState: 'pending' },
+        where: {
+          id,
+          tenantId,
+          format: CredentialDefinitionFormat.ANONCREDS,
+          registrationState: 'pending',
+        },
       });
-      if (!binding?.connectorId) {
+      if (
+        !binding?.connectorId ||
+        binding.format !== CredentialDefinitionFormat.ANONCREDS ||
+        this.retryIsScheduled(binding.registration)
+      ) {
         return;
       }
       // Serialize this wallet's publications, including differently named
@@ -128,11 +155,22 @@ export class CredentialDefinitionRegistrationWorker implements OnModuleInit {
         return;
       }
       const definition = await runner.manager.findOne(CredentialDefinition, {
-        where: { id, tenantId, registrationState: 'pending' },
+        where: {
+          id,
+          tenantId,
+          format: CredentialDefinitionFormat.ANONCREDS,
+          registrationState: 'pending',
+        },
       });
       const progress = definition?.registration;
       const operationId = definition?.registrationOperationId;
-      if (!definition || !progress || !operationId) {
+      if (
+        !definition ||
+        definition.format !== CredentialDefinitionFormat.ANONCREDS ||
+        !progress ||
+        !operationId ||
+        this.retryIsScheduled(progress)
+      ) {
         return;
       }
       await this.processRegistration({
@@ -201,9 +239,7 @@ export class CredentialDefinitionRegistrationWorker implements OnModuleInit {
     if (!definition.isActive) {
       throw new ValidationError(['Definition was deactivated']);
     }
-    const startedAt = progress.recovery
-      ? new Date(progress.recovery.requestedAt)
-      : definition.createdAt;
+    const startedAt = definition.createdAt;
     if (Date.now() - startedAt.getTime() > 24 * 60 * 60 * 1000) {
       throw new ValidationError([
         'Registration timed out; reconcile backend artifacts before resubmitting',
@@ -314,26 +350,59 @@ export class CredentialDefinitionRegistrationWorker implements OnModuleInit {
       }
     }
     const failure = this.classifyFailure(error, progress.stage ?? 'preflight');
+    progress.retryCount = (progress.retryCount ?? 0) + 1;
+    const publicationOutcomeUnknown =
+      error instanceof RegistrationBackendError &&
+      error.backendCode === 'REGISTRATION_OUTCOME_UNKNOWN';
+    const retryExhausted = progress.retryCount >= MAX_REGISTRATION_ATTEMPTS;
+    const permanent =
+      failure.permanent || publicationOutcomeUnknown || retryExhausted;
+    if (publicationOutcomeUnknown) {
+      progress.publicationOutcomeUnknown = true;
+    }
+    if (publicationOutcomeUnknown) {
+      failure.problem.detail =
+        'Publication outcome is uncertain; the write will not be repeated';
+    } else if (retryExhausted && !failure.permanent) {
+      failure.problem.detail = `Registration did not complete after ${MAX_REGISTRATION_ATTEMPTS} attempts`;
+    }
+    if (failure.problem.retryable !== !permanent) {
+      const problem = RegistrationProblemDetailsDto.create({
+        detail: failure.problem.detail,
+        stage: failure.problem.stage,
+        retryable: !permanent,
+        ...(failure.problem.backend_status === undefined
+          ? {}
+          : { backend_status: failure.problem.backend_status }),
+        ...(failure.problem.backend_code === undefined
+          ? {}
+          : { backend_code: failure.problem.backend_code }),
+      });
+      problem.instance = failure.problem.instance;
+      failure.problem = problem;
+    }
+    if (permanent) {
+      delete progress.retryAfter;
+    } else {
+      progress.retryAfter = new Date(
+        Date.now() + INITIAL_RETRY_DELAY_MS * 2 ** (progress.retryCount - 1),
+      ).toISOString();
+    }
     this.logger.warn({
       message: `Registration ${id} could not advance`,
       stage: failure.problem.stage,
       backend_status: failure.status,
       retryable: failure.problem.retryable,
     });
-    definition.registrationState = failure.permanent ? 'failed' : 'pending';
+    definition.registrationState = permanent ? 'failed' : 'pending';
     await this.persistOutcome(
       work,
-      failure.permanent ? OperationState.FAILED : OperationState.PROCESSING,
+      permanent ? OperationState.FAILED : OperationState.PROCESSING,
       failure.problem,
-      failure.permanent
+      permanent
         ? { code: 'REGISTRATION_FAILED', message: failure.problem.detail }
         : undefined,
     );
-    if (!failure.permanent) {
-      throw new Error(
-        'Artifact registration could not advance; retry reconciliation',
-      );
-    }
   }
 
   private classifyFailure(error: unknown, stage: string): RegistrationFailure {
@@ -346,7 +415,9 @@ export class CredentialDefinitionRegistrationWorker implements OnModuleInit {
     const permanent =
       error instanceof ValidationError ||
       (error instanceof RegistrationBackendError &&
-        error.backendCode === 'REGISTRATION_REJECTED') ||
+        ['REGISTRATION_REJECTED', 'REGISTRATION_OUTCOME_UNKNOWN'].includes(
+          error.backendCode ?? '',
+        )) ||
       (status !== undefined &&
         status >= 400 &&
         status < 500 &&
@@ -410,9 +481,6 @@ export class CredentialDefinitionRegistrationWorker implements OnModuleInit {
     backend: RegistrationBackend,
   ): Promise<void> {
     const { progress } = work;
-    if (progress.recovery?.schemaTransactionId) {
-      await this.observeSubmission(work, backend, 'schema');
-    }
     const schemaId = await this.resolveSchema(work, backend);
     if (!schemaId) {
       return;
@@ -441,10 +509,7 @@ export class CredentialDefinitionRegistrationWorker implements OnModuleInit {
       definition.schemaDefinition = found.definition;
       return found.id;
     }
-    if (
-      !progress.recovery?.schemaTransactionId &&
-      (progress.schemaSubmitted || progress.recovery)
-    ) {
+    if (progress.schemaSubmitted) {
       await this.observeSubmission(work, backend, 'schema');
     }
     if (progress.schemaSubmitted) {
@@ -456,7 +521,7 @@ export class CredentialDefinitionRegistrationWorker implements OnModuleInit {
         throw new RegistrationBackendError(
           undefined,
           'REGISTRATION_OUTCOME_UNKNOWN',
-          'Schema submission outcome is unknown; supply a matching endorsement transaction or reconcile the wallet and ledger. Publication will not be repeated',
+          'Schema submission outcome is unknown; supply a matching endorsement transaction or reconcile the wallet and backend registry. Publication will not be repeated',
         );
       }
       return null;
@@ -471,8 +536,8 @@ export class CredentialDefinitionRegistrationWorker implements OnModuleInit {
   ): Promise<void> {
     const { definition, progress, save } = work;
     progress.stage = 'schema_publication';
-    // Commit intent BEFORE the non-idempotent write. A restart/timeout
-    // must reconcile instead of blindly repeating ledger publication.
+    // Commit intent before the non-idempotent write so a restart or timeout
+    // reconciles instead of blindly repeating backend publication.
     progress.schemaSubmitted = true;
     await save();
     const submitted = await backend.port.publishSchema(
@@ -498,9 +563,6 @@ export class CredentialDefinitionRegistrationWorker implements OnModuleInit {
   ): Promise<void> {
     const { definition, progress } = work;
     progress.stage = 'definition_lookup';
-    if (progress.recovery?.definitionTransactionId) {
-      await this.observeSubmission(work, backend, 'credential_definition');
-    }
     const found = await backend.port.findDefinition(
       backend.context,
       progress.issuerId,
@@ -508,10 +570,7 @@ export class CredentialDefinitionRegistrationWorker implements OnModuleInit {
       progress.options,
     );
     if (!found) {
-      if (
-        !progress.recovery?.definitionTransactionId &&
-        (progress.definitionSubmitted || progress.recovery)
-      ) {
+      if (progress.definitionSubmitted) {
         await this.observeSubmission(work, backend, 'credential_definition');
       }
       if (progress.definitionSubmitted) {
@@ -524,7 +583,7 @@ export class CredentialDefinitionRegistrationWorker implements OnModuleInit {
           throw new RegistrationBackendError(
             undefined,
             'REGISTRATION_OUTCOME_UNKNOWN',
-            'Credential definition submission outcome is unknown; reconcile the wallet and ledger before any new publication',
+            'Credential definition submission outcome is unknown; reconcile the wallet and backend registry before any new publication',
           );
         }
         return;
@@ -579,15 +638,10 @@ export class CredentialDefinitionRegistrationWorker implements OnModuleInit {
       artifact === 'schema'
         ? 'schema_reconciliation'
         : 'definition_reconciliation';
-    const hint =
-      artifact === 'schema'
-        ? progress.recovery?.schemaTransactionId
-        : progress.recovery?.definitionTransactionId;
     const previousTransactionId =
       artifact === 'schema'
         ? progress.schemaTransactionId
         : progress.definitionTransactionId;
-    const transactionId = hint ?? previousTransactionId;
     const observation = await backend.port.inspectRegistration(
       backend.context,
       {
@@ -596,13 +650,11 @@ export class CredentialDefinitionRegistrationWorker implements OnModuleInit {
         schema: definition.schemaDefinition,
         schemaId: progress.schemaId,
         options: progress.options,
-        transactionId,
+        transactionId: previousTransactionId,
         jobId:
-          hint && hint !== previousTransactionId
-            ? undefined
-            : artifact === 'schema'
-              ? progress.schemaJobId
-              : progress.definitionJobId,
+          artifact === 'schema'
+            ? progress.schemaJobId
+            : progress.definitionJobId,
       },
     );
     if (!observation) {
@@ -649,7 +701,7 @@ export class CredentialDefinitionRegistrationWorker implements OnModuleInit {
         'Endorsement transaction has an unrecognized state; publication will not be repeated',
       );
     }
-    // Endorsement acknowledgement alone does not prove backend registry visibility or
+    // Endorsement acknowledgement alone does not prove registry visibility or
     // wallet key ownership. The normal artifact reads still gate advancement.
   }
 

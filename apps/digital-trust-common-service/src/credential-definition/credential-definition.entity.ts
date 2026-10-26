@@ -1,5 +1,5 @@
 import type { DefinitionOptions } from '@app/credential-ports';
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   Entity,
   PrimaryGeneratedColumn,
@@ -12,7 +12,6 @@ import {
   JoinColumn,
 } from 'typeorm';
 
-import type { OperationResult } from '../operation/operation.entity';
 import { Tenant } from '../tenant/tenant.entity';
 
 export enum CredentialDefinitionFormat {
@@ -43,14 +42,11 @@ export interface DefinitionRegistration {
   definitionTransactionState?: string;
   definitionState?: 'finished' | 'wait' | 'action' | 'failed';
   stage?: string;
+  retryCount?: number;
+  retryAfter?: string;
+  publicationOutcomeUnknown?: boolean;
   schemaSubmitted?: boolean;
   definitionSubmitted?: boolean;
-  recovery?: {
-    requestedAt: string;
-    schemaTransactionId?: string;
-    definitionTransactionId?: string;
-    history: { requestedAt: string; state: string; result: OperationResult }[];
-  };
   options: DefinitionOptions;
 }
 
@@ -179,13 +175,16 @@ export class CredentialDefinition {
   })
   public connectorType!: CredentialDefinitionConnectorType;
 
-  @ApiProperty({
-    description: 'Additional metadata for the credential definition',
+  @ApiPropertyOptional({
+    description:
+      'Local annotations and normalized publication settings. New registrations include tag (default "default") and revocation.enabled (default true).',
+    nullable: true,
     example: {
+      tag: 'default',
+      revocation: { enabled: true },
       issuer: 'Example University',
       version: '2.0',
     },
-    required: false,
   })
   @Column({
     type: 'jsonb',

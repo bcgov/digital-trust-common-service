@@ -11,10 +11,7 @@ import {
   computeOperationExpiresAt,
   isTerminalOperationState,
 } from './operation-ttl.util';
-import {
-  isKnownOperationType,
-  OPERATION_TYPE,
-} from './operation-type.constants';
+import { isKnownOperationType } from './operation-type.constants';
 import {
   Operation,
   OperationRequest,
@@ -140,7 +137,7 @@ export class OperationService {
     const viewedAt = new Date();
     const expiresAt = this.computeExpiresAt(
       operation.state,
-      this.lifetimeStart(operation),
+      operation.createdAt,
       viewedAt,
       tenant.config,
     );
@@ -193,7 +190,7 @@ export class OperationService {
 
     operation.expiresAt = this.computeExpiresAt(
       state,
-      this.lifetimeStart(operation),
+      operation.createdAt,
       operation.viewedAt,
       tenant.config,
     );
@@ -203,36 +200,6 @@ export class OperationService {
     this.recordTerminalOutcome(saved.type, state, manager);
 
     return saved;
-  }
-
-  private lifetimeStart(operation: Operation): Date {
-    if (operation.type !== OPERATION_TYPE.CREDENTIAL_DEFINITION_REGISTER) {
-      return operation.createdAt;
-    }
-    const progress =
-      operation.result && 'registration' in operation.result
-        ? operation.result.registration
-        : undefined;
-    if (
-      typeof progress !== 'object' ||
-      progress === null ||
-      !('recovery_requested_at' in progress) ||
-      typeof progress.recovery_requested_at !== 'string'
-    ) {
-      return operation.createdAt;
-    }
-    const recoveredAt = new Date(progress.recovery_requested_at);
-    if (
-      !Number.isFinite(recoveredAt.getTime()) ||
-      recoveredAt < operation.createdAt ||
-      recoveredAt.getTime() > Date.now()
-    ) {
-      this.logger.warn(
-        `Invalid recovery timestamp for operation ${operation.id}`,
-      );
-      return operation.createdAt;
-    }
-    return recoveredAt;
   }
 
   /**

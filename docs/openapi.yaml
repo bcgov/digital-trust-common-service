@@ -1214,71 +1214,6 @@ paths:
         "204":
           description: Credential definition deactivated
 
-  /api/v1/tenants/{tenantId}/credential-definitions/{credDefId}/recover:
-    parameters:
-      - $ref: "#/components/parameters/TenantId"
-      - name: credDefId
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-    post:
-      operationId: recoverCredentialDefinition
-      summary: Reconcile and resume the original credential registration
-      description: |
-        Requires tenants:admin. Preserves local identity, fingerprints, original
-        operation and failure history. Returns the original operation with a
-        fresh bounded recovery window after failure. Repeated pending recovery
-        is idempotent; adding a previously absent transaction hint does not extend
-        its deadline. Hints are verified asynchronously in the pinned wallet
-        against issuer, schema, tag and revocation intent.
-        Adopts existing artifacts or endorsement progress before any missing
-        publication step. Never clears submission markers or blindly repeats an
-        uncertain write. This can publish a not-yet-submitted credential definition
-        after schema completion; it does not resend or sign endorsements.
-      tags: [Credential Definitions]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              additionalProperties: false
-              properties:
-                schema_transaction_id:
-                  type: string
-                  format: uuid
-                  description: Wallet-scoped schema endorsement transaction to verify
-                definition_transaction_id:
-                  type: string
-                  format: uuid
-                  description: Wallet-scoped credential-definition endorsement transaction to verify
-            examples:
-              discover:
-                summary: Discover existing matching backend progress
-                value: {}
-      responses:
-        "202":
-          description: |
-            Original operation resumed, already pending, or already completed.
-            Poll for asynchronous verification and readiness. Prior results are
-            retained in result.registration.recovery_history; recovery_requested_at
-            and recovery_attempts identify the bounded recovery window.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Operation"
-        "400":
-          $ref: "#/components/responses/ValidationError"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "409":
-          description: |
-            Wallet currently processing, incompatible pending hints, unsupported
-            legacy registration, or original operation no longer available.
-            No replacement registration or blind publication is performed.
-
   # ─── Issuance Profiles ───────────────────────────────────────────────
   /api/v1/tenants/{tenantId}/profiles/issuance:
     parameters:
@@ -3663,7 +3598,7 @@ components:
         external_id:
           type: string
           nullable: true
-          description: Ledger/registry reference (e.g., cred_def_id)
+          description: Backend registry reference (e.g., cred_def_id)
         connector_id:
           type: string
           format: uuid
@@ -3693,10 +3628,6 @@ components:
             id:
               type: string
               nullable: true
-        options:
-          nullable: true
-          allOf:
-            - $ref: "#/components/schemas/AnonCredsRegistrationOptions"
         connector_type:
           $ref: "#/components/schemas/ConnectorType"
         is_active:
@@ -3704,6 +3635,25 @@ components:
           description: Whether this credential definition is currently active
         metadata:
           type: object
+          nullable: true
+          description: |
+            Local annotations and normalized publication settings. New
+            registrations include tag (1-100 characters, default "default")
+            and revocation ({ enabled: boolean }, default enabled). Older
+            unverified records may not include these reserved keys.
+          properties:
+            tag:
+              type: string
+              minLength: 1
+              maxLength: 100
+            revocation:
+              type: object
+              additionalProperties: false
+              required: [enabled]
+              properties:
+                enabled:
+                  type: boolean
+          additionalProperties: true
         created_at:
           type: string
           format: date-time
@@ -3790,30 +3740,25 @@ components:
               type: string
               minLength: 1
               maxLength: 100
-        options:
-          $ref: "#/components/schemas/AnonCredsRegistrationOptions"
         metadata:
           type: object
-          description: Local annotations only; never passed as backend options
-
-    AnonCredsRegistrationOptions:
-      type: object
-      additionalProperties: false
-      properties:
-        tag:
-          type: string
-          minLength: 1
-          maxLength: 100
-          default: default
-        revocation:
-          type: object
-          additionalProperties: false
-          required: [enabled]
-          description: Omission defaults to enabled; unsupported setup never downgrades silently
+          description: |
+            Local annotations and publication settings. Reserved keys are
+            tag (1-100 characters, default "default") and revocation
+            ({ enabled: boolean }, default enabled). Other keys are annotations.
           properties:
-            enabled:
-              type: boolean
-              default: true
+            tag:
+              type: string
+              minLength: 1
+              maxLength: 100
+            revocation:
+              type: object
+              additionalProperties: false
+              required: [enabled]
+              properties:
+                enabled:
+                  type: boolean
+          additionalProperties: true
 
     # ─── Issuance Profile ────────────────────────────────────────────
     IssuanceProfile:
@@ -4236,7 +4181,22 @@ components:
           type: string
           format: date-time
         result:
+          type: object
           nullable: true
+          additionalProperties: true
+          properties:
+            credential_definition_id:
+              type: string
+              format: uuid
+            external_id:
+              type: string
+              nullable: true
+            code:
+              type: string
+            message:
+              type: string
+            registration:
+              $ref: "#/components/schemas/CredentialDefinitionRegistrationProgress"
           description: |
             State-dependent result:
             - pending/processing: usually null; credential-definition.register
@@ -4247,9 +4207,9 @@ components:
               progress/correlation identifiers.
             - batch processing: { total, completed, failed, pending }
             - batch completed: { total, completed, failed, errors }
-            Registration progress includes stage, schema_id, schema_job_id,
-            schema_transaction_id, schema_state, definition_id,
-            definition_job_id, definition_transaction_id, and definition_state.
+            Registration progress includes the active artifact and its generic
+            job_id, transaction_id, transaction_state, state, and pending_id.
+            Resolved schema_id and definition_id are separate from pending_id.
             IDs returned with wait/action are provisional, not readiness proof.
         problem_details:
           nullable: true
@@ -4266,6 +4226,42 @@ components:
             status is omitted to avoid contradicting HTTP 200/202. Match the
             problem type URI for machine handling; do not parse title or detail.
 
+    CredentialDefinitionRegistrationProgress:
+      type: object
+      properties:
+        stage:
+          type: string
+        artifact:
+          type: string
+          enum: [schema, credential_definition]
+          nullable: true
+          description: Artifact associated with the active stage, if any
+        schema_id:
+          type: string
+          nullable: true
+          description: Resolved schema identity; never a provisional backend ID
+        definition_id:
+          type: string
+          nullable: true
+          description: Resolved definition identity; never a provisional backend ID
+        pending_id:
+          type: string
+          nullable: true
+          description: Provisional ID for the active artifact, if unresolved
+        job_id:
+          type: string
+          nullable: true
+        transaction_id:
+          type: string
+          nullable: true
+        transaction_state:
+          type: string
+          nullable: true
+        state:
+          type: string
+          enum: [finished, wait, action, failed]
+          nullable: true
+          description: Publication state for the active artifact
     RegistrationProblemDetails:
       type: object
       required: [type, title, detail, stage, retryable]

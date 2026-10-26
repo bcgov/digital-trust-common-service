@@ -28,7 +28,6 @@ describe('CredentialDefinitionController', () => {
   let controller: CredentialDefinitionController;
 
   let mockCreate: jest.Mock;
-  let mockRecover: jest.Mock;
   let mockFindById: jest.Mock;
   let mockFindByTenantId: jest.Mock;
   let mockFindByFormat: jest.Mock;
@@ -78,7 +77,6 @@ describe('CredentialDefinitionController', () => {
 
   beforeEach(async () => {
     mockCreate = jest.fn();
-    mockRecover = jest.fn();
     mockFindById = jest.fn();
     mockFindByTenantId = jest.fn();
     mockFindByFormat = jest.fn();
@@ -88,7 +86,6 @@ describe('CredentialDefinitionController', () => {
 
     const mockService = {
       create: mockCreate,
-      recover: mockRecover,
       findById: mockFindById,
       findByTenantId: mockFindByTenantId,
       findByFormat: mockFindByFormat,
@@ -125,33 +122,6 @@ describe('CredentialDefinitionController', () => {
 
   it('should be defined', () => {
     expect(controller).toBeDefined();
-  });
-
-  it('delegates recovery with tenant, definition, hints and caller context', async () => {
-    const operation = Object.assign(new Operation(), {
-      id: 'original-operation',
-      type: 'credential-definition.register',
-      state: OperationState.PENDING,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    });
-    const hint = {
-      schemaTransactionId: '1b0d887a-9131-4653-a05c-ab3486875d01',
-    };
-    mockRecover.mockResolvedValue(operation);
-    const result = await controller.recover(
-      auth.tenantId!,
-      mockCredentialDefinition.id,
-      hint,
-      auth,
-    );
-    expect(mockRecover).toHaveBeenCalledWith(
-      auth.tenantId,
-      mockCredentialDefinition.id,
-      hint,
-      auth,
-    );
-    expect(result).toEqual(OperationResponseDto.fromEntity(operation));
   });
 
   describe('POST /tenants/:tenantId/credential-definitions', () => {
@@ -192,6 +162,8 @@ describe('CredentialDefinitionController', () => {
       expect(result).toEqual(
         CredentialDefinitionResponseDto.fromEntity(mockCredentialDefinition),
       );
+      expect(result).not.toHaveProperty('options');
+      expect(result.metadata).toEqual(mockCredentialDefinition.metadata);
     });
 
     it('should throw NotFoundException if credential definition not found', async () => {

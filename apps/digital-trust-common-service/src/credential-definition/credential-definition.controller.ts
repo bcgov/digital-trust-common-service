@@ -47,7 +47,6 @@ import {
 import { CredentialDefinitionService } from './credential-definition.service';
 import { CreateCredentialDefinitionDto } from './dto/create-credential-definition.dto';
 import { CredentialDefinitionResponseDto } from './dto/credential-definition-response.dto';
-import { RecoverCredentialDefinitionDto } from './dto/recover-credential-definition.dto';
 import { UpdateCredentialDefinitionDto } from './dto/update-credential-definition.dto';
 
 @SkipAutoAudit()
@@ -86,7 +85,7 @@ export class CredentialDefinitionController {
   })
   @ApiBadRequestResponse({
     description:
-      'Invalid schema, issuer selection, registration options, or connector',
+      'Invalid schema, issuer selection, registration metadata, or connector',
   })
   @ApiBody({
     description: 'Credential definition creation request',
@@ -105,8 +104,11 @@ export class CredentialDefinitionController {
               schema_version: '1.0',
             },
           },
-          options: { revocation: { enabled: true } },
-          metadata: { issuer: 'DMV' },
+          metadata: {
+            tag: 'default',
+            revocation: { enabled: true },
+            issuer: 'DMV',
+          },
         },
       },
     },
@@ -122,39 +124,6 @@ export class CredentialDefinitionController {
       auth,
     );
     return OperationResponseDto.fromEntity(operation);
-  }
-
-  @Post(':id/recover')
-  @HttpCode(HttpStatus.ACCEPTED)
-  @ApiAcceptedResponse({
-    type: OperationResponseDto,
-    description:
-      'Resume the original registration operation with preserved write markers and history; no blind publication retries',
-  })
-  @ApiBody({
-    type: RecoverCredentialDefinitionDto,
-    examples: {
-      discover: {
-        summary: 'Discover existing wallet artifacts and transactions',
-        value: {},
-      },
-    },
-  })
-  @ApiNotFoundResponse({ description: 'Definition not found for this tenant' })
-  @ApiConflictResponse({
-    description:
-      'Recovery already processing, incompatible hints, or original operation unavailable',
-  })
-  @ApiBadRequestResponse({ description: 'Invalid transaction identifier' })
-  public async recover(
-    @Param('tenantId', ParseUUIDPipe) tenantId: string,
-    @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: RecoverCredentialDefinitionDto,
-    @CurrentAuth() auth: AuthContext,
-  ): Promise<OperationResponseDto> {
-    return OperationResponseDto.fromEntity(
-      await this.credentialDefinitionService.recover(tenantId, id, dto, auth),
-    );
   }
 
   @Get()

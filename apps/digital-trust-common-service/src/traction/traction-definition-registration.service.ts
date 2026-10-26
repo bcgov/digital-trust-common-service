@@ -58,7 +58,7 @@ export class TractionDefinitionRegistration implements DefinitionRegistrationPor
     } else {
       if (!intent.schemaId) {
         throw new ValidationError([
-          'Schema must be published before definition recovery',
+          'Schema must be published before definition reconciliation',
         ]);
       }
       const schema = await this.call<unknown>(
@@ -92,7 +92,7 @@ export class TractionDefinitionRegistration implements DefinitionRegistrationPor
       throw new RegistrationBackendError(
         undefined,
         'INVALID_REGISTRATION_RESPONSE',
-        'Backend returned an invalid transaction listing; recovery cannot establish submission state',
+        'Backend returned an invalid transaction listing; reconciliation cannot establish submission state',
         true,
       );
     }

@@ -17,8 +17,6 @@ import { AuditAction } from '../audit-log/audit-log.entity';
 import { DomainAuditService } from '../audit-log/domain-audit.service';
 import { RegistrationBackendError } from '../common/registration-backend-error';
 import { JobsService } from '../jobs/jobs.service';
-import { OPERATION_TYPE } from '../operation/operation-type.constants';
-import { Operation, OperationState } from '../operation/operation.entity';
 import { OperationService } from '../operation/operation.service';
 import { TenantStatus } from '../tenant/tenant.entity';
 
@@ -48,7 +46,12 @@ describe('CredentialDefinitionService', () => {
   let mockHas: jest.Mock;
   let mockResolve: jest.Mock;
   let mockValidateSchema: jest.Mock;
-  const manager = { save: jest.fn(), query: jest.fn(), findOne: jest.fn() };
+  const manager = {
+    save: jest.fn(),
+    query: jest.fn(),
+    findOne: jest.fn(),
+    update: jest.fn(),
+  };
   const findByFingerprint = jest.fn();
   const register = {
     resolveIssuer: jest.fn(),
@@ -99,6 +102,7 @@ describe('CredentialDefinitionService', () => {
   };
 
   beforeEach(async () => {
+    jest.clearAllMocks();
     mockCreate = jest.fn();
     mockFindById = jest.fn();
     mockFindByTenantId = jest.fn();
@@ -261,14 +265,70 @@ describe('CredentialDefinitionService', () => {
       expect(enqueue).not.toHaveBeenCalled();
     });
 
-    it('rejects a replay when its existing registration is inactive', async () => {
+    it('retries a safely failed inactive registration without clearing submission evidence', async () => {
+      const inactive = {
+        ...mockCredentialDefinition,
+        isActive: false,
+        registrationState: 'failed',
+        registrationOperationId: 'inactive-operation',
+        registration: {
+          issuerId: 'did:indy:issuer',
+          options: { tag: 'default', revocation: { enabled: false } },
+          schemaSubmitted: true,
+          schemaTransactionId: 'schema-transaction',
+          retryAfter: new Date().toISOString(),
+          retryCount: 2,
+        },
+      };
+      findByFingerprint.mockResolvedValueOnce(inactive);
+      const result = await service.create(
+        auth.tenantId,
+        {
+          name: 'Employee',
+          format: CredentialDefinitionFormat.ANONCREDS,
+          schema: { definition: mockCredentialDefinition.schemaDefinition },
+        },
+        auth,
+      );
+
+      expect(manager.update).toHaveBeenCalledWith(
+        CredentialDefinition,
+        { id: inactive.id, tenantId: auth.tenantId, isActive: false },
+        expect.objectContaining({
+          isActive: true,
+          registrationState: 'pending',
+          registration: expect.objectContaining({
+            schemaSubmitted: true,
+            schemaTransactionId: 'schema-transaction',
+            retryCount: 0,
+          }),
+        }),
+      );
+      expect(manager.update.mock.calls[0][2].registration).not.toHaveProperty(
+        'retryAfter',
+      );
+      expect(enqueue).toHaveBeenCalledWith(
+        manager,
+        'credential-definition.register',
+        { tenantId: auth.tenantId, definitionId: inactive.id },
+      );
+      expect(result.id).toBe('operation-1');
+      expect(mockCreate).not.toHaveBeenCalled();
+    });
+
+    it('rejects an inactive registration whose publication outcome is unknown', async () => {
       findByFingerprint.mockResolvedValueOnce({
         ...mockCredentialDefinition,
         isActive: false,
+        registrationState: 'failed',
         registrationOperationId: 'inactive-operation',
+        registration: {
+          issuerId: 'did:indy:issuer',
+          options: { tag: 'default', revocation: { enabled: false } },
+          schemaSubmitted: true,
+          publicationOutcomeUnknown: true,
+        },
       });
-      manager.findOne.mockResolvedValueOnce({ id: 'inactive-operation' });
-
       await expect(
         service.create(
           auth.tenantId,
@@ -280,6 +340,7 @@ describe('CredentialDefinitionService', () => {
           auth,
         ),
       ).rejects.toThrow(ConflictException);
+      expect(enqueue).not.toHaveBeenCalled();
     });
 
     it('rejects different local requests for the same artifacts', async () => {
@@ -750,282 +811,6 @@ describe('CredentialDefinitionService', () => {
           auth,
         ),
       ).rejects.toThrow(ConflictException);
-    });
-  });
-
-  describe('recover', () => {
-    const prepare = (
-      registrationState: CredentialDefinition['registrationState'] = 'failed',
-      operationState: OperationState = OperationState.FAILED,
-      recovery?: NonNullable<
-        NonNullable<CredentialDefinition['registration']>['recovery']
-      >,
-      result: Operation['result'] = null,
-    ) => {
-      const registration = {
-        issuerId: 'issuer-1',
-        options: { tag: 'default', revocation: { enabled: true } },
-        ...(recovery ? { recovery } : {}),
-      };
-      const definition = {
-        ...mockCredentialDefinition,
-        connectorId: 'connector-1',
-        registrationOperationId: 'operation-1',
-        registrationState,
-        registration,
-      } as CredentialDefinition;
-      const binding = {
-        ...definition,
-        registration: { ...registration },
-      };
-      const operation = {
-        id: 'operation-1',
-        tenantId: auth.tenantId,
-        type: OPERATION_TYPE.CREDENTIAL_DEFINITION_REGISTER,
-        state: operationState,
-        result,
-        viewedAt: new Date('2025-01-01T00:00:00.000Z'),
-        expiresAt: new Date('2025-01-02T00:00:00.000Z'),
-        createdAt: mockCredentialDefinition.createdAt,
-      } as Operation;
-
-      mockFindById.mockResolvedValue(binding);
-      manager.findOne
-        .mockReset()
-        .mockResolvedValueOnce(binding)
-        .mockResolvedValueOnce(definition)
-        .mockResolvedValueOnce(operation);
-      manager.query.mockReset().mockResolvedValue([{ locked: true }]);
-      manager.save.mockReset();
-      enqueue.mockClear();
-      mockEmit.mockClear();
-
-      return { binding, definition, operation };
-    };
-
-    it('rejects a definition without a recoverable registration binding', async () => {
-      const { binding } = prepare();
-      binding.registration = null;
-      manager.findOne.mockReset().mockResolvedValueOnce(binding);
-
-      await expect(
-        service.recover(auth.tenantId, binding.id, {}, auth),
-      ).rejects.toThrow(ConflictException);
-    });
-
-    it('rejects recovery while the connector registration lock is held elsewhere', async () => {
-      const { binding } = prepare();
-      manager.query.mockResolvedValueOnce([{ locked: false }]);
-
-      await expect(
-        service.recover(auth.tenantId, binding.id, {}, auth),
-      ).rejects.toThrow(ConflictException);
-      expect(manager.findOne).toHaveBeenCalledTimes(1);
-    });
-
-    it('rejects a registration that changed while recovery was acquiring its lock', async () => {
-      const { binding, definition } = prepare();
-      definition.connectorId = 'different-connector';
-
-      await expect(
-        service.recover(auth.tenantId, binding.id, {}, auth),
-      ).rejects.toThrow(ConflictException);
-    });
-
-    it('rejects an operation that is not the original registration operation', async () => {
-      const { binding, operation } = prepare();
-      operation.type = 'credential.offer';
-
-      await expect(
-        service.recover(auth.tenantId, binding.id, {}, auth),
-      ).rejects.toThrow(ConflictException);
-    });
-
-    it('returns an already completed operation for a ready definition', async () => {
-      const { binding, operation } = prepare('ready', OperationState.COMPLETED);
-
-      await expect(
-        service.recover(auth.tenantId, binding.id, {}, auth),
-      ).resolves.toBe(operation);
-      expect(manager.save).not.toHaveBeenCalled();
-      expect(enqueue).not.toHaveBeenCalled();
-      expect(mockEmit).not.toHaveBeenCalled();
-    });
-
-    it('rejects inconsistent completed or unsupported registration states', async () => {
-      const ready = prepare('ready', OperationState.FAILED);
-      await expect(
-        service.recover(auth.tenantId, ready.binding.id, {}, auth),
-      ).rejects.toThrow(ConflictException);
-
-      const completed = prepare('failed', OperationState.COMPLETED);
-      await expect(
-        service.recover(auth.tenantId, completed.binding.id, {}, auth),
-      ).rejects.toThrow(ConflictException);
-
-      const unsupported = prepare('unverified', OperationState.PENDING);
-      await expect(
-        service.recover(auth.tenantId, unsupported.binding.id, {}, auth),
-      ).rejects.toThrow(ConflictException);
-    });
-
-    it('records prior progress before re-enqueueing a failed registration', async () => {
-      const snapshot = {
-        credential_definition_id: 'old-definition',
-        registration: {
-          stage: 'schema_publication',
-          recovery_history: [{ requestedAt: 'old-history' }],
-        },
-        problem_details: { detail: 'Earlier failure' },
-      } as Operation['result'];
-      const { binding, definition, operation } = prepare(
-        'failed',
-        OperationState.FAILED,
-        undefined,
-        snapshot,
-      );
-
-      await expect(
-        service.recover(auth.tenantId, binding.id, {}, auth),
-      ).resolves.toBe(operation);
-
-      expect(definition.registration?.recovery?.history).toHaveLength(1);
-      expect(definition.registration?.recovery?.history[0]).toMatchObject({
-        state: OperationState.FAILED,
-        result: {
-          registration: { stage: 'schema_publication' },
-        },
-      });
-      expect(
-        definition.registration?.recovery?.history[0].result.registration,
-      ).not.toHaveProperty('recovery_history');
-      expect(operation.state).toBe(OperationState.PENDING);
-      expect(operation.viewedAt).toBeNull();
-      expect(operation.result).toMatchObject({
-        registration: { recovery_attempts: 1 },
-        problem_details: { detail: 'Earlier failure' },
-      });
-      expect(computeExpiresAt).toHaveBeenCalledWith(
-        OperationState.PENDING,
-        expect.any(Date),
-        null,
-        binding.tenant.config,
-      );
-      expect(manager.save).toHaveBeenCalledTimes(2);
-      expect(enqueue).toHaveBeenCalledWith(
-        manager,
-        'credential-definition.register',
-        { tenantId: auth.tenantId, definitionId: binding.id },
-      );
-      expect(mockEmit).toHaveBeenCalledWith(
-        expect.objectContaining({
-          metadata: {
-            action: 'registration_recovery_requested',
-            operation_id: operation.id,
-          },
-        }),
-        manager,
-      );
-    });
-
-    it('starts a recovery cleanly when the original operation has no result', async () => {
-      const { binding, definition, operation } = prepare();
-
-      await service.recover(auth.tenantId, binding.id, {}, auth);
-
-      expect(definition.registration?.recovery?.history).toEqual([
-        expect.objectContaining({
-          state: OperationState.FAILED,
-          result: null,
-        }),
-      ]);
-      expect(operation.result).toMatchObject({
-        credential_definition_id: binding.id,
-        registration: { recovery_attempts: 1 },
-        problem_details: null,
-      });
-    });
-
-    it('returns an already pending recovery when no new transaction hint is supplied', async () => {
-      const recovery = {
-        requestedAt: '2025-01-01T00:00:00.000Z',
-        schemaTransactionId: 'schema-transaction',
-        history: [],
-      };
-      const { binding, operation } = prepare(
-        'pending',
-        OperationState.PENDING,
-        recovery,
-      );
-
-      await expect(
-        service.recover(auth.tenantId, binding.id, {}, auth),
-      ).resolves.toBe(operation);
-      expect(manager.save).not.toHaveBeenCalled();
-      expect(enqueue).not.toHaveBeenCalled();
-    });
-
-    it('rejects a pending recovery with conflicting transaction hints', async () => {
-      const recovery = {
-        requestedAt: '2025-01-01T00:00:00.000Z',
-        schemaTransactionId: 'schema-transaction',
-        history: [],
-      };
-      const { binding } = prepare('pending', OperationState.PENDING, recovery);
-
-      await expect(
-        service.recover(
-          auth.tenantId,
-          binding.id,
-          { schemaTransactionId: 'different-transaction' },
-          auth,
-        ),
-      ).rejects.toThrow(ConflictException);
-    });
-
-    it('enriches pending recovery with a missing hint without replacing its history or time', async () => {
-      const recovery = {
-        requestedAt: '2025-01-01T00:00:00.000Z',
-        schemaTransactionId: 'schema-transaction',
-        history: [
-          {
-            requestedAt: 'prior',
-            state: OperationState.FAILED,
-            result: null,
-          },
-        ],
-      };
-      const { binding, definition, operation } = prepare(
-        'pending',
-        OperationState.PENDING,
-        recovery,
-        {
-          registration: {
-            stage: 'schema_resolution',
-            recovery_history: [{ requestedAt: 'duplicate' }],
-          },
-        },
-      );
-
-      await service.recover(
-        auth.tenantId,
-        binding.id,
-        { definitionTransactionId: 'definition-transaction' },
-        auth,
-      );
-
-      expect(definition.registration?.recovery).toEqual({
-        ...recovery,
-        definitionTransactionId: 'definition-transaction',
-      });
-      expect(operation.result).toMatchObject({
-        registration: {
-          stage: 'schema_resolution',
-          recovery_attempts: 1,
-          recovery_history: recovery.history,
-        },
-      });
-      expect(enqueue).toHaveBeenCalledTimes(1);
     });
   });
 
