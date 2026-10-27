@@ -15,6 +15,7 @@ import { AuditAction } from '../audit-log/audit-log.entity';
 import { DomainAuditService } from '../audit-log/domain-audit.service';
 import { RegistrationBackendError } from '../common/registration-backend-error';
 import { JobsService } from '../jobs/jobs.service';
+import { OperationState } from '../operation/operation.entity';
 import { OperationService } from '../operation/operation.service';
 import { TenantStatus } from '../tenant/tenant.entity';
 
@@ -297,6 +298,23 @@ describe('CredentialDefinitionService', () => {
   });
 
   describe('create', () => {
+    it('rejects formats without a registered handler', async () => {
+      await expect(
+        service.create(
+          auth.tenantId,
+          {
+            name: 'Employee',
+            options: { format: CredentialDefinitionFormat.W3C_VC },
+            schema: { definition: mockCredentialDefinition.schemaDefinition },
+          },
+          auth,
+        ),
+      ).rejects.toMatchObject({
+        response: { code: 'FORMAT_NOT_SUPPORTED' },
+      });
+      expect(mockFindExistingByTenantAndNameAndFormat).not.toHaveBeenCalled();
+    });
+
     it('reports sanitized preflight rejection using the existing HTTP error envelope', async () => {
       register.resolveIssuer.mockRejectedValueOnce(
         new RegistrationBackendError(
@@ -409,6 +427,54 @@ describe('CredentialDefinitionService', () => {
       });
     });
 
+    it.each([
+      ['connector', { connectorId: 'other-connector' }],
+      [
+        'connector type',
+        { connectorType: CredentialDefinitionConnectorType.CREDO },
+      ],
+      ['schema', { schemaDefinition: { schema: 'different' } }],
+      [
+        'options',
+        {
+          options: {
+            format: CredentialDefinitionFormat.ANONCREDS,
+            tag: 'different',
+            status: { revocation: { enabled: true } },
+          },
+        },
+      ],
+      [
+        'issuer',
+        {
+          registration: {
+            issuerId: 'did:indy:other',
+            schema: {},
+            definition: {},
+          },
+        },
+      ],
+    ])('rejects a replay with different fixed %s', async (_field, override) => {
+      mockFindExistingByTenantAndNameAndFormat.mockResolvedValueOnce(
+        sameDefinition(override),
+      );
+
+      await expect(
+        service.create(
+          auth.tenantId,
+          {
+            name: 'Employee',
+            options: { format: CredentialDefinitionFormat.ANONCREDS },
+            schema: { definition: mockCredentialDefinition.schemaDefinition },
+          },
+          auth,
+        ),
+      ).rejects.toThrow(
+        'Credential definition registration settings differ from the existing definition.',
+      );
+      expect(enqueue).not.toHaveBeenCalled();
+    });
+
     it('returns an existing completed operation without queueing or auditing', async () => {
       mockFindExistingByTenantAndNameAndFormat.mockResolvedValueOnce(
         sameDefinition({
@@ -485,6 +551,38 @@ describe('CredentialDefinitionService', () => {
       expect(mockCreate).not.toHaveBeenCalled();
     });
 
+    it('continues a failed inactive definition and reactivates it', async () => {
+      const failed = sameDefinition({
+        isActive: false,
+        registrationState: 'failed',
+      });
+      mockFindExistingByTenantAndNameAndFormat.mockResolvedValueOnce(failed);
+      createOperation.mockResolvedValueOnce({
+        id: 'continued-operation',
+        state: OperationState.PENDING,
+      });
+
+      await expect(
+        service.create(
+          auth.tenantId,
+          {
+            name: 'Employee',
+            options: { format: CredentialDefinitionFormat.ANONCREDS },
+            schema: { definition: mockCredentialDefinition.schemaDefinition },
+          },
+          auth,
+        ),
+      ).resolves.toMatchObject({ id: 'continued-operation' });
+      expect(manager.update).toHaveBeenCalledWith(
+        CredentialDefinition,
+        { id: failed.id, tenantId: auth.tenantId },
+        expect.objectContaining({
+          isActive: true,
+          registrationState: 'pending',
+        }),
+      );
+    });
+
     it('rejects replay of a deactivated ready definition', async () => {
       mockFindExistingByTenantAndNameAndFormat.mockResolvedValueOnce(
         sameDefinition({
@@ -506,6 +604,118 @@ describe('CredentialDefinitionService', () => {
         response: { code: 'REGISTRATION_REPLAY_UNAVAILABLE' },
       });
       expect(enqueue).not.toHaveBeenCalled();
+    });
+
+    it('rejects replay of an inactive non-failed definition', async () => {
+      mockFindExistingByTenantAndNameAndFormat.mockResolvedValueOnce(
+        sameDefinition({ isActive: false, registrationState: 'pending' }),
+      );
+
+      await expect(
+        service.create(
+          auth.tenantId,
+          {
+            name: 'Employee',
+            options: { format: CredentialDefinitionFormat.ANONCREDS },
+            schema: { definition: mockCredentialDefinition.schemaDefinition },
+          },
+          auth,
+        ),
+      ).rejects.toMatchObject({
+        response: { code: 'REGISTRATION_REPLAY_UNAVAILABLE' },
+      });
+    });
+
+    it('rejects pending and ready definitions whose operation is unavailable', async () => {
+      mockFindExistingByTenantAndNameAndFormat.mockResolvedValueOnce(
+        sameDefinition({ registrationOperationId: null }),
+      );
+      await expect(
+        service.create(
+          auth.tenantId,
+          {
+            name: 'Employee',
+            options: { format: CredentialDefinitionFormat.ANONCREDS },
+            schema: { definition: mockCredentialDefinition.schemaDefinition },
+          },
+          auth,
+        ),
+      ).rejects.toMatchObject({
+        response: { code: 'REGISTRATION_REPLAY_UNAVAILABLE' },
+      });
+
+      mockFindExistingByTenantAndNameAndFormat.mockResolvedValueOnce(
+        sameDefinition({
+          registrationState: 'ready',
+          registrationOperationId: 'missing-operation',
+        }),
+      );
+      manager.findOne.mockResolvedValueOnce(null);
+      await expect(
+        service.create(
+          auth.tenantId,
+          {
+            name: 'Employee',
+            options: { format: CredentialDefinitionFormat.ANONCREDS },
+            schema: { definition: mockCredentialDefinition.schemaDefinition },
+          },
+          auth,
+        ),
+      ).rejects.toMatchObject({
+        response: { code: 'REGISTRATION_REPLAY_UNAVAILABLE' },
+      });
+    });
+
+    it('rejects a registration state that cannot be continued', async () => {
+      mockFindExistingByTenantAndNameAndFormat.mockResolvedValueOnce(
+        sameDefinition({ registrationState: 'unverified' }),
+      );
+
+      await expect(
+        service.create(
+          auth.tenantId,
+          {
+            name: 'Employee',
+            options: { format: CredentialDefinitionFormat.ANONCREDS },
+            schema: { definition: mockCredentialDefinition.schemaDefinition },
+          },
+          auth,
+        ),
+      ).rejects.toThrow(
+        'Credential definition registration cannot be continued.',
+      );
+    });
+
+    it('re-reads and continues the winning row after a unique-index race', async () => {
+      const existing = sameDefinition();
+      mockFindExistingByTenantAndNameAndFormat
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(existing);
+      manager.findOne.mockResolvedValueOnce({
+        id: 'existing-operation',
+        state: OperationState.PROCESSING,
+      });
+      const duplicate = Object.assign(new Error('duplicate'), {
+        code: '23505',
+      });
+      mockCreate.mockRejectedValueOnce(
+        new QueryFailedError('INSERT', [], duplicate),
+      );
+
+      await expect(
+        service.create(
+          auth.tenantId,
+          {
+            name: 'Employee',
+            options: { format: CredentialDefinitionFormat.ANONCREDS },
+            schema: { definition: mockCredentialDefinition.schemaDefinition },
+          },
+          auth,
+        ),
+      ).resolves.toMatchObject({ id: 'existing-operation' });
+      expect(mockFindExistingByTenantAndNameAndFormat).toHaveBeenCalledTimes(2);
+      expect(createOperation).toHaveBeenCalledTimes(1);
+      expect(enqueue).toHaveBeenCalledTimes(1);
     });
 
     it('should create a new credential definition if name is unique for tenant', async () => {

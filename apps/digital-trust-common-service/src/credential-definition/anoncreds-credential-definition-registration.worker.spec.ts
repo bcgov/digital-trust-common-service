@@ -156,6 +156,15 @@ describe('AnonCreds credential-definition registration worker', () => {
     expect(definitionRepository.findOne).not.toHaveBeenCalled();
   });
 
+  it('ignores scheduled payloads without required identifiers', async () => {
+    await worker.onModuleInit();
+
+    await expect(
+      registeredHandler?.({ data: { tenantId: 'tenant' } }),
+    ).resolves.toBeUndefined();
+    expect(definitionRepository.findOne).not.toHaveBeenCalled();
+  });
+
   it('registers only the worker and does not schedule a recurring reconciliation', async () => {
     await worker.onModuleInit();
 
@@ -163,6 +172,18 @@ describe('AnonCreds credential-definition registration worker', () => {
       JOB_QUEUES.DEFINITION_REGISTER,
       expect.any(Function),
       { enabled: true },
+    );
+  });
+
+  it('disables the registered worker when configured off', async () => {
+    configGet.mockReturnValueOnce('false');
+
+    await worker.onModuleInit();
+
+    expect(registerWorker).toHaveBeenCalledWith(
+      JOB_QUEUES.DEFINITION_REGISTER,
+      expect.any(Function),
+      { enabled: false },
     );
   });
 
@@ -234,6 +255,52 @@ describe('AnonCreds credential-definition registration worker', () => {
     );
   });
 
+  it('adopts an existing schema and definition without publishing duplicates', async () => {
+    const row = definition();
+    row.registration!.schema = { id: 'existing-schema', state: 'finished' };
+    definitionRepository.findOne.mockResolvedValueOnce(row);
+    port.findDefinition.mockResolvedValueOnce('existing-definition');
+
+    await worker.process('tenant', 'definition');
+
+    expect(port.resolveSchema.mock.calls).toContainEqual([
+      context,
+      'existing-schema',
+    ]);
+    expect(port.findDefinition.mock.calls).toContainEqual([
+      context,
+      'issuer',
+      'existing-schema',
+      { tag: 'default', status: { revocation: { enabled: true } } },
+    ]);
+    expect(port.publishSchema.mock.calls).toHaveLength(0);
+    expect(port.publishDefinition.mock.calls).toHaveLength(0);
+    expect(transitionState).toHaveBeenLastCalledWith(
+      'operation',
+      OperationState.COMPLETED,
+      expect.objectContaining({ external_id: 'existing-definition' }),
+      expect.any(Object),
+      'tenant',
+    );
+  });
+
+  it('adopts a schema found by deterministic lookup', async () => {
+    port.findSchema.mockResolvedValueOnce({
+      id: 'existing-schema',
+      definition: definition().schemaDefinition,
+    });
+
+    await worker.process('tenant', 'definition');
+
+    expect(port.publishSchema.mock.calls).toHaveLength(0);
+    expect(port.findDefinition.mock.calls).toContainEqual([
+      context,
+      'issuer',
+      'existing-schema',
+      { tag: 'default', status: { revocation: { enabled: true } } },
+    ]);
+  });
+
   it('waits on saved schema correlation instead of republishing and queues one delayed check', async () => {
     const row = definition();
     row.registration!.schema = {
@@ -283,6 +350,112 @@ describe('AnonCreds credential-definition registration worker', () => {
     expect(transitionState).toHaveBeenLastCalledWith(
       'operation',
       OperationState.PROCESSING,
+      expect.any(Object),
+      expect.any(Object),
+      'tenant',
+    );
+  });
+
+  it('does not republish a pending definition while its submission is unresolved', async () => {
+    port.findSchema.mockResolvedValueOnce({
+      id: 'schema',
+      definition: definition().schemaDefinition,
+    });
+    const row = definition();
+    row.registration!.definition = {
+      jobId: 'definition-job',
+      state: 'action',
+    };
+    definitionRepository.findOne.mockResolvedValueOnce(row);
+    port.findDefinition.mockResolvedValueOnce(null);
+
+    await worker.process('tenant', 'definition', 2);
+
+    expect(port.publishDefinition.mock.calls).toHaveLength(0);
+    expect(sendInTransaction).toHaveBeenCalledWith(
+      expect.any(Object),
+      JOB_QUEUES.DEFINITION_REGISTER,
+      { tenantId: 'tenant', definitionId: 'definition', checks: 3 },
+      { startAfter: 15, singletonKey: 'definition' },
+    );
+    expect(transitionState).toHaveBeenLastCalledWith(
+      'operation',
+      OperationState.PROCESSING,
+      expect.objectContaining({
+        registration: expect.objectContaining({
+          stage: 'awaiting_definition_endorsement',
+          job_id: 'definition-job',
+        }),
+      }),
+      expect.any(Object),
+      'tenant',
+    );
+  });
+
+  it('persists and waits for a new definition publication that is pending', async () => {
+    port.findSchema.mockResolvedValueOnce({
+      id: 'schema',
+      definition: definition().schemaDefinition,
+    });
+    port.publishDefinition.mockResolvedValueOnce({
+      state: 'wait',
+      jobId: 'definition-job',
+      transactionId: 'definition-transaction',
+    });
+
+    await worker.process('tenant', 'definition');
+
+    expect(manager.update.mock.calls).toEqual(
+      expect.arrayContaining([
+        expect.arrayContaining([
+          CredentialDefinition,
+          { id: 'definition', tenantId: 'tenant', isActive: true },
+          expect.objectContaining({
+            registration: expect.objectContaining({
+              definition: {
+                jobId: 'definition-job',
+                transactionId: 'definition-transaction',
+                state: 'wait',
+              },
+            }),
+          }),
+        ]),
+      ]),
+    );
+    expect(sendInTransaction).toHaveBeenCalledWith(
+      expect.any(Object),
+      JOB_QUEUES.DEFINITION_REGISTER,
+      { tenantId: 'tenant', definitionId: 'definition', checks: 1 },
+      { startAfter: 15, singletonKey: 'definition' },
+    );
+    expect(transitionState).toHaveBeenLastCalledWith(
+      'operation',
+      OperationState.PROCESSING,
+      expect.objectContaining({
+        registration: expect.objectContaining({
+          stage: 'awaiting_definition_endorsement',
+        }),
+      }),
+      expect.any(Object),
+      'tenant',
+    );
+  });
+
+  it('skips revocation checks when the normalized option disables revocation', async () => {
+    const row = definition();
+    row.options = {
+      format: CredentialDefinitionFormat.ANONCREDS,
+      tag: 'default',
+      status: { revocation: { enabled: false } },
+    };
+    definitionRepository.findOne.mockResolvedValueOnce(row);
+
+    await worker.process('tenant', 'definition');
+
+    expect(port.verifyRevocation.mock.calls).toHaveLength(0);
+    expect(transitionState).toHaveBeenLastCalledWith(
+      'operation',
+      OperationState.COMPLETED,
       expect.any(Object),
       expect.any(Object),
       'tenant',
@@ -342,6 +515,143 @@ describe('AnonCreds credential-definition registration worker', () => {
       'tenant',
     );
     expect(sendInTransaction).not.toHaveBeenCalled();
+  });
+
+  it('fails when a completed schema response has no ID', async () => {
+    port.publishSchema.mockResolvedValueOnce({ state: 'finished' });
+
+    await worker.process('tenant', 'definition');
+
+    expect(transitionState).toHaveBeenLastCalledWith(
+      'operation',
+      OperationState.FAILED,
+      expect.objectContaining({
+        problem_details: expect.objectContaining({
+          detail: 'Backend reported a completed schema without an ID',
+          stage: 'schema_publication',
+        }),
+      }),
+      expect.any(Object),
+      'tenant',
+    );
+  });
+
+  it('fails when a completed definition response has no ID', async () => {
+    port.findSchema.mockResolvedValueOnce({
+      id: 'schema',
+      definition: definition().schemaDefinition,
+    });
+    port.publishDefinition.mockResolvedValueOnce({ state: 'finished' });
+
+    await worker.process('tenant', 'definition');
+
+    expect(transitionState).toHaveBeenLastCalledWith(
+      'operation',
+      OperationState.FAILED,
+      expect.objectContaining({
+        problem_details: expect.objectContaining({
+          detail:
+            'Backend reported a completed credential definition without an ID',
+          stage: 'definition_publication',
+        }),
+      }),
+      expect.any(Object),
+      'tenant',
+    );
+  });
+
+  it('fails before connector access when registration evidence is missing', async () => {
+    const row = definition();
+    row.registration = null;
+    definitionRepository.findOne.mockResolvedValueOnce(row);
+
+    await worker.process('tenant', 'definition');
+
+    expect(manager.update).toHaveBeenCalledWith(
+      CredentialDefinition,
+      { id: 'definition', tenantId: 'tenant' },
+      { registrationState: 'failed' },
+    );
+    expect(resolve).not.toHaveBeenCalled();
+    expect(operationRepository.findOne).not.toHaveBeenCalled();
+  });
+
+  it('fails when the definition has no operation ID', async () => {
+    const row = definition();
+    row.registrationOperationId = null;
+    definitionRepository.findOne.mockResolvedValueOnce(row);
+
+    await worker.process('tenant', 'definition');
+
+    expect(manager.update).toHaveBeenCalledWith(
+      CredentialDefinition,
+      { id: 'definition', tenantId: 'tenant' },
+      { registrationState: 'failed' },
+    );
+    expect(operationRepository.findOne).not.toHaveBeenCalled();
+  });
+
+  it('fails when the saved definition or connector is inactive', async () => {
+    const row = definition();
+    row.isActive = false;
+    definitionRepository.findOne.mockResolvedValueOnce(row);
+
+    await worker.process('tenant', 'definition');
+
+    expect(resolve).not.toHaveBeenCalled();
+    expect(transitionState).toHaveBeenLastCalledWith(
+      'operation',
+      OperationState.FAILED,
+      expect.objectContaining({
+        problem_details: expect.objectContaining({
+          detail: 'The credential definition or its connector is unavailable',
+        }),
+      }),
+      expect.any(Object),
+      'tenant',
+    );
+  });
+
+  it('fails when the connector does not expose a registration port', async () => {
+    resolve.mockResolvedValueOnce({
+      adapter: {},
+      context,
+    });
+
+    await worker.process('tenant', 'definition');
+
+    expect(transitionState).toHaveBeenLastCalledWith(
+      'operation',
+      OperationState.FAILED,
+      expect.objectContaining({
+        problem_details: expect.objectContaining({
+          detail:
+            'The selected connector does not support AnonCreds registration',
+        }),
+      }),
+      expect.any(Object),
+      'tenant',
+    );
+  });
+
+  it('fails when the resolved issuer no longer matches the saved issuer', async () => {
+    port.resolveIssuer.mockResolvedValueOnce('different-issuer');
+
+    await worker.process('tenant', 'definition');
+
+    expect(port.findSchema.mock.calls).toHaveLength(0);
+    expect(transitionState).toHaveBeenLastCalledWith(
+      'operation',
+      OperationState.FAILED,
+      expect.objectContaining({
+        problem_details: expect.objectContaining({
+          detail: 'The configured issuer no longer matches',
+          stage: 'preflight',
+        }),
+      }),
+      expect.any(Object),
+      'tenant',
+    );
   });
 
   it('fails safely when the tenant-scoped operation is missing', async () => {
