@@ -137,6 +137,11 @@ describe('Credential offer (e2e)', () => {
         tenantId: tenant.id,
         name: 'Diploma',
         format: CredentialDefinitionFormat.ANONCREDS,
+        options: {
+          format: CredentialDefinitionFormat.ANONCREDS,
+          tag: 'default',
+          status: { revocation: { enabled: true } },
+        },
         schemaDefinition: { attr_names: ['given_name'] },
         externalId: 'cred-def-external-e2e',
         connectorType: CredentialDefinitionConnectorType.TRACTION,

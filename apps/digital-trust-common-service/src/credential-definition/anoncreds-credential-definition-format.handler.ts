@@ -5,7 +5,7 @@ import {
 } from '@app/credential-ports';
 import { JOB_QUEUES } from '@app/pg-boss';
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { plainToInstance } from 'class-transformer';
+import { instanceToPlain, plainToInstance } from 'class-transformer';
 import { validateSync } from 'class-validator';
 import type { EntityManager } from 'typeorm';
 
@@ -61,7 +61,7 @@ function normalizeOptions<T extends object>(
     });
   }
 
-  return instance as T & Record<string, unknown>;
+  return instanceToPlain(instance);
 }
 
 @Injectable()
