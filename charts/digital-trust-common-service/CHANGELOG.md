@@ -9,6 +9,12 @@ and this chart adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.h
 
 ### Added
 
+- `config.SEED_PLATFORM_OPERATOR_EMAILS` (default `""`), comma-separated emails
+  the development seed makes owners of the demo tenant `acme-corp` with the
+  platform-operator flag, so a real sign-in to a PR environment lands as owner
+  and platform admin instead of `readonly`. Additive: dropping an email demotes
+  nobody. `pr-deploy.yml` sets it from the `PR_ENV_OPERATOR_EMAILS` repository
+  variable.
 - `POD_NAME` (downward API, `metadata.name`) in the API and Worker, and
   `OTEL_RESOURCE_ATTRIBUTES` now `service.instance.id=$(POD_NAME),service.version=<tag>`
   when `otel.enabled`. Previously every pod exported into the same metric
