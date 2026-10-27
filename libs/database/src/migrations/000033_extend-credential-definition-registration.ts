@@ -20,7 +20,9 @@ export class ExtendCredentialDefinitionRegistration1792018018010 implements Migr
         WHEN format::text = 'anoncreds' THEN jsonb_build_object(
           'format', format::text,
           'tag', 'default',
-          'revocation', jsonb_build_object('enabled', true)
+          'status', jsonb_build_object(
+            'revocation', jsonb_build_object('enabled', true)
+          )
         )
         ELSE jsonb_build_object('format', format::text)
       END;
