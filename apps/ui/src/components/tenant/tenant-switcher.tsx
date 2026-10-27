@@ -1,8 +1,9 @@
-import { Building2, Check, ChevronsUpDown, Loader2 } from 'lucide-react';
+import { Check, ChevronsUpDown, Loader2 } from 'lucide-react';
 
 import { TenantStatusBadge } from './tenant-status-badge';
 import { Badge } from '@/components/common/badge';
 import { Button } from '@/components/common/button';
+import { BuildingIcon } from '@/components/icons';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -87,7 +88,7 @@ export function TenantSwitcher() {
   if (!canSwitch) {
     return (
       <div className="flex items-center gap-2 text-sm font-medium">
-        <Building2 className="size-4" aria-hidden="true" />
+        <BuildingIcon className="size-4" />
         <ActiveTenantLabel tenant={tenant} />
       </div>
     );
@@ -106,7 +107,7 @@ export function TenantSwitcher() {
             {isSwitching ? (
               <Loader2 className="size-4 animate-spin" aria-hidden="true" />
             ) : (
-              <Building2 className="size-4" aria-hidden="true" />
+              <BuildingIcon className="size-4" />
             )}
             <ActiveTenantLabel tenant={tenant} />
             <ChevronsUpDown

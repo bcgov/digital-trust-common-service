@@ -1,13 +1,8 @@
-import {
-  Building2,
-  LayoutDashboard,
-  LogOut,
-  Share2,
-  UsersRound,
-} from 'lucide-react';
+import { LayoutDashboard, LogOut, Share2, UsersRound } from 'lucide-react';
 import { NavLink, Outlet } from 'react-router';
 
 import { BcGovHeader } from '@/components/common/bc-gov-header';
+import { BuildingIcon } from '@/components/icons';
 import { TenantSwitcher } from '@/components/tenant/tenant-switcher';
 import { Avatar, AvatarFallback } from '@/components/common/avatar';
 import { Badge } from '@/components/common/badge';
@@ -116,7 +111,7 @@ export function AppShell() {
       <div className="flex flex-1">
         <aside className="w-60 shrink-0 border-r bg-sidebar text-sidebar-foreground">
           <div className="flex items-center gap-2 border-b px-3 py-3">
-            <Building2 className="size-4 shrink-0" aria-hidden="true" />
+            <BuildingIcon className="size-4 shrink-0" />
             <span className="truncate text-sm font-semibold">
               {tenant?.name ?? 'Unknown tenant'}
             </span>
