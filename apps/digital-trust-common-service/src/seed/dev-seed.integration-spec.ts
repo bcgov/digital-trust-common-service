@@ -21,6 +21,11 @@ import {
 import { DevSeedService } from './dev-seed.service';
 import { SEED_ENTITIES, SEED_REPOSITORY_PROVIDERS } from './seed.constants';
 
+// Set before ConfigModule loads .env, which never overrides an existing
+// variable. Not acme-corp.example.test addresses, so the demo counts hold.
+process.env.SEED_PLATFORM_OPERATOR_EMAILS =
+  'Operator.One@Example.test, operator.two@example.test';
+
 describe('DevSeedService integration', () => {
   let module: TestingModule;
   let migrationDataSource: DataSource;
@@ -83,6 +88,7 @@ describe('DevSeedService integration', () => {
   });
 
   afterAll(async () => {
+    delete process.env.SEED_PLATFORM_OPERATOR_EMAILS;
     if (module) {
       // Leave no memberships behind for later specs to trip over.
       await clearSeededUsers();
@@ -206,6 +212,96 @@ describe('DevSeedService integration', () => {
       // Back to an unclaimed invitation, as later runs of this file expect.
       await queryDataSource.query(
         `UPDATE tenant_user SET external_user_id = NULL, status = 'invited' WHERE email = $1`,
+        [email],
+      );
+    }
+  });
+
+  type OperatorRow = {
+    email: string;
+    display_name: string;
+    role: string;
+    status: string;
+    external_user_id: string | null;
+    is_platform_operator: boolean;
+  };
+
+  const operatorColumns =
+    'email, display_name, role, status, external_user_id, is_platform_operator';
+
+  it('seeds listed platform operators as invited owners, lowercased and idempotently', async () => {
+    await seedService.run();
+    await seedService.run();
+
+    const rows = await queryDataSource.query<OperatorRow[]>(
+      `SELECT ${operatorColumns} FROM tenant_user
+        WHERE tenant_id = (SELECT id FROM tenant WHERE slug = $1)
+          AND LOWER(email) IN ($2, $3)
+        ORDER BY email`,
+      [
+        UI_SPA_TENANT_SLUG,
+        'operator.one@example.test',
+        'operator.two@example.test',
+      ],
+    );
+
+    expect(rows).toEqual([
+      {
+        email: 'operator.one@example.test',
+        display_name: 'operator.one@example.test',
+        role: 'owner',
+        status: 'invited',
+        external_user_id: null,
+        is_platform_operator: true,
+      },
+      {
+        email: 'operator.two@example.test',
+        display_name: 'operator.two@example.test',
+        role: 'owner',
+        status: 'invited',
+        external_user_id: null,
+        is_platform_operator: true,
+      },
+    ]);
+  });
+
+  it('promotes a row that signed in before being listed, keeping its name and subject', async () => {
+    await seedService.run();
+    const email = 'operator.two@example.test';
+
+    try {
+      // A readonly sign-in that landed before the email was listed, with the
+      // email as the IdP spelled it.
+      await queryDataSource.query(
+        `UPDATE tenant_user
+            SET external_user_id = $1, status = 'active', role = 'readonly',
+                display_name = 'Real Name', is_platform_operator = false,
+                email = 'Operator.Two@Example.test'
+          WHERE email = $2`,
+        ['keycloak-sub-op', email],
+      );
+
+      await seedService.run();
+
+      const rows = await queryDataSource.query<OperatorRow[]>(
+        `SELECT ${operatorColumns} FROM tenant_user WHERE LOWER(email) = $1`,
+        [email],
+      );
+      expect(rows).toEqual([
+        {
+          email: 'Operator.Two@Example.test',
+          display_name: 'Real Name',
+          role: 'owner',
+          status: 'active',
+          external_user_id: 'keycloak-sub-op',
+          is_platform_operator: true,
+        },
+      ]);
+    } finally {
+      await queryDataSource.query(
+        `UPDATE tenant_user
+            SET external_user_id = NULL, status = 'invited', display_name = $1, email = $1
+          WHERE LOWER(email) = $1`,
         [email],
       );
     }
