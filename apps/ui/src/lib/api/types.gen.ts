@@ -518,7 +518,7 @@ export interface paths {
          *     root field. Supply exactly one of
          *     schema.id or schema.definition. Format-specific options are immutable
          *     after creation and returned read-only. For AnonCreds, tag defaults to
-         *     "default" and revocation.enabled defaults to true. Metadata remains
+         *     "default" and status.revocation.enabled defaults to true. Metadata remains
          *     free-form client annotations.
          *     Traction must already have an askar-anoncreds wallet and a matching
          *     public issuer DID for AnonCreds registration. This endpoint does not
@@ -1955,10 +1955,15 @@ export interface components {
             format: "anoncreds";
             /** @description Defaults to "default" when omitted */
             tag?: string;
-            revocation?: {
-                /** @description Defaults to true when omitted */
-                enabled?: boolean;
-            };
+            status?: components["schemas"]["AnonCredsStatusOptionsDto"];
+        };
+        /** @description AnonCreds status settings; formats may define their own status options. */
+        AnonCredsStatusOptionsDto: {
+            revocation?: components["schemas"]["AnonCredsRevocationOptionsDto"];
+        };
+        AnonCredsRevocationOptionsDto: {
+            /** @description Defaults to true when omitted */
+            enabled?: boolean;
         };
         SdJwtCredentialDefinitionOptionsDto: {
             /**
@@ -1990,13 +1995,18 @@ export interface components {
             connector_id?: string;
             schema: {
                 /** @description Existing published schema; not a credential-definition import */
-                id?: string;
-                definition?: {
-                    schema_name: string;
-                    schema_version: string;
-                    attr_names: string[];
+                id: string;
+            } | {
+                /**
+                 * @description Free-form schema definition interpreted according to options.format.
+                 *     AnonCreds requires schema_name, schema_version, and attr_names.
+                 *     W3C VC definitions may use JSON Schema. Formats without a
+                 *     schema validator may accept the object as-is.
+                 */
+                definition: {
+                    [key: string]: unknown;
                 };
-            } & (unknown | unknown);
+            };
             /**
              * @description Existing identity selection, never DID creation. Omit to use the
              *     configured public issuer. Traction currently requires the selection

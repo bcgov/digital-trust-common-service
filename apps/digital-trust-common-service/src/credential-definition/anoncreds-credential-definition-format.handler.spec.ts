@@ -1,3 +1,4 @@
+import { CredentialFormat } from '@app/credential-ports';
 import { BadRequestException } from '@nestjs/common';
 
 import {
@@ -12,16 +13,28 @@ import {
 } from './dto/credential-definition-options.dto';
 
 describe('credential definition format options', () => {
+  const validateSchema = jest.fn().mockReturnValue([]);
+  const formatValidators = {
+    has: jest.fn().mockReturnValue(true),
+    resolve: jest.fn().mockReturnValue({ validateSchema }),
+  };
   const anonCreds = new AnonCredsCredentialDefinitionFormatHandler(
     {} as never,
     {} as never,
+    formatValidators as never,
   );
+
+  beforeEach(() => {
+    validateSchema.mockReset().mockReturnValue([]);
+    formatValidators.has.mockReset().mockReturnValue(true);
+    formatValidators.resolve.mockReset().mockReturnValue({ validateSchema });
+  });
 
   it('fills AnonCreds option defaults', () => {
     expect(anonCreds.normalizeOptions({ format: 'anoncreds' })).toEqual({
       format: 'anoncreds',
       tag: 'default',
-      revocation: { enabled: true },
+      status: { revocation: { enabled: true } },
     });
   });
 
@@ -30,24 +43,30 @@ describe('credential definition format options', () => {
       anonCreds.normalizeOptions({
         format: 'anoncreds',
         tag: 'employee',
-        revocation: { enabled: false },
+        status: { revocation: { enabled: false } },
       }),
     ).toEqual({
       format: 'anoncreds',
       tag: 'employee',
-      revocation: { enabled: false },
+      status: { revocation: { enabled: false } },
     });
   });
 
   it.each([
     { format: 'anoncreds', tag: 'employee', unexpected: true },
     { format: 'anoncreds', tag: '' },
-    { format: 'anoncreds', tag: 'employee', revocation: { enabled: 'false' } },
     {
       format: 'anoncreds',
       tag: 'employee',
-      revocation: { enabled: false, extra: true },
+      status: { revocation: { enabled: 'false' } },
     },
+    {
+      format: 'anoncreds',
+      tag: 'employee',
+      status: { revocation: { enabled: false, extra: true } },
+    },
+    { format: 'anoncreds', revocation: { enabled: false } },
+    { format: 'anoncreds', status: { unexpected: true } },
   ])('rejects invalid AnonCreds options %#', (options) => {
     expect(() => anonCreds.normalizeOptions(options)).toThrow(
       BadRequestException,
@@ -58,6 +77,39 @@ describe('credential definition format options', () => {
     expect(() =>
       anonCreds.normalizeOptions({ format: CredentialDefinitionFormat.MDL }),
     ).toThrow(BadRequestException);
+  });
+
+  it('accepts free-form schema definitions after AnonCreds format validation', () => {
+    const schema = {
+      definition: {
+        schema_name: 'employee',
+        schema_version: '1.0',
+        attr_names: ['name'],
+      },
+    };
+
+    expect(anonCreds.normalizeSchema(schema)).toEqual(schema);
+    expect(formatValidators.resolve).toHaveBeenCalledWith(
+      CredentialFormat.AnonCreds,
+    );
+    expect(validateSchema).toHaveBeenCalledWith(schema.definition);
+  });
+
+  it('rejects inline schema definitions that fail AnonCreds validation', () => {
+    validateSchema.mockReturnValueOnce([
+      { field: 'attr_names', message: 'is required' },
+    ]);
+
+    expect(() =>
+      anonCreds.normalizeSchema({ definition: { any: 'shape' } }),
+    ).toThrow(BadRequestException);
+  });
+
+  it('preserves an existing schema ID for handler resolution', () => {
+    expect(anonCreds.normalizeSchema({ id: 'existing-schema' })).toEqual({
+      id: 'existing-schema',
+    });
+    expect(validateSchema).not.toHaveBeenCalled();
   });
 
   it.each([

@@ -4,7 +4,10 @@ import {
   CredentialDefinition,
   CredentialDefinitionFormat,
 } from './credential-definition.entity';
-import type { CreateCredentialDefinitionDto } from './dto/create-credential-definition.dto';
+import type {
+  CreateCredentialDefinitionDto,
+  RegistrationSchema,
+} from './dto/create-credential-definition.dto';
 
 export interface PreparedCredentialDefinition {
   connectorId: string;
@@ -16,6 +19,7 @@ export interface PreparedCredentialDefinition {
 export interface CredentialDefinitionFormatHandler {
   readonly format: CredentialDefinitionFormat;
   normalizeOptions(options: unknown): Record<string, unknown>;
+  normalizeSchema(schema: RegistrationSchema): RegistrationSchema;
   prepare(
     tenantId: string,
     dto: CreateCredentialDefinitionDto,

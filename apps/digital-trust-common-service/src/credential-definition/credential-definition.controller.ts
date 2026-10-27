@@ -49,6 +49,8 @@ import { CredentialDefinitionService } from './credential-definition.service';
 import { CreateCredentialDefinitionDto } from './dto/create-credential-definition.dto';
 import {
   AnonCredsCredentialDefinitionOptionsDto,
+  AnonCredsRevocationOptionsDto,
+  AnonCredsStatusOptionsDto,
   CredentialDefinitionOptionsBase,
   MdlCredentialDefinitionOptionsDto,
   SdJwtCredentialDefinitionOptionsDto,
@@ -62,6 +64,8 @@ import { UpdateCredentialDefinitionDto } from './dto/update-credential-definitio
 @ApiExtraModels(
   CredentialDefinitionOptionsBase,
   AnonCredsCredentialDefinitionOptionsDto,
+  AnonCredsStatusOptionsDto,
+  AnonCredsRevocationOptionsDto,
   SdJwtCredentialDefinitionOptionsDto,
   MdlCredentialDefinitionOptionsDto,
   W3cVcCredentialDefinitionOptionsDto,
@@ -119,7 +123,7 @@ export class CredentialDefinitionController {
           options: {
             format: 'anoncreds',
             tag: 'default',
-            revocation: { enabled: true },
+            status: { revocation: { enabled: true } },
           },
           metadata: {
             issuer: 'DMV',

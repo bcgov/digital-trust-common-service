@@ -183,7 +183,8 @@ export class TractionDefinitionRegistration implements DefinitionRegistrationPor
       if (
         definition.issuerId !== registrationIssuerId ||
         definition.schemaId !== schemaId ||
-        Boolean(definition.value.revocation) !== options.revocation.enabled
+        Boolean(definition.value.revocation) !==
+          options.status.revocation.enabled
       ) {
         throw new ValidationError([
           'Existing credential definition does not match registration options',
@@ -216,7 +217,9 @@ export class TractionDefinitionRegistration implements DefinitionRegistrationPor
             schemaId,
             tag: options.tag,
           },
-          options: { support_revocation: options.revocation.enabled },
+          options: {
+            support_revocation: options.status.revocation.enabled,
+          },
           wait_for_revocation_setup: false,
         },
       },

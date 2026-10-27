@@ -28,7 +28,7 @@ describe('credential definition registration contract', () => {
       options: {
         format: 'anoncreds',
         tag: 'test',
-        revocation: { enabled: true },
+        status: { revocation: { enabled: true } },
       },
       metadata: {
         tag: 'test',
@@ -39,6 +39,7 @@ describe('credential definition registration contract', () => {
     expect(result.connectorId).toBe('123e4567-e89b-42d3-a456-426614174001');
     expect(result.options.format).toBe('anoncreds');
     expect(result.options.tag).toBe('test');
+    expect(result.options.status.revocation.enabled).toBe(true);
     expect(result.metadata.revocation.enabled).toBe(true);
     expect(result.metadata.issuer).toBe('DMV');
   });
@@ -54,9 +55,32 @@ describe('credential definition registration contract', () => {
     },
   );
 
+  it('accepts a free-form schema definition selected by options.format', async () => {
+    const schema = {
+      definition: {
+        type: 'object',
+        properties: { credentialSubject: { type: 'object' } },
+      },
+    };
+
+    await expect(
+      validate({
+        ...input,
+        options: { format: 'w3c-vc' },
+        schema,
+      }),
+    ).resolves.toMatchObject({ schema });
+  });
+
   it('requires format within options and rejects root format', async () => {
     await expect(validate({ ...input, options: {} })).rejects.toThrow();
     await expect(validate({ ...input, format: 'anoncreds' })).rejects.toThrow();
+    await expect(
+      validate({
+        ...input,
+        options: { format: 'anoncreds', revocation: { enabled: false } },
+      }),
+    ).rejects.toThrow();
   });
 
   it('does not accept options on PATCH', async () => {
@@ -88,6 +112,8 @@ describe('credential definition registration contract', () => {
     { issuer: { id: null } },
     { issuer: null },
     { connector_id: null },
+    { schema: {} },
+    { schema: { id: 'schema-id', definition: {} } },
   ])('rejects unsupported or malformed input %j', async (change) => {
     await expect(validate({ ...input, ...change })).rejects.toThrow();
   });

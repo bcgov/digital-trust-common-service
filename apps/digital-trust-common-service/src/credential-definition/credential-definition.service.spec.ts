@@ -1,7 +1,6 @@
 import {
   CredentialFormat,
   FormatNotSupportedError,
-  FormatValidatorRegistry,
 } from '@app/credential-ports';
 import {
   BadRequestException,
@@ -44,9 +43,6 @@ describe('CredentialDefinitionService', () => {
   let mockUpdate: jest.Mock;
   let mockDeactivate: jest.Mock;
   let mockEmit: jest.Mock;
-  let mockHas: jest.Mock;
-  let mockResolve: jest.Mock;
-  let mockValidateSchema: jest.Mock;
   const manager = {
     save: jest.fn(),
     query: jest.fn(),
@@ -64,13 +60,18 @@ describe('CredentialDefinitionService', () => {
   const enqueue = jest.fn();
   const anonCredsHandler = {
     format: CredentialDefinitionFormat.ANONCREDS,
+    normalizeSchema: jest.fn(
+      (schema: CreateCredentialDefinitionDto['schema']) => schema,
+    ),
     normalizeOptions: jest.fn((options: Record<string, unknown> = {}) => {
-      const revocation = options.revocation as
-        { enabled?: boolean } | undefined;
+      const status = options.status as
+        { revocation?: { enabled?: boolean } } | undefined;
       return {
         format: options.format,
         tag: options.tag ?? 'default',
-        revocation: { enabled: revocation?.enabled ?? true },
+        status: {
+          revocation: { enabled: status?.revocation?.enabled ?? true },
+        },
       };
     }),
     prepare: jest.fn(
@@ -145,6 +146,9 @@ describe('CredentialDefinitionService', () => {
   };
   const noRegistrationHandler = {
     format: CredentialDefinitionFormat.SD_JWT,
+    normalizeSchema: jest.fn(
+      (schema: CreateCredentialDefinitionDto['schema']) => schema,
+    ),
     normalizeOptions: jest.fn(
       (options: Record<string, unknown> = {}) => options,
     ),
@@ -217,11 +221,6 @@ describe('CredentialDefinitionService', () => {
     mockUpdate = jest.fn();
     mockDeactivate = jest.fn();
     mockEmit = jest.fn().mockResolvedValue(undefined);
-    mockValidateSchema = jest.fn().mockReturnValue([]);
-    mockResolve = jest
-      .fn()
-      .mockReturnValue({ validateSchema: mockValidateSchema });
-    mockHas = jest.fn().mockReturnValue(false);
     resolveAdapter.mockResolvedValue({
       connector: { id: 'connector-1', connectorType: 'traction' },
       context: {},
@@ -282,10 +281,6 @@ describe('CredentialDefinitionService', () => {
           useValue: { emit: mockEmit },
         },
         {
-          provide: FormatValidatorRegistry,
-          useValue: { has: mockHas, resolve: mockResolve },
-        },
-        {
           provide: CREDENTIAL_DEFINITION_FORMAT_HANDLERS,
           useValue: [anonCredsHandler, noRegistrationHandler],
         },
@@ -341,7 +336,7 @@ describe('CredentialDefinitionService', () => {
       options: {
         format: CredentialDefinitionFormat.ANONCREDS,
         tag: 'default',
-        revocation: { enabled: true },
+        status: { revocation: { enabled: true } },
       },
       registration: {
         issuerId: 'did:indy:issuer',
@@ -490,7 +485,7 @@ describe('CredentialDefinitionService', () => {
         options: {
           format: CredentialDefinitionFormat.ANONCREDS,
           tag: 'department',
-          revocation: { enabled: false },
+          status: { revocation: { enabled: false } },
         },
         schema: { definition: mockCredentialDefinition.schemaDefinition },
         metadata: mockCredentialDefinition.metadata,
@@ -524,7 +519,7 @@ describe('CredentialDefinitionService', () => {
           options: {
             format: CredentialDefinitionFormat.ANONCREDS,
             tag: 'department',
-            revocation: { enabled: false },
+            status: { revocation: { enabled: false } },
           },
           metadata: dto.metadata,
         }),
@@ -598,7 +593,7 @@ describe('CredentialDefinitionService', () => {
       );
     });
 
-    it('skips schema validation when a mapped format has no registered validator', async () => {
+    it('delegates schema normalization to the selected format handler', async () => {
       const tenantId = mockCredentialDefinition.tenantId;
       const dto: CreateCredentialDefinitionDto = {
         name: mockCredentialDefinition.name,
@@ -609,16 +604,13 @@ describe('CredentialDefinitionService', () => {
 
       mockFindByTenantAndNameAndFormat.mockResolvedValue(null);
       mockCreate.mockResolvedValue(mockCredentialDefinition);
-      mockHas.mockReturnValue(false);
-
       await service.create(tenantId, dto, auth);
 
-      expect(mockHas).toHaveBeenCalledWith(CredentialFormat.AnonCreds);
-      expect(mockResolve).not.toHaveBeenCalled();
+      expect(anonCredsHandler.normalizeSchema).toHaveBeenCalledWith(dto.schema);
       expect(mockCreate).toHaveBeenCalled();
     });
 
-    it('validates the schema when a validator is registered and it is valid', async () => {
+    it('does not persist when the format handler rejects a schema', async () => {
       const tenantId = mockCredentialDefinition.tenantId;
       const dto: CreateCredentialDefinitionDto = {
         name: mockCredentialDefinition.name,
@@ -626,51 +618,27 @@ describe('CredentialDefinitionService', () => {
         schema: { definition: mockCredentialDefinition.schemaDefinition },
         metadata: mockCredentialDefinition.metadata,
       };
-
-      mockFindByTenantAndNameAndFormat.mockResolvedValue(null);
-      mockCreate.mockResolvedValue(mockCredentialDefinition);
-      mockHas.mockReturnValue(true);
-      mockValidateSchema.mockReturnValue([]);
-
-      await service.create(tenantId, dto, auth);
-
-      expect(mockHas).toHaveBeenCalledWith(CredentialFormat.AnonCreds);
-      expect(mockResolve).toHaveBeenCalledWith(CredentialFormat.AnonCreds);
-      expect(mockValidateSchema).toHaveBeenCalledWith(dto.schema.definition);
-      expect(mockCreate).toHaveBeenCalled();
-    });
-
-    it('throws BadRequestException when the schema fails format validation', async () => {
-      const tenantId = mockCredentialDefinition.tenantId;
-      const dto: CreateCredentialDefinitionDto = {
-        name: mockCredentialDefinition.name,
-        options: { format: CredentialDefinitionFormat.ANONCREDS },
-        schema: { definition: mockCredentialDefinition.schemaDefinition },
-        metadata: mockCredentialDefinition.metadata,
-      };
-      const issues = [{ path: 'attr_names', message: 'is required' }];
-
-      mockFindByTenantAndNameAndFormat.mockResolvedValue(null);
-      mockHas.mockReturnValue(true);
-      mockValidateSchema.mockReturnValue(issues);
+      anonCredsHandler.normalizeSchema.mockImplementationOnce(() => {
+        throw new BadRequestException('Invalid AnonCreds schema');
+      });
 
       await expect(service.create(tenantId, dto, auth)).rejects.toThrow(
         BadRequestException,
       );
       expect(mockCreate).not.toHaveBeenCalled();
       expect(mockEmit).not.toHaveBeenCalled();
+      expect(anonCredsHandler.prepare).not.toHaveBeenCalled();
     });
 
     it('resolves imported schemas and permits explicitly non-revocable definitions', async () => {
       const tenantId = mockCredentialDefinition.tenantId;
       const dto: CreateCredentialDefinitionDto = {
         name: mockCredentialDefinition.name,
-        options: { format: CredentialDefinitionFormat.ANONCREDS },
         schema: { id: 'schema-1' },
         issuer: { method: 'indy' },
         options: {
           format: CredentialDefinitionFormat.ANONCREDS,
-          revocation: { enabled: false },
+          status: { revocation: { enabled: false } },
         },
         metadata: {
           revocation: { enabled: false },
@@ -679,7 +647,6 @@ describe('CredentialDefinitionService', () => {
       };
 
       mockFindByTenantAndNameAndFormat.mockResolvedValue(null);
-      mockHas.mockReturnValue(true);
       await service.create(tenantId, dto, auth);
       expect(register.resolveSchema).toHaveBeenCalledWith({}, 'schema-1');
       expect(register.resolveIssuer).toHaveBeenCalledWith(
@@ -693,9 +660,8 @@ describe('CredentialDefinitionService', () => {
           }),
           options: {
             format: CredentialDefinitionFormat.ANONCREDS,
-            format: CredentialDefinitionFormat.ANONCREDS,
             tag: 'default',
-            revocation: { enabled: false },
+            status: { revocation: { enabled: false } },
           },
           metadata: {
             revocation: { enabled: false },

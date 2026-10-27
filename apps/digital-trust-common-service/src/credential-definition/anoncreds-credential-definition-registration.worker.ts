@@ -242,7 +242,7 @@ export class AnonCredsCredentialDefinitionRegistrationWorker implements OnModule
     }
 
     if (
-      options.revocation.enabled &&
+      options.status.revocation.enabled &&
       !(await backend.port.verifyRevocation(
         backend.context,
         work.definition.externalId,
@@ -351,13 +351,15 @@ export class AnonCredsCredentialDefinitionRegistrationWorker implements OnModule
 
   private definitionOptions(definition: CredentialDefinition): {
     tag: string;
-    revocation: { enabled: boolean };
+    status: { revocation: { enabled: boolean } };
   } {
     const options = definition.options ?? {};
-    const revocation = options.revocation as { enabled?: boolean } | undefined;
+    const status = options.status as
+      { revocation?: { enabled?: boolean } } | undefined;
+    const revocation = status?.revocation;
     return {
       tag: typeof options.tag === 'string' ? options.tag : 'default',
-      revocation: { enabled: revocation?.enabled ?? true },
+      status: { revocation: { enabled: revocation?.enabled ?? true } },
     };
   }
 
