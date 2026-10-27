@@ -70,7 +70,10 @@ describe('AnonCreds credential-definition registration worker', () => {
         schema_version: '1.0',
         attr_names: ['name'],
       },
-      options: { tag: 'default', revocation: { enabled: true } },
+      options: {
+        tag: 'default',
+        status: { revocation: { enabled: true } },
+      },
       registration: {
         issuerId: 'issuer',
         schema: {},
@@ -199,6 +202,15 @@ describe('AnonCreds credential-definition registration worker', () => {
     expect(manager.update.mock.invocationCallOrder[0]).toBeLessThan(
       port.findDefinition.mock.invocationCallOrder[0],
     );
+    expect(port.findDefinition.mock.calls).toContainEqual([
+      context,
+      'issuer',
+      'schema',
+      {
+        tag: 'default',
+        status: { revocation: { enabled: true } },
+      },
+    ]);
     expect(manager.update.mock.invocationCallOrder[1]).toBeLessThan(
       port.verifyRevocation.mock.invocationCallOrder[0],
     );

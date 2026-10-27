@@ -14,6 +14,9 @@ import {
   MinLength,
   ValidateNested,
   ValidateIf,
+  Validate,
+  ValidatorConstraint,
+  ValidatorConstraintInterface,
 } from 'class-validator';
 
 import {
@@ -38,6 +41,26 @@ export class RegistrationSchemaDto {
   @ValidateIf((_object: unknown, value: unknown) => value !== undefined)
   @IsObject()
   public definition?: Record<string, unknown>;
+}
+
+export type RegistrationSchema =
+  | { id: string; definition?: never }
+  | { definition: Record<string, unknown>; id?: never };
+
+@ValidatorConstraint({ name: 'schemaSourceExclusive', async: false })
+class SchemaSourceExclusiveConstraint implements ValidatorConstraintInterface {
+  public validate(value: unknown): boolean {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return false;
+    }
+
+    const schema = value as RegistrationSchemaDto;
+    return (schema.id !== undefined) !== (schema.definition !== undefined);
+  }
+
+  public defaultMessage(): string {
+    return 'Supply schema.id or schema.definition, not both';
+  }
 }
 
 export class RegistrationIssuerDto {
@@ -69,12 +92,39 @@ export class CreateCredentialDefinitionDto {
   @IsUUID()
   public connectorId?: string;
 
-  @ApiProperty({ type: RegistrationSchemaDto })
+  @ApiProperty({
+    oneOf: [
+      {
+        type: 'object',
+        additionalProperties: false,
+        required: ['id'],
+        properties: {
+          id: { type: 'string', minLength: 1, maxLength: 2048 },
+        },
+      },
+      {
+        type: 'object',
+        additionalProperties: false,
+        required: ['definition'],
+        properties: {
+          definition: {
+            type: 'object',
+            additionalProperties: true,
+            description:
+              'Free-form schema definition interpreted according to options.format.',
+          },
+        },
+      },
+    ],
+    description:
+      'Supply exactly one of id or definition. AnonCreds definitions require schema_name, schema_version, and attr_names.',
+  })
   @IsDefined()
   @IsObject()
   @ValidateNested()
+  @Validate(SchemaSourceExclusiveConstraint)
   @Type(() => RegistrationSchemaDto)
-  public schema!: RegistrationSchemaDto;
+  public schema!: RegistrationSchema;
 
   @ApiPropertyOptional({ type: RegistrationIssuerDto })
   @ValidateIf((_object: unknown, value: unknown) => value !== undefined)

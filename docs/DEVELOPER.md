@@ -1228,7 +1228,9 @@ not part of this workflow.
   "options": {
     "format": "anoncreds",
     "tag": "default",
-    "revocation": { "enabled": true }
+    "status": {
+      "revocation": { "enabled": true }
+    }
   },
   "metadata": {
     "issuer": "DMV"
@@ -1238,9 +1240,13 @@ not part of this workflow.
 
 Alternatively, use `schema.id` to resolve an existing published schema and
 create this issuer's credential definition against it. Exactly one schema
-source is required. The top-level `format` selects the schema format. Select an existing
-issuer with either `issuer.id` or `issuer.method`, never both, or omit `issuer`
-to use the connector's default. Traction selections must match its configured
+source is required. `options.format` selects the handler that interprets the
+free-form `schema.definition`. AnonCreds requires `schema_name`,
+`schema_version`, and `attr_names`; other formats define their own schema
+shape. Formats without a schema validator may accept the object as-is.
+Select an existing issuer with either `issuer.id` or `issuer.method`,
+never both, or omit `issuer` to use the connector's default. Traction selections
+must match its configured
 public DID; the abstraction layer never creates, promotes, or endorses DIDs.
 The wallet must already use `askar-anoncreds` and its public DID's registry key
 must match its wallet key.
@@ -1256,8 +1262,10 @@ supports the wallet representation; it does not establish end-to-end publication
 or revocation readiness.
 
 For AnonCreds, revocation defaults to **enabled** and the tag defaults to
-`default`. Set `options.revocation.enabled` to false for non-revocable
-issuance. Each format handler strictly validates and normalizes its own options.
+`default`. Set `options.status.revocation.enabled` to false for non-revocable
+issuance. Status settings are nested under each format's options so other
+formats can define their own status settings. Each format handler strictly
+validates and normalizes its own options.
 Options are stored in a separate JSONB column, returned read-only, and rejected
 on PATCH; metadata remains editable free-form annotations. All declared
 credential-definition formats are accepted, with formats that have no

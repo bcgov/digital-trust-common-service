@@ -1114,7 +1114,7 @@ paths:
         root field. Supply exactly one of
         schema.id or schema.definition. Format-specific options are immutable
         after creation and returned read-only. For AnonCreds, tag defaults to
-        "default" and revocation.enabled defaults to true. Metadata remains
+        "default" and status.revocation.enabled defaults to true. Metadata remains
         free-form client annotations.
         Traction must already have an askar-anoncreds wallet and a matching
         public issuer DID for AnonCreds registration. This endpoint does not
@@ -3684,13 +3684,24 @@ components:
           minLength: 1
           maxLength: 100
           description: Defaults to "default" when omitted
+        status:
+          $ref: "#/components/schemas/AnonCredsStatusOptionsDto"
+
+    AnonCredsStatusOptionsDto:
+      type: object
+      additionalProperties: false
+      description: AnonCreds status settings; formats may define their own status options.
+      properties:
         revocation:
-          type: object
-          additionalProperties: false
-          properties:
-            enabled:
-              type: boolean
-              description: Defaults to true when omitted
+          $ref: "#/components/schemas/AnonCredsRevocationOptionsDto"
+
+    AnonCredsRevocationOptionsDto:
+      type: object
+      additionalProperties: false
+      properties:
+        enabled:
+          type: boolean
+          description: Defaults to true when omitted
 
     SdJwtCredentialDefinitionOptionsDto:
       type: object
@@ -3733,37 +3744,28 @@ components:
           format: uuid
           description: Defaults to the tenant default or sole active compatible connector
         schema:
-          type: object
-          additionalProperties: false
           oneOf:
-            - required: [id]
-              not:
-                required: [definition]
-            - required: [definition]
-              not:
-                required: [id]
-          properties:
-            id:
-              type: string
-              minLength: 1
-              maxLength: 2048
-              description: Existing published schema; not a credential-definition import
-            definition:
-              type: object
-              required: [schema_name, schema_version, attr_names]
+            - type: object
+              additionalProperties: false
+              required: [id]
               properties:
-                schema_name:
+                id:
                   type: string
                   minLength: 1
-                schema_version:
-                  type: string
-                  minLength: 1
-                attr_names:
-                  type: array
-                  minItems: 1
-                  uniqueItems: true
-                  items:
-                    type: string
+                  maxLength: 2048
+                  description: Existing published schema; not a credential-definition import
+            - type: object
+              additionalProperties: false
+              required: [definition]
+              properties:
+                definition:
+                  type: object
+                  additionalProperties: true
+                  description: |
+                    Free-form schema definition interpreted according to options.format.
+                    AnonCreds requires schema_name, schema_version, and attr_names.
+                    W3C VC definitions may use JSON Schema. Formats without a
+                    schema validator may accept the object as-is.
         issuer:
           type: object
           additionalProperties: false

@@ -52,7 +52,7 @@ describe('credential definition registration (integration)', () => {
     options: {
       format: CredentialDefinitionFormat.ANONCREDS,
       tag: 'default',
-      revocation: { enabled: true },
+      status: { revocation: { enabled: true } },
     },
     schema: {
       definition: {
@@ -152,7 +152,7 @@ describe('credential definition registration (integration)', () => {
     expect(row.registrationOperationId).toBe(operation.id);
     expect(row.options).toEqual({
       tag: 'default',
-      revocation: { enabled: true },
+      status: { revocation: { enabled: true } },
     });
 
     await worker.process(tenant.id, row.id);
@@ -266,7 +266,7 @@ describe('credential definition registration (integration)', () => {
           options: {
             format: CredentialDefinitionFormat.ANONCREDS,
             tag: 'default',
-            revocation: { enabled: true },
+            status: { revocation: { enabled: true } },
           },
         },
         auth,

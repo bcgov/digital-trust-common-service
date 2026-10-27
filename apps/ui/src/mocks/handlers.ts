@@ -52,7 +52,7 @@ export const mockCredentialDefinitions: CredentialDefinition[] = [
     options: {
       format: 'anoncreds',
       tag: 'default',
-      revocation: { enabled: true },
+      status: { revocation: { enabled: true } },
     },
     connector_type: 'traction',
     is_active: true,
@@ -67,7 +67,7 @@ export const mockCredentialDefinitions: CredentialDefinition[] = [
     options: {
       format: 'anoncreds',
       tag: 'default',
-      revocation: { enabled: true },
+      status: { revocation: { enabled: true } },
     },
     connector_type: 'traction',
     is_active: true,

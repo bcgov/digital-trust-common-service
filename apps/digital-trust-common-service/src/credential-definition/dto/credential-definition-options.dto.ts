@@ -5,6 +5,7 @@ import {
   IsDefined,
   IsEnum,
   Equals,
+  IsObject,
   IsString,
   MaxLength,
   MinLength,
@@ -26,6 +27,14 @@ export class AnonCredsRevocationOptionsDto {
   public enabled = true;
 }
 
+export class AnonCredsStatusOptionsDto {
+  @ApiPropertyOptional({ type: AnonCredsRevocationOptionsDto })
+  @IsObject()
+  @ValidateNested()
+  @Type(() => AnonCredsRevocationOptionsDto)
+  public revocation = new AnonCredsRevocationOptionsDto();
+}
+
 export class AnonCredsCredentialDefinitionOptionsDto extends CredentialDefinitionOptionsBase {
   @ApiProperty({ enum: [CredentialDefinitionFormat.ANONCREDS] })
   @Equals(CredentialDefinitionFormat.ANONCREDS)
@@ -37,10 +46,11 @@ export class AnonCredsCredentialDefinitionOptionsDto extends CredentialDefinitio
   @MaxLength(100)
   public tag = 'default';
 
-  @ApiPropertyOptional({ type: AnonCredsRevocationOptionsDto })
+  @ApiPropertyOptional({ type: AnonCredsStatusOptionsDto })
+  @IsObject()
   @ValidateNested()
-  @Type(() => AnonCredsRevocationOptionsDto)
-  public revocation = new AnonCredsRevocationOptionsDto();
+  @Type(() => AnonCredsStatusOptionsDto)
+  public status = new AnonCredsStatusOptionsDto();
 }
 
 export class SdJwtCredentialDefinitionOptionsDto extends CredentialDefinitionOptionsBase {

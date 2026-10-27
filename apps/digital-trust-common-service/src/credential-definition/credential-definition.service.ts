@@ -5,7 +5,6 @@ import {
   AdapterError,
   CredentialFormat,
   FormatNotSupportedError,
-  FormatValidatorRegistry,
 } from '@app/credential-ports';
 import {
   BadRequestException,
@@ -63,7 +62,6 @@ export class CredentialDefinitionService {
   public constructor(
     private readonly credentialDefinitionRepository: CredentialDefinitionRepository,
     private readonly domainAudit: DomainAuditService,
-    private readonly formatValidatorRegistry: FormatValidatorRegistry,
     private readonly operations: OperationService,
     private readonly jobs: JobsService,
     private readonly dataSource: DataSource,
@@ -85,10 +83,10 @@ export class CredentialDefinitionService {
       this.registrationError(new FormatNotSupportedError(format));
     }
     const options = handler.normalizeOptions(dto.options);
+    const schema = handler.normalizeSchema(dto.schema);
     const prepared = await handler
-      .prepare(tenantId, dto)
+      .prepare(tenantId, { ...dto, schema })
       .catch((error: unknown) => this.registrationError(error));
-    this.validateSchemaDefinition(format, prepared.schemaDefinition);
     let result: {
       definition: CredentialDefinition;
       operation: Operation;
@@ -416,34 +414,6 @@ export class CredentialDefinitionService {
       );
     }
     throw error;
-  }
-
-  /**
-   * Validates the schema definition against the format's structural rules
-   * when a FormatValidator is registered for it. Formats without a
-   * registered validator yet (e.g. SD-JWT, mDL, W3C VC) are accepted
-   * as-is until their own validator ships.
-   */
-  private validateSchemaDefinition(
-    format: CredentialDefinitionFormat,
-    schemaDefinition: Readonly<Record<string, unknown>>,
-  ): void {
-    const portFormat = toPortCredentialFormat(format);
-
-    if (!portFormat || !this.formatValidatorRegistry.has(portFormat)) {
-      return;
-    }
-
-    const issues = this.formatValidatorRegistry
-      .resolve(portFormat)
-      .validateSchema(schemaDefinition);
-
-    if (issues.length > 0) {
-      throw new BadRequestException({
-        message: 'Credential definition schema failed format validation',
-        issues,
-      });
-    }
   }
 
   public async findById(

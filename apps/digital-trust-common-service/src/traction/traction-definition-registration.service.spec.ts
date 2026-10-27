@@ -262,7 +262,7 @@ describe('Traction artifact registration', () => {
     await expect(
       service.publishDefinition(context, 'issuer', 'schema', {
         tag: 'default',
-        revocation: { enabled: true },
+        status: { revocation: { enabled: true } },
       }),
     ).resolves.toEqual({
       id: 'definition-id',
@@ -304,7 +304,7 @@ describe('Traction artifact registration', () => {
           ? await service.publishSchema(context, 'issuer', schema)
           : await service.publishDefinition(context, 'issuer', 'schema', {
               tag: 'default',
-              revocation: { enabled: true },
+              status: { revocation: { enabled: true } },
             });
       expect(submitted).toEqual({
         state: 'action',
@@ -435,7 +435,10 @@ describe('Traction artifact registration', () => {
   );
 
   it('uses the same mapped issuer for definition publication, lookup and ownership checks', async () => {
-    const options = { tag: 'default', revocation: { enabled: true } };
+    const options = {
+      tag: 'default',
+      status: { revocation: { enabled: true } },
+    };
     request.mockResolvedValueOnce({
       data: {
         credential_definition_state: {
@@ -494,7 +497,10 @@ describe('Traction artifact registration', () => {
   ])(
     'rejects unsupported Indy representations without sending requests: %s',
     async (issuerId) => {
-      const options = { tag: 'default', revocation: { enabled: true } };
+      const options = {
+        tag: 'default',
+        status: { revocation: { enabled: true } },
+      };
       for (const action of [
         () => service.publishSchema(context, issuerId, schema),
         () => service.findSchema(context, issuerId, schema),
@@ -526,7 +532,7 @@ describe('Traction artifact registration', () => {
     await expect(
       service.findDefinition(context, 'issuer', 'schema', {
         tag: 'default',
-        revocation: { enabled: true },
+        status: { revocation: { enabled: true } },
       }),
     ).rejects.toMatchObject({
       issues: [expect.stringContaining('does not match')],
@@ -551,7 +557,7 @@ describe('Traction artifact registration', () => {
     await expect(
       service.findDefinition(context, 'issuer', 'schema', {
         tag: 'default',
-        revocation: { enabled: true },
+        status: { revocation: { enabled: true } },
       }),
     ).resolves.toBeNull();
 
@@ -582,7 +588,7 @@ describe('Traction artifact registration', () => {
     await expect(
       service.findDefinition(context, 'issuer', 'schema', {
         tag: 'default',
-        revocation: { enabled: true },
+        status: { revocation: { enabled: true } },
       }),
     ).rejects.toMatchObject({
       issues: [expect.stringContaining('Ambiguous credential definition')],

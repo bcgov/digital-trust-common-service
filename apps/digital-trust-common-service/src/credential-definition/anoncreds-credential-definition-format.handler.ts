@@ -1,6 +1,7 @@
 import {
   CredentialFormat,
   FormatNotSupportedError,
+  FormatValidatorRegistry,
 } from '@app/credential-ports';
 import { JOB_QUEUES } from '@app/pg-boss';
 import { BadRequestException, Injectable } from '@nestjs/common';
@@ -20,7 +21,10 @@ import {
   CredentialDefinitionConnectorType,
   CredentialDefinitionFormat,
 } from './credential-definition.entity';
-import type { CreateCredentialDefinitionDto } from './dto/create-credential-definition.dto';
+import type {
+  CreateCredentialDefinitionDto,
+  RegistrationSchema,
+} from './dto/create-credential-definition.dto';
 import {
   AnonCredsCredentialDefinitionOptionsDto,
   MdlCredentialDefinitionOptionsDto,
@@ -67,17 +71,26 @@ export class AnonCredsCredentialDefinitionFormatHandler implements CredentialDef
   public constructor(
     private readonly adapters: AdapterRegistry,
     private readonly jobs: JobsService,
+    private readonly formatValidators: FormatValidatorRegistry,
   ) {}
 
   public normalizeOptions(options: unknown): Record<string, unknown> {
     return normalizeOptions(AnonCredsCredentialDefinitionOptionsDto, options);
   }
 
+  public normalizeSchema(schema: RegistrationSchema): RegistrationSchema {
+    this.validateSchemaSource(schema);
+    if (schema.definition !== undefined) {
+      this.validateSchemaDefinition(schema.definition);
+    }
+    return schema;
+  }
+
   public async prepare(
     tenantId: string,
     dto: CreateCredentialDefinitionDto,
   ): Promise<PreparedCredentialDefinition> {
-    this.validateSchemaSource(dto);
+    this.validateSchemaSource(dto.schema);
     this.validateIssuerSelection(dto);
 
     const resolved = await this.adapters.resolve(
@@ -99,6 +112,9 @@ export class AnonCredsCredentialDefinitionFormatHandler implements CredentialDef
     const schema = dto.schema.id
       ? await registration.resolveSchema(resolved.context, dto.schema.id)
       : { definition: dto.schema.definition ?? {}, id: undefined };
+    if (dto.schema.id) {
+      this.validateSchemaDefinition(schema.definition);
+    }
     const connectorTypeValue: string = resolved.connector.connectorType;
     const connectorType = Object.values(CredentialDefinitionConnectorType).find(
       (type) => String(type) === connectorTypeValue,
@@ -134,14 +150,32 @@ export class AnonCredsCredentialDefinitionFormatHandler implements CredentialDef
     );
   }
 
-  private validateSchemaSource(dto: CreateCredentialDefinitionDto): void {
+  private validateSchemaSource(schema: RegistrationSchema): void {
     if (
-      !dto.schema ||
-      (dto.schema.id !== undefined) === (dto.schema.definition !== undefined)
+      !schema ||
+      (schema.id !== undefined) === (schema.definition !== undefined)
     ) {
       throw new BadRequestException(
         'Supply schema.id or schema.definition, not both',
       );
+    }
+  }
+
+  private validateSchemaDefinition(
+    schemaDefinition: Readonly<Record<string, unknown>>,
+  ): void {
+    if (!this.formatValidators.has(CredentialFormat.AnonCreds)) {
+      return;
+    }
+
+    const issues = this.formatValidators
+      .resolve(CredentialFormat.AnonCreds)
+      .validateSchema(schemaDefinition);
+    if (issues.length > 0) {
+      throw new BadRequestException({
+        message: 'Credential definition schema failed format validation',
+        issues,
+      });
     }
   }
 
@@ -166,6 +200,18 @@ export class NoRegistrationCredentialDefinitionFormatHandler implements Credenti
 
   public normalizeOptions(options: unknown): Record<string, unknown> {
     return normalizeOptions(this.optionsDto, options);
+  }
+
+  public normalizeSchema(schema: RegistrationSchema): RegistrationSchema {
+    if (
+      !schema ||
+      (schema.id !== undefined) === (schema.definition !== undefined)
+    ) {
+      throw new BadRequestException(
+        'Supply schema.id or schema.definition, not both',
+      );
+    }
+    return schema;
   }
 
   public async prepare(

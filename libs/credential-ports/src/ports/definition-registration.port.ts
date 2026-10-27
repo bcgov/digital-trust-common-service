@@ -12,7 +12,9 @@ export interface RegisteredSchema {
 
 export interface DefinitionOptions {
   readonly tag: string;
-  readonly revocation: { readonly enabled: boolean };
+  readonly status: {
+    readonly revocation: { readonly enabled: boolean };
+  };
 }
 
 export interface RegistrationSubmission {

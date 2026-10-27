@@ -62,7 +62,7 @@ describe('CredentialDefinitionController', () => {
     options: {
       format: CredentialDefinitionFormat.ANONCREDS,
       tag: 'default',
-      revocation: { enabled: true },
+      status: { revocation: { enabled: true } },
     },
     createdAt: new Date(),
     updatedAt: new Date(),
@@ -137,7 +137,7 @@ describe('CredentialDefinitionController', () => {
         options: {
           format: CredentialDefinitionFormat.ANONCREDS,
           tag: 'default',
-          revocation: { enabled: true },
+          status: { revocation: { enabled: true } },
         },
         schema: { definition: mockCredentialDefinition.schemaDefinition },
         metadata: mockCredentialDefinition.metadata,
