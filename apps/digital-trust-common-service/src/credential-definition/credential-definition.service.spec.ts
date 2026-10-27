@@ -379,6 +379,36 @@ describe('CredentialDefinitionService', () => {
       expect(mockEmit).not.toHaveBeenCalled();
     });
 
+    it('continues an equivalent request with normalized publication settings', async () => {
+      mockFindExistingByTenantAndNameAndFormat.mockResolvedValueOnce(
+        sameDefinition(),
+      );
+      manager.findOne.mockResolvedValue({
+        id: 'existing-operation',
+        state: 'processing',
+      });
+
+      await expect(
+        service.create(
+          auth.tenantId,
+          {
+            name: 'Employee',
+            options: {
+              format: CredentialDefinitionFormat.ANONCREDS,
+              tag: 'default',
+              status: { revocation: { enabled: true } },
+            },
+            schema: { definition: mockCredentialDefinition.schemaDefinition },
+            issuer: { id: 'did:indy:issuer' },
+          },
+          auth,
+        ),
+      ).resolves.toEqual({
+        id: 'existing-operation',
+        state: 'processing',
+      });
+    });
+
     it('returns an existing completed operation without queueing or auditing', async () => {
       mockFindExistingByTenantAndNameAndFormat.mockResolvedValueOnce(
         sameDefinition({

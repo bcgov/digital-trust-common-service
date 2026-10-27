@@ -10,7 +10,10 @@ import { Connection } from '../connection/connection.entity';
 import { ConnectionRepository } from '../connection/connection.repository';
 import { ConnectorCredential } from '../connector-credential/connector-credential.entity';
 import { ConnectorCredentialRepository } from '../connector-credential/connector-credential.repository';
-import { CredentialDefinition } from '../credential-definition/credential-definition.entity';
+import {
+  CredentialDefinition,
+  CredentialDefinitionFormat,
+} from '../credential-definition/credential-definition.entity';
 import { CredentialDefinitionRepository } from '../credential-definition/credential-definition.repository';
 import { IssuanceProfile } from '../issuance-profile/issuance-profile.entity';
 import { IssuanceProfileRepository } from '../issuance-profile/issuance-profile.repository';
@@ -237,6 +240,16 @@ describe('DevSeedService', () => {
 
     expect(summary.tenants).toBe(3);
     expect(summary.createdOAuthClients).toContain(seedApiClientId('acme-corp'));
+    expect(credentialDefinitionRepo.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        format: CredentialDefinitionFormat.ANONCREDS,
+        options: {
+          format: CredentialDefinitionFormat.ANONCREDS,
+          tag: 'default',
+          status: { revocation: { enabled: true } },
+        },
+      }),
+    );
     expect(oauthClientRepo.create).toHaveBeenCalledWith(
       expect.objectContaining({
         clientId: seedApiClientId('acme-corp'),
@@ -650,7 +663,15 @@ describe('DevSeedService', () => {
 
     await service.run();
 
-    expect(credentialDefinitionRepo.update).toHaveBeenCalled();
+    expect(credentialDefinitionRepo.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        options: {
+          format: CredentialDefinitionFormat.ANONCREDS,
+          tag: 'default',
+          status: { revocation: { enabled: true } },
+        },
+      }),
+    );
   });
 
   it('updates existing issuance and verification profiles on re-run', async () => {

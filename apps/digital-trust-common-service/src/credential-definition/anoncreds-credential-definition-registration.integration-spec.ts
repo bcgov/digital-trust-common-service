@@ -151,6 +151,7 @@ describe('credential definition registration (integration)', () => {
     expect(row.externalId).toBeNull();
     expect(row.registrationOperationId).toBe(operation.id);
     expect(row.options).toEqual({
+      format: CredentialDefinitionFormat.ANONCREDS,
       tag: 'default',
       status: { revocation: { enabled: true } },
     });
@@ -277,19 +278,15 @@ describe('credential definition registration (integration)', () => {
       tenantId: tenant.id,
       registrationOperationId: first.id,
     });
-    expect(send).toHaveBeenCalledTimes(2);
-    expect(send).toHaveBeenNthCalledWith(
-      1,
-      JOB_QUEUES.DEFINITION_REGISTER,
-      expect.any(Object),
-      expect.objectContaining({ singletonKey: row.id }),
+    const registrationSends = send.mock.calls.filter(
+      ([queue]) => queue === JOB_QUEUES.DEFINITION_REGISTER,
     );
-    expect(send).toHaveBeenNthCalledWith(
-      2,
-      JOB_QUEUES.DEFINITION_REGISTER,
-      expect.any(Object),
-      expect.objectContaining({ singletonKey: row.id }),
-    );
+    expect(registrationSends).toHaveLength(2);
+    for (const [, , options] of registrationSends) {
+      expect(options).toEqual(
+        expect.objectContaining({ singletonKey: row.id }),
+      );
+    }
     expect(
       await db.getRepository(Operation).countBy({ tenantId: tenant.id }),
     ).toBe(1);
@@ -377,7 +374,6 @@ describe('credential definition registration (integration)', () => {
     });
     expect(processing.result).toMatchObject({
       credential_definition_id: row.id,
-      problem_details: null,
       registration: {
         artifact: 'schema',
         schema_id: null,

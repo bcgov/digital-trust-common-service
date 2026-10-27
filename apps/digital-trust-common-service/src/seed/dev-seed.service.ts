@@ -392,12 +392,14 @@ export class DevSeedService {
         existing.externalId = def.externalId;
         existing.connectorType = def.connectorType;
         existing.metadata = def.metadata;
+        existing.options = def.options;
         existing = await this.credentialDefinitions.update(existing);
       } else {
         existing = await this.credentialDefinitions.create({
           tenantId,
           name: def.name,
           format: def.format,
+          options: def.options,
           schemaDefinition: def.schemaDefinition,
           externalId: def.externalId,
           connectorType: def.connectorType,

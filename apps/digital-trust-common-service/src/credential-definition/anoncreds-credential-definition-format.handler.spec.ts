@@ -31,11 +31,17 @@ describe('credential definition format options', () => {
   });
 
   it('fills AnonCreds option defaults', () => {
-    expect(anonCreds.normalizeOptions({ format: 'anoncreds' })).toEqual({
+    const options = anonCreds.normalizeOptions({ format: 'anoncreds' });
+
+    expect(options).toEqual({
       format: 'anoncreds',
       tag: 'default',
       status: { revocation: { enabled: true } },
     });
+    expect(Object.getPrototypeOf(options)).toBe(Object.prototype);
+    expect(Object.getPrototypeOf(options.status as object)).toBe(
+      Object.prototype,
+    );
   });
 
   it('normalizes explicit AnonCreds options', () => {

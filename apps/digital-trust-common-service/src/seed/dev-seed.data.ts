@@ -232,6 +232,11 @@ export const SEED_CREDENTIAL_DEFINITIONS = [
   {
     name: 'Person credential',
     format: CredentialDefinitionFormat.ANONCREDS,
+    options: {
+      format: CredentialDefinitionFormat.ANONCREDS,
+      tag: 'default',
+      status: { revocation: { enabled: true } },
+    },
     externalId: 'seed-person-cred-def',
     connectorType: CredentialDefinitionConnectorType.TRACTION,
     schemaDefinition: {
@@ -249,6 +254,11 @@ export const SEED_CREDENTIAL_DEFINITIONS = [
   {
     name: 'Employee badge',
     format: CredentialDefinitionFormat.ANONCREDS,
+    options: {
+      format: CredentialDefinitionFormat.ANONCREDS,
+      tag: 'default',
+      status: { revocation: { enabled: true } },
+    },
     externalId: 'seed-employee-badge-cred-def',
     connectorType: CredentialDefinitionConnectorType.TRACTION,
     schemaDefinition: {
