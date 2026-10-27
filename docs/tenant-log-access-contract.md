@@ -588,6 +588,34 @@ The reasons are concrete rather than theoretical:
 on only one side produces a partition that is written to and never read, or read from and never
 written — and the failure mode is an empty result, which is easily mistaken for "no logs yet".
 
+**The service tenant key.** A service tenant's partition key is a fixed prefix plus its
+`tenant_id`, and nothing else:
+
+```text
+partition_key = "t-" + tenant_id          e.g.  t-3f2a9c1e-7b4d-4e08-9a15-c2d4e6f80b13
+valid         = ^t-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+```
+
+- **No stored mapping.** The key is a pure function of the `tenant_id`, so the collector and the
+  gateway each compute it independently and cannot disagree about which tenants exist.
+- **No collisions by construction.** A `tenant_id` is a UUID, so distinct tenants yield distinct
+  keys. The `t-` prefix is the domain separation (L8): it keeps tenant keys out of the namespace
+  of agent keys (proposed prefix `a-`; their derivation is still to be defined)
+  and of the names the write path assigns to direct-push producers.
+- **Reserved prefixes.** The write path **MUST NOT** assign any producer an identity beginning
+  `t-` or `a-`, since that is what closes the write-into-a-tenant-partition case above.
+- **Safe by shape.** 38 bytes, lowercase hex and hyphen only: well inside the 150-byte limit and
+  unable to contain `|`, a path character, or a control character.
+- **One canonical form.** The `tenant_id` is taken as emitted, lowercase and hyphenated, with no
+  case-folding or trimming. A value that does not match the pattern is treated as malformed and
+  its line goes to the platform partition ([L7](#53-the-routing-field-must-be-trusted-not-merely-structured)).
+  Being strict here leaves one form to agree on, which is what [L9](#54-partition-keys-must-be-derived-not-passed-through)
+  needs.
+
+The collector and the gateway **MUST** each be tested against the same fixed vectors, including
+an uppercase UUID, one with surrounding whitespace, and one containing `|`, so that L9 is
+checked rather than assumed.
+
 ### 5.5 Preconditions for exposing query access
 
 **Rule L10.** A global query limits configuration (query length, series, entries, cardinality)
