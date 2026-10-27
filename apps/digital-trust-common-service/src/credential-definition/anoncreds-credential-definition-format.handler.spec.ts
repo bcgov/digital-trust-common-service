@@ -23,7 +23,7 @@ describe('credential definition format options', () => {
   const resolveSchema = jest.fn();
   const adapters = { resolve: jest.fn() };
   const jobs = { sendInTransaction: jest.fn() };
-  const definitionRegistration = { resolveIssuer, resolveSchema };
+  const anonCredsRegistration = { resolveIssuer, resolveSchema };
   const formatValidators = {
     has: jest.fn().mockReturnValue(true),
     resolve: jest.fn().mockReturnValue({ validateSchema }),
@@ -48,7 +48,7 @@ describe('credential definition format options', () => {
       },
     });
     adapters.resolve.mockReset().mockResolvedValue({
-      adapter: { definitionRegistration },
+      adapter: { anonCredsRegistration },
       context: { tenantId: 'tenant', connectorId: 'connector-id' },
       connector: {
         id: 'connector-id',
@@ -247,7 +247,7 @@ describe('credential definition format options', () => {
 
   it('rejects unknown connector types and invalid resolved schemas', async () => {
     adapters.resolve.mockResolvedValueOnce({
-      adapter: { definitionRegistration },
+      adapter: { anonCredsRegistration },
       context: {},
       connector: { id: 'connector-id', connectorType: 'unknown' },
     });

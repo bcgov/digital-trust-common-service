@@ -1,6 +1,6 @@
 import {
   type ConnectorContext,
-  type DefinitionRegistrationPort,
+  type AnonCredsRegistrationPort,
 } from '@app/credential-ports';
 import { JOB_QUEUES } from '@app/pg-boss';
 import { ConfigService } from '@nestjs/config';
@@ -38,7 +38,7 @@ describe('AnonCreds credential-definition registration worker', () => {
   const manager = { update: jest.fn() };
   const transitionState = jest.fn();
   const resolve = jest.fn();
-  const port: jest.Mocked<DefinitionRegistrationPort> = {
+  const port: jest.Mocked<AnonCredsRegistrationPort> = {
     resolveIssuer: jest.fn(),
     resolveSchema: jest.fn(),
     findSchema: jest.fn(),
@@ -103,7 +103,7 @@ describe('AnonCreds credential-definition registration worker', () => {
     manager.update.mockResolvedValue({ affected: 1 });
     transitionState.mockResolvedValue(undefined);
     resolve.mockResolvedValue({
-      adapter: { definitionRegistration: port },
+      adapter: { anonCredsRegistration: port },
       context,
     });
     port.resolveIssuer.mockResolvedValue('issuer');
@@ -485,7 +485,7 @@ describe('AnonCreds credential-definition registration worker', () => {
         registration: expect.objectContaining({
           stage: 'awaiting_revocation_registry',
           artifact: 'credential_definition',
-          definition_id: 'external-definition',
+          id: 'external-definition',
         }),
       }),
       expect.any(Object),

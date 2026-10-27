@@ -27,8 +27,8 @@ export interface RegistrationSubmission {
   readonly backendCode?: string;
 }
 
-/** Agent-owned artifact registration, separate from credential exchanges. */
-export interface DefinitionRegistrationPort {
+/** AnonCreds artifact registration, separate from credential exchanges. */
+export interface AnonCredsRegistrationPort {
   resolveIssuer(
     context: ConnectorContext,
     selection?: IssuerSelection,

@@ -1,7 +1,7 @@
 import {
   ConnectorContext,
   DefinitionOptions,
-  DefinitionRegistrationPort,
+  AnonCredsRegistrationPort,
   IssuerSelection,
   RegisteredSchema,
   RegistrationSubmission,
@@ -39,7 +39,7 @@ interface AnonCredsDefinition {
 }
 
 @Injectable()
-export class TractionDefinitionRegistration implements DefinitionRegistrationPort {
+export class TractionDefinitionRegistration implements AnonCredsRegistrationPort {
   public constructor(
     private readonly http: TractionHttpClient,
     private readonly tokens: TractionTokenManager,

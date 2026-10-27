@@ -176,6 +176,23 @@ describe('CredentialDefinitionController', () => {
       expect(result.metadata).toEqual(mockCredentialDefinition.metadata);
     });
 
+    it('does not repeat the format in the resolved schema', () => {
+      const definition: CredentialDefinition = {
+        ...mockCredentialDefinition,
+        registration: {
+          issuerId: 'issuer',
+          schema: { id: 'schema-id', state: 'finished' },
+          definition: {},
+        },
+      };
+
+      expect(
+        CredentialDefinitionResponseDto.fromEntity(definition).schema,
+      ).toEqual({
+        id: 'schema-id',
+      });
+    });
+
     it('should throw NotFoundException if credential definition not found', async () => {
       const tenantId = mockCredentialDefinition.tenantId;
       const id = '999e4567-e89b-12d3-a456-426614174000';

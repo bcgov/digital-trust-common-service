@@ -16,7 +16,10 @@ import {
   assertTenantAccess,
 } from '../common/assert-tenant-access';
 import { decodeCursor, encodeCursor } from '../common/cursor-pagination';
-import { CredentialDefinitionFormat } from '../credential-definition/credential-definition.entity';
+import {
+  CredentialDefinitionFormat,
+  isCredentialDefinitionReadyForIssuance,
+} from '../credential-definition/credential-definition.entity';
 import {
   CredentialDefinitionService,
   toPortCredentialFormat,
@@ -64,11 +67,7 @@ export class IssuanceProfileService {
         auth,
       );
 
-    if (
-      credentialDefinition.registrationState !== 'ready' ||
-      !credentialDefinition.externalId ||
-      !credentialDefinition.connectorId
-    ) {
+    if (!isCredentialDefinitionReadyForIssuance(credentialDefinition)) {
       throw new BadRequestException(
         'Credential definition is not ready for issuance',
       );
@@ -103,7 +102,7 @@ export class IssuanceProfileService {
     const connectorId = await this.resolveConnector(
       tenantId,
       credentialDefinition.format,
-      credentialDefinition.connectorId,
+      credentialDefinition.connectorId ?? undefined,
     );
 
     const created = await this.createProfile({
@@ -368,8 +367,7 @@ export class IssuanceProfileService {
       auth,
     );
     if (
-      definition.registrationState !== 'ready' ||
-      !definition.externalId ||
+      !isCredentialDefinitionReadyForIssuance(definition) ||
       definition.connectorId !== connectorId
     ) {
       throw new BadRequestException(

@@ -66,11 +66,11 @@ export type {
 export type { ConnectorContext } from './ports/connector-context';
 export type {
   DefinitionOptions,
-  DefinitionRegistrationPort,
+  AnonCredsRegistrationPort,
   IssuerSelection,
   RegisteredSchema,
   RegistrationSubmission,
-} from './ports/definition-registration.port';
+} from './ports/anoncreds-registration.port';
 
 // Testing helpers
 export {

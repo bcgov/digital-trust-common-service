@@ -98,7 +98,7 @@ export class AnonCredsCredentialDefinitionFormatHandler implements CredentialDef
       CredentialFormat.AnonCreds,
       { connectorId: dto.connectorId },
     );
-    const registration = resolved.adapter.definitionRegistration;
+    const registration = resolved.adapter.anonCredsRegistration;
     if (!registration) {
       throw new FormatNotSupportedError(CredentialDefinitionFormat.ANONCREDS, {
         connectorType: resolved.connector.connectorType,

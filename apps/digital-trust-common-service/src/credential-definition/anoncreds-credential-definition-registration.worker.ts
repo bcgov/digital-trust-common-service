@@ -1,6 +1,6 @@
 import {
   CredentialFormat,
-  DefinitionRegistrationPort,
+  AnonCredsRegistrationPort,
   ValidationError,
   type ConnectorContext,
   type RegistrationSubmission,
@@ -43,7 +43,7 @@ interface RegistrationWork {
 }
 
 interface RegistrationBackend {
-  port: DefinitionRegistrationPort;
+  port: AnonCredsRegistrationPort;
   context: ConnectorContext;
 }
 
@@ -148,7 +148,7 @@ export class AnonCredsCredentialDefinitionRegistrationWorker implements OnModule
         CredentialFormat.AnonCreds,
         { connectorId: definition.connectorId },
       );
-      const port = resolved.adapter.definitionRegistration;
+      const port = resolved.adapter.anonCredsRegistration;
       if (!port) {
         throw new ValidationError([
           'The selected connector does not support AnonCreds registration',
@@ -515,39 +515,37 @@ export class AnonCredsCredentialDefinitionRegistrationWorker implements OnModule
   }
 
   private progressResult(work: RegistrationWork): Record<string, unknown> {
-    const { definition, registration } = work;
+    const { registration } = work;
     const stage = registration.stage ?? 'preflight';
-    const artifact =
-      stage.startsWith('schema_') || stage === 'awaiting_schema_endorsement'
-        ? 'schema'
-        : stage.startsWith('definition_') ||
-            stage === 'awaiting_definition_endorsement' ||
-            stage === 'awaiting_revocation_registry'
-          ? 'credential_definition'
-          : null;
-    const active =
-      artifact === 'schema'
-        ? registration.schema
-        : artifact === 'credential_definition'
-          ? registration.definition
-          : undefined;
+    let artifact: 'schema' | 'credential_definition' | null = null;
+    let current: ArtifactProgress | undefined;
+
+    if (
+      stage.startsWith('schema_') ||
+      stage === 'awaiting_schema_endorsement'
+    ) {
+      artifact = 'schema';
+      current = registration.schema;
+    } else if (
+      stage.startsWith('definition_') ||
+      stage === 'awaiting_definition_endorsement' ||
+      stage === 'awaiting_revocation_registry'
+    ) {
+      artifact = 'credential_definition';
+      current = registration.definition;
+    }
+
     return {
       stage,
       artifact,
-      schema_id:
-        registration.schema.state === 'finished'
-          ? (registration.schema.id ?? null)
-          : null,
-      definition_id:
-        registration.definition.state === 'finished'
-          ? (registration.definition.id ?? null)
-          : (definition.externalId ?? null),
-      pending_id:
-        active && active.state !== 'finished' ? (active.id ?? null) : null,
-      job_id: active?.jobId ?? null,
-      transaction_id: active?.transactionId ?? null,
-      transaction_state: active?.state ?? null,
-      state: active?.state ?? null,
+      ...(current
+        ? {
+            id: current.id ?? null,
+            job_id: current.jobId ?? null,
+            transaction_id: current.transactionId ?? null,
+            state: current.state ?? null,
+          }
+        : {}),
     };
   }
 }

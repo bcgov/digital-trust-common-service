@@ -100,7 +100,7 @@ export class TractionAdapter implements AgentAdapter, OnModuleInit {
     private readonly adapterRegistry: AdapterRegistry,
     private readonly httpClient: TractionHttpClient,
     private readonly tokenManager: TractionTokenManager,
-    public readonly definitionRegistration: TractionDefinitionRegistration,
+    public readonly anonCredsRegistration: TractionDefinitionRegistration,
   ) {}
 
   public onModuleInit(): void {

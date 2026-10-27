@@ -101,7 +101,7 @@ describe('CredentialDefinitionService', () => {
             connectorId: dto.connectorId,
           },
         );
-        if (!resolved.adapter.definitionRegistration) {
+        if (!resolved.adapter.anonCredsRegistration) {
           throw new BadRequestException(
             'Connector does not support artifact registration',
           );
@@ -225,7 +225,7 @@ describe('CredentialDefinitionService', () => {
     resolveAdapter.mockResolvedValue({
       connector: { id: 'connector-1', connectorType: 'traction' },
       context: {},
-      adapter: { definitionRegistration: register },
+      adapter: { anonCredsRegistration: register },
     });
     register.resolveIssuer.mockResolvedValue('did:indy:issuer');
     register.resolveSchema.mockResolvedValue({
@@ -1104,7 +1104,7 @@ describe('CredentialDefinitionService', () => {
       resolveAdapter.mockResolvedValueOnce({
         connector: { id: 'connector-1', connectorType: 'unknown' },
         context: {},
-        adapter: { definitionRegistration: register },
+        adapter: { anonCredsRegistration: register },
       });
 
       await expect(

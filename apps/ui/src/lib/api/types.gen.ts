@@ -1923,8 +1923,6 @@ export interface components {
                 id?: string;
             } | null;
             schema?: {
-                /** @enum {string} */
-                type?: "anoncreds";
                 id?: string | null;
             } | null;
             connector_type?: components["schemas"]["ConnectorType"];
@@ -2295,10 +2293,9 @@ export interface components {
              *       progress/correlation identifiers.
              *     - batch processing: { total, completed, failed, pending }
              *     - batch completed: { total, completed, failed, errors }
-             *     Registration progress includes the active artifact and its generic
-             *     job_id, transaction_id, transaction_state, state, and pending_id.
-             *     Resolved schema_id and definition_id are separate from pending_id.
-             *     IDs returned with wait/action are provisional, not readiness proof.
+             *     Registration progress includes the active artifact, its id, and any
+             *     job_id, transaction_id, and state. IDs returned with wait/action are
+             *     provisional, not readiness proof.
              */
             result: ({
                 /** Format: uuid */
@@ -2330,15 +2327,10 @@ export interface components {
              * @enum {string|null}
              */
             artifact?: "schema" | "credential_definition" | null;
-            /** @description Resolved schema identity; never a provisional backend ID */
-            schema_id?: string | null;
-            /** @description Resolved definition identity; never a provisional backend ID */
-            definition_id?: string | null;
-            /** @description Provisional ID for the active artifact, if unresolved */
-            pending_id?: string | null;
+            /** @description ID for the active artifact; provisional unless state is finished */
+            id?: string | null;
             job_id?: string | null;
             transaction_id?: string | null;
-            transaction_state?: string | null;
             /**
              * @description Publication state for the active artifact
              * @enum {string|null}

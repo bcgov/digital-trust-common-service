@@ -197,3 +197,13 @@ export class CredentialDefinition {
   })
   public updatedAt!: Date;
 }
+
+export const isCredentialDefinitionReadyForIssuance = (
+  definition: Pick<
+    CredentialDefinition,
+    'registrationState' | 'externalId' | 'connectorId'
+  >,
+): boolean =>
+  definition.registrationState === 'ready' &&
+  Boolean(definition.externalId) &&
+  Boolean(definition.connectorId);

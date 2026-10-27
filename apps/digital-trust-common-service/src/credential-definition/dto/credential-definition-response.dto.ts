@@ -86,7 +86,7 @@ export class CredentialDefinitionResponseDto {
   public issuer!: { id: string } | null;
 
   @ApiProperty({ nullable: true, description: 'Resolved schema reference' })
-  public schema!: { type: string; id: string | null } | null;
+  public schema!: { id: string | null } | null;
 
   @Expose({ name: 'connector_type' })
   @ApiProperty({
@@ -166,7 +166,6 @@ export class CredentialDefinitionResponseDto {
       : null;
     dto.schema = credentialDefinition.registration
       ? {
-          type: 'anoncreds',
           id:
             credentialDefinition.registration.schema?.state === 'finished'
               ? (credentialDefinition.registration.schema.id ?? null)

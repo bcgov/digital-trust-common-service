@@ -25,6 +25,7 @@ import { API_BASE_PATH } from '../common/constants/api-version.constants';
 import {
   CredentialDefinition,
   CredentialDefinitionFormat,
+  isCredentialDefinitionReadyForIssuance,
 } from '../credential-definition/credential-definition.entity';
 import { CredentialDefinitionRepository } from '../credential-definition/credential-definition.repository';
 import { toPortCredentialFormat } from '../credential-definition/credential-definition.service';
@@ -370,11 +371,7 @@ export class CredentialOfferService {
   }
 
   private assertDefinitionReady(definition: CredentialDefinition): void {
-    if (
-      definition.registrationState !== 'ready' ||
-      !definition.externalId ||
-      !definition.connectorId
-    ) {
+    if (!isCredentialDefinitionReadyForIssuance(definition)) {
       throw new BadRequestException(
         'Credential definition is not ready for issuance',
       );

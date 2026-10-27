@@ -3625,9 +3625,6 @@ components:
           type: object
           nullable: true
           properties:
-            type:
-              type: string
-              enum: [anoncreds]
             id:
               type: string
               nullable: true
@@ -4257,10 +4254,9 @@ components:
               progress/correlation identifiers.
             - batch processing: { total, completed, failed, pending }
             - batch completed: { total, completed, failed, errors }
-            Registration progress includes the active artifact and its generic
-            job_id, transaction_id, transaction_state, state, and pending_id.
-            Resolved schema_id and definition_id are separate from pending_id.
-            IDs returned with wait/action are provisional, not readiness proof.
+            Registration progress includes the active artifact, its id, and any
+            job_id, transaction_id, and state. IDs returned with wait/action are
+            provisional, not readiness proof.
         problem_details:
           nullable: true
           allOf:
@@ -4286,25 +4282,14 @@ components:
           enum: [schema, credential_definition]
           nullable: true
           description: Artifact associated with the active stage, if any
-        schema_id:
+        id:
           type: string
           nullable: true
-          description: Resolved schema identity; never a provisional backend ID
-        definition_id:
-          type: string
-          nullable: true
-          description: Resolved definition identity; never a provisional backend ID
-        pending_id:
-          type: string
-          nullable: true
-          description: Provisional ID for the active artifact, if unresolved
+          description: ID for the active artifact; provisional unless state is finished
         job_id:
           type: string
           nullable: true
         transaction_id:
-          type: string
-          nullable: true
-        transaction_state:
           type: string
           nullable: true
         state:

@@ -123,7 +123,7 @@ describe('credential definition registration (integration)', () => {
     resolve.mockResolvedValue({
       connector,
       context: { tenantId: tenant.id, connectorId: connector.id },
-      adapter: { definitionRegistration: port },
+      adapter: { anonCredsRegistration: port },
     });
   });
 
@@ -376,11 +376,9 @@ describe('credential definition registration (integration)', () => {
       credential_definition_id: row.id,
       registration: {
         artifact: 'schema',
-        schema_id: null,
-        pending_id: 'provisional-schema',
+        id: 'provisional-schema',
         job_id: 'schema-job',
         transaction_id: 'schema-transaction',
-        transaction_state: 'wait',
         state: 'wait',
       },
     });
