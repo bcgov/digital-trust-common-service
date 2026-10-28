@@ -470,7 +470,11 @@ export class PresentationRequestService {
       return this.failOperation(tenantId, operation, error);
     }
 
-    const outcome = resolveProtocolOutcome('present_proof', exchange.state) ?? {
+    const outcome = resolveProtocolOutcome(
+      'present_proof',
+      exchange.state,
+      exchange.verified,
+    ) ?? {
       operationState: OperationState.PROCESSING,
     };
     const externalId = exchange.externalId ?? exchange.id;
@@ -547,9 +551,7 @@ export class PresentationRequestService {
 
   /**
    * Guard-transitions `operation` to FAILED for any error the adapter call
-   * raises — not only `AdapterError` — since the currently-registered
-   * Traction adapter's `requestPresentation` is still a stub that throws
-   * `NotImplementedException`, and any other unexpected error leaves the
+   * raises — not only `AdapterError` — since an unexpected error leaves the
    * operation stuck PENDING forever while the caller still sees an HTTP
    * error. The original error is always rethrown afterwards so its own HTTP
    * status reaches the caller unchanged.
