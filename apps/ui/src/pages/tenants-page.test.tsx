@@ -182,6 +182,46 @@ describe('TenantsPage', () => {
     });
   });
 
+  it('deletes a tenant from the row menu after confirmation', async () => {
+    let deletedId: unknown;
+    server.use(
+      http.delete(`${API_BASE_PATH}/tenants/:id`, ({ params }) => {
+        deletedId = params.id;
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+    const user = userEvent.setup();
+    await renderTenantsPage({ platformAdmin: true });
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Actions for Acme Ministry' }),
+    );
+    await user.click(await screen.findByRole('menuitem', { name: 'Delete' }));
+    const dialog = await screen.findByRole('alertdialog');
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Delete tenant' }),
+    );
+
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+    expect(
+      await screen.findByText('Tenant Acme Ministry deleted.'),
+    ).toBeInTheDocument();
+    expect(deletedId).toBe(mockTenants[0]?.id);
+  });
+
+  it('only offers Delete in the row menu to platform admins', async () => {
+    const user = userEvent.setup();
+    await renderTenantsPage();
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Actions for Acme Ministry' }),
+    );
+    await screen.findByRole('menuitem', { name: 'View details' });
+    expect(
+      screen.queryByRole('menuitem', { name: 'Delete' }),
+    ).not.toBeInTheDocument();
+  });
+
   it('keeps the edit dialog open with an alert when saving fails', async () => {
     server.use(
       http.patch(`${API_BASE_PATH}/tenants/:id`, () =>

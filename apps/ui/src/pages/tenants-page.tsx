@@ -22,6 +22,7 @@ import {
   TableRow,
 } from '@/components/common/table';
 import { CreateTenantDialog } from '@/components/tenant/create-tenant-dialog';
+import { DeleteTenantDialog } from '@/components/tenant/delete-tenant-dialog';
 import { EditTenantDialog } from '@/components/tenant/edit-tenant-dialog';
 import { TenantRowActions } from '@/components/tenant/tenant-row-actions';
 import { TenantStatusBadge } from '@/components/tenant/tenant-status-badge';
@@ -37,6 +38,7 @@ export function TenantsPage() {
   const { data, isLoading, error } = useTenants();
   const [creating, setCreating] = useState(false);
   const [tenantToEdit, setTenantToEdit] = useState<Tenant | null>(null);
+  const [tenantToDelete, setTenantToDelete] = useState<Tenant | null>(null);
   const [search, setSearch] = useState('');
   const canCreate = isPlatformAdmin(user);
   const tenants = data?.data ?? [];
@@ -72,6 +74,13 @@ export function TenantsPage() {
         <EditTenantDialog
           tenant={tenantToEdit}
           onClose={() => setTenantToEdit(null)}
+        />
+      )}
+
+      {canCreate && tenantToDelete && (
+        <DeleteTenantDialog
+          tenant={tenantToDelete}
+          onClose={() => setTenantToDelete(null)}
         />
       )}
 
@@ -165,6 +174,11 @@ export function TenantsPage() {
                         }
                         onEdit={
                           canCreate ? () => setTenantToEdit(tenant) : undefined
+                        }
+                        onDelete={
+                          canCreate
+                            ? () => setTenantToDelete(tenant)
+                            : undefined
                         }
                       />
                     </TableCell>

@@ -171,6 +171,11 @@ export const handlers = [
     const body = (await request.json()) as Partial<Tenant>;
     return HttpResponse.json({ ...tenant, ...body });
   }),
+  http.delete(`${API_BASE_PATH}/tenants/:id`, ({ params }) =>
+    mockTenants.some((t) => t.id === params.id)
+      ? new HttpResponse(null, { status: 204 })
+      : new HttpResponse(null, { status: 404 }),
+  ),
   http.get(`${API_BASE_PATH}/tenants/:id`, ({ params }) => {
     const tenant = mockTenants.find((t) => t.id === params.id);
     return tenant

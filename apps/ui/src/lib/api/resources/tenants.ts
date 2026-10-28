@@ -36,3 +36,7 @@ export async function updateTenant(
   const response = await apiClient.patch<Tenant>(`/tenants/${id}`, body);
   return response.data;
 }
+
+export async function deleteTenant(id: string): Promise<void> {
+  await apiClient.delete(`/tenants/${id}`);
+}
