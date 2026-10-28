@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
   createTenant,
+  deleteTenant,
   getTenant,
   listTenants,
   updateTenant,
@@ -51,6 +52,15 @@ export function useUpdateTenant(id: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (body: UpdateTenantRequest) => updateTenant(id, body),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: tenantKeys.all }),
+  });
+}
+
+export function useDeleteTenant() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => deleteTenant(id),
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: tenantKeys.all }),
   });

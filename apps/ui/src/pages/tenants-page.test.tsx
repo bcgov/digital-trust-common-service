@@ -4,6 +4,7 @@ import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 
 import { Toaster } from '@/components/common/sonner';
+import { MIN_CREATE_LOADING_MS } from '@/components/tenant/create-tenant-dialog';
 import { API_BASE_PATH } from '@/lib/api/constants';
 import { createMockAuthClient } from '@/lib/auth/mock-auth';
 import { mockTenants } from '@/mocks/handlers';
@@ -121,7 +122,9 @@ describe('TenantsPage', () => {
       within(dialog).getByRole('button', { name: 'Create tenant' }),
     );
 
-    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull(), {
+      timeout: MIN_CREATE_LOADING_MS + 1000,
+    });
     expect(
       await screen.findByText('Tenant Acme Ministry 2 created.'),
     ).toBeInTheDocument();
@@ -143,7 +146,7 @@ describe('TenantsPage', () => {
     await renderTenantsPage();
 
     await user.type(
-      await screen.findByRole('searchbox', { name: 'Search tenants' }),
+      await screen.findByRole('textbox', { name: 'Search tenants' }),
       'example',
     );
 
@@ -180,6 +183,46 @@ describe('TenantsPage', () => {
       name: 'Acme Ministry Renamed',
       description: 'First mock tenant',
     });
+  });
+
+  it('deletes a tenant from the row menu after confirmation', async () => {
+    let deletedId: unknown;
+    server.use(
+      http.delete(`${API_BASE_PATH}/tenants/:id`, ({ params }) => {
+        deletedId = params.id;
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+    const user = userEvent.setup();
+    await renderTenantsPage({ platformAdmin: true });
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Actions for Acme Ministry' }),
+    );
+    await user.click(await screen.findByRole('menuitem', { name: 'Delete' }));
+    const dialog = await screen.findByRole('alertdialog');
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Delete tenant' }),
+    );
+
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+    expect(
+      await screen.findByText('Tenant Acme Ministry deleted.'),
+    ).toBeInTheDocument();
+    expect(deletedId).toBe(mockTenants[0]?.id);
+  });
+
+  it('only offers Delete in the row menu to platform admins', async () => {
+    const user = userEvent.setup();
+    await renderTenantsPage();
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Actions for Acme Ministry' }),
+    );
+    await screen.findByRole('menuitem', { name: 'View details' });
+    expect(
+      screen.queryByRole('menuitem', { name: 'Delete' }),
+    ).not.toBeInTheDocument();
   });
 
   it('keeps the edit dialog open with an alert when saving fails', async () => {
@@ -241,7 +284,11 @@ describe('TenantsPage', () => {
     ).toBeInTheDocument();
     release();
     expect(
-      await within(dialog).findByText('Could not create tenant'),
+      await within(dialog).findByText(
+        'Could not create tenant',
+        {},
+        { timeout: MIN_CREATE_LOADING_MS + 1000 },
+      ),
     ).toBeInTheDocument();
     expect(
       within(dialog).queryByText('Creating tenant. Please wait...'),

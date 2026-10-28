@@ -1,13 +1,8 @@
-import {
-  Building2,
-  LayoutDashboard,
-  LogOut,
-  Share2,
-  UsersRound,
-} from 'lucide-react';
-import { NavLink, Outlet } from 'react-router';
+import { LayoutDashboard, LogOut, Share2, UsersRound } from 'lucide-react';
+import { NavLink, Outlet, useMatches } from 'react-router';
 
 import { BcGovHeader } from '@/components/common/bc-gov-header';
+import { BuildingIcon } from '@/components/icons';
 import { TenantSwitcher } from '@/components/tenant/tenant-switcher';
 import { Avatar, AvatarFallback } from '@/components/common/avatar';
 import { Badge } from '@/components/common/badge';
@@ -45,6 +40,21 @@ const NAV_ITEMS: {
   },
 ];
 
+/**
+ * Route `handle` read by the shell. `centered` is the page frame from the
+ * BCDS designs: no sidebar, a white surface, and content capped at 1280px
+ * and centred with 80px gutters (1440px artboard).
+ */
+export interface AppShellHandle {
+  layout?: 'sidebar' | 'centered';
+}
+
+function useShellLayout(): NonNullable<AppShellHandle['layout']> {
+  const matches = useMatches();
+  const handle = matches.at(-1)?.handle as AppShellHandle | undefined;
+  return handle?.layout ?? 'sidebar';
+}
+
 function initialsOf(name: string | undefined): string {
   if (!name) return '?';
   return name
@@ -61,6 +71,7 @@ export function AppShell() {
   const navigationItems = NAV_ITEMS.filter(
     ({ scope }) => !scope || hasScope(user, scope),
   );
+  const layout = useShellLayout();
   const manageUsersPath =
     tenant?.id && hasScope(user, USERS_MANAGE_SCOPE)
       ? `/tenants/${tenant.id}/users`
@@ -114,57 +125,70 @@ export function AppShell() {
       </BcGovHeader>
 
       <div className="flex flex-1">
-        <aside className="w-60 shrink-0 border-r bg-sidebar text-sidebar-foreground">
-          <div className="flex items-center gap-2 border-b px-3 py-3">
-            <Building2 className="size-4 shrink-0" aria-hidden="true" />
-            <span className="truncate text-sm font-semibold">
-              {tenant?.name ?? 'Unknown tenant'}
-            </span>
-          </div>
-          <nav aria-label="Primary" className="flex flex-col gap-1 p-2">
-            {navigationItems.map(({ to, label, icon: Icon }) => (
-              <NavLink
-                key={to}
-                to={to}
-                className={({ isActive }) =>
-                  cn(
-                    'flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors',
-                    isActive
-                      ? 'bg-sidebar-accent text-sidebar-accent-foreground'
-                      : 'text-muted-foreground hover:bg-muted hover:text-sidebar-foreground',
-                  )
-                }
-              >
-                <Icon className="size-4" aria-hidden="true" />
-                {label}
-              </NavLink>
-            ))}
-            {manageUsersPath && (
-              <NavLink
-                to={manageUsersPath}
-                className={({ isActive }) =>
-                  cn(
-                    'flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors',
-                    isActive
-                      ? 'bg-sidebar-accent text-sidebar-accent-foreground'
-                      : 'text-muted-foreground hover:bg-muted hover:text-sidebar-foreground',
-                  )
-                }
-              >
-                <UsersRound className="size-4" aria-hidden="true" />
-                Manage Users
-              </NavLink>
-            )}
-          </nav>
-        </aside>
+        {layout === 'sidebar' && (
+          <aside className="w-60 shrink-0 border-r bg-sidebar text-sidebar-foreground">
+            <div className="flex items-center gap-2 border-b px-3 py-3">
+              <BuildingIcon className="size-4 shrink-0" />
+              <span className="truncate text-sm font-semibold">
+                {tenant?.name ?? 'Unknown tenant'}
+              </span>
+            </div>
+            <nav aria-label="Primary" className="flex flex-col gap-1 p-2">
+              {navigationItems.map(({ to, label, icon: Icon }) => (
+                <NavLink
+                  key={to}
+                  to={to}
+                  className={({ isActive }) =>
+                    cn(
+                      'flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors',
+                      isActive
+                        ? 'bg-sidebar-accent text-sidebar-accent-foreground'
+                        : 'text-muted-foreground hover:bg-muted hover:text-sidebar-foreground',
+                    )
+                  }
+                >
+                  <Icon className="size-4" aria-hidden="true" />
+                  {label}
+                </NavLink>
+              ))}
+              {manageUsersPath && (
+                <NavLink
+                  to={manageUsersPath}
+                  className={({ isActive }) =>
+                    cn(
+                      'flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors',
+                      isActive
+                        ? 'bg-sidebar-accent text-sidebar-accent-foreground'
+                        : 'text-muted-foreground hover:bg-muted hover:text-sidebar-foreground',
+                    )
+                  }
+                >
+                  <UsersRound className="size-4" aria-hidden="true" />
+                  Manage Users
+                </NavLink>
+              )}
+            </nav>
+          </aside>
+        )}
 
         {/* tabIndex lets the skip link actually move keyboard focus here. */}
         <main
           id="main-content"
           tabIndex={-1}
-          className="flex min-w-0 flex-1 flex-col p-6"
+          className={cn(
+            'flex min-w-0 flex-1 flex-col',
+            layout === 'centered'
+              ? 'bg-card px-20 pt-(--layout-padding-xlarge) pb-(--layout-padding-xlarge)'
+              : 'p-6',
+          )}
         >
-          <Outlet />
+          {layout === 'centered' ? (
+            <div className="mx-auto flex w-full max-w-320 flex-1 flex-col">
+              <Outlet />
+            </div>
+          ) : (
+            <Outlet />
+          )}
         </main>
       </div>
       <Toaster />

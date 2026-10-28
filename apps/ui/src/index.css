@@ -80,6 +80,14 @@
   --text-body--line-height: var(--typography-line-heights-xdense);
   --text-h5: var(--typography-font-size-h5);
   --text-h5--line-height: var(--typography-line-heights-regular);
+  /* Figma's bold/H1 reports a line height of "100", which is its auto
+     height for the face (a 36px line draws 49px tall) — BCDS's `auto`. */
+  --text-h1: var(--typography-font-size-h1);
+  --text-h1--line-height: var(--typography-line-heights-auto);
+  --text-small-body: var(--typography-font-size-small-body);
+  --text-small-body--line-height: var(--typography-line-heights-xxdense);
+  --text-label: var(--typography-font-size-label);
+  --text-label--line-height: var(--typography-line-heights-xxxdense);
   /* The steps the components actually use map to BCDS's discrete radii
      (small 2px / medium 4px / large 6px); the pill-ish steps beyond stay
      derived — they only round things past fully-rounded anyway. */
@@ -183,4 +191,86 @@
    (PR #194 review). */
 header.bcds-header > .bcds-header--container {
   max-width: none;
+}
+
+/* Tenants table status tag. Figma draws `active` in gold-60 on gold-100,
+   which is not one of the BCDS Tag colours. It is a label, not a
+   selectable chip, so it keeps the default cursor. (0,3,0) vs (0,2,0). */
+.tenant-status-tag .bcds-react-aria-Tag.small {
+  cursor: default;
+}
+.tenant-status-tag--active .bcds-react-aria-Tag.grey {
+  background-color: var(--theme-gold-60);
+  border-color: var(--theme-gold-100);
+}
+
+/* Record context menu (Figma "Menu", 160px): 8px icon gap, centred
+   20px icons, primary text and medium radius on BCDS menu items. */
+.bcds-react-aria-Popover:has(> .record-menu) {
+  border: none;
+  min-width: 160px;
+}
+.bcds-react-aria-Menu.record-menu {
+  display: flex;
+  flex-direction: column;
+  gap: var(--layout-margin-hair);
+  width: 160px;
+}
+.bcds-react-aria-Menu.record-menu .bcds-react-aria-MenuItem {
+  align-items: center;
+  gap: var(--layout-margin-small);
+  border-radius: var(--layout-border-radius-medium);
+  color: var(--typography-color-primary);
+}
+.bcds-react-aria-Menu.record-menu .bcds-react-aria-MenuItem > svg {
+  width: var(--icons-size-medium);
+  height: var(--icons-size-medium);
+  padding: 0;
+}
+.bcds-react-aria-Menu.record-menu .bcds-react-aria-Separator.small {
+  margin: var(--layout-margin-hair) calc(-1 * var(--layout-padding-xsmall));
+}
+
+/* The toast's close button is a BCDS tertiary icon button on a dark
+   surface, so its glyph takes the invert icon colour. */
+.toast .bcds-react-aria-Button.tertiary.icon {
+  color: var(--icons-color-primary-invert);
+}
+
+/* Form dialog, per the Figma "Create Tenant" frames: the close button sits
+   inline in the 24px-padded header, labels are 24px tall in the secondary
+   text colour with a 2px gap to the input, helper text has no padding, and
+   the description box is a single line. (0,2,0) vs BCDS (0,1,0). */
+.bcds-react-aria-Modal .bcds-react-aria-Dialog--closeIcon {
+  top: calc(var(--layout-padding-small) + 1px);
+  right: var(--layout-padding-medium);
+}
+.bcds-react-aria-Modal .bcds-react-aria-TextField--Label,
+.bcds-react-aria-Modal .bcds-react-aria-TextArea--Label {
+  align-items: center;
+  min-height: var(--layout-padding-large);
+  padding: 0;
+  color: var(--typography-color-secondary);
+}
+.bcds-react-aria-Modal .bcds-react-aria-TextField--Label.required,
+.bcds-react-aria-Modal .bcds-react-aria-TextArea--Label.required {
+  min-height: 0;
+  padding: 0 var(--layout-padding-xsmall);
+}
+.bcds-react-aria-Modal .bcds-react-aria-TextField--Label {
+  margin-bottom: var(--layout-margin-hair);
+}
+.bcds-react-aria-Modal .bcds-react-aria-TextField--Description {
+  margin-top: var(--layout-margin-hair);
+  padding: 0;
+}
+.bcds-react-aria-Modal .bcds-react-aria-TextArea--Input {
+  height: var(--typography-line-heights-xdense);
+}
+
+/* Figma placeholder text is gray-80; BCDS tokens reuse the lighter
+   disabled grey for both, so only the placeholder is overridden. */
+.bcds-react-aria-TextField--Input::placeholder,
+.bcds-react-aria-TextArea--Input::placeholder {
+  color: var(--theme-gray-80);
 }

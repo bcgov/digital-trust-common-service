@@ -1,7 +1,7 @@
 import type { ComponentType } from 'react';
 import { Navigate, type RouteObject } from 'react-router';
 
-import { AppShell } from '@/layouts/app-shell';
+import { AppShell, type AppShellHandle } from '@/layouts/app-shell';
 import { RootLayout } from '@/layouts/root-layout';
 import { AUTH_CALLBACK_PATH, POST_LOGOUT_PATH } from '@/lib/auth/constants';
 import { PlaceholderPage } from '@/pages/placeholder-page';
@@ -52,6 +52,7 @@ export const routes: RouteObject[] = [
               },
               {
                 path: '/tenants',
+                handle: { layout: 'centered' } satisfies AppShellHandle,
                 lazy: lazyPage(
                   () => import('@/pages/tenants-page'),
                   'TenantsPage',

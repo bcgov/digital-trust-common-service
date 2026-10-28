@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { createMockAuthClient, MOCK_AUTH_TENANTS } from '@/lib/auth/mock-auth';
 import { renderWithAuth } from '@/test/render-with-auth';
 
-import { AppShell } from './app-shell';
+import { AppShell, type AppShellHandle } from './app-shell';
 
 describe('AppShell', () => {
   it('frames the page with the tenant switcher, navigation and account menu', async () => {
@@ -162,5 +162,31 @@ describe('AppShell', () => {
 
     expect(await screen.findByText('connector route')).toBeInTheDocument();
     expect(router.state.location.pathname).toBe('/connectors');
+  });
+
+  it('drops the sidebar for routes that opt into the centered layout', async () => {
+    const client = createMockAuthClient();
+    await client.login();
+    renderWithAuth(
+      [
+        {
+          path: '/',
+          element: <AppShell />,
+          children: [
+            {
+              index: true,
+              handle: { layout: 'centered' } satisfies AppShellHandle,
+              element: <p>centered page</p>,
+            },
+          ],
+        },
+      ],
+      { client },
+    );
+
+    expect(await screen.findByText('centered page')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('navigation', { name: 'Primary' }),
+    ).not.toBeInTheDocument();
   });
 });

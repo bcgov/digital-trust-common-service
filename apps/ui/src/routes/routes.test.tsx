@@ -19,11 +19,10 @@ function renderAt(path: string) {
 describe('routing', () => {
   it('opens the connectors page from the primary navigation', async () => {
     const user = userEvent.setup();
-    const router = renderAt('/tenants');
+    const router = renderAt('/dashboard');
 
     await user.click(await screen.findByRole('button', { name: /sign in/i }));
-    await screen.findByRole('heading', { name: 'Tenants', level: 1 });
-    await user.click(screen.getByRole('link', { name: 'Connectors' }));
+    await user.click(await screen.findByRole('link', { name: 'Connectors' }));
 
     await waitFor(() => {
       expect(router.state.location.pathname).toBe('/connectors');
