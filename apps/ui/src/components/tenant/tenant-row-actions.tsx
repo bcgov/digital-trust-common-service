@@ -1,13 +1,17 @@
-import { EllipsisVertical, Info, Pencil, Trash2 } from 'lucide-react';
-
-import { Button } from '@/components/common/button';
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/common/dropdown-menu';
+  Button,
+  Menu,
+  MenuItem,
+  MenuTrigger,
+  Separator,
+} from '@bcgov/design-system-react-components';
+
+import {
+  CircleInfoIcon,
+  EditIcon,
+  EllipsisVerticalIcon,
+  TrashIcon,
+} from '@/components/icons';
 import type { Tenant } from '@/lib/api/resources/tenants';
 
 export function TenantRowActions({
@@ -22,37 +26,41 @@ export function TenantRowActions({
   onDelete?: () => void;
 }) {
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          variant="ghost"
-          size="icon"
-          aria-label={`Actions for ${tenant.name}`}
-        >
-          <EllipsisVertical aria-hidden="true" />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
-        <DropdownMenuItem onSelect={onViewDetails}>
-          <Info aria-hidden="true" />
+    <MenuTrigger>
+      <Button
+        variant="tertiary"
+        isIconButton
+        aria-label={`Actions for ${tenant.name ?? 'tenant'}`}
+      >
+        <EllipsisVerticalIcon className="size-5" />
+      </Button>
+      <Menu
+        placement="bottom end"
+        className="bcds-react-aria-Menu medium record-menu"
+        onAction={(key) => {
+          if (key === 'view') onViewDetails();
+          else if (key === 'edit') onEdit?.();
+          else if (key === 'delete') onDelete?.();
+        }}
+      >
+        <MenuItem id="view" textValue="View details">
+          <CircleInfoIcon className="size-5 shrink-0" />
           View details
-        </DropdownMenuItem>
+        </MenuItem>
         {onEdit && (
-          <DropdownMenuItem onSelect={onEdit}>
-            <Pencil aria-hidden="true" />
+          <MenuItem id="edit" textValue="Edit">
+            <EditIcon className="size-5 shrink-0" />
             Edit
-          </DropdownMenuItem>
+          </MenuItem>
         )}
+        {onDelete && <Separator size="small" />}
         {onDelete && (
-          <>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem variant="destructive" onSelect={onDelete}>
-              <Trash2 aria-hidden="true" />
-              Delete
-            </DropdownMenuItem>
-          </>
+          <MenuItem id="delete" textValue="Delete">
+            <TrashIcon className="size-5 shrink-0 text-(--icons-color-danger)" />
+            <span className="text-(--typography-color-danger)">Delete</span>
+          </MenuItem>
         )}
-      </DropdownMenuContent>
-    </DropdownMenu>
+      </Menu>
+    </MenuTrigger>
   );
 }

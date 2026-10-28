@@ -78,26 +78,22 @@ export function FormDialog({
       <Dialog aria-label={label}>
         <Form onSubmit={onSubmit} aria-busy={isLoading}>
           <div className="border-b px-6 py-4 pr-14">
-            <h2 className="text-xl font-bold">{label}</h2>
+            <h2 className="text-h5 font-bold">{label}</h2>
           </div>
           <div className="relative border-b">
-            <div
-              className={`flex flex-col gap-4 px-6 py-4 ${
-                isLoading ? 'opacity-20' : ''
-              }`}
-            >
+            <div className="flex flex-col gap-6 p-6">
               <MutationError
                 error={error}
                 title={errorTitle}
                 conflict={conflict}
               />
               {intro && <p>{intro}</p>}
-              {children}
+              <div className="flex flex-col gap-4">{children}</div>
             </div>
             {isLoading && (
               <div
                 role="status"
-                className="absolute inset-0 flex flex-col items-center justify-center gap-2"
+                className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-(--surface-color-forms-default)"
               >
                 <ProgressCircle isIndeterminate aria-label={loadingMessage} />
                 <p className="text-sm">{loadingMessage}</p>

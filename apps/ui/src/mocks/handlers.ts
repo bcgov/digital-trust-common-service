@@ -163,6 +163,13 @@ export const handlers = [
   http.get(`${API_BASE_PATH}/tenants`, () => HttpResponse.json(mockTenants)),
   http.post(`${API_BASE_PATH}/tenants`, async ({ request }) => {
     const body = (await request.json()) as Partial<Tenant>;
+    // Demo hook: a tenant named "fail" exercises the create-failure state.
+    if (body.name?.trim().toLowerCase() === 'fail') {
+      return HttpResponse.json(
+        { statusCode: 500, message: 'Simulated failure', error: 'Error' },
+        { status: 500 },
+      );
+    }
     return HttpResponse.json({ ...mockTenants[0], ...body }, { status: 201 });
   }),
   http.patch(`${API_BASE_PATH}/tenants/:id`, async ({ params, request }) => {
