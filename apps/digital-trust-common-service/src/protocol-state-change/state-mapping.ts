@@ -243,6 +243,7 @@ const AGENT_TO_CONNECTION_STATE: Record<AgentConnectionState, ConnectionState> =
 export function resolveProtocolOutcome(
   topic: ProtocolTopic,
   protocolState: string,
+  verified?: unknown,
 ): ProtocolOutcome | null {
   // ACA-Py/Traction webhooks send wire states underscore-separated (e.g.
   // `credential_issued`, `offer_sent` — see docs/ARCHITECTURE.md's webhook
@@ -261,6 +262,14 @@ export function resolveProtocolOutcome(
         normalizedState,
       );
     case 'present_proof':
+      // ACA-Py v2 finishes both valid and invalid proofs in "done".
+      if (
+        normalizedState === 'done' &&
+        verified !== true &&
+        verified !== 'true'
+      ) {
+        return { operationState: OperationState.FAILED };
+      }
       return resolveFromTable(
         PRESENT_PROOF_OUTCOMES,
         Object.values(PresentationExchangeState),
