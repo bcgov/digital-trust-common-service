@@ -176,7 +176,7 @@ When deploy secrets are missing, cluster jobs are skipped with a notice — the 
 | `PR_DB_WORKLOAD` | Variable | Kubernetes workload ref of the PR PostgreSQL instance (e.g. `statefulset/digital-trust-common-service-pr-db`), used for `oc exec` provisioning | Update if the PR DB workload changes |
 | `PR_DB_HOST` | Variable | Optional override for the app's `config.DB_HOST` in PR releases; when unset, the `DB_HOST` default baked into `values-pr.yaml` applies | Update if the PR DB Service name changes |
 | `PR_DB_OWNER` | Variable | PostgreSQL role owning `dc_pr_<N>` databases (matches `digital-trust-common-service-pr-secret`'s `DB_USERNAME`; defaults to `app` when unset) | Update if the application DB user changes |
-| `PR_ENV_OPERATOR_EMAILS` | Variable | Optional comma-separated emails passed to PR releases as `config.SEED_PLATFORM_OPERATOR_EMAILS`; the seed makes each an `acme-corp` owner with the platform-operator flag, so those loginproxy accounts sign in to a PR environment as owner and platform admin. Unset: no operators are seeded and real sign-ins land as `readonly` | Edit as the team roster changes; additive, so removing an email demotes nobody in an already-deployed PR environment |
+| `PR_ENV_OPERATOR_EMAILS` | Variable | Optional emails (comma- or newline-separated) passed to PR releases as `config.SEED_PLATFORM_OPERATOR_EMAILS`; the seed makes each an `acme-corp` owner with the platform-operator flag, so those loginproxy accounts sign in to a PR environment as owner and platform admin. Unset: no operators are seeded and real sign-ins land as `readonly` | Edit as the team roster changes; takes effect on each PR environment's next deploy. Additive, so removing an email demotes nobody |
 
 ### External Prerequisites
 

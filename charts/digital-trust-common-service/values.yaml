@@ -444,8 +444,9 @@ config:
   # -- Comma-separated emails the development seed makes owners of the demo
   # tenant `acme-corp` with the platform-operator flag, so those accounts sign
   # in to a PR environment as owner and platform admin rather than readonly.
-  # Read only when SEED_ON_START is true; additive (dropping an email demotes
-  # nobody). pr-deploy.yml sets it from the PR_ENV_OPERATOR_EMAILS variable.
+  # Read whenever the development seed runs; additive (dropping an email
+  # demotes nobody). pr-deploy.yml sets it from the PR_ENV_OPERATOR_EMAILS
+  # variable.
   SEED_PLATFORM_OPERATOR_EMAILS: ""
 
 # -- Extra plain environment variables appended to every container (name/value list)

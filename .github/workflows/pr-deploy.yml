@@ -187,9 +187,10 @@ jobs:
             echo "::notice::PR_DB_HOST variable not set; using the DB_HOST default from values-pr.yaml."
           fi
 
-          # --set would split the commas into a list; --set-json keeps one string.
+          # --set would split the commas into a list; --set-json keeps one
+          # string, and jq quotes it so a pasted newline can't break the JSON.
           if [ -n "${OPERATOR_EMAILS}" ]; then
-            EXTRA_ARGS+=(--set-json "config.SEED_PLATFORM_OPERATOR_EMAILS=\"${OPERATOR_EMAILS}\"")
+            EXTRA_ARGS+=(--set-json "config.SEED_PLATFORM_OPERATOR_EMAILS=$(printf '%s' "${OPERATOR_EMAILS}" | jq -Rs .)")
           else
             echo "::notice::PR_ENV_OPERATOR_EMAILS variable not set; real sign-ins to this PR environment land as readonly."
           fi
