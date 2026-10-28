@@ -12,7 +12,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/common/table';
-import { BuildingIcon, PlusIcon, SearchIcon } from '@/components/icons';
+import { BuildingIcon, PlusIcon, SearchIcon } from '@/components/common/icons';
 import { CreateTenantDialog } from '@/components/tenant/create-tenant-dialog';
 import { DeleteTenantDialog } from '@/components/tenant/delete-tenant-dialog';
 import { EditTenantDialog } from '@/components/tenant/edit-tenant-dialog';

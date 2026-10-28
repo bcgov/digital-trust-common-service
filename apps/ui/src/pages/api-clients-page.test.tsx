@@ -144,6 +144,25 @@ describe('ApiClientsPage', () => {
     expect(screen.queryByText(secret)).not.toBeInTheDocument();
   });
 
+  it('shows an inline error when a custom client ID does not match the required prefix', async () => {
+    const user = userEvent.setup();
+    await renderPage();
+    await user.click(
+      (await screen.findAllByRole('button', { name: 'Create integration' }))[0],
+    );
+    const dialog = await screen.findByRole('dialog');
+    const clientId = within(dialog).getByLabelText('Client ID');
+    await user.clear(clientId);
+    await user.type(clientId, 'custom-client');
+
+    expect(
+      within(dialog).getByText(
+        'Client ID must start with dtcs_ and contain only lowercase letters, numbers, hyphens, or underscores.',
+      ),
+    ).toBeInTheDocument();
+    expect(clientId).toHaveAttribute('aria-invalid', 'true');
+  });
+
   it('lists client IDs and scopes, and edits only changed fields without exposing secrets', async () => {
     const user = userEvent.setup();
     let body: unknown;

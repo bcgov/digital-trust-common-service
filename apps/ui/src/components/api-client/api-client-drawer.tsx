@@ -1,6 +1,7 @@
-import { ChevronDown, LoaderCircle, Plus, Trash2 } from 'lucide-react';
-import { useId, useState, type FormEvent } from 'react';
+import { ChevronDown, LoaderCircle } from 'lucide-react';
+import { useId, useState, type SubmitEvent } from 'react';
 
+import { PlusIcon, TrashIcon } from '@/components/common/icons';
 import { Button } from '@/components/common/button';
 import {
   Drawer,
@@ -75,6 +76,13 @@ export function ApiClientDrawer({
     (scope) => scope.name && hasScope(user, scope.name),
   );
   const suggestedClientId = `dtcs_${(slugify(name) || 'client').slice(0, 250)}`;
+  const currentClientId = (clientIdCustomized ? clientId : suggestedClientId).trim();
+  const clientIdError =
+    clientIdCustomized &&
+    currentClientId.length > 0 &&
+    !/^dtcs_[a-z0-9][a-z0-9_-]{0,249}$/.test(currentClientId)
+      ? 'Client ID must start with dtcs_ and contain only lowercase letters, numbers, hyphens, or underscores.'
+      : '';
   const close = () => {
     if (mutation.isPending) return;
     setCredentials(null);
@@ -82,7 +90,7 @@ export function ApiClientDrawer({
     onClose();
   };
 
-  function submit(event: FormEvent<HTMLFormElement>) {
+  function submit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     if (mutation.isPending) return;
     const redirectUris = uris.map(({ value }) => value.trim());
@@ -203,6 +211,8 @@ export function ApiClientDrawer({
                       maxLength={255}
                       pattern="dtcs_[a-z0-9][a-z0-9_-]{0,249}"
                       title="Use dtcs_ followed by lowercase letters, numbers, hyphens, or underscores."
+                      aria-invalid={Boolean(clientIdError)}
+                      aria-describedby={`${fieldId}-id-hint${clientIdError ? ` ${fieldId}-id-error` : ''}`}
                       value={clientIdCustomized ? clientId : suggestedClientId}
                       onChange={(event) => {
                         setClientIdCustomized(true);
@@ -210,10 +220,21 @@ export function ApiClientDrawer({
                       }}
                       className="font-mono text-xs"
                     />
-                    <p className="text-xs text-muted-foreground">
+                    <p
+                      id={`${fieldId}-id-hint`}
+                      className="text-xs text-muted-foreground"
+                    >
                       Must be unique across all tenants and cannot be changed
                       later.
                     </p>
+                    {clientIdError && (
+                      <p
+                        id={`${fieldId}-id-error`}
+                        className="text-xs text-destructive"
+                      >
+                        {clientIdError}
+                      </p>
+                    )}
                   </div>
                 )}
                 <fieldset className="flex flex-col gap-2">
@@ -390,7 +411,7 @@ export function ApiClientDrawer({
                           setUris(uris.filter((item) => item.id !== uri.id))
                         }
                       >
-                        <Trash2 aria-hidden="true" />
+                        <TrashIcon aria-hidden="true" />
                       </Button>
                     </div>
                   ))}
@@ -402,7 +423,7 @@ export function ApiClientDrawer({
                       setUris([...uris, { id: crypto.randomUUID(), value: '' }])
                     }
                   >
-                    <Plus aria-hidden="true" />
+                    <PlusIcon aria-hidden="true" />
                     Add URI
                   </Button>
                 </div>

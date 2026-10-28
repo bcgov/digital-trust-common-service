@@ -1,11 +1,13 @@
 import {
-  EllipsisVertical,
-  Info,
   LockKeyhole,
-  Pencil,
-  Trash2,
 } from 'lucide-react';
 
+import {
+  CircleInfoIcon,
+  EditIcon,
+  EllipsisVerticalIcon,
+  TrashIcon,
+} from '@/components/common/icons';
 import { Button } from '@/components/common/button';
 import {
   DropdownMenu,
@@ -124,19 +126,19 @@ export function ApiClientsTable({
                         size="icon"
                         aria-label={`Actions for ${client.name}`}
                       >
-                        <EllipsisVertical aria-hidden="true" />
+                        <EllipsisVerticalIcon aria-hidden="true" />
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
                       <DropdownMenuItem onSelect={() => onViewDetails(client)}>
-                        <Info aria-hidden="true" />
+                        <CircleInfoIcon aria-hidden="true" />
                         View details
                       </DropdownMenuItem>
                       <DropdownMenuItem
                         disabled={systemManaged || Boolean(client.revoked_at)}
                         onSelect={() => onEdit(client)}
                       >
-                        <Pencil aria-hidden="true" />
+                        <EditIcon aria-hidden="true" />
                         Edit
                       </DropdownMenuItem>
                       <Separator />
@@ -145,7 +147,7 @@ export function ApiClientsTable({
                         disabled={systemManaged || Boolean(client.revoked_at)}
                         onSelect={() => onRevoke(client)}
                       >
-                        <Trash2 aria-hidden="true" />
+                        <TrashIcon aria-hidden="true" />
                         Revoke
                       </DropdownMenuItem>
                     </DropdownMenuContent>
