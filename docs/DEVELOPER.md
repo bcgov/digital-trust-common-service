@@ -387,15 +387,18 @@ DELETE FROM tenant_user WHERE external_user_id LIKE 'dev-acme-corp-%';
 
 A PR environment signs in through the shared dev loginproxy, where none of the
 realm accounts above exist, so a first sign-in would land in `acme-corp` as
-`readonly`. `SEED_PLATFORM_OPERATOR_EMAILS` (comma-separated; `pr-deploy.yml`
-fills it from the `PR_ENV_OPERATOR_EMAILS` repository variable) makes the seed
-hold an `acme-corp` owner invitation carrying the platform-operator flag for
-each listed email, so that account's first sign-in lands as owner and platform
-admin. An account that already signed in as `readonly` is promoted in place on
-the next seed run and keeps its name and subject. The list is additive:
-removing an email demotes nobody; use the Users page or
-`PATCH /admin/users/:id/platform-operator` for that. It works locally too, for
-signing in with a real IdP account instead of the realm's.
+`readonly`. `SEED_PLATFORM_OPERATOR_EMAILS` (comma- or newline-separated;
+`pr-deploy.yml` fills it from the `PR_ENV_OPERATOR_EMAILS` repository variable)
+makes the seed hold an `acme-corp` owner invitation carrying the
+platform-operator flag for each listed email, so that account's first sign-in
+lands as owner and platform admin. An account that already signed in as
+`readonly` is promoted in place on the next seed run and keeps its name and
+subject. The realm accounts above are skipped with a warning: demo accounts
+keep their seeded roles. The list is additive and every seed run puts owner and
+the flag back on a listed email, so to revoke: remove the email from the list
+first, then clear the flag with `PATCH /admin/users/:id/platform-operator`.
+Changing the tenant role on the Users page leaves the flag, and so platform
+admin, in place.
 
 The client the SPA uses:
 

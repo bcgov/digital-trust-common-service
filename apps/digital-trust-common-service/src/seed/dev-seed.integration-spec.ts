@@ -22,9 +22,9 @@ import { DevSeedService } from './dev-seed.service';
 import { SEED_ENTITIES, SEED_REPOSITORY_PROVIDERS } from './seed.constants';
 
 // Set before ConfigModule loads .env, which never overrides an existing
-// variable. Not acme-corp.example.test addresses, so the demo counts hold.
-process.env.SEED_PLATFORM_OPERATOR_EMAILS =
-  'Operator.One@Example.test, operator.two@example.test';
+// variable. Not acme-corp.example.test addresses, so the demo counts hold;
+// the multi-tenant demo account is listed so every run has to skip it.
+process.env.SEED_PLATFORM_OPERATOR_EMAILS = `Operator.One@Example.test, operator.two@example.test, ${MULTI_TENANT_USER.email}`;
 
 describe('DevSeedService integration', () => {
   let module: TestingModule;
@@ -262,6 +262,16 @@ describe('DevSeedService integration', () => {
         external_user_id: null,
         is_platform_operator: true,
       },
+    ]);
+
+    // The listed demo account is skipped, not promoted.
+    const demo = await queryDataSource.query<OperatorRow[]>(
+      `SELECT ${operatorColumns} FROM tenant_user
+        WHERE tenant_id = (SELECT id FROM tenant WHERE slug = $1) AND email = $2`,
+      [UI_SPA_TENANT_SLUG, MULTI_TENANT_USER.email],
+    );
+    expect(demo).toMatchObject([
+      { role: 'admin', is_platform_operator: false },
     ]);
   });
 

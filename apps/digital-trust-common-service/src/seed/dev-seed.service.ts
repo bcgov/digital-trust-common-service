@@ -79,13 +79,13 @@ export interface DevSeedSummary {
   platformOperators: string[];
 }
 
-/** Comma-separated, trimmed, lowercased, de-duplicated; empty entries dropped. */
+/** Comma- or whitespace-separated, lowercased, de-duplicated; empties dropped. */
 function parsePlatformOperatorEmails(raw: string | undefined): string[] {
   return [
     ...new Set(
       (raw ?? '')
-        .split(',')
-        .map((email) => email.trim().toLowerCase())
+        .split(/[\s,]+/)
+        .map((email) => email.toLowerCase())
         .filter((email) => email.length > 0),
     ),
   ];
@@ -267,11 +267,26 @@ export class DevSeedService {
    * than readonly. Additive: dropping an email demotes nobody.
    */
   private async seedPlatformOperators(tenant: Tenant): Promise<string[]> {
-    const emails = parsePlatformOperatorEmails(
+    const demoEmails = new Set(
+      seedUsersForTenant(UI_SPA_TENANT_SLUG).map((userDef) => userDef.email),
+    );
+    const listed = parsePlatformOperatorEmails(
       this.config.get<string>('SEED_PLATFORM_OPERATOR_EMAILS'),
     );
+    const emails: string[] = [];
 
-    for (const email of emails) {
+    for (const email of listed) {
+      // seedUsers restores demo roles every run, and taking owner back off
+      // the tenant's only active owner fails the last-owner guard, so demo
+      // accounts keep their seeded roles.
+      if (demoEmails.has(email)) {
+        this.logger.warn(
+          `Ignoring platform operator ${email}: demo accounts keep their seeded roles.`,
+        );
+        continue;
+      }
+      emails.push(email);
+
       // Promote whatever row is at this email, in any case; create on a miss.
       const promoted = await this.seedTenantUsers.ensurePlatformOperator(
         tenant.id,

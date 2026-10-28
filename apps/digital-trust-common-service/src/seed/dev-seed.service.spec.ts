@@ -634,16 +634,39 @@ describe('DevSeedService', () => {
       expect(summary.users).toBe(12);
     });
 
-    it('normalises, de-duplicates and drops empty entries', async () => {
-      operatorEmails(' A@X.test,, a@x.test ,B@x.test,');
+    it('splits on commas or whitespace, lowercases and de-duplicates', async () => {
+      operatorEmails(' A@X.test,, a@x.test ,B@x.test,\nc@x.test ');
 
       const summary = await service.run();
 
       expect(seedTenantUserRepo.ensurePlatformOperator.mock.calls).toEqual([
         ['tenant-acme', 'a@x.test'],
         ['tenant-acme', 'b@x.test'],
+        ['tenant-acme', 'c@x.test'],
       ]);
-      expect(summary.platformOperators).toEqual(['a@x.test', 'b@x.test']);
+      expect(summary.platformOperators).toEqual([
+        'a@x.test',
+        'b@x.test',
+        'c@x.test',
+      ]);
+    });
+
+    it('skips a listed demo account with a warning', async () => {
+      const warnSpy = jest
+        .spyOn(Logger.prototype, 'warn')
+        .mockImplementation(() => undefined);
+      operatorEmails(`${MULTI_TENANT_USER.email}, jane@x.test`);
+
+      const summary = await service.run();
+
+      expect(seedTenantUserRepo.ensurePlatformOperator.mock.calls).toEqual([
+        ['tenant-acme', 'jane@x.test'],
+      ]);
+      expect(summary.platformOperators).toEqual(['jane@x.test']);
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining(MULTI_TENANT_USER.email),
+      );
+      warnSpy.mockRestore();
     });
 
     it('promotes an existing row instead of creating a second one', async () => {
