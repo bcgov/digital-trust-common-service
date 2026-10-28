@@ -23,7 +23,7 @@ describe('SeedTenantUserRepository', () => {
     execute: jest.Mock;
   };
   let managerRepository: { createQueryBuilder: jest.Mock; update: jest.Mock };
-  let dataSource: { transaction: jest.Mock };
+  let dataSource: { transaction: jest.Mock; getRepository: jest.Mock };
   let mockTransaction: jest.Mock;
   let transactionManager: EntityManager;
   let findTenantByIdForUpdate: jest.Mock;
@@ -50,7 +50,10 @@ describe('SeedTenantUserRepository', () => {
       (callback: (manager: EntityManager) => Promise<boolean>) =>
         callback(transactionManager),
     );
-    dataSource = { transaction: mockTransaction };
+    dataSource = {
+      transaction: mockTransaction,
+      getRepository: jest.fn(() => managerRepository),
+    };
     findTenantByIdForUpdate = jest.fn().mockResolvedValue({ id: 'tenant-1' });
     countActiveAdministratorsByTenant = jest.fn().mockResolvedValue(1);
     countByTenantAndRole = jest.fn().mockResolvedValue(1);
@@ -217,6 +220,45 @@ describe('SeedTenantUserRepository', () => {
           TenantUserRole.ADMIN,
         ),
       ).rejects.toThrow(ConflictException);
+    });
+  });
+
+  describe('ensurePlatformOperator', () => {
+    it('promotes to owner with the flag, matching the email case-insensitively', async () => {
+      const changed = await repository.ensurePlatformOperator(
+        'tenant-1',
+        'Jane@X.test',
+      );
+
+      expect(changed).toBe(true);
+      expect(queryBuilder.update).toHaveBeenCalledWith(TenantUser);
+      expect(queryBuilder.set).toHaveBeenCalledWith({
+        role: TenantUserRole.OWNER,
+        isPlatformOperator: true,
+      });
+      expect(queryBuilder.where).toHaveBeenCalledWith('tenant_id = :tenantId', {
+        tenantId: 'tenant-1',
+      });
+      expect(queryBuilder.andWhere).toHaveBeenCalledWith(
+        'LOWER(email) = LOWER(:email)',
+        { email: 'Jane@X.test' },
+      );
+    });
+
+    it('reports no change when no row exists', async () => {
+      queryBuilder.execute.mockResolvedValue({ affected: 0 });
+
+      await expect(
+        repository.ensurePlatformOperator('tenant-1', 'nobody@x.test'),
+      ).resolves.toBe(false);
+    });
+
+    // Promoting to owner cannot remove one, so the admin guard is not needed.
+    it('neither locks the tenant nor opens a transaction', async () => {
+      await repository.ensurePlatformOperator('tenant-1', 'jane@x.test');
+
+      expect(mockTransaction).not.toHaveBeenCalled();
+      expect(findTenantByIdForUpdate).not.toHaveBeenCalled();
     });
   });
 });

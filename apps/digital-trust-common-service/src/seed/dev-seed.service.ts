@@ -27,6 +27,10 @@ import { Operation, OperationState } from '../operation/operation.entity';
 import { OperationRepository } from '../operation/operation.repository';
 import { Tenant, TenantStatus } from '../tenant/tenant.entity';
 import { TenantRepository } from '../tenant/tenant.repository';
+import {
+  TenantUserRole,
+  TenantUserStatus,
+} from '../tenant-user/tenant-user.entity';
 import { TenantUserRepository } from '../tenant-user/tenant-user.repository';
 import { VerificationProfile } from '../verification-profile/verification-profile.entity';
 import { VerificationProfileRepository } from '../verification-profile/verification-profile.repository';
@@ -72,6 +76,19 @@ export interface DevSeedSummary {
   connections: number;
   operations: number;
   createdOAuthClients: string[];
+  platformOperators: string[];
+}
+
+/** Comma- or whitespace-separated, lowercased, de-duplicated; empties dropped. */
+function parsePlatformOperatorEmails(raw: string | undefined): string[] {
+  return [
+    ...new Set(
+      (raw ?? '')
+        .split(/[\s,]+/)
+        .map((email) => email.toLowerCase())
+        .filter((email) => email.length > 0),
+    ),
+  ];
 }
 
 @Injectable()
@@ -127,6 +144,7 @@ export class DevSeedService {
       connections: 0,
       operations: 0,
       createdOAuthClients: [],
+      platformOperators: [],
     };
 
     for (const tenantDef of SEED_TENANTS) {
@@ -146,6 +164,7 @@ export class DevSeedService {
           tenant,
           summary.createdOAuthClients,
         );
+        summary.platformOperators = await this.seedPlatformOperators(tenant);
       }
 
       if (!tenantDef.seedDemoData) {
@@ -240,6 +259,53 @@ export class DevSeedService {
     }
 
     return count;
+  }
+
+  /**
+   * SEED_PLATFORM_OPERATOR_EMAILS as owners of the SPA tenant carrying the
+   * platform-operator flag, so a real sign-in lands as platform admin rather
+   * than readonly. Additive: dropping an email demotes nobody.
+   */
+  private async seedPlatformOperators(tenant: Tenant): Promise<string[]> {
+    const demoEmails = new Set(
+      seedUsersForTenant(UI_SPA_TENANT_SLUG).map((userDef) => userDef.email),
+    );
+    const listed = parsePlatformOperatorEmails(
+      this.config.get<string>('SEED_PLATFORM_OPERATOR_EMAILS'),
+    );
+    const emails: string[] = [];
+
+    for (const email of listed) {
+      // seedUsers restores demo roles every run, and taking owner back off
+      // the tenant's only active owner fails the last-owner guard, so demo
+      // accounts keep their seeded roles.
+      if (demoEmails.has(email)) {
+        this.logger.warn(
+          `Ignoring platform operator ${email}: demo accounts keep their seeded roles.`,
+        );
+        continue;
+      }
+      emails.push(email);
+
+      // Promote whatever row is at this email, in any case; create on a miss.
+      const promoted = await this.seedTenantUsers.ensurePlatformOperator(
+        tenant.id,
+        email,
+      );
+
+      if (!promoted) {
+        await this.tenantUsers.create({
+          tenantId: tenant.id,
+          email,
+          displayName: email,
+          role: TenantUserRole.OWNER,
+          status: TenantUserStatus.INVITED,
+          isPlatformOperator: true,
+        });
+      }
+    }
+
+    return emails;
   }
 
   private async upsertConnector(tenantId: string): Promise<number> {
@@ -629,6 +695,12 @@ export class DevSeedService {
       for (const clientId of summary.createdOAuthClients) {
         this.logger.log(`  - ${clientId}`);
       }
+    }
+
+    if (summary.platformOperators.length > 0) {
+      this.logger.log(
+        `Platform operators in ${UI_SPA_TENANT_SLUG}: ${summary.platformOperators.join(', ')}`,
+      );
     }
   }
 }

@@ -385,6 +385,21 @@ and run `docker compose up seed` again:
 DELETE FROM tenant_user WHERE external_user_id LIKE 'dev-acme-corp-%';
 ```
 
+A PR environment signs in through the shared dev loginproxy, where none of the
+realm accounts above exist, so a first sign-in would land in `acme-corp` as
+`readonly`. `SEED_PLATFORM_OPERATOR_EMAILS` (comma- or newline-separated;
+`pr-deploy.yml` fills it from the `PR_ENV_OPERATOR_EMAILS` repository variable)
+makes the seed hold an `acme-corp` owner invitation carrying the
+platform-operator flag for each listed email, so that account's first sign-in
+lands as owner and platform admin. An account that already signed in as
+`readonly` is promoted in place on the next seed run and keeps its name and
+subject. The realm accounts above are skipped with a warning: demo accounts
+keep their seeded roles. The list is additive and every seed run puts owner and
+the flag back on a listed email, so to revoke: remove the email from the list
+first, then clear the flag with `PATCH /admin/users/:id/platform-operator`.
+Changing the tenant role on the Users page leaves the flag, and so platform
+admin, in place.
+
 The client the SPA uses:
 
 | Property | Value | Why |
@@ -878,7 +893,7 @@ SEED_ON_START=true
 | Resource | Details |
 |----------|---------|
 | Tenants | `acme-corp`, `test-org` (active), `suspended-co` (suspended) |
-| Users | owner / admin / member per tenant. In `acme-corp` these are unclaimed invitations at the emails of the realm's accounts (see [Signing in for real](#signing-in-for-real)); elsewhere they are placeholders that cannot sign in. Plus `multi-tenant`, active in all three tenants, for the tenant switcher |
+| Users | owner / admin / member per tenant. In `acme-corp` these are unclaimed invitations at the emails of the realm's accounts (see [Signing in for real](#signing-in-for-real)); elsewhere they are placeholders that cannot sign in. Plus `multi-tenant`, active in all three tenants, for the tenant switcher. When `SEED_PLATFORM_OPERATOR_EMAILS` is set, also an owner invitation per listed email in `acme-corp` carrying the platform-operator flag (see [Signing in for real](#signing-in-for-real)) |
 | Connectors | Mock Traction endpoint per tenant |
 | Credential defs | Person credential, Employee badge (active tenants) |
 | Issuance profiles | Published `person-credential/1.0`, draft `employee-badge/1.0` |
@@ -887,7 +902,7 @@ SEED_ON_START=true
 | Connections | Five states per active tenant |
 | Operations | pending, completed, failed per active tenant |
 
-Re-running the seed updates existing rows keyed by slug, email (users), external IDs, and profile name/version — it does not create duplicates. A user row that a real sign-in has claimed keeps its identity and status; the seed only refreshes its role and display name.
+Re-running the seed updates existing rows keyed by slug, email (users), external IDs, and profile name/version — it does not create duplicates. A user row that a real sign-in has claimed keeps its identity and status; the seed only refreshes its role and display name. A listed platform operator is made owner and flagged on every run, claimed or not; nothing else on the row changes.
 
 ## Bootstrapping a hosted environment
 

@@ -53,6 +53,7 @@ describe('DevSeedService', () => {
   const seedTenantUserRepo = {
     refreshSeeded: jest.fn(),
     setDisplayNameAndRole: jest.fn(),
+    ensurePlatformOperator: jest.fn(),
   };
 
   const connectorCredentialRepo = {
@@ -121,6 +122,8 @@ describe('DevSeedService', () => {
 
   beforeEach(async () => {
     jest.clearAllMocks();
+    // clearAllMocks keeps implementations; a test's env must not leak.
+    config.get.mockReset();
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -187,6 +190,7 @@ describe('DevSeedService', () => {
     // No seeded rows exist yet: both writes miss and the seed creates.
     seedTenantUserRepo.refreshSeeded.mockResolvedValue(false);
     seedTenantUserRepo.setDisplayNameAndRole.mockResolvedValue(false);
+    seedTenantUserRepo.ensurePlatformOperator.mockResolvedValue(false);
     tenantUserRepo.create.mockResolvedValue({});
 
     connectorCredentialRepo.findByTenant.mockResolvedValue([]);
@@ -593,6 +597,99 @@ describe('DevSeedService', () => {
       },
     );
     expect(createdUser('owner@test-org.example.test')).toBeUndefined();
+  });
+
+  function operatorEmails(raw: string): void {
+    config.get.mockImplementation((key: string) =>
+      key === 'SEED_PLATFORM_OPERATOR_EMAILS' ? raw : undefined,
+    );
+  }
+
+  describe('platform operators', () => {
+    it('invites each listed email as an owner with the flag, in the SPA tenant only', async () => {
+      operatorEmails('Jane.Doe@gov.bc.ca, bob@example.test');
+
+      const summary = await service.run();
+
+      expect(createdUser('jane.doe@gov.bc.ca')).toMatchObject({
+        tenantId: 'tenant-acme',
+        displayName: 'jane.doe@gov.bc.ca',
+        role: 'owner',
+        status: TenantUserStatus.INVITED,
+        isPlatformOperator: true,
+      });
+      expect(createdUser('jane.doe@gov.bc.ca')?.externalUserId).toBeUndefined();
+      expect(createdUser('bob@example.test')).toMatchObject({
+        tenantId: 'tenant-acme',
+        isPlatformOperator: true,
+      });
+      expect(
+        seedTenantUserRepo.ensurePlatformOperator,
+      ).not.toHaveBeenCalledWith('tenant-new', expect.anything());
+      expect(summary.platformOperators).toEqual([
+        'jane.doe@gov.bc.ca',
+        'bob@example.test',
+      ]);
+      // Operators are not demo users.
+      expect(summary.users).toBe(12);
+    });
+
+    it('splits on commas or whitespace, lowercases and de-duplicates', async () => {
+      operatorEmails(' A@X.test,, a@x.test ,B@x.test,\nc@x.test ');
+
+      const summary = await service.run();
+
+      expect(seedTenantUserRepo.ensurePlatformOperator.mock.calls).toEqual([
+        ['tenant-acme', 'a@x.test'],
+        ['tenant-acme', 'b@x.test'],
+        ['tenant-acme', 'c@x.test'],
+      ]);
+      expect(summary.platformOperators).toEqual([
+        'a@x.test',
+        'b@x.test',
+        'c@x.test',
+      ]);
+    });
+
+    it('skips a listed demo account with a warning', async () => {
+      const warnSpy = jest
+        .spyOn(Logger.prototype, 'warn')
+        .mockImplementation(() => undefined);
+      operatorEmails(`${MULTI_TENANT_USER.email}, jane@x.test`);
+
+      const summary = await service.run();
+
+      expect(seedTenantUserRepo.ensurePlatformOperator.mock.calls).toEqual([
+        ['tenant-acme', 'jane@x.test'],
+      ]);
+      expect(summary.platformOperators).toEqual(['jane@x.test']);
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining(MULTI_TENANT_USER.email),
+      );
+      warnSpy.mockRestore();
+    });
+
+    it('promotes an existing row instead of creating a second one', async () => {
+      operatorEmails('jane@x.test');
+      rowExistsFor(seedTenantUserRepo.ensurePlatformOperator, 'jane@x.test');
+
+      const summary = await service.run();
+
+      expect(createdUser('jane@x.test')).toBeUndefined();
+      expect(summary.platformOperators).toEqual(['jane@x.test']);
+    });
+
+    it('seeds no operators when the variable is unset or blank', async () => {
+      await service.run();
+      operatorEmails(' , ');
+      const summary = await service.run();
+
+      expect(seedTenantUserRepo.ensurePlatformOperator).not.toHaveBeenCalled();
+      expect(tenantUserRepo.create).not.toHaveBeenCalledWith(
+        expect.objectContaining({ isPlatformOperator: true }),
+      );
+      expect(summary.platformOperators).toEqual([]);
+    });
   });
 
   it('updates an existing connector credential for the mock traction endpoint', async () => {

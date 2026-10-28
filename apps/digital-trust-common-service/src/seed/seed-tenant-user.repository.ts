@@ -82,6 +82,28 @@ export class SeedTenantUserRepository {
     });
   }
 
+  /**
+   * Makes the user at this tenant and email an owner and platform operator,
+   * matching the email case-insensitively and touching nothing else, so a
+   * claimed row keeps its name and subject. Unguarded, unlike the writes
+   * above: promoting to owner cannot remove one. Returns whether a row changed.
+   */
+  public async ensurePlatformOperator(
+    tenantId: string,
+    email: string,
+  ): Promise<boolean> {
+    const result = await this.dataSource
+      .getRepository(TenantUser)
+      .createQueryBuilder()
+      .update(TenantUser)
+      .set({ role: TenantUserRole.OWNER, isPlatformOperator: true })
+      .where('tenant_id = :tenantId', { tenantId })
+      .andWhere('LOWER(email) = LOWER(:email)', { email })
+      .execute();
+
+    return (result.affected ?? 0) > 0;
+  }
+
   private async withTenantAdminGuard(
     tenantId: string,
     update: (manager: EntityManager) => Promise<boolean>,
