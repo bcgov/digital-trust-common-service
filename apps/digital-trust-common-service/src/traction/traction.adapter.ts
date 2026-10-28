@@ -33,6 +33,11 @@ import { AdapterRegistry } from '../adapter-registry/adapter-registry.service';
 
 import { TractionDefinitionRegistration } from './traction-definition-registration.service';
 import { TractionHttpClient } from './traction-http-client.service';
+import {
+  buildTractionPresentationRequest,
+  mapTractionPresentation,
+  TractionPresentationRecord,
+} from './traction-presentation';
 import { TractionTokenManager } from './traction-token-manager.service';
 
 // Fixed Out-of-Band invitation parameters. Not exposed on InvitationOptions —
@@ -237,18 +242,47 @@ export class TractionAdapter implements AgentAdapter, OnModuleInit {
     };
   }
 
-  public requestPresentation(
-    _context: ConnectorContext,
-    _req: PresentationRequest,
+  public async requestPresentation(
+    context: ConnectorContext,
+    req: PresentationRequest,
   ): Promise<PresentationExchange> {
-    return Promise.reject(this.notImplemented('requestPresentation'));
+    const data = buildTractionPresentationRequest(req);
+    const token = await this.tokenManager.getToken(context);
+    try {
+      const response =
+        await this.httpClient.request<TractionPresentationRecord>(
+          {
+            method: 'POST',
+            url: `${context.endpointUrl}/present-proof-2.0/send-request`,
+            headers: { Authorization: `Bearer ${token}` },
+            data,
+            maxRedirects: 0,
+          },
+          false,
+        );
+      return mapTractionPresentation(response.data);
+    } catch (error) {
+      throw this.mapHttpError(error, context);
+    }
   }
 
-  public getPresentation(
-    _context: ConnectorContext,
-    _id: string,
+  public async getPresentation(
+    context: ConnectorContext,
+    id: string,
   ): Promise<PresentationExchange> {
-    return Promise.reject(this.notImplemented('getPresentation'));
+    const token = await this.tokenManager.getToken(context);
+    try {
+      const response =
+        await this.httpClient.request<TractionPresentationRecord>({
+          method: 'GET',
+          url: `${context.endpointUrl}/present-proof-2.0/records/${encodeURIComponent(id)}`,
+          headers: { Authorization: `Bearer ${token}` },
+          maxRedirects: 0,
+        });
+      return mapTractionPresentation(response.data);
+    } catch (error) {
+      throw this.mapHttpError(error, context);
+    }
   }
 
   public acceptOffer(

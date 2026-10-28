@@ -1,4 +1,5 @@
 import {
+  BackendNotFoundError,
   CredentialFormat,
   ConnectionState,
   ConnectorUnavailableError,
@@ -373,16 +374,6 @@ describe('TractionAdapter', () => {
       credentials: {},
     };
 
-    await expect(
-      adapter.requestPresentation(context, {
-        requestedAttributes: [],
-        requestedPredicates: [],
-        name: '',
-      }),
-    ).rejects.toBeInstanceOf(NotImplementedException);
-    await expect(adapter.getPresentation(context, 'id')).rejects.toBeInstanceOf(
-      NotImplementedException,
-    );
     await expect(adapter.acceptOffer(context, 'id')).rejects.toBeInstanceOf(
       NotImplementedException,
     );
@@ -395,6 +386,124 @@ describe('TractionAdapter', () => {
     await expect(adapter.batchRevoke(context, ['id'])).rejects.toBeInstanceOf(
       NotImplementedException,
     );
+  });
+
+  describe('verifier', () => {
+    const context = {
+      tenantId: 'tenant-1',
+      connectorId: 'connector-1',
+      endpointUrl: 'https://traction.example.com',
+      credentials: {},
+    };
+    const request = {
+      name: 'Identity proof',
+      connectionId: 'connection-1',
+      requestedAttributes: [{ name: 'name' }],
+    };
+    const record = {
+      pres_ex_id: 'proof-1',
+      connection_id: 'connection-1',
+      state: 'request-sent',
+      created_at: 'created',
+      updated_at: 'updated',
+    };
+
+    it('sends and retains a v2 AnonCreds request without retrying writes', async () => {
+      mockRequest.mockResolvedValue({ data: record });
+      await expect(
+        adapter.requestPresentation(context, request),
+      ).resolves.toMatchObject({
+        id: 'proof-1',
+        externalId: 'proof-1',
+        connectionId: 'connection-1',
+        state: 'request-sent',
+        createdAt: 'created',
+        updatedAt: 'updated',
+      });
+      expect(mockGetToken).toHaveBeenCalledWith(context);
+      expect(mockRequest).toHaveBeenCalledWith(
+        {
+          method: 'POST',
+          url: 'https://traction.example.com/present-proof-2.0/send-request',
+          headers: { Authorization: 'Bearer token-1' },
+          maxRedirects: 0,
+          data: {
+            connection_id: 'connection-1',
+            presentation_request: {
+              anoncreds: {
+                name: 'Identity proof',
+                version: '1.0',
+                requested_attributes: { attribute_0: { name: 'name' } },
+                requested_predicates: {},
+              },
+            },
+            auto_verify: true,
+            auto_remove: false,
+            auto_remove_on_failure: false,
+          },
+        },
+        false,
+      );
+    });
+
+    it('reads the direct v2 record with encoded ID and wallet-scoped authorization', async () => {
+      mockRequest.mockResolvedValue({ data: record });
+      await adapter.getPresentation(context, 'proof/id');
+      expect(mockGetToken).toHaveBeenCalledWith(context);
+      expect(mockRequest).toHaveBeenCalledWith({
+        method: 'GET',
+        url: 'https://traction.example.com/present-proof-2.0/records/proof%2Fid',
+        headers: { Authorization: 'Bearer token-1' },
+        maxRedirects: 0,
+      });
+    });
+
+    it('rejects invalid requests before authentication or HTTP', async () => {
+      await expect(
+        adapter.requestPresentation(context, {
+          ...request,
+          connectionId: undefined,
+        }),
+      ).rejects.toBeInstanceOf(ValidationError);
+      expect(mockGetToken).not.toHaveBeenCalled();
+      expect(mockRequest).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      [400, ValidationError],
+      [404, BackendNotFoundError],
+      [429, ConnectorUnavailableError],
+      [503, ConnectorUnavailableError],
+    ])('maps HTTP %s on both verifier methods', async (status, errorType) => {
+      mockRequest.mockRejectedValue({
+        isAxiosError: true,
+        message: 'Backend rejected request',
+        response: { status },
+      });
+      await expect(
+        adapter.requestPresentation(context, request),
+      ).rejects.toBeInstanceOf(errorType);
+      await expect(
+        adapter.getPresentation(context, 'proof-1'),
+      ).rejects.toBeInstanceOf(errorType);
+    });
+
+    it('does not replay an uncertain proof submission', async () => {
+      const error = new TimeoutError('Response unavailable');
+      mockRequest.mockRejectedValue(error);
+      await expect(adapter.requestPresentation(context, request)).rejects.toBe(
+        error,
+      );
+      expect(mockRequest).toHaveBeenCalledTimes(1);
+      expect(mockRequest).toHaveBeenCalledWith(expect.anything(), false);
+    });
+
+    it('preserves invalid record errors rather than reporting backend outages', async () => {
+      mockRequest.mockResolvedValue({ data: {} });
+      await expect(
+        adapter.getPresentation(context, 'proof-1'),
+      ).rejects.toBeInstanceOf(ValidationError);
+    });
   });
 
   describe('createInvitation', () => {
