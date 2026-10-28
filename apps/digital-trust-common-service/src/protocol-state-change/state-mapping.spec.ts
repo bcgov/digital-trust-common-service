@@ -243,6 +243,29 @@ describe('state-mapping', () => {
       });
     });
 
+    it.each([true, 'true'])(
+      'completes a done proof only with verification %p',
+      (verified) => {
+        expect(
+          resolveProtocolOutcome('present_proof', 'done', verified),
+        ).toEqual({
+          operationState: OperationState.COMPLETED,
+          event: 'credential.verified',
+        });
+      },
+    );
+
+    it.each([false, 'false', undefined, null, 'invalid'])(
+      'fails a done proof without successful verification: %p',
+      (verified) => {
+        expect(
+          resolveProtocolOutcome('present_proof', 'done', verified),
+        ).toEqual({
+          operationState: OperationState.FAILED,
+        });
+      },
+    );
+
     it('maps the underscore-separated wire form of a non-terminal present_proof state (request_sent) the same as the hyphenated form', () => {
       const outcome = resolveProtocolOutcome('present_proof', 'request_sent');
 

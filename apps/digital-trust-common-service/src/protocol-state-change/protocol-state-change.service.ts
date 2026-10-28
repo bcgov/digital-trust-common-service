@@ -77,7 +77,11 @@ export class ProtocolStateChangeService {
     data: ProtocolStateChangeJobData,
     exchangeCorrelation?: { exchangeId: string; connectorId: string },
   ): Promise<void> {
-    const outcome = resolveProtocolOutcome(data.topic, data.protocolState);
+    const outcome = resolveProtocolOutcome(
+      data.topic,
+      data.protocolState,
+      data.payload.verified,
+    );
 
     if (!outcome) {
       // Not an error: an agent may introduce states this service has no

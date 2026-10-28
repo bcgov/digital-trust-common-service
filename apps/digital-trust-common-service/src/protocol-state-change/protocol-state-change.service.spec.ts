@@ -536,6 +536,54 @@ describe('ProtocolStateChangeService', () => {
     );
   });
 
+  it.each([
+    ['true', OperationState.COMPLETED],
+    ['false', OperationState.FAILED],
+    [undefined, OperationState.FAILED],
+  ])(
+    'settles a v2 done proof with verified %p as %s',
+    async (verified, state) => {
+      operationRepository.findByExternalIdForTenant.mockResolvedValue(
+        operation(),
+      );
+      await service.process(
+        baseData({
+          topic: 'present_proof',
+          protocolState: 'done',
+          payload: { verified },
+        }),
+      );
+      expect(
+        operationRepository.findByExternalIdForTenant,
+      ).toHaveBeenCalledWith(TENANT_ID, 'ext-1', [
+        OPERATION_TYPE.PRESENTATION_REQUEST,
+      ]);
+      expect(operationService.transitionStateIfForward).toHaveBeenCalledWith(
+        'op-1',
+        state,
+        operationStatesBelow(state),
+        state === OperationState.COMPLETED
+          ? { verified }
+          : { code: 'PRESENT_PROOF_FAILED', message: 'done' },
+        mockManager,
+      );
+      if (state === OperationState.COMPLETED) {
+        expect(eventEmitter.emit).toHaveBeenCalledWith(
+          'credential.verified',
+          expect.anything(),
+        );
+      } else {
+        expect(eventEmitter.emit).not.toHaveBeenCalled();
+        expect(jobsService.sendInTransaction).toHaveBeenCalledWith(
+          mockManager,
+          'webhook.dispatch',
+          expect.objectContaining({ event: 'present_proof.done' }),
+        );
+      }
+      expect(credentialRepository.findByExternalId).not.toHaveBeenCalled();
+    },
+  );
+
   it('dispatches a webhook for a non-terminal transition using a synthesized event name, without emitting an in-process event', async () => {
     operationRepository.findByExternalIdForTenant.mockResolvedValue(
       operation({ state: OperationState.PENDING }),

@@ -1379,6 +1379,53 @@ For local development without an inbound webhook, use the explicit offer
 reconciliation read below. OID4VCI and VC proof/envelope configuration remain
 out of scope.
 
+### Traction presentation verification
+
+The Traction verifier implements `VerifierPort` using ACA-Py present-proof v2:
+`POST /present-proof-2.0/send-request` and
+`GET /present-proof-2.0/records/{pres_ex_id}`. This follows the
+[ACA-Py 1.6.0 routes](https://github.com/openwallet-foundation/acapy/blob/1.6.0/acapy_agent/protocols/present_proof/v2_0/routes.py)
+and [record contract](https://github.com/openwallet-foundation/acapy/blob/1.6.0/acapy_agent/protocols/present_proof/v2_0/models/pres_exchange.py),
+the compatibility version documented above. This repository does not pin or
+deploy Traction itself; verify the target agent's version before deployment.
+The obsolete v1 `/present-proof/send-request` endpoint is not used.
+
+The existing presentation request service resolves the tenant's connection and
+profile/raw attribute selection before calling the adapter. The adapter sends
+`presentation_request.anoncreds` with unique attribute/predicate referents,
+preserves credential restrictions, and lets ACA-Py generate the nonce.
+Predicate operators are `<`, `<=`, `>=`, and `>` with signed 32-bit integer
+thresholds. Automatic verification is enabled, records are retained on success
+and failure, and submission is not automatically retried after uncertain HTTP
+failures. Requests require an established DIDComm connection; this does not add
+connectionless or DIF proof support.
+
+Port callers may supply optional `nonRevoked: { from?, to? }` Unix-second
+intervals on the whole request or individual requested attributes/predicates.
+Selection-level intervals override the request-level default in AnonCreds.
+Bounds must be non-negative safe integers with `from <= to` when both are set.
+No default revocation policy is imposed. These port options do not expand the
+public REST presentation/profile contract: its existing restrictions on DIF
+filters and submission requirements still apply.
+
+Submission returns the normalized `request-sent` exchange asynchronously.
+Existing `present_proof_v2_0` webhook ingestion correlates `pres_ex_id` to the
+tenant's presentation operation. ACA-Py v2 uses `done` for both successful and
+unsuccessful verification: only explicit `verified: "true"` (or boolean `true`)
+completes the operation and emits `credential.verified`; false or missing
+verification fails the operation. Abandoned exchanges also fail it.
+
+`getPresentation` reads the retained record with the connector wallet's token,
+maps a successfully verified `done` record to port state `verified`, and exposes
+`revealedAttributes` (referent, name, raw value) and `predicates` (referent,
+name, operator, threshold, satisfied). Predicate satisfaction comes from
+ACA-Py's cryptographic verification, not from comparing revealed values.
+Self-attested values and unverified proof data are never exposed as verified
+attributes. Missing AnonCreds proof attachments or requested predicate proofs
+on a successfully verified record are rejected explicitly.
+Normal state-only webhooks do not contain these proof attachments; this layer
+does not add public presentation-result storage or a new REST lookup endpoint.
+
 ### Offering a credential
 
 `POST /api/v1/tenants/:tenantId/credentials/offer` requires `credentials:offer`:
