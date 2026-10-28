@@ -97,6 +97,13 @@ interface TractionCredentialExchange {
   readonly error_msg?: string;
 }
 
+interface TractionRevocationRecord {
+  readonly cred_ex_id: string;
+  readonly rev_reg_id: string;
+  readonly cred_rev_id: string;
+  readonly state: string;
+}
+
 /**
  * AgentAdapter implementation for the Traction (ACA-Py multitenant) backend.
  * Registers itself with the AdapterRegistry at module init so tenants whose
@@ -425,18 +432,169 @@ export class TractionAdapter implements AgentAdapter, OnModuleInit {
     }
   }
 
-  public revoke(
-    _context: ConnectorContext,
-    _credentialId: string,
+  public async revoke(
+    context: ConnectorContext,
+    credentialId: string,
   ): Promise<RevocationResult> {
-    return Promise.reject(this.notImplemented('revoke'));
+    const [result] = await this.batchRevoke(context, [credentialId]);
+    return result;
   }
 
-  public batchRevoke(
-    _context: ConnectorContext,
-    _ids: readonly string[],
+  public async batchRevoke(
+    context: ConnectorContext,
+    ids: readonly string[],
   ): Promise<RevocationResult[]> {
-    return Promise.reject(this.notImplemented('batchRevoke'));
+    if (ids.some((id) => typeof id !== 'string' || !id.trim())) {
+      throw new ValidationError(['Credential exchange ids must not be empty']);
+    }
+    if (!ids.length) {
+      return [];
+    }
+
+    const token = await this.tokenManager.getToken(context);
+    const records = new Map<string, TractionRevocationRecord>();
+    const registries = new Map<string, Set<number>>();
+    try {
+      // Resolve every id in the selected wallet before queuing any mutations.
+      for (const id of new Set(ids)) {
+        const response = await this.httpClient.request<{
+          result: TractionRevocationRecord;
+        }>({
+          method: 'GET',
+          url: `${context.endpointUrl}/anoncreds/revocation/credential-record`,
+          params: { cred_ex_id: id },
+          headers: { Authorization: `Bearer ${token}` },
+          maxRedirects: 0,
+        });
+        const record = response.data?.result;
+        if (
+          !record ||
+          record.cred_ex_id !== id ||
+          typeof record.rev_reg_id !== 'string' ||
+          !record.rev_reg_id.trim() ||
+          typeof record.cred_rev_id !== 'string' ||
+          !/^[1-9]\d*$/.test(record.cred_rev_id) ||
+          !Number.isSafeInteger(Number(record.cred_rev_id)) ||
+          !['issued', 'revoked'].includes(record.state)
+        ) {
+          throw new ValidationError([
+            'Invalid issuer credential revocation record',
+          ]);
+        }
+        records.set(id, record);
+        if (!registries.has(record.rev_reg_id)) {
+          registries.set(
+            record.rev_reg_id,
+            await this.readRevokedIds(context, token, record.rev_reg_id),
+          );
+        }
+      }
+
+      const pending = new Map<string, Set<string>>();
+      for (const record of records.values()) {
+        if (
+          registries.get(record.rev_reg_id)?.has(Number(record.cred_rev_id))
+        ) {
+          continue;
+        }
+        // ACA-Py updates wallet state before publishing, and can swallow a
+        // ledger failure. Replaying that local bit cannot repair the delta.
+        if (record.state === 'revoked') {
+          throw new ConnectorUnavailableError(
+            'Revocation is recorded in the wallet but not confirmed on the ledger; reconcile the backend registry before retrying',
+            { connectorId: context.connectorId },
+          );
+        }
+        const registry = pending.get(record.rev_reg_id) ?? new Set<string>();
+        registry.add(record.cred_rev_id);
+        pending.set(record.rev_reg_id, registry);
+      }
+
+      for (const [revRegId, credRevIds] of pending) {
+        for (const credRevId of credRevIds) {
+          await this.httpClient.request(
+            {
+              method: 'POST',
+              url: `${context.endpointUrl}/anoncreds/revocation/revoke`,
+              headers: { Authorization: `Bearer ${token}` },
+              data: {
+                rev_reg_id: revRegId,
+                cred_rev_id: credRevId,
+                publish: false,
+                notify: false,
+              },
+              maxRedirects: 0,
+            },
+            false,
+          );
+        }
+      }
+      if (pending.size) {
+        await this.httpClient.request(
+          {
+            method: 'POST',
+            url: `${context.endpointUrl}/anoncreds/revocation/publish-revocations`,
+            headers: { Authorization: `Bearer ${token}` },
+            data: {
+              rrid2crid: Object.fromEntries(
+                [...pending].map(([registry, revoked]) => [
+                  registry,
+                  [...revoked],
+                ]),
+              ),
+            },
+            maxRedirects: 0,
+          },
+          false,
+        );
+        for (const [registry, revoked] of pending) {
+          const confirmed = await this.readRevokedIds(context, token, registry);
+          if ([...revoked].some((id) => !confirmed.has(Number(id)))) {
+            throw new ConnectorUnavailableError(
+              'Revocation publication is not confirmed on the ledger; reconcile the backend registry before retrying',
+              { connectorId: context.connectorId },
+            );
+          }
+        }
+      }
+
+      const revokedAt = new Date().toISOString();
+      return ids.map((credentialId) => ({
+        credentialId,
+        revoked: true,
+        revokedAt,
+      }));
+    } catch (error) {
+      throw this.mapHttpError(error, context);
+    }
+  }
+
+  private async readRevokedIds(
+    context: ConnectorContext,
+    token: string,
+    registryId: string,
+  ): Promise<Set<number>> {
+    const response = await this.httpClient.request<{
+      rev_reg_delta: {
+        value: { accum: string; revoked: number[] };
+      };
+    }>({
+      method: 'GET',
+      url: `${context.endpointUrl}/anoncreds/revocation/registry/${encodeURIComponent(registryId)}/issued/indy_recs`,
+      headers: { Authorization: `Bearer ${token}` },
+      maxRedirects: 0,
+    });
+    const value = response.data?.rev_reg_delta?.value;
+    if (
+      !value ||
+      typeof value.accum !== 'string' ||
+      !value.accum ||
+      !Array.isArray(value.revoked) ||
+      value.revoked.some((id) => !Number.isSafeInteger(id) || id <= 0)
+    ) {
+      throw new ValidationError(['Invalid ledger revocation delta']);
+    }
+    return new Set(value.revoked);
   }
 
   private notImplemented(method: string): NotImplementedException {

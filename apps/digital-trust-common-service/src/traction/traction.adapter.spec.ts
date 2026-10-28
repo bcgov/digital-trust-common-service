@@ -380,12 +380,6 @@ describe('TractionAdapter', () => {
     await expect(adapter.rejectOffer(context, 'id')).rejects.toBeInstanceOf(
       NotImplementedException,
     );
-    await expect(adapter.revoke(context, 'id')).rejects.toBeInstanceOf(
-      NotImplementedException,
-    );
-    await expect(adapter.batchRevoke(context, ['id'])).rejects.toBeInstanceOf(
-      NotImplementedException,
-    );
   });
 
   describe('verifier', () => {
