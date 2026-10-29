@@ -1358,10 +1358,13 @@ registration type/title on reads, without fabricating an instance.
 
 The `result` retains `credential_definition_id` on failure, along with
 `external_id`, `code`, `message`, and `registration` progress. Progress exposes
-the current artifact and its generic `job_id`, `transaction_id`,
-`transaction_state`, `state`, and `pending_id`. Resolved `schema_id` and
-`definition_id` remain separate from provisional pending IDs. Per-artifact
-correlations remain persisted internally so a repeated POST can continue.
+`stage`, the active `artifact`, and that artifact's `id`, `job_id`,
+`transaction_id`, and `state`. An `id` returned with `wait` or `action` is
+provisional; only `finished` establishes a published artifact ID. Preflight
+and completed stages have no active artifact. Resolved identities are exposed
+separately as the definition response's `schema.id` and `external_id`.
+Per-artifact correlations remain persisted internally so a repeated POST can
+continue.
 `wait`/`action` responses are accepted pending progress, never proof of
 publication or issuance-readiness. A schema must resolve before definition
 creation; definition lookup and revocation checks still gate readiness.
