@@ -109,7 +109,7 @@
    src/test/design-system.test.ts fails if they drift or a referenced token
    is renamed. */
 :root {
-  --background: var(--surface-color-background-light-gray);
+  --background: var(--surface-color-secondary-default);
   --foreground: var(--typography-color-primary);
   --card: var(--surface-color-background-white);
   --card-foreground: var(--typography-color-primary);
