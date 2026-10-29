@@ -1395,10 +1395,30 @@ profile/raw attribute selection before calling the adapter. The adapter sends
 `presentation_request.anoncreds` with unique attribute/predicate referents,
 preserves credential restrictions, and lets ACA-Py generate the nonce.
 Predicate operators are `<`, `<=`, `>=`, and `>` with signed 32-bit integer
-thresholds. Automatic verification is enabled, records are retained on success
-and failure, and submission is not automatically retried after uncertain HTTP
-failures. Requests require an established DIDComm connection; this does not add
-connectionless or DIF proof support.
+thresholds. Automatic verification is enabled, completed records are retained
+with `auto_remove: false`, and submission is not automatically retried after
+uncertain HTTP failures. Requests require an established DIDComm connection;
+this does not add connectionless or DIF proof support.
+
+Failed-record preservation is an **agent operator prerequisite**, not a
+per-request guarantee. ACA-Py 1.6.0's `send-request` route accepts
+`auto_remove_on_failure` in its schema but does not pass it to the manager, so
+the adapter does not send this ignored option. Operators requiring failure
+lookup must disable `--no-preserve-failed-exchange-records` /
+`ACAPY_NO_PRESERVE_FAILED_EXCHANGE_RECORDS` and verify the effective
+`no_preserve_failed_exchange_records` setting is false in their agent
+configuration. `preserve_exchange_records: true` alone does not establish
+this. Stock wallet-scoped `/settings` filters out the failure-preservation
+setting, so the connector cannot verify it before sending without privileged
+agent access; no root admin credential is requested or used.
+
+The adapter warns when the submitted exchange's returned
+`auto_remove_on_failure` is true or absent. This is post-submission evidence
+only, not pre-send prevention: the proof request has already been sent and is
+not replayed or reported as unsent. If the agent removes a failed exchange,
+`getPresentation` returns the existing backend-not-found error; the adapter
+does not fabricate a retained failure. Authenticated terminal webhooks can
+still settle the operation through the existing state-change worker.
 
 Port callers may supply optional `nonRevoked: { from?, to? }` Unix-second
 intervals on the whole request or individual requested attributes/predicates.
@@ -1415,7 +1435,7 @@ unsuccessful verification: only explicit `verified: "true"` (or boolean `true`)
 completes the operation and emits `credential.verified`; false or missing
 verification fails the operation. Abandoned exchanges also fail it.
 
-`getPresentation` reads the retained record with the connector wallet's token,
+`getPresentation` reads an available record with the connector wallet's token,
 maps a successfully verified `done` record to port state `verified`, and exposes
 `revealedAttributes` (referent, name, raw value) and `predicates` (referent,
 name, operator, threshold, satisfied). Predicate satisfaction comes from

@@ -260,6 +260,15 @@ export class TractionAdapter implements AgentAdapter, OnModuleInit {
           },
           false,
         );
+      if (response.data?.auto_remove_on_failure !== false) {
+        this.logger.warn(
+          {
+            connector_id: context.connectorId,
+            external_id: response.data?.pres_ex_id,
+          },
+          'Traction proof failure retention is not confirmed; configure failed exchange preservation on the agent',
+        );
+      }
       return mapTractionPresentation(response.data);
     } catch (error) {
       throw this.mapHttpError(error, context);

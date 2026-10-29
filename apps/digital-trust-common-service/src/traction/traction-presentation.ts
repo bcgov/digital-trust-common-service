@@ -36,6 +36,7 @@ export interface TractionPresentationRecord {
   readonly created_at: string;
   readonly updated_at: string;
   readonly error_msg?: string;
+  readonly auto_remove_on_failure?: boolean;
   readonly by_format?: {
     readonly pres_request?: { readonly anoncreds?: AnonCredsProofRequest };
     readonly pres?: {
@@ -148,7 +149,6 @@ export function buildTractionPresentationRequest(req: PresentationRequest) {
     },
     auto_verify: true,
     auto_remove: false,
-    auto_remove_on_failure: false,
     ...(req.comment !== undefined ? { comment: req.comment } : {}),
   };
 }

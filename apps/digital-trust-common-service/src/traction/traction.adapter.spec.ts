@@ -6,7 +6,7 @@ import {
   TimeoutError,
   ValidationError,
 } from '@app/credential-ports';
-import { NotImplementedException } from '@nestjs/common';
+import { Logger, NotImplementedException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 
 import { AdapterRegistry } from '../adapter-registry/adapter-registry.service';
@@ -406,6 +406,7 @@ describe('TractionAdapter', () => {
       state: 'request-sent',
       created_at: 'created',
       updated_at: 'updated',
+      auto_remove_on_failure: false,
     };
 
     it('sends and retains a v2 AnonCreds request without retrying writes', async () => {
@@ -439,7 +440,6 @@ describe('TractionAdapter', () => {
             },
             auto_verify: true,
             auto_remove: false,
-            auto_remove_on_failure: false,
           },
         },
         false,
@@ -456,6 +456,49 @@ describe('TractionAdapter', () => {
         headers: { Authorization: 'Bearer token-1' },
         maxRedirects: 0,
       });
+    });
+
+    it.each([true, undefined])(
+      'warns without replaying a sent request when failure retention is not confirmed: %p',
+      async (autoRemoveOnFailure) => {
+        const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+        try {
+          mockRequest.mockResolvedValue({
+            data: { ...record, auto_remove_on_failure: autoRemoveOnFailure },
+          });
+          await expect(
+            adapter.requestPresentation(context, request),
+          ).resolves.toMatchObject({ id: 'proof-1', state: 'request-sent' });
+          expect(warn).toHaveBeenCalledWith(
+            { connector_id: 'connector-1', external_id: 'proof-1' },
+            'Traction proof failure retention is not confirmed; configure failed exchange preservation on the agent',
+          );
+          expect(mockRequest).toHaveBeenCalledTimes(1);
+          expect(mockRequest).toHaveBeenCalledWith(
+            expect.objectContaining({
+              data: expect.not.objectContaining({
+                auto_remove_on_failure: expect.anything(),
+              }),
+            }),
+            false,
+          );
+        } finally {
+          warn.mockRestore();
+        }
+      },
+    );
+
+    it('does not warn when the agent confirms failed record preservation', async () => {
+      const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+      try {
+        mockRequest.mockResolvedValue({
+          data: { ...record, auto_remove_on_failure: false },
+        });
+        await adapter.requestPresentation(context, request);
+        expect(warn).not.toHaveBeenCalled();
+      } finally {
+        warn.mockRestore();
+      }
     });
 
     it('rejects invalid requests before authentication or HTTP', async () => {
