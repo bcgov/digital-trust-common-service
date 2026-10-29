@@ -54,6 +54,10 @@ async function bootstrap() {
     return;
   }
 
+  // A detected non-English language loads on demand; wait for it so the
+  // first render is not English. A failed load falls back to English.
+  await i18n.loadLanguages(i18n.language);
+
   root.render(
     <StrictMode>
       <RouterProvider router={router} />

@@ -171,7 +171,7 @@ src/
   lib/auth/      AuthClient seam: mock (default) and oidc (PKCE, real provider)
   lib/tenant/    active tenant: memberships query + the switch (navigate, reset cache)
   lib/config.ts  runtime config: fetches and validates /config.json before mount
-  lib/i18n.ts    i18next instance; English catalog in locales/en.json
+  lib/i18n.ts    i18next instance; English is bundled, other catalogs in locales/ load on first use
   components/    app pieces: BCDS dialogs, status badges, the tenant switcher
   components/ui/ shadcn-managed primitives (add via `npx shadcn add <name>`)
   mocks/         MSW handlers: the test suite's fixtures, and mock mode's API
@@ -193,6 +193,9 @@ Conventions worth knowing:
 - `ApiError` looks its code up under `errors` in the catalog and falls back to
   the server's message. Add a code there only when the server's text is
   generic or technical.
+- Add every new key to both `src/locales/en.json` and `src/locales/fr.json`;
+  a test fails if their keys differ. `fr.json` holds English placeholder text
+  until the French translation is done.
 - The API rejects unknown body fields (`forbidNonWhitelisted`); never send
   extra properties.
 - List responses are normalized by `lib/api/pagination.ts` to tolerate both the

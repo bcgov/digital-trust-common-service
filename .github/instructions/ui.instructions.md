@@ -47,6 +47,8 @@ Regenerate API types with `npm run types:spec` or `npm run types:live` as approp
 - API errors are translated by code under `errors` in the catalog, falling back to the server's
   message. Only add codes whose server text is generic or technical.
 - Tests run in `en` (`src/test/setup.ts`) and assert the English copy.
+- Add every new key to both `en.json` and `fr.json`; `src/locales/locales.test.ts` fails if their keys
+  differ. English is bundled and other catalogs load on first use from `src/locales/`.
 
 ## Components and Routes
 
