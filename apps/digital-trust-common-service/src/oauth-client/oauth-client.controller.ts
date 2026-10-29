@@ -23,6 +23,7 @@ import {
 import {
   ApiBody,
   ApiCreatedResponse,
+  ApiConflictResponse,
   ApiForbiddenResponse,
   ApiNoContentResponse,
   ApiNotFoundResponse,
@@ -61,13 +62,14 @@ export class OAuthClientController {
   @ApiOperation({
     summary: 'Register an API client (OAuth2 client_credentials)',
     description:
-      'Creates a new OAuth2 client for service-to-service authentication. Tenant is taken from the path; created_by is recorded from the authenticated user. The client_secret is returned ONCE and cannot be retrieved again.',
+      'Creates a new OAuth2 client for service-to-service authentication. An optional client_id may be supplied; otherwise one is generated. Tenant is taken from the path; created_by is recorded from the authenticated user. The client_secret is returned ONCE and cannot be retrieved again.',
   })
   @ApiParam({ name: 'tenantId', format: 'uuid' })
   @ApiCreatedResponse({
     description: 'OAuth client created successfully',
     type: CreateOAuthClientResponseDto,
   })
+  @ApiConflictResponse({ description: 'OAuth client ID is already in use' })
   @ApiForbiddenResponse({
     description:
       'Token lacks clients:manage, or requested scopes exceed the caller grants',
@@ -79,6 +81,7 @@ export class OAuthClientController {
       example1: {
         summary: 'Create an OAuth client',
         value: {
+          client_id: 'dtcs_mobile-app',
           name: 'Mobile App',
           scopes: ['credentials:offer', 'credentials:verify'],
           redirect_uris: ['https://app.example.com/callback'],
@@ -125,6 +128,9 @@ export class OAuthClientController {
   @ApiOkResponse({
     description: 'OAuth client updated successfully',
     type: OAuthClientResponseDto,
+  })
+  @ApiForbiddenResponse({
+    description: 'Reserved system OAuth clients cannot be modified',
   })
   @ApiNotFoundResponse({ description: 'OAuth client not found' })
   @ApiBody({
@@ -182,13 +188,20 @@ export class OAuthClientController {
 
   @Delete(':clientId')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Revoke an API client' })
+  @ApiOperation({
+    summary: 'Revoke an API client',
+    description:
+      'Soft-revokes the client. Further token grants fail immediately. Issued access tokens remain valid until their TTL.',
+  })
   @ApiParam({ name: 'tenantId', format: 'uuid' })
   @ApiParam({
     name: 'clientId',
     description: 'Public OAuth client_id (not the row UUID)',
   })
   @ApiNoContentResponse({ description: 'OAuth client revoked successfully' })
+  @ApiForbiddenResponse({
+    description: 'Reserved system OAuth clients cannot be revoked',
+  })
   @ApiNotFoundResponse({ description: 'OAuth client not found' })
   public async revokeClient(
     @Param('tenantId', ParseUUIDPipe) tenantId: string,
@@ -213,6 +226,9 @@ export class OAuthClientController {
     description: 'New secret generated',
     type: CreateOAuthClientResponseDto,
   })
+  @ApiForbiddenResponse({
+    description: 'Reserved system OAuth client secrets cannot be rotated',
+  })
   @ApiNotFoundResponse({ description: 'OAuth client not found' })
   public async rotateSecret(
     @Param('tenantId', ParseUUIDPipe) tenantId: string,
@@ -223,6 +239,29 @@ export class OAuthClientController {
       clientId,
     );
     return CreateOAuthClientResponseDto.from(client, clientSecret);
+  }
+
+  @Post(':clientId/reactivate')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Reactivate an API client',
+    description:
+      'Allows new token grants again using the existing credentials. Rotate the secret separately if it may have been compromised.',
+  })
+  @ApiParam({ name: 'tenantId', format: 'uuid' })
+  @ApiParam({ name: 'clientId', description: 'Public OAuth client_id' })
+  @ApiOkResponse({ type: OAuthClientResponseDto })
+  @ApiForbiddenResponse({
+    description: 'Reserved system OAuth clients cannot be reactivated',
+  })
+  @ApiNotFoundResponse({ description: 'OAuth client not found' })
+  public async reactivateClient(
+    @Param('tenantId', ParseUUIDPipe) tenantId: string,
+    @Param('clientId') clientId: string,
+  ): Promise<OAuthClientResponseDto> {
+    return this.toResponseDto(
+      await this.oauthClientService.reactivateClient(tenantId, clientId),
+    );
   }
 
   private toResponseDto(client: OAuthClient): OAuthClientResponseDto {

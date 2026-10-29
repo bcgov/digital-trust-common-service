@@ -12,7 +12,7 @@ import {
   EditIcon,
   EllipsisVerticalIcon,
   TrashIcon,
-} from '@/components/icons';
+} from '@/components/common/icons';
 import type { Tenant } from '@/lib/api/resources/tenants';
 
 export function TenantRowActions({

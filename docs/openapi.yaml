@@ -2216,6 +2216,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ClientWithSecret"
+        "409":
+          $ref: "#/components/responses/Conflict"
     get:
       operationId: listClients
       summary: List API clients
@@ -2244,10 +2246,13 @@ paths:
       description: |
         Soft-revokes the client. Further token grants fail immediately.
         Issued access tokens remain valid until their TTL.
+        Reserved system clients cannot be revoked through this endpoint.
       tags: [Clients]
       responses:
         "204":
           description: Client revoked
+        "403":
+          description: Reserved system client cannot be revoked
 
     patch:
       operationId: updateClient
@@ -2258,7 +2263,7 @@ paths:
         in the body. Scope assignment follows the same caller-subset rule as create.
         Role assignment is restricted to platform-admin callers.
         Issued access tokens remain valid until their TTL after a secret rotation
-        or revoke.
+        or revoke. Reserved system clients cannot be modified through this endpoint.
       tags: [Clients]
       requestBody:
         required: true
@@ -2275,6 +2280,34 @@ paths:
                 $ref: "#/components/schemas/Client"
         "404":
           description: Client not found
+        "403":
+          description: Reserved system client cannot be modified
+
+  /api/v1/tenants/{tenantId}/clients/{clientId}/reactivate:
+    parameters:
+      - $ref: "#/components/parameters/TenantId"
+      - name: clientId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Public OAuth client_id
+    post:
+      operationId: reactivateClient
+      summary: Reactivate an API client
+      description: Allows new token grants using the existing credentials. Rotate the secret separately if it may have been compromised. Reserved system clients cannot be reactivated through this endpoint.
+      tags: [Clients]
+      responses:
+        "200":
+          description: Client reactivated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Client"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "403":
+          description: Reserved system client cannot be reactivated
 
   /api/v1/tenants/{tenantId}/clients/{clientId}/rotate-secret:
     parameters:
@@ -2289,7 +2322,8 @@ paths:
       summary: Rotate client secret
       description: |
         Generates a new secret. The old secret is immediately invalidated.
-        Issued access tokens remain valid until their TTL.
+        Issued access tokens remain valid until their TTL. Reserved system client
+        secrets cannot be rotated through this endpoint.
       tags: [Clients]
       responses:
         "200":
@@ -2298,6 +2332,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ClientWithSecret"
+        "403":
+          description: Reserved system client secret cannot be rotated
 
   # ─── Discovery (Public, Unauthenticated) ─────────────────────────────
   /api/v1/issuers/{tenantSlug}/.well-known/openid-credential-issuer:
@@ -4098,6 +4134,9 @@ components:
     Client:
       type: object
       properties:
+        is_public:
+          type: boolean
+          description: Public PKCE client without a secret
         id:
           type: string
           format: uuid
@@ -4158,6 +4197,15 @@ components:
         the authenticated user sub.
       required: [name, scopes]
       properties:
+        client_id:
+          type: string
+          minLength: 6
+          maxLength: 255
+          pattern: '^dtcs_[a-z0-9][a-z0-9_-]{0,249}$'
+          description: >-
+            Optional unique, immutable OAuth client ID. When omitted, a random ID
+            with the `dtcs_` prefix is generated. The UI suggests an ID derived
+            from the name. IDs are unique across all tenants and cannot be reused.
         name:
           type: string
           minLength: 1

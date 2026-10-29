@@ -17,6 +17,22 @@ function renderAt(path: string) {
 }
 
 describe('routing', () => {
+  it('opens API integrations from the sidebar', async () => {
+    const user = userEvent.setup();
+    const router = renderAt('/api-clients');
+    await user.click(await screen.findByRole('button', { name: /sign in/i }));
+    expect(
+      await screen.findByRole('heading', {
+        name: 'API integrations',
+        level: 1,
+      }),
+    ).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe('/api-clients');
+    expect(
+      screen.getByRole('link', { name: 'API integrations' }),
+    ).toHaveAttribute('aria-current', 'page');
+  });
+
   it('opens the connectors page from the primary navigation', async () => {
     const user = userEvent.setup();
     const router = renderAt('/dashboard');

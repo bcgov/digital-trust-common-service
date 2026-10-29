@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { TenantStatusBadge } from './tenant-status-badge';
 import { Badge } from '@/components/common/badge';
 import { Button } from '@/components/common/button';
-import { BuildingIcon } from '@/components/icons';
+import { BuildingIcon } from '@/components/common/icons';
 import {
   DropdownMenu,
   DropdownMenuContent,
