@@ -343,6 +343,7 @@ sign-in claims the matching `tenant_user` row and lands with that role:
 | `acme-admin` | `admin@acme-corp.example.test` | admin |
 | `acme-member` | `member@acme-corp.example.test` | member |
 | `multi-tenant` | `multi-tenant@example.test` | admin in `acme-corp`, owner in `test-org`, member in `suspended-co` |
+| `admin` | `admin@example.com` | owner in `acme-corp` and platform admin |
 
 `multi-tenant` is the odd one out: its rows are seeded already active, in
 three tenants, so it exists to exercise the tenant switcher. It signs in to
@@ -363,10 +364,13 @@ where the account already holds a membership row, and any second invitation in
 a tenant that has already been claimed from — at most one per tenant, oldest
 first.
 
-The realm's `admin` account (`admin@example.com`, password `admin`) has no
-seeded row: the login callback creates one on the fly with the `readonly`
-role, which holds no API scopes. A Keycloak volume created before these
-accounts existed keeps the realm it first imported; reset it to pick them up:
+The realm's `admin` account is the local platform admin: `.env.example` lists
+it in `SEED_PLATFORM_OPERATOR_EMAILS` (described below), so the seed holds an
+`acme-corp` owner invitation for it carrying the platform-operator flag. Drop
+it from the list to see what an unlisted account gets: a `readonly` row the
+login callback creates on the fly, which holds no API scopes. A Keycloak volume
+created before these accounts existed keeps the realm it first imported; reset
+it to pick them up:
 
 ```bash
 docker compose rm -sf keycloak keycloak-db
@@ -393,12 +397,12 @@ makes the seed hold an `acme-corp` owner invitation carrying the
 platform-operator flag for each listed email, so that account's first sign-in
 lands as owner and platform admin. An account that already signed in as
 `readonly` is promoted in place on the next seed run and keeps its name and
-subject. The realm accounts above are skipped with a warning: demo accounts
-keep their seeded roles. The list is additive and every seed run puts owner and
-the flag back on a listed email, so to revoke: remove the email from the list
-first, then clear the flag with `PATCH /admin/users/:id/platform-operator`.
-Changing the tenant role on the Users page leaves the flag, and so platform
-admin, in place.
+subject. The `acme-*` and `multi-tenant` accounts are skipped with a warning:
+demo accounts keep their seeded roles. The list is additive and every seed run
+puts owner and the flag back on a listed email, so to revoke: remove the email
+from the list first, then clear the flag with
+`PATCH /admin/users/:id/platform-operator`. Changing the tenant role on the
+Users page leaves the flag, and so platform admin, in place.
 
 The client the SPA uses:
 
