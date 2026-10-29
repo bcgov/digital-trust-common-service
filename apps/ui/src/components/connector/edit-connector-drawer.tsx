@@ -23,11 +23,12 @@ import {
   useUpdateConnector,
 } from '@/lib/api/queries/connectors';
 import type { Connector } from '@/lib/api/resources/connectors';
+import i18n from '@/lib/i18n';
 
 const editConnectorSchema = z.object({
   endpoint_url: z.url({
     protocol: /^https?$/,
-    error: 'Enter a valid HTTP or HTTPS URL.',
+    error: () => i18n.t('connectors.form.invalidUrl'),
   }),
   api_key: z.string(),
   traction_tenant_id: z.string(),

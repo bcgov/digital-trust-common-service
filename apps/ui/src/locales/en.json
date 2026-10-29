@@ -33,6 +33,20 @@
     "noMembershipBody": "You do not currently belong to an active tenant. Ask a tenant owner or administrator to invite you.",
     "noMembershipTitle": "No active tenant membership"
   },
+  "errors": {
+    "ADAPTER_TIMEOUT": "The connector took too long to respond. Try again.",
+    "AUTHENTICATION_REQUIRED": "Your session has expired. Sign in again.",
+    "CONNECTOR_UNAVAILABLE": "The connector is unavailable. Try again later.",
+    "FORBIDDEN": "You do not have permission to do that.",
+    "INSUFFICIENT_SCOPE": "You do not have permission to do that.",
+    "INSUFFICIENT_TENANT_ROLE": "Your role in this tenant does not allow that.",
+    "INTERNAL_SERVER_ERROR": "Something went wrong on our side. Try again.",
+    "NETWORK_ERROR": "Could not reach the server. Check your connection and try again.",
+    "TENANT_ACCESS_DENIED": "You do not have access to this tenant.",
+    "TOO_MANY_REQUESTS": "Too many requests. Wait a moment and try again.",
+    "UNAUTHORIZED": "Your session has expired. Sign in again.",
+    "UNKNOWN": "Something went wrong. Try again."
+  },
   "fatal": {
     "config": "We could not load the application configuration (config.json). Reloading may help.",
     "mockApi": "The mock API could not start (service workers need https or localhost)."
@@ -330,6 +344,8 @@
       "creating": "Creating...",
       "description": "This information will be used to configure your connector. The options are what is required to connect to an external digital credential agent.",
       "endpointUrl": "Endpoint URL",
+      "invalidUrl": "Enter a valid HTTP or HTTPS URL.",
+      "missingApiKey": "Enter an API key.",
       "testNotice": "We test the connection before saving",
       "testing": "Testing connection...",
       "traction": "Traction",

@@ -187,7 +187,12 @@ Conventions worth knowing:
 - User-facing copy lives in `src/locales/en.json` and renders through `t()`
   from `useTranslation` (or `i18n.t` outside React). Keys are typed, so a
   missing key fails `tsc`, and ESLint's `i18next/no-literal-string` rejects raw
-  JSX text. Format dates with `Intl.DateTimeFormat(i18n.language, …)`.
+  JSX text and user-facing attributes. Format dates with
+  `Intl.DateTimeFormat(i18n.language, …)`. Zod messages use
+  `error: () => i18n.t(…)` so they are read at parse time.
+- `ApiError` looks its code up under `errors` in the catalog and falls back to
+  the server's message. Add a code there only when the server's text is
+  generic or technical.
 - The API rejects unknown body fields (`forbidNonWhitelisted`); never send
   extra properties.
 - List responses are normalized by `lib/api/pagination.ts` to tolerate both the
