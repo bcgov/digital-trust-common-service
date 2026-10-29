@@ -51,6 +51,16 @@ describe('Traction presentation mapping', () => {
     },
   };
 
+  function withProof(proof: unknown): TractionPresentationRecord {
+    return {
+      ...record,
+      by_format: {
+        ...record.by_format,
+        pres: { anoncreds: { requested_proof: proof } },
+      },
+    } as TractionPresentationRecord;
+  }
+
   it('maps restrictions, duplicate attribute names, predicates, comments and interval overrides', () => {
     const result = buildTractionPresentationRequest({
       ...request,
@@ -231,6 +241,54 @@ describe('Traction presentation mapping', () => {
       PresentationExchangeState.Verified,
     );
   });
+
+  it('rejects a verified state without successful verification', () => {
+    expect(() =>
+      mapTractionPresentation({
+        ...record,
+        state: PresentationExchangeState.Verified,
+        verified: 'false',
+      }),
+    ).toThrow(ValidationError);
+  });
+
+  it('accepts a verified state with successful verification', () => {
+    expect(
+      mapTractionPresentation({
+        ...record,
+        state: PresentationExchangeState.Verified,
+      }).predicates,
+    ).toEqual([
+      {
+        referent: 'predicate_0',
+        name: 'age',
+        pType: '>=',
+        pValue: 18,
+        satisfied: true,
+      },
+    ]);
+  });
+
+  it('rejects revealed groups without values', () => {
+    const invalid = withProof({ revealed_attr_groups: { group: {} } });
+    expect(() => mapTractionPresentation(invalid)).toThrow(ValidationError);
+  });
+
+  it.each([
+    { unexpected: { raw: 'Unrequested value' } },
+    { city: { raw: 42 } },
+  ])('rejects invalid grouped attribute values %p', (values) => {
+    const invalid = withProof({ revealed_attr_groups: { group: { values } } });
+    expect(() => mapTractionPresentation(invalid)).toThrow(ValidationError);
+  });
+
+  it.each([null, { sub_proof_index: -1 }, { sub_proof_index: 0.5 }])(
+    'rejects malformed predicate proofs %p',
+    (predicate) => {
+      const invalid = withProof({ predicates: { predicate_0: predicate } });
+      expect(() => mapTractionPresentation(invalid)).toThrow(ValidationError);
+    },
+  );
 
   it('never promotes self-attested values to verified revealed attributes', () => {
     const selfAttested = {
