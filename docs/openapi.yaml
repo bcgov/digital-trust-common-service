@@ -1103,10 +1103,11 @@ paths:
       - $ref: "#/components/parameters/TenantId"
     post:
       operationId: createCredentialDefinition
-      summary: Register a credential definition
+      summary: Create or register a credential definition
       description: |
-        Create a credential definition for any declared credential format.
-        Only AnonCreds currently has a registered handler and runs asynchronously.
+        Draft requests (status=draft) save locally and return 201. Registration
+        requests run asynchronously and return an Operation with 202. Only
+        AnonCreds currently has a registered handler.
         Other declared formats return FORMAT_NOT_SUPPORTED without creating a
         definition or operation. The required format
         discriminator is inside immutable options (not a root request field),
@@ -1140,6 +1141,12 @@ paths:
             schema:
               $ref: "#/components/schemas/CreateCredentialDefinitionRequest"
       responses:
+        "201":
+          description: Local draft saved without contacting the registration backend
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CredentialDefinition"
         "202":
           description: |
             Registration accepted. result.credential_definition_id identifies the
@@ -1213,6 +1220,29 @@ paths:
                 $ref: "#/components/schemas/CredentialDefinition"
         "404":
           $ref: "#/components/responses/NotFound"
+    patch:
+      operationId: updateCredentialDefinition
+      summary: Update a credential definition
+      tags: [Credential Definitions]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateCredentialDefinitionRequest"
+      responses:
+        "200":
+          description: Credential definition updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CredentialDefinition"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "422":
+          $ref: "#/components/responses/ValidationError"
     delete:
       operationId: deleteCredentialDefinition
       summary: Deactivate a credential definition
@@ -1346,7 +1376,7 @@ paths:
                 $ref: "#/components/schemas/IssuanceProfile"
         "400":
           description: >-
-            The profile's connector no longer exists, is inactive, or its
+            The credential definition is not published, or its connector no longer exists, is inactive, or its
             adapter no longer resolves
           content:
             application/json:
@@ -1517,7 +1547,9 @@ paths:
       operationId: offerCredential
       summary: Offer/issue a credential
       description: |
-        Issue a credential via a published issuance profile.
+        Issue a credential via a published issuance profile or a direct credential definition reference.
+        Both paths require an active, published credential definition. Draft and deprecated definitions
+        cannot be used for issuance, even when their schema and external ID are usable.
 
         **Delivery mode** is determined by the presence of `connection_id`:
         - **Present** → DIDComm delivery (push offer to connected agent). Returns 202.
@@ -3638,6 +3670,7 @@ components:
           $ref: "#/components/schemas/CredentialFormat"
         schema_definition:
           type: object
+          additionalProperties: true
           description: Format-specific schema definition
         external_id:
           type: string
@@ -3671,6 +3704,11 @@ components:
               nullable: true
         connector_type:
           $ref: "#/components/schemas/ConnectorType"
+        version:
+          type: string
+          description: The version of this credential definition
+        status:
+          $ref: "#/components/schemas/CredentialDefinitionStatus"
         is_active:
           type: boolean
           description: Whether this credential definition is currently active
@@ -3708,6 +3746,10 @@ components:
     CredentialFormat:
       type: string
       enum: [anoncreds, sd-jwt, mdl, w3c-vc]
+
+    CredentialDefinitionStatus:
+      type: string
+      enum: [draft, published, deprecated]
 
     AnonCredsCredentialDefinitionOptionsDto:
       type: object
@@ -3780,7 +3822,11 @@ components:
         connector_id:
           type: string
           format: uuid
-          description: Defaults to the tenant default or sole active compatible connector
+          description: Connector credential to pin to this definition
+        status:
+          type: string
+          enum: [draft, published]
+          description: Draft saves locally; published starts asynchronous registration
         schema:
           oneOf:
             - type: object
@@ -3848,6 +3894,25 @@ components:
               mdl: "#/components/schemas/MdlCredentialDefinitionOptionsDto"
               w3c-vc: "#/components/schemas/W3cVcCredentialDefinitionOptionsDto"
 
+    UpdateCredentialDefinitionRequest:
+      type: object
+      description: Schema and connector fields may only be changed while the definition is a draft.
+      properties:
+        name:
+          type: string
+          maxLength: 255
+        schema_definition:
+          type: object
+          additionalProperties: true
+        connector_id:
+          type: string
+          format: uuid
+        status:
+          $ref: "#/components/schemas/CredentialDefinitionStatus"
+        metadata:
+          type: object
+          additionalProperties: true
+
     # ─── Issuance Profile ────────────────────────────────────────────
     IssuanceProfile:
       type: object
@@ -3868,12 +3933,6 @@ components:
         credential_definition_id:
           type: string
           format: uuid
-        connector_id:
-          type: string
-          format: uuid
-          nullable: true
-        format:
-          $ref: "#/components/schemas/CredentialFormat"
         attribute_schema:
           type: object
           description: Declares attributes the consumer must supply
@@ -3914,6 +3973,7 @@ components:
 
     CreateIssuanceProfileRequest:
       type: object
+      description: The connector is inherited from the credential definition, which must have an active connector binding.
       required: [name, version, credential_definition_id, attribute_schema]
       properties:
         name:
@@ -3930,10 +3990,6 @@ components:
         credential_definition_id:
           type: string
           format: uuid
-        connector_id:
-          type: string
-          format: uuid
-          description: If omitted, uses tenant's default_connector
         attribute_schema:
           type: object
           description: Attribute definitions (names, types, required flags)

@@ -25,6 +25,8 @@ import {
 } from '../common/assert-tenant-access';
 import { API_BASE_PATH } from '../common/constants/api-version.constants';
 import { RegistrationBackendError } from '../common/registration-backend-error';
+import { ConnectorType } from '../connection/connection.entity';
+import { ConnectorCredentialRepository } from '../connector-credential/connector-credential.repository';
 import { JobsService } from '../jobs/jobs.service';
 import { OPERATION_TYPE } from '../operation/operation-type.constants';
 import { Operation, OperationState } from '../operation/operation.entity';
@@ -38,6 +40,7 @@ import {
   CredentialDefinition,
   CredentialDefinitionConnectorType,
   CredentialDefinitionFormat,
+  CredentialDefinitionStatus,
 } from './credential-definition.entity';
 import { CredentialDefinitionRepository } from './credential-definition.repository';
 import { CreateCredentialDefinitionDto } from './dto/create-credential-definition.dto';
@@ -57,10 +60,24 @@ export function toPortCredentialFormat(
   );
 }
 
+export function toCredentialDefinitionConnectorType(
+  connectorType: ConnectorType,
+): CredentialDefinitionConnectorType | undefined {
+  switch (connectorType) {
+    case ConnectorType.TRACTION:
+      return CredentialDefinitionConnectorType.TRACTION;
+    case ConnectorType.CREDO:
+      return CredentialDefinitionConnectorType.CREDO;
+    default:
+      return undefined;
+  }
+}
+
 @Injectable()
 export class CredentialDefinitionService {
   public constructor(
     private readonly credentialDefinitionRepository: CredentialDefinitionRepository,
+    private readonly connectorCredentialRepository: ConnectorCredentialRepository,
     private readonly domainAudit: DomainAuditService,
     private readonly operations: OperationService,
     private readonly jobs: JobsService,
@@ -144,6 +161,72 @@ export class CredentialDefinitionService {
     return result.operation;
   }
 
+  public async createDraft(
+    tenantId: string,
+    dto: CreateCredentialDefinitionDto,
+    auth: AuthContext,
+  ): Promise<CredentialDefinition> {
+    assertTenantAccess(auth, tenantId);
+    const handler = this.formatHandlers.find(
+      (candidate) => candidate.format === dto.options.format,
+    );
+    if (!handler)
+      this.registrationError(new FormatNotSupportedError(dto.options.format));
+    if (!dto.schema.definition || !dto.connectorId) {
+      throw new BadRequestException(
+        'Drafts require schema.definition and connector_id.',
+      );
+    }
+    const existing =
+      await this.credentialDefinitionRepository.findByTenantAndNameAndFormat(
+        tenantId,
+        dto.name,
+        dto.options.format,
+      );
+    if (existing)
+      throw new ConflictException(
+        'Credential definition with this name and format already exists for this tenant.',
+      );
+    const connector =
+      await this.connectorCredentialRepository.findActiveByTenantAndId(
+        tenantId,
+        dto.connectorId,
+      );
+    const connectorType = connector
+      ? toCredentialDefinitionConnectorType(connector.connectorType)
+      : undefined;
+    if (!connector || !connectorType)
+      throw new BadRequestException(
+        'Selected connector is not active for this tenant or has an unsupported type.',
+      );
+    const schemaVersion =
+      dto.schema.definition.version ?? dto.schema.definition.schema_version;
+    const created = await this.credentialDefinitionRepository.create({
+      tenantId,
+      name: dto.name,
+      format: dto.options.format,
+      schemaDefinition: dto.schema.definition,
+      externalId: null,
+      connectorId: connector.id,
+      connectorType,
+      options: handler.normalizeOptions(dto.options),
+      registrationState: 'unverified',
+      status: CredentialDefinitionStatus.DRAFT,
+      version:
+        typeof schemaVersion === 'string' && schemaVersion.trim()
+          ? schemaVersion
+          : '1.0',
+      metadata: dto.metadata,
+    });
+    await this.domainAudit.emit({
+      tenantId,
+      action: AuditAction.CREATE,
+      resourceType: 'credential_definition',
+      resourceId: created.id,
+    });
+    return created;
+  }
+
   private async createOrContinue(
     manager: import('typeorm').EntityManager,
     handler: CredentialDefinitionFormatHandler,
@@ -180,6 +263,9 @@ export class CredentialDefinitionService {
       dto,
       manager,
     );
+    const schemaVersion =
+      prepared.schemaDefinition.version ??
+      prepared.schemaDefinition.schema_version;
     const definition = await this.credentialDefinitionRepository.create(
       {
         tenantId,
@@ -194,6 +280,11 @@ export class CredentialDefinitionService {
         registrationState: 'pending',
         registrationOperationId: operation.id,
         registration: prepared.registration,
+        status: CredentialDefinitionStatus.PUBLISHED,
+        version:
+          typeof schemaVersion === 'string' && schemaVersion.trim()
+            ? schemaVersion
+            : '1.0',
       },
       manager,
     );
@@ -222,6 +313,9 @@ export class CredentialDefinitionService {
     operation: Operation;
     created: boolean;
   }> {
+    const isLocalDraft =
+      definition.status === CredentialDefinitionStatus.DRAFT &&
+      definition.registrationState === 'unverified';
     if (
       definition.connectorId !== prepared.connectorId ||
       definition.connectorType !== prepared.connectorType ||
@@ -233,11 +327,45 @@ export class CredentialDefinitionService {
         definition.registration?.schema.id !==
           prepared.registration?.schema.id) ||
       !isDeepStrictEqual(definition.options ?? {}, options) ||
-      definition.registration?.issuerId !== prepared.registration?.issuerId
+      (!isLocalDraft &&
+        definition.registration?.issuerId !== prepared.registration?.issuerId)
     ) {
       throw new ConflictException(
         'Credential definition registration settings differ from the existing definition.',
       );
+    }
+    if (isLocalDraft) {
+      const operation = await this.createRegistrationOperation(
+        tenantId,
+        dto,
+        manager,
+      );
+      Object.assign(definition, {
+        status: CredentialDefinitionStatus.PUBLISHED,
+        registrationState: 'pending',
+        registrationOperationId: operation.id,
+        registration: prepared.registration,
+      });
+      await manager.update(
+        CredentialDefinition,
+        { id: definition.id, tenantId },
+        {
+          status: CredentialDefinitionStatus.PUBLISHED,
+          registrationState: 'pending',
+          registrationOperationId: operation.id,
+          registration: prepared.registration,
+        },
+      );
+      operation.result = { credential_definition_id: definition.id };
+      await manager.save(Operation, operation);
+      await handler.register(definition, manager);
+      await this.completeImmediateRegistration(
+        definition,
+        operation,
+        tenantId,
+        manager,
+      );
+      return { definition, operation, created: false };
     }
     if (!definition.isActive && definition.registrationState === 'ready') {
       throw new ConflictException({
@@ -472,24 +600,107 @@ export class CredentialDefinitionService {
     dto: UpdateCredentialDefinitionDto,
     auth: AuthContext,
   ): Promise<CredentialDefinition> {
-    await this.findById(tenantId, id, auth);
-    const changes: Partial<Pick<CredentialDefinition, 'name' | 'metadata'>> =
-      {};
-    if (dto.name !== undefined) changes.name = dto.name;
-    if (dto.metadata !== undefined) {
-      changes.metadata = dto.metadata;
-    }
-    const updated =
-      await this.credentialDefinitionRepository.updateEditableFields(
-        tenantId,
-        id,
-        changes,
-      );
-    if (!updated) {
-      throw new NotFoundException(
-        `Credential definition '${id}' was not found.`,
-      );
-    }
+    const notFound = `Credential definition '${id}' was not found.`;
+    const updated = await this.credentialDefinitionRepository.updateWithLock(
+      tenantId,
+      id,
+      async (credentialDefinition) => {
+        assertResourceTenantOrNotFound(auth, tenantId, notFound);
+        if (
+          dto.status === CredentialDefinitionStatus.DRAFT &&
+          credentialDefinition.status !== CredentialDefinitionStatus.DRAFT
+        ) {
+          throw new BadRequestException(
+            'Published or deprecated credential definitions cannot return to draft.',
+          );
+        }
+        if (
+          dto.status === CredentialDefinitionStatus.PUBLISHED &&
+          credentialDefinition.status !== CredentialDefinitionStatus.PUBLISHED
+        ) {
+          throw new BadRequestException(
+            'Publish the draft through credential definition registration.',
+          );
+        }
+
+        const changesSchema =
+          dto.schemaDefinition !== undefined || dto.connectorId !== undefined;
+        if (
+          changesSchema &&
+          credentialDefinition.status !== CredentialDefinitionStatus.DRAFT
+        ) {
+          throw new BadRequestException(
+            'Only draft credential definitions can be edited.',
+          );
+        }
+
+        if (dto.name !== undefined && dto.name !== credentialDefinition.name) {
+          const existing =
+            await this.credentialDefinitionRepository.findByTenantAndNameAndFormat(
+              tenantId,
+              dto.name,
+              credentialDefinition.format,
+            );
+          if (existing && existing.id !== credentialDefinition.id) {
+            throw new ConflictException(
+              'Credential definition with this name and format already exists for this tenant.',
+            );
+          }
+        }
+
+        if (dto.name !== undefined) {
+          credentialDefinition.name = dto.name;
+        }
+
+        if (dto.schemaDefinition !== undefined) {
+          if (dto.schemaDefinition === null) {
+            throw new BadRequestException(
+              'schema_definition must be an object.',
+            );
+          }
+          credentialDefinition.schemaDefinition = dto.schemaDefinition;
+          const schemaVersion = dto.schemaDefinition.version;
+          if (
+            typeof schemaVersion === 'string' &&
+            schemaVersion.trim().length > 0
+          ) {
+            credentialDefinition.version = schemaVersion;
+          }
+        }
+
+        if (dto.connectorId !== undefined) {
+          const connectorCredential =
+            await this.connectorCredentialRepository.findActiveByTenantAndId(
+              tenantId,
+              dto.connectorId,
+            );
+          if (!connectorCredential) {
+            throw new BadRequestException(
+              'Selected connector credential is not active for this tenant.',
+            );
+          }
+          const connectorType = toCredentialDefinitionConnectorType(
+            connectorCredential.connectorType,
+          );
+          if (!connectorType) {
+            throw new BadRequestException(
+              'Selected connector credential has an unsupported connector type.',
+            );
+          }
+          credentialDefinition.connectorId = connectorCredential.id;
+          credentialDefinition.connectorType = connectorType;
+        }
+
+        if (dto.metadata !== undefined) {
+          credentialDefinition.metadata = dto.metadata;
+        }
+
+        if (dto.status !== undefined) {
+          credentialDefinition.status = dto.status;
+        }
+      },
+    );
+    if (!updated) throw new NotFoundException(notFound);
 
     await this.domainAudit.emit({
       tenantId: updated.tenantId,

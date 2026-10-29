@@ -16,7 +16,10 @@ import {
 import { ConnectionRepository } from '../connection/connection.repository';
 import { ConnectorCredential } from '../connector-credential/connector-credential.entity';
 import { ConnectorCredentialRepository } from '../connector-credential/connector-credential.repository';
-import { CredentialDefinition } from '../credential-definition/credential-definition.entity';
+import {
+  CredentialDefinition,
+  CredentialDefinitionStatus,
+} from '../credential-definition/credential-definition.entity';
 import { CredentialDefinitionRepository } from '../credential-definition/credential-definition.repository';
 import { IssuanceProfile } from '../issuance-profile/issuance-profile.entity';
 import { IssuanceProfileRepository } from '../issuance-profile/issuance-profile.repository';
@@ -444,6 +447,18 @@ export class DevSeedService {
     tenantId: string,
   ): Promise<CredentialDefinition[]> {
     const results: CredentialDefinition[] = [];
+    const [connectorCredential] =
+      await this.connectorCredentials.findByTenantAndConnectorTypeAndActive(
+        tenantId,
+        ConnectorType.TRACTION,
+        true,
+      );
+
+    if (!connectorCredential) {
+      throw new Error(
+        `No active Traction connector credential exists for tenant '${tenantId}'.`,
+      );
+    }
 
     for (const def of SEED_CREDENTIAL_DEFINITIONS) {
       let existing =
@@ -457,6 +472,10 @@ export class DevSeedService {
         existing.schemaDefinition = def.schemaDefinition;
         existing.externalId = def.externalId;
         existing.connectorType = def.connectorType;
+        existing.connectorId = connectorCredential.id;
+        existing.version = def.schemaDefinition.version;
+        existing.status = CredentialDefinitionStatus.PUBLISHED;
+        existing.registrationState = 'ready';
         existing.metadata = def.metadata;
         existing.options = def.options;
         existing = await this.credentialDefinitions.update(existing);
@@ -469,6 +488,10 @@ export class DevSeedService {
           schemaDefinition: def.schemaDefinition,
           externalId: def.externalId,
           connectorType: def.connectorType,
+          connectorId: connectorCredential.id,
+          registrationState: 'ready',
+          version: def.schemaDefinition.version,
+          status: CredentialDefinitionStatus.PUBLISHED,
           metadata: def.metadata,
         });
       }
@@ -484,10 +507,6 @@ export class DevSeedService {
     credDefs: CredentialDefinition[],
   ): Promise<Map<string, IssuanceProfile>> {
     const byKey = new Map<string, IssuanceProfile>();
-    const seedConnector = (
-      await this.connectorCredentials.findByTenant(tenantId)
-    ).find((credential) => credential.endpointUrl === MOCK_TRACTION_ENDPOINT);
-    const connectorId = seedConnector?.id ?? null;
 
     for (const def of SEED_ISSUANCE_PROFILES) {
       const credDef = credDefs.find(
@@ -513,8 +532,6 @@ export class DevSeedService {
         version: def.version,
         description: def.description,
         credentialDefinitionId: credDef.id,
-        format: credDef.format,
-        connectorId,
         attributeSchema: def.attributeSchema,
         metadata: { seed: true },
         protocolHint: def.protocolHint,

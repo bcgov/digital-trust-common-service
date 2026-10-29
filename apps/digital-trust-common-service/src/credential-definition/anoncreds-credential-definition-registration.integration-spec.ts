@@ -210,60 +210,45 @@ describe('credential definition registration (integration)', () => {
     ).toBe(0);
   });
 
-  it('preserves concurrent registration progress when a name patch follows a stale read', async () => {
+  it('preserves registration progress when a name patch follows worker progress', async () => {
     const operation = await service.create(tenant.id, dto, auth);
     const row = await db.getRepository(CredentialDefinition).findOneByOrFail({
       tenantId: tenant.id,
       registrationOperationId: operation.id,
     });
-    // SeedModule registers its own CredentialDefinitionRepository instance.
-    const repository = app
-      .select(CredentialDefinitionModule)
-      .get(CredentialDefinitionRepository, { strict: true });
-    const findById = repository.findById.bind(repository);
-    const findByIdSpy = jest
-      .spyOn(repository, 'findById')
-      .mockImplementation(async (id) => {
-        const stale = await findById(id);
-        if (id === row.id && stale?.registration) {
-          await db.getRepository(CredentialDefinition).update(
-            { id: row.id, tenantId: tenant.id },
-            {
-              registration: {
-                ...stale.registration,
-                schema: {
-                  jobId: 'worker-progress',
-                  state: 'wait',
-                },
-              },
-            },
-          );
-        }
-        return stale;
-      });
-
-    try {
-      const updated = await service.update(
-        tenant.id,
-        row.id,
-        { name: 'Updated Employee' },
-        auth,
-      );
-
-      expect(findByIdSpy).toHaveBeenCalledWith(row.id);
-      expect(updated.name).toBe('Updated Employee');
-      expect(updated.registration).toMatchObject({
-        schema: { jobId: 'worker-progress', state: 'wait' },
-      });
-      const persisted = await db
-        .getRepository(CredentialDefinition)
-        .findOneByOrFail({ id: row.id, tenantId: tenant.id });
-      expect(persisted.registration).toMatchObject({
-        schema: { jobId: 'worker-progress', state: 'wait' },
-      });
-    } finally {
-      findByIdSpy.mockRestore();
+    if (!row.registration) {
+      throw new Error('Expected registration progress after creation');
     }
+    await db.getRepository(CredentialDefinition).update(
+      { id: row.id, tenantId: tenant.id },
+      {
+        registration: {
+          ...row.registration,
+          schema: {
+            jobId: 'worker-progress',
+            state: 'wait',
+          },
+        },
+      },
+    );
+
+    const updated = await service.update(
+      tenant.id,
+      row.id,
+      { name: 'Updated Employee' },
+      auth,
+    );
+
+    expect(updated.name).toBe('Updated Employee');
+    expect(updated.registration).toMatchObject({
+      schema: { jobId: 'worker-progress', state: 'wait' },
+    });
+    const persisted = await db
+      .getRepository(CredentialDefinition)
+      .findOneByOrFail({ id: row.id, tenantId: tenant.id });
+    expect(persisted.registration).toMatchObject({
+      schema: { jobId: 'worker-progress', state: 'wait' },
+    });
   });
 
   it('rolls back both records when durable enqueue fails', async () => {

@@ -112,9 +112,10 @@ describe('IssuanceProfileRepository', () => {
     expect(qb.andWhere).toHaveBeenCalledWith('profile.status = :status', {
       status: IssuanceProfileStatus.DRAFT,
     });
-    expect(qb.andWhere).toHaveBeenCalledWith('profile.format = :format', {
-      format: CredentialDefinitionFormat.ANONCREDS,
-    });
+    expect(qb.andWhere).toHaveBeenCalledWith(
+      'profile.credential_definition_id IN (SELECT id FROM credential_definition WHERE tenant_id = :tenantId AND format = :format)',
+      { tenantId: 't1', format: CredentialDefinitionFormat.ANONCREDS },
+    );
     expect(qb.andWhere).toHaveBeenCalledWith('profile.name = :name', {
       name: 'drivers-license',
     });
@@ -260,7 +261,7 @@ describe('IssuanceProfileRepository', () => {
       ).resolves.toBe(false);
     });
 
-    it('adds a connector_id guard when expectedConnectorId is provided', async () => {
+    it('guards publication against definition and connector changes', async () => {
       mockQueryBuilder.execute.mockResolvedValue({ affected: 1 });
 
       await expect(
@@ -269,17 +270,46 @@ describe('IssuanceProfileRepository', () => {
           'ip-1',
           IssuanceProfileStatus.DRAFT,
           IssuanceProfileStatus.PUBLISHED,
-          'connector-1',
+          {
+            id: 'definition-1',
+            connectorId: 'connector-1',
+            format: CredentialDefinitionFormat.ANONCREDS,
+          },
         ),
       ).resolves.toBe(true);
 
       expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
-        'connector_id = :expectedConnectorId',
-        { expectedConnectorId: 'connector-1' },
+        expect.stringContaining(
+          'definition.connector_id = :expectedConnectorId',
+        ),
+        {
+          expectedDefinitionId: 'definition-1',
+          expectedConnectorId: 'connector-1',
+          expectedFormat: CredentialDefinitionFormat.ANONCREDS,
+          expectedDefinitionStatus: 'published',
+        },
       );
+      const guardSql = mockQueryBuilder.andWhere.mock.calls
+        .map(([sql]) => sql as string)
+        .join('\n');
+      expect(guardSql).toContain(
+        'definition.id = issuance_profile.credential_definition_id',
+      );
+      expect(guardSql).toContain('definition.tenant_id = :tenantId');
+      expect(guardSql).toContain('connector.tenant_id = definition.tenant_id');
+      expect(guardSql).toContain('definition.is_active = true');
+      expect(guardSql).toContain("definition.registration_state = 'ready'");
+      expect(guardSql).toContain('definition.external_id IS NOT NULL');
+      expect(guardSql).toContain("definition.external_id <> ''");
+      expect(guardSql).toContain(
+        'definition.status = :expectedDefinitionStatus',
+      );
+      expect(guardSql).toContain('connector.active = true');
+      expect(guardSql).toContain('definition.format = :expectedFormat');
+      expect(guardSql).toContain('FOR SHARE OF definition, connector');
     });
 
-    it('omits the connector_id guard when expectedConnectorId is not provided', async () => {
+    it('omits the binding guard for non-publish transitions', async () => {
       mockQueryBuilder.execute.mockResolvedValue({ affected: 1 });
 
       await repository.transitionStatus(
@@ -290,7 +320,7 @@ describe('IssuanceProfileRepository', () => {
       );
 
       expect(mockQueryBuilder.andWhere).not.toHaveBeenCalledWith(
-        'connector_id = :expectedConnectorId',
+        expect.stringContaining('EXISTS'),
         expect.anything(),
       );
     });

@@ -11,11 +11,7 @@ import {
   JoinColumn,
 } from 'typeorm';
 
-import { ConnectorCredential } from '../connector-credential/connector-credential.entity';
-import {
-  CredentialDefinition,
-  CredentialDefinitionFormat,
-} from '../credential-definition/credential-definition.entity';
+import { CredentialDefinition } from '../credential-definition/credential-definition.entity';
 import { Tenant } from '../tenant/tenant.entity';
 
 export enum IssuanceProfileProtocolHint {
@@ -95,35 +91,6 @@ export class IssuanceProfile {
   })
   @JoinColumn({ name: 'credential_definition_id' })
   public credentialDefinition!: CredentialDefinition;
-
-  @ApiProperty({
-    description:
-      'Denormalized credential format copied from the credential definition',
-    enum: CredentialDefinitionFormat,
-    example: CredentialDefinitionFormat.ANONCREDS,
-  })
-  @Column({
-    type: 'enum',
-    enum: CredentialDefinitionFormat,
-    enumName: 'credential_definition_format',
-  })
-  public format!: CredentialDefinitionFormat;
-
-  @ApiProperty({
-    description: 'Connector credential that handles this profile',
-    example: '123e4567-e89b-12d3-a456-426614174000',
-    required: false,
-    nullable: true,
-  })
-  @Column({ name: 'connector_id', type: 'uuid', nullable: true })
-  public connectorId?: string | null;
-
-  @ManyToOne(() => ConnectorCredential, {
-    onDelete: 'SET NULL',
-    nullable: true,
-  })
-  @JoinColumn({ name: 'connector_id' })
-  public connector?: ConnectorCredential | null;
 
   @ApiProperty({
     description: 'Attributes/claims the consumer must supply',

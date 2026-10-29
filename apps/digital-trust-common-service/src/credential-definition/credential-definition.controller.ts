@@ -20,6 +20,7 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Res,
   UseGuards,
 } from '@nestjs/common';
 import {
@@ -27,6 +28,7 @@ import {
   ApiBody,
   ApiConflictResponse,
   ApiAcceptedResponse,
+  ApiCreatedResponse,
   ApiExtraModels,
   ApiForbiddenResponse,
   ApiNoContentResponse,
@@ -34,6 +36,7 @@ import {
   ApiOkResponse,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
+import type { Response } from 'express';
 
 import { SkipAutoAudit } from '../audit-log/skip-auto-audit.decorator';
 import { API_VERSION } from '../common/constants/api-version.constants';
@@ -44,6 +47,7 @@ import { TenantStatusGuard } from '../tenant/tenant-status.guard';
 import {
   CredentialDefinitionConnectorType,
   CredentialDefinitionFormat,
+  CredentialDefinitionStatus,
 } from './credential-definition.entity';
 import { CredentialDefinitionService } from './credential-definition.service';
 import { CreateCredentialDefinitionDto } from './dto/create-credential-definition.dto';
@@ -98,6 +102,11 @@ export class CredentialDefinitionController {
       'Credential definition accepted. AnonCreds registration runs asynchronously; formats without a registered handler return FORMAT_NOT_SUPPORTED.',
     type: OperationResponseDto,
   })
+  @ApiCreatedResponse({
+    description:
+      'Local draft saved without contacting the registration backend.',
+    type: CredentialDefinitionResponseDto,
+  })
   @ApiConflictResponse({
     description:
       'A credential definition with this name and format already exists.',
@@ -136,7 +145,17 @@ export class CredentialDefinitionController {
     @Param('tenantId', ParseUUIDPipe) tenantId: string,
     @Body() dto: CreateCredentialDefinitionDto,
     @CurrentAuth() auth: AuthContext,
-  ): Promise<OperationResponseDto> {
+    @Res({ passthrough: true }) response?: Response,
+  ): Promise<OperationResponseDto | CredentialDefinitionResponseDto> {
+    if (dto.status === CredentialDefinitionStatus.DRAFT) {
+      const definition = await this.credentialDefinitionService.createDraft(
+        tenantId,
+        dto,
+        auth,
+      );
+      response?.status(HttpStatus.CREATED);
+      return CredentialDefinitionResponseDto.fromEntity(definition);
+    }
     const operation = await this.credentialDefinitionService.create(
       tenantId,
       dto,
@@ -228,14 +247,27 @@ export class CredentialDefinitionController {
     type: CredentialDefinitionResponseDto,
   })
   @ApiNotFoundResponse({ description: 'Credential definition not found' })
+  @ApiBadRequestResponse({
+    description:
+      'Schema or connector fields can only be updated while the definition is a draft. Published and deprecated definitions cannot return to draft.',
+  })
   @ApiBody({
-    description: 'Credential definition update request',
+    description:
+      'Credential definition update request. Schema and connector fields are draft-only.',
     type: UpdateCredentialDefinitionDto,
     examples: {
       example1: {
-        summary: 'Update credential definition metadata',
+        summary: 'Update a draft credential definition',
         value: {
-          metadata: { issuer: 'DMV', version: '2.0' },
+          name: 'Updated Driver License Definition',
+          schema_definition: {
+            attr_names: ['name', 'age', 'birthdate'],
+            schema_name: 'driver-license',
+            schema_version: '2.0',
+            version: '2.0',
+          },
+          connector_id: '123e4567-e89b-12d3-a456-426614174000',
+          status: 'draft',
         },
       },
     },

@@ -6,6 +6,7 @@ import {
 import { Expose, Type } from 'class-transformer';
 import {
   IsDefined,
+  IsEnum,
   IsObject,
   IsOptional,
   IsString,
@@ -18,6 +19,8 @@ import {
   ValidatorConstraint,
   ValidatorConstraintInterface,
 } from 'class-validator';
+
+import { CredentialDefinitionStatus } from '../credential-definition.entity';
 
 import {
   AnonCredsCredentialDefinitionOptionsDto,
@@ -91,6 +94,12 @@ export class CreateCredentialDefinitionDto {
   @ValidateIf((_object: unknown, value: unknown) => value !== undefined)
   @IsUUID()
   public connectorId?: string;
+
+  @Expose()
+  @ApiPropertyOptional({ enum: CredentialDefinitionStatus })
+  @ValidateIf((_object: unknown, value: unknown) => value !== undefined)
+  @IsEnum(CredentialDefinitionStatus)
+  public status?: CredentialDefinitionStatus;
 
   @ApiProperty({
     oneOf: [
