@@ -68,6 +68,31 @@ export default tseslint.config(
     ...i18next.configs['flat/recommended'],
     files: ['src/**/*.tsx'],
     ignores: ['**/*.test.tsx', 'src/test/**', 'src/demo/**'],
+    rules: {
+      // Attributes are checked only when they carry user-facing text;
+      // routing, form names and data-* values are not copy.
+      'i18next/no-literal-string': [
+        'error',
+        {
+          mode: 'jsx-only',
+          'jsx-attributes': {
+            include: [
+              'aria-(label|description|placeholder|roledescription|valuetext)',
+              'alt',
+              'title',
+              'placeholder',
+              'label',
+              'description',
+              'message',
+              'heading',
+              'tooltip',
+              '[a-z]+(Label|Message|Text|Title|Description)',
+            ],
+            exclude: ['.*'],
+          },
+        },
+      ],
+    },
   },
   {
     files: ['**/*.test.{ts,tsx}', 'src/test/**'],
