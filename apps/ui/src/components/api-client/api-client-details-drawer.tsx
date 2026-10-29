@@ -93,13 +93,9 @@ export function ApiClientDetailsDrawer({
                       .map((grant) => {
                         switch (grant) {
                           case 'client_credentials':
-                            return t(
-                              'apiClients.grantTypes.clientCredentials',
-                            );
+                            return t('apiClients.grantTypes.clientCredentials');
                           case 'authorization_code':
-                            return t(
-                              'apiClients.grantTypes.authorizationCode',
-                            );
+                            return t('apiClients.grantTypes.authorizationCode');
                           case 'refresh_token':
                             return t('apiClients.grantTypes.refreshToken');
                           default:

@@ -59,7 +59,9 @@ export function ApiClientActionDialog({
       >
         <DrawerContent>
           <DrawerHeader>
-            <DrawerTitle>{t('apiClients.actionDialog.newSecretTitle')}</DrawerTitle>
+            <DrawerTitle>
+              {t('apiClients.actionDialog.newSecretTitle')}
+            </DrawerTitle>
           </DrawerHeader>
           <ApiClientSecret credentials={credentials} onDone={close} />
         </DrawerContent>

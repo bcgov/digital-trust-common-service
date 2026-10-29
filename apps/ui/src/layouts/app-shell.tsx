@@ -1,5 +1,11 @@
 import type { ParseKeys } from 'i18next';
-import { KeyRound, LayoutDashboard, LogOut, Share2, UsersRound } from 'lucide-react';
+import {
+  KeyRound,
+  LayoutDashboard,
+  LogOut,
+  Share2,
+  UsersRound,
+} from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { NavLink, Outlet, useMatches } from 'react-router';
 

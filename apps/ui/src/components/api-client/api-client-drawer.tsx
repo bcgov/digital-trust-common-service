@@ -264,18 +264,18 @@ export function ApiClientDrawer({
                   <legend className="mb-2 text-sm font-semibold">
                     {t('apiClients.fields.scopes')}
                   </legend>
-                    {scopes.isLoading && (
-                      <p role="status">{t('apiClients.drawer.loadingScopes')}</p>
-                    )}
+                  {scopes.isLoading && (
+                    <p role="status">{t('apiClients.drawer.loadingScopes')}</p>
+                  )}
                   {scopes.isError && (
                     <div role="alert">
-                        {t('apiClients.drawer.loadScopesFailed')}{' '}
+                      {t('apiClients.drawer.loadScopesFailed')}{' '}
                       <Button
                         type="button"
                         variant="outline"
                         onClick={() => void scopes.refetch()}
                       >
-                          {t('apiClients.drawer.retryScopes')}
+                        {t('apiClients.drawer.retryScopes')}
                       </Button>
                     </div>
                   )}
@@ -285,11 +285,11 @@ export function ApiClientDrawer({
                         <Button
                           type="button"
                           variant="outline"
-                            aria-label={t('apiClients.drawer.selectScopes')}
+                          aria-label={t('apiClients.drawer.selectScopes')}
                           disabled={mutation.isPending}
                           className="w-full justify-between font-normal"
                         >
-                            {t('apiClients.drawer.selectScopesPlaceholder')}
+                          {t('apiClients.drawer.selectScopesPlaceholder')}
                           <ChevronDown aria-hidden="true" />
                         </Button>
                       </DropdownMenuTrigger>
@@ -297,9 +297,9 @@ export function ApiClientDrawer({
                         align="start"
                         className="max-h-72 overflow-y-auto"
                       >
-                          <DropdownMenuLabel>
-                            {t('apiClients.drawer.availableScopes')}
-                          </DropdownMenuLabel>
+                        <DropdownMenuLabel>
+                          {t('apiClients.drawer.availableScopes')}
+                        </DropdownMenuLabel>
                         {availableScopes.map((scope) => (
                           <DropdownMenuCheckboxItem
                             key={scope.name}
@@ -338,9 +338,9 @@ export function ApiClientDrawer({
                               checked
                               disabled
                             >
-                                {t('apiClients.drawer.scopeNotChangeable', {
-                                  scope,
-                                })}
+                              {t('apiClients.drawer.scopeNotChangeable', {
+                                scope,
+                              })}
                             </DropdownMenuCheckboxItem>
                           ))}
                       </DropdownMenuContent>
@@ -419,7 +419,9 @@ export function ApiClientDrawer({
                         aria-label={t('apiClients.drawer.redirectUriFor', {
                           index: index + 1,
                         })}
-                        placeholder="https://"
+                        placeholder={t(
+                          'apiClients.drawer.redirectUriPlaceholder',
+                        )}
                         value={uri.value}
                         onChange={(event) =>
                           setUris(

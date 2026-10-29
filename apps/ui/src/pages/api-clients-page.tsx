@@ -72,9 +72,7 @@ export function ApiClientsPage() {
           </Button>
         </div>
       )}
-      {status === 'ready' && !tenant && (
-        <p>{t('apiClients.noActiveTenant')}</p>
-      )}
+      {status === 'ready' && !tenant && <p>{t('apiClients.noActiveTenant')}</p>}
       {tenant && query.isError && (
         <div role="alert" className="flex items-center gap-3">
           <p>{t('apiClients.loadFailed', { reason: query.error.message })}</p>

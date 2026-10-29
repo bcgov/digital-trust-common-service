@@ -56,9 +56,7 @@ export function ApiClientsTable({
               {t('apiClients.table.client')}
             </TableHead>
             <TableHead>{t('apiClients.fields.scopes')}</TableHead>
-            <TableHead className="w-44">
-              {t('common.status')}
-            </TableHead>
+            <TableHead className="w-44">{t('common.status')}</TableHead>
             <TableHead className="w-36 text-right">
               {t('common.actions')}
             </TableHead>

@@ -351,6 +351,7 @@
       "availableScopes": "Available scopes",
       "scopeNotChangeable": "{{scope}} (cannot be changed)",
       "redirectUriHelp": "Enter the URL where requests are sent after they authorize access.",
+      "redirectUriPlaceholder": "https://",
       "redirectUriFor": "Redirect URI {{index}}",
       "removeRedirectUriFor": "Remove redirect URI {{index}}",
       "addUri": "Add URI",

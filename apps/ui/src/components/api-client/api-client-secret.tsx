@@ -6,8 +6,7 @@ import { Button } from '@/components/common/button';
 import type { ClientCredentials } from '@/lib/api/resources/api-clients';
 
 type SecretCopyMessage =
-  | 'apiClients.secret.copied'
-  | 'apiClients.secret.copyFailed';
+  'apiClients.secret.copied' | 'apiClients.secret.copyFailed';
 
 export function ApiClientSecret({
   credentials,
@@ -20,9 +19,7 @@ export function ApiClientSecret({
   const [message, setMessage] = useState<SecretCopyMessage | null>(null);
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-6">
-      <p className="text-sm">
-        {t('apiClients.secret.storeSecurely')}
-      </p>
+      <p className="text-sm">{t('apiClients.secret.storeSecurely')}</p>
       <dl className="flex flex-col gap-2 text-sm">
         <dt className="font-semibold">{t('apiClients.fields.clientId')}</dt>
         <dd className="break-all font-mono">{credentials.client.client_id}</dd>
@@ -39,9 +36,7 @@ export function ApiClientSecret({
           void navigator.clipboard
             .writeText(credentials.client_secret)
             .then(() => setMessage('apiClients.secret.copied'))
-            .catch(() =>
-              setMessage('apiClients.secret.copyFailed'),
-            );
+            .catch(() => setMessage('apiClients.secret.copyFailed'));
         }}
       >
         <Copy aria-hidden="true" />

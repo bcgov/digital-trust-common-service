@@ -94,9 +94,7 @@ export function ApiClientSecretRotation({
           ) : (
             <>
               <DrawerBody>
-                <p>
-                  {t('apiClients.actionDialog.rotateBody')}
-                </p>
+                <p>{t('apiClients.actionDialog.rotateBody')}</p>
                 {mutation.error && (
                   <p role="alert" className="text-sm text-destructive">
                     {mutation.error.message}
