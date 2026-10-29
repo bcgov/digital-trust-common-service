@@ -140,6 +140,7 @@
     "search": "Search tenants",
     "searchPlaceholder": "Search",
     "subtitle": "Create and manage digital trust tenants.",
+    "subtitleMember": "Choose a tenant to work in.",
     "thisTenant": "tenant",
     "title": "Tenants",
     "updated": "Tenant {{name}} updated.",

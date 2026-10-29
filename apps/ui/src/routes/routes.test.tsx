@@ -87,9 +87,9 @@ describe('routing', () => {
   });
 
   /**
-   * With no deep link to return to, sign-in lands on tenant selection rather
-   * than the dashboard: nearly everything the UI does is scoped to a tenant,
-   * and a user may belong to more than one.
+   * With no deep link to return to, sign-in goes through the landing route,
+   * which sends a user with several memberships (the mock user has three) to
+   * tenant selection rather than the dashboard.
    */
   it('lands on tenant selection when there was no deep link', async () => {
     const user = userEvent.setup();
@@ -149,15 +149,15 @@ describe('routing', () => {
   it('serves the auth callback to unauthenticated visitors', async () => {
     const router = renderAt('/auth/callback?code=abc&state=xyz');
 
-    // Mock mode has no redirect to complete, so the callback forwards to
-    // tenant selection — where the guard (correctly) sends a signed-out
-    // visitor to /login. Guarded instead, the callback itself would have been
-    // the page bounced, and `from` would still hold its URL.
+    // Mock mode has no redirect to complete, so the callback forwards to the
+    // landing route — where the guard (correctly) sends a signed-out visitor
+    // to /login. Guarded instead, the callback itself would have been the
+    // page bounced, and `from` would still hold its URL.
     expect(
       await screen.findByRole('button', { name: /sign in/i }),
     ).toBeInTheDocument();
     expect(router.state.location.pathname).toBe('/login');
-    expect(router.state.location.state).toEqual({ from: '/tenants' });
+    expect(router.state.location.state).toEqual({ from: '/' });
   });
 
   it('renders the 404 page for unknown routes', async () => {

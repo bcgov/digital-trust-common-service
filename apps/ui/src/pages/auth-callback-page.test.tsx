@@ -32,7 +32,7 @@ function renderCallback(auth: Partial<AuthContextValue>) {
           </AuthContext.Provider>
         ),
       },
-      { path: '/tenants', element: <p>Tenant selection</p> },
+      { path: '/', element: <p>Landing</p> },
       { path: '/connectors', element: <p>Connectors</p> },
     ],
     { initialEntries: ['/auth/callback?code=abc&state=xyz'] },
@@ -56,10 +56,10 @@ describe('AuthCallbackPage', () => {
     expect(await screen.findByText('Connectors')).toBeInTheDocument();
   });
 
-  it('falls back to tenant selection when no destination was carried', async () => {
+  it('falls back to the landing route when no destination was carried', async () => {
     renderCallback({ completeLogin: vi.fn().mockResolvedValue(null) });
 
-    expect(await screen.findByText('Tenant selection')).toBeInTheDocument();
+    expect(await screen.findByText('Landing')).toBeInTheDocument();
   });
 
   /**

@@ -17,10 +17,14 @@ export const tenantKeys = {
   detail: (id: string) => [...tenantKeys.all, 'detail', id] as const,
 };
 
-export function useTenants(params: CursorParams = {}) {
+export function useTenants(
+  params: CursorParams = {},
+  options: { enabled?: boolean } = {},
+) {
   return useQuery({
     queryKey: tenantKeys.list(params),
     queryFn: () => listTenants(params),
+    enabled: options.enabled !== false,
   });
 }
 
