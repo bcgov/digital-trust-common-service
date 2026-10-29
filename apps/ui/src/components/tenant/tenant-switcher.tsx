@@ -14,26 +14,11 @@ import {
   DropdownMenuTrigger,
 } from '@/components/common/dropdown-menu';
 import { Skeleton } from '@/components/common/skeleton';
-import { ApiError } from '@/lib/api/errors';
 import type { AuthTenant } from '@/lib/api/resources/auth';
 import { useAuth } from '@/lib/auth/context';
-import i18n from '@/lib/i18n';
 import { useActiveTenant, useSwitchTenant } from '@/lib/tenant/active-tenant';
 import { roleLabel } from '@/lib/tenant/roles';
-
-function switchErrorMessage(error: unknown): string {
-  if (error instanceof ApiError) {
-    switch (error.code) {
-      case 'TENANT_NOT_ACTIVE':
-        return i18n.t('switcher.errorNotActive');
-      case 'TENANT_ACCESS_DENIED':
-        return i18n.t('switcher.errorNotMember');
-      default:
-        return i18n.t('switcher.errorWithReason', { reason: error.message });
-    }
-  }
-  return i18n.t('switcher.errorGeneric');
-}
+import { switchErrorMessage } from '@/lib/tenant/switch-error';
 
 /** Name, role and (when it matters) status of the active tenant. */
 function ActiveTenantLabel({ tenant }: { tenant: AuthTenant | null }) {

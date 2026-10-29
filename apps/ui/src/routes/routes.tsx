@@ -1,5 +1,5 @@
 import type { ComponentType } from 'react';
-import { Navigate, type RouteObject } from 'react-router';
+import type { RouteObject } from 'react-router';
 
 import { AppShell, type AppShellHandle } from '@/layouts/app-shell';
 import { RootLayout } from '@/layouts/root-layout';
@@ -42,7 +42,13 @@ export const routes: RouteObject[] = [
           {
             element: <AppShell />,
             children: [
-              { index: true, element: <Navigate to="/dashboard" replace /> },
+              {
+                index: true,
+                lazy: lazyPage(
+                  () => import('@/pages/landing-page'),
+                  'LandingPage',
+                ),
+              },
               {
                 path: '/dashboard',
                 lazy: lazyPage(

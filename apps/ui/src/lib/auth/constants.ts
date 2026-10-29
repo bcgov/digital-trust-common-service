@@ -1,12 +1,10 @@
 /**
- * Where a sign-in lands when the user had no particular destination in mind.
- *
- * Tenant selection rather than the dashboard: a user may hold membership in
- * more than one tenant, and almost everything the UI does is scoped to one
- * of them, so picking a tenant is the first real step after signing in. A
- * deep link the user was interrupted on still wins over this.
+ * Where a sign-in lands when the user had no particular destination in mind:
+ * the landing route, which sends platform admins and users with several
+ * memberships to the tenants list and everyone else straight into their
+ * tenant. A deep link the user was interrupted on still wins over this.
  */
-export const POST_LOGIN_PATH = '/tenants';
+export const POST_LOGIN_PATH = '/';
 
 /**
  * Where the OIDC provider redirects back to, after authorization and after an

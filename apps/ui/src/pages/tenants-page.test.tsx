@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { Toaster } from '@/components/common/sonner';
 import { MIN_CREATE_LOADING_MS } from '@/components/tenant/create-tenant-dialog';
 import { API_BASE_PATH } from '@/lib/api/constants';
-import { createMockAuthClient } from '@/lib/auth/mock-auth';
+import { createMockAuthClient, MOCK_AUTH_TENANTS } from '@/lib/auth/mock-auth';
 import { mockTenants } from '@/mocks/handlers';
 import { server } from '@/mocks/server';
 import { renderWithAuth } from '@/test/render-with-auth';
@@ -25,7 +25,7 @@ async function renderTenantsPage({ platformAdmin = false } = {}) {
     };
     client.getState = () => promoted;
   }
-  renderWithAuth(
+  const { router } = renderWithAuth(
     [
       {
         path: '/tenants',
@@ -36,14 +36,22 @@ async function renderTenantsPage({ platformAdmin = false } = {}) {
           </>
         ),
       },
+      { path: '/tenants/:tenantId', element: <p>Tenant overview</p> },
     ],
     { client, initialEntries: ['/tenants'] },
   );
+  return { client, router };
+}
+
+function membership(index: number) {
+  const tenant = MOCK_AUTH_TENANTS[index];
+  if (!tenant) throw new Error(`no mock membership at index ${index}`);
+  return tenant;
 }
 
 describe('TenantsPage', () => {
-  it('renders tenants from a bare-array response (current API shape)', async () => {
-    await renderTenantsPage();
+  it('lists every tenant for a platform admin from a bare-array response', async () => {
+    await renderTenantsPage({ platformAdmin: true });
 
     for (const tenant of mockTenants) {
       expect(await screen.findByText(tenant.name ?? '')).toBeInTheDocument();
@@ -54,12 +62,65 @@ describe('TenantsPage', () => {
     );
   });
 
-  it('shows the empty state instead of an empty table', async () => {
+  it('lists the tenants a member belongs to rather than the tenants API', async () => {
     server.use(
       http.get(`${API_BASE_PATH}/tenants`, () => HttpResponse.json([])),
     );
 
     await renderTenantsPage();
+
+    for (const tenant of MOCK_AUTH_TENANTS) {
+      expect(await screen.findByText(tenant.name)).toBeInTheDocument();
+    }
+    expect(screen.getByText('Choose a tenant to work in.')).toBeInTheDocument();
+  });
+
+  it('switches into another membership before opening it', async () => {
+    const user = userEvent.setup();
+    const { client, router } = await renderTenantsPage();
+    const agency = membership(1);
+
+    await user.click(await screen.findByRole('link', { name: agency.name }));
+
+    expect(await screen.findByText('Tenant overview')).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe(`/tenants/${agency.id}`);
+    expect(client.getState().user?.tenantId).toBe(agency.id);
+    // Pushed, so Back returns to the list.
+    expect(router.state.historyAction).toBe('PUSH');
+  });
+
+  it('leaves a modified click on another membership to the browser', async () => {
+    const user = userEvent.setup();
+    const { client, router } = await renderTenantsPage();
+    const agency = membership(1);
+
+    await user.keyboard('{Control>}');
+    await user.click(await screen.findByRole('link', { name: agency.name }));
+    await user.keyboard('{/Control}');
+
+    expect(router.state.location.pathname).toBe('/tenants');
+    expect(client.getState().user?.tenantId).toBe(membership(0).id);
+  });
+
+  it('reports a membership that cannot be switched into', async () => {
+    const user = userEvent.setup();
+    await renderTenantsPage();
+
+    await user.click(
+      await screen.findByRole('link', { name: membership(2).name }),
+    );
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      "Couldn't switch tenant: it isn't active.",
+    );
+  });
+
+  it('shows the empty state instead of an empty table', async () => {
+    server.use(
+      http.get(`${API_BASE_PATH}/tenants`, () => HttpResponse.json([])),
+    );
+
+    await renderTenantsPage({ platformAdmin: true });
 
     expect(await screen.findByText('No tenants yet')).toBeInTheDocument();
     expect(

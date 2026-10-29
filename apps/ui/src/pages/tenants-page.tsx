@@ -1,5 +1,5 @@
 import { Button, TextField } from '@bcgov/design-system-react-components';
-import { useState } from 'react';
+import { useState, type MouseEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useNavigate } from 'react-router';
 
@@ -18,11 +18,14 @@ import { DeleteTenantDialog } from '@/components/tenant/delete-tenant-dialog';
 import { EditTenantDialog } from '@/components/tenant/edit-tenant-dialog';
 import { TenantRowActions } from '@/components/tenant/tenant-row-actions';
 import { TenantStatusTag } from '@/components/tenant/tenant-status-badge';
+import { useAuthTenants } from '@/lib/api/queries/auth';
 import { useTenants } from '@/lib/api/queries/tenants';
 import { ApiError } from '@/lib/api/errors';
 import type { Tenant } from '@/lib/api/resources/tenants';
 import { useAuth } from '@/lib/auth/context';
 import { isPlatformAdmin } from '@/lib/auth/scopes';
+import { useSwitchTenant } from '@/lib/tenant/active-tenant';
+import { switchErrorMessage } from '@/lib/tenant/switch-error';
 
 // Spacing, type and colour follow the "Create Tenant" Figma frames, using
 // the BCDS variables they are drawn with (layout/margin/*, bold/H1,
@@ -32,17 +35,34 @@ const HEAD_CELL =
 const BODY_CELL =
   'px-(--layout-margin-medium) py-(--layout-margin-medium) text-body';
 
+function isPlainClick(event: MouseEvent<HTMLElement>): boolean {
+  return (
+    event.button === 0 &&
+    !event.metaKey &&
+    !event.ctrlKey &&
+    !event.shiftKey &&
+    !event.altKey
+  );
+}
+
 export function TenantsPage() {
   const { t } = useTranslation();
   const { user } = useAuth();
   const navigate = useNavigate();
-  const { data, isLoading, error } = useTenants();
+  const canCreate = isPlatformAdmin(user);
+  // Platform admins manage every tenant; everyone else sees the tenants they
+  // belong to, which the tenants API does not list for a tenant-scoped token.
+  const all = useTenants({}, { enabled: canCreate });
+  const own = useAuthTenants();
+  const { switchTo, error: switchError } = useSwitchTenant();
   const [creating, setCreating] = useState(false);
   const [tenantToEdit, setTenantToEdit] = useState<Tenant | null>(null);
   const [tenantToDelete, setTenantToDelete] = useState<Tenant | null>(null);
   const [search, setSearch] = useState('');
-  const canCreate = isPlatformAdmin(user);
-  const tenants = data?.data ?? [];
+  const memberships = own.data ?? [];
+  const tenants: Tenant[] = canCreate ? (all.data?.data ?? []) : memberships;
+  const isLoading = canCreate ? all.isLoading : own.isPending;
+  const error = canCreate ? all.error : own.error;
   const isEmpty = !isLoading && tenants.length === 0;
   const query = search.trim().toLowerCase();
   const visible = query
@@ -52,6 +72,24 @@ export function TenantsPage() {
         ),
       )
     : tenants;
+
+  // The token is bound to one tenant, so another membership is switched into
+  // first; opening it by URL alone would bounce back to the current tenant.
+  const switchesInto = (tenant: Tenant) =>
+    tenant.id !== user?.tenantId &&
+    memberships.some((membership) => membership.id === tenant.id);
+  const openTenant = (tenant: Tenant) => {
+    if (!tenant.id) return;
+    const path = `/tenants/${tenant.id}`;
+    if (switchesInto(tenant)) {
+      // Push, so Back returns to the list.
+      void switchTo(tenant.id, { destinationPath: path, replace: false }).catch(
+        () => undefined,
+      );
+    } else {
+      void navigate(path);
+    }
+  };
 
   const createButton = (label: string) => (
     <Button onPress={() => setCreating(true)}>
@@ -68,7 +106,7 @@ export function TenantsPage() {
           {canCreate && createButton(t('tenants.create.submit'))}
         </div>
         <p className="py-(--layout-margin-hair) text-body text-muted-foreground">
-          {t('tenants.subtitle')}
+          {t(canCreate ? 'tenants.subtitle' : 'tenants.subtitleMember')}
         </p>
       </div>
       {canCreate && creating && (
@@ -160,6 +198,13 @@ export function TenantsPage() {
                     <Link
                       to={`/tenants/${tenant.id}`}
                       className="text-foreground underline-offset-4 hover:underline"
+                      onClick={(event) => {
+                        // A modified click keeps its browser meaning.
+                        if (isPlainClick(event) && switchesInto(tenant)) {
+                          event.preventDefault();
+                          openTenant(tenant);
+                        }
+                      }}
                     >
                       {tenant.name}
                     </Link>
@@ -175,9 +220,7 @@ export function TenantsPage() {
                   <TableCell className={BODY_CELL}>
                     <TenantRowActions
                       tenant={tenant}
-                      onViewDetails={() =>
-                        void navigate(`/tenants/${tenant.id}`)
-                      }
+                      onViewDetails={() => openTenant(tenant)}
                       onEdit={
                         canCreate ? () => setTenantToEdit(tenant) : undefined
                       }
@@ -200,6 +243,11 @@ export function TenantsPage() {
               )}
             </TableBody>
           </Table>
+          {switchError ? (
+            <p role="alert" className="text-body text-destructive">
+              {switchErrorMessage(switchError)}
+            </p>
+          ) : null}
         </div>
       )}
     </div>
