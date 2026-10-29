@@ -1,4 +1,5 @@
 import { InlineAlert } from '@bcgov/design-system-react-components';
+import { useTranslation } from 'react-i18next';
 
 import { Button } from '@/components/common/button';
 import {
@@ -22,6 +23,7 @@ export function DeleteConnectorDialog({
   tenantId: string | undefined;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   const remove = useDeleteConnector(tenantId);
 
   return (
@@ -35,12 +37,14 @@ export function DeleteConnectorDialog({
     >
       <DrawerContent showCloseButton={!remove.isPending} role="alertdialog">
         <DrawerHeader>
-          <DrawerTitle>Delete connector</DrawerTitle>
+          <DrawerTitle>{t('connectors.delete.title')}</DrawerTitle>
         </DrawerHeader>
         <DrawerBody className="min-h-0">
           <DrawerDescription>
-            Delete the {connector.connector_type} connector at{' '}
-            {connector.endpoint_url}? This action cannot be undone.
+            {t('connectors.delete.confirm', {
+              type: connector.connector_type,
+              endpoint: connector.endpoint_url,
+            })}
           </DrawerDescription>
           {remove.isError && (
             <InlineAlert
@@ -49,7 +53,7 @@ export function DeleteConnectorDialog({
               description={
                 remove.error instanceof Error
                   ? remove.error.message
-                  : 'Could not delete the connector. Try again.'
+                  : t('connectors.delete.failed')
               }
             />
           )}
@@ -60,7 +64,7 @@ export function DeleteConnectorDialog({
             disabled={remove.isPending}
             onClick={onClose}
           >
-            Cancel
+            {t('common.cancel')}
           </Button>
           <Button
             variant="destructive"
@@ -71,7 +75,9 @@ export function DeleteConnectorDialog({
               }
             }}
           >
-            {remove.isPending ? 'Deleting...' : 'Delete connector'}
+            {remove.isPending
+              ? t('connectors.delete.deleting')
+              : t('connectors.delete.title')}
           </Button>
         </DrawerFooter>
       </DrawerContent>

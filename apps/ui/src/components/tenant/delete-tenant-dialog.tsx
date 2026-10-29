@@ -3,6 +3,7 @@ import {
   Button,
   Modal,
 } from '@bcgov/design-system-react-components';
+import { useTranslation } from 'react-i18next';
 
 import { MutationError } from '@/components/common/form-dialog';
 import { notify } from '@/components/common/sonner';
@@ -16,8 +17,9 @@ export function DeleteTenantDialog({
   tenant: Tenant;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   const remove = useDeleteTenant();
-  const title = 'Delete tenant';
+  const title = t('tenants.delete.title');
 
   return (
     <Modal
@@ -39,7 +41,7 @@ export function DeleteTenantDialog({
             isDisabled={remove.isPending}
             onPress={onClose}
           >
-            Cancel
+            {t('common.cancel')}
           </Button>,
           <Button
             key="confirm"
@@ -50,7 +52,9 @@ export function DeleteTenantDialog({
               remove.mutate(tenant.id, {
                 onSuccess: () => {
                   onClose();
-                  notify.success(`Tenant ${tenant.name ?? ''} deleted.`);
+                  notify.success(
+                    t('tenants.deleted', { name: tenant.name ?? '' }),
+                  );
                 },
               });
             }}
@@ -60,8 +64,9 @@ export function DeleteTenantDialog({
         ]}
       >
         <p>
-          {tenant.name ?? 'This tenant'} will be deactivated and its members
-          will lose access. A platform admin can restore it later.
+          {t('tenants.delete.body', {
+            name: tenant.name ?? t('tenants.delete.thisTenant'),
+          })}
         </p>
         <MutationError error={remove.error} />
       </AlertDialog>

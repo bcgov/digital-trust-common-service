@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router';
 
 import {
@@ -33,6 +34,7 @@ type DialogState =
   | null;
 
 export function TenantUsersPage() {
+  const { t } = useTranslation();
   const { tenantId } = useParams();
   const navigate = useNavigate();
   const { user, logout } = useAuth();
@@ -69,9 +71,9 @@ export function TenantUsersPage() {
   if (!canManage || (error instanceof ApiError && error.status === 403)) {
     return (
       <AccessDenied
-        title="Users"
+        title={t('users.title')}
         headingLevel={2}
-        description="You need the owner or admin role in this tenant to manage its users."
+        description={t('users.forbidden')}
       />
     );
   }
@@ -80,11 +82,12 @@ export function TenantUsersPage() {
     return (
       <div role="alert" className="flex items-center gap-3">
         <p className="text-sm text-destructive">
-          Failed to load users
-          {error instanceof ApiError ? `: ${error.message}` : '.'}
+          {error instanceof ApiError
+            ? t('users.loadFailedWithReason', { reason: error.message })
+            : t('users.loadFailed')}
         </p>
         <Button type="button" variant="outline" onClick={() => void refetch()}>
-          Retry
+          {t('common.retry')}
         </Button>
       </div>
     );
@@ -123,18 +126,17 @@ export function TenantUsersPage() {
     const changedUser = dialog.user;
     setDialog(null);
     if (changedUser.id !== user?.sub || !tenantId) {
-      setAnnouncement('Role updated.');
+      setAnnouncement(t('users.notice.roleUpdated'));
       return;
     }
     void switchTo(tenantId, {
       destinationPath: `/tenants/${tenantId}`,
-      notice: 'Your role was updated.',
+      notice: t('users.notice.ownRoleUpdated'),
     }).catch(() => {
       void navigate(`/tenants/${tenantId}`, {
         replace: true,
         state: {
-          tenantUserNotice:
-            'Your role was updated, but your permissions could not be refreshed. Reload the page to refresh them.',
+          tenantUserNotice: t('users.notice.ownRoleRefreshFailed'),
         },
       });
     });
@@ -146,8 +148,8 @@ export function TenantUsersPage() {
     if (removedUser.id !== user?.sub || !tenantId) {
       setAnnouncement(
         removedUser.status === 'invited'
-          ? 'Invitation cancelled.'
-          : 'Member removed.',
+          ? t('users.notice.inviteCancelled')
+          : t('users.notice.memberRemoved'),
       );
       return;
     }
@@ -164,14 +166,13 @@ export function TenantUsersPage() {
         try {
           await switchTo(nextTenant.id, {
             destinationPath: `/tenants/${nextTenant.id}`,
-            notice: 'You were removed from the previous tenant.',
+            notice: t('users.notice.selfRemoved'),
           });
         } catch {
           void navigate('/dashboard', {
             replace: true,
             state: {
-              tenantUserNotice:
-                'You were removed from this tenant, but we could not switch to another tenant. Use the tenant selector to retry.',
+              tenantUserNotice: t('users.notice.selfRemovedSwitchFailed'),
             },
           });
         }
@@ -180,8 +181,7 @@ export function TenantUsersPage() {
         void navigate('/dashboard', {
           replace: true,
           state: {
-            tenantUserNotice:
-              'You were removed from this tenant, but your other memberships could not be loaded. Retry from the tenant selector.',
+            tenantUserNotice: t('users.notice.selfRemovedLoadFailed'),
           },
         });
       });
@@ -201,9 +201,7 @@ export function TenantUsersPage() {
       <TenantUsersTable
         users={tenantUsers}
         isLoading={isLoading}
-        emptyMessage={
-          searchTerm ? 'No users match your search.' : 'No users yet.'
-        }
+        emptyMessage={searchTerm ? t('users.noMatch') : t('users.noUsers')}
         tenantId={tenantId ?? ''}
         currentUserId={user?.sub}
         canManageOwners={canManageOwners}
@@ -227,7 +225,7 @@ export function TenantUsersPage() {
           onClose={closeDialog}
           onSuccess={() => {
             closeDialog();
-            setAnnouncement('Invitation created.');
+            setAnnouncement(t('users.notice.inviteCreated'));
           }}
         />
       )}

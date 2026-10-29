@@ -121,7 +121,7 @@ export const mockTenantUsers: TenantUser[] = [
 ];
 
 // The platform defaults, with no tenant overrides.
-const mockTenantRoles = TENANT_ROLES.map(({ id }): TenantRoleMapping => ({
+const mockTenantRoles = TENANT_ROLES.map((id): TenantRoleMapping => ({
   name: id,
   scopes: [...DEFAULT_ROLE_SCOPES[id]],
   source: 'default',

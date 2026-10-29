@@ -6,6 +6,7 @@ import {
   TextField,
 } from '@bcgov/design-system-react-components';
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import {
   FormActions,
@@ -48,14 +49,13 @@ export function TenantUserRoleSelect({
   ariaLabel?: string;
   isDisabled?: boolean;
 }) {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const roles = useTenantRoles(tenantId);
   const options = effectiveRoleOptions(roles.data);
   // Loading and failed alike show the defaults; a failed refetch keeps the
   // last good mapping, so it needs no caveat.
-  const caveat = roles.data
-    ? undefined
-    : 'Showing the platform defaults; this tenant may have customised its roles.';
+  const caveat = roles.data ? undefined : t('users.roleCaveat');
   // Only an owner hands out the owner role (and only an owner reaches an
   // owner's row). The API is expected to hold the same line; this keeps the
   // option out of reach in the meantime.
@@ -66,7 +66,7 @@ export function TenantUserRoleSelect({
 
   return (
     <Select
-      label={hideLabel ? undefined : 'Role'}
+      label={hideLabel ? undefined : t('users.role')}
       aria-label={ariaLabel}
       description={caveat}
       items={items}
@@ -84,19 +84,20 @@ export function InviteTenantUserDialog({
   onClose,
   onSuccess,
 }: DialogProps) {
+  const { t } = useTranslation();
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<TenantRole>('member');
   const invite = useInviteTenantUser(tenantId);
 
   return (
     <FormDialog
-      label="Invite user"
-      intro="Enter an email address and role to invite a user to this tenant."
+      label={t('users.invite.title')}
+      intro={t('users.invite.intro')}
       isLoading={invite.isPending}
-      loadingMessage="Inviting user. Please wait..."
+      loadingMessage={t('users.invite.loading')}
       error={invite.error}
-      errorTitle="Could not invite user"
-      conflict="Someone with this email already belongs to this tenant or has a pending invitation."
+      errorTitle={t('users.invite.errorTitle')}
+      conflict={t('users.invite.conflict')}
       onClose={onClose}
       onSubmit={(event) => {
         event.preventDefault();
@@ -107,14 +108,14 @@ export function InviteTenantUserDialog({
       }}
       actions={
         <FormActions
-          submitLabel="Invite"
+          submitLabel={t('users.invite.submit')}
           isPending={invite.isPending}
           onClose={onClose}
         />
       }
     >
       <TextField
-        label="Email"
+        label={t('users.email')}
         type="email"
         value={email}
         onChange={setEmail}
@@ -125,10 +126,7 @@ export function InviteTenantUserDialog({
         value={role}
         onChange={setRole}
       />
-      <p className="text-sm text-muted-foreground">
-        No invitation email is sent yet. Ask them to sign in with this email
-        address to accept.
-      </p>
+      <p className="text-sm text-muted-foreground">{t('users.invite.note')}</p>
     </FormDialog>
   );
 }
@@ -140,14 +138,15 @@ export function ChangeTenantUserRoleDialog({
   onClose,
   onSuccess,
 }: DialogProps & { user: TenantUser; nextRole: TenantRole }) {
+  const { t } = useTranslation();
   const current = user.role ?? 'member';
   const update = useUpdateTenantUserRole(tenantId);
 
   return (
     <FormDialog
-      label="Confirm role change"
+      label={t('users.changeRole.title')}
       isLoading={update.isPending}
-      loadingMessage="Saving role. Please wait..."
+      loadingMessage={t('users.changeRole.loading')}
       error={update.error}
       onClose={onClose}
       onSubmit={(event) => {
@@ -160,7 +159,7 @@ export function ChangeTenantUserRoleDialog({
       }}
       actions={
         <FormActions
-          submitLabel="Confirm"
+          submitLabel={t('common.confirm')}
           isPending={update.isPending}
           isDisabled={nextRole === current}
           onClose={onClose}
@@ -168,8 +167,11 @@ export function ChangeTenantUserRoleDialog({
       }
     >
       <p className="text-sm text-muted-foreground">
-        Change the role of {user.email} from {roleLabel(current)} to{' '}
-        {roleLabel(nextRole)}?
+        {t('users.changeRole.intro', {
+          email: user.email,
+          from: roleLabel(current),
+          to: roleLabel(nextRole),
+        })}
       </p>
     </FormDialog>
   );
@@ -181,11 +183,14 @@ export function RemoveTenantUserDialog({
   onClose,
   onSuccess,
 }: DialogProps & { user: TenantUser }) {
+  const { t } = useTranslation();
   const remove = useRemoveTenantUser(tenantId);
   const invited = user.status === 'invited';
-  const title = invited ? 'Cancel invitation' : 'Remove member';
-  const who = user.display_name ?? user.email ?? 'This user';
-  const email = user.email ?? 'this address';
+  const title = invited
+    ? t('users.remove.cancelInvite')
+    : t('users.remove.title');
+  const who = user.display_name ?? user.email ?? t('users.remove.thisUser');
+  const email = user.email ?? t('users.remove.thisAddress');
 
   return (
     <Modal
@@ -201,7 +206,7 @@ export function RemoveTenantUserDialog({
         title={title}
         buttons={[
           <Button key="keep" variant="secondary" onPress={onClose}>
-            {invited ? 'Keep invitation' : 'Cancel'}
+            {invited ? t('users.remove.keepInvite') : t('common.cancel')}
           </Button>,
           <Button
             key="confirm"
@@ -219,8 +224,8 @@ export function RemoveTenantUserDialog({
       >
         <p>
           {invited
-            ? `The invitation for ${email} will be withdrawn. You can invite them again later.`
-            : `${who} will lose access to this tenant. You can invite them again later.`}
+            ? t('users.remove.inviteBody', { email })
+            : t('users.remove.memberBody', { who })}
         </p>
         <MutationError error={remove.error} />
       </AlertDialog>

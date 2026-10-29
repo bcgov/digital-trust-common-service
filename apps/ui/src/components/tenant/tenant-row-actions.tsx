@@ -5,6 +5,7 @@ import {
   MenuTrigger,
   Separator,
 } from '@bcgov/design-system-react-components';
+import { useTranslation } from 'react-i18next';
 
 import {
   CircleInfoIcon,
@@ -25,12 +26,16 @@ export function TenantRowActions({
   onEdit?: () => void;
   onDelete?: () => void;
 }) {
+  const { t } = useTranslation();
+
   return (
     <MenuTrigger>
       <Button
         variant="tertiary"
         isIconButton
-        aria-label={`Actions for ${tenant.name ?? 'tenant'}`}
+        aria-label={t('tenants.actionsFor', {
+          name: tenant.name ?? t('tenants.thisTenant'),
+        })}
       >
         <EllipsisVerticalIcon className="size-5" />
       </Button>
@@ -43,21 +48,23 @@ export function TenantRowActions({
           else if (key === 'delete') onDelete?.();
         }}
       >
-        <MenuItem id="view" textValue="View details">
+        <MenuItem id="view" textValue={t('common.viewDetails')}>
           <CircleInfoIcon className="size-5 shrink-0" />
-          View details
+          {t('common.viewDetails')}
         </MenuItem>
         {onEdit && (
-          <MenuItem id="edit" textValue="Edit">
+          <MenuItem id="edit" textValue={t('common.edit')}>
             <EditIcon className="size-5 shrink-0" />
-            Edit
+            {t('common.edit')}
           </MenuItem>
         )}
         {onDelete && <Separator size="small" />}
         {onDelete && (
-          <MenuItem id="delete" textValue="Delete">
+          <MenuItem id="delete" textValue={t('common.delete')}>
             <TrashIcon className="size-5 shrink-0 text-(--icons-color-danger)" />
-            <span className="text-(--typography-color-danger)">Delete</span>
+            <span className="text-(--typography-color-danger)">
+              {t('common.delete')}
+            </span>
           </MenuItem>
         )}
       </Menu>

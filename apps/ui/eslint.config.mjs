@@ -2,6 +2,7 @@
 import js from '@eslint/js';
 import prettier from 'eslint-config-prettier';
 import checkFile from 'eslint-plugin-check-file';
+import i18next from 'eslint-plugin-i18next';
 import jsxA11y from 'eslint-plugin-jsx-a11y';
 import reactHooks from 'eslint-plugin-react-hooks';
 import reactRefresh from 'eslint-plugin-react-refresh';
@@ -61,6 +62,12 @@ export default tseslint.config(
     rules: {
       'react-refresh/only-export-components': 'off',
     },
+  },
+  {
+    // UI text comes from src/locales; the demo pages are not shipped copy.
+    ...i18next.configs['flat/recommended'],
+    files: ['src/**/*.tsx'],
+    ignores: ['**/*.test.tsx', 'src/test/**', 'src/demo/**'],
   },
   {
     files: ['**/*.test.{ts,tsx}', 'src/test/**'],

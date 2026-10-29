@@ -46,7 +46,7 @@ describe('TenantSwitcher', () => {
       name: /acme ministry/i,
     });
     expect(trigger).toBeEnabled();
-    expect(within(trigger).getByText('owner')).toBeInTheDocument();
+    expect(within(trigger).getByText('Owner')).toBeInTheDocument();
 
     await user.click(trigger);
     expect(
@@ -199,6 +199,6 @@ describe('TenantSwitcher', () => {
       name: new RegExp(suspended.name, 'i'),
     });
     expect(item).toHaveAttribute('aria-disabled', 'true');
-    expect(within(item).getByText('suspended')).toBeInTheDocument();
+    expect(within(item).getByText('Suspended')).toBeInTheDocument();
   });
 });

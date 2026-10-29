@@ -1,0 +1,341 @@
+{
+  "common": {
+    "actions": "Actions",
+    "backToDashboard": "Back to dashboard",
+    "cancel": "Cancel",
+    "close": "Close",
+    "confirm": "Confirm",
+    "created": "Created",
+    "default": "Default",
+    "delete": "Delete",
+    "dismissNotification": "Dismiss notification",
+    "edit": "Edit",
+    "genericError": "Something went wrong. Try again.",
+    "notAvailable": "Not available",
+    "optional": "(optional)",
+    "reload": "Reload",
+    "retry": "Retry",
+    "saving": "Saving. Please wait...",
+    "status": "Status",
+    "type": "Type",
+    "updated": "Updated",
+    "viewDetails": "View details"
+  },
+  "header": {
+    "govBc": "Government of British Columbia",
+    "skipToMain": "Skip to main content"
+  },
+  "dashboard": {
+    "chooseBody": "Your current tenant is unavailable. Choose another active tenant from the tenant selector.",
+    "chooseTitle": "Choose an active tenant",
+    "loadFailed": "Could not load your tenant memberships.",
+    "loading": "Loading tenant memberships...",
+    "noMembershipBody": "You do not currently belong to an active tenant. Ask a tenant owner or administrator to invite you.",
+    "noMembershipTitle": "No active tenant membership"
+  },
+  "fatal": {
+    "config": "We could not load the application configuration (config.json). Reloading may help.",
+    "mockApi": "The mock API could not start (service workers need https or localhost)."
+  },
+  "auth": {
+    "backToSignIn": "Back to sign in",
+    "callbackFailed": "We could not complete your sign-in. Please try again.",
+    "checkingSession": "Checking your session…",
+    "chunkFailed": "We could not load the sign-in components. Reloading usually fixes this.",
+    "intro": "Sign in to manage tenants and credential operations.",
+    "mockMode": "Mock authentication mode — set VITE_AUTH_MODE=oidc to sign in against the real provider.",
+    "redirecting": "Redirecting…",
+    "refused": "Sign-in was refused ({{code}}).",
+    "signIn": "Sign in",
+    "signInFailed": "Sign-in failed. Please try again.",
+    "signingIn": "Signing you in…"
+  },
+  "nav": {
+    "account": "Account",
+    "connectors": "Connectors",
+    "dashboard": "Dashboard",
+    "manageUsers": "Manage Users",
+    "primary": "Primary",
+    "signOut": "Sign out",
+    "unknownTenant": "Unknown tenant"
+  },
+  "notFound": {
+    "message": "That page does not exist."
+  },
+  "routeError": {
+    "title": "Something went wrong",
+    "unexpected": "An unexpected error occurred while rendering."
+  },
+  "placeholder": {
+    "auditLogs": "Audit logs",
+    "comingSoon": "Coming soon.",
+    "comingSoonTracked": "Coming soon — tracked in #{{issue}}.",
+    "connections": "Connections",
+    "credentials": "Credential operations",
+    "logs": "Logs",
+    "tenantSettings": "Tenant settings"
+  },
+  "switcher": {
+    "errorGeneric": "Couldn't switch tenant. Please try again.",
+    "errorNotActive": "Couldn't switch tenant: it isn't active.",
+    "errorNotMember": "Couldn't switch tenant: you're not a member.",
+    "errorWithReason": "Couldn't switch tenant: {{reason}}",
+    "loadFailed": "Couldn't load your tenants.",
+    "loading": "Loading tenants…",
+    "title": "Switch tenant"
+  },
+  "tenant": {
+    "loadFailed": "Failed to load tenant.",
+    "loadFailedWithReason": "Failed to load tenant: {{reason}}",
+    "title": "Tenant"
+  },
+  "tenantTabs": {
+    "auditLogs": "Audit logs",
+    "connections": "Connections",
+    "credentials": "Credentials",
+    "label": "Tenant sections",
+    "logs": "Logs",
+    "overview": "Overview",
+    "settings": "Settings",
+    "users": "Users"
+  },
+  "overview": {
+    "activeConnections": "Active connections",
+    "comingSoon": "Coming soon.",
+    "definitions": "Credential definitions",
+    "details": "Details",
+    "issueCredential": "Issue credential",
+    "loadFailed": "Failed to load.",
+    "loadFailedWithReason": "Failed to load: {{reason}}",
+    "manageUsers": "Manage users",
+    "notForRole": "Not available for your role.",
+    "quickActions": "Quick actions",
+    "recentOperations": "Recent operations",
+    "verifyPresentation": "Verify presentation"
+  },
+  "tenants": {
+    "actionsFor": "Actions for {{name}}",
+    "created": "Tenant {{name}} created.",
+    "deleted": "Tenant {{name}} deleted.",
+    "emptyBody": "Create a tenant so an organization can configure and issue digital credentials.",
+    "emptyTitle": "No tenants yet",
+    "loadFailed": "Failed to load tenants.",
+    "loadFailedWithReason": "Failed to load tenants: {{reason}}",
+    "noMatch": "No tenants match “{{query}}”.",
+    "search": "Search tenants",
+    "searchPlaceholder": "Search",
+    "subtitle": "Create and manage digital trust tenants.",
+    "thisTenant": "tenant",
+    "title": "Tenants",
+    "updated": "Tenant {{name}} updated.",
+    "create": {
+      "conflict": "A tenant with this name or slug already exists.",
+      "errorTitle": "Could not create tenant",
+      "loading": "Creating tenant. Please wait...",
+      "submit": "Create tenant",
+      "title": "Create a tenant"
+    },
+    "delete": {
+      "body": "{{name}} will be deactivated and its members will lose access. A platform admin can restore it later.",
+      "thisTenant": "This tenant",
+      "title": "Delete tenant"
+    },
+    "edit": {
+      "conflict": "A tenant with this name already exists.",
+      "errorTitle": "Could not update tenant",
+      "loading": "Saving tenant. Please wait...",
+      "submit": "Save changes",
+      "title": "Edit tenant"
+    },
+    "fields": {
+      "administrator": "Tenant administrator",
+      "administratorPlaceholder": "Enter an email address",
+      "description": "Description",
+      "name": "Name",
+      "slug": "Slug",
+      "slugHint": "The URL-friendly version of your tenant name. Cannot be edited once this tenant has been created."
+    },
+    "status": {
+      "active": "Active",
+      "deactivated": "Deactivated",
+      "pending_approval": "Pending approval",
+      "rejected": "Rejected",
+      "suspended": "Suspended"
+    }
+  },
+  "users": {
+    "addUser": "Add user",
+    "added": "Added",
+    "email": "Email",
+    "forbidden": "You need the owner or admin role in this tenant to manage its users.",
+    "loadFailed": "Failed to load users.",
+    "loadFailedWithReason": "Failed to load users: {{reason}}",
+    "manageTitle": "Manage users",
+    "name": "Name",
+    "noMatch": "No users match your search.",
+    "noUsers": "No users yet.",
+    "removeUser": "Remove {{email}}",
+    "role": "Role",
+    "roleCaveat": "Showing the platform defaults; this tenant may have customised its roles.",
+    "roleFor": "Role for {{email}}",
+    "search": "Search tenant users",
+    "subtitle": "Manage tenant users, roles and permissions",
+    "tableLabel": "Tenant users",
+    "title": "Users",
+    "unknownUser": "user",
+    "you": "You",
+    "changeRole": {
+      "intro": "Change the role of {{email}} from {{from}} to {{to}}?",
+      "loading": "Saving role. Please wait...",
+      "title": "Confirm role change"
+    },
+    "invite": {
+      "conflict": "Someone with this email already belongs to this tenant or has a pending invitation.",
+      "errorTitle": "Could not invite user",
+      "intro": "Enter an email address and role to invite a user to this tenant.",
+      "loading": "Inviting user. Please wait...",
+      "note": "No invitation email is sent yet. Ask them to sign in with this email address to accept.",
+      "submit": "Invite",
+      "title": "Invite user"
+    },
+    "notice": {
+      "inviteCancelled": "Invitation cancelled.",
+      "inviteCreated": "Invitation created.",
+      "memberRemoved": "Member removed.",
+      "ownRoleRefreshFailed": "Your role was updated, but your permissions could not be refreshed. Reload the page to refresh them.",
+      "ownRoleUpdated": "Your role was updated.",
+      "roleUpdated": "Role updated.",
+      "selfRemoved": "You were removed from the previous tenant.",
+      "selfRemovedLoadFailed": "You were removed from this tenant, but your other memberships could not be loaded. Retry from the tenant selector.",
+      "selfRemovedSwitchFailed": "You were removed from this tenant, but we could not switch to another tenant. Use the tenant selector to retry."
+    },
+    "pagination": {
+      "label": "Tenant users pagination",
+      "next": "Next",
+      "page": "Page {{page}}",
+      "previous": "Previous"
+    },
+    "remove": {
+      "cancelInvite": "Cancel invitation",
+      "inviteBody": "The invitation for {{email}} will be withdrawn. You can invite them again later.",
+      "keepInvite": "Keep invitation",
+      "memberBody": "{{who}} will lose access to this tenant. You can invite them again later.",
+      "thisAddress": "this address",
+      "thisUser": "This user",
+      "title": "Remove member"
+    },
+    "selfLocked": {
+      "assignAdmin": "Assign another person the administrator role.",
+      "body": "You are either the only administrator or the last owner for this tenant. Both safeguards must be satisfied before changing your own access.",
+      "changeOwn": "Change your own role.",
+      "help": "Why can't I change my own role?",
+      "stepsTitle": "To change your role:",
+      "title": "You can't change your role"
+    },
+    "status": {
+      "active": "Active",
+      "disabled": "Disabled",
+      "invited": "Pending"
+    }
+  },
+  "roles": {
+    "customised": "Customised for this tenant: {{scopes}}.",
+    "platformDefault": "Platform default: {{scopes}}.",
+    "admin": {
+      "description": "Manages users, connections and credentials.",
+      "label": "Admin"
+    },
+    "member": {
+      "description": "Issues and verifies credentials.",
+      "label": "Member"
+    },
+    "owner": {
+      "description": "Full control, including roles and tenant settings.",
+      "label": "Owner"
+    },
+    "readonly": {
+      "description": "Views only; cannot make changes.",
+      "label": "Read-only"
+    },
+    "scopes": {
+      "fullControl": "full control",
+      "holdCredentials": "hold credentials",
+      "issueCredentials": "issue credentials",
+      "manageClients": "manage API clients",
+      "manageConnections": "manage connections",
+      "manageProfiles": "manage profiles",
+      "manageUsers": "manage users",
+      "readAuditLog": "read the audit log",
+      "readLogs": "read logs",
+      "revokeCredentials": "revoke credentials",
+      "verifyCredentials": "verify credentials",
+      "viewsOnly": "views only"
+    }
+  },
+  "connectors": {
+    "actionsFor": "Actions for {{type}} connector at {{endpoint}}",
+    "activeTenantFailed": "Could not load the active tenant.",
+    "add": "Add Connector",
+    "connected": "Connected",
+    "emptyBody": "Connectors will appear here once they have been created.",
+    "emptyTitle": "No connectors yet",
+    "endpoint": "Endpoint",
+    "forbidden": "You need the {{scope}} scope to manage connectors in this tenant.",
+    "inactive": "Inactive",
+    "loadFailed": "Could not load connectors.",
+    "loading": "Loading connectors...",
+    "loadingActiveTenant": "Loading active tenant...",
+    "loadingTenantDetails": "Loading tenant details...",
+    "noActiveTenant": "No active tenant is available.",
+    "retryTenantDetails": "Retry tenant details",
+    "subtitle": "Connect your tenant to external providers",
+    "tenantDetailsFailed": "Could not load tenant details.",
+    "title": "Connectors",
+    "delete": {
+      "confirm": "Delete the {{type}} connector at {{endpoint}}? This action cannot be undone.",
+      "deleting": "Deleting...",
+      "failed": "Could not delete the connector. Try again.",
+      "title": "Delete connector"
+    },
+    "details": {
+      "loadFailed": "Could not load connector details.",
+      "loading": "Loading connector details...",
+      "title": "Connector details"
+    },
+    "edit": {
+      "connection": "Connection",
+      "credentials": "Credentials",
+      "description": "Update the endpoint or rotate the API key or webhook secret.",
+      "keepKey": "Leave blank to keep the current key",
+      "keepSecret": "Leave blank to keep the current secret",
+      "newApiKey": "New API key",
+      "newWebhookSecret": "New webhook secret",
+      "retryTest": "Retry test",
+      "save": "Save changes",
+      "savedTestFailed": "Changes were saved, but the connector test failed: {{message}}",
+      "savedTestIncomplete": "Changes were saved, but the connector test could not be completed: {{message}}",
+      "saving": "Saving...",
+      "savingChanges": "Saving changes...",
+      "testFailed": "Connector test failed: {{message}}",
+      "testing": "Testing...",
+      "title": "Edit Connector",
+      "tractionTenantId": "Traction tenant ID",
+      "tryAgain": "Try again.",
+      "unhealthy": "The connector reported an unhealthy status."
+    },
+    "form": {
+      "apiKey": "API key",
+      "create": "Create",
+      "createFailed": "Could not create the connector. Try again.",
+      "creating": "Creating...",
+      "description": "This information will be used to configure your connector. The options are what is required to connect to an external digital credential agent.",
+      "endpointUrl": "Endpoint URL",
+      "testNotice": "We test the connection before saving",
+      "testing": "Testing connection...",
+      "traction": "Traction",
+      "tractionTenantId": "Traction tenant ID (optional)",
+      "type": "Connector type",
+      "webhookSecret": "Webhook secret (optional)"
+    }
+  }
+}

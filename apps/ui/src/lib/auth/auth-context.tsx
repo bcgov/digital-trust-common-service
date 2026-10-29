@@ -5,6 +5,7 @@ import {
   useSyncExternalStore,
   type ReactNode,
 } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import {
   FullPageError,
@@ -22,6 +23,7 @@ import type { AuthClient } from './types';
 // oidc-auth (and with it oidc-client-ts) is imported on demand so mock mode —
 // the default — never ships the OIDC library in the entry chunk.
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const { t } = useTranslation();
   const [client, setClient] = useState<AuthClient | null>(() =>
     env.VITE_AUTH_MODE === 'oidc' ? null : createMockAuthClient(),
   );
@@ -47,16 +49,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   if (chunkFailed) {
     return (
-      <FullPageError message="We could not load the sign-in components. Reloading usually fixes this.">
+      <FullPageError message={t('auth.chunkFailed')}>
         <Button variant="outline" onClick={() => window.location.reload()}>
-          Reload
+          {t('common.reload')}
         </Button>
       </FullPageError>
     );
   }
 
   // Only reachable in oidc mode, for the one tick it takes to load the chunk.
-  if (!client) return <FullPageStatus message="Checking your session…" />;
+  if (!client) return <FullPageStatus message={t('auth.checkingSession')} />;
 
   return <AuthProviderInner client={client}>{children}</AuthProviderInner>;
 }
