@@ -99,6 +99,28 @@ describe('apiClient error normalization', () => {
     expect(apiError.requestId).toBe('33333333-3333-4333-8333-333333333333');
   });
 
+  it('replaces the server message for codes in the catalog', async () => {
+    server.use(
+      http.get(`${API_BASE_PATH}/broken`, () =>
+        HttpResponse.json(
+          {
+            error: {
+              code: 'INSUFFICIENT_SCOPE',
+              message: 'Token missing required scope: users:manage',
+            },
+          },
+          { status: 403 },
+        ),
+      ),
+    );
+
+    const error = await apiClient.get('/broken').catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(ApiError);
+    const apiError = error as ApiError;
+    expect(apiError.code).toBe('INSUFFICIENT_SCOPE');
+    expect(apiError.message).toBe('You do not have permission to do that.');
+  });
+
   it('parses the current Nest default error shape', async () => {
     server.use(
       http.get(`${API_BASE_PATH}/broken`, () =>

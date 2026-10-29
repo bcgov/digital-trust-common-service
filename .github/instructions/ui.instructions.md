@@ -35,6 +35,19 @@ MSW toolchain rather than introducing parallel patterns.
 Regenerate API types with `npm run types:spec` or `npm run types:live` as appropriate. Do not hand-edit
 `src/lib/api/types.gen.ts`.
 
+## Copy and Translation
+
+- Put user-facing text in `src/locales/en.json` and render it with `t()` from `useTranslation`, or
+  `i18n.t` outside React. Use one catalog and do not wrap `t` in helpers.
+- Keys are typed against the catalog; a missing key fails `tsc`. ESLint's `i18next/no-literal-string`
+  rejects raw JSX text and user-facing attributes, but not strings passed to `notify()`, router state
+  or announcements, so check those by hand.
+- Format dates with `Intl.DateTimeFormat(i18n.language, …)`, not `toLocale*String()`.
+- Zod messages use `error: () => i18n.t(…)` so they follow the current language.
+- API errors are translated by code under `errors` in the catalog, falling back to the server's
+  message. Only add codes whose server text is generic or technical.
+- Tests run in `en` (`src/test/setup.ts`) and assert the English copy.
+
 ## Components and Routes
 
 Follow the existing shadcn/ui component conventions and route structure. Keep providers in
