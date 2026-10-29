@@ -1,5 +1,5 @@
 import { Button, TextField } from '@bcgov/design-system-react-components';
-import { useState } from 'react';
+import { useState, type MouseEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useNavigate } from 'react-router';
 
@@ -34,6 +34,16 @@ const HEAD_CELL =
   'h-15 px-(--layout-margin-medium) text-small-body font-normal text-black';
 const BODY_CELL =
   'px-(--layout-margin-medium) py-(--layout-margin-medium) text-body';
+
+function isPlainClick(event: MouseEvent<HTMLElement>): boolean {
+  return (
+    event.button === 0 &&
+    !event.metaKey &&
+    !event.ctrlKey &&
+    !event.shiftKey &&
+    !event.altKey
+  );
+}
 
 export function TenantsPage() {
   const { t } = useTranslation();
@@ -72,7 +82,8 @@ export function TenantsPage() {
     if (!tenant.id) return;
     const path = `/tenants/${tenant.id}`;
     if (switchesInto(tenant)) {
-      void switchTo(tenant.id, { destinationPath: path }).catch(
+      // Push, so Back returns to the list.
+      void switchTo(tenant.id, { destinationPath: path, replace: false }).catch(
         () => undefined,
       );
     } else {
@@ -188,7 +199,8 @@ export function TenantsPage() {
                       to={`/tenants/${tenant.id}`}
                       className="text-foreground underline-offset-4 hover:underline"
                       onClick={(event) => {
-                        if (switchesInto(tenant)) {
+                        // A modified click keeps its browser meaning.
+                        if (isPlainClick(event) && switchesInto(tenant)) {
                           event.preventDefault();
                           openTenant(tenant);
                         }

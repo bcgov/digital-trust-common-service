@@ -61,6 +61,8 @@ interface SwitchVariables {
   pathname: string;
   destinationPath?: string;
   notice?: string;
+  /** Replace the history entry (a header switch) or push one (list to detail). */
+  replace?: boolean;
 }
 
 /**
@@ -84,14 +86,14 @@ export function useSwitchTenant() {
     },
     onSuccess: async (
       _result,
-      { tenantId, from, pathname, destinationPath, notice },
+      { tenantId, from, pathname, destinationPath, notice, replace = true },
     ) => {
       const target =
         destinationPath ??
         (from ? replaceTenantInPath(pathname, from, tenantId) : pathname);
       if (target !== pathname || notice) {
         void navigate(target, {
-          replace: true,
+          replace,
           state: notice ? { tenantUserNotice: notice } : undefined,
         });
       }
@@ -109,7 +111,11 @@ export function useSwitchTenant() {
   return {
     switchTo: (
       tenantId: string,
-      options: { destinationPath?: string; notice?: string } = {},
+      options: {
+        destinationPath?: string;
+        notice?: string;
+        replace?: boolean;
+      } = {},
     ) =>
       mutation.mutateAsync({
         tenantId,

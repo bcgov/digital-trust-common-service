@@ -85,6 +85,21 @@ describe('TenantsPage', () => {
     expect(await screen.findByText('Tenant overview')).toBeInTheDocument();
     expect(router.state.location.pathname).toBe(`/tenants/${agency.id}`);
     expect(client.getState().user?.tenantId).toBe(agency.id);
+    // Pushed, so Back returns to the list.
+    expect(router.state.historyAction).toBe('PUSH');
+  });
+
+  it('leaves a modified click on another membership to the browser', async () => {
+    const user = userEvent.setup();
+    const { client, router } = await renderTenantsPage();
+    const agency = membership(1);
+
+    await user.keyboard('{Control>}');
+    await user.click(await screen.findByRole('link', { name: agency.name }));
+    await user.keyboard('{/Control}');
+
+    expect(router.state.location.pathname).toBe('/tenants');
+    expect(client.getState().user?.tenantId).toBe(membership(0).id);
   });
 
   it('reports a membership that cannot be switched into', async () => {
