@@ -1,3 +1,5 @@
+import { useTranslation } from 'react-i18next';
+
 import { Button } from '@/components/common/button';
 import {
   Drawer,
@@ -21,6 +23,7 @@ export function ConnectorDetailsDialog({
   tenantId: string | undefined;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   const details = useConnector(tenantId, connector.id);
   const item = details.data;
 
@@ -34,26 +37,26 @@ export function ConnectorDetailsDialog({
     >
       <DrawerContent aria-describedby={undefined}>
         <DrawerHeader>
-          <DrawerTitle>Connector details</DrawerTitle>
+          <DrawerTitle>{t('connectors.details.title')}</DrawerTitle>
         </DrawerHeader>
         <DrawerBody className="min-h-0">
           {details.isPending && (
             <p role="status" className="text-sm text-muted-foreground">
-              Loading connector details...
+              {t('connectors.details.loading')}
             </p>
           )}
           {details.isError && (
             <p role="alert" className="text-sm text-destructive">
               {details.error instanceof Error
                 ? details.error.message
-                : 'Could not load connector details.'}
+                : t('connectors.details.loadFailed')}
             </p>
           )}
           {item && <ConnectorDetailsList item={item} />}
         </DrawerBody>
         <DrawerFooter className="shrink-0">
           <Button variant="outline" onClick={onClose}>
-            Close
+            {t('common.close')}
           </Button>
         </DrawerFooter>
       </DrawerContent>

@@ -1,5 +1,6 @@
 import { Share2 } from 'lucide-react';
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { AddConnectorButton } from '@/components/connector/add-connector-button';
 import { ConnectorDetailsDialog } from '@/components/connector/connector-details-dialog';
@@ -22,6 +23,7 @@ import { hasScope, TENANT_ADMIN_SCOPE } from '@/lib/auth/scopes';
 import { useActiveTenant } from '@/lib/tenant/active-tenant';
 
 export function ConnectorsPage() {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const canManage = hasScope(user, TENANT_ADMIN_SCOPE);
   const {
@@ -52,10 +54,9 @@ export function ConnectorsPage() {
     return (
       <Card className="max-w-lg">
         <CardHeader>
-          <CardTitle>Connectors</CardTitle>
+          <CardTitle>{t('connectors.title')}</CardTitle>
           <CardDescription>
-            You need the tenants:admin scope to manage connectors in this
-            tenant.
+            {t('connectors.forbidden', { scope: TENANT_ADMIN_SCOPE })}
           </CardDescription>
         </CardHeader>
       </Card>
@@ -66,9 +67,9 @@ export function ConnectorsPage() {
     <div className="flex flex-1 flex-col gap-4">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex flex-col gap-1">
-          <h1 className="text-xl font-semibold">Connectors</h1>
+          <h1 className="text-xl font-semibold">{t('connectors.title')}</h1>
           <p className="text-sm text-muted-foreground">
-            Connect your tenant to external providers
+            {t('connectors.subtitle')}
           </p>
         </div>
         <div className="ml-auto">
@@ -77,46 +78,46 @@ export function ConnectorsPage() {
       </div>
       {tenantStatus === 'loading' && (
         <p role="status" className="text-sm text-muted-foreground">
-          Loading active tenant...
+          {t('connectors.loadingActiveTenant')}
         </p>
       )}
       {tenantStatus === 'error' && (
         <div role="alert" className="flex items-center gap-3">
           <p className="text-sm text-destructive">
-            Could not load the active tenant.
+            {t('connectors.activeTenantFailed')}
           </p>
           <Button type="button" variant="outline" onClick={refetchTenant}>
-            Retry
+            {t('common.retry')}
           </Button>
         </div>
       )}
       {tenantStatus === 'ready' && !tenant && (
         <p role="status" className="text-sm text-muted-foreground">
-          No active tenant is available.
+          {t('connectors.noActiveTenant')}
         </p>
       )}
       {tenant && connectorQuery.isLoading && (
         <p role="status" className="text-sm text-muted-foreground">
-          Loading connectors...
+          {t('connectors.loading')}
         </p>
       )}
       {tenant && tenantQuery.isLoading && (
         <p role="status" className="text-sm text-muted-foreground">
-          Loading tenant details...
+          {t('connectors.loadingTenantDetails')}
         </p>
       )}
       {tenant && tenantQuery.isError && (
         <div role="alert" className="flex items-center gap-3">
           <p className="text-sm text-destructive">
-            Could not load tenant details.
+            {t('connectors.tenantDetailsFailed')}
           </p>
           <Button
             type="button"
             variant="outline"
-            aria-label="Retry tenant details"
+            aria-label={t('connectors.retryTenantDetails')}
             onClick={() => void tenantQuery.refetch()}
           >
-            Retry
+            {t('common.retry')}
           </Button>
         </div>
       )}
@@ -125,14 +126,14 @@ export function ConnectorsPage() {
           <p className="text-sm text-destructive">
             {connectorQuery.error instanceof Error
               ? connectorQuery.error.message
-              : 'Could not load connectors.'}
+              : t('connectors.loadFailed')}
           </p>
           <Button
             type="button"
             variant="outline"
             onClick={() => void connectorQuery.refetch()}
           >
-            Retry
+            {t('common.retry')}
           </Button>
         </div>
       )}
@@ -156,10 +157,10 @@ export function ConnectorsPage() {
             aria-hidden="true"
           />
           <h2 className="text-center text-xl font-semibold">
-            No connectors yet
+            {t('connectors.emptyTitle')}
           </h2>
           <p className="text-sm text-muted-foreground">
-            Connectors will appear here once they have been created.
+            {t('connectors.emptyBody')}
           </p>
           <AddConnectorButton />
         </div>

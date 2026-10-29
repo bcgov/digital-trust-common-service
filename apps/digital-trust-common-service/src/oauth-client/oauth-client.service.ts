@@ -12,15 +12,21 @@ import {
 import { OidcConfigService } from '@app/oidc/config';
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { argon2i, hash, verify } from 'argon2';
 
+import { isUniqueConstraintViolation } from '../common/postgres-error';
+
 import { CreateOAuthClientDto } from './dto/create-oauth-client.dto';
 import { UpdateOAuthClientDto } from './dto/update-oauth-client.dto';
-import { OAUTH_CLIENT_ID_PREFIX } from './oauth-client.constants';
+import {
+  OAUTH_CLIENT_ID_PREFIX,
+  RESERVED_OAUTH_CLIENT_IDS,
+} from './oauth-client.constants';
 import { OAuthClient } from './oauth-client.entity';
 import { OAuthClientRepository } from './oauth-client.repository';
 
@@ -67,22 +73,34 @@ export class OAuthClientService {
     this.assertAssignableScopes(dto.scopes, caller);
 
     const clientSecret = randomBytes(32).toString('hex');
-    const clientId = this.generateClientId();
+    const clientId = dto.clientId ?? this.generateClientId();
+    if (await this.oauthClientRepository.findByClientId(clientId)) {
+      throw new ConflictException('OAuth client ID is already in use.');
+    }
     const clientSecretHash = await this.hashClientSecret(clientSecret);
 
-    const client = await this.oauthClientRepository.create({
-      tenantId,
-      clientId,
-      clientSecretHash,
-      name: dto.name,
-      scopes: dto.scopes,
-      roles,
-      redirectUris: dto.redirectUris || [],
-      grantTypes,
-      refreshTokenTtlSeconds: dto.refreshTokenTtlSeconds ?? null,
-      // Audit actor comes from the authenticated caller, not the request body.
-      createdBy: caller.tokenType === 'user' ? caller.sub : undefined,
-    } as OAuthClient);
+    let client: OAuthClient;
+    try {
+      client = await this.oauthClientRepository.create({
+        tenantId,
+        clientId,
+        clientSecretHash,
+        name: dto.name,
+        scopes: dto.scopes,
+        roles,
+        redirectUris: dto.redirectUris || [],
+        grantTypes,
+        refreshTokenTtlSeconds: dto.refreshTokenTtlSeconds ?? null,
+        // Audit actor comes from the authenticated caller, not the request body.
+        createdBy: caller.tokenType === 'user' ? caller.sub : undefined,
+      } as OAuthClient);
+    } catch (error) {
+      if (isUniqueConstraintViolation(error, 'uq_oauth_client_client_id')) {
+        throw new ConflictException('OAuth client ID is already in use.');
+      }
+
+      throw error;
+    }
 
     return { client, clientSecret };
   }
@@ -116,11 +134,11 @@ export class OAuthClientService {
     const client = await this.requireTenantClient(tenantId, clientId, {
       active: true,
     });
+    this.assertNotReserved(client);
 
     const nextRoles = dto.roles !== undefined ? dto.roles : client.roles;
     const nextGrantTypes =
       dto.grantTypes !== undefined ? dto.grantTypes : client.grantTypes;
-
     // Pairing is always checked on the resulting state so grantTypes cannot
     // drift onto a client that already has roles. Caller-privilege checks
     // (who may assign roles / scopes) apply only to fields present on the
@@ -165,6 +183,7 @@ export class OAuthClientService {
 
   public async revokeClient(tenantId: string, clientId: string): Promise<void> {
     const client = await this.requireTenantClient(tenantId, clientId);
+    this.assertNotReserved(client);
 
     if (client.revokedAt) {
       return;
@@ -180,6 +199,12 @@ export class OAuthClientService {
     const client = await this.requireTenantClient(tenantId, clientId, {
       active: true,
     });
+    this.assertNotReserved(client);
+    if (client.isPublic) {
+      throw new BadRequestException(
+        'Public clients do not have a client secret.',
+      );
+    }
     const clientSecret = randomBytes(32).toString('hex');
 
     client.clientSecretHash = await this.hashClientSecret(clientSecret);
@@ -187,6 +212,17 @@ export class OAuthClientService {
     const updated = await this.oauthClientRepository.update(client);
 
     return { client: updated, clientSecret };
+  }
+
+  public async reactivateClient(
+    tenantId: string,
+    clientId: string,
+  ): Promise<OAuthClient> {
+    const client = await this.requireTenantClient(tenantId, clientId);
+    this.assertNotReserved(client);
+    client.revokedAt = null;
+    client.revokedReason = null;
+    return this.oauthClientRepository.update(client);
   }
 
   public async verifyClientSecret(
@@ -231,6 +267,14 @@ export class OAuthClientService {
     }
 
     return auth;
+  }
+
+  private assertNotReserved(client: OAuthClient): void {
+    if (RESERVED_OAUTH_CLIENT_IDS.has(client.clientId)) {
+      throw new ForbiddenException(
+        'System OAuth clients cannot be managed through tenant client APIs.',
+      );
+    }
   }
 
   private async requireTenantClient(

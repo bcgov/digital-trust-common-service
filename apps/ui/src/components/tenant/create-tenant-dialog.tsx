@@ -1,5 +1,6 @@
 import { TextArea, TextField } from '@bcgov/design-system-react-components';
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { FormActions, FormDialog } from '@/components/common/form-dialog';
 import { notify } from '@/components/common/sonner';
@@ -14,6 +15,7 @@ const wait = (ms: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 export function CreateTenantDialog({ onClose }: { onClose: () => void }) {
+  const { t } = useTranslation();
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [ownerEmail, setOwnerEmail] = useState('');
@@ -23,12 +25,12 @@ export function CreateTenantDialog({ onClose }: { onClose: () => void }) {
 
   return (
     <FormDialog
-      label="Create a tenant"
+      label={t('tenants.create.title')}
       isLoading={isSubmitting}
-      loadingMessage="Creating tenant. Please wait..."
+      loadingMessage={t('tenants.create.loading')}
       error={isSubmitting ? null : create.error}
-      errorTitle="Could not create tenant"
-      conflict="A tenant with this name or slug already exists."
+      errorTitle={t('tenants.create.errorTitle')}
+      conflict={t('tenants.create.conflict')}
       onClose={onClose}
       onSubmit={(event) => {
         event.preventDefault();
@@ -46,36 +48,41 @@ export function CreateTenantDialog({ onClose }: { onClose: () => void }) {
           setSubmitting(false);
           if (result.status === 'fulfilled') {
             onClose();
-            notify.success(`Tenant ${name.trim()} created.`);
+            notify.success(t('tenants.created', { name: name.trim() }));
           }
         });
       }}
       actions={
         <FormActions
-          submitLabel="Create tenant"
+          submitLabel={t('tenants.create.submit')}
           isPending={isSubmitting}
           isDisabled={!slug}
           onClose={onClose}
         />
       }
     >
-      <TextField label="Name" value={name} onChange={setName} isRequired />
       <TextField
-        label="Slug"
-        description="The URL-friendly version of your tenant name. Cannot be edited once this tenant has been created."
+        label={t('tenants.fields.name')}
+        value={name}
+        onChange={setName}
+        isRequired
+      />
+      <TextField
+        label={t('tenants.fields.slug')}
+        description={t('tenants.fields.slugHint')}
         value={slug}
         isReadOnly
         isDisabled
       />
       <TextArea
-        label="Description"
+        label={t('tenants.fields.description')}
         value={description}
         onChange={setDescription}
       />
       <TextField
-        label="Tenant administrator"
+        label={t('tenants.fields.administrator')}
         type="email"
-        {...{ placeholder: 'Enter an email address' }}
+        {...{ placeholder: t('tenants.fields.administratorPlaceholder') }}
         value={ownerEmail}
         onChange={setOwnerEmail}
         isRequired

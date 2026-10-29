@@ -1,5 +1,7 @@
 import axios from 'axios';
 
+import i18n from '@/lib/i18n';
+
 import type { components } from './types.gen';
 
 // Derived from the generated spec types so envelope changes surface as
@@ -15,6 +17,10 @@ export type ApiErrorDetail = NonNullable<
  * ErrorResponse), but a raw Express/body-parser failure ahead of Nest's
  * filter chain can still surface the framework default
  * ({ statusCode, message, error }) — this class absorbs both shapes.
+ *
+ * Codes listed under `errors` in the catalog replace the server's message,
+ * which for those codes is generic or technical. Other codes keep the
+ * server's message.
  */
 export class ApiError extends Error {
   public readonly code: string;
@@ -29,7 +35,7 @@ export class ApiError extends Error {
     details?: ApiErrorDetail[];
     requestId?: string;
   }) {
-    super(options.message);
+    super(i18n.t(`errors.${options.code}`, { defaultValue: options.message }));
     this.name = 'ApiError';
     this.code = options.code;
     this.status = options.status;

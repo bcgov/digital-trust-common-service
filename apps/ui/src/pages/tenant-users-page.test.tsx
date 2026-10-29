@@ -170,7 +170,7 @@ describe('TenantUsersPage', () => {
       }),
     ).toBeInTheDocument();
     expect(within(adminRow).queryByText('Role')).not.toBeInTheDocument();
-    const activeStatus = within(adminRow).getByText('active');
+    const activeStatus = within(adminRow).getByText('Active');
     expect(activeStatus).toHaveAttribute('data-variant', 'outline');
     expect(activeStatus).toHaveClass('border-green-600', 'text-green-700');
     expect(activeStatus).toHaveClass('h-6', 'rounded-md', 'px-3', 'py-1');
@@ -182,7 +182,7 @@ describe('TenantUsersPage', () => {
     expect(
       within(members).getByText('dormant@example.com'),
     ).toBeInTheDocument();
-    expect(within(members).getByText('disabled')).toBeInTheDocument();
+    expect(within(members).getByText('Disabled')).toBeInTheDocument();
     expect(
       screen.queryByRole('heading', { name: 'Pending invitations' }),
     ).not.toBeInTheDocument();

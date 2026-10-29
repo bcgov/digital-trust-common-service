@@ -343,6 +343,7 @@ sign-in claims the matching `tenant_user` row and lands with that role:
 | `acme-admin` | `admin@acme-corp.example.test` | admin |
 | `acme-member` | `member@acme-corp.example.test` | member |
 | `multi-tenant` | `multi-tenant@example.test` | admin in `acme-corp`, owner in `test-org`, member in `suspended-co` |
+| `admin` | `admin@example.com` | owner in `acme-corp` and platform admin |
 
 `multi-tenant` is the odd one out: its rows are seeded already active, in
 three tenants, so it exists to exercise the tenant switcher. It signs in to
@@ -363,10 +364,13 @@ where the account already holds a membership row, and any second invitation in
 a tenant that has already been claimed from — at most one per tenant, oldest
 first.
 
-The realm's `admin` account (`admin@example.com`, password `admin`) has no
-seeded row: the login callback creates one on the fly with the `readonly`
-role, which holds no API scopes. A Keycloak volume created before these
-accounts existed keeps the realm it first imported; reset it to pick them up:
+The realm's `admin` account is the local platform admin: `.env.example` lists
+it in `SEED_PLATFORM_OPERATOR_EMAILS` (described below), so the seed holds an
+`acme-corp` owner invitation for it carrying the platform-operator flag. Drop
+it from the list to see what an unlisted account gets: a `readonly` row the
+login callback creates on the fly, which holds no API scopes. A Keycloak volume
+created before these accounts existed keeps the realm it first imported; reset
+it to pick them up:
 
 ```bash
 docker compose rm -sf keycloak keycloak-db
@@ -393,12 +397,12 @@ makes the seed hold an `acme-corp` owner invitation carrying the
 platform-operator flag for each listed email, so that account's first sign-in
 lands as owner and platform admin. An account that already signed in as
 `readonly` is promoted in place on the next seed run and keeps its name and
-subject. The realm accounts above are skipped with a warning: demo accounts
-keep their seeded roles. The list is additive and every seed run puts owner and
-the flag back on a listed email, so to revoke: remove the email from the list
-first, then clear the flag with `PATCH /admin/users/:id/platform-operator`.
-Changing the tenant role on the Users page leaves the flag, and so platform
-admin, in place.
+subject. The `acme-*` and `multi-tenant` accounts are skipped with a warning:
+demo accounts keep their seeded roles. The list is additive and every seed run
+puts owner and the flag back on a listed email, so to revoke: remove the email
+from the list first, then clear the flag with
+`PATCH /admin/users/:id/platform-operator`. Changing the tenant role on the
+Users page leaves the flag, and so platform admin, in place.
 
 The client the SPA uses:
 
@@ -442,6 +446,27 @@ Two constraints worth knowing before changing any of that:
 Non-dev environments register their own `dtsc-ui` client. The tenant-facing
 `POST /api/v1/clients` API deliberately creates confidential clients only, so
 provisioning a public one is a platform/deployment step today.
+
+## API Client Management
+
+The UI's **API integrations** sidebar entry manages the signed-in user's active
+tenant and requires `clients:manage` (also implied by `tenants:admin`). The drawer
+creates confidential clients with generated IDs and secrets, selected scopes and
+grant types, and optional redirect URIs. Authorization Code needs a redirect URI;
+the deployment's grant-type and scope allowlists remain authoritative.
+
+Client secrets appear only immediately after creation or rotation. They are not
+stored in the client-list query cache, browser storage, or normal edit views.
+Closing the result discards it. Public PKCE clients have no secret and cannot
+rotate one. Existing clients can be renamed and have scopes, grants and redirect
+URIs edited; unchanged fields are omitted from PATCH.
+
+Disabling uses `DELETE /api/v1/tenants/{tenantId}/clients/{clientId}` and blocks
+new token grants. Existing access tokens remain valid until expiry. Reactivation
+uses `POST /api/v1/tenants/{tenantId}/clients/{clientId}/reactivate` and reuses the
+existing credentials. Rotate a confidential client's secret if the old value is
+compromised; rotation invalidates the old secret immediately. There is no separate
+secret-only revocation endpoint: disable the client to block secret-based grants.
 
 ## Running the Application
 
@@ -962,7 +987,7 @@ The canonical OAuth scope names live in `@app/auth` (`libs/auth/src/constants/sc
 1. Prefer the OAuth client API: `POST /api/v1/tenants/:tenantId/clients` with a `roles` array, or `PATCH /api/v1/tenants/:tenantId/clients/:clientId` with the same field. Tenant admins may assign tenant-scoped roles to their own clients. Only a `platform-admin` caller may assign or clear `platform-admin`. Responses include `roles`. `tenantId` comes from the path (not the body); `created_by` is recorded from the authenticated user `sub`.
 2. Tokens issued via `client_credentials` for that client include a `roles` claim, which `ScopeGuard` uses (e.g. for `GET /admin/operations/stats` when the claim is `platform-admin`).
 
-Generated `client_id` values are prefixed `dtcs_`. The plaintext `client_secret` is returned once on create and on `POST .../rotate-secret`; list/get responses never include it.
+Client IDs are globally unique, immutable, and prefixed `dtcs_`. The UI suggests an ID derived from the client name, which callers can customize. API callers may omit `client_id` to receive a random generated ID. The plaintext `client_secret` is returned once on create and on `POST .../rotate-secret`; list/get responses never include it.
 
 Assigned scopes must be in the published catalog, present in `OIDC_SCOPES`, and a subset of the caller's effective scopes (`tenants:admin` expands to all Level 2 + Level 3). `platform-admin` bypasses the caller-subset check.
 

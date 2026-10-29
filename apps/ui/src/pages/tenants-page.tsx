@@ -1,5 +1,6 @@
 import { Button, TextField } from '@bcgov/design-system-react-components';
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Link, useNavigate } from 'react-router';
 
 import { Skeleton } from '@/components/common/skeleton';
@@ -11,7 +12,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/common/table';
-import { BuildingIcon, PlusIcon, SearchIcon } from '@/components/icons';
+import { BuildingIcon, PlusIcon, SearchIcon } from '@/components/common/icons';
 import { CreateTenantDialog } from '@/components/tenant/create-tenant-dialog';
 import { DeleteTenantDialog } from '@/components/tenant/delete-tenant-dialog';
 import { EditTenantDialog } from '@/components/tenant/edit-tenant-dialog';
@@ -32,6 +33,7 @@ const BODY_CELL =
   'px-(--layout-margin-medium) py-(--layout-margin-medium) text-body';
 
 export function TenantsPage() {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const navigate = useNavigate();
   const { data, isLoading, error } = useTenants();
@@ -62,11 +64,11 @@ export function TenantsPage() {
     <div className="flex flex-1 flex-col gap-(--layout-margin-xlarge)">
       <div className="flex flex-col gap-(--layout-margin-xsmall)">
         <div className="flex items-center justify-between gap-(--layout-margin-medium)">
-          <h1 className="text-h1 font-bold text-black">Tenants</h1>
-          {canCreate && createButton('Create tenant')}
+          <h1 className="text-h1 font-bold text-black">{t('tenants.title')}</h1>
+          {canCreate && createButton(t('tenants.create.submit'))}
         </div>
         <p className="py-(--layout-margin-hair) text-body text-muted-foreground">
-          Create and manage digital trust tenants.
+          {t('tenants.subtitle')}
         </p>
       </div>
       {canCreate && creating && (
@@ -87,8 +89,9 @@ export function TenantsPage() {
 
       {error ? (
         <p role="alert" className="text-body text-destructive">
-          Failed to load tenants
-          {error instanceof ApiError ? `: ${error.message}` : '.'}
+          {error instanceof ApiError
+            ? t('tenants.loadFailedWithReason', { reason: error.message })
+            : t('tenants.loadFailed')}
         </p>
       ) : isEmpty ? (
         // Figma "Empty State": centred in the remaining height, nudged up
@@ -101,37 +104,42 @@ export function TenantsPage() {
               </div>
               <div className="flex flex-col gap-(--layout-margin-hair)">
                 <h2 className="text-h5 font-bold text-(--typography-color-primary)">
-                  No tenants yet
+                  {t('tenants.emptyTitle')}
                 </h2>
                 <p className="text-body text-(--typography-color-secondary)">
-                  Create a tenant so an organization can configure and issue
-                  digital credentials.
+                  {t('tenants.emptyBody')}
                 </p>
               </div>
             </div>
-            {canCreate && createButton('Create a tenant')}
+            {canCreate && createButton(t('tenants.create.title'))}
           </div>
         </div>
       ) : (
         <div className="flex flex-col gap-(--layout-margin-large)">
           <TextField
-            aria-label="Search tenants"
+            aria-label={t('tenants.search')}
             // Untyped in BCDS 0.8.1's TextFieldProps, but forwarded by
             // react-aria's useTextField to the input at runtime.
-            {...{ placeholder: 'Search' }}
+            {...{ placeholder: t('tenants.searchPlaceholder') }}
             className="w-62"
             value={search}
             onChange={setSearch}
             iconLeft={<SearchIcon className="size-5 shrink-0" />}
           />
-          <Table aria-label="Tenants" className="table-fixed">
+          <Table aria-label={t('tenants.title')} className="table-fixed">
             <TableHeader className="bg-(--surface-color-background-light-gray)">
               <TableRow className="hover:bg-transparent">
-                <TableHead className={HEAD_CELL}>Name</TableHead>
-                <TableHead className={HEAD_CELL}>Slug</TableHead>
-                <TableHead className={`${HEAD_CELL} w-25`}>Status</TableHead>
+                <TableHead className={HEAD_CELL}>
+                  {t('tenants.fields.name')}
+                </TableHead>
+                <TableHead className={HEAD_CELL}>
+                  {t('tenants.fields.slug')}
+                </TableHead>
+                <TableHead className={`${HEAD_CELL} w-25`}>
+                  {t('common.status')}
+                </TableHead>
                 <TableHead className={`${HEAD_CELL} w-18`}>
-                  <span className="sr-only">Actions</span>
+                  <span className="sr-only">{t('common.actions')}</span>
                 </TableHead>
               </TableRow>
             </TableHeader>
@@ -186,7 +194,7 @@ export function TenantsPage() {
                     colSpan={4}
                     className={`${BODY_CELL} text-muted-foreground`}
                   >
-                    No tenants match “{search.trim()}”.
+                    {t('tenants.noMatch', { query: search.trim() })}
                   </TableCell>
                 </TableRow>
               )}

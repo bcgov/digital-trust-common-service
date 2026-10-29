@@ -8,11 +8,13 @@ import {
   ProgressCircle,
 } from '@bcgov/design-system-react-components';
 import type { FormEvent, ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { ApiError } from '@/lib/api/errors';
+import i18n from '@/lib/i18n';
 
 function describeError(error: unknown, conflict?: string): string {
-  if (!(error instanceof ApiError)) return 'Something went wrong. Try again.';
+  if (!(error instanceof ApiError)) return i18n.t('common.genericError');
   if (error.status === 409 && conflict) return conflict;
   return error.message;
 }
@@ -47,7 +49,7 @@ export function FormDialog({
   errorTitle,
   conflict,
   isLoading = false,
-  loadingMessage = 'Saving. Please wait...',
+  loadingMessage,
   onClose,
   onSubmit,
   actions,
@@ -67,6 +69,8 @@ export function FormDialog({
   actions: ReactNode;
   children: ReactNode;
 }) {
+  const { t } = useTranslation();
+  const loadingText = loadingMessage ?? t('common.saving');
   return (
     <Modal
       isOpen
@@ -95,8 +99,8 @@ export function FormDialog({
                 role="status"
                 className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-(--surface-color-forms-default)"
               >
-                <ProgressCircle isIndeterminate aria-label={loadingMessage} />
-                <p className="text-sm">{loadingMessage}</p>
+                <ProgressCircle isIndeterminate aria-label={loadingText} />
+                <p className="text-sm">{loadingText}</p>
               </div>
             )}
           </div>
@@ -124,10 +128,11 @@ export function FormActions({
   isPending: boolean;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <>
       <Button variant="secondary" isDisabled={isPending} onPress={onClose}>
-        Cancel
+        {t('common.cancel')}
       </Button>
       <Button type="submit" isDisabled={isPending || isDisabled}>
         {submitLabel}

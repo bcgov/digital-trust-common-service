@@ -1,3 +1,5 @@
+import type { ParseKeys } from 'i18next';
+import { useTranslation } from 'react-i18next';
 import {
   Navigate,
   NavLink,
@@ -19,17 +21,19 @@ import { cn } from '@/lib/utils';
 
 // A tab whose section the token cannot use is left out; the page behind it
 // still handles a 403 in case the token is stale.
-const TABS: { to: string; label: string; end?: boolean; scope?: string }[] = [
-  { to: '.', label: 'Overview', end: true },
-  { to: 'users', label: 'Users', scope: USERS_MANAGE_SCOPE },
-  { to: 'connections', label: 'Connections' },
-  { to: 'credentials', label: 'Credentials' },
-  { to: 'audit-logs', label: 'Audit logs' },
-  { to: 'logs', label: 'Logs' },
-  { to: 'settings', label: 'Settings' },
-];
+const TABS: { to: string; label: ParseKeys; end?: boolean; scope?: string }[] =
+  [
+    { to: '.', label: 'tenantTabs.overview', end: true },
+    { to: 'users', label: 'tenantTabs.users', scope: USERS_MANAGE_SCOPE },
+    { to: 'connections', label: 'tenantTabs.connections' },
+    { to: 'credentials', label: 'tenantTabs.credentials' },
+    { to: 'audit-logs', label: 'tenantTabs.auditLogs' },
+    { to: 'logs', label: 'tenantTabs.logs' },
+    { to: 'settings', label: 'tenantTabs.settings' },
+  ];
 
 export function TenantLayout() {
+  const { t } = useTranslation();
   const { tenantId } = useParams();
   const location = useLocation();
   const isUsersPage = useMatch('/tenants/:tenantId/users') !== null;
@@ -57,7 +61,7 @@ export function TenantLayout() {
     if (error instanceof ApiError && error.status === 403) {
       return (
         <AccessDenied
-          title="Tenant"
+          title={t('tenant.title')}
           headingLevel={1}
           description={error.message}
         />
@@ -66,8 +70,9 @@ export function TenantLayout() {
 
     return (
       <p role="alert" className="text-sm text-destructive">
-        Failed to load tenant
-        {error instanceof ApiError ? `: ${error.message}` : '.'}
+        {error instanceof ApiError
+          ? t('tenant.loadFailedWithReason', { reason: error.message })
+          : t('tenant.loadFailed')}
       </p>
     );
   }
@@ -82,14 +87,17 @@ export function TenantLayout() {
             ) : (
               <>
                 <h1 className="text-xl font-semibold">
-                  {tenant?.name ?? 'Tenant'}
+                  {tenant?.name ?? t('tenant.title')}
                 </h1>
                 {tenant?.status && <TenantStatusBadge status={tenant.status} />}
               </>
             )}
           </div>
 
-          <nav aria-label="Tenant sections" className="flex gap-1 border-b">
+          <nav
+            aria-label={t('tenantTabs.label')}
+            className="flex gap-1 border-b"
+          >
             {tabs.map(({ to, label, end }) => (
               <NavLink
                 key={to}
@@ -104,7 +112,7 @@ export function TenantLayout() {
                   )
                 }
               >
-                {label}
+                {t(label)}
               </NavLink>
             ))}
           </nav>

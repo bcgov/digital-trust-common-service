@@ -1,4 +1,5 @@
 import { useState, type FormEvent, type ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 import { z } from 'zod';
 
 import {
@@ -9,6 +10,7 @@ import {
   DrawerTrigger,
 } from '@/components/common/drawer.js';
 import { useCreateConnector } from '@/lib/api/queries/connectors';
+import i18n from '@/lib/i18n';
 import { useActiveTenant } from '@/lib/tenant/active-tenant';
 
 import { AddConnectorForm } from './add-connector-form.js';
@@ -17,14 +19,17 @@ const connectorSchema = z.object({
   connector_type: z.literal('traction'),
   endpoint_url: z.url({
     protocol: /^https?$/,
-    error: 'Enter a valid HTTP or HTTPS URL.',
+    error: () => i18n.t('connectors.form.invalidUrl'),
   }),
-  api_key: z.string().min(1, 'Enter an API key.'),
+  api_key: z
+    .string()
+    .min(1, { error: () => i18n.t('connectors.form.missingApiKey') }),
   traction_tenant_id: z.string().optional(),
   webhook_secret: z.string().optional(),
 });
 
 export function AddConnectorDrawer({ children }: { children: ReactNode }) {
+  const { t } = useTranslation();
   const { tenant } = useActiveTenant();
   const mutation = useCreateConnector(tenant?.id);
   const [open, setOpen] = useState(false);
@@ -86,7 +91,7 @@ export function AddConnectorDrawer({ children }: { children: ReactNode }) {
       <DrawerTrigger asChild>{children}</DrawerTrigger>
       <DrawerContent showCloseButton={!mutation.isPending}>
         <DrawerHeader>
-          <DrawerTitle>Add Connector</DrawerTitle>
+          <DrawerTitle>{t('connectors.add')}</DrawerTitle>
         </DrawerHeader>
         <AddConnectorForm
           onSubmit={submit}

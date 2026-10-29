@@ -1,5 +1,6 @@
 import { LoaderCircle } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
+import { useTranslation } from 'react-i18next';
 import { z } from 'zod';
 
 import { ConnectorStatus } from '@/components/connector/connector-status';
@@ -22,11 +23,12 @@ import {
   useUpdateConnector,
 } from '@/lib/api/queries/connectors';
 import type { Connector } from '@/lib/api/resources/connectors';
+import i18n from '@/lib/i18n';
 
 const editConnectorSchema = z.object({
   endpoint_url: z.url({
     protocol: /^https?$/,
-    error: 'Enter a valid HTTP or HTTPS URL.',
+    error: () => i18n.t('connectors.form.invalidUrl'),
   }),
   api_key: z.string(),
   traction_tenant_id: z.string(),
@@ -44,6 +46,7 @@ export function EditConnectorDrawer({
   tenantId: string | undefined;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   const update = useUpdateConnector(tenantId);
   const test = useTestConnector(tenantId);
   const canRotateWebhookSecret = connector.connector_type === 'traction';
@@ -151,12 +154,11 @@ export function EditConnectorDrawer({
       setStage('testing');
       const result = await test.mutateAsync(connector.id);
       if (result.status !== 'healthy') {
-        const message =
-          result.message ?? 'The connector reported an unhealthy status.';
+        const message = result.message ?? t('connectors.edit.unhealthy');
         setSubmitError(
           changesWereSaved || hasUnverifiedSave
-            ? `Changes were saved, but the connector test failed: ${message}`
-            : `Connector test failed: ${message}`,
+            ? t('connectors.edit.savedTestFailed', { message })
+            : t('connectors.edit.testFailed', { message }),
         );
         setHasUnverifiedSave(true);
         return;
@@ -170,10 +172,10 @@ export function EditConnectorDrawer({
           ? error.message
           : error instanceof Error
             ? error.message
-            : 'Try again.';
+            : t('connectors.edit.tryAgain');
       setSubmitError(
         changesWereSaved || hasUnverifiedSave
-          ? `Changes were saved, but the connector test could not be completed: ${message}`
+          ? t('connectors.edit.savedTestIncomplete', { message })
           : message,
       );
       if (changesWereSaved || hasUnverifiedSave) setHasUnverifiedSave(true);
@@ -191,7 +193,7 @@ export function EditConnectorDrawer({
     >
       <DrawerContent showCloseButton={!isPending}>
         <DrawerHeader className="gap-3">
-          <DrawerTitle>Edit Connector</DrawerTitle>
+          <DrawerTitle>{t('connectors.edit.title')}</DrawerTitle>
           <div>
             <ConnectorStatus active={connector.active} />
           </div>
@@ -208,7 +210,7 @@ export function EditConnectorDrawer({
             aria-busy={isPending}
           >
             <DrawerDescription className="px-6 text-sm leading-6 text-muted-foreground">
-              Update the endpoint or rotate the API key or webhook secret.
+              {t('connectors.edit.description')}
             </DrawerDescription>
             <fieldset
               disabled={isPending}
@@ -216,10 +218,12 @@ export function EditConnectorDrawer({
             >
               <fieldset className="flex min-w-0 flex-col gap-5">
                 <legend className="mb-5 w-full border-b border-border pb-3 text-base font-bold">
-                  Connection
+                  {t('connectors.edit.connection')}
                 </legend>
                 <div className="flex flex-col gap-2">
-                  <Label htmlFor="edit-connector-type">Connector type</Label>
+                  <Label htmlFor="edit-connector-type">
+                    {t('connectors.form.type')}
+                  </Label>
                   <Input
                     id="edit-connector-type"
                     value={connector.connector_type ?? ''}
@@ -228,7 +232,9 @@ export function EditConnectorDrawer({
                   />
                 </div>
                 <div className="flex flex-col gap-2">
-                  <Label htmlFor="edit-connector-endpoint">Endpoint URL</Label>
+                  <Label htmlFor="edit-connector-endpoint">
+                    {t('connectors.form.endpointUrl')}
+                  </Label>
                   <Input
                     id="edit-connector-endpoint"
                     name="endpoint_url"
@@ -257,13 +263,13 @@ export function EditConnectorDrawer({
               </fieldset>
               <fieldset className="flex min-w-0 flex-col gap-5">
                 <legend className="mb-5 w-full border-b border-border pb-3 text-base font-bold">
-                  Credentials
+                  {t('connectors.edit.credentials')}
                 </legend>
                 <div className="flex flex-col gap-2">
                   <Label htmlFor="edit-connector-api-key">
-                    New API key{' '}
+                    {t('connectors.edit.newApiKey')}{' '}
                     <span className="font-normal text-muted-foreground">
-                      (optional)
+                      {t('common.optional')}
                     </span>
                   </Label>
                   <Input
@@ -271,7 +277,7 @@ export function EditConnectorDrawer({
                     name="api_key"
                     type="password"
                     autoComplete="new-password"
-                    placeholder="Leave blank to keep the current key"
+                    placeholder={t('connectors.edit.keepKey')}
                     value={apiKey}
                     onChange={(event) => setApiKey(event.target.value)}
                   />
@@ -280,9 +286,9 @@ export function EditConnectorDrawer({
                   <>
                     <div className="flex flex-col gap-2">
                       <Label htmlFor="edit-connector-traction-tenant-id">
-                        Traction tenant ID{' '}
+                        {t('connectors.edit.tractionTenantId')}{' '}
                         <span className="font-normal text-muted-foreground">
-                          (optional)
+                          {t('common.optional')}
                         </span>
                       </Label>
                       <Input
@@ -296,9 +302,9 @@ export function EditConnectorDrawer({
                     </div>
                     <div className="flex flex-col gap-2">
                       <Label htmlFor="edit-connector-webhook-secret">
-                        New webhook secret{' '}
+                        {t('connectors.edit.newWebhookSecret')}{' '}
                         <span className="font-normal text-muted-foreground">
-                          (optional)
+                          {t('common.optional')}
                         </span>
                       </Label>
                       <Input
@@ -306,7 +312,7 @@ export function EditConnectorDrawer({
                         name="webhook_secret"
                         type="password"
                         autoComplete="new-password"
-                        placeholder="Leave blank to keep the current secret"
+                        placeholder={t('connectors.edit.keepSecret')}
                         value={webhookSecret}
                         onChange={(event) =>
                           setWebhookSecret(event.target.value)
@@ -336,8 +342,8 @@ export function EditConnectorDrawer({
                 />
                 <span className="text-sm font-medium">
                   {stage === 'saving'
-                    ? 'Saving changes...'
-                    : 'Testing connection...'}
+                    ? t('connectors.edit.savingChanges')
+                    : t('connectors.form.testing')}
                 </span>
               </div>
             )}
@@ -350,7 +356,7 @@ export function EditConnectorDrawer({
                 className="h-11 px-6"
                 disabled={isPending}
               >
-                Cancel
+                {t('common.cancel')}
               </Button>
             </DrawerClose>
             <Button
@@ -359,12 +365,12 @@ export function EditConnectorDrawer({
               disabled={!canSubmit || isPending}
             >
               {stage === 'saving'
-                ? 'Saving...'
+                ? t('connectors.edit.saving')
                 : stage === 'testing'
-                  ? 'Testing...'
+                  ? t('connectors.edit.testing')
                   : hasUnverifiedSave && !hasChanges
-                    ? 'Retry test'
-                    : 'Save changes'}
+                    ? t('connectors.edit.retryTest')
+                    : t('connectors.edit.save')}
             </Button>
           </DrawerFooter>
         </form>

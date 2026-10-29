@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { cva, type VariantProps } from 'class-variance-authority';
 import { XIcon } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { Drawer as DrawerPrimitive } from 'vaul';
 
 import { Button } from '@/components/common/button';
@@ -90,6 +91,7 @@ function DrawerContent({
   VariantProps<typeof drawerContentVariants> & {
     showCloseButton?: boolean;
   }) {
+  const { t } = useTranslation();
   return (
     <DrawerPortal data-slot="drawer-portal">
       <DrawerOverlay />
@@ -106,7 +108,7 @@ function DrawerContent({
               type="button"
               variant="ghost"
               size="icon-sm"
-              aria-label="Close"
+              aria-label={t('common.close')}
               className="absolute end-2 top-2"
             >
               <XIcon />

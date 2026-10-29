@@ -6,13 +6,17 @@ import {
 import { OidcConfigService } from '@app/oidc/config';
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   NotFoundException,
 } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 
 import { CreateOAuthClientDto } from './dto/create-oauth-client.dto';
-import { OAUTH_CLIENT_ID_PREFIX } from './oauth-client.constants';
+import {
+  OAUTH_CLIENT_ID_PREFIX,
+  RESERVED_OAUTH_CLIENT_IDS,
+} from './oauth-client.constants';
 import { OAuthClient } from './oauth-client.entity';
 import { OAuthClientRepository } from './oauth-client.repository';
 import { OAuthClientService } from './oauth-client.service';
@@ -145,6 +149,46 @@ describe('OAuthClientService', () => {
     expect(service).toBeDefined();
   });
 
+  it('reactivates only the client resolved within the requested tenant', async () => {
+    const client = { ...mockOAuthClient, revokedAt: new Date() };
+    mockFindByTenantAndClientId.mockResolvedValue(client);
+    mockUpdate.mockImplementation((value: OAuthClient) =>
+      Promise.resolve(value),
+    );
+
+    const result = await service.reactivateClient(
+      client.tenantId,
+      client.clientId,
+    );
+
+    expect(mockFindByTenantAndClientId).toHaveBeenCalledWith(
+      client.tenantId,
+      client.clientId,
+    );
+    expect(result.revokedAt).toBeNull();
+    expect(result.revokedReason).toBeNull();
+    expect(result.clientSecretHash).toBe(mockOAuthClient.clientSecretHash);
+  });
+
+  it('does not reactivate a client outside the requested tenant', async () => {
+    mockFindByTenantAndClientId.mockResolvedValue(null);
+    await expect(
+      service.reactivateClient('other-tenant', mockOAuthClient.clientId),
+    ).rejects.toThrow(NotFoundException);
+    expect(mockUpdate).not.toHaveBeenCalled();
+  });
+
+  it('never assigns a secret to a public client through rotation', async () => {
+    mockFindByTenantAndClientId.mockResolvedValue({
+      ...mockOAuthClient,
+      isPublic: true,
+    });
+    await expect(
+      service.rotateSecret(mockOAuthClient.tenantId, mockOAuthClient.clientId),
+    ).rejects.toThrow(BadRequestException);
+    expect(mockUpdate).not.toHaveBeenCalled();
+  });
+
   describe('createClient', () => {
     it('should create a new OAuth client with generated credentials', async () => {
       const dto: CreateOAuthClientDto = {
@@ -174,6 +218,65 @@ describe('OAuthClientService', () => {
       expect(mockCreate.mock.calls[0][0].clientId).toMatch(
         new RegExp(`^${OAUTH_CLIENT_ID_PREFIX}[0-9a-f]{32}$`),
       );
+    });
+
+    it('uses a supplied client ID', async () => {
+      const clientId = 'dtcs_issuance-service';
+      mockCreate.mockResolvedValue(mockOAuthClient);
+
+      await service.createClient(
+        mockOAuthClient.tenantId,
+        {
+          clientId,
+          name: mockOAuthClient.name,
+          scopes: mockOAuthClient.scopes,
+        },
+        tenantAdminAuth,
+      );
+
+      expect(mockFindByClientId).toHaveBeenCalledWith(clientId);
+      expect(mockCreate).toHaveBeenCalledWith(
+        expect.objectContaining({ clientId }),
+      );
+    });
+
+    it('rejects a client ID that is already in use', async () => {
+      const clientId = 'dtcs_issuance-service';
+      mockFindByClientId.mockResolvedValue(mockOAuthClient);
+
+      await expect(
+        service.createClient(
+          mockOAuthClient.tenantId,
+          {
+            clientId,
+            name: mockOAuthClient.name,
+            scopes: mockOAuthClient.scopes,
+          },
+          tenantAdminAuth,
+        ),
+      ).rejects.toThrow(ConflictException);
+      expect(mockCreate).not.toHaveBeenCalled();
+    });
+
+    it('translates a concurrent client ID collision into a conflict', async () => {
+      mockCreate.mockRejectedValue({
+        driverError: {
+          code: '23505',
+          constraint: 'uq_oauth_client_client_id',
+        },
+      });
+
+      await expect(
+        service.createClient(
+          mockOAuthClient.tenantId,
+          {
+            clientId: 'dtcs_issuance-service',
+            name: mockOAuthClient.name,
+            scopes: mockOAuthClient.scopes,
+          },
+          tenantAdminAuth,
+        ),
+      ).rejects.toThrow(ConflictException);
     });
 
     it('should reject an unsupported grant type', async () => {
@@ -518,6 +621,39 @@ describe('OAuthClientService', () => {
       expect(mockFindByTenant).toHaveBeenCalledWith(mockOAuthClient.tenantId);
       expect(result).toEqual([mockOAuthClient]);
     });
+  });
+
+  describe('reserved bootstrap clients', () => {
+    it.each([...RESERVED_OAUTH_CLIENT_IDS])(
+      'blocks tenant API mutations of %s',
+      async (clientId) => {
+        mockFindByTenantAndClientId.mockResolvedValue({
+          ...mockOAuthClient,
+          clientId,
+        });
+
+        await expect(
+          service.update(
+            mockOAuthClient.tenantId,
+            clientId,
+            { name: 'Altered system client' },
+            tenantAdminAuth,
+          ),
+        ).rejects.toThrow(ForbiddenException);
+        await expect(
+          service.revokeClient(mockOAuthClient.tenantId, clientId),
+        ).rejects.toThrow(ForbiddenException);
+        await expect(
+          service.rotateSecret(mockOAuthClient.tenantId, clientId),
+        ).rejects.toThrow(ForbiddenException);
+        await expect(
+          service.reactivateClient(mockOAuthClient.tenantId, clientId),
+        ).rejects.toThrow(ForbiddenException);
+
+        expect(mockUpdate).not.toHaveBeenCalled();
+        expect(mockRevoke).not.toHaveBeenCalled();
+      },
+    );
   });
 
   describe('revokeClient', () => {

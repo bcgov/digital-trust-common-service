@@ -1,9 +1,10 @@
 import { Check, ChevronsUpDown, Loader2 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 import { TenantStatusBadge } from './tenant-status-badge';
 import { Badge } from '@/components/common/badge';
 import { Button } from '@/components/common/button';
-import { BuildingIcon } from '@/components/icons';
+import { BuildingIcon } from '@/components/common/icons';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -16,28 +17,33 @@ import { Skeleton } from '@/components/common/skeleton';
 import { ApiError } from '@/lib/api/errors';
 import type { AuthTenant } from '@/lib/api/resources/auth';
 import { useAuth } from '@/lib/auth/context';
+import i18n from '@/lib/i18n';
 import { useActiveTenant, useSwitchTenant } from '@/lib/tenant/active-tenant';
+import { roleLabel } from '@/lib/tenant/roles';
 
 function switchErrorMessage(error: unknown): string {
   if (error instanceof ApiError) {
     switch (error.code) {
       case 'TENANT_NOT_ACTIVE':
-        return "Couldn't switch tenant: it isn't active.";
+        return i18n.t('switcher.errorNotActive');
       case 'TENANT_ACCESS_DENIED':
-        return "Couldn't switch tenant: you're not a member.";
+        return i18n.t('switcher.errorNotMember');
       default:
-        return `Couldn't switch tenant: ${error.message}`;
+        return i18n.t('switcher.errorWithReason', { reason: error.message });
     }
   }
-  return "Couldn't switch tenant. Please try again.";
+  return i18n.t('switcher.errorGeneric');
 }
 
 /** Name, role and (when it matters) status of the active tenant. */
 function ActiveTenantLabel({ tenant }: { tenant: AuthTenant | null }) {
+  const { t } = useTranslation();
   return (
     <>
-      <span className="truncate">{tenant?.name ?? 'Unknown tenant'}</span>
-      {tenant ? <Badge variant="secondary">{tenant.role}</Badge> : null}
+      <span className="truncate">{tenant?.name ?? t('nav.unknownTenant')}</span>
+      {tenant ? (
+        <Badge variant="secondary">{roleLabel(tenant.role)}</Badge>
+      ) : null}
       {tenant && tenant.status !== 'active' ? (
         <TenantStatusBadge status={tenant.status} />
       ) : null}
@@ -51,6 +57,7 @@ function ActiveTenantLabel({ tenant }: { tenant: AuthTenant | null }) {
  * is somewhere to switch to.
  */
 export function TenantSwitcher() {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const { tenant, memberships, status, refetch } = useActiveTenant();
   const { switchTo, isSwitching, error } = useSwitchTenant();
@@ -59,7 +66,7 @@ export function TenantSwitcher() {
     return (
       <div role="status" className="flex items-center">
         <Skeleton className="h-8 w-40" />
-        <span className="sr-only">Loading tenants…</span>
+        <span className="sr-only">{t('switcher.loading')}</span>
       </div>
     );
   }
@@ -70,9 +77,9 @@ export function TenantSwitcher() {
         role="alert"
         className="flex items-center gap-2 text-sm text-destructive"
       >
-        Couldn't load your tenants.
+        {t('switcher.loadFailed')}
         <Button variant="outline" size="sm" onClick={refetch}>
-          Retry
+          {t('common.retry')}
         </Button>
       </div>
     );
@@ -102,7 +109,7 @@ export function TenantSwitcher() {
             variant="outline"
             size="sm"
             disabled={isSwitching}
-            title="Switch tenant"
+            title={t('switcher.title')}
           >
             {isSwitching ? (
               <Loader2 className="size-4 animate-spin" aria-hidden="true" />
@@ -117,7 +124,7 @@ export function TenantSwitcher() {
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="w-64">
-          <DropdownMenuLabel>Switch tenant</DropdownMenuLabel>
+          <DropdownMenuLabel>{t('switcher.title')}</DropdownMenuLabel>
           <DropdownMenuSeparator />
           {memberships.map((membership) => {
             const isCurrent = membership.id === user?.tenantId;
@@ -133,11 +140,11 @@ export function TenantSwitcher() {
               >
                 <span className="flex-1 truncate">{membership.name}</span>
                 <span className="text-xs text-muted-foreground">
-                  {membership.role}
+                  {roleLabel(membership.role)}
                 </span>
                 {membership.status !== 'active' ? (
                   <span className="text-xs text-muted-foreground">
-                    {membership.status}
+                    {t(`tenants.status.${membership.status}`)}
                   </span>
                 ) : isCurrent ? (
                   <Check className="size-4" aria-hidden="true" />

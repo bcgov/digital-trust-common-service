@@ -1158,6 +1158,7 @@ export interface paths {
          * Revoke an API client
          * @description Soft-revokes the client. Further token grants fail immediately.
          *     Issued access tokens remain valid until their TTL.
+         *     Reserved system clients cannot be revoked through this endpoint.
          */
         delete: operations["deleteClient"];
         options?: never;
@@ -1169,9 +1170,34 @@ export interface paths {
          *     in the body. Scope assignment follows the same caller-subset rule as create.
          *     Role assignment is restricted to platform-admin callers.
          *     Issued access tokens remain valid until their TTL after a secret rotation
-         *     or revoke.
+         *     or revoke. Reserved system clients cannot be modified through this endpoint.
          */
         patch: operations["updateClient"];
+        trace?: never;
+    };
+    "/api/v1/tenants/{tenantId}/clients/{clientId}/reactivate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                /** @description Public OAuth client_id */
+                clientId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reactivate an API client
+         * @description Allows new token grants using the existing credentials. Rotate the secret separately if it may have been compromised. Reserved system clients cannot be reactivated through this endpoint.
+         */
+        post: operations["reactivateClient"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/tenants/{tenantId}/clients/{clientId}/rotate-secret": {
@@ -1190,7 +1216,8 @@ export interface paths {
         /**
          * Rotate client secret
          * @description Generates a new secret. The old secret is immediately invalidated.
-         *     Issued access tokens remain valid until their TTL.
+         *     Issued access tokens remain valid until their TTL. Reserved system client
+         *     secrets cannot be rotated through this endpoint.
          */
         post: operations["rotateClientSecret"];
         delete?: never;
@@ -2200,6 +2227,8 @@ export interface components {
             events: ("credential.issued" | "credential.verified" | "credential.accepted" | "credential.rejected" | "credential.revoked" | "connection.established")[];
         };
         Client: {
+            /** @description Public PKCE client without a secret */
+            is_public?: boolean;
             /** Format: uuid */
             id?: string;
             /** Format: uuid */
@@ -2227,6 +2256,8 @@ export interface components {
         };
         /** @description Tenant is taken from the path, not this body. created_by is recorded from the authenticated user sub. */
         CreateClientRequest: {
+            /** @description Optional unique, immutable OAuth client ID. When omitted, a random ID with the `dtcs_` prefix is generated. The UI suggests an ID derived from the name. IDs are unique across all tenants and cannot be reused. */
+            client_id?: string;
             name: string;
             scopes: ("credentials:offer" | "credentials:verify" | "credentials:hold" | "credentials:revoke" | "connections:manage" | "profiles:manage" | "users:manage" | "clients:manage" | "logs:read" | "audit:read" | "tenants:admin")[];
             roles?: ("owner" | "admin" | "member" | "readonly" | "platform-admin")[];
@@ -4590,6 +4621,7 @@ export interface operations {
                     "application/json": components["schemas"]["ClientWithSecret"];
                 };
             };
+            409: components["responses"]["Conflict"];
         };
     };
     deleteClient: {
@@ -4607,6 +4639,13 @@ export interface operations {
         responses: {
             /** @description Client revoked */
             204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Reserved system client cannot be revoked */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -4640,6 +4679,13 @@ export interface operations {
                     "application/json": components["schemas"]["Client"];
                 };
             };
+            /** @description Reserved system client cannot be modified */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Client not found */
             404: {
                 headers: {
@@ -4647,6 +4693,39 @@ export interface operations {
                 };
                 content?: never;
             };
+        };
+    };
+    reactivateClient: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                /** @description Public OAuth client_id */
+                clientId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client reactivated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Client"];
+                };
+            };
+            /** @description Reserved system client cannot be reactivated */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["NotFound"];
         };
     };
     rotateClientSecret: {
@@ -4670,6 +4749,13 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ClientWithSecret"];
                 };
+            };
+            /** @description Reserved system client secret cannot be rotated */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

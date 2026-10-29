@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Link, useNavigate } from 'react-router';
 
 import {
@@ -25,6 +26,7 @@ import { AuthProviderError } from '@/lib/auth/errors';
  * transaction at all.
  */
 export function AuthCallbackPage() {
+  const { t } = useTranslation();
   const { completeLogin } = useAuth();
   const navigate = useNavigate();
   const [error, setError] = useState<string | null>(null);
@@ -51,21 +53,21 @@ export function AuthCallbackPage() {
         // exchange has nothing the user can act on beyond trying again.
         setError(
           cause instanceof AuthProviderError
-            ? (cause.description ?? `Sign-in was refused (${cause.code}).`)
-            : 'We could not complete your sign-in. Please try again.',
+            ? (cause.description ?? t('auth.refused', { code: cause.code }))
+            : t('auth.callbackFailed'),
         );
       });
-  }, [completeLogin, navigate]);
+  }, [completeLogin, navigate, t]);
 
   if (error) {
     return (
       <FullPageError message={error}>
         <Button asChild variant="outline">
-          <Link to={POST_LOGOUT_PATH}>Back to sign in</Link>
+          <Link to={POST_LOGOUT_PATH}>{t('auth.backToSignIn')}</Link>
         </Button>
       </FullPageError>
     );
   }
 
-  return <FullPageStatus message="Signing you in…" />;
+  return <FullPageStatus message={t('auth.signingIn')} />;
 }

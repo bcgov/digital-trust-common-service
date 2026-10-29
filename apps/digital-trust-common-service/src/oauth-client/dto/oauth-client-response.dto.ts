@@ -26,6 +26,13 @@ export class OAuthClientResponseDto {
   })
   public clientId!: string;
 
+  @Expose({ name: 'is_public' })
+  @ApiProperty({
+    name: 'is_public',
+    description: 'Public PKCE client without a secret',
+  })
+  public isPublic!: boolean;
+
   @ApiProperty({
     description: 'The human-readable name of the OAuth client',
     example: 'Mobile App',
@@ -105,6 +112,7 @@ export class OAuthClientResponseDto {
     dto.id = client.id;
     dto.tenantId = client.tenantId;
     dto.clientId = client.clientId;
+    dto.isPublic = client.isPublic;
     dto.name = client.name;
     dto.scopes = client.scopes;
     dto.roles = client.roles;

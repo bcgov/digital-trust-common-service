@@ -1,11 +1,17 @@
-import { LayoutDashboard, LogOut, Share2, UsersRound } from 'lucide-react';
+import type { ParseKeys } from 'i18next';
+import {
+  KeyRound,
+  LayoutDashboard,
+  LogOut,
+  Share2,
+  UsersRound,
+} from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { NavLink, Outlet, useMatches } from 'react-router';
 
-import { BcGovHeader } from '@/components/common/bc-gov-header';
-import { BuildingIcon } from '@/components/icons';
-import { TenantSwitcher } from '@/components/tenant/tenant-switcher';
 import { Avatar, AvatarFallback } from '@/components/common/avatar';
 import { Badge } from '@/components/common/badge';
+import { BcGovHeader } from '@/components/common/bc-gov-header';
 import { Button } from '@/components/common/button';
 import {
   DropdownMenu,
@@ -16,27 +22,36 @@ import {
   DropdownMenuTrigger,
 } from '@/components/common/dropdown-menu';
 import { Toaster } from '@/components/common/sonner';
+import { BuildingIcon } from '@/components/common/icons';
+import { TenantSwitcher } from '@/components/tenant/tenant-switcher';
 import { useAuth } from '@/lib/auth/context';
-import { useActiveTenant } from '@/lib/tenant/active-tenant';
 import {
   hasScope,
   TENANT_ADMIN_SCOPE,
   USERS_MANAGE_SCOPE,
 } from '@/lib/auth/scopes';
+import { useActiveTenant } from '@/lib/tenant/active-tenant';
+import { roleLabel } from '@/lib/tenant/roles';
 import { cn } from '@/lib/utils';
 
 const NAV_ITEMS: {
   to: string;
-  label: string;
+  label: ParseKeys;
   icon: typeof LayoutDashboard;
   scope?: string;
 }[] = [
-  { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { to: '/dashboard', label: 'nav.dashboard', icon: LayoutDashboard },
   {
     to: '/connectors',
-    label: 'Connectors',
+    label: 'nav.connectors',
     icon: Share2,
     scope: TENANT_ADMIN_SCOPE,
+  },
+  {
+    to: '/api-clients',
+    label: 'apiClients.title',
+    icon: KeyRound,
+    scope: 'clients:manage',
   },
 ];
 
@@ -66,6 +81,7 @@ function initialsOf(name: string | undefined): string {
 }
 
 export function AppShell() {
+  const { t } = useTranslation();
   const { user, logout } = useAuth();
   const { tenant } = useActiveTenant();
   const navigationItems = NAV_ITEMS.filter(
@@ -89,7 +105,7 @@ export function AppShell() {
                 <AvatarFallback>{initialsOf(user?.name)}</AvatarFallback>
               </Avatar>
               <span className="text-sm font-medium">
-                {user?.name ?? 'Account'}
+                {user?.name ?? t('nav.account')}
               </span>
             </Button>
           </DropdownMenuTrigger>
@@ -101,7 +117,7 @@ export function AppShell() {
                 <p className="mt-1 flex flex-wrap gap-1">
                   {user.roles.map((role) => (
                     <Badge key={role} variant="secondary">
-                      {role}
+                      {roleLabel(role)}
                     </Badge>
                   ))}
                 </p>
@@ -118,7 +134,7 @@ export function AppShell() {
               }}
             >
               <LogOut className="size-4" aria-hidden="true" />
-              Sign out
+              {t('nav.signOut')}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -130,10 +146,13 @@ export function AppShell() {
             <div className="flex items-center gap-2 border-b px-3 py-3">
               <BuildingIcon className="size-4 shrink-0" />
               <span className="truncate text-sm font-semibold">
-                {tenant?.name ?? 'Unknown tenant'}
+                {tenant?.name ?? t('nav.unknownTenant')}
               </span>
             </div>
-            <nav aria-label="Primary" className="flex flex-col gap-1 p-2">
+            <nav
+              aria-label={t('nav.primary')}
+              className="flex flex-col gap-1 p-2"
+            >
               {navigationItems.map(({ to, label, icon: Icon }) => (
                 <NavLink
                   key={to}
@@ -148,7 +167,7 @@ export function AppShell() {
                   }
                 >
                   <Icon className="size-4" aria-hidden="true" />
-                  {label}
+                  {t(label)}
                 </NavLink>
               ))}
               {manageUsersPath && (
@@ -164,7 +183,7 @@ export function AppShell() {
                   }
                 >
                   <UsersRound className="size-4" aria-hidden="true" />
-                  Manage Users
+                  {t('nav.manageUsers')}
                 </NavLink>
               )}
             </nav>

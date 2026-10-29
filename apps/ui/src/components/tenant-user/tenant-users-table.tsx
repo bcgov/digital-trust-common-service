@@ -1,4 +1,5 @@
 import { Construction, Info, Trash2 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 import { TenantUserRoleSelect } from '@/components/tenant-user/tenant-user-dialogs';
 import { Badge } from '@/components/common/badge';
@@ -30,10 +31,6 @@ const STATUS_TONE: Record<TenantUserStatus, StatusBadgeTone> = {
   disabled: 'neutral',
 };
 
-function formatDate(value: string | undefined) {
-  return value ? new Date(value).toLocaleDateString() : '—';
-}
-
 function SkeletonRows({ columns }: { columns: number }) {
   return Array.from({ length: 3 }, (_, rowIndex) => (
     <TableRow key={rowIndex}>
@@ -63,11 +60,15 @@ function RemoveUserButton({
   user: TenantUser;
   onRemove: () => void;
 }) {
+  const { t } = useTranslation();
+
   return (
     <Button
       variant="ghost"
       size="icon"
-      aria-label={`Remove ${user.email ?? 'user'}`}
+      aria-label={t('users.removeUser', {
+        email: user.email ?? t('users.unknownUser'),
+      })}
       onClick={onRemove}
     >
       <Trash2 aria-hidden="true" />
@@ -96,6 +97,10 @@ export function TenantUsersTable({
   onRoleChange: (user: TenantUser, role: TenantRole) => void;
   onRemove: (user: TenantUser) => void;
 }) {
+  const { t, i18n } = useTranslation();
+  const dateFormat = new Intl.DateTimeFormat(i18n.language);
+  const formatDate = (value: string | undefined) =>
+    value ? dateFormat.format(new Date(value)) : '—';
   const isSelf = (user: TenantUser) => user.id === currentUserId;
   const canActOn = (user: TenantUser) => {
     const mayManageRole = user.role !== 'owner' || canManageOwners;
@@ -104,23 +109,26 @@ export function TenantUsersTable({
 
   return (
     <div className="min-w-0 border-y border-border">
-      <Table aria-label="Tenant users" className="min-w-[64rem] table-fixed">
+      <Table
+        aria-label={t('users.tableLabel')}
+        className="min-w-[64rem] table-fixed"
+      >
         <TableHeader className="bg-muted/50 [&_th]:h-12 [&_th]:px-5 [&_th]:font-bold">
           <TableRow className="hover:bg-transparent">
             <TableHead scope="col" className="w-56">
-              Name
+              {t('users.name')}
             </TableHead>
             <TableHead scope="col" className="w-56">
-              Role
+              {t('users.role')}
             </TableHead>
             <TableHead scope="col" className="w-36">
-              Status
+              {t('common.status')}
             </TableHead>
             <TableHead scope="col" className="w-36">
-              Added
+              {t('users.added')}
             </TableHead>
             <TableHead scope="col" className="w-24 text-right">
-              <span className="sr-only">Actions</span>
+              <span className="sr-only">{t('common.actions')}</span>
             </TableHead>
           </TableRow>
         </TableHeader>
@@ -141,7 +149,7 @@ export function TenantUsersTable({
                     </span>
                     {isSelf(user) && !selfActionsAllowed && (
                       <>
-                        <Badge variant="outline">You</Badge>
+                        <Badge variant="outline">{t('users.you')}</Badge>
                         <Tooltip
                           content={
                             <div className="flex flex-col gap-1">
@@ -151,23 +159,17 @@ export function TenantUsersTable({
                                   aria-hidden="true"
                                 />
                                 <span className="font-semibold">
-                                  You can't change your role
+                                  {t('users.selfLocked.title')}
                                 </span>
                               </div>
                               <Separator className="my-1" />
-                              <p>
-                                You are either the only administrator or the
-                                last owner for this tenant. Both safeguards must
-                                be satisfied before changing your own access.
-                              </p>
+                              <p>{t('users.selfLocked.body')}</p>
                               <p className="font-semibold">
-                                To change your role:
+                                {t('users.selfLocked.stepsTitle')}
                               </p>
                               <ol className="list-decimal space-y-1 pl-4">
-                                <li>
-                                  Assign another person the administrator role.
-                                </li>
-                                <li>Change your own role.</li>
+                                <li>{t('users.selfLocked.assignAdmin')}</li>
+                                <li>{t('users.selfLocked.changeOwn')}</li>
                               </ol>
                             </div>
                           }
@@ -176,7 +178,7 @@ export function TenantUsersTable({
                             type="button"
                             variant="ghost"
                             size="icon-xs"
-                            aria-label="Why can't I change my own role?"
+                            aria-label={t('users.selfLocked.help')}
                           >
                             <Info className="size-4" aria-hidden="true" />
                           </Button>
@@ -196,7 +198,9 @@ export function TenantUsersTable({
                   tenantId={tenantId}
                   value={user.role ?? 'member'}
                   hideLabel
-                  ariaLabel={`Role for ${user.email ?? 'user'}`}
+                  ariaLabel={t('users.roleFor', {
+                    email: user.email ?? t('users.unknownUser'),
+                  })}
                   isDisabled={!canActOn(user)}
                   onChange={(role) => onRoleChange(user, role)}
                 />
@@ -205,7 +209,7 @@ export function TenantUsersTable({
                 {user.status && (
                   <StatusBadge
                     tone={STATUS_TONE[user.status]}
-                    label={user.status === 'invited' ? 'Pending' : user.status}
+                    label={t(`users.status.${user.status}`)}
                   />
                 )}
               </TableCell>

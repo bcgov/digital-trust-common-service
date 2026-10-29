@@ -5,14 +5,21 @@ import { OidcConfigService } from '@app/oidc';
 import { Injectable } from '@nestjs/common';
 import { argon2i, hash } from 'argon2';
 
+import {
+  ADMIN_CLIENT_ID,
+  UI_CLIENT_ID,
+} from '../oauth-client/oauth-client.constants';
 import { OAuthClient } from '../oauth-client/oauth-client.entity';
 import { OAuthClientRepository } from '../oauth-client/oauth-client.repository';
 import { TenantStatus } from '../tenant/tenant.entity';
 import { TenantRepository } from '../tenant/tenant.repository';
 
+export {
+  ADMIN_CLIENT_ID,
+  UI_CLIENT_ID,
+} from '../oauth-client/oauth-client.constants';
+
 /** What the SPA presents (its runtime config defaults to this). */
-export const UI_CLIENT_ID = 'dtsc-ui';
-export const ADMIN_CLIENT_ID = 'dtsc-platform-admin';
 // As in apps/ui/src/lib/auth/constants.ts; the provider matches exactly.
 const UI_CALLBACK_PATH = '/auth/callback';
 const UI_POST_LOGOUT_PATH = '/login';

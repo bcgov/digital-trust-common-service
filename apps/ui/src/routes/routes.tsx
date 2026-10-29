@@ -66,6 +66,13 @@ export const routes: RouteObject[] = [
                 ),
               },
               {
+                path: '/api-clients',
+                lazy: lazyPage(
+                  () => import('@/pages/api-clients-page'),
+                  'ApiClientsPage',
+                ),
+              },
+              {
                 path: '/tenants/:tenantId',
                 lazy: lazyPage(
                   () => import('@/layouts/tenant-layout'),
@@ -88,30 +95,44 @@ export const routes: RouteObject[] = [
                   },
                   {
                     path: 'connections',
-                    element: <PlaceholderPage title="Connections" issue={87} />,
+                    element: (
+                      <PlaceholderPage
+                        title="placeholder.connections"
+                        issue={87}
+                      />
+                    ),
                   },
                   {
                     path: 'credentials',
                     element: (
                       <PlaceholderPage
-                        title="Credential operations"
+                        title="placeholder.credentials"
                         issue={85}
                       />
                     ),
                   },
                   {
                     path: 'audit-logs',
-                    element: <PlaceholderPage title="Audit logs" issue={88} />,
+                    element: (
+                      <PlaceholderPage
+                        title="placeholder.auditLogs"
+                        issue={88}
+                      />
+                    ),
                   },
                   {
                     path: 'logs',
-                    element: <PlaceholderPage title="Logs" issue={89} />,
+                    element: (
+                      <PlaceholderPage title="placeholder.logs" issue={89} />
+                    ),
                   },
                   {
                     path: 'settings',
                     // Deliberately no issue number: unlike #85-#89, no tenant
                     // settings issue exists yet.
-                    element: <PlaceholderPage title="Tenant settings" />,
+                    element: (
+                      <PlaceholderPage title="placeholder.tenantSettings" />
+                    ),
                   },
                 ],
               },

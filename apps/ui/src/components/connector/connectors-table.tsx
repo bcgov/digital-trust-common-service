@@ -1,3 +1,5 @@
+import { useTranslation } from 'react-i18next';
+
 import { ConnectorRowActions } from '@/components/connector/connector-row-actions';
 import { ConnectorStatus } from '@/components/connector/connector-status';
 import { Badge } from '@/components/common/badge';
@@ -24,20 +26,24 @@ export function ConnectorsTable({
   onEdit: (connector: Connector) => void;
   onDelete: (connector: Connector) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="min-w-0 border-y border-border">
-      <Table aria-label="Connectors" className="min-w-[38rem] table-fixed">
+      <Table
+        aria-label={t('connectors.title')}
+        className="min-w-[38rem] table-fixed"
+      >
         <TableHeader className="bg-muted/50 [&_th]:h-12 [&_th]:px-5 [&_th]:font-bold">
           <TableRow className="hover:bg-transparent">
             <TableHead scope="col" className="w-32">
-              Type
+              {t('common.type')}
             </TableHead>
-            <TableHead scope="col">Endpoint</TableHead>
+            <TableHead scope="col">{t('connectors.endpoint')}</TableHead>
             <TableHead scope="col" className="w-36">
-              Status
+              {t('common.status')}
             </TableHead>
             <TableHead scope="col" className="w-24 text-right">
-              Actions
+              {t('common.actions')}
             </TableHead>
           </TableRow>
         </TableHeader>
@@ -54,7 +60,7 @@ export function ConnectorsTable({
                       variant="outline"
                       className="border-blue-600 text-blue-700 dark:border-blue-400 dark:text-blue-400"
                     >
-                      Default
+                      {t('common.default')}
                     </Badge>
                   )}
                 </div>
