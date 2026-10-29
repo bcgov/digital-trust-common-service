@@ -9,6 +9,7 @@ import {
   CredentialDefinition,
   CredentialDefinitionConnectorType,
   CredentialDefinitionFormat,
+  CredentialDefinitionStatus,
 } from '../credential-definition.entity';
 
 import {
@@ -97,6 +98,19 @@ export class CredentialDefinitionResponseDto {
   })
   public connectorType!: CredentialDefinitionConnectorType;
 
+  @ApiProperty({
+    description: 'The version of this credential definition',
+    example: '1.0',
+  })
+  public version!: string;
+
+  @ApiProperty({
+    description: 'The lifecycle status of this credential definition',
+    enum: CredentialDefinitionStatus,
+    example: CredentialDefinitionStatus.PUBLISHED,
+  })
+  public status!: CredentialDefinitionStatus;
+
   @Expose({ name: 'is_active' })
   @ApiProperty({
     name: 'is_active',
@@ -173,6 +187,8 @@ export class CredentialDefinitionResponseDto {
         }
       : null;
     dto.connectorType = credentialDefinition.connectorType;
+    dto.version = credentialDefinition.version;
+    dto.status = credentialDefinition.status;
     dto.isActive = credentialDefinition.isActive;
     dto.metadata = credentialDefinition.metadata;
     dto.options = credentialDefinition.options;

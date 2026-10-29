@@ -114,12 +114,19 @@ selected by `VITE_AUTH_MODE`:
   worker answers every `/api` call from the same handlers the test suite uses
   (`src/mocks/handlers.ts`), because a real API would 401 the fake token
   and sign the mock user out. A call with no handler fails as `NOT_MOCKED`;
-  writes succeed but do not persist. A hard reload (Ctrl+Shift+R) bypasses
+  credential configurations support tenant-scoped listing, detail reads, creation,
+  draft editing, publication, and soft deletion with an active connector fixture.
+  Configuration changes persist in memory until the page reloads, not in a database.
+  A hard reload (Ctrl+Shift+R) bypasses
   service workers — reload normally to get the mocks back.
 - **`oidc`** — real Authorization Code + PKCE against this origin's `/oidc`
   provider, which federates to Keycloak internally. The SPA never talks to
   Keycloak and never holds a client secret: it is registered as a public
   client (`dtsc-ui`).
+
+The credential-configuration wizard currently supports only Anoncreds. Drafts using other
+formats return to the configurations table with a notification; they cannot be edited or
+published through this wizard. This UI restriction does not change the API's format model.
 
 In `oidc` mode the app **must** be reached at `https://app.localhost`, not
 `http://localhost:5173` — the issuer in the discovery document points at the

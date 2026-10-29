@@ -7,7 +7,13 @@ import type {
   UpdateApiClient,
 } from '@/lib/api/resources/api-clients';
 import type { Connection } from '@/lib/api/resources/connections';
-import type { CredentialDefinition } from '@/lib/api/resources/credential-definitions';
+import type { Connector } from '@/lib/api/resources/connectors';
+import type {
+  CreateCredentialDefinitionRequest,
+  CredentialDefinitionRegistrationOperation,
+  CredentialDefinition,
+  UpdateCredentialDefinitionRequest,
+} from '@/lib/api/resources/credential-definitions';
 import type { TenantRoleMapping } from '@/lib/api/resources/tenant-roles';
 import type { TenantUser } from '@/lib/api/resources/tenant-users';
 import type { Tenant } from '@/lib/api/resources/tenants';
@@ -59,7 +65,19 @@ export const mockCredentialDefinitions: CredentialDefinition[] = [
       tag: 'default',
       status: { revocation: { enabled: true } },
     },
+    version: '1.0',
+    status: 'published',
     connector_type: 'traction',
+    connector_id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+    registration_state: 'ready',
+    external_id: 'employee-badge-1-0',
+    schema_definition: {
+      attr_names: ['employee_id', 'department'],
+      schema_name: 'Employee badge',
+      schema_version: '1.0',
+      version: '1.0',
+    },
+    metadata: { description: 'Employee identity and department' },
     is_active: true,
     created_at: '2026-04-01T10:00:00.000Z',
     updated_at: '2026-04-01T10:00:00.000Z',
@@ -74,12 +92,40 @@ export const mockCredentialDefinitions: CredentialDefinition[] = [
       tag: 'default',
       status: { revocation: { enabled: true } },
     },
+    version: '1.0',
+    status: 'draft',
     connector_type: 'traction',
+    connector_id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+    registration_state: 'unverified',
+    external_id: null,
+    schema_definition: {
+      attr_names: ['visitor_name'],
+      schema_name: 'Visitor pass',
+      schema_version: '1.0',
+      version: '1.0',
+    },
+    metadata: { description: 'Visitor access credential' },
     is_active: true,
     created_at: '2026-04-02T10:00:00.000Z',
     updated_at: '2026-04-02T10:00:00.000Z',
   },
 ];
+
+export const mockConnectors: Connector[] = [
+  {
+    id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+    tenant_id: '11111111-1111-4111-8111-111111111111',
+    connector_type: 'traction',
+    endpoint_url: 'https://traction.example.test/api',
+    active: true,
+  },
+];
+
+let credentialDefinitions = structuredClone(mockCredentialDefinitions);
+
+export function resetCredentialDefinitionMocks() {
+  credentialDefinitions = structuredClone(mockCredentialDefinitions);
+}
 
 export const mockConnections: Connection[] = [
   {
@@ -294,12 +340,213 @@ export const handlers = [
     `${API_BASE_PATH}/tenants/:id/credential-definitions`,
     ({ params }) =>
       HttpResponse.json(
-        mockCredentialDefinitions.filter((d) => d.tenant_id === params.id),
+        credentialDefinitions.filter(
+          (definition) =>
+            definition.tenant_id === params.id && definition.is_active,
+        ),
       ),
   ),
+  http.get(
+    `${API_BASE_PATH}/tenants/:id/credential-definitions/:definitionId`,
+    ({ params }) => {
+      const definition = credentialDefinitions.find(
+        (item) =>
+          item.tenant_id === params.id &&
+          item.id === params.definitionId &&
+          item.is_active,
+      );
+      return definition
+        ? HttpResponse.json(definition)
+        : new HttpResponse(null, { status: 404 });
+    },
+  ),
+  http.post(
+    `${API_BASE_PATH}/tenants/:id/credential-definitions`,
+    async ({ params, request }) => {
+      const body = (await request.json()) as CreateCredentialDefinitionRequest;
+      const connectorId = body.connector_id;
+      const connector = mockConnectors.find(
+        (item) =>
+          item.tenant_id === params.id &&
+          item.id === connectorId &&
+          item.active,
+      );
+      if (!connector) {
+        return HttpResponse.json(
+          {
+            message:
+              'Selected connector is not active for this tenant.',
+          },
+          { status: 400 },
+        );
+      }
+      const schemaDefinition =
+        'definition' in body.schema
+          ? body.schema.definition
+          : { id: body.schema.id };
+      const existing = credentialDefinitions.find(
+        (item) =>
+          item.tenant_id === params.id &&
+          item.is_active &&
+          item.name === body.name &&
+          item.format === body.options.format,
+      );
+      if (existing && (body.status === 'draft' || existing.status !== 'draft')) {
+        return HttpResponse.json(
+          {
+            message:
+              'Credential definition with this name and format already exists for this tenant.',
+          },
+          { status: 409 },
+        );
+      }
+      const now = new Date().toISOString();
+      const isDraft = body.status === 'draft';
+      const definition: CredentialDefinition = existing ?? {
+        id: crypto.randomUUID(),
+        tenant_id: String(params.id),
+        name: body.name,
+        format: body.options.format,
+        schema_definition: schemaDefinition,
+        external_id: null,
+        connector_id: connector.id,
+        connector_type: connector.connector_type,
+        registration_state: isDraft ? 'unverified' : 'pending',
+        registration_operation_id: null,
+        options: body.options,
+        version:
+          typeof schemaDefinition.version === 'string' &&
+          schemaDefinition.version.trim()
+            ? schemaDefinition.version
+            : typeof schemaDefinition.schema_version === 'string'
+              ? schemaDefinition.schema_version
+              : '1.0',
+        status: isDraft ? 'draft' : 'published',
+        metadata: body.metadata,
+        is_active: true,
+        created_at: now,
+        updated_at: now,
+      };
+      if (existing) {
+        existing.status = 'published';
+        existing.registration_state = 'pending';
+        existing.updated_at = now;
+      } else {
+        credentialDefinitions.push(definition);
+      }
+      if (isDraft) return HttpResponse.json(definition, { status: 201 });
+
+      const operationId = crypto.randomUUID();
+      definition.registration_operation_id = operationId;
+      const operation: CredentialDefinitionRegistrationOperation = {
+        id: operationId,
+        type: 'credential-definition.register',
+        state: 'pending',
+        created_at: now,
+        updated_at: now,
+        result: { credential_definition_id: definition.id },
+      };
+      return HttpResponse.json(operation, { status: 202 });
+    },
+  ),
+  http.patch(
+    `${API_BASE_PATH}/tenants/:id/credential-definitions/:definitionId`,
+    async ({ params, request }) => {
+      const body = (await request.json()) as UpdateCredentialDefinitionRequest;
+      const definition = credentialDefinitions.find(
+        (item) =>
+          item.tenant_id === params.id &&
+          item.id === params.definitionId &&
+          item.is_active,
+      );
+      if (!definition) return new HttpResponse(null, { status: 404 });
+      const changesSchema =
+        body.schema_definition !== undefined ||
+        body.connector_id !== undefined;
+      if (
+        definition.status !== 'draft' &&
+        (changesSchema || body.status === 'draft')
+      ) {
+        return HttpResponse.json(
+          { message: 'Only draft credential definitions can be edited.' },
+          { status: 400 },
+        );
+      }
+      const connector =
+        body.connector_id !== undefined
+          ? mockConnectors.find(
+              (item) =>
+                item.tenant_id === params.id &&
+                item.id === body.connector_id &&
+                item.active,
+            )
+          : undefined;
+      if (body.connector_id !== undefined && !connector) {
+        return HttpResponse.json(
+          { message: 'Selected connector is not active for this tenant.' },
+          { status: 400 },
+        );
+      }
+      if (
+        credentialDefinitions.some(
+          (item) =>
+            item.tenant_id === params.id &&
+            item.is_active &&
+            item.id !== definition.id &&
+            item.name === (body.name ?? definition.name) &&
+            item.format === definition.format,
+        )
+      ) {
+        return HttpResponse.json(
+          {
+            message:
+              'Credential definition with this name and format already exists for this tenant.',
+          },
+          { status: 409 },
+        );
+      }
+      if (body.name !== undefined) definition.name = body.name;
+      if (body.status !== undefined) definition.status = body.status;
+      if (body.metadata !== undefined) definition.metadata = body.metadata;
+      if (body.schema_definition !== undefined) {
+        definition.schema_definition = body.schema_definition;
+        if (
+          typeof body.schema_definition.version === 'string' &&
+          body.schema_definition.version.trim()
+        ) {
+          definition.version = body.schema_definition.version;
+        }
+      }
+      if (connector) {
+        definition.connector_id = connector.id;
+        definition.connector_type = connector.connector_type;
+      }
+      definition.updated_at = new Date().toISOString();
+      return HttpResponse.json(definition);
+    },
+  ),
+  http.delete(
+    `${API_BASE_PATH}/tenants/:id/credential-definitions/:definitionId`,
+    ({ params }) => {
+      const definition = credentialDefinitions.find(
+        (item) =>
+          item.tenant_id === params.id &&
+          item.id === params.definitionId &&
+          item.is_active,
+      );
+      if (!definition) return new HttpResponse(null, { status: 404 });
+      definition.is_active = false;
+      definition.updated_at = new Date().toISOString();
+      return new HttpResponse(null, { status: 204 });
+    },
+  ),
   // Envelope: mirrors the spec shape, so both list shapes stay exercised.
-  http.get(`${API_BASE_PATH}/tenants/:id/connectors`, () =>
-    HttpResponse.json({ data: [] }),
+  http.get(`${API_BASE_PATH}/tenants/:id/connectors`, ({ params }) =>
+    HttpResponse.json({
+      data: mockConnectors.filter(
+        (connector) => connector.tenant_id === params.id,
+      ),
+    }),
   ),
   http.get(`${API_BASE_PATH}/tenants/:id/connections`, ({ params }) =>
     HttpResponse.json({

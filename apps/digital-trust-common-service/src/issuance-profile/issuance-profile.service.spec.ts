@@ -1,5 +1,6 @@
 import {
   AdapterError,
+  ConnectorUnavailableError,
   CredentialFormat,
   FormatNotSupportedError,
 } from '@app/credential-ports';
@@ -9,6 +10,8 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
+import { plainToInstance } from 'class-transformer';
+import { validate } from 'class-validator';
 import { QueryFailedError } from 'typeorm';
 
 import { AdapterRegistry } from '../adapter-registry/adapter-registry.service';
@@ -19,6 +22,7 @@ import {
   CredentialDefinition,
   CredentialDefinitionConnectorType,
   CredentialDefinitionFormat,
+  CredentialDefinitionStatus,
 } from '../credential-definition/credential-definition.entity';
 import { CredentialDefinitionService } from '../credential-definition/credential-definition.service';
 import { TenantStatus } from '../tenant/tenant.entity';
@@ -61,6 +65,8 @@ describe('IssuanceProfileService', () => {
     connectorId: '123e4567-e89b-12d3-a456-426614174002',
     registrationState: 'ready',
     connectorType: CredentialDefinitionConnectorType.TRACTION,
+    version: '1.0',
+    status: CredentialDefinitionStatus.PUBLISHED,
     isActive: true,
     metadata: {},
     createdAt: new Date(),
@@ -88,8 +94,6 @@ describe('IssuanceProfileService', () => {
     description: undefined,
     credentialDefinitionId: mockCredentialDefinition.id,
     credentialDefinition: mockCredentialDefinition,
-    format: CredentialDefinitionFormat.ANONCREDS,
-    connectorId: mockConnectorId,
     attributeSchema: { given_name: { type: 'string', required: true } },
     defaults: undefined,
     display: undefined,
@@ -196,8 +200,6 @@ describe('IssuanceProfileService', () => {
           name: dto.name,
           version: dto.version,
           credentialDefinitionId: mockCredentialDefinition.id,
-          format: CredentialDefinitionFormat.ANONCREDS,
-          connectorId: mockConnectorId,
           attributeSchema: dto.attributeSchema,
         }),
       );
@@ -208,6 +210,8 @@ describe('IssuanceProfileService', () => {
         resourceId: mockProfile.id,
       });
       expect(result).toEqual(mockProfile);
+      expect(mockCreate.mock.calls[0][0]).not.toHaveProperty('format');
+      expect(mockCreate.mock.calls[0][0]).not.toHaveProperty('connectorId');
     });
 
     it('throws ConflictException when name/version already exists for tenant', async () => {
@@ -234,19 +238,94 @@ describe('IssuanceProfileService', () => {
       },
     );
 
-    it('rejects a connector override from another wallet', async () => {
-      await expect(
-        service.create(
-          tenantId,
-          {
-            ...dto,
-            connectorId: 'another-connector',
-          },
-          auth,
-        ),
-      ).rejects.toThrow(BadRequestException);
-      expect(mockResolve).not.toHaveBeenCalled();
+    it.each([mockConnectorId, '123e4567-e89b-12d3-a456-426614174099'])(
+      'rejects connector_id in the create request (%s)',
+      async (connectorId) => {
+        const request = plainToInstance(CreateIssuanceProfileDto, {
+          name: dto.name,
+          version: dto.version,
+          credential_definition_id: dto.credentialDefinitionId,
+          attribute_schema: dto.attributeSchema,
+          connector_id: connectorId,
+        });
+
+        const errors = await validate(request, {
+          whitelist: true,
+          forbidNonWhitelisted: true,
+        });
+
+        expect(errors).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              property: 'connector_id',
+              constraints: expect.objectContaining({
+                whitelistValidation: expect.any(String),
+              }),
+            }),
+          ]),
+        );
+      },
+    );
+
+    it('binds a profile to the definition connector when no selection is provided', async () => {
+      const boundConnectorId = '123e4567-e89b-12d3-a456-426614174099';
+      mockCredentialDefinitionFindById.mockResolvedValue({
+        ...mockCredentialDefinition,
+        connectorId: boundConnectorId,
+      });
+      mockResolve.mockResolvedValue({ connector: { id: boundConnectorId } });
+      mockCreate.mockResolvedValue(mockProfile);
+
+      await service.create(tenantId, dto, auth);
+
+      expect(mockResolve).toHaveBeenCalledWith(
+        tenantId,
+        CredentialFormat.AnonCreds,
+        { connectorId: boundConnectorId },
+      );
+      expect(mockCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          credentialDefinitionId: mockCredentialDefinition.id,
+        }),
+      );
+      expect(mockCreate.mock.calls[0][0]).not.toHaveProperty('connectorId');
     });
+
+    it('does not fall back when the definition connector is unavailable', async () => {
+      mockResolve.mockRejectedValue(
+        new ConnectorUnavailableError('Bound connector is unavailable'),
+      );
+
+      await expect(service.create(tenantId, dto, auth)).rejects.toThrow(
+        BadRequestException,
+      );
+
+      expect(mockResolve).toHaveBeenCalledTimes(1);
+      expect(mockResolve).toHaveBeenCalledWith(
+        tenantId,
+        CredentialFormat.AnonCreds,
+        { connectorId: mockConnectorId },
+      );
+      expect(mockCreate).not.toHaveBeenCalled();
+      expect(mockEmit).not.toHaveBeenCalled();
+    });
+
+    it.each([null, undefined])(
+      'rejects a definition without a connector binding (%s)',
+      async (connectorId) => {
+        mockCredentialDefinitionFindById.mockResolvedValue({
+          ...mockCredentialDefinition,
+          connectorId,
+          status: CredentialDefinitionStatus.DRAFT,
+        });
+        await expect(service.create(tenantId, dto, auth)).rejects.toThrow(
+          'Credential definition has no connector binding.',
+        );
+        expect(mockResolve).not.toHaveBeenCalled();
+        expect(mockCreate).not.toHaveBeenCalled();
+        expect(mockEmit).not.toHaveBeenCalled();
+      },
+    );
 
     it('throws NotFoundException when the credential definition is cross-tenant', async () => {
       mockCredentialDefinitionFindById.mockRejectedValue(
@@ -532,6 +611,27 @@ describe('IssuanceProfileService', () => {
   });
 
   describe('publish', () => {
+    it.each([
+      CredentialDefinitionStatus.DRAFT,
+      CredentialDefinitionStatus.DEPRECATED,
+    ])('rejects publication when the definition is %s', async (status) => {
+      mockFindById.mockResolvedValue({ ...mockProfile });
+      mockCredentialDefinitionFindById.mockResolvedValue({
+        ...mockCredentialDefinition,
+        status,
+        isActive: true,
+      });
+
+      await expect(
+        service.publish(tenantId, mockProfile.id, auth),
+      ).rejects.toThrow(
+        'Credential definition must be published before publishing an issuance profile.',
+      );
+      expect(mockResolve).not.toHaveBeenCalled();
+      expect(mockTransitionStatus).not.toHaveBeenCalled();
+      expect(mockEmit).not.toHaveBeenCalled();
+    });
+
     it('publishes a draft profile with a healthy connector', async () => {
       mockFindById.mockResolvedValue({ ...mockProfile });
 
@@ -547,7 +647,11 @@ describe('IssuanceProfileService', () => {
         mockProfile.id,
         IssuanceProfileStatus.DRAFT,
         IssuanceProfileStatus.PUBLISHED,
-        mockConnectorId,
+        {
+          id: mockCredentialDefinition.id,
+          connectorId: mockConnectorId,
+          format: mockCredentialDefinition.format,
+        },
       );
       expect(mockEmit).toHaveBeenCalledWith({
         tenantId: mockProfile.tenantId,
@@ -585,7 +689,11 @@ describe('IssuanceProfileService', () => {
     });
 
     it('throws BadRequestException when the connector was removed', async () => {
-      mockFindById.mockResolvedValue({ ...mockProfile, connectorId: null });
+      mockFindById.mockResolvedValue({ ...mockProfile });
+      mockCredentialDefinitionFindById.mockResolvedValue({
+        ...mockCredentialDefinition,
+        connectorId: null,
+      });
 
       await expect(
         service.publish(tenantId, mockProfile.id, auth),
@@ -625,7 +733,11 @@ describe('IssuanceProfileService', () => {
         mockProfile.id,
         IssuanceProfileStatus.DRAFT,
         IssuanceProfileStatus.PUBLISHED,
-        mockConnectorId,
+        {
+          id: mockCredentialDefinition.id,
+          connectorId: mockConnectorId,
+          format: mockCredentialDefinition.format,
+        },
       );
     });
   });

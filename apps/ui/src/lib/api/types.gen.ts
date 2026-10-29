@@ -508,9 +508,10 @@ export interface paths {
         get: operations["listCredentialDefinitions"];
         put?: never;
         /**
-         * Register a credential definition
-         * @description Create a credential definition for any declared credential format.
-         *     Only AnonCreds currently has a registered handler and runs asynchronously.
+         * Create or register a credential definition
+         * @description Draft requests (status=draft) save locally and return 201. Registration
+         *     requests run asynchronously and return an Operation with 202. Only
+         *     AnonCreds currently has a registered handler.
          *     Other declared formats return FORMAT_NOT_SUPPORTED without creating a
          *     definition or operation. The required format
          *     discriminator is inside immutable options (not a root request field),
@@ -563,7 +564,8 @@ export interface paths {
         delete: operations["deleteCredentialDefinition"];
         options?: never;
         head?: never;
-        patch?: never;
+        /** Update a credential definition */
+        patch: operations["updateCredentialDefinition"];
         trace?: never;
     };
     "/api/v1/tenants/{tenantId}/profiles/issuance": {
@@ -750,7 +752,9 @@ export interface paths {
         put?: never;
         /**
          * Offer/issue a credential
-         * @description Issue a credential via a published issuance profile.
+         * @description Issue a credential via a published issuance profile or a direct credential definition reference.
+         *     Both paths require an active, published credential definition. Draft and deprecated definitions
+         *     cannot be used for issuance, even when their schema and external ID are usable.
          *
          *     **Delivery mode** is determined by the presence of `connection_id`:
          *     - **Present** → DIDComm delivery (push offer to connected agent). Returns 202.
@@ -1936,7 +1940,9 @@ export interface components {
             name?: string;
             format?: components["schemas"]["CredentialFormat"];
             /** @description Format-specific schema definition */
-            schema_definition?: Record<string, never>;
+            schema_definition?: {
+                [key: string]: unknown;
+            };
             /** @description Backend registry reference (e.g., cred_def_id) */
             external_id?: string | null;
             /**
@@ -1958,6 +1964,9 @@ export interface components {
                 id?: string | null;
             } | null;
             connector_type?: components["schemas"]["ConnectorType"];
+            /** @description The version of this credential definition */
+            version?: string;
+            status?: components["schemas"]["CredentialDefinitionStatus"];
             /** @description Whether this credential definition is currently active */
             is_active?: boolean;
             /** @description Free-form client annotations */
@@ -1977,6 +1986,8 @@ export interface components {
         };
         /** @enum {string} */
         CredentialFormat: "anoncreds" | "sd-jwt" | "mdl" | "w3c-vc";
+        /** @enum {string} */
+        CredentialDefinitionStatus: "draft" | "published" | "deprecated";
         AnonCredsCredentialDefinitionOptionsDto: {
             /**
              * @description discriminator enum property added by openapi-typescript
@@ -2020,9 +2031,14 @@ export interface components {
             name: string;
             /**
              * Format: uuid
-             * @description Defaults to the tenant default or sole active compatible connector
+             * @description Connector credential to pin to this definition
              */
             connector_id?: string;
+            /**
+             * @description Draft saves locally; published starts asynchronous registration
+             * @enum {string}
+             */
+            status?: "draft" | "published";
             schema: {
                 /** @description Existing published schema; not a credential-definition import */
                 id: string;
@@ -2056,6 +2072,19 @@ export interface components {
              */
             options: components["schemas"]["AnonCredsCredentialDefinitionOptionsDto"] | components["schemas"]["SdJwtCredentialDefinitionOptionsDto"] | components["schemas"]["MdlCredentialDefinitionOptionsDto"] | components["schemas"]["W3cVcCredentialDefinitionOptionsDto"];
         };
+        /** @description Schema and connector fields may only be changed while the definition is a draft. */
+        UpdateCredentialDefinitionRequest: {
+            name?: string;
+            schema_definition?: {
+                [key: string]: unknown;
+            };
+            /** Format: uuid */
+            connector_id?: string;
+            status?: components["schemas"]["CredentialDefinitionStatus"];
+            metadata?: {
+                [key: string]: unknown;
+            };
+        };
         IssuanceProfile: {
             /** Format: uuid */
             id?: string;
@@ -2066,9 +2095,6 @@ export interface components {
             description?: string | null;
             /** Format: uuid */
             credential_definition_id?: string;
-            /** Format: uuid */
-            connector_id?: string | null;
-            format?: components["schemas"]["CredentialFormat"];
             /** @description Declares attributes the consumer must supply */
             attribute_schema?: Record<string, never>;
             /** @description Pre-filled attribute values */
@@ -2091,17 +2117,13 @@ export interface components {
             /** Format: date-time */
             updated_at?: string;
         };
+        /** @description The connector is inherited from the credential definition, which must have an active connector binding. */
         CreateIssuanceProfileRequest: {
             name: string;
             version: string;
             description?: string;
             /** Format: uuid */
             credential_definition_id: string;
-            /**
-             * Format: uuid
-             * @description If omitted, uses tenant's default_connector
-             */
-            connector_id?: string;
             /** @description Attribute definitions (names, types, required flags) */
             attribute_schema: Record<string, never>;
             defaults?: Record<string, never>;
@@ -3647,6 +3669,15 @@ export interface operations {
             };
         };
         responses: {
+            /** @description Local draft saved without contacting the registration backend */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CredentialDefinition"];
+                };
+            };
             /**
              * @description Registration accepted. result.credential_definition_id identifies the
              *     local definition; poll the operation until terminal. Equivalent
@@ -3723,6 +3754,37 @@ export interface operations {
                 };
                 content?: never;
             };
+        };
+    };
+    updateCredentialDefinition: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                credDefId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateCredentialDefinitionRequest"];
+            };
+        };
+        responses: {
+            /** @description Credential definition updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CredentialDefinition"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["ValidationError"];
         };
     };
     listIssuanceProfiles: {
@@ -3883,7 +3945,7 @@ export interface operations {
                     "application/json": components["schemas"]["IssuanceProfile"];
                 };
             };
-            /** @description The profile's connector no longer exists, is inactive, or its adapter no longer resolves */
+            /** @description The credential definition is not published, or its connector no longer exists, is inactive, or its adapter no longer resolves */
             400: {
                 headers: {
                     [name: string]: unknown;

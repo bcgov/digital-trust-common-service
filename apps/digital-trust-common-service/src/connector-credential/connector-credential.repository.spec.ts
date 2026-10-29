@@ -65,6 +65,21 @@ describe('ConnectorCredentialRepository', () => {
     });
   });
 
+  describe('findActiveByTenantAndId', () => {
+    it('requires the connector to be active and belong to the tenant', async () => {
+      const findOne = jest.fn().mockResolvedValue(null);
+      Object.assign(mockRepo, { findOne });
+
+      await expect(
+        repository.findActiveByTenantAndId('tenant-1', 'connector-1'),
+      ).resolves.toBeNull();
+
+      expect(findOne).toHaveBeenCalledWith({
+        where: { tenantId: 'tenant-1', id: 'connector-1', active: true },
+      });
+    });
+  });
+
   describe('updateWithLock', () => {
     it('builds and persists updates inside a tenant-scoped row lock', async () => {
       const existing = { id: 'c1', tenantId: 't1', keyVersion: 1 };

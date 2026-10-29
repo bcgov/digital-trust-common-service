@@ -25,6 +25,7 @@ import { API_BASE_PATH } from '../common/constants/api-version.constants';
 import {
   CredentialDefinition,
   CredentialDefinitionFormat,
+  CredentialDefinitionStatus,
   isCredentialDefinitionReadyForIssuance,
 } from '../credential-definition/credential-definition.entity';
 import { CredentialDefinitionRepository } from '../credential-definition/credential-definition.repository';
@@ -292,8 +293,7 @@ export class CredentialOfferService {
       );
     }
 
-    // The profile denormalizes format/credential_definition_id, but
-    // attribute validation needs the credential definition's own
+    // Attribute validation needs the credential definition's own
     // schema_definition shape (attr_names/schema_name/schema_version), not
     // the profile's attribute_schema — see FormatValidator.validateAttributes.
     // A definition since deactivated (soft-delete) behind a still-published
@@ -310,23 +310,22 @@ export class CredentialOfferService {
     }
 
     this.assertDefinitionReady(credentialDefinition);
-    if (profile.connectorId !== credentialDefinition.connectorId) {
-      throw new BadRequestException(
-        'Profile connector does not own this credential definition',
-      );
-    }
+
     return {
       credentialDefinitionId: credentialDefinition.id,
       externalCredentialDefinitionId: credentialDefinition.externalId!,
-      format: profile.format,
-      connectorId: profile.connectorId ?? undefined,
+      format: credentialDefinition.format,
+      connectorId: credentialDefinition.connectorId ?? undefined,
       schemaDefinition: credentialDefinition.schemaDefinition,
       defaults: profile.defaults ?? {},
       issuanceProfileId: profile.id,
     };
   }
 
-  /** Direct mode uses the definition's pinned connector. */
+  /**
+   * Direct definition offers bypass profile defaults and use the
+   * credential definition's connector binding.
+   */
   private async resolveFromCredentialDefinition(
     tenantId: string,
     credentialDefinitionId: string,
@@ -371,6 +370,11 @@ export class CredentialOfferService {
   }
 
   private assertDefinitionReady(definition: CredentialDefinition): void {
+    if (definition.status !== CredentialDefinitionStatus.PUBLISHED) {
+      throw new BadRequestException(
+        'Credential definition must be published before issuing credentials',
+      );
+    }
     if (!isCredentialDefinitionReadyForIssuance(definition)) {
       throw new BadRequestException(
         'Credential definition is not ready for issuance',

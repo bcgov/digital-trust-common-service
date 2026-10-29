@@ -1,7 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { Expose } from 'class-transformer';
 
-import { CredentialDefinitionFormat } from '../../credential-definition/credential-definition.entity';
 import {
   IssuanceProfile,
   IssuanceProfileProtocolHint,
@@ -49,24 +48,6 @@ export class IssuanceProfileResponseDto {
     example: '123e4567-e89b-12d3-a456-426614174000',
   })
   public credentialDefinitionId!: string;
-
-  @ApiProperty({
-    description:
-      'Denormalized credential format copied from the credential definition',
-    enum: CredentialDefinitionFormat,
-    example: CredentialDefinitionFormat.ANONCREDS,
-  })
-  public format!: CredentialDefinitionFormat;
-
-  @Expose({ name: 'connector_id' })
-  @ApiProperty({
-    name: 'connector_id',
-    description: 'Connector credential that handles this profile',
-    example: '123e4567-e89b-12d3-a456-426614174000',
-    required: false,
-    nullable: true,
-  })
-  public connectorId?: string | null;
 
   @Expose({ name: 'attribute_schema' })
   @ApiProperty({
@@ -138,8 +119,6 @@ export class IssuanceProfileResponseDto {
     dto.version = profile.version;
     dto.description = profile.description;
     dto.credentialDefinitionId = profile.credentialDefinitionId;
-    dto.format = profile.format;
-    dto.connectorId = profile.connectorId;
     dto.attributeSchema = profile.attributeSchema;
     dto.defaults = profile.defaults;
     dto.display = profile.display;

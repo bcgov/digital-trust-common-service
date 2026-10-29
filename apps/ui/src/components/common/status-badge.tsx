@@ -14,9 +14,11 @@ const VARIANT = {
 export function StatusBadge({
   label,
   tone,
+  showCheck = true,
 }: {
   label: string;
   tone: StatusBadgeTone;
+  showCheck?: boolean;
 }) {
   return (
     <Badge
@@ -27,7 +29,7 @@ export function StatusBadge({
           'border-green-600 text-green-700 dark:border-green-400 dark:text-green-400',
       )}
     >
-      {tone === 'success' && <Check aria-hidden="true" />}
+      {tone === 'success' && showCheck && <Check aria-hidden="true" />}
       {label}
     </Badge>
   );

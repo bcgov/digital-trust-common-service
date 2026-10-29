@@ -2,7 +2,6 @@ import { JwtGuard, ScopeGuard, TenantGuard, type AuthContext } from '@app/auth';
 import { CanActivate } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 
-import { CredentialDefinitionFormat } from '../credential-definition/credential-definition.entity';
 import { TenantTierRateLimitGuard } from '../rate-limit/tenant-tier-rate-limit.guard';
 import { TenantStatusGuard } from '../tenant/tenant-status.guard';
 import { TenantStatus } from '../tenant/tenant.entity';
@@ -55,8 +54,6 @@ describe('IssuanceProfileController', () => {
     version: '1.0',
     description: undefined,
     credentialDefinitionId: '123e4567-e89b-12d3-a456-426614174002',
-    format: CredentialDefinitionFormat.ANONCREDS,
-    connectorId: '123e4567-e89b-12d3-a456-426614174003',
     attributeSchema: { given_name: { type: 'string', required: true } },
     defaults: undefined,
     display: undefined,
