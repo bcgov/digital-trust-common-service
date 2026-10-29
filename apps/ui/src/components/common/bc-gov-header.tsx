@@ -2,6 +2,7 @@ import { Header } from '@bcgov/design-system-react-components';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
 
+import { Button } from '@/components/common/button';
 import { APP_NAME } from '@/lib/constants';
 
 /**
@@ -29,7 +30,8 @@ export function BcGovHeader({
   logoTo?: string;
   children?: React.ReactNode;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const otherLanguage = i18n.resolvedLanguage === 'fr' ? 'en' : 'fr';
   return (
     <Header
       title={APP_NAME}
@@ -41,6 +43,14 @@ export function BcGovHeader({
         </a>,
       ]}
     >
+      <Button
+        variant="ghost"
+        size="sm"
+        lang={otherLanguage}
+        onClick={() => void i18n.changeLanguage(otherLanguage)}
+      >
+        {t('header.otherLanguage')}
+      </Button>
       {children}
     </Header>
   );
