@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import {
   Drawer,
@@ -28,18 +29,19 @@ export function ApiClientActionDialog({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const { t } = useTranslation();
   const mutation = useChangeApiClient(tenantId);
   const [credentials, setCredentials] = useState<ClientCredentials | null>(
     null,
   );
   const title =
     action === 'rotate'
-      ? 'Rotate client secret'
+      ? t('apiClients.actionDialog.rotateTitle')
       : action === 'disable'
-        ? 'Disable API client'
+        ? t('apiClients.actionDialog.disableTitle')
         : action === 'revoke'
-          ? 'Revoke API client'
-          : 'Reactivate API client';
+          ? t('apiClients.actionDialog.revokeTitle')
+          : t('apiClients.actionDialog.reactivateTitle');
   const close = () => {
     if (mutation.isPending) return;
     setCredentials(null);
@@ -57,7 +59,7 @@ export function ApiClientActionDialog({
       >
         <DrawerContent>
           <DrawerHeader>
-            <DrawerTitle>New client secret</DrawerTitle>
+            <DrawerTitle>{t('apiClients.actionDialog.newSecretTitle')}</DrawerTitle>
           </DrawerHeader>
           <ApiClientSecret credentials={credentials} onDone={close} />
         </DrawerContent>
@@ -90,12 +92,12 @@ export function ApiClientActionDialog({
         <FormActions
           submitLabel={
             action === 'rotate'
-              ? 'Rotate secret'
+              ? t('apiClients.actionDialog.rotateSubmit')
               : action === 'disable'
-                ? 'Disable client'
+                ? t('apiClients.actionDialog.disableSubmit')
                 : action === 'revoke'
-                  ? 'Revoke client'
-                  : 'Reactivate client'
+                  ? t('apiClients.actionDialog.revokeSubmit')
+                  : t('apiClients.actionDialog.reactivateSubmit')
           }
           isPending={mutation.isPending}
           onClose={close}
@@ -105,12 +107,12 @@ export function ApiClientActionDialog({
       <p className="break-words font-semibold">{client.name}</p>
       <p>
         {action === 'rotate'
-          ? 'The old secret will stop working immediately. A new secret will be displayed once.'
+          ? t('apiClients.actionDialog.rotateBody')
           : action === 'disable'
-            ? 'New token grants will be blocked, including those using this secret. Already-issued access tokens remain valid until they expire.'
+            ? t('apiClients.actionDialog.disableBody')
             : action === 'revoke'
-              ? 'This revokes the client and blocks new token grants. The client record is retained and can be reactivated later.'
-              : 'New token grants will be allowed again using the existing credentials.'}
+              ? t('apiClients.actionDialog.revokeBody')
+              : t('apiClients.actionDialog.reactivateBody')}
       </p>
     </FormDialog>
   );

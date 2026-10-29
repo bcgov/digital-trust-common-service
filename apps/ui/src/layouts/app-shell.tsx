@@ -16,7 +16,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/common/dropdown-menu';
 import { Toaster } from '@/components/common/sonner';
-import { BuildingIcon } from '@/components/icons';
+import { BuildingIcon } from '@/components/common/icons';
 import { TenantSwitcher } from '@/components/tenant/tenant-switcher';
 import { useAuth } from '@/lib/auth/context';
 import {
@@ -43,7 +43,7 @@ const NAV_ITEMS: {
   },
   {
     to: '/api-clients',
-    label: 'API integrations',
+    label: 'apiClients.title',
     icon: KeyRound,
     scope: 'clients:manage',
   },

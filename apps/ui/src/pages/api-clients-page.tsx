@@ -1,5 +1,6 @@
 import { KeyRound } from 'lucide-react';
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { ApiClientActionDialog } from '@/components/api-client/api-client-action-dialog';
 import { ApiClientDetailsDrawer } from '@/components/api-client/api-client-details-drawer';
@@ -27,6 +28,7 @@ type ClientDialog = { tenantId: string } & (
 );
 
 export function ApiClientsPage() {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const { tenant, status, refetch } = useActiveTenant();
   const canManage = hasScope(user, 'clients:manage');
@@ -39,9 +41,9 @@ export function ApiClientsPage() {
   ) {
     return (
       <AccessDenied
-        title="API integrations"
+        title={t('apiClients.title')}
         headingLevel={1}
-        description="You need permission to manage API clients in this tenant."
+        description={t('apiClients.forbidden')}
       />
     );
   }
@@ -50,32 +52,34 @@ export function ApiClientsPage() {
   };
   const addButton = (
     <AddActionButton disabled={!tenant} onClick={create}>
-      Create integration
+      {t('apiClients.createIntegration')}
     </AddActionButton>
   );
   return (
     <div className="flex flex-1 flex-col gap-5">
       <div className="flex flex-wrap items-start justify-between gap-4">
-        <h1 className="text-xl font-semibold">API integrations</h1>
+        <h1 className="text-xl font-semibold">{t('apiClients.title')}</h1>
         {addButton}
       </div>
       {(status === 'loading' || (tenant && query.isLoading)) && (
-        <p role="status">Loading API clients...</p>
+        <p role="status">{t('apiClients.loading')}</p>
       )}
       {status === 'error' && (
         <div role="alert">
-          Could not load tenant memberships.{' '}
+          {t('apiClients.membershipsLoadFailed')}{' '}
           <Button variant="outline" onClick={refetch}>
-            Retry
+            {t('common.retry')}
           </Button>
         </div>
       )}
-      {status === 'ready' && !tenant && <p>No active tenant is available.</p>}
+      {status === 'ready' && !tenant && (
+        <p>{t('apiClients.noActiveTenant')}</p>
+      )}
       {tenant && query.isError && (
         <div role="alert" className="flex items-center gap-3">
-          <p>Could not load API clients: {query.error.message}</p>
+          <p>{t('apiClients.loadFailed', { reason: query.error.message })}</p>
           <Button variant="outline" onClick={() => void query.refetch()}>
-            Retry
+            {t('common.retry')}
           </Button>
         </div>
       )}
@@ -106,9 +110,11 @@ export function ApiClientsPage() {
               className="size-16 text-muted-foreground"
               aria-hidden="true"
             />
-            <h2 className="text-lg font-semibold">No API integrations yet</h2>
+            <h2 className="text-lg font-semibold">
+              {t('apiClients.emptyTitle')}
+            </h2>
             <p className="text-sm text-muted-foreground">
-              API integrations will appear here once they have been created.
+              {t('apiClients.emptyBody')}
             </p>
             {addButton}
           </div>
@@ -130,13 +136,15 @@ export function ApiClientsPage() {
             onClose={() => setDialog(null)}
             onSaved={() =>
               notify.success(
-                dialog.action === 'rotate'
-                  ? 'Secret rotated.'
-                  : dialog.action === 'disable'
-                    ? 'Client disabled.'
-                    : dialog.action === 'revoke'
-                      ? 'Client revoked.'
-                      : 'Client reactivated.',
+                t(
+                  dialog.action === 'rotate'
+                    ? 'apiClients.notifications.secretRotated'
+                    : dialog.action === 'disable'
+                      ? 'apiClients.notifications.clientDisabled'
+                      : dialog.action === 'revoke'
+                        ? 'apiClients.notifications.clientRevoked'
+                        : 'apiClients.notifications.clientReactivated',
+                ),
               )
             }
           />
@@ -148,7 +156,11 @@ export function ApiClientsPage() {
             onClose={() => setDialog(null)}
             onSaved={() =>
               notify.success(
-                dialog.kind === 'edit' ? 'Client updated.' : 'Client created.',
+                t(
+                  dialog.kind === 'edit'
+                    ? 'apiClients.notifications.clientUpdated'
+                    : 'apiClients.notifications.clientCreated',
+                ),
               )
             }
           />

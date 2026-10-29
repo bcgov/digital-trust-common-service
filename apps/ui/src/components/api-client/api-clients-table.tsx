@@ -1,4 +1,5 @@
 import { LockKeyhole } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 import {
   CircleInfoIcon,
@@ -41,15 +42,26 @@ export function ApiClientsTable({
   onRevoke: (client: ApiClient) => void;
   onAction: (client: ApiClient, action: 'disable' | 'reactivate') => void;
 }) {
+  const { t } = useTranslation();
+
   return (
     <div className="min-w-0 border-y border-border">
-      <Table aria-label="API clients" className="min-w-[48rem] table-fixed">
+      <Table
+        aria-label={t('apiClients.table.label')}
+        className="min-w-[48rem] table-fixed"
+      >
         <TableHeader className="bg-muted/50 [&_th]:px-5 [&_th]:font-bold">
           <TableRow>
-            <TableHead className="w-1/3">Client</TableHead>
-            <TableHead>Scopes</TableHead>
-            <TableHead className="w-44">Status</TableHead>
-            <TableHead className="w-36 text-right">Actions</TableHead>
+            <TableHead className="w-1/3">
+              {t('apiClients.table.client')}
+            </TableHead>
+            <TableHead>{t('apiClients.fields.scopes')}</TableHead>
+            <TableHead className="w-44">
+              {t('common.status')}
+            </TableHead>
+            <TableHead className="w-36 text-right">
+              {t('common.actions')}
+            </TableHead>
           </TableRow>
         </TableHeader>
         <TableBody className="[&_td]:px-5 [&_td]:py-4">
@@ -65,12 +77,12 @@ export function ApiClientsTable({
                   </div>
                   {systemManaged && (
                     <div className="text-xs text-muted-foreground">
-                      System managed
+                      {t('apiClients.table.systemManaged')}
                     </div>
                   )}
                   {client.is_public && (
                     <span className="text-xs text-muted-foreground">
-                      Public (PKCE)
+                      {t('apiClients.table.publicPkce')}
                     </span>
                   )}
                 </TableCell>
@@ -87,7 +99,15 @@ export function ApiClientsTable({
                       type="button"
                       role="switch"
                       aria-checked={!client.revoked_at}
-                      aria-label={`Active status for ${client.name}${systemManaged ? ' (system managed)' : ''}`}
+                      aria-label={
+                        systemManaged
+                          ? t('apiClients.table.activeStatusForSystemManaged', {
+                              name: client.name,
+                            })
+                          : t('apiClients.table.activeStatusFor', {
+                              name: client.name,
+                            })
+                      }
                       disabled={systemManaged}
                       onClick={() =>
                         onAction(
@@ -103,7 +123,11 @@ export function ApiClientsTable({
                       />
                     </button>
                     <span className="text-sm">
-                      {client.revoked_at ? 'Disabled' : 'Enabled'}
+                      {t(
+                        client.revoked_at
+                          ? 'apiClients.table.disabled'
+                          : 'apiClients.table.enabled',
+                      )}
                     </span>
                     {systemManaged && (
                       <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
@@ -111,7 +135,7 @@ export function ApiClientsTable({
                           className="size-3 shrink-0"
                           aria-hidden="true"
                         />
-                        Managed by system
+                        {t('apiClients.table.managedBySystem')}
                       </span>
                     )}
                   </div>
@@ -122,7 +146,9 @@ export function ApiClientsTable({
                       <Button
                         variant="ghost"
                         size="icon"
-                        aria-label={`Actions for ${client.name}`}
+                        aria-label={t('apiClients.table.actionsFor', {
+                          name: client.name,
+                        })}
                       >
                         <EllipsisVerticalIcon aria-hidden="true" />
                       </Button>
@@ -130,14 +156,14 @@ export function ApiClientsTable({
                     <DropdownMenuContent align="end">
                       <DropdownMenuItem onSelect={() => onViewDetails(client)}>
                         <CircleInfoIcon aria-hidden="true" />
-                        View details
+                        {t('common.viewDetails')}
                       </DropdownMenuItem>
                       <DropdownMenuItem
                         disabled={systemManaged || Boolean(client.revoked_at)}
                         onSelect={() => onEdit(client)}
                       >
                         <EditIcon aria-hidden="true" />
-                        Edit
+                        {t('common.edit')}
                       </DropdownMenuItem>
                       <Separator />
                       <DropdownMenuItem
@@ -146,7 +172,7 @@ export function ApiClientsTable({
                         onSelect={() => onRevoke(client)}
                       >
                         <TrashIcon aria-hidden="true" />
-                        Revoke
+                        {t('apiClients.table.revoke')}
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>

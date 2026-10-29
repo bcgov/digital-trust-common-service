@@ -1,8 +1,13 @@
 import { Copy, Check } from 'lucide-react';
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { Button } from '@/components/common/button';
 import type { ClientCredentials } from '@/lib/api/resources/api-clients';
+
+type SecretCopyMessage =
+  | 'apiClients.secret.copied'
+  | 'apiClients.secret.copyFailed';
 
 export function ApiClientSecret({
   credentials,
@@ -11,16 +16,19 @@ export function ApiClientSecret({
   credentials: ClientCredentials;
   onDone: () => void;
 }) {
-  const [message, setMessage] = useState('');
+  const { t } = useTranslation();
+  const [message, setMessage] = useState<SecretCopyMessage | null>(null);
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-6">
       <p className="text-sm">
-        Store this secret securely. It cannot be retrieved again.
+        {t('apiClients.secret.storeSecurely')}
       </p>
       <dl className="flex flex-col gap-2 text-sm">
-        <dt className="font-semibold">Client ID</dt>
+        <dt className="font-semibold">{t('apiClients.fields.clientId')}</dt>
         <dd className="break-all font-mono">{credentials.client.client_id}</dd>
-        <dt className="mt-3 font-semibold">Client secret</dt>
+        <dt className="mt-3 font-semibold">
+          {t('apiClients.fields.clientSecret')}
+        </dt>
         <dd className="select-all break-all rounded-md border p-3 font-mono">
           {credentials.client_secret}
         </dd>
@@ -30,23 +38,21 @@ export function ApiClientSecret({
         onClick={() => {
           void navigator.clipboard
             .writeText(credentials.client_secret)
-            .then(() => setMessage('Secret copied.'))
+            .then(() => setMessage('apiClients.secret.copied'))
             .catch(() =>
-              setMessage(
-                'Could not copy. Select the secret and copy it manually.',
-              ),
+              setMessage('apiClients.secret.copyFailed'),
             );
         }}
       >
         <Copy aria-hidden="true" />
-        Copy secret
+        {t('apiClients.secret.copy')}
       </Button>
       <p role="status" className="text-sm">
-        {message}
+        {message ? t(message) : null}
       </p>
       <Button className="mt-auto" onClick={onDone}>
         <Check aria-hidden="true" />
-        Done
+        {t('apiClients.secret.done')}
       </Button>
     </div>
   );

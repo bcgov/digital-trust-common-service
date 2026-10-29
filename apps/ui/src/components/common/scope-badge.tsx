@@ -1,4 +1,5 @@
 import { X } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 import { Badge } from '@/components/common/badge';
 
@@ -13,6 +14,8 @@ export function ScopeBadge({
   removeDisabled?: boolean;
   title?: string;
 }) {
+  const { t } = useTranslation();
+
   return (
     <Badge
       variant="outline"
@@ -23,7 +26,7 @@ export function ScopeBadge({
       {onRemove && (
         <button
           type="button"
-          aria-label={`Remove ${scope} scope`}
+          aria-label={t('common.removeScope', { scope })}
           disabled={removeDisabled}
           onClick={onRemove}
           className="inline-flex size-4 items-center justify-center rounded-sm hover:bg-muted"

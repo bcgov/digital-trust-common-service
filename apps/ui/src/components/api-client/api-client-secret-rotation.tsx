@@ -1,5 +1,6 @@
 import { LoaderCircle } from 'lucide-react';
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { Button } from '@/components/common/button';
 import {
@@ -27,6 +28,7 @@ export function ApiClientSecretRotation({
   tenantId: string;
   client: ApiClient;
 }) {
+  const { t } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
   const [credentials, setCredentials] = useState<ClientCredentials | null>(
     null,
@@ -47,7 +49,7 @@ export function ApiClientSecretRotation({
       {
         onSuccess: (result) => {
           if (!result) return;
-          notify.success('Secret rotated.');
+          notify.success(t('apiClients.notifications.secretRotated'));
           setCredentials(result);
         },
       },
@@ -60,14 +62,15 @@ export function ApiClientSecretRotation({
     <>
       <div className="flex flex-wrap items-center justify-between gap-3 border-y border-border py-4">
         <div className="flex flex-col gap-1">
-          <h3 className="text-sm font-semibold">Client secret</h3>
+          <h3 className="text-sm font-semibold">
+            {t('apiClients.rotation.title')}
+          </h3>
           <p className="text-xs text-muted-foreground">
-            Rotate the secret if it may have been exposed. The new secret is
-            shown once.
+            {t('apiClients.rotation.hint')}
           </p>
         </div>
         <Button type="button" variant="outline" onClick={() => setIsOpen(true)}>
-          Rotate secret
+          {t('apiClients.rotation.button')}
         </Button>
       </div>
       <Drawer
@@ -81,7 +84,9 @@ export function ApiClientSecretRotation({
         <DrawerContent showCloseButton={!mutation.isPending}>
           <DrawerHeader>
             <DrawerTitle>
-              {credentials ? 'New client secret' : 'Rotate client secret'}
+              {credentials
+                ? t('apiClients.actionDialog.newSecretTitle')
+                : t('apiClients.actionDialog.rotateTitle')}
             </DrawerTitle>
           </DrawerHeader>
           {credentials ? (
@@ -90,8 +95,7 @@ export function ApiClientSecretRotation({
             <>
               <DrawerBody>
                 <p>
-                  The old secret will stop working immediately. The new secret
-                  will be displayed once.
+                  {t('apiClients.actionDialog.rotateBody')}
                 </p>
                 {mutation.error && (
                   <p role="alert" className="text-sm text-destructive">
@@ -106,7 +110,7 @@ export function ApiClientSecretRotation({
                   disabled={mutation.isPending}
                   onClick={close}
                 >
-                  Cancel
+                  {t('common.cancel')}
                 </Button>
                 <Button
                   type="button"
@@ -116,7 +120,7 @@ export function ApiClientSecretRotation({
                   {mutation.isPending && (
                     <LoaderCircle className="animate-spin" aria-hidden="true" />
                   )}
-                  Rotate secret
+                  {t('apiClients.rotation.button')}
                 </Button>
               </DrawerFooter>
             </>
