@@ -1,6 +1,4 @@
-import {
-  LockKeyhole,
-} from 'lucide-react';
+import { LockKeyhole } from 'lucide-react';
 
 import {
   CircleInfoIcon,

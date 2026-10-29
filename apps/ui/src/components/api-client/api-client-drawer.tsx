@@ -76,7 +76,9 @@ export function ApiClientDrawer({
     (scope) => scope.name && hasScope(user, scope.name),
   );
   const suggestedClientId = `dtcs_${(slugify(name) || 'client').slice(0, 250)}`;
-  const currentClientId = (clientIdCustomized ? clientId : suggestedClientId).trim();
+  const currentClientId = (
+    clientIdCustomized ? clientId : suggestedClientId
+  ).trim();
   const clientIdError =
     clientIdCustomized &&
     currentClientId.length > 0 &&
