@@ -1,4 +1,11 @@
-import { AdapterError, RequestedPredicate } from '@app/credential-ports';
+import { randomBytes } from 'crypto';
+
+import type { AuthContext } from '@app/auth';
+import {
+  AdapterError,
+  PresentationRequest,
+  RequestedPredicate,
+} from '@app/credential-ports';
 import { JOB_QUEUES } from '@app/pg-boss';
 import {
   BadRequestException,
@@ -16,6 +23,7 @@ import {
 import { ResolvedAdapter } from '../adapter-registry/adapter-registry.types';
 import { AuditAction } from '../audit-log/audit-log.entity';
 import { DomainAuditService } from '../audit-log/domain-audit.service';
+import { assertTenantAccess } from '../common/assert-tenant-access';
 import { API_BASE_PATH } from '../common/constants/api-version.constants';
 import {
   Connection,
@@ -41,6 +49,7 @@ import {
 } from '../verification-profile/verification-profile.entity';
 import { VerificationProfileRepository } from '../verification-profile/verification-profile.repository';
 
+import { CreatePresentationRequestDto } from './dto/create-presentation-request.dto';
 import { RequestPresentationDto } from './dto/request-presentation.dto';
 
 /** UUIDv1-v5, case-insensitive — matches how other services (e.g. ParseUUIDPipe) recognize an id vs. a name-like string. */
@@ -58,6 +67,7 @@ interface ResolvedRequest {
   readonly requestedAttributes: readonly { name: string }[];
   readonly requestedPredicates?: readonly RequestedPredicate[];
   readonly format?: CredentialDefinitionFormat;
+  readonly definitionSnapshot?: Record<string, unknown>;
 }
 
 /**
@@ -103,9 +113,41 @@ export class PresentationRequestService {
     private readonly dataSource: DataSource,
   ) {}
 
+  public async create(
+    tenantId: string,
+    dto: CreatePresentationRequestDto,
+    auth: AuthContext,
+  ): Promise<Operation> {
+    assertTenantAccess(auth, tenantId);
+    return this.requestPresentation(
+      tenantId,
+      {
+        verificationProfileId: dto.presentationDefinitionId,
+        connectionId: dto.delivery.connectionId,
+      },
+      'presentation-requests',
+    );
+  }
+
+  public async get(
+    tenantId: string,
+    id: string,
+    auth: AuthContext,
+  ): Promise<Operation> {
+    assertTenantAccess(auth, tenantId);
+    return this.operationService.getForTenant(
+      tenantId,
+      id,
+      OPERATION_TYPE.PRESENTATION_REQUEST,
+    );
+  }
+
   public async requestPresentation(
     tenantId: string,
     dto: RequestPresentationDto,
+    resource:
+      | 'presentations/request'
+      | 'presentation-requests' = 'presentations/request',
   ): Promise<Operation> {
     this.assertExactlyOneMode(dto);
 
@@ -144,21 +186,47 @@ export class PresentationRequestService {
       resolved.format,
     );
 
+    if (!connection.externalConnectionId) {
+      throw new BadRequestException(
+        `Connection '${connection.id}' has no external connection id yet.`,
+      );
+    }
+    const proofRequest: PresentationRequest = structuredClone({
+      connectionId: connection.externalConnectionId,
+      name: resolved.name,
+      nonce: (BigInt(`0x${randomBytes(10).toString('hex')}`) || 1n).toString(),
+      requestedAttributes: resolved.requestedAttributes,
+      ...(resolved.requestedPredicates
+        ? { requestedPredicates: resolved.requestedPredicates }
+        : {}),
+    });
+
     const operation = await this.operationService.createOperation({
       tenantId,
       type: OPERATION_TYPE.PRESENTATION_REQUEST,
       request: {
         method: 'POST',
-        path: `${API_BASE_PATH}/tenants/${tenantId}/presentations/request`,
-        body: { ...dto },
+        path: `${API_BASE_PATH}/tenants/${tenantId}/${resource}`,
+        body: {
+          ...(resource === 'presentation-requests'
+            ? {
+                presentation_definition_id: dto.verificationProfileId,
+                delivery: { connection_id: dto.connectionId },
+              }
+            : { ...dto }),
+          snapshot: structuredClone({
+            definition: resolved.definitionSnapshot,
+            proof_request: proofRequest,
+            options: { format: resolvedAdapter.format },
+          }),
+        },
       },
     });
 
     return this.executeRequest(
       tenantId,
       operation,
-      connection,
-      resolved,
+      proofRequest,
       resolvedAdapter,
     );
   }
@@ -220,6 +288,15 @@ export class PresentationRequestService {
           extractRequestedAttributes(profile.presentationDefinition)
         ).map((name) => ({ name })),
         requestedPredicates: this.mapPredicates(profile.predicates),
+        format: profile.presentationFormat ?? undefined,
+        definitionSnapshot: structuredClone({
+          id: profile.id,
+          name: profile.name,
+          version: profile.version,
+          presentation_definition: profile.presentationDefinition,
+          predicates: profile.predicates,
+          options: { format: profile.presentationFormat ?? null },
+        }),
       };
     }
 
@@ -244,6 +321,10 @@ export class PresentationRequestService {
       name: 'ad-hoc-presentation-request',
       requestedAttributes: requestedAttributes.map((name) => ({ name })),
       format: dto.format,
+      definitionSnapshot: structuredClone({
+        presentation_definition: presentationDefinition,
+        options: { format: dto.format },
+      }),
     };
   }
 
@@ -431,40 +512,15 @@ export class PresentationRequestService {
   private async executeRequest(
     tenantId: string,
     operation: Operation,
-    connection: Connection,
-    resolved: ResolvedRequest,
+    proofRequest: PresentationRequest,
     resolvedAdapter: ResolvedAdapter,
   ): Promise<Operation> {
-    // ACTIVE/COMPLETED (already enforced by assertConnectionUsable) is only
-    // reached once the connection.create job has recorded the agent's own
-    // connection id — externalConnectionId is otherwise null while that job
-    // is still pending — so this should be unreachable in practice; it
-    // guards the adapter boundary against ever addressing a connection the
-    // agent has never heard of, and narrows the nullable column to the
-    // string the port requires.
-    if (!connection.externalConnectionId) {
-      throw new BadRequestException(
-        `Connection '${connection.id}' has no external connection id yet.`,
-      );
-    }
-
-    const externalConnectionId = connection.externalConnectionId;
     let exchange;
 
     try {
       exchange = await resolvedAdapter.adapter.requestPresentation(
         resolvedAdapter.context,
-        {
-          // The adapter's own connection identifier, not this service's
-          // local Connection.id — the local UUID would address a
-          // connection the agent has never heard of.
-          connectionId: externalConnectionId,
-          name: resolved.name,
-          requestedAttributes: resolved.requestedAttributes,
-          ...(resolved.requestedPredicates
-            ? { requestedPredicates: resolved.requestedPredicates }
-            : {}),
-        },
+        proofRequest,
       );
     } catch (error) {
       return this.failOperation(tenantId, operation, error);
