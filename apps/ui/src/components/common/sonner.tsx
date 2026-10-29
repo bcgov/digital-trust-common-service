@@ -1,5 +1,6 @@
 import { CircleAlert, CircleCheck, Info, TriangleAlert, X } from 'lucide-react';
 import type { ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 import { toast, Toaster as SonnerToaster } from 'sonner';
 
 import { cn } from '@/lib/utils';
@@ -39,6 +40,7 @@ function Toast({
   children: ReactNode;
   onDismiss: () => void;
 }) {
+  const { t } = useTranslation();
   const Icon = VARIANT_ICONS[variant];
   return (
     <div
@@ -54,7 +56,7 @@ function Toast({
       </div>
       <button
         type="button"
-        aria-label="Dismiss notification"
+        aria-label={t('common.dismissNotification')}
         onClick={onDismiss}
         className="flex size-6 shrink-0 items-center justify-center rounded-md bg-(--surface-color-tertiary-button-default) p-1.5 hover:bg-white/15"
       >

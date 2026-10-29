@@ -1,4 +1,5 @@
 import { EllipsisVertical, Info, Pencil, Trash2 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 import { Button } from '@/components/common/button';
 import {
@@ -21,13 +22,17 @@ export function ConnectorRowActions({
   onEdit: () => void;
   onDelete: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button
           variant="ghost"
           size="icon"
-          aria-label={`Actions for ${connector.connector_type} connector at ${connector.endpoint_url}`}
+          aria-label={t('connectors.actionsFor', {
+            type: connector.connector_type,
+            endpoint: connector.endpoint_url,
+          })}
         >
           <EllipsisVertical aria-hidden="true" />
         </Button>
@@ -35,16 +40,16 @@ export function ConnectorRowActions({
       <DropdownMenuContent align="end">
         <DropdownMenuItem onSelect={onViewDetails}>
           <Info aria-hidden="true" />
-          View details
+          {t('common.viewDetails')}
         </DropdownMenuItem>
         <DropdownMenuItem onSelect={onEdit}>
           <Pencil aria-hidden="true" />
-          Edit
+          {t('common.edit')}
         </DropdownMenuItem>
         <Separator />
         <DropdownMenuItem variant="destructive" onSelect={onDelete}>
           <Trash2 aria-hidden="true" />
-          Delete
+          {t('common.delete')}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

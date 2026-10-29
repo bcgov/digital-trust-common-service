@@ -1,4 +1,6 @@
+import type { ParseKeys } from 'i18next';
 import type { ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Link, useLocation, useParams } from 'react-router';
 
 import { Button } from '@/components/common/button';
@@ -20,10 +22,10 @@ import { hasScope, USERS_MANAGE_SCOPE } from '@/lib/auth/scopes';
 
 // Each action lands on the tenant section that owns it. An action the token
 // cannot use is left out; the page behind it still handles a 403.
-const QUICK_ACTIONS: { label: string; to: string; scope?: string }[] = [
-  { label: 'Issue credential', to: 'credentials' },
-  { label: 'Verify presentation', to: 'credentials' },
-  { label: 'Manage users', to: 'users', scope: USERS_MANAGE_SCOPE },
+const QUICK_ACTIONS: { label: ParseKeys; to: string; scope?: string }[] = [
+  { label: 'overview.issueCredential', to: 'credentials' },
+  { label: 'overview.verifyPresentation', to: 'credentials' },
+  { label: 'overview.manageUsers', to: 'users', scope: USERS_MANAGE_SCOPE },
 ];
 
 interface StatCardProps {
@@ -37,21 +39,23 @@ interface StatCardProps {
 }
 
 function StatCard({ title, query }: StatCardProps) {
+  const { t } = useTranslation();
   let value: ReactNode = '—';
   let hint: ReactNode = null;
 
   if (!query) {
-    hint = <CardDescription>Coming soon.</CardDescription>;
+    hint = <CardDescription>{t('overview.comingSoon')}</CardDescription>;
   } else if (query.isLoading) {
     value = <Skeleton className="h-9 w-12" />;
   } else if (query.error instanceof ApiError && query.error.status === 403) {
     // A role without the read scope is the normal case, not a failure.
-    hint = <CardDescription>Not available for your role.</CardDescription>;
+    hint = <CardDescription>{t('overview.notForRole')}</CardDescription>;
   } else if (query.error) {
     hint = (
       <p role="alert" className="text-sm text-destructive">
-        Failed to load
-        {query.error instanceof ApiError ? `: ${query.error.message}` : '.'}
+        {query.error instanceof ApiError
+          ? t('overview.loadFailedWithReason', { reason: query.error.message })
+          : t('overview.loadFailed')}
       </p>
     );
   } else if (query.data) {
@@ -72,6 +76,7 @@ function StatCard({ title, query }: StatCardProps) {
 }
 
 export function TenantOverviewPage() {
+  const { t, i18n } = useTranslation();
   const { tenantId } = useParams();
   const location = useLocation();
   const { user } = useAuth();
@@ -95,8 +100,9 @@ export function TenantOverviewPage() {
   if (error) {
     return (
       <p role="alert" className="text-sm text-destructive">
-        Failed to load tenant
-        {error instanceof ApiError ? `: ${error.message}` : '.'}
+        {error instanceof ApiError
+          ? t('tenant.loadFailedWithReason', { reason: error.message })
+          : t('tenant.loadFailed')}
       </p>
     );
   }
@@ -109,17 +115,17 @@ export function TenantOverviewPage() {
         </p>
       )}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <StatCard title="Credential definitions" query={definitions} />
-        <StatCard title="Active connections" query={connections} />
-        <StatCard title="Recent operations" />
+        <StatCard title={t('overview.definitions')} query={definitions} />
+        <StatCard title={t('overview.activeConnections')} query={connections} />
+        <StatCard title={t('overview.recentOperations')} />
       </div>
 
       <section className="flex flex-col gap-2">
-        <h2 className="text-base font-medium">Quick actions</h2>
+        <h2 className="text-base font-medium">{t('overview.quickActions')}</h2>
         <div className="flex flex-wrap gap-2">
           {quickActions.map(({ label, to }) => (
             <Button key={label} asChild variant="outline">
-              <Link to={to}>{label}</Link>
+              <Link to={to}>{t(label)}</Link>
             </Button>
           ))}
         </div>
@@ -127,22 +133,35 @@ export function TenantOverviewPage() {
 
       <Card className="max-w-lg">
         <CardHeader>
-          <CardTitle>Details</CardTitle>
+          <CardTitle>{t('overview.details')}</CardTitle>
         </CardHeader>
         <CardContent>
           <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-sm">
-            <dt className="text-muted-foreground">Slug</dt>
+            <dt className="text-muted-foreground">
+              {t('tenants.fields.slug')}
+            </dt>
             <dd className="font-mono text-xs leading-5">
               {tenant?.slug ?? '—'}
             </dd>
-            <dt className="text-muted-foreground">Status</dt>
-            <dd>{tenant?.status ?? '—'}</dd>
-            <dt className="text-muted-foreground">Description</dt>
+            <dt className="text-muted-foreground">{t('common.status')}</dt>
+            <dd>
+              {tenant?.status ? t(`tenants.status.${tenant.status}`) : '—'}
+            </dd>
+            <dt className="text-muted-foreground">
+              {t('tenants.fields.description')}
+            </dt>
             <dd>{tenant?.description ?? '—'}</dd>
-            <dt className="text-muted-foreground">Created</dt>
+            <dt className="text-muted-foreground">{t('common.created')}</dt>
             <dd>
               {tenant?.created_at
-                ? new Date(tenant.created_at).toLocaleString()
+                ? new Intl.DateTimeFormat(i18n.language, {
+                    year: 'numeric',
+                    month: 'numeric',
+                    day: 'numeric',
+                    hour: 'numeric',
+                    minute: 'numeric',
+                    second: 'numeric',
+                  }).format(new Date(tenant.created_at))
                 : '—'}
             </dd>
           </dl>

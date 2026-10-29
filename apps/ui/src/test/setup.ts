@@ -3,6 +3,7 @@ import { cleanup } from '@testing-library/react';
 import { afterAll, afterEach, beforeAll } from 'vitest';
 
 import { setAuthHandlers } from '@/lib/api/client';
+import i18n from '@/lib/i18n';
 
 import { server } from '@/mocks/server';
 
@@ -42,7 +43,11 @@ console.error = (...args: unknown[]) => {
   consoleError(...args);
 };
 
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
+beforeAll(async () => {
+  // Pin English so assertions on copy do not depend on the host's locale.
+  await i18n.changeLanguage('en');
+  server.listen({ onUnhandledRequest: 'error' });
+});
 
 afterEach(() => {
   cleanup();

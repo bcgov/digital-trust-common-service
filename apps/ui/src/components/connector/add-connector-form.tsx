@@ -1,5 +1,6 @@
 import { Info, LoaderCircle } from 'lucide-react';
 import { useId, type FormEvent } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { Button } from '@/components/common/button';
 import {
@@ -26,6 +27,7 @@ export function AddConnectorForm({
   mutation,
   canCreate,
 }: AddConnectorFormProps) {
+  const { t } = useTranslation();
   const fieldId = useId();
 
   return (
@@ -39,16 +41,16 @@ export function AddConnectorForm({
         aria-busy={mutation.isPending}
       >
         <DrawerDescription className="px-6 text-sm leading-6 text-muted-foreground">
-          This information will be used to configure your connector. The options
-          are what is required to connect to an external digital credential
-          agent.
+          {t('connectors.form.description')}
         </DrawerDescription>
         <fieldset
           disabled={mutation.isPending}
           className="mt-4 flex flex-col gap-4 px-6"
         >
           <div className="flex flex-col gap-2">
-            <Label htmlFor={`${fieldId}-type`}>Connector type</Label>
+            <Label htmlFor={`${fieldId}-type`}>
+              {t('connectors.form.type')}
+            </Label>
             <select
               id={`${fieldId}-type`}
               name="connector_type"
@@ -56,11 +58,13 @@ export function AddConnectorForm({
               defaultValue="traction"
               className="h-10 w-full rounded-lg border border-input bg-card px-2.5 text-sm"
             >
-              <option value="traction">Traction</option>
+              <option value="traction">{t('connectors.form.traction')}</option>
             </select>
           </div>
           <div className="flex flex-col gap-2">
-            <Label htmlFor={`${fieldId}-endpoint`}>Endpoint URL</Label>
+            <Label htmlFor={`${fieldId}-endpoint`}>
+              {t('connectors.form.endpointUrl')}
+            </Label>
             <Input
               id={`${fieldId}-endpoint`}
               name="endpoint_url"
@@ -82,7 +86,9 @@ export function AddConnectorForm({
             )}
           </div>
           <div className="flex flex-col gap-2">
-            <Label htmlFor={`${fieldId}-api-key`}>API key</Label>
+            <Label htmlFor={`${fieldId}-api-key`}>
+              {t('connectors.form.apiKey')}
+            </Label>
             <Input
               id={`${fieldId}-api-key`}
               name="credentials.api_key"
@@ -106,7 +112,7 @@ export function AddConnectorForm({
           </div>
           <div className="flex flex-col gap-2">
             <Label htmlFor={`${fieldId}-tenant`}>
-              Traction tenant ID (optional)
+              {t('connectors.form.tractionTenantId')}
             </Label>
             <Input
               id={`${fieldId}-tenant`}
@@ -115,7 +121,7 @@ export function AddConnectorForm({
           </div>
           <div className="flex flex-col gap-2">
             <Label htmlFor={`${fieldId}-webhook`}>
-              Webhook secret (optional)
+              {t('connectors.form.webhookSecret')}
             </Label>
             <Input
               id={`${fieldId}-webhook`}
@@ -129,7 +135,7 @@ export function AddConnectorForm({
           <p role="alert" className="mt-4 px-6 text-sm text-destructive">
             {mutation.error instanceof ApiError
               ? mutation.error.message
-              : 'Could not create the connector. Try again.'}
+              : t('connectors.form.createFailed')}
           </p>
         )}
         {mutation.isPending && (
@@ -141,14 +147,16 @@ export function AddConnectorForm({
               className="size-10 animate-spin motion-reduce:animate-none"
               aria-hidden="true"
             />
-            <span className="text-sm font-medium">Testing connection...</span>
+            <span className="text-sm font-medium">
+              {t('connectors.form.testing')}
+            </span>
           </div>
         )}
       </DrawerBody>
       <DrawerFooter className="shrink-0 items-center gap-4">
         <p className="flex min-w-40 flex-1 items-start gap-2 text-xs leading-5 text-muted-foreground">
           <Info className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-          <span>We test the connection before saving</span>
+          <span>{t('connectors.form.testNotice')}</span>
         </p>
         <div className="ml-auto flex gap-3">
           <DrawerClose asChild>
@@ -158,7 +166,7 @@ export function AddConnectorForm({
               className="h-10 bg-white px-6"
               disabled={mutation.isPending}
             >
-              Cancel
+              {t('common.cancel')}
             </Button>
           </DrawerClose>
           <Button
@@ -166,7 +174,9 @@ export function AddConnectorForm({
             className="h-10 px-6"
             disabled={!canCreate || mutation.isPending}
           >
-            {mutation.isPending ? 'Creating...' : 'Create'}
+            {mutation.isPending
+              ? t('connectors.form.creating')
+              : t('connectors.form.create')}
           </Button>
         </div>
       </DrawerFooter>

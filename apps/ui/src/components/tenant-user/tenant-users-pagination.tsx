@@ -1,4 +1,5 @@
 import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 import { Button } from '@/components/common/button';
 
@@ -15,9 +16,11 @@ export function TenantUsersPagination({
   onPrevious: () => void;
   onNext: () => void;
 }) {
+  const { t } = useTranslation();
+
   return (
     <nav
-      aria-label="Tenant users pagination"
+      aria-label={t('users.pagination.label')}
       className="flex items-center justify-end gap-3"
     >
       <Button
@@ -28,10 +31,10 @@ export function TenantUsersPagination({
         onClick={onPrevious}
       >
         <ChevronLeft aria-hidden="true" />
-        Previous
+        {t('users.pagination.previous')}
       </Button>
       <span aria-live="polite" className="text-sm text-muted-foreground">
-        Page {pageIndex + 1}
+        {t('users.pagination.page', { page: pageIndex + 1 })}
       </span>
       <Button
         type="button"
@@ -40,7 +43,7 @@ export function TenantUsersPagination({
         disabled={!hasNextPage || isLoading}
         onClick={onNext}
       >
-        Next
+        {t('users.pagination.next')}
         <ChevronRight aria-hidden="true" />
       </Button>
     </nav>

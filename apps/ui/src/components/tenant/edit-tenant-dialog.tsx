@@ -1,5 +1,6 @@
 import { TextArea, TextField } from '@bcgov/design-system-react-components';
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { FormActions, FormDialog } from '@/components/common/form-dialog';
 import { notify } from '@/components/common/sonner';
@@ -13,6 +14,7 @@ export function EditTenantDialog({
   tenant: Tenant;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   const [name, setName] = useState(tenant.name ?? '');
   const [description, setDescription] = useState(tenant.description ?? '');
   const update = useUpdateTenant(tenant.id ?? '');
@@ -24,12 +26,12 @@ export function EditTenantDialog({
 
   return (
     <FormDialog
-      label="Edit tenant"
+      label={t('tenants.edit.title')}
       isLoading={update.isPending}
-      loadingMessage="Saving tenant. Please wait..."
+      loadingMessage={t('tenants.edit.loading')}
       error={update.error}
-      errorTitle="Could not update tenant"
-      conflict="A tenant with this name already exists."
+      errorTitle={t('tenants.edit.errorTitle')}
+      conflict={t('tenants.edit.conflict')}
       onClose={onClose}
       onSubmit={(event) => {
         event.preventDefault();
@@ -38,23 +40,28 @@ export function EditTenantDialog({
           {
             onSuccess: () => {
               onClose();
-              notify.success(`Tenant ${trimmedName} updated.`);
+              notify.success(t('tenants.updated', { name: trimmedName }));
             },
           },
         );
       }}
       actions={
         <FormActions
-          submitLabel="Save changes"
+          submitLabel={t('tenants.edit.submit')}
           isPending={update.isPending}
           isDisabled={!trimmedName || unchanged}
           onClose={onClose}
         />
       }
     >
-      <TextField label="Name" value={name} onChange={setName} isRequired />
+      <TextField
+        label={t('tenants.fields.name')}
+        value={name}
+        onChange={setName}
+        isRequired
+      />
       <TextArea
-        label="Description"
+        label={t('tenants.fields.description')}
         value={description}
         onChange={setDescription}
       />

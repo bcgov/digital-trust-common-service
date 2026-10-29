@@ -2,6 +2,7 @@
 import js from '@eslint/js';
 import prettier from 'eslint-config-prettier';
 import checkFile from 'eslint-plugin-check-file';
+import i18next from 'eslint-plugin-i18next';
 import jsxA11y from 'eslint-plugin-jsx-a11y';
 import reactHooks from 'eslint-plugin-react-hooks';
 import reactRefresh from 'eslint-plugin-react-refresh';
@@ -60,6 +61,37 @@ export default tseslint.config(
     files: ['src/components/common/**'],
     rules: {
       'react-refresh/only-export-components': 'off',
+    },
+  },
+  {
+    // UI text comes from src/locales; the demo pages are not shipped copy.
+    ...i18next.configs['flat/recommended'],
+    files: ['src/**/*.tsx'],
+    ignores: ['**/*.test.tsx', 'src/test/**', 'src/demo/**'],
+    rules: {
+      // Attributes are checked only when they carry user-facing text;
+      // routing, form names and data-* values are not copy.
+      'i18next/no-literal-string': [
+        'error',
+        {
+          mode: 'jsx-only',
+          'jsx-attributes': {
+            include: [
+              'aria-(label|description|placeholder|roledescription|valuetext)',
+              'alt',
+              'title',
+              'placeholder',
+              'label',
+              'description',
+              'message',
+              'heading',
+              'tooltip',
+              '[a-z]+(Label|Message|Text|Title|Description)',
+            ],
+            exclude: ['.*'],
+          },
+        },
+      ],
     },
   },
   {

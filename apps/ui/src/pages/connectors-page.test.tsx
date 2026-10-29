@@ -456,7 +456,7 @@ describe('ConnectorsPage', () => {
       ).toHaveAttribute('data-vaul-drawer-direction', 'right');
       expect(
         await screen.findByText(
-          new Date('2026-10-01T12:00:00.000Z').toLocaleString(),
+          new Date('2026-10-01T12:00:00.000Z').toLocaleString('en'),
         ),
       ).toBeInTheDocument();
       expect(requestedDetails).toHaveBeenCalledWith(tenantId, connector.id);

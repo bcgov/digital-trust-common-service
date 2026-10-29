@@ -8,7 +8,7 @@ lockfile and toolchain, and is **not** part of the root NestJS build.
 
 React 19 · Vite 8 (+ React Compiler) · TypeScript 6 · React Router 8 (data mode,
 route-level code splitting) · Tailwind CSS 4 · shadcn/ui · TanStack Query ·
-axios · zod · Vitest + Testing Library + MSW.
+axios · zod · i18next · Vitest + Testing Library + MSW.
 
 Styling follows the BC Design System (#180): `@bcgov/design-tokens` mapped
 onto shadcn's token layer in `src/index.css`, BC Sans as the app font
@@ -171,6 +171,7 @@ src/
   lib/auth/      AuthClient seam: mock (default) and oidc (PKCE, real provider)
   lib/tenant/    active tenant: memberships query + the switch (navigate, reset cache)
   lib/config.ts  runtime config: fetches and validates /config.json before mount
+  lib/i18n.ts    i18next instance; English catalog in locales/en.json
   components/    app pieces: BCDS dialogs, status badges, the tenant switcher
   components/ui/ shadcn-managed primitives (add via `npx shadcn add <name>`)
   mocks/         MSW handlers: the test suite's fixtures, and mock mode's API
@@ -183,6 +184,10 @@ Conventions worth knowing:
 
 - Test files are `*.test.ts(x)` (never `*.spec.ts` — the root Jest config would
   pick those up).
+- User-facing copy lives in `src/locales/en.json` and renders through `t()`
+  from `useTranslation` (or `i18n.t` outside React). Keys are typed, so a
+  missing key fails `tsc`, and ESLint's `i18next/no-literal-string` rejects raw
+  JSX text. Format dates with `Intl.DateTimeFormat(i18n.language, …)`.
 - The API rejects unknown body fields (`forbidNonWhitelisted`); never send
   extra properties.
 - List responses are normalized by `lib/api/pagination.ts` to tolerate both the

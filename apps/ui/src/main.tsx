@@ -5,6 +5,7 @@ import { createBrowserRouter, RouterProvider } from 'react-router';
 import { FullPageError } from '@/components/common/full-page-status';
 import { Button } from '@/components/common/button';
 import { loadAppConfig } from '@/lib/config';
+import i18n from '@/lib/i18n';
 import { routes } from '@/routes/routes';
 
 import './index.css';
@@ -22,7 +23,7 @@ function renderFatal(message: string) {
     <StrictMode>
       <FullPageError message={message}>
         <Button variant="outline" onClick={() => window.location.reload()}>
-          Reload
+          {i18n.t('common.reload')}
         </Button>
       </FullPageError>
     </StrictMode>,
@@ -40,9 +41,7 @@ async function bootstrap() {
       await startMockApi();
     } catch (cause) {
       console.error('Mock API failed to start', cause);
-      renderFatal(
-        'The mock API could not start (service workers need https or localhost).',
-      );
+      renderFatal(i18n.t('fatal.mockApi'));
       return;
     }
   }
@@ -51,9 +50,7 @@ async function bootstrap() {
     await loadAppConfig();
   } catch (cause) {
     console.error('Runtime configuration failed to load', cause);
-    renderFatal(
-      'We could not load the application configuration (config.json). Reloading may help.',
-    );
+    renderFatal(i18n.t('fatal.config'));
     return;
   }
 

@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { Navigate, Outlet, useLocation } from 'react-router';
 
 import { FullPageStatus } from '@/components/common/full-page-status';
@@ -5,6 +6,7 @@ import { useAuth } from '@/lib/auth/context';
 
 /** Layout route guarding everything behind it; preserves the intended URL. */
 export function RequireAuth() {
+  const { t } = useTranslation();
   const { isAuthenticated, isLoading } = useAuth();
   const location = useLocation();
 
@@ -12,7 +14,7 @@ export function RequireAuth() {
   // throw an authenticated user out of a deep link — and, because the
   // redirect replaces history, silently drop where they were going.
   if (isLoading) {
-    return <FullPageStatus message="Checking your session…" />;
+    return <FullPageStatus message={t('auth.checkingSession')} />;
   }
 
   if (!isAuthenticated) {

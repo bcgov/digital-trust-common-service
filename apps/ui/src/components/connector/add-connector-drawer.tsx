@@ -1,4 +1,5 @@
 import { useState, type FormEvent, type ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 import { z } from 'zod';
 
 import {
@@ -25,6 +26,7 @@ const connectorSchema = z.object({
 });
 
 export function AddConnectorDrawer({ children }: { children: ReactNode }) {
+  const { t } = useTranslation();
   const { tenant } = useActiveTenant();
   const mutation = useCreateConnector(tenant?.id);
   const [open, setOpen] = useState(false);
@@ -86,7 +88,7 @@ export function AddConnectorDrawer({ children }: { children: ReactNode }) {
       <DrawerTrigger asChild>{children}</DrawerTrigger>
       <DrawerContent showCloseButton={!mutation.isPending}>
         <DrawerHeader>
-          <DrawerTitle>Add Connector</DrawerTitle>
+          <DrawerTitle>{t('connectors.add')}</DrawerTitle>
         </DrawerHeader>
         <AddConnectorForm
           onSubmit={submit}

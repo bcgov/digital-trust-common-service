@@ -44,8 +44,8 @@ function describeRole(
 
 describe('effectiveRoleOptions', () => {
   it('keeps the curated copy without a mapping or on the defaults', () => {
-    expect(effectiveRoleOptions()).toEqual(TENANT_ROLES);
-    expect(effectiveRoleOptions(DEFAULTS)).toEqual(TENANT_ROLES);
+    expect(effectiveRoleOptions().map(({ id }) => id)).toEqual(TENANT_ROLES);
+    expect(effectiveRoleOptions(DEFAULTS)).toEqual(effectiveRoleOptions());
   });
 
   it('describes an override from its scopes in a fixed order', () => {

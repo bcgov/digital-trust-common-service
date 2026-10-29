@@ -1,4 +1,5 @@
 import { Header } from '@bcgov/design-system-react-components';
+import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
 
 import { APP_NAME } from '@/lib/constants';
@@ -28,16 +29,15 @@ export function BcGovHeader({
   logoTo?: string;
   children?: React.ReactNode;
 }) {
+  const { t } = useTranslation();
   return (
     <Header
       title={APP_NAME}
       titleElement={titleAs}
-      logoLinkElement={
-        <Link to={logoTo} title="Government of British Columbia" />
-      }
+      logoLinkElement={<Link to={logoTo} title={t('header.govBc')} />}
       skipLinks={[
         <a key="main-content" href="#main-content">
-          Skip to main content
+          {t('header.skipToMain')}
         </a>,
       ]}
     >

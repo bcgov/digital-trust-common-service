@@ -1,4 +1,5 @@
 import { Navigate, useLocation } from 'react-router';
+import { useTranslation } from 'react-i18next';
 
 import { Button } from '@/components/common/button';
 import {
@@ -14,6 +15,7 @@ import { useActiveTenant } from '@/lib/tenant/active-tenant';
  * membership is still active, and provides a recovery screen otherwise.
  */
 export function DashboardPage() {
+  const { t } = useTranslation();
   const location = useLocation();
   const { tenant, memberships, status, refetch } = useActiveTenant();
   const state = location.state as { tenantUserNotice?: unknown } | null;
@@ -23,15 +25,15 @@ export function DashboardPage() {
       : undefined;
 
   if (status === 'loading') {
-    return <p role="status">Loading tenant memberships...</p>;
+    return <p role="status">{t('dashboard.loading')}</p>;
   }
 
   if (status === 'error') {
     return (
       <div role="alert" className="flex items-center gap-3">
-        <p>Could not load your tenant memberships.</p>
+        <p>{t('dashboard.loadFailed')}</p>
         <Button type="button" variant="outline" onClick={refetch}>
-          Retry
+          {t('common.retry')}
         </Button>
         {notice && (
           <p
@@ -59,13 +61,13 @@ export function DashboardPage() {
       <CardHeader>
         <CardTitle>
           {hasActiveMembership
-            ? 'Choose an active tenant'
-            : 'No active tenant membership'}
+            ? t('dashboard.chooseTitle')
+            : t('dashboard.noMembershipTitle')}
         </CardTitle>
         <CardDescription>
           {hasActiveMembership
-            ? 'Your current tenant is unavailable. Choose another active tenant from the tenant selector.'
-            : 'You do not currently belong to an active tenant. Ask a tenant owner or administrator to invite you.'}
+            ? t('dashboard.chooseBody')
+            : t('dashboard.noMembershipBody')}
         </CardDescription>
         {notice && (
           <p
