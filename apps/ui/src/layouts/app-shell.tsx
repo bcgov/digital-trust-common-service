@@ -195,11 +195,13 @@ export function AppShell() {
           id="main-content"
           tabIndex={-1}
           className={cn(
-            'flex min-w-0 flex-1 flex-col overflow-y-scroll',
+            'flex min-w-0 flex-1 flex-col overflow-y-auto',
             layout === 'centered' ? 'p-8' : 'p-6',
           )}
         >
-          <Outlet />
+          <div className="mx-auto w-full max-w-7xl">
+            <Outlet />
+          </div>
         </main>
       </div>
       <Toaster />
