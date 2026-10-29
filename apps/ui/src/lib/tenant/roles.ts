@@ -71,7 +71,7 @@ function listScopes(scopes: readonly string[]): string {
   );
   const phrases = [...known, ...unknown];
   return phrases.length > 0
-    ? phrases.join(', ')
+    ? new Intl.ListFormat(i18n.language, { type: 'unit' }).format(phrases)
     : i18n.t('roles.scopes.viewsOnly');
 }
 

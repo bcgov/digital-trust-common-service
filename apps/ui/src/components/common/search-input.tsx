@@ -1,5 +1,6 @@
 import { Search } from 'lucide-react';
 import type { ComponentProps } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { Input } from '@/components/common/input';
 import { cn } from '@/lib/utils';
@@ -10,10 +11,12 @@ type SearchInputProps = Omit<ComponentProps<typeof Input>, 'type'> & {
 
 export function SearchInput({
   className,
-  placeholder = 'Search',
+  placeholder,
   wrapperClassName,
   ...props
 }: SearchInputProps) {
+  const { t } = useTranslation();
+
   return (
     <div className={cn('relative w-full', wrapperClassName)}>
       <Search
@@ -23,7 +26,7 @@ export function SearchInput({
       <Input
         {...props}
         type="search"
-        placeholder={placeholder}
+        placeholder={placeholder ?? t('common.search')}
         className={cn('w-full pl-9', className)}
       />
     </div>

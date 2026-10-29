@@ -42,13 +42,19 @@ Regenerate API types with `npm run types:spec` or `npm run types:live` as approp
 - Keys are typed against the catalog; a missing key fails `tsc`. ESLint's `i18next/no-literal-string`
   rejects raw JSX text and user-facing attributes, but not strings passed to `notify()`, router state
   or announcements, so check those by hand.
-- Format dates with `Intl.DateTimeFormat(i18n.language, …)`, not `toLocale*String()`.
+- Format dates with `Intl.DateTimeFormat(i18n.language, …)`, not `toLocale*String()`, and join lists
+  with `Intl.ListFormat(i18n.language, …)`, not `join(', ')`.
+- For counted text, use i18next plural keys (`_one`, `_other`) rather than branching on the count;
+  French treats 0 as singular.
 - Zod messages use `error: () => i18n.t(…)` so they follow the current language.
 - API errors are translated by code under `errors` in the catalog, falling back to the server's
   message. Only add codes whose server text is generic or technical.
 - Tests run in `en` (`src/test/setup.ts`) and assert the English copy.
 - Add every new key to both `en.json` and `fr.json`; `src/locales/locales.test.ts` fails if their keys
-  differ. English is bundled and other catalogs load on first use from `src/locales/`.
+  or `{{placeholders}}` differ. English is bundled and other catalogs load on first use from
+  `src/locales/`.
+- In `npm run dev`, `?pseudo` in the URL accents and pads every translated string; plain English left
+  on the page skipped the catalog.
 
 ## Components and Routes
 
