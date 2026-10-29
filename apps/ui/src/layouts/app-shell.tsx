@@ -78,7 +78,7 @@ export function AppShell() {
       : null;
 
   return (
-    <div className="flex min-h-svh flex-col">
+    <div className="flex h-svh flex-col">
       <BcGovHeader logoTo="/dashboard">
         <TenantSwitcher />
 
@@ -124,7 +124,7 @@ export function AppShell() {
         </DropdownMenu>
       </BcGovHeader>
 
-      <div className="flex flex-1">
+      <div className="flex flex-1 overflow-hidden">
         {layout === 'sidebar' && (
           <aside className="w-60 shrink-0 border-r bg-sidebar text-sidebar-foreground">
             <div className="flex items-center gap-2 border-b px-3 py-3">
@@ -176,19 +176,11 @@ export function AppShell() {
           id="main-content"
           tabIndex={-1}
           className={cn(
-            'flex min-w-0 flex-1 flex-col',
-            layout === 'centered'
-              ? 'bg-card px-20 pt-(--layout-padding-xlarge) pb-(--layout-padding-xlarge)'
-              : 'p-6',
+            'flex min-w-0 flex-1 flex-col overflow-y-scroll',
+            layout === 'centered' ? 'p-8' : 'p-6',
           )}
         >
-          {layout === 'centered' ? (
-            <div className="mx-auto flex w-full max-w-320 flex-1 flex-col">
-              <Outlet />
-            </div>
-          ) : (
-            <Outlet />
-          )}
+          <Outlet />
         </main>
       </div>
       <Toaster />
