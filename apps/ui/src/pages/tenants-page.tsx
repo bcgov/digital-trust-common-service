@@ -158,7 +158,7 @@ export function TenantsPage() {
             aria-label={t('tenants.search')}
             // Untyped in BCDS 0.8.1's TextFieldProps, but forwarded by
             // react-aria's useTextField to the input at runtime.
-            {...{ placeholder: t('tenants.searchPlaceholder') }}
+            {...{ placeholder: t('common.search') }}
             className="w-62"
             value={search}
             onChange={setSearch}

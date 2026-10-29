@@ -90,10 +90,10 @@ bundle, which is exactly what one-image-everywhere forbids.
 missing or invalid file is a full-page error rather than a silent fallback, so
 a broken deployment says so instead of failing later on the provider's page.
 
-| Key | Default | Purpose |
-|---|---|---|
-| `oidcClientId` | `dtsc-ui` | client_id the SPA presents to `/oidc`. Each environment registers a public client under this id on the provider side (the dev seed does it locally). |
-| `oidcScopes` | `openid profile email tenant offline_access` | Scopes requested at sign-in — see the caveat under [Auth](#auth). |
+| Key            | Default                                      | Purpose                                                                                                                                              |
+| -------------- | -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `oidcClientId` | `dtsc-ui`                                    | client_id the SPA presents to `/oidc`. Each environment registers a public client under this id on the provider side (the dev seed does it locally). |
+| `oidcScopes`   | `openid profile email tenant offline_access` | Scopes requested at sign-in — see the caveat under [Auth](#auth).                                                                                    |
 
 Locally the file is `public/config.json`: the dev server serves it and the
 build copies it into `dist/`, so the image ships the same defaults. The Helm
@@ -149,14 +149,14 @@ single-flight handler rather than a background timer.
 
 ## Scripts
 
-| Script | Purpose |
-|---|---|
-| `npm run dev` / `build` / `preview` | Vite |
-| `npm test` / `test:watch` / `test:cov` | Vitest (jsdom + Testing Library + MSW) |
-| `npm run lint` / `lint:fix` | ESLint (own flat config — the root config ignores this app) |
-| `npm run format` / `format:check` | Prettier (shares the repo root `.prettierrc`) |
-| `npm run types:spec` | Regenerate `src/lib/api/types.gen.ts` from `docs/openapi.yaml` |
-| `npm run types:live` | Regenerate from a running API's `/api/docs/json` |
+| Script                                 | Purpose                                                        |
+| -------------------------------------- | -------------------------------------------------------------- |
+| `npm run dev` / `build` / `preview`    | Vite                                                           |
+| `npm test` / `test:watch` / `test:cov` | Vitest (jsdom + Testing Library + MSW)                         |
+| `npm run lint` / `lint:fix`            | ESLint (own flat config — the root config ignores this app)    |
+| `npm run format` / `format:check`      | Prettier (shares the repo root `.prettierrc`)                  |
+| `npm run types:spec`                   | Regenerate `src/lib/api/types.gen.ts` from `docs/openapi.yaml` |
+| `npm run types:live`                   | Regenerate from a running API's `/api/docs/json`               |
 
 The `types:*` scripts run `openapi-typescript` via pinned `npx` rather than a
 devDependency because it peer-requires TypeScript ^5 while this app is on 6.
@@ -196,8 +196,12 @@ Conventions worth knowing:
   the server's message. Add a code there only when the server's text is
   generic or technical.
 - Add every new key to both `src/locales/en.json` and `src/locales/fr.json`;
-  a test fails if their keys differ. `fr.json` holds English placeholder text
-  until the French translation is done.
+  a test fails if their keys or `{{placeholders}}` differ. `fr.json` holds
+  English placeholder text until the French translation is done.
+- Join lists with `Intl.ListFormat(i18n.language, …)`. For counted text, use
+  i18next plural keys (`_one`, `_other`); French treats 0 as singular.
+- In `npm run dev`, add `?pseudo` to the URL to accent and lengthen every
+  translated string. Plain English left on the page skipped the catalog.
 - The API rejects unknown body fields (`forbidNonWhitelisted`); never send
   extra properties.
 - List responses are normalized by `lib/api/pagination.ts` to tolerate both the

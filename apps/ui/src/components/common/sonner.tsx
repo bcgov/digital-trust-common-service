@@ -84,7 +84,14 @@ const notify = {
 };
 
 function Toaster() {
-  return <SonnerToaster position="bottom-right" />;
+  const { t } = useTranslation();
+
+  return (
+    <SonnerToaster
+      position="bottom-right"
+      containerAriaLabel={t('common.notifications')}
+    />
+  );
 }
 
 export { notify, Toaster };
