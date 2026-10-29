@@ -1391,9 +1391,12 @@ deploy Traction itself; verify the target agent's version before deployment.
 The obsolete v1 `/present-proof/send-request` endpoint is not used.
 
 The existing presentation request service resolves the tenant's connection and
-profile/raw attribute selection before calling the adapter. The adapter sends
+profile/raw attribute selection before calling the adapter. Each service execution
+generates a fresh cryptographic nonce and persists the definition and compiled
+request snapshot before calling the adapter. The adapter sends
 `presentation_request.anoncreds` with unique attribute/predicate referents,
-preserves credential restrictions, and lets ACA-Py generate the nonce.
+preserves credential restrictions, and forwards that execution nonce. Direct port
+callers may omit the nonce, in which case ACA-Py generates it.
 Predicate operators are `<`, `<=`, `>=`, and `>` with signed 32-bit integer
 thresholds. Automatic verification is enabled, completed records are retained
 with `auto_remove: false`, and submission is not automatically retried after
@@ -1444,7 +1447,93 @@ Self-attested values and unverified proof data are never exposed as verified
 attributes. Missing AnonCreds proof attachments or requested predicate proofs
 on a successfully verified record are rejected explicitly.
 Normal state-only webhooks do not contain these proof attachments; this layer
-does not add public presentation-result storage or a new REST lookup endpoint.
+does not add public storage or retrieval of those cryptographic proof attachments.
+
+### Reusable presentation definitions and execution
+
+Use `POST /api/v1/tenants/:tenantId/presentation-definitions` with
+`profiles:manage` to create a draft local template:
+
+```json
+{
+  "name": "identity-check",
+  "version": "1.0",
+  "query": {
+    "type": "dif-presentation-exchange",
+    "presentation_definition": {
+      "id": "identity-check",
+      "input_descriptors": [
+        {
+          "id": "person",
+          "constraints": {
+            "fields": [{ "path": ["$.credentialSubject.given_names"] }]
+          }
+        }
+      ]
+    },
+    "predicates": [{ "attribute": "age", "condition": ">=", "value": "19" }]
+  },
+  "options": { "format": "anoncreds" }
+}
+```
+
+The explicit query type currently supports the existing **attribute-selection
+subset**, not full DIF Presentation Exchange verification. Fields select a single
+`$.credentialSubject.attribute` path; they are flattened to AnonCreds attribute
+names, not credential-binding/descriptor-selection rules. Filters, groups,
+submission requirements, alternative paths and other unrepresentable constraints
+are rejected. Numeric predicates support `<`, `<=`, `>`, `>=` and signed 32-bit
+integer thresholds; equality is unsupported. Output is currently AnonCreds only.
+Native AnonCreds referent-keyed query input, DCQL and QueryByExample translators
+are not implemented; absent/unknown query types are rejected. This resource name
+does not imply a DIF-only storage model or support for arbitrary query languages.
+
+Definitions reuse `verification_profile` storage and its tenant/name/version
+uniqueness. `GET /presentation-definitions` lists with the existing cursor/status/
+public filters, and `GET /presentation-definitions/:id` reads a template.
+`PATCH /:id` updates drafts; `POST /:id/publish` freezes a draft for execution;
+`POST /:id/deprecate` prevents new requests using it. Published definitions cannot
+be edited: create a new version instead. There is no new deletion or ledger
+registration API. Migration adds nullable `presentation_format` without assigning
+a new default to legacy profiles.
+
+Execute a published definition with `credentials:verify`:
+
+```text
+POST /api/v1/tenants/:tenantId/presentation-requests
+```
+
+```json
+{
+  "presentation_definition_id": "<published-definition-uuid>",
+  "delivery": { "connection_id": "<established-local-connection-uuid>" }
+}
+```
+
+The connection and definition must belong to this tenant. Delivery uses that
+connection's connector type and its external connection ID, with the definition's
+output format. Each execution stores a deep snapshot of the definition, selected
+format and compiled port request (including its fresh nonce) in the existing
+Operation JSON request before submission. Subsequent template changes or even
+removal of the source row cannot change the outstanding proof request; completion
+still uses the existing exchange/webhook correlation, not a new template read.
+The existing DIF REST path has no non-revocation interval input, so this split
+does not introduce a rolling interval or other revocation-policy API. Fixed
+intervals remain supported at the port/Traction boundary unchanged.
+
+The response is the standard Operation envelope: `202` while in flight, or `200`
+for a synchronous terminal result. Its ID is the request ID.
+`GET /api/v1/tenants/:tenantId/presentation-requests/:id` returns tenant-scoped
+presentation-request status/result under the same view/expiry rules as operation
+polling; it does not expose internal snapshots or accept another operation type.
+
+Existing `/profiles/verification` lifecycle endpoints and
+`/presentations/request` profile/raw submission remain supported. Profile UUIDs
+are also definition UUIDs, including through the new execution endpoint. Legacy
+profiles show `options.format: null` until explicitly set on a draft, preserving
+connector-inferred format selection. Existing callers do not need to migrate
+their payloads. There are no existing presentation/profile UI screens or resource
+clients to change; the generated UI API types include the new contracts.
 
 ### Offering a credential
 

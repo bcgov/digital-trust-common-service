@@ -352,6 +352,20 @@ describe('OperationService', () => {
   });
 
   describe('getForTenant', () => {
+    it('rejects another resource type before marking it viewed or shortening its expiry', async () => {
+      mockFindByIdForTenant.mockResolvedValue(
+        buildOperation({
+          state: OperationState.COMPLETED,
+          type: OPERATION_TYPE.CREDENTIAL_OFFER,
+        }),
+      );
+      await expect(
+        service.getForTenant('t1', 'op-1', OPERATION_TYPE.PRESENTATION_REQUEST),
+      ).rejects.toThrow(NotFoundException);
+      expect(mockMarkFirstView).not.toHaveBeenCalled();
+      expect(mockTenantFindById).not.toHaveBeenCalled();
+    });
+
     it('scopes the lookup to the tenant', async () => {
       const operation = buildOperation();
       mockFindByIdForTenant.mockResolvedValue(operation);

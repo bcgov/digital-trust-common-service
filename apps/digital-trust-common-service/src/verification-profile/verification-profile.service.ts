@@ -14,10 +14,17 @@ import {
 } from '../common/assert-tenant-access';
 import { decodeCursor, encodeCursor } from '../common/cursor-pagination';
 import { isUniqueConstraintViolation } from '../common/postgres-error';
+import { CredentialDefinitionFormat } from '../credential-definition/credential-definition.entity';
 
 import { CreateVerificationProfileDto } from './dto/create-verification-profile.dto';
+import { ListVerificationProfilesQueryDto } from './dto/list-verification-profiles-query.dto';
+import {
+  CreatePresentationDefinitionDto,
+  UpdatePresentationDefinitionDto,
+} from './dto/presentation-definition.dto';
 import { UpdateVerificationProfileDto } from './dto/update-verification-profile.dto';
 import { extractRequestedAttributes } from './presentation-definition.validator';
+import { assertSupportedPresentationQuery } from './presentation-query.validator';
 import {
   VerificationProfile,
   VerificationProfileStatus,
@@ -42,10 +49,65 @@ export class VerificationProfileService {
     private readonly domainAudit: DomainAuditService,
   ) {}
 
+  public async findDefinitions(
+    tenantId: string,
+    query: ListVerificationProfilesQueryDto,
+    auth: AuthContext,
+  ): Promise<PaginatedVerificationProfiles> {
+    assertTenantAccess(auth, tenantId);
+    return this.findByTenantId(
+      tenantId,
+      { status: query.status, isPublic: query.isPublic },
+      { limit: query.limit, cursor: query.cursor },
+    );
+  }
+
+  public async createDefinition(
+    tenantId: string,
+    dto: CreatePresentationDefinitionDto,
+    auth: AuthContext,
+  ): Promise<VerificationProfile> {
+    assertTenantAccess(auth, tenantId);
+    assertSupportedPresentationQuery(dto.query);
+    return this.create(
+      tenantId,
+      {
+        name: dto.name,
+        version: dto.version,
+        description: dto.description,
+        presentationDefinition: dto.query.presentationDefinition,
+        predicates: dto.query.predicates,
+      },
+      auth,
+      dto.options.format,
+    );
+  }
+
+  public async updateDefinition(
+    tenantId: string,
+    id: string,
+    dto: UpdatePresentationDefinitionDto,
+    auth: AuthContext,
+  ): Promise<VerificationProfile> {
+    if (dto.query) assertSupportedPresentationQuery(dto.query);
+    return this.update(
+      tenantId,
+      id,
+      {
+        description: dto.description,
+        presentationDefinition: dto.query?.presentationDefinition,
+        predicates: dto.query ? (dto.query.predicates ?? []) : undefined,
+      },
+      auth,
+      dto.options?.format,
+    );
+  }
+
   public async create(
     tenantId: string,
     dto: CreateVerificationProfileDto,
     auth: AuthContext,
+    presentationFormat?: CredentialDefinitionFormat,
   ): Promise<VerificationProfile> {
     assertTenantAccess(auth, tenantId);
 
@@ -72,6 +134,7 @@ export class VerificationProfileService {
       version: dto.version,
       description: dto.description,
       presentationDefinition: dto.presentationDefinition,
+      ...(presentationFormat ? { presentationFormat } : {}),
       requestedAttributes,
       predicates: dto.predicates as unknown as
         Record<string, unknown>[] | undefined,
@@ -161,6 +224,7 @@ export class VerificationProfileService {
     id: string,
     dto: UpdateVerificationProfileDto,
     auth: AuthContext,
+    presentationFormat?: CredentialDefinitionFormat,
   ): Promise<VerificationProfile> {
     const profile = await this.findById(tenantId, id, auth);
 
@@ -171,6 +235,10 @@ export class VerificationProfileService {
     }
 
     const patch: Partial<VerificationProfile> = {};
+
+    if (presentationFormat !== undefined) {
+      patch.presentationFormat = presentationFormat;
+    }
 
     if (dto.presentationDefinition !== undefined) {
       const requestedAttributes = extractRequestedAttributes(

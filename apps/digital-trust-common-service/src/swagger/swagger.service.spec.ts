@@ -78,6 +78,8 @@ const modulesToMock = [
   '../oauth-client/oauth-client.module',
   '../connector-credential/connector-credential.module',
   '../operation/operation.module',
+  '../presentation-request/presentation-request.module',
+  '../verification-profile/verification-profile.module',
   '../audit-log/audit-log.module',
   '../admin/admin.module',
 ];

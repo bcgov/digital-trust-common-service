@@ -61,6 +61,32 @@ describe('Traction presentation mapping', () => {
     } as TractionPresentationRecord;
   }
 
+  it('uses the server-owned execution nonce without changing fixed intervals', () => {
+    const result = buildTractionPresentationRequest({
+      ...request,
+      nonce: '12345678901234567890',
+      nonRevoked: { from: 100, to: 200 },
+    });
+    expect(result.presentation_request.anoncreds).toEqual(
+      expect.objectContaining({
+        nonce: '12345678901234567890',
+        non_revoked: { from: 100, to: 200 },
+      }),
+    );
+    expect(
+      buildTractionPresentationRequest(request).presentation_request.anoncreds,
+    ).not.toHaveProperty('nonce');
+  });
+
+  it.each(['', '0', '-1', '1.2', '001', 'text', (1n << 80n).toString()])(
+    'rejects malformed or out-of-range execution nonce %j',
+    (nonce) => {
+      expect(() =>
+        buildTractionPresentationRequest({ ...request, nonce }),
+      ).toThrow(ValidationError);
+    },
+  );
+
   it('maps restrictions, duplicate attribute names, predicates, comments and interval overrides', () => {
     const result = buildTractionPresentationRequest({
       ...request,

@@ -11,6 +11,7 @@ import {
   JoinColumn,
 } from 'typeorm';
 
+import type { CredentialDefinitionFormat } from '../credential-definition/credential-definition.entity';
 import { Tenant } from '../tenant/tenant.entity';
 
 export enum VerificationProfileProtocolHint {
@@ -81,6 +82,20 @@ export class VerificationProfile {
   })
   @Column({ name: 'presentation_definition', type: 'jsonb' })
   public presentationDefinition!: Record<string, unknown>;
+
+  @ApiProperty({
+    description:
+      'Pinned proof output format, or null for legacy connector inference',
+    nullable: true,
+    required: false,
+  })
+  @Column({
+    name: 'presentation_format',
+    type: 'varchar',
+    length: 50,
+    nullable: true,
+  })
+  public presentationFormat?: CredentialDefinitionFormat | null;
 
   @ApiProperty({
     description: 'Quick-reference subset of issuance attribute names',

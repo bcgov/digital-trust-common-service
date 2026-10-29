@@ -104,6 +104,14 @@ export function buildTractionPresentationRequest(req: PresentationRequest) {
     throw new ValidationError(['Traction proof requests require a connection']);
   }
   assertInterval(req.nonRevoked);
+  if (
+    req.nonce !== undefined &&
+    (typeof req.nonce !== 'string' ||
+      !/^[1-9][0-9]{0,24}$/.test(req.nonce) ||
+      BigInt(req.nonce) >= 1n << 80n)
+  ) {
+    throw new ValidationError(['Invalid presentation request nonce']);
+  }
   const predicates = req.requestedPredicates ?? [];
   if (
     predicates.some(
@@ -124,7 +132,8 @@ export function buildTractionPresentationRequest(req: PresentationRequest) {
       anoncreds: {
         name: req.name,
         version: '1.0',
-        // ACA-Py generates the cryptographic nonce when omitted.
+        // Legacy port callers may omit the nonce; ACA-Py generates it then.
+        ...(req.nonce !== undefined ? { nonce: req.nonce } : {}),
         requested_attributes: Object.fromEntries(
           req.requestedAttributes.map((attribute, index) => [
             `attribute_${index}`,

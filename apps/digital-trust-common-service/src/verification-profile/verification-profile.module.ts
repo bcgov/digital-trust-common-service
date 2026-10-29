@@ -6,6 +6,7 @@ import { AuditLogModule } from '../audit-log/audit-log.module';
 import { RateLimitModule } from '../rate-limit/rate-limit.module';
 import { TenantStatusModule } from '../tenant/tenant-status.module';
 
+import { PresentationDefinitionController } from './presentation-definition.controller';
 import { VerificationProfileController } from './verification-profile.controller';
 import { VerificationProfile } from './verification-profile.entity';
 import { VerificationProfileRepository } from './verification-profile.repository';
@@ -19,7 +20,10 @@ import { VerificationProfileService } from './verification-profile.service';
     TenantStatusModule,
     RateLimitModule,
   ],
-  controllers: [VerificationProfileController],
+  controllers: [
+    VerificationProfileController,
+    PresentationDefinitionController,
+  ],
   providers: [VerificationProfileService, VerificationProfileRepository],
   exports: [VerificationProfileRepository, VerificationProfileService],
 })

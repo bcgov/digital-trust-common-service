@@ -37,6 +37,7 @@ import { ExtendCredentialDefinitionRegistration1792018018010 } from './migration
 import { BindConnectionsToConnectors1792502783893 } from './migrations/000035_bind-connections-to-connectors';
 import { CreateCredentialExchanges1792506949095 } from './migrations/000036_create-credential-exchanges';
 import { IndexExchangeIssueOperation1792543244948 } from './migrations/000037_index-exchange-issue-operation';
+import { AddPresentationDefinitionFormat1793288034325 } from './migrations/000038_add-presentation-definition-format';
 import { buildSslConfig } from './ssl.util';
 
 export const AppDataSource = new DataSource({
@@ -88,6 +89,7 @@ export const AppDataSource = new DataSource({
     BindConnectionsToConnectors1792502783893,
     CreateCredentialExchanges1792506949095,
     IndexExchangeIssueOperation1792543244948,
+    AddPresentationDefinitionFormat1793288034325,
   ],
   ssl: buildSslConfig(
     process.env.DB_SSL,

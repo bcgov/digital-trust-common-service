@@ -99,10 +99,17 @@ export class OperationService {
    * viewedAt for pending/processing, so stamping it on every poll of an in-flight
    * operation would be a write with no effect on expiry.
    */
-  public async getForTenant(tenantId: string, id: string): Promise<Operation> {
+  public async getForTenant(
+    tenantId: string,
+    id: string,
+    expectedType?: string,
+  ): Promise<Operation> {
     const operation = await this.operations.findByIdForTenant(id, tenantId);
 
-    if (!operation) {
+    if (
+      !operation ||
+      (expectedType !== undefined && operation.type !== expectedType)
+    ) {
       throw new NotFoundException('Operation not found');
     }
 

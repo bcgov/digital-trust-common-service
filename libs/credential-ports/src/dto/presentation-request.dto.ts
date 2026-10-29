@@ -27,6 +27,7 @@ export interface RequestedPredicate {
 export interface PresentationRequest {
   readonly connectionId?: string;
   readonly name: string;
+  readonly nonce?: string;
   readonly requestedAttributes: readonly RequestedAttribute[];
   readonly requestedPredicates?: readonly RequestedPredicate[];
   readonly comment?: string;
