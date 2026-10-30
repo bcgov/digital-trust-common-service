@@ -314,6 +314,7 @@ export class TractionAdapter implements AgentAdapter, OnModuleInit {
           url: `${context.endpointUrl}/connections`,
           headers: { Authorization: `Bearer ${token}` },
           params: {
+            invitation_msg_id: filters.invitationId,
             alias: filters.alias,
             state: filters.state,
             limit: filters.limit,

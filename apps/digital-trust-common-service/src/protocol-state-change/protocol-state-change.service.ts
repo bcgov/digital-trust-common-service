@@ -5,6 +5,7 @@ import { DataSource, EntityManager } from 'typeorm';
 
 import { AuditAction } from '../audit-log/audit-log.entity';
 import { DomainAuditService } from '../audit-log/domain-audit.service';
+import { transitionConnectionState } from '../connection/connection-state-transition';
 import { ConnectionState } from '../connection/connection.entity';
 import { ConnectionService } from '../connection/connection.service';
 import { CredentialState } from '../credential/credential.entity';
@@ -17,7 +18,6 @@ import { OperationService } from '../operation/operation.service';
 
 import type { ProtocolStateChangeJobData } from './protocol-state-change.worker';
 import {
-  connectionStatesBelow,
   credentialStatesBelow,
   operationStatesBelow,
   ProtocolOutcome,
@@ -539,31 +539,21 @@ export class ProtocolStateChangeService {
       };
     }
 
-    // Claim the same ACTIVE boundary as reconciliation even if the backend
-    // skips directly to completed. Both writes stay in this transaction.
-    const established =
-      outcome.connectionState === ConnectionState.COMPLETED
-        ? await this.connectionService.applyProtocolStateIfForward(
-            connection,
-            ConnectionState.ACTIVE,
-            connectionStatesBelow(ConnectionState.ACTIVE),
-            manager,
-          )
-        : null;
-    const updated = await this.connectionService.applyProtocolStateIfForward(
-      connection,
+    const transition = await transitionConnectionState(
       outcome.connectionState,
-      connectionStatesBelow(outcome.connectionState),
-      manager,
+      (state, fromStates) =>
+        this.connectionService.applyProtocolStateIfForward(
+          connection,
+          state,
+          fromStates,
+          manager,
+        ),
     );
 
     return {
       matched: true,
-      transitioned: updated !== null || established !== null,
-      established:
-        established !== null ||
-        (updated !== null &&
-          outcome.connectionState === ConnectionState.ACTIVE),
+      transitioned: transition.connection !== null,
+      established: transition.established,
     };
   }
 

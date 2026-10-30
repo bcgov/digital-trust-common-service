@@ -578,6 +578,7 @@ describe('TractionAdapter', () => {
       });
 
       const result = await adapter.list(context, {
+        invitationId: 'invi-msg-1',
         state: ConnectionState.Active,
         alias: 'test',
         limit: 10,
@@ -602,7 +603,13 @@ describe('TractionAdapter', () => {
         method: 'GET',
         url: 'https://traction.example.com/connections',
         headers: { Authorization: 'Bearer token-1' },
-        params: { alias: 'test', state: 'active', limit: 10, offset: 0 },
+        params: {
+          invitation_msg_id: 'invi-msg-1',
+          alias: 'test',
+          state: 'active',
+          limit: 10,
+          offset: 0,
+        },
       });
     });
 

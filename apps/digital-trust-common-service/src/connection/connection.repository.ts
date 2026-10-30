@@ -4,6 +4,7 @@ import { EntityManager, In, Not, Raw, Repository } from 'typeorm';
 
 import { Cursor } from '../common/cursor-pagination';
 
+import { transitionConnectionState } from './connection-state-transition';
 import {
   Connection,
   ConnectionProtocol,
@@ -60,7 +61,7 @@ export class ConnectionRepository {
     },
     forwardStates: ConnectionState[],
     onEstablished?: (manager: EntityManager) => Promise<void>,
-  ): Promise<Connection | null> {
+  ): Promise<{ connection: Connection; established: boolean } | null> {
     return this.repository.manager.transaction(async (manager) => {
       const connection = await manager.findOne(Connection, {
         where: { id, tenantId },
@@ -79,19 +80,28 @@ export class ConnectionRepository {
       connection.theirLabel = remote.theirLabel;
       connection.theirDid = remote.theirDid;
       connection.protocol = ConnectionProtocol.DIDCOMM_V1;
-      const established =
-        forwardStates.includes(connection.state) &&
-        ![ConnectionState.ACTIVE, ConnectionState.COMPLETED].includes(
-          connection.state,
-        );
-      if (forwardStates.includes(connection.state)) {
-        connection.state = remote.state;
-      }
       const saved = await manager.save(connection);
+      const { established } = forwardStates.includes(saved.state)
+        ? await transitionConnectionState(
+            remote.state,
+            async (state, fromStates) => {
+              const won = await this.updateStateIfForward(
+                id,
+                tenantId,
+                state,
+                fromStates,
+                manager,
+              );
+              if (!won) return null;
+              saved.state = state;
+              return saved;
+            },
+          )
+        : { established: false };
       if (established && onEstablished) {
         await onEstablished(manager);
       }
-      return saved;
+      return { connection: saved, established };
     });
   }
 

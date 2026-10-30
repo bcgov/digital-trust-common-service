@@ -99,7 +99,17 @@ describe('ConnectionRepository', () => {
       save = jest.fn().mockImplementation((value) => Promise.resolve(value));
       Object.assign(mockRepo.manager!, {
         transaction: (callback: (manager: unknown) => Promise<unknown>) =>
-          callback({ findOne, save }),
+          callback({
+            findOne,
+            save,
+            update: mockManagerUpdate.mockImplementation(
+              (_entity, criteria, changes) => {
+                const won = criteria.state.value.includes(row?.state);
+                if (won) Object.assign(row!, changes);
+                return Promise.resolve({ affected: won ? 1 : 0 });
+              },
+            ),
+          }),
       });
     });
 
@@ -116,16 +126,22 @@ describe('ConnectionRepository', () => {
         lock: { mode: 'pessimistic_write' },
       });
       expect(result).toMatchObject({
-        connectorId: 'wallet-1',
-        externalConnectionId: remote.id,
-        protocol: ConnectionProtocol.DIDCOMM_V1,
-        state: ConnectionState.COMPLETED,
+        established: true,
+        connection: {
+          connectorId: 'wallet-1',
+          externalConnectionId: remote.id,
+          protocol: ConnectionProtocol.DIDCOMM_V1,
+          state: ConnectionState.COMPLETED,
+        },
       });
     });
 
     it('preserves abandoned local state after a late successful handshake', async () => {
       row!.state = ConnectionState.ABANDONED;
-      expect((await reconcile())?.state).toBe(ConnectionState.ABANDONED);
+      expect(await reconcile()).toMatchObject({
+        established: false,
+        connection: { state: ConnectionState.ABANDONED },
+      });
     });
 
     it('enqueues only the first establishment under the row lock, never again after active', async () => {

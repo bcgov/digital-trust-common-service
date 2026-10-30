@@ -102,7 +102,10 @@ describe('Credential offer (e2e)', () => {
   let encryption: EncryptionService;
   const backendRequest = jest.fn<
     Promise<{ data: unknown }>,
-    [{ url: string; method: string }, boolean?]
+    [
+      { url: string; method: string; params?: Record<string, unknown> },
+      boolean?,
+    ]
   >();
 
   beforeAll(async () => {
@@ -597,6 +600,17 @@ describe('Credential offer (e2e)', () => {
         .post(`${API_BASE_PATH}/tenants/${tenant.id}/credentials/offer`)
         .send(offerBody())
         .expect(state === ConnectionState.INVITED ? 202 : 409);
+      expect(
+        backendRequest.mock.calls
+          .filter(([config]) => config.url.endsWith('/connections'))
+          .map(([config]) => config.params),
+      ).toEqual([
+        expect.objectContaining({
+          invitation_msg_id: `invitation-${tenant.id}`,
+          limit: 2,
+          offset: 0,
+        }),
+      ]);
       const saved = await connectionRepo.findOneByOrFail({ id: connection.id });
       expect(saved).toMatchObject({
         connectorId: connection.connectorId,

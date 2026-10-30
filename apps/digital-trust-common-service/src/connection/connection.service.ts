@@ -363,7 +363,6 @@ export class ConnectionService {
       );
     }
     const state = mapAdapterConnectionState(remote.state);
-    let established = false;
     const updated = await this.connectionRepository.reconcile(
       tenantId,
       id,
@@ -381,7 +380,6 @@ export class ConnectionService {
             occurredAt: new Date().toISOString(),
           },
         );
-        established = true;
       },
     );
     if (!updated) {
@@ -389,7 +387,7 @@ export class ConnectionService {
         'Connection binding changed during reconciliation',
       );
     }
-    if (established) {
+    if (updated.established) {
       this.eventEmitter.emit('connection.established', {
         tenantId,
         externalId: remote.id,
@@ -401,7 +399,7 @@ export class ConnectionService {
       resourceType: 'connection',
       resourceId: connection.id,
     });
-    return updated;
+    return updated.connection;
   }
 
   public async resolveIdentity(
@@ -429,7 +427,7 @@ export class ConnectionService {
         'Connection binding changed during reconciliation',
       );
     }
-    return adopted;
+    return adopted.connection;
   }
 
   private async resolveRemoteIdentity(
@@ -494,18 +492,13 @@ export class ConnectionService {
           'Connection has no verifiable invitation correlation',
         );
       }
-      const matches: AdapterConnection[] = [];
-      for (let offset = 0; ; offset += 100) {
-        const page = await adapter.list(context, { limit: 100, offset });
-        matches.push(
-          ...page.filter((item) => item.invitationId === invitationId),
-        );
-        if (page.length < 100) break;
-        if (offset >= 9900) {
-          throw new ConflictException(
-            'Connection discovery limit reached; reconciliation incomplete',
-          );
-        }
+      const matches = await adapter.list(context, {
+        invitationId,
+        limit: 2,
+        offset: 0,
+      });
+      if (matches.some((item) => item.invitationId !== invitationId)) {
+        throw new ConflictException('Backend returned a different invitation');
       }
       if (matches.length !== 1) {
         throw new ConflictException(
