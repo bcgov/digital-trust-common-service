@@ -530,6 +530,18 @@ sequenceDiagram
 
 ### Initial Implementation: Traction-First
 
+AnonCreds issuer setup is an asynchronous artifact-registration workflow,
+separate from credential offers. Registration pins the connector wallet,
+resolves an existing public issuer DID, and publishes or reuses a schema and
+credential definition through the adapter's optional definition-registration
+port. Revocable definitions become ready only after registry and tails checks.
+Tenant/name/format identity provides idempotent create behavior. Pending and
+failed registrations continue from saved artifact progress, while backend wait
+states use bounded delayed checks; failures are terminal until the client
+repeats POST. Existing definitions migrate to `unverified`; profiles and
+issuance require a ready definition on its pinned connector. See
+[AnonCreds credential-definition registration](DEVELOPER.md#anoncreds-credential-definition-registration).
+
 The MVP ships with **only the Traction adapter**. The adapter interfaces are designed and tested, but the Credo adapter is deferred to post-MVP.
 
 | Phase | Adapters Available | Formats | Protocols |

@@ -25,7 +25,9 @@ import {
 import {
   ApiBadRequestResponse,
   ApiBody,
-  ApiCreatedResponse,
+  ApiConflictResponse,
+  ApiAcceptedResponse,
+  ApiExtraModels,
   ApiForbiddenResponse,
   ApiNoContentResponse,
   ApiNotFoundResponse,
@@ -35,6 +37,7 @@ import {
 
 import { SkipAutoAudit } from '../audit-log/skip-auto-audit.decorator';
 import { API_VERSION } from '../common/constants/api-version.constants';
+import { OperationResponseDto } from '../operation/dto/operation-response.dto';
 import { TenantTierRateLimitGuard } from '../rate-limit/tenant-tier-rate-limit.guard';
 import { TenantStatusGuard } from '../tenant/tenant-status.guard';
 
@@ -44,11 +47,29 @@ import {
 } from './credential-definition.entity';
 import { CredentialDefinitionService } from './credential-definition.service';
 import { CreateCredentialDefinitionDto } from './dto/create-credential-definition.dto';
+import {
+  AnonCredsCredentialDefinitionOptionsDto,
+  AnonCredsRevocationOptionsDto,
+  AnonCredsStatusOptionsDto,
+  CredentialDefinitionOptionsBase,
+  MdlCredentialDefinitionOptionsDto,
+  SdJwtCredentialDefinitionOptionsDto,
+  W3cVcCredentialDefinitionOptionsDto,
+} from './dto/credential-definition-options.dto';
 import { CredentialDefinitionResponseDto } from './dto/credential-definition-response.dto';
 import { UpdateCredentialDefinitionDto } from './dto/update-credential-definition.dto';
 
 @SkipAutoAudit()
 @ApiJwtAuth()
+@ApiExtraModels(
+  CredentialDefinitionOptionsBase,
+  AnonCredsCredentialDefinitionOptionsDto,
+  AnonCredsStatusOptionsDto,
+  AnonCredsRevocationOptionsDto,
+  SdJwtCredentialDefinitionOptionsDto,
+  MdlCredentialDefinitionOptionsDto,
+  W3cVcCredentialDefinitionOptionsDto,
+)
 @UseGuards(
   JwtGuard,
   ScopeGuard,
@@ -71,13 +92,18 @@ export class CredentialDefinitionController {
   ) {}
 
   @Post()
-  @ApiCreatedResponse({
-    description: 'Credential definition created successfully',
-    type: CredentialDefinitionResponseDto,
+  @HttpCode(HttpStatus.ACCEPTED)
+  @ApiAcceptedResponse({
+    description:
+      'Credential definition accepted. AnonCreds registration runs asynchronously; formats without a registered handler return FORMAT_NOT_SUPPORTED.',
+    type: OperationResponseDto,
+  })
+  @ApiConflictResponse({
+    description:
+      'A credential definition with this name and format already exists.',
   })
   @ApiBadRequestResponse({
-    description:
-      'schema_definition failed format-specific structural validation',
+    description: 'Invalid schema, issuer selection, options, or connector',
   })
   @ApiBody({
     description: 'Credential definition creation request',
@@ -87,15 +113,21 @@ export class CredentialDefinitionController {
         summary: 'Create a credential definition',
         value: {
           name: 'Driver License Definition',
-          format: 'anoncreds',
-          external_id: 'ext-cred-def-001',
-          connector_type: 'traction',
-          schema_definition: {
-            attr_names: ['name', 'age'],
-            schema_name: 'driver-license',
-            schema_version: '1.0',
+          schema: {
+            definition: {
+              attr_names: ['name', 'age'],
+              schema_name: 'driver-license',
+              schema_version: '1.0',
+            },
           },
-          metadata: { issuer: 'DMV' },
+          options: {
+            format: 'anoncreds',
+            tag: 'default',
+            status: { revocation: { enabled: true } },
+          },
+          metadata: {
+            issuer: 'DMV',
+          },
         },
       },
     },
@@ -104,14 +136,13 @@ export class CredentialDefinitionController {
     @Param('tenantId', ParseUUIDPipe) tenantId: string,
     @Body() dto: CreateCredentialDefinitionDto,
     @CurrentAuth() auth: AuthContext,
-  ): Promise<CredentialDefinitionResponseDto> {
-    const credentialDefinition = await this.credentialDefinitionService.create(
+  ): Promise<OperationResponseDto> {
+    const operation = await this.credentialDefinitionService.create(
       tenantId,
       dto,
       auth,
     );
-
-    return CredentialDefinitionResponseDto.fromEntity(credentialDefinition);
+    return OperationResponseDto.fromEntity(operation);
   }
 
   @Get()

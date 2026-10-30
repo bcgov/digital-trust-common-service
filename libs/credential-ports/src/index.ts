@@ -64,6 +64,13 @@ export type {
   SupportedFormats,
 } from './ports/agent-adapter';
 export type { ConnectorContext } from './ports/connector-context';
+export type {
+  DefinitionOptions,
+  AnonCredsRegistrationPort,
+  IssuerSelection,
+  RegisteredSchema,
+  RegistrationSubmission,
+} from './ports/anoncreds-registration.port';
 
 // Testing helpers
 export {

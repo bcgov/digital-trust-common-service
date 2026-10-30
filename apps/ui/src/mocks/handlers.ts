@@ -54,6 +54,11 @@ export const mockCredentialDefinitions: CredentialDefinition[] = [
     tenant_id: '11111111-1111-4111-8111-111111111111',
     name: 'Employee badge',
     format: 'anoncreds',
+    options: {
+      format: 'anoncreds',
+      tag: 'default',
+      status: { revocation: { enabled: true } },
+    },
     connector_type: 'traction',
     is_active: true,
     created_at: '2026-04-01T10:00:00.000Z',
@@ -64,6 +69,11 @@ export const mockCredentialDefinitions: CredentialDefinition[] = [
     tenant_id: '11111111-1111-4111-8111-111111111111',
     name: 'Visitor pass',
     format: 'anoncreds',
+    options: {
+      format: 'anoncreds',
+      tag: 'default',
+      status: { revocation: { enabled: true } },
+    },
     connector_type: 'traction',
     is_active: true,
     created_at: '2026-04-02T10:00:00.000Z',

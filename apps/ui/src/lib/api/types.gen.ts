@@ -507,7 +507,36 @@ export interface paths {
         /** List credential definitions */
         get: operations["listCredentialDefinitions"];
         put?: never;
-        /** Register a credential definition */
+        /**
+         * Register a credential definition
+         * @description Create a credential definition for any declared credential format.
+         *     Only AnonCreds currently has a registered handler and runs asynchronously.
+         *     Other declared formats return FORMAT_NOT_SUPPORTED without creating a
+         *     definition or operation. The required format
+         *     discriminator is inside immutable options (not a root request field),
+         *     and selects the format-specific options schema. This intentionally
+         *     differs from the review's wording that described format as a shared
+         *     root field. Supply exactly one of
+         *     schema.id or schema.definition. Format-specific options are immutable
+         *     after creation and returned read-only. For AnonCreds, tag defaults to
+         *     "default" and status.revocation.enabled defaults to true. Metadata remains
+         *     free-form client annotations.
+         *     Traction must already have an askar-anoncreds wallet and a matching
+         *     public issuer DID for AnonCreds registration. This endpoint does not
+         *     create DIDs. Connector selection is pinned for registration and
+         *     issuance.
+         *     Idempotency is scoped to tenant, name, and format. The server compares
+         *     connector, issuer, schema, and normalized options on a replay; free-form
+         *     metadata is not part of publication identity. A ready registration
+         *     returns its completed operation, a pending registration queues one
+         *     singleton continuation, and a failed registration starts a new operation
+         *     from saved progress. An explicit schema.id must match the original
+         *     resolved artifact, not just its schema content. A deactivated ready
+         *     definition returns REGISTRATION_REPLAY_UNAVAILABLE without reactivation.
+         *     Publication intent is persisted before writing to the backend. Lost
+         *     responses are reconciled by lookup without repeating an uncertain write;
+         *     only conclusive rejection allows another publication attempt.
+         */
         post: operations["createCredentialDefinition"];
         delete?: never;
         options?: never;
@@ -1908,12 +1937,39 @@ export interface components {
             format?: components["schemas"]["CredentialFormat"];
             /** @description Format-specific schema definition */
             schema_definition?: Record<string, never>;
-            /** @description Ledger/registry reference (e.g., cred_def_id) */
+            /** @description Backend registry reference (e.g., cred_def_id) */
             external_id?: string | null;
+            /**
+             * Format: uuid
+             * @description Issuer wallet binding; cannot be substituted by a profile
+             */
+            connector_id?: string | null;
+            /**
+             * @description Existing records migrate as unverified, not ready to issue
+             * @enum {string}
+             */
+            registration_state?: "unverified" | "pending" | "ready" | "failed";
+            /** Format: uuid */
+            registration_operation_id?: string | null;
+            issuer?: {
+                id?: string;
+            } | null;
+            schema?: {
+                id?: string | null;
+            } | null;
             connector_type?: components["schemas"]["ConnectorType"];
             /** @description Whether this credential definition is currently active */
             is_active?: boolean;
-            metadata?: Record<string, never>;
+            /** @description Free-form client annotations */
+            metadata?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * @description Immutable, normalized format-specific publication options, including
+             *     the format discriminator. The root response format is kept in sync
+             *     with options.format.
+             */
+            readonly options: components["schemas"]["AnonCredsCredentialDefinitionOptionsDto"] | components["schemas"]["SdJwtCredentialDefinitionOptionsDto"] | components["schemas"]["MdlCredentialDefinitionOptionsDto"] | components["schemas"]["W3cVcCredentialDefinitionOptionsDto"];
             /** Format: date-time */
             created_at?: string;
             /** Format: date-time */
@@ -1921,18 +1977,84 @@ export interface components {
         };
         /** @enum {string} */
         CredentialFormat: "anoncreds" | "sd-jwt" | "mdl" | "w3c-vc";
+        AnonCredsCredentialDefinitionOptionsDto: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            format: "anoncreds";
+            /** @description Defaults to "default" when omitted */
+            tag?: string;
+            status?: components["schemas"]["AnonCredsStatusOptionsDto"];
+        };
+        /** @description AnonCreds status settings; formats may define their own status options. */
+        AnonCredsStatusOptionsDto: {
+            revocation?: components["schemas"]["AnonCredsRevocationOptionsDto"];
+        };
+        AnonCredsRevocationOptionsDto: {
+            /** @description Defaults to true when omitted */
+            enabled?: boolean;
+        };
+        SdJwtCredentialDefinitionOptionsDto: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            format: "sd-jwt";
+        };
+        MdlCredentialDefinitionOptionsDto: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            format: "mdl";
+        };
+        W3cVcCredentialDefinitionOptionsDto: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            format: "w3c-vc";
+        };
         CreateCredentialDefinitionRequest: {
             name: string;
-            format: components["schemas"]["CredentialFormat"];
             /**
-             * @description Format-specific schema.
-             *     - AnonCreds: { attr_names: string[], schema_name, schema_version }
-             *     - SD-JWT: JSON Schema object
-             *     - W3C VC: { @context: [], type: [], credentialSubject: {} }
+             * Format: uuid
+             * @description Defaults to the tenant default or sole active compatible connector
              */
-            schema_definition: Record<string, never>;
-            connector_type: components["schemas"]["ConnectorType"];
-            metadata?: Record<string, never>;
+            connector_id?: string;
+            schema: {
+                /** @description Existing published schema; not a credential-definition import */
+                id: string;
+            } | {
+                /**
+                 * @description Free-form schema definition interpreted according to options.format.
+                 *     AnonCreds requires schema_name, schema_version, and attr_names.
+                 *     W3C VC definitions may use JSON Schema. Formats without a
+                 *     schema validator may accept the object as-is.
+                 */
+                definition: {
+                    [key: string]: unknown;
+                };
+            };
+            /**
+             * @description Existing identity selection, never DID creation. Omit to use the
+             *     configured public issuer. Traction currently requires the selection
+             *     to match its public DID; no arbitrary wallet DID promotion occurs.
+             */
+            issuer?: {
+                id?: string;
+                method?: string;
+            } & (unknown | unknown);
+            /** @description Free-form client annotations */
+            metadata?: {
+                [key: string]: unknown;
+            };
+            /**
+             * @description Required immutable options object. Its required format discriminator
+             *     selects the format-specific publication options.
+             */
+            options: components["schemas"]["AnonCredsCredentialDefinitionOptionsDto"] | components["schemas"]["SdJwtCredentialDefinitionOptionsDto"] | components["schemas"]["MdlCredentialDefinitionOptionsDto"] | components["schemas"]["W3cVcCredentialDefinitionOptionsDto"];
         };
         IssuanceProfile: {
             /** Format: uuid */
@@ -2174,7 +2296,7 @@ export interface components {
             batch_id?: string | null;
             /**
              * @description Operation type. Known values:
-             *     `credential.offer`, `credential.offer-batch`,
+             *     `credential-definition.register`, `credential.offer`, `credential.offer-batch`,
              *     `credential.accept`, `credential.reject`,
              *     `credential.revoke`, `credential.revoke-batch`,
              *     `presentation.request`, `connection.create`
@@ -2195,13 +2317,89 @@ export interface components {
             updated_at: string;
             /**
              * @description State-dependent result:
-             *     - pending/processing: null
+             *     - pending/processing: usually null; credential-definition.register
+             *       includes { credential_definition_id } immediately
              *     - completed: operation-type-specific data
-             *     - failed: { code, message }
+             *     - failed: { code, message }; credential registration additionally
+             *       retains credential_definition_id, external_id, and registration
+             *       progress/correlation identifiers.
              *     - batch processing: { total, completed, failed, pending }
              *     - batch completed: { total, completed, failed, errors }
+             *     Registration progress includes the active artifact, its id, and any
+             *     job_id, transaction_id, and state. IDs returned with wait/action are
+             *     provisional, not readiness proof.
              */
-            result: unknown;
+            result: ({
+                /** Format: uuid */
+                credential_definition_id?: string;
+                external_id?: string | null;
+                code?: string;
+                message?: string;
+                registration?: components["schemas"]["CredentialDefinitionRegistrationProgress"];
+            } & {
+                [key: string]: unknown;
+            }) | null;
+            /**
+             * @description Present for credential-definition.register, null when no diagnostic
+             *     is recorded; omitted for other operation types. A wait/action state
+             *     is normal progress, not a problem. Polling still returns HTTP 200;
+             *     backend_status is the upstream HTTP status, not this response status.
+             *     Older failures have no retroactively reconstructed backend details.
+             *     Uses the RFC 9457 data model embedded in an application/json resource,
+             *     not a standalone application/problem+json HTTP error response.
+             *     status is omitted to avoid contradicting HTTP 200/202. Match the
+             *     problem type URI for machine handling; do not parse title or detail.
+             */
+            problem_details?: components["schemas"]["RegistrationProblemDetails"] | null;
+        };
+        CredentialDefinitionRegistrationProgress: {
+            stage?: string;
+            /**
+             * @description Artifact associated with the active stage, if any
+             * @enum {string|null}
+             */
+            artifact?: "schema" | "credential_definition" | null;
+            /** @description ID for the active artifact; provisional unless state is finished */
+            id?: string | null;
+            job_id?: string | null;
+            transaction_id?: string | null;
+            /**
+             * @description Publication state for the active artifact
+             * @enum {string|null}
+             */
+            state?: "finished" | "wait" | "action" | "failed" | null;
+        };
+        RegistrationProblemDetails: {
+            /**
+             * Format: uri
+             * @description Stable RFC 9457 problem-type identifier with documented semantics and resolution guidance.
+             * @enum {string}
+             */
+            type: "https://github.com/bcgov/digital-trust-common-service/blob/main/docs/DEVELOPER.md#credential-registration-failed";
+            /** @example Credential registration failed */
+            title: string;
+            /** @description Bounded sanitized backend reason or safe local diagnostic; never raw headers, request configuration, or response objects. */
+            detail: string;
+            /**
+             * Format: uri
+             * @description Persisted opaque identifier for this occurrence. Not dereferenceable. Absent on legacy diagnostics recorded without an instance.
+             * @example urn:uuid:123e4567-e89b-42d3-a456-426614174000
+             */
+            instance?: string;
+            /**
+             * @description Registration step where the problem occurred.
+             * @example schema_publication
+             */
+            stage: string;
+            /** @description Whether the system is scheduling an automatic retry; terminal failures are not retried. */
+            retryable: boolean;
+            /**
+             * @description Upstream HTTP status when available.
+             * @example 400
+             */
+            backend_status?: number;
+            /** @description Allowlisted upstream machine code or local response-validation code, when available. */
+            backend_code?: string;
         };
         /** @enum {string} */
         OperationState: "pending" | "processing" | "completed" | "failed";
@@ -3436,10 +3634,7 @@ export interface operations {
     createCredentialDefinition: {
         parameters: {
             query?: never;
-            header?: {
-                /** @description UUIDv4 idempotency key to prevent duplicate creation */
-                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
-            };
+            header?: never;
             path: {
                 /** @description Tenant UUID */
                 tenantId: components["parameters"]["TenantId"];
@@ -3452,14 +3647,33 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Credential definition registered */
-            201: {
+            /**
+             * @description Registration accepted. result.credential_definition_id identifies the
+             *     local definition; poll the operation until terminal. Equivalent
+             *     matching ready requests return the completed operation; pending
+             *     requests enqueue a keyed continuation. Failed requests create a new
+             *     operation and resume from saved progress.
+             */
+            202: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["CredentialDefinition"];
+                    "application/json": components["schemas"]["Operation"];
                 };
+            };
+            400: components["responses"]["ValidationError"];
+            /**
+             * @description A definition with this tenant, name, and format exists with different
+             *     connector, issuer, schema, or normalized options. Inactive
+             *     registrations or missing replay operations return
+             *     REGISTRATION_REPLAY_UNAVAILABLE with credential_definition_id.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             422: components["responses"]["ValidationError"];
         };

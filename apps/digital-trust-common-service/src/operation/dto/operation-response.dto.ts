@@ -1,9 +1,11 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Expose } from 'class-transformer';
 
 import { OPERATION_TYPE } from '../operation-type.constants';
 import { Operation, OperationState } from '../operation.entity';
 import type { OperationResult } from '../operation.entity';
+
+import { RegistrationProblemDetailsDto } from './registration-problem-details.dto';
 
 /**
  * Uniform operation envelope. Deliberately a whitelist rather than the
@@ -65,13 +67,23 @@ export class OperationResponseDto {
 
   @ApiProperty({
     description:
-      'State-dependent result. Null while pending or processing; type-specific data when completed; { code, message } when failed.',
+      'State-dependent result. Usually null while pending or processing; registration retains credential_definition_id, external_id, and current progress, including on failure. Type-specific data when completed; { code, message } when failed.',
     type: 'object',
     additionalProperties: true,
     example: null,
     nullable: true,
   })
   public result!: OperationResult;
+
+  @Expose({ name: 'problem_details' })
+  @ApiPropertyOptional({
+    name: 'problem_details',
+    type: RegistrationProblemDetailsDto,
+    nullable: true,
+    description:
+      'Credential-registration diagnostics; null when none are recorded. Other operation types omit this field.',
+  })
+  declare public problemDetails?: RegistrationProblemDetailsDto | null;
 
   public static fromEntity(operation: Operation): OperationResponseDto {
     const dto = new OperationResponseDto();
@@ -82,6 +94,12 @@ export class OperationResponseDto {
     dto.createdAt = operation.createdAt;
     dto.updatedAt = operation.updatedAt;
     dto.result = operation.result ?? null;
+    if (operation.type === OPERATION_TYPE.CREDENTIAL_DEFINITION_REGISTER) {
+      const { problem_details: problem = null, ...result } =
+        operation.result ?? {};
+      dto.result = operation.result ? result : null;
+      dto.problemDetails = RegistrationProblemDetailsDto.fromStored(problem);
+    }
     return dto;
   }
 }

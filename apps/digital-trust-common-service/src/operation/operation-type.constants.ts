@@ -9,6 +9,7 @@
  * every new type; the column stays `varchar`.
  */
 export const OPERATION_TYPE = {
+  CREDENTIAL_DEFINITION_REGISTER: 'credential-definition.register',
   CREDENTIAL_OFFER: 'credential.offer',
   CREDENTIAL_OFFER_BATCH: 'credential.offer-batch',
   CREDENTIAL_ACCEPT: 'credential.accept',

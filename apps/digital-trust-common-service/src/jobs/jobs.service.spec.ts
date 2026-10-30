@@ -99,6 +99,19 @@ describe('JobsService', () => {
     expect(emit).toHaveBeenCalledWith('jobs.queues.ready');
   });
 
+  it('creates the registration queue with stately singletons and no automatic retries', async () => {
+    await service.ensureQueues();
+
+    expect(createQueue).toHaveBeenCalledWith(
+      'credential-definition.register',
+      expect.objectContaining({
+        retryLimit: 0,
+        retryBackoff: false,
+        policy: 'stately',
+      }),
+    );
+  });
+
   it('should publish a job', async () => {
     const jobId = 'job-123';
     const payload = { foo: 'bar' };
@@ -197,6 +210,32 @@ describe('JobsService', () => {
     );
   });
 
+  it('passes delayed and singleton options with transactional jobs', async () => {
+    send.mockResolvedValue('job-tx');
+    const manager = {
+      query: jest.fn(),
+    } as unknown as import('typeorm').EntityManager;
+
+    await service.sendInTransaction(
+      manager,
+      'credential-definition.register',
+      { tenantId: 'tenant-1', definitionId: 'definition-1' },
+      { startAfter: 15, singletonKey: 'definition-1' },
+    );
+
+    expect(send).toHaveBeenCalledWith(
+      'credential-definition.register',
+      { tenantId: 'tenant-1', definitionId: 'definition-1' },
+      expect.objectContaining({
+        startAfter: 15,
+        singletonKey: 'definition-1',
+        db: expect.objectContaining({
+          executeSql: expect.any(Function),
+        }),
+      }),
+    );
+  });
+
   it('should register a worker for a queue', async () => {
     const handler = jest.fn().mockResolvedValue(undefined);
     await service.registerWorker('audit.write', handler);
@@ -231,11 +270,11 @@ describe('JobsService', () => {
   it('should only create queues once under concurrent ensureQueues calls', async () => {
     await Promise.all([service.ensureQueues(), service.ensureQueues()]);
 
-    // 9 queues + 9 DLQs
-    expect(createQueue).toHaveBeenCalledTimes(18);
+    // 10 queues + 10 DLQs
+    expect(createQueue).toHaveBeenCalledTimes(20);
 
     await service.ensureQueues();
-    expect(createQueue).toHaveBeenCalledTimes(18);
+    expect(createQueue).toHaveBeenCalledTimes(20);
   });
 
   it('should retry ensureQueues after a previous failure', async () => {
@@ -246,8 +285,8 @@ describe('JobsService', () => {
     await expect(service.ensureQueues()).rejects.toThrow('transient');
     await expect(service.ensureQueues()).resolves.toBeUndefined();
 
-    // First attempt fails mid-way after 1 call; second attempt creates 18.
-    expect(createQueue).toHaveBeenCalledTimes(19);
+    // First attempt fails mid-way after 1 call; second attempt creates 20.
+    expect(createQueue).toHaveBeenCalledTimes(21);
   });
 
   it('should propagate errors from pg-boss', async () => {

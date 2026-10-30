@@ -1,4 +1,8 @@
-import { ApiProperty } from '@nestjs/swagger';
+import {
+  ApiProperty,
+  ApiPropertyOptional,
+  getSchemaPath,
+} from '@nestjs/swagger';
 import { Expose } from 'class-transformer';
 
 import {
@@ -6,6 +10,13 @@ import {
   CredentialDefinitionConnectorType,
   CredentialDefinitionFormat,
 } from '../credential-definition.entity';
+
+import {
+  AnonCredsCredentialDefinitionOptionsDto,
+  MdlCredentialDefinitionOptionsDto,
+  SdJwtCredentialDefinitionOptionsDto,
+  W3cVcCredentialDefinitionOptionsDto,
+} from './credential-definition-options.dto';
 
 export class CredentialDefinitionResponseDto {
   @ApiProperty({
@@ -49,10 +60,33 @@ export class CredentialDefinitionResponseDto {
   @Expose({ name: 'external_id' })
   @ApiProperty({
     name: 'external_id',
+    type: String,
+    nullable: true,
     description: 'The external ID from the connector system',
     example: 'cred-def-123456',
   })
-  public externalId!: string;
+  public externalId!: string | null;
+
+  @Expose({ name: 'connector_id' })
+  @ApiProperty({ name: 'connector_id', nullable: true, format: 'uuid' })
+  public connectorId!: string | null;
+
+  @Expose({ name: 'registration_state' })
+  @ApiProperty({
+    name: 'registration_state',
+    enum: ['unverified', 'pending', 'ready', 'failed'],
+  })
+  public registrationState!: string;
+
+  @Expose({ name: 'registration_operation_id' })
+  @ApiProperty({ name: 'registration_operation_id', nullable: true })
+  public registrationOperationId!: string | null;
+
+  @ApiProperty({ nullable: true, description: 'Resolved issuer identity' })
+  public issuer!: { id: string } | null;
+
+  @ApiProperty({ nullable: true, description: 'Resolved schema reference' })
+  public schema!: { id: string | null } | null;
 
   @Expose({ name: 'connector_type' })
   @ApiProperty({
@@ -71,15 +105,29 @@ export class CredentialDefinitionResponseDto {
   })
   public isActive!: boolean;
 
-  @ApiProperty({
-    description: 'Additional metadata for the credential definition',
+  @ApiPropertyOptional({
+    description: 'Free-form client annotations',
+    nullable: true,
     example: {
       issuer: 'Example University',
       version: '2.0',
     },
-    required: false,
   })
   public metadata?: Record<string, unknown>;
+
+  @ApiProperty({
+    description:
+      'Immutable, normalized publication options. options.format matches the root format.',
+    readOnly: true,
+    oneOf: [
+      { $ref: getSchemaPath(AnonCredsCredentialDefinitionOptionsDto) },
+      { $ref: getSchemaPath(SdJwtCredentialDefinitionOptionsDto) },
+      { $ref: getSchemaPath(MdlCredentialDefinitionOptionsDto) },
+      { $ref: getSchemaPath(W3cVcCredentialDefinitionOptionsDto) },
+    ],
+    discriminator: { propertyName: 'format' },
+  })
+  public options!: Record<string, unknown>;
 
   @Expose({ name: 'created_at' })
   @ApiProperty({
@@ -108,9 +156,26 @@ export class CredentialDefinitionResponseDto {
     dto.format = credentialDefinition.format;
     dto.schemaDefinition = credentialDefinition.schemaDefinition;
     dto.externalId = credentialDefinition.externalId;
+    dto.connectorId = credentialDefinition.connectorId ?? null;
+    dto.registrationState =
+      credentialDefinition.registrationState ?? 'unverified';
+    dto.registrationOperationId =
+      credentialDefinition.registrationOperationId ?? null;
+    dto.issuer = credentialDefinition.registration
+      ? { id: credentialDefinition.registration.issuerId }
+      : null;
+    dto.schema = credentialDefinition.registration
+      ? {
+          id:
+            credentialDefinition.registration.schema?.state === 'finished'
+              ? (credentialDefinition.registration.schema.id ?? null)
+              : null,
+        }
+      : null;
     dto.connectorType = credentialDefinition.connectorType;
     dto.isActive = credentialDefinition.isActive;
     dto.metadata = credentialDefinition.metadata;
+    dto.options = credentialDefinition.options;
     dto.createdAt = credentialDefinition.createdAt;
     dto.updatedAt = credentialDefinition.updatedAt;
     return dto;

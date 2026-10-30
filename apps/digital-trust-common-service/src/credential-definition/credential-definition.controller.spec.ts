@@ -2,6 +2,8 @@ import { JwtGuard, ScopeGuard, TenantGuard, type AuthContext } from '@app/auth';
 import { CanActivate } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 
+import { OperationResponseDto } from '../operation/dto/operation-response.dto';
+import { Operation, OperationState } from '../operation/operation.entity';
 import { TenantTierRateLimitGuard } from '../rate-limit/tenant-tier-rate-limit.guard';
 import { TenantStatusGuard } from '../tenant/tenant-status.guard';
 import { TenantStatus } from '../tenant/tenant.entity';
@@ -57,6 +59,11 @@ describe('CredentialDefinitionController', () => {
     connectorType: CredentialDefinitionConnectorType.TRACTION,
     isActive: true,
     metadata: { key: 'value' },
+    options: {
+      format: CredentialDefinitionFormat.ANONCREDS,
+      tag: 'default',
+      status: { revocation: { enabled: true } },
+    },
     createdAt: new Date(),
     updatedAt: new Date(),
     tenant: {
@@ -127,21 +134,28 @@ describe('CredentialDefinitionController', () => {
       const tenantId = mockCredentialDefinition.tenantId;
       const dto: CreateCredentialDefinitionDto = {
         name: mockCredentialDefinition.name,
-        format: mockCredentialDefinition.format,
-        schemaDefinition: mockCredentialDefinition.schemaDefinition,
-        externalId: mockCredentialDefinition.externalId,
-        connectorType: mockCredentialDefinition.connectorType,
+        options: {
+          format: CredentialDefinitionFormat.ANONCREDS,
+          tag: 'default',
+          status: { revocation: { enabled: true } },
+        },
+        schema: { definition: mockCredentialDefinition.schemaDefinition },
         metadata: mockCredentialDefinition.metadata,
       };
 
-      mockCreate.mockResolvedValue(mockCredentialDefinition);
+      const operation = Object.assign(new Operation(), {
+        id: 'operation',
+        type: 'credential-definition.register',
+        state: OperationState.PENDING,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+      mockCreate.mockResolvedValue(operation);
 
       const result = await controller.create(tenantId, dto, auth);
 
       expect(mockCreate).toHaveBeenCalledWith(tenantId, dto, auth);
-      expect(result).toEqual(
-        CredentialDefinitionResponseDto.fromEntity(mockCredentialDefinition),
-      );
+      expect(result).toEqual(OperationResponseDto.fromEntity(operation));
     });
   });
 
@@ -157,6 +171,26 @@ describe('CredentialDefinitionController', () => {
       expect(result).toEqual(
         CredentialDefinitionResponseDto.fromEntity(mockCredentialDefinition),
       );
+      expect(result.options).toEqual(mockCredentialDefinition.options);
+      expect(result.format).toBe(mockCredentialDefinition.options.format);
+      expect(result.metadata).toEqual(mockCredentialDefinition.metadata);
+    });
+
+    it('does not repeat the format in the resolved schema', () => {
+      const definition: CredentialDefinition = {
+        ...mockCredentialDefinition,
+        registration: {
+          issuerId: 'issuer',
+          schema: { id: 'schema-id', state: 'finished' },
+          definition: {},
+        },
+      };
+
+      expect(
+        CredentialDefinitionResponseDto.fromEntity(definition).schema,
+      ).toEqual({
+        id: 'schema-id',
+      });
     });
 
     it('should throw NotFoundException if credential definition not found', async () => {

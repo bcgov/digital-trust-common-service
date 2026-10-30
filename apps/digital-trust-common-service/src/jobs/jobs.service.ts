@@ -33,6 +33,11 @@ export type RegisterWorkerOptions = WorkOptions & {
   enabled?: boolean;
 };
 
+export interface TransactionalJobOptions {
+  startAfter?: number | string | Date;
+  singletonKey?: string;
+}
+
 const JOB_TRACER_NAME = 'digital-trust-common-service/jobs';
 
 const OPERATION_ID_ATTRIBUTE = 'operation.id';
@@ -87,6 +92,7 @@ export class JobsService implements ShutdownParticipant, OnModuleInit {
         retryLimit: definition.retryLimit,
         retryDelay: definition.retryDelay,
         retryBackoff: definition.retryBackoff,
+        ...(definition.policy ? { policy: definition.policy } : {}),
         deadLetter: definition.deadLetter,
       });
       this.logger.log(`Ensured queue ${definition.name}`);
@@ -119,11 +125,13 @@ export class JobsService implements ShutdownParticipant, OnModuleInit {
     manager: EntityManager,
     queueName: string,
     data: object | null,
+    options: TransactionalJobOptions = {},
   ): Promise<string | null> {
     return this.bossService.boss.send(
       queueName,
       this.withRequestContext(data),
       {
+        ...options,
         db: fromTypeOrm(manager),
       },
     );

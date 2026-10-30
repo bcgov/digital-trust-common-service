@@ -1,12 +1,12 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   Entity,
   PrimaryGeneratedColumn,
   Column,
+  Check,
   CreateDateColumn,
   UpdateDateColumn,
   Index,
-  Unique,
   ManyToOne,
   JoinColumn,
 } from 'typeorm';
@@ -25,12 +25,32 @@ export enum CredentialDefinitionConnectorType {
   CREDO = 'credo',
 }
 
+export type RegistrationState = 'unverified' | 'pending' | 'ready' | 'failed';
+
+export interface ArtifactProgress {
+  id?: string;
+  jobId?: string;
+  transactionId?: string;
+  state?: 'finished' | 'wait' | 'action' | 'failed';
+}
+
+export interface DefinitionRegistration {
+  issuerId: string;
+  schema: ArtifactProgress;
+  definition: ArtifactProgress;
+  stage?: string;
+}
+
 @Entity({ name: 'credential_definition' })
-@Unique('uq_credential_definition_tenant_name_format', [
-  'tenantId',
-  'name',
-  'format',
-])
+@Check(
+  'chk_credential_definition_options_format',
+  `"options" ->> 'format' = "format"::text`,
+)
+@Index(
+  'uq_credential_definition_tenant_name_format',
+  ['tenantId', 'name', 'format'],
+  { unique: true, where: '"is_active" = true' },
+)
 @Index('idx_credential_definition_format', ['format'])
 @Index('idx_credential_definition_tenant_connector', [
   'tenantId',
@@ -93,8 +113,31 @@ export class CredentialDefinition {
     description: 'The external ID from the connector system',
     example: 'cred-def-123456',
   })
-  @Column({ name: 'external_id', type: 'varchar', length: 255 })
-  public externalId!: string;
+  @Column({ name: 'external_id', type: 'text', nullable: true })
+  public externalId!: string | null;
+
+  @Column({ name: 'connector_id', type: 'uuid', nullable: true })
+  public connectorId?: string | null;
+
+  @Column({
+    name: 'registration_state',
+    type: 'varchar',
+    default: 'unverified',
+  })
+  public registrationState?: RegistrationState;
+
+  @Column({ name: 'registration_operation_id', type: 'uuid', nullable: true })
+  public registrationOperationId?: string | null;
+
+  @ApiProperty({
+    description: 'Immutable, normalized format-specific publication options',
+    readOnly: true,
+  })
+  @Column({ type: 'jsonb' })
+  public options!: Record<string, unknown>;
+
+  @Column({ name: 'registration', type: 'jsonb', nullable: true })
+  public registration?: DefinitionRegistration | null;
 
   @ApiProperty({
     description: 'The type of connector used for this credential definition',
@@ -108,13 +151,13 @@ export class CredentialDefinition {
   })
   public connectorType!: CredentialDefinitionConnectorType;
 
-  @ApiProperty({
-    description: 'Additional metadata for the credential definition',
+  @ApiPropertyOptional({
+    description: 'Free-form client annotations',
+    nullable: true,
     example: {
       issuer: 'Example University',
       version: '2.0',
     },
-    required: false,
   })
   @Column({
     type: 'jsonb',
@@ -154,3 +197,13 @@ export class CredentialDefinition {
   })
   public updatedAt!: Date;
 }
+
+export const isCredentialDefinitionReadyForIssuance = (
+  definition: Pick<
+    CredentialDefinition,
+    'registrationState' | 'externalId' | 'connectorId'
+  >,
+): boolean =>
+  definition.registrationState === 'ready' &&
+  Boolean(definition.externalId) &&
+  Boolean(definition.connectorId);

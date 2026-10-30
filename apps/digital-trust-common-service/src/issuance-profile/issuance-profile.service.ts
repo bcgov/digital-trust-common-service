@@ -16,7 +16,10 @@ import {
   assertTenantAccess,
 } from '../common/assert-tenant-access';
 import { decodeCursor, encodeCursor } from '../common/cursor-pagination';
-import { CredentialDefinitionFormat } from '../credential-definition/credential-definition.entity';
+import {
+  CredentialDefinitionFormat,
+  isCredentialDefinitionReadyForIssuance,
+} from '../credential-definition/credential-definition.entity';
 import {
   CredentialDefinitionService,
   toPortCredentialFormat,
@@ -64,6 +67,20 @@ export class IssuanceProfileService {
         auth,
       );
 
+    if (!isCredentialDefinitionReadyForIssuance(credentialDefinition)) {
+      throw new BadRequestException(
+        'Credential definition is not ready for issuance',
+      );
+    }
+    if (
+      dto.connectorId &&
+      dto.connectorId !== credentialDefinition.connectorId
+    ) {
+      throw new BadRequestException(
+        'Profile connector must match the credential definition issuer wallet',
+      );
+    }
+
     this.validateAttributeSchema(
       credentialDefinition.format,
       credentialDefinition.schemaDefinition,
@@ -85,7 +102,7 @@ export class IssuanceProfileService {
     const connectorId = await this.resolveConnector(
       tenantId,
       credentialDefinition.format,
-      dto.connectorId,
+      credentialDefinition.connectorId ?? undefined,
     );
 
     const created = await this.createProfile({
@@ -343,6 +360,20 @@ export class IssuanceProfileService {
     }
 
     const connectorId = await this.assertConnectorHealthy(profile);
+
+    const definition = await this.credentialDefinitionService.findById(
+      tenantId,
+      profile.credentialDefinitionId,
+      auth,
+    );
+    if (
+      !isCredentialDefinitionReadyForIssuance(definition) ||
+      definition.connectorId !== connectorId
+    ) {
+      throw new BadRequestException(
+        'Credential definition is not ready on the profile connector',
+      );
+    }
 
     const transitioned = await this.issuanceProfileRepository.transitionStatus(
       tenantId,

@@ -33,6 +33,8 @@ import { AddOperationInflightRevokeUniqueIndex1789751397831 } from './migrations
 import { RemoveVerificationProfileIssuanceProfileLink1790623456139 } from './migrations/000030_remove-verification-profile-issuance-profile-link';
 import { AllowNullableConnectionExternalId1790703557000 } from './migrations/000031_allow-nullable-connection-external-id';
 import { AddTenantUserPlatformOperator1790900000000 } from './migrations/000032_add-tenant-user-platform-operator';
+import { ExtendCredentialDefinitionRegistration1792018018010 } from './migrations/000033_extend-credential-definition-registration';
+import { CreateAnoncredsPublicationIntent1793375200834 } from './migrations/000034_create-anoncreds-publication-intent';
 import { buildSslConfig } from './ssl.util';
 
 export const AppDataSource = new DataSource({
@@ -80,6 +82,8 @@ export const AppDataSource = new DataSource({
     RemoveVerificationProfileIssuanceProfileLink1790623456139,
     AllowNullableConnectionExternalId1790703557000,
     AddTenantUserPlatformOperator1790900000000,
+    ExtendCredentialDefinitionRegistration1792018018010,
+    CreateAnoncredsPublicationIntent1793375200834,
   ],
   ssl: buildSslConfig(
     process.env.DB_SSL,

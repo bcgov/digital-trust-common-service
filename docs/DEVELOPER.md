@@ -1239,6 +1239,196 @@ App-issued access tokens carry a stable API `aud`, not the OIDC issuer URL:
 
 `JWT_AUDIENCE` and extra resources must be absolute URIs without fragments (RFC 8707 / oidc-provider). Override via `.env` if needed; Helm `config.JWT_AUDIENCE` defaults to the same URI in every environment and `config.JWT_ADDITIONAL_AUDIENCES` defaults to empty.
 
+## AnonCreds credential-definition registration
+
+`POST /api/v1/tenants/{tenantId}/credential-definitions` now accepts
+`name`, `schema`, required `options`, and optional `issuer`, `connector_id`, and
+`metadata`. Immutable format-specific publication settings belong in `options`;
+`metadata` remains free-form client annotations. This replaces the old
+`schema_definition`, `external_id`, and `connector_type` request fields.
+The required `options.format` enum selects the format-specific options class;
+there is no root-level `format` request field. This deliberately differs from
+the review wording that described `format` as a shared root field. Responses
+continue to expose their root `format` value, which is kept equal to
+`options.format`.
+Independent schema management and existing credential-definition imports are
+not part of this workflow.
+
+```json
+{
+  "name": "Employee Credential",
+  "schema": {
+    "definition": {
+      "schema_name": "employee",
+      "schema_version": "1.0",
+      "attr_names": ["given_name", "family_name", "employee_id"]
+    }
+  },
+  "issuer": { "method": "indy" },
+  "options": {
+    "format": "anoncreds",
+    "tag": "default",
+    "status": {
+      "revocation": { "enabled": true }
+    }
+  },
+  "metadata": {
+    "issuer": "DMV"
+  }
+}
+```
+
+Alternatively, use `schema.id` to resolve an existing published schema and
+create this issuer's credential definition against it. Exactly one schema
+source is required. `options.format` selects the handler that interprets the
+free-form `schema.definition`. AnonCreds requires `schema_name`,
+`schema_version`, and `attr_names`; other formats define their own schema
+shape. Formats without a schema validator may accept the object as-is.
+Select an existing issuer with either `issuer.id` or `issuer.method`,
+never both, or omit `issuer` to use the connector's default. Traction selections
+must match its configured
+public DID; the abstraction layer never creates, promotes, or endorses DIDs.
+The wallet must already use `askar-anoncreds` and its public DID's registry key
+must match its wallet key.
+
+For ACA-Py 1.6.0 legacy-Indy registrar compatibility, the Traction adapter maps
+an unnamespaced `did:indy:<21-or-22-character-base58-identifier>` to the bare
+backend registry identifier for schema/definition publication, issuer lookup filters,
+and definition ownership comparison. The canonical wallet DID remains unchanged
+in issuer selection, registry-key verification, and local registration state.
+Namespaced or malformed `did:indy` identifiers are rejected rather than stripped.
+This workaround is marked `BUG`/`TODO` for removal when the deployed registrar
+supports the wallet representation; it does not establish end-to-end publication
+or revocation readiness.
+
+For AnonCreds, revocation defaults to **enabled** and the tag defaults to
+`default`. Set `options.status.revocation.enabled` to false for non-revocable
+issuance. Status settings are nested under each format's options so other
+formats can define their own status settings. Each format handler strictly
+validates and normalizes its own options.
+Options are stored in a separate JSONB column, returned read-only, and rejected
+on PATCH; metadata remains editable free-form annotations. All declared
+credential-definition formats pass DTO validation, but only AnonCreds has a
+registered handler. Other formats return `FORMAT_NOT_SUPPORTED` without
+creating a definition or operation. The no-registration handler is an
+unregistered placeholder, not a supported issuance path. Signing keys never
+enter the registration request or application database.
+
+The response is a `202` Operation with `result.credential_definition_id`.
+Poll the existing operation endpoint; the definition's GET response includes
+`registration_state`, `registration_operation_id`, resolved `issuer`/`schema`,
+and its pinned `connector_id`. The `credential-definition.register` queue
+processes AnonCreds definitions only; it has no recurring reconciliation job.
+
+Create is idempotent by `(tenantId, name, format)`. A matching request must
+resolve to the same connector, issuer, schema, and normalized immutable options,
+otherwise it returns `409`. Metadata is free-form annotation data and does not
+affect publication identity.
+An explicit `schema.id` must match the original artifact ID, even when two
+published schemas have identical content. The transactional lookup prefers an
+active row and locks it so concurrent failed replays return one new operation.
+An inactive fallback is selected deterministically by newest creation time and ID.
+A ready definition returns its completed
+operation. A pending definition returns its current operation and enqueues a
+singleton-keyed continuation. A failed definition gets a new operation and
+continues from its saved progress. A deactivated ready definition returns
+`409 REGISTRATION_REPLAY_UNAVAILABLE`, with its existing ID and no reactivation.
+
+The worker looks up deterministic schema and definition IDs before publishing.
+It stores the backend job/transaction correlation as soon as a publication
+response arrives, then checks the deterministic lookup on later runs instead
+of repeating a pending publication. Endorsement (`wait`/`action`) and
+revocation-registry readiness are pending states: the worker schedules one
+follow-up after 15 seconds, up to 20 checks (about five minutes). When that
+window ends the operation remains `PROCESSING`; repeating POST queues another
+check. Backend rejection or another error settles the operation as `FAILED`;
+there is no automatic failure retry. Repeating POST creates a new operation
+and resumes from the definition's saved progress.
+
+Before either schema or definition publication, a short transaction records
+durable intent keyed by tenant, pinned connector wallet and deterministic
+artifact identity. Different local definitions sharing that identity cannot
+both publish it. No database connection is retained across backend calls.
+A lost response, timeout or indeterminate backend error leaves that intent
+closed: later runs perform lookup and adopt the artifact once visible, without
+submitting it again. These checks use `awaiting_schema_discovery` or
+`awaiting_definition_discovery` rather than claiming endorsement is pending.
+A conclusive rejection (an explicit failed publication or
+a non-transient 4xx response) permits a new attempt after lookup finds nothing.
+Pending and uncertain outcomes are never treated as rejection.
+If the backend never exposes an uncertain artifact, backend-aware manual
+investigation is still needed; repeating POST does not clear the intent.
+Deleting a local definition also does not clear it. Published artifacts are
+not deleted on local failure.
+Revocable definitions remain pending until the backend's active registry is
+finished, an initial accumulator exists, capacity remains, and its public
+tails file is reachable. ACA-Py owns registry initialization and rollover.
+
+Webhook-driven progress is a follow-up, not implemented here. A later change
+can use `endorse_transaction` and `revocation_registry` topics matched against
+the saved transaction ID; note that ACA-Py's wire topic `revocation_registry`
+differs from our internal `ProtocolTopic` of the same name.
+
+Registration Operation responses include `problem_details: null` when no
+diagnostic is recorded. When a worker step encounters an error, this becomes
+an RFC 9457-aligned object with `type`, `title`, `detail`, `instance`,
+`stage`, `retryable`, and optional
+`backend_status`/`backend_code`. `detail` is a bounded, sanitized backend reason
+or a safe local message. Only selected backend error fields are read; headers,
+request configurations, response objects, credentials, and stack traces are
+not copied into this object. Polling remains HTTP 200 even when an operation
+has failed; `backend_status` describes the upstream request.
+This uses the RFC 9457 data model as an embedded diagnostic, not an
+`application/problem+json` HTTP error response. Successful POST and GET
+responses remain `application/json` Operation representations with HTTP
+202 and 200 respectively. `status` is deliberately omitted: an upstream
+400 must not be represented as the status of a successful polling response.
+`backend_status`, `backend_code`, `stage`, and `retryable` are documented
+extension members. Consumers must ignore extensions they do not recognize
+and must not parse `detail` or `title` for machine decisions.
+Each newly recorded occurrence gets a persisted `urn:uuid:` `instance`,
+an opaque identifier rather than a URL to fetch. Repeated reads retain
+that identifier. A later error occurrence has a new instance.
+The global synchronous HTTP `{ error: { code, message, ... } }` envelope and
+other operation types are unchanged. Historical failures without retained
+backend errors expose null rather than fabricated details.
+Earlier stored `about:blank` diagnostics are normalized to the documented
+registration type/title on reads, without fabricating an instance.
+
+The `result` retains `credential_definition_id` on failure, along with
+`external_id`, `code`, `message`, and `registration` progress. Progress exposes
+`stage`, the active `artifact`, and that artifact's `id`, `job_id`,
+`transaction_id`, and `state`. An `id` returned with `wait` or `action` is
+provisional; only `finished` establishes a published artifact ID. Preflight
+and completed stages have no active artifact. Resolved identities are exposed
+separately as the definition response's `schema.id` and `external_id`.
+Per-artifact correlations remain persisted internally so a repeated POST can
+continue.
+`wait`/`action` responses are accepted pending progress, never proof of
+publication or issuance-readiness. A schema must resolve before definition
+creation; definition lookup and revocation checks still gate readiness.
+
+### Credential registration failed
+
+Problem type:
+`https://github.com/bcgov/digital-trust-common-service/blob/main/docs/DEVELOPER.md#credential-registration-failed`
+
+Stable title: `Credential registration failed`. A prerequisite validation,
+explicit backend failure, or permanent backend rejection stopped this
+registration. The recommended status for a standalone HTTP representation of
+this domain problem is 422; this API currently embeds it in an Operation and
+does not use that status for polling. The upstream status, if known, is
+`backend_status`. `retryable` is false. Correct the reported prerequisite or
+backend rejection, then repeat POST to start a new operation from saved
+progress. Do not clear the progress or publication correlations.
+
+Existing database records migrate to `unverified`: an external identifier alone
+does not prove wallet ownership. They remain readable, but must be replaced with
+verified registrations before new profile creation/publication or issuance.
+Profiles cannot substitute another connector wallet for a registered definition.
+The migration's rollback refuses null or oversized external identifiers instead
+of deleting data or fabricating references; resolve those records before rollback.
+
 ## Adapter registry (CA-02)
 
 `AdapterRegistry` (`apps/digital-trust-common-service/src/adapter-registry/`) maps a connector type
