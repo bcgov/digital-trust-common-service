@@ -1213,9 +1213,12 @@ smoke lives in `test/product-controller-auth.e2e-spec.ts`.
 
 ### Agent log identifier binding
 
-For a Traction connector, the service reads the `wallet_id` claim from the
-token the agent issues during the connectivity check and stores it as
-`agentLogId` inside `connector_credential.credentials_encrypted`. It is
+Each connector type defines where its agent log identifier comes from and its
+format, through its `ConnectorProbe`; shared code only requires the identifier
+to be Loki-safe (`[A-Za-z0-9-]`, 1-100 characters). For a Traction connector,
+`TractionConnectorProbe` reads the `wallet_id` claim (a canonical lowercase
+UUID) from the token the agent issues during the connectivity check, and the
+service stores it as `agentLogId` inside `connector_credential.credentials_encrypted`. It is
 system-populated: a caller-supplied value is never persisted, and it is not
 returned by the API. Uniqueness is enforced by `agent_log_id_hash`, an HMAC of
 the connector type and identifier, under a partial unique index over active
@@ -1227,8 +1230,10 @@ idempotent. A losing bind returns `409`.
 The HMAC is keyed with encryption key **version 1**, so lazy key rotation never
 changes a stored hash; do not remove version 1 from
 `CONNECTOR_ENCRYPTION_KEYS_PATH`. Connectors created before this change have no
-identifier until their next credential or endpoint update. `a-<wallet_id>` is
-the agent's Loki partition key (`buildAgentPartitionKey`).
+identifier until their next credential or endpoint update.
+`a-<connector_type>-<agent_log_id>` is the agent's Loki partition key
+(`buildAgentPartitionKey`); it and the uniqueness hash are both derived from
+the same `(connectorType, agentLogId)` pair.
 
 ### Guard rollout gaps (remaining)
 

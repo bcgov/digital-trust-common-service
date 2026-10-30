@@ -15,6 +15,7 @@ import {
 } from '@nestjs/common';
 import { EntityManager } from 'typeorm';
 
+import { formatAgentLogBindingKey } from '../common/agent-log-partition-key';
 import {
   assertResourceTenantOrNotFound,
   assertTenantAccess,
@@ -265,7 +266,7 @@ export class ConnectorCredentialService {
       ? null
       : this.encryptionService.deriveBlindIndex(
           AGENT_LOG_ID_BINDING_DOMAIN,
-          `${connectorType}:${agentLogId}`,
+          formatAgentLogBindingKey(connectorType, agentLogId),
         );
   }
 

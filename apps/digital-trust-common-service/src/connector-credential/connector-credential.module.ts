@@ -1,4 +1,5 @@
 import { AuthModule } from '@app/auth';
+import { CONNECTOR_PROBES } from '@app/credential-ports';
 import { OidcConfigModule } from '@app/oidc/config';
 import { forwardRef, Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
@@ -9,6 +10,7 @@ import { RateLimitModule } from '../rate-limit/rate-limit.module';
 import { TenantStatusModule } from '../tenant/tenant-status.module';
 import { TenantModule } from '../tenant/tenant.module';
 import { TractionClientModule } from '../traction/traction-client.module';
+import { TractionConnectorProbe } from '../traction/traction-connector.probe';
 
 import { ConnectorCredentialController } from './connector-credential.controller';
 import { ConnectorCredential } from './connector-credential.entity';
@@ -33,6 +35,11 @@ import { ConnectorHealthCheckService } from './connector-health-check.service';
     ConnectorCredentialService,
     ConnectorCredentialRepository,
     ConnectorHealthCheckService,
+    {
+      provide: CONNECTOR_PROBES,
+      useFactory: (traction: TractionConnectorProbe) => [traction],
+      inject: [TractionConnectorProbe],
+    },
   ],
   exports: [ConnectorCredentialService],
 })

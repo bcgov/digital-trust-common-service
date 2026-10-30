@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 
+import { TractionConnectorProbe } from './traction-connector.probe';
 import { TractionHttpClient } from './traction-http-client.service';
 import { TractionTokenManager } from './traction-token-manager.service';
 import { TractionWebhookRegistrar } from './traction-webhook-registrar.service';
@@ -17,7 +18,13 @@ import { TractionWebhookRegistrar } from './traction-webhook-registrar.service';
     TractionHttpClient,
     TractionTokenManager,
     TractionWebhookRegistrar,
+    TractionConnectorProbe,
   ],
-  exports: [TractionHttpClient, TractionTokenManager, TractionWebhookRegistrar],
+  exports: [
+    TractionHttpClient,
+    TractionTokenManager,
+    TractionWebhookRegistrar,
+    TractionConnectorProbe,
+  ],
 })
 export class TractionClientModule {}
