@@ -41,6 +41,56 @@ describe('ConnectorHealthCheckService', () => {
   });
 
   describe('traction', () => {
+    const tokenFor = (claims: Record<string, unknown>): string => {
+      const encode = (value: unknown): string =>
+        Buffer.from(JSON.stringify(value)).toString('base64url');
+
+      return `${encode({ alg: 'none' })}.${encode(claims)}.sig`;
+    };
+
+    const checkWithToken = async (token: unknown) => {
+      (global.fetch as jest.Mock).mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ token }),
+      });
+
+      return service.check(
+        ConnectorType.TRACTION,
+        'https://traction.example.com',
+        { apiKey: 'key-1', tractionTenantId: 'tenant-abc' },
+      );
+    };
+
+    it('reads the wallet_id claim from the issued token', async () => {
+      const walletId = '3f2a9c1e-7b4d-4e08-9a15-c2d4e6f80b13';
+
+      const result = await checkWithToken(tokenFor({ wallet_id: walletId }));
+
+      expect(result).toMatchObject({
+        status: 'healthy',
+        agentLogId: walletId,
+      });
+    });
+
+    it.each([
+      ['is absent', { sub: 'x' }],
+      ['is not a canonical UUID', { wallet_id: 'A|b/c' }],
+      ['is not a string', { wallet_id: 42 }],
+    ])('returns no identifier when wallet_id %s', async (_name, claims) => {
+      const result = await checkWithToken(tokenFor(claims));
+
+      expect(result.status).toBe('healthy');
+      expect(result.agentLogId).toBeUndefined();
+    });
+
+    it('returns no identifier when the token is not a JWT', async () => {
+      const result = await checkWithToken('not-a-jwt');
+
+      expect(result.status).toBe('healthy');
+      expect(result.agentLogId).toBeUndefined();
+    });
+
     it('requests a tenant token when tractionTenantId is provided', async () => {
       (global.fetch as jest.Mock).mockResolvedValue({ ok: true, status: 200 });
 

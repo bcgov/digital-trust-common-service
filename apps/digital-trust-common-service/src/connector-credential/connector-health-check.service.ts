@@ -1,5 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { decodeJwt } from 'jose';
 
+import { isValidAgentLogId } from '../common/agent-log-partition-key';
 import { assertSafeConnectorUrl } from '../common/assert-safe-connector-url';
 import {
   buildTractionTokenRequestBody,
@@ -17,6 +19,11 @@ export interface ConnectorHealthCheckResult {
   status: ConnectorHealthStatus;
   latencyMs: number;
   message?: string;
+  /**
+   * The agent's own log identifier, read from the token the agent issued
+   * during the check. Only set when the agent returned a usable one.
+   */
+  agentLogId?: string;
 }
 
 /**
@@ -75,10 +82,49 @@ export class ConnectorHealthCheckService {
         },
       );
 
-      return this.toResult(response, start);
+      const result = this.toResult(response, start);
+
+      if (result.status === 'healthy') {
+        result.agentLogId = await this.readTractionWalletId(response);
+      }
+
+      return result;
     } catch (error) {
       return this.toErrorResult(error, start, endpointUrl);
     }
+  }
+
+  /**
+   * Reads the sub-wallet id from the token Traction just issued. The token is
+   * decoded without signature verification (we hold no key for the agent), so
+   * the value is only as trustworthy as the endpoint that returned it.
+   */
+  private async readTractionWalletId(
+    response: Response,
+  ): Promise<string | undefined> {
+    try {
+      const body = (await response.json()) as { token?: unknown };
+
+      if (typeof body.token !== 'string') {
+        return undefined;
+      }
+
+      const { wallet_id: walletId } = decodeJwt(body.token);
+
+      if (isValidAgentLogId(walletId)) {
+        return walletId;
+      }
+
+      this.logger.warn(
+        'Traction token carried no usable wallet_id claim; agent logs will not be attributable to this connector.',
+      );
+    } catch {
+      this.logger.warn(
+        'Traction token response could not be read for a wallet_id claim.',
+      );
+    }
+
+    return undefined;
   }
 
   // TODO: provisional — confirm the real Credo Agent Service health/auth

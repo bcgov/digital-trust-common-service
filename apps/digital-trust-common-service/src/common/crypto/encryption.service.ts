@@ -1,4 +1,9 @@
-import { createCipheriv, createDecipheriv, randomBytes } from 'crypto';
+import {
+  createCipheriv,
+  createDecipheriv,
+  createHmac,
+  randomBytes,
+} from 'crypto';
 
 import { Injectable } from '@nestjs/common';
 
@@ -7,6 +12,7 @@ import { KeyProviderService } from './key-provider.service';
 const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 12;
 const AUTH_TAG_LENGTH = 16;
+const BLIND_INDEX_KEY_VERSION = 1;
 
 export interface EncryptionResult {
   ciphertext: Buffer;
@@ -91,6 +97,23 @@ export class EncryptionService {
     ]);
 
     return JSON.parse(decrypted.toString('utf8')) as T;
+  }
+
+  /**
+   * Deterministic, non-reversible index of `value`, for enforcing uniqueness
+   * without storing the value in a queryable column.
+   *
+   * Keyed with encryption key version 1 rather than the current key so lazy
+   * key rotation never changes an existing hash and breaks the unique index.
+   * Version 1 must therefore stay in the key file. `domain` separates this
+   * use of the key from any other.
+   */
+  public deriveBlindIndex(domain: string, value: string): string {
+    const { key } = this.keyProvider.getKey(BLIND_INDEX_KEY_VERSION);
+
+    return createHmac('sha256', key)
+      .update(`${domain}\0${value}`, 'utf8')
+      .digest('hex');
   }
 
   /**

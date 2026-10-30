@@ -63,6 +63,7 @@ describe('ConnectionService', () => {
     endpointUrl: 'https://traction.example.test',
     active: true,
     keyVersion: 1,
+    agentLogIdHash: null,
     tenant: undefined as any,
     createdAt: new Date(),
     updatedAt: new Date(),

@@ -21,7 +21,10 @@ import {
 } from '../common/assert-tenant-access';
 import { API_BASE_PATH } from '../common/constants/api-version.constants';
 import { EncryptionService } from '../common/crypto/encryption.service';
-import { getPostgresErrorCode } from '../common/postgres-error';
+import {
+  getPostgresErrorCode,
+  isUniqueConstraintViolation,
+} from '../common/postgres-error';
 import { ConnectorType } from '../connection/connection.entity';
 import { CredentialRepository } from '../credential/credential.repository';
 import { TenantService } from '../tenant/tenant.service';
@@ -38,6 +41,20 @@ import {
   CreateConnectorCredentialDto,
 } from './dto/create-connector-credential.dto';
 import { UpdateConnectorCredentialDto } from './dto/update-connector-credential.dto';
+
+const AGENT_LOG_ID_BINDING_DOMAIN = 'connector-agent-log-id:v1';
+const AGENT_LOG_ID_UNIQUE_INDEX = 'uq_connector_credential_agent_log_id_hash';
+const AGENT_LOG_ID_CONFLICT_MESSAGE =
+  'This agent sub-wallet is already bound to another connector.';
+
+/**
+ * What is stored in `credentials_encrypted`: the tenant-supplied credentials
+ * plus the agent log identifier the service captured from the agent's token.
+ * The identifier is never part of any request DTO.
+ */
+type StoredConnectorCredentials = ConnectorCredentialsDto & {
+  agentLogId?: string;
+};
 
 @Injectable()
 export class ConnectorCredentialService {
@@ -69,24 +86,32 @@ export class ConnectorCredentialService {
       dto.credentials.webhookSecret = randomBytes(32).toString('hex');
     }
 
-    await this.assertHealthy(
+    const agentLogId = await this.assertHealthy(
       dto.connectorType,
       dto.endpointUrl,
       dto.credentials,
     );
 
     const encryptedCredentials = this.encryptionService.encrypt(
-      dto.credentials,
+      this.withAgentLogId(dto.credentials, agentLogId),
     );
 
-    const credential = await this.credentialRepository.create({
-      tenantId,
-      connectorType: dto.connectorType,
-      credentialsEncrypted: encryptedCredentials.ciphertext,
-      endpointUrl: dto.endpointUrl,
-      active: true,
-      keyVersion: encryptedCredentials.keyVersion,
-    } as ConnectorCredential);
+    let credential: ConnectorCredential;
+
+    try {
+      credential = await this.credentialRepository.create({
+        tenantId,
+        connectorType: dto.connectorType,
+        credentialsEncrypted: encryptedCredentials.ciphertext,
+        endpointUrl: dto.endpointUrl,
+        active: true,
+        keyVersion: encryptedCredentials.keyVersion,
+        agentLogIdHash: this.hashAgentLogId(dto.connectorType, agentLogId),
+      } as ConnectorCredential);
+    } catch (error) {
+      this.throwIfAgentLogIdConflict(error);
+      throw error;
+    }
 
     if (dto.connectorType === ConnectorType.TRACTION) {
       const webhookUrl = this.buildWebhookUrl(credential.id);
@@ -199,7 +224,7 @@ export class ConnectorCredentialService {
     connectorType: ConnectorType,
     endpointUrl: string,
     credentials: ConnectorCredentialsDto,
-  ): Promise<void> {
+  ): Promise<string | undefined> {
     const healthCheck = await this.healthCheckService.check(
       connectorType,
       endpointUrl,
@@ -210,6 +235,41 @@ export class ConnectorCredentialService {
       throw new UnprocessableEntityException(
         `Could not verify connectivity to the connector endpoint: ${healthCheck.message ?? 'unknown error'}`,
       );
+    }
+
+    return healthCheck.agentLogId;
+  }
+
+  /**
+   * Replaces whatever agent log identifier the credentials carry with the one
+   * the service just captured, or drops it when none was captured. A value
+   * arriving from a caller is never carried through.
+   */
+  private withAgentLogId(
+    credentials: ConnectorCredentialsDto,
+    agentLogId: string | undefined,
+  ): StoredConnectorCredentials {
+    const rest: StoredConnectorCredentials = { ...credentials };
+    delete rest.agentLogId;
+
+    return agentLogId === undefined ? rest : { ...rest, agentLogId };
+  }
+
+  private hashAgentLogId(
+    connectorType: ConnectorType,
+    agentLogId: string | undefined,
+  ): string | null {
+    return agentLogId === undefined
+      ? null
+      : this.encryptionService.deriveBlindIndex(
+          AGENT_LOG_ID_BINDING_DOMAIN,
+          `${connectorType}:${agentLogId}`,
+        );
+  }
+
+  private throwIfAgentLogIdConflict(error: unknown): void {
+    if (isUniqueConstraintViolation(error, AGENT_LOG_ID_UNIQUE_INDEX)) {
+      throw new ConflictException(AGENT_LOG_ID_CONFLICT_MESSAGE);
     }
   }
 
@@ -348,19 +408,28 @@ export class ConnectorCredentialService {
     for (let attempt = 0; attempt < 3; attempt += 1) {
       const updates = await this.buildCredentialUpdates(snapshot, dto);
       let stale = false;
-      const updated = await this.credentialRepository.updateWithLock(
-        tenantId,
-        id,
-        (current) => {
-          stale =
-            current.endpointUrl !== snapshot.endpointUrl ||
-            current.connectorType !== snapshot.connectorType ||
-            current.active !== snapshot.active ||
-            current.keyVersion !== snapshot.keyVersion ||
-            !current.credentialsEncrypted.equals(snapshot.credentialsEncrypted);
-          return stale ? {} : updates;
-        },
-      );
+      let updated: ConnectorCredential | null;
+
+      try {
+        updated = await this.credentialRepository.updateWithLock(
+          tenantId,
+          id,
+          (current) => {
+            stale =
+              current.endpointUrl !== snapshot.endpointUrl ||
+              current.connectorType !== snapshot.connectorType ||
+              current.active !== snapshot.active ||
+              current.keyVersion !== snapshot.keyVersion ||
+              !current.credentialsEncrypted.equals(
+                snapshot.credentialsEncrypted,
+              );
+            return stale ? {} : updates;
+          },
+        );
+      } catch (error) {
+        this.throwIfAgentLogIdConflict(error);
+        throw error;
+      }
 
       if (!updated) {
         throw new NotFoundException(
@@ -396,7 +465,7 @@ export class ConnectorCredentialService {
 
     if (dto.credentials !== undefined) {
       const existingCredentials =
-        this.encryptionService.decrypt<ConnectorCredentialsDto>(
+        this.encryptionService.decrypt<StoredConnectorCredentials>(
           existing.credentialsEncrypted,
           existing.keyVersion,
         );
@@ -413,10 +482,19 @@ export class ConnectorCredentialService {
           : {}),
       };
 
-      await this.assertHealthy(
+      const agentLogId = await this.assertHealthy(
         existing.connectorType,
         endpointUrl,
         credentialsToPersist,
+      );
+
+      credentialsToPersist = this.withAgentLogId(
+        credentialsToPersist,
+        agentLogId,
+      );
+      updates.agentLogIdHash = await this.assertAgentLogIdAvailable(
+        existing,
+        agentLogId,
       );
 
       const encryptedCredentials =
@@ -428,16 +506,32 @@ export class ConnectorCredentialService {
       // Credentials aren't being rotated, but the endpoint changed — still
       // validate it (SSRF checks included) against the existing credentials.
       const existingCredentials =
-        this.encryptionService.decrypt<ConnectorCredentialsDto>(
+        this.encryptionService.decrypt<StoredConnectorCredentials>(
           existing.credentialsEncrypted,
           existing.keyVersion,
         );
 
-      await this.assertHealthy(
+      const agentLogId = await this.assertHealthy(
         existing.connectorType,
         endpointUrl,
         existingCredentials,
       );
+
+      // A new endpoint can sit in front of a different sub-wallet, so the
+      // stored identifier is refreshed from the token the check just read.
+      if (agentLogId !== existingCredentials.agentLogId) {
+        updates.agentLogIdHash = await this.assertAgentLogIdAvailable(
+          existing,
+          agentLogId,
+        );
+
+        const encryptedCredentials = this.encryptionService.encrypt(
+          this.withAgentLogId(existingCredentials, agentLogId),
+        );
+
+        updates.credentialsEncrypted = encryptedCredentials.ciphertext;
+        updates.keyVersion = encryptedCredentials.keyVersion;
+      }
     }
 
     if (Object.keys(updates).length === 0) {
@@ -483,6 +577,32 @@ export class ConnectorCredentialService {
     }
 
     return updates;
+  }
+
+  /**
+   * Rejects a sub-wallet held by another active connector before any call
+   * that would mutate that wallet (webhook re-registration). The unique
+   * index remains the atomic guarantee; this only avoids the side effect.
+   * The connector being updated is excluded so re-saving the same sub-wallet
+   * stays idempotent. Deliberately not tenant-filtered: a binding is global.
+   */
+  private async assertAgentLogIdAvailable(
+    existing: ConnectorCredential,
+    agentLogId: string | undefined,
+  ): Promise<string | null> {
+    const hash = this.hashAgentLogId(existing.connectorType, agentLogId);
+
+    if (
+      hash !== null &&
+      (await this.credentialRepository.existsOtherActiveWithAgentLogIdHash(
+        hash,
+        existing.id,
+      ))
+    ) {
+      throw new ConflictException(AGENT_LOG_ID_CONFLICT_MESSAGE);
+    }
+
+    return hash;
   }
 
   public async delete(
@@ -545,10 +665,12 @@ export class ConnectorCredentialService {
       credential.keyVersion,
     );
 
-    return await this.healthCheckService.check(
+    const { status, latencyMs, message } = await this.healthCheckService.check(
       credential.connectorType,
       credential.endpointUrl,
       decrypted,
     );
+
+    return { status, latencyMs, ...(message !== undefined ? { message } : {}) };
   }
 }

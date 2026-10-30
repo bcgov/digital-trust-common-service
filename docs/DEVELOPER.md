@@ -1211,6 +1211,25 @@ Integration coverage for the guard stack uses ephemeral
 `/api/v1/integration/tenant-check/:tenantId` routes. Product-controller 401
 smoke lives in `test/product-controller-auth.e2e-spec.ts`.
 
+### Agent log identifier binding
+
+For a Traction connector, the service reads the `wallet_id` claim from the
+token the agent issues during the connectivity check and stores it as
+`agentLogId` inside `connector_credential.credentials_encrypted`. It is
+system-populated: a caller-supplied value is never persisted, and it is not
+returned by the API. Uniqueness is enforced by `agent_log_id_hash`, an HMAC of
+the connector type and identifier, under a partial unique index over active
+rows, so one sub-wallet binds to one active connector and there is no
+plaintext lookup from an identifier to a tenant. Deleting or deactivating a
+connector releases the binding, and re-saving the same sub-wallet is
+idempotent. A losing bind returns `409`.
+
+The HMAC is keyed with encryption key **version 1**, so lazy key rotation never
+changes a stored hash; do not remove version 1 from
+`CONNECTOR_ENCRYPTION_KEYS_PATH`. Connectors created before this change have no
+identifier until their next credential or endpoint update. `a-<wallet_id>` is
+the agent's Loki partition key (`buildAgentPartitionKey`).
+
 ### Guard rollout gaps (remaining)
 
 `TenantGuard` only reads **`params.tenantId`**. Body and resource-`:id` routes
