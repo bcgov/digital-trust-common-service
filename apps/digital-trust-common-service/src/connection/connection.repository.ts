@@ -4,6 +4,7 @@ import { EntityManager, In, Not, Raw, Repository } from 'typeorm';
 
 import { Cursor } from '../common/cursor-pagination';
 
+import { transitionConnectionState } from './connection-state-transition';
 import {
   Connection,
   ConnectionProtocol,
@@ -38,6 +39,69 @@ export class ConnectionRepository {
     return await this.repository.findOne({
       where: { id },
       relations: { tenant: true },
+    });
+  }
+
+  public async findByIdForTenant(
+    tenantId: string,
+    id: string,
+  ): Promise<Connection | null> {
+    return this.repository.findOne({ where: { id, tenantId } });
+  }
+
+  public async reconcile(
+    tenantId: string,
+    id: string,
+    connectorId: string,
+    remote: {
+      id: string;
+      state: ConnectionState;
+      theirLabel?: string;
+      theirDid?: string;
+    },
+    forwardStates: ConnectionState[],
+    onEstablished?: (manager: EntityManager) => Promise<void>,
+  ): Promise<{ connection: Connection; established: boolean } | null> {
+    return this.repository.manager.transaction(async (manager) => {
+      const connection = await manager.findOne(Connection, {
+        where: { id, tenantId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (
+        !connection ||
+        (connection.connectorId && connection.connectorId !== connectorId) ||
+        (connection.externalConnectionId &&
+          connection.externalConnectionId !== remote.id)
+      ) {
+        return null;
+      }
+      connection.connectorId = connectorId;
+      connection.externalConnectionId = remote.id;
+      connection.theirLabel = remote.theirLabel;
+      connection.theirDid = remote.theirDid;
+      connection.protocol = ConnectionProtocol.DIDCOMM_V1;
+      const saved = await manager.save(connection);
+      const { established } = forwardStates.includes(saved.state)
+        ? await transitionConnectionState(
+            remote.state,
+            async (state, fromStates) => {
+              const won = await this.updateStateIfForward(
+                id,
+                tenantId,
+                state,
+                fromStates,
+                manager,
+              );
+              if (!won) return null;
+              saved.state = state;
+              return saved;
+            },
+          )
+        : { established: false };
+      if (established && onEstablished) {
+        await onEstablished(manager);
+      }
+      return { connection: saved, established };
     });
   }
 

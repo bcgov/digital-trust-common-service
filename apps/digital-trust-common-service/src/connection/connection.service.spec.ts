@@ -1,5 +1,11 @@
 import { TenantAccessDeniedException } from '@app/auth';
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { BackendNotFoundError, TimeoutError } from '@app/credential-ports';
+import {
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Test, TestingModule } from '@nestjs/testing';
 
 import { AdapterRegistry } from '../adapter-registry/adapter-registry.service';
@@ -7,6 +13,7 @@ import { AuditAction } from '../audit-log/audit-log.entity';
 import { DomainAuditService } from '../audit-log/domain-audit.service';
 import { encodeCursor } from '../common/cursor-pagination';
 import { ConnectorCredential } from '../connector-credential/connector-credential.entity';
+import { JobsService } from '../jobs/jobs.service';
 import { OPERATION_TYPE } from '../operation/operation-type.constants';
 import { Operation, OperationState } from '../operation/operation.entity';
 import { OperationService } from '../operation/operation.service';
@@ -39,6 +46,10 @@ describe('ConnectionService', () => {
   let mockGetById: jest.Mock;
   let mockList: jest.Mock;
   let mockDeleteById: jest.Mock;
+  let mockFindByIdForTenant: jest.Mock;
+  let mockReconcile: jest.Mock;
+  const sendInTransaction = jest.fn();
+  const eventEmit = jest.fn();
 
   const mockConnection: Connection = {
     id: '123e4567-e89b-12d3-a456-426614174000',
@@ -48,6 +59,7 @@ describe('ConnectionService', () => {
     theirDid: 'did:example:123',
     state: ConnectionState.ACTIVE,
     connectorType: ConnectorType.TRACTION,
+    connectorId: null,
     protocol: ConnectionProtocol.DIDCOMM_V1,
     metadata: {},
     tenant: undefined as any,
@@ -126,6 +138,10 @@ describe('ConnectionService', () => {
     mockGetById = jest.fn();
     mockList = jest.fn();
     mockDeleteById = jest.fn();
+    mockFindByIdForTenant = jest.fn();
+    mockReconcile = jest.fn();
+    sendInTransaction.mockReset().mockResolvedValue('job');
+    eventEmit.mockReset();
 
     mockAdapter.createInvitation = mockCreateInvitation;
     mockAdapter.acceptInvitation = mockAcceptInvitation;
@@ -136,6 +152,8 @@ describe('ConnectionService', () => {
     const mockRepository = {
       create: mockCreate,
       findById: mockFindById,
+      findByIdForTenant: mockFindByIdForTenant,
+      reconcile: mockReconcile,
       findByExternalConnectionId: mockFindByExternalConnectionId,
       findPageForTenant: mockFindPageForTenant,
       update: mockUpdate,
@@ -146,6 +164,8 @@ describe('ConnectionService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ConnectionService,
+        { provide: JobsService, useValue: { sendInTransaction } },
+        { provide: EventEmitter2, useValue: { emit: eventEmit } },
         {
           provide: ConnectionRepository,
           useValue: mockRepository,
@@ -173,6 +193,394 @@ describe('ConnectionService', () => {
 
   it('should be defined', () => {
     expect(service).toBeDefined();
+  });
+
+  describe('resolveForIssuance', () => {
+    const remote = {
+      id: 'backend-holder',
+      invitationId: 'invitation-1',
+      protocol: 'didcomm-v1',
+      state: 'completed',
+      theirLabel: 'Holder',
+      theirDid: 'did:peer:holder',
+    };
+    beforeEach(() => {
+      mockFindByIdForTenant.mockResolvedValue({
+        ...mockConnection,
+        externalConnectionId: null,
+        protocol: ConnectionProtocol.DIDCOMM_V2,
+        metadata: { invitationId: remote.invitationId },
+      });
+      mockResolve.mockResolvedValue({
+        adapter: mockAdapter,
+        connector: mockConnector,
+        context: mockContext,
+      });
+      mockList.mockResolvedValue([remote]);
+      mockGetById.mockResolvedValue({
+        ...remote,
+        id: mockConnection.externalConnectionId,
+      });
+      mockReconcile.mockResolvedValue({
+        established: false,
+        connection: {
+          ...mockConnection,
+          connectorId: mockConnector.id,
+          externalConnectionId: remote.id,
+          state: ConnectionState.COMPLETED,
+          protocol: ConnectionProtocol.DIDCOMM_V1,
+        },
+      });
+    });
+
+    const resolve = () =>
+      service.resolveForIssuance(
+        mockConnection.tenantId,
+        mockConnection.id,
+        mockConnector.id,
+      );
+
+    it('adopts an exactly correlated invitation in the explicitly selected wallet', async () => {
+      const result = await resolve();
+      expect(mockFindByIdForTenant).toHaveBeenCalledWith(
+        mockConnection.tenantId,
+        mockConnection.id,
+      );
+      expect(mockResolve).toHaveBeenCalledWith(
+        mockConnection.tenantId,
+        undefined,
+        { connectorId: mockConnector.id },
+      );
+      expect(mockReconcile).toHaveBeenCalledWith(
+        mockConnection.tenantId,
+        mockConnection.id,
+        mockConnector.id,
+        expect.objectContaining({
+          id: remote.id,
+          state: ConnectionState.COMPLETED,
+        }),
+        expect.not.arrayContaining([ConnectionState.ABANDONED]),
+        expect.any(Function),
+      );
+      expect(result.protocol).toBe(ConnectionProtocol.DIDCOMM_V1);
+      expect(result.externalConnectionId).toBe(remote.id);
+    });
+
+    it('does not query a connector for another tenant or missing local connection', async () => {
+      mockFindByIdForTenant.mockResolvedValue(null);
+      await expect(resolve()).rejects.toBeInstanceOf(NotFoundException);
+      expect(mockResolve).not.toHaveBeenCalled();
+    });
+
+    it('rejects a connection pinned to a different wallet before backend access', async () => {
+      mockFindByIdForTenant.mockResolvedValue({
+        ...mockConnection,
+        connectorId: 'other-wallet',
+      });
+      await expect(resolve()).rejects.toBeInstanceOf(BadRequestException);
+      expect(mockResolve).not.toHaveBeenCalled();
+    });
+
+    it.each([[], [remote, { ...remote, id: 'other-holder' }]])(
+      'rejects missing or ambiguous invitation correlation: %p',
+      async (...matches) => {
+        mockList.mockResolvedValue(matches);
+        await expect(resolve()).rejects.toBeInstanceOf(ConflictException);
+        expect(mockReconcile).not.toHaveBeenCalled();
+      },
+    );
+
+    it.each(['invited', 'abandoned'])(
+      'rejects incomplete backend state %s',
+      async (state) => {
+        mockList.mockResolvedValue([{ ...remote, state }]);
+        await expect(resolve()).rejects.toBeInstanceOf(ConflictException);
+        expect(mockReconcile).not.toHaveBeenCalled();
+      },
+    );
+
+    it('never guesses a wallet for legacy connections', async () => {
+      await expect(
+        service.reconcile(mockConnection.tenantId, mockConnection.id),
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(mockResolve).not.toHaveBeenCalled();
+    });
+
+    it('reads a pinned external connection rather than discovering by invitation', async () => {
+      mockFindByIdForTenant.mockResolvedValue({
+        ...mockConnection,
+        connectorId: mockConnector.id,
+      });
+      await resolve();
+      expect(mockGetById).toHaveBeenCalledWith(
+        mockContext,
+        mockConnection.externalConnectionId,
+      );
+      expect(mockList).not.toHaveBeenCalled();
+    });
+
+    it('allows a wallet-bound holder cloned from a reusable invitation', async () => {
+      mockFindByIdForTenant.mockResolvedValue({
+        ...mockConnection,
+        connectorId: mockConnector.id,
+        metadata: { multiUse: true },
+      });
+      await resolve();
+      expect(mockGetById).toHaveBeenCalled();
+    });
+
+    it('rejects the reusable invitation template itself', async () => {
+      mockFindByIdForTenant.mockResolvedValue({
+        ...mockConnection,
+        externalConnectionId: null,
+        metadata: { multiUse: true, invitationId: remote.invitationId },
+      });
+      await expect(resolve()).rejects.toBeInstanceOf(BadRequestException);
+      expect(mockResolve).not.toHaveBeenCalled();
+    });
+
+    it('rejects binding races and does not report a successful audit', async () => {
+      mockReconcile.mockResolvedValue(null);
+      await expect(resolve()).rejects.toBeInstanceOf(ConflictException);
+      expect(mockEmit).not.toHaveBeenCalled();
+    });
+
+    it('does not revive an abandoned local connection', async () => {
+      mockReconcile.mockResolvedValue({
+        established: false,
+        connection: { ...mockConnection, state: ConnectionState.ABANDONED },
+      });
+      await expect(resolve()).rejects.toBeInstanceOf(ConflictException);
+    });
+
+    it('rejects a pinned backend response for a different holder', async () => {
+      mockFindByIdForTenant.mockResolvedValue({
+        ...mockConnection,
+        connectorId: mockConnector.id,
+      });
+      mockGetById.mockResolvedValue({ ...remote, id: 'different-holder' });
+      await expect(resolve()).rejects.toThrow(
+        'Backend returned a different connection',
+      );
+      expect(mockReconcile).not.toHaveBeenCalled();
+    });
+
+    it.each([undefined, '', 123])(
+      'refuses legacy adoption without a usable invitation ID: %p',
+      async (invitationId) => {
+        mockFindByIdForTenant.mockResolvedValue({
+          ...mockConnection,
+          connectorId: null,
+          externalConnectionId: null,
+          metadata: { invitationId },
+        });
+        await expect(resolve()).rejects.toThrow(
+          'Connection has no verifiable invitation correlation',
+        );
+        expect(mockList).not.toHaveBeenCalled();
+        expect(mockReconcile).not.toHaveBeenCalled();
+      },
+    );
+
+    it('rejects invitation discovery that conflicts with a saved external ID', async () => {
+      mockFindByIdForTenant.mockResolvedValue({
+        ...mockConnection,
+        connectorId: null,
+        metadata: { invitationId: remote.invitationId },
+      });
+      await expect(resolve()).rejects.toThrow(
+        'Invitation connection does not match the saved connection',
+      );
+      expect(mockReconcile).not.toHaveBeenCalled();
+    });
+
+    it('requests at most two invitation matches without scanning the wallet', async () => {
+      await resolve();
+      expect(mockList).toHaveBeenCalledTimes(1);
+      expect(mockList).toHaveBeenCalledWith(mockContext, {
+        invitationId: remote.invitationId,
+        limit: 2,
+        offset: 0,
+      });
+    });
+
+    it('rejects a backend that returns unrelated invitation records', async () => {
+      const unrelated = {
+        ...remote,
+        id: 'unrelated-holder',
+        invitationId: 'different-invitation',
+      };
+      mockList.mockResolvedValue([remote, unrelated]);
+      await expect(resolve()).rejects.toThrow(
+        'Backend returned a different invitation',
+      );
+      expect(mockReconcile).not.toHaveBeenCalled();
+    });
+
+    it('does not accept a completed handshake using a different protocol', async () => {
+      mockList.mockResolvedValue([{ ...remote, protocol: 'didcomm-v2' }]);
+      await expect(resolve()).rejects.toThrow(
+        'A completed DIDComm v1 handshake is required',
+      );
+      expect(mockReconcile).not.toHaveBeenCalled();
+    });
+
+    it('rejects a missing external ID after a concurrent reconciliation result', async () => {
+      mockReconcile.mockResolvedValue({
+        established: false,
+        connection: {
+          ...mockConnection,
+          state: ConnectionState.COMPLETED,
+          externalConnectionId: null,
+        },
+      });
+      await expect(resolve()).rejects.toThrow(
+        'Connection handshake is not complete',
+      );
+    });
+
+    it('translates only backend not-found into a correlation conflict', async () => {
+      mockFindByIdForTenant.mockResolvedValue({
+        ...mockConnection,
+        connectorId: mockConnector.id,
+      });
+      mockGetById.mockRejectedValue(new BackendNotFoundError());
+      await expect(resolve()).rejects.toBeInstanceOf(ConflictException);
+      const outage = new TimeoutError();
+      mockGetById.mockRejectedValue(outage);
+      await expect(resolve()).rejects.toBe(outage);
+      expect(mockReconcile).not.toHaveBeenCalled();
+    });
+
+    it('enqueues establishment in the winning transaction and emits only after commit', async () => {
+      const manager = {};
+      mockReconcile.mockImplementation(async (...args) => {
+        await args[5](manager);
+        expect(eventEmit).not.toHaveBeenCalled();
+        return {
+          connection: { ...mockConnection, externalConnectionId: remote.id },
+          established: true,
+        };
+      });
+      await resolve();
+      expect(sendInTransaction).toHaveBeenCalledWith(
+        manager,
+        expect.any(String),
+        expect.objectContaining({
+          tenantId: mockConnection.tenantId,
+          event: 'connection.established',
+          resourceId: remote.id,
+        }),
+      );
+      expect(eventEmit).toHaveBeenCalledWith('connection.established', {
+        tenantId: mockConnection.tenantId,
+        externalId: remote.id,
+      });
+    });
+
+    it('does not emit when the durable enqueue rolls back', async () => {
+      const error = new Error('enqueue failed');
+      sendInTransaction.mockRejectedValue(error);
+      mockReconcile.mockImplementation(async (...args) => {
+        await args[5]({});
+        return null;
+      });
+      await expect(resolve()).rejects.toBe(error);
+      expect(eventEmit).not.toHaveBeenCalled();
+    });
+
+    it('does not notify when another transition has already won', async () => {
+      await resolve();
+      expect(sendInTransaction).not.toHaveBeenCalled();
+      expect(eventEmit).not.toHaveBeenCalled();
+    });
+
+    it('observes a pinned abandoned connection without advancing state or requiring an active handshake', async () => {
+      const abandoned = {
+        ...mockConnection,
+        connectorId: mockConnector.id,
+        state: ConnectionState.ABANDONED,
+      };
+      mockFindByIdForTenant.mockResolvedValue(abandoned);
+      mockGetById.mockResolvedValue({
+        ...remote,
+        id: mockConnection.externalConnectionId,
+        state: 'error',
+      });
+      await expect(
+        service.resolveIdentity(
+          mockConnection.tenantId,
+          mockConnection.id,
+          mockConnector.id,
+        ),
+      ).resolves.toBe(abandoned);
+      expect(mockReconcile).not.toHaveBeenCalled();
+      await expect(resolve()).rejects.toThrow('handshake is required');
+    });
+
+    it('adopts an exactly correlated legacy abandoned connection without advancing its state', async () => {
+      mockFindByIdForTenant.mockResolvedValue({
+        ...mockConnection,
+        externalConnectionId: remote.id,
+        state: ConnectionState.ABANDONED,
+        metadata: { invitationId: remote.invitationId },
+      });
+      mockList.mockResolvedValue([{ ...remote, state: 'error' }]);
+      await service.resolveIdentity(
+        mockConnection.tenantId,
+        mockConnection.id,
+        mockConnector.id,
+      );
+      expect(mockReconcile).toHaveBeenCalledWith(
+        mockConnection.tenantId,
+        mockConnection.id,
+        mockConnector.id,
+        expect.objectContaining({
+          id: remote.id,
+          state: ConnectionState.ABANDONED,
+        }),
+        [],
+      );
+      expect(eventEmit).not.toHaveBeenCalled();
+    });
+
+    it('resolves a pinned invitation without an external holder ID through exact invitation adoption', async () => {
+      mockFindByIdForTenant.mockResolvedValue({
+        ...mockConnection,
+        connectorId: mockConnector.id,
+        externalConnectionId: null,
+        state: ConnectionState.INVITED,
+        metadata: { invitationId: remote.invitationId },
+      });
+      const result = await service.resolveIdentity(
+        mockConnection.tenantId,
+        mockConnection.id,
+        mockConnector.id,
+      );
+      expect(result.externalConnectionId).toBe(remote.id);
+      expect(mockGetById).not.toHaveBeenCalled();
+      expect(mockReconcile).toHaveBeenCalledWith(
+        mockConnection.tenantId,
+        mockConnection.id,
+        mockConnector.id,
+        expect.objectContaining({
+          id: remote.id,
+          state: ConnectionState.INVITED,
+        }),
+        [],
+      );
+    });
+
+    it('rejects a binding change while adopting a legacy identity', async () => {
+      mockReconcile.mockResolvedValue(null);
+      await expect(
+        service.resolveIdentity(
+          mockConnection.tenantId,
+          mockConnection.id,
+          mockConnector.id,
+        ),
+      ).rejects.toThrow('Connection binding changed');
+    });
   });
 
   describe('create', () => {
@@ -216,6 +624,7 @@ describe('ConnectionService', () => {
       expect(mockCreate).toHaveBeenCalledWith({
         tenantId: mockConnection.tenantId,
         connectorType: mockConnector.connectorType,
+        connectorId: mockConnector.id,
         protocol: dto.protocol,
         state: ConnectionState.INVITED,
         metadata: dto.metadata,
@@ -316,6 +725,7 @@ describe('ConnectionService', () => {
       expect(mockCreate).toHaveBeenCalledWith({
         tenantId: mockConnection.tenantId,
         connectorType: mockConnector.connectorType,
+        connectorId: mockConnector.id,
         protocol: acceptDto.protocol,
         state: ConnectionState.REQUESTED,
         metadata: {},
@@ -785,6 +1195,7 @@ describe('ConnectionService', () => {
         {
           tenantId: template.tenantId,
           connectorType: template.connectorType,
+          connectorId: template.connectorId,
           protocol: template.protocol,
           state: ConnectionState.REQUESTED,
           externalConnectionId: 'ext-1',

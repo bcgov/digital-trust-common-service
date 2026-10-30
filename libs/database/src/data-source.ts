@@ -35,6 +35,7 @@ import { AllowNullableConnectionExternalId1790703557000 } from './migrations/000
 import { AddTenantUserPlatformOperator1790900000000 } from './migrations/000032_add-tenant-user-platform-operator';
 import { ExtendCredentialDefinitionRegistration1792018018010 } from './migrations/000033_extend-credential-definition-registration';
 import { CreateAnoncredsPublicationIntent1793375200834 } from './migrations/000034_create-anoncreds-publication-intent';
+import { BindConnectionsToConnectors1792502783893 } from './migrations/000035_bind-connections-to-connectors';
 import { buildSslConfig } from './ssl.util';
 
 export const AppDataSource = new DataSource({
@@ -84,6 +85,7 @@ export const AppDataSource = new DataSource({
     AddTenantUserPlatformOperator1790900000000,
     ExtendCredentialDefinitionRegistration1792018018010,
     CreateAnoncredsPublicationIntent1793375200834,
+    BindConnectionsToConnectors1792502783893,
   ],
   ssl: buildSslConfig(
     process.env.DB_SSL,

@@ -238,6 +238,7 @@ export class MockAdapter implements AgentAdapter {
       const invitationUrl = `https://mock.local/invitations/${invitationId}`;
       const connection: Connection = {
         id: connectionId,
+        invitationId,
         externalId: `mock-connection-${connectionId}`,
         state: ConnectionState.Invitation,
         alias: opts.alias,
@@ -297,6 +298,12 @@ export class MockAdapter implements AgentAdapter {
       const offset = filters.offset ?? 0;
       const filteredConnections = [...this.connections.values()].filter(
         (connection) => {
+          if (
+            filters.invitationId &&
+            connection.invitationId !== filters.invitationId
+          ) {
+            return false;
+          }
           if (filters.state && connection.state !== filters.state) {
             return false;
           }
