@@ -98,8 +98,9 @@ export class ConnectorHealthCheckService {
    * Reads the sub-wallet id from the token Traction just issued. The token is
    * decoded without signature verification (we hold no key for the agent), so
    * the value is only as trustworthy as the endpoint that returned it.
-   * Trusted agent endpoint provenance (docs/tenant-log-access-contract.md
-   * §4.1 M1) is tracked separately in #460 (TM-09, Post-MVP).
+   * Nothing here proves the endpoint is a trusted agent (see
+   * docs/tenant-log-access-contract.md §4.1 M1); that provenance is not
+   * established by this check.
    */
   private async readTractionWalletId(
     response: Response,
