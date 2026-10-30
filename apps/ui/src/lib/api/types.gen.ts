@@ -832,6 +832,10 @@ export interface paths {
          *     exchange in its pinned connector, checks holder correlation, and updates
          *     monotonic progress, related actions and credential lifecycle. Works after
          *     operation retention. Never sends another offer or issue request.
+         *     Missing backend exchange or holder records return 409, not 404/500.
+         *     Newly observed holder requests enqueue credential-exchange.request-received
+         *     using the local exchange ID, even when the offer remains processing.
+         *     The current dispatcher does not deliver HTTP webhooks; callers must poll.
          */
         post: operations["reconcileCredentialExchange"];
         delete?: never;
@@ -861,6 +865,12 @@ export interface paths {
          *     reuse that action; an uncertain or crashed submission is never replayed.
          *     A purged action does not reset the durable submission guard.
          *     Reconcile after 503; do not send a replacement offer or issue request.
+         *     Definite non-submission (502 token acquisition failure, 400 backend
+         *     rejection, or 409 backend record missing) fails that issue operation and
+         *     releases its claim. A repeated POST then makes a new attempt after fresh
+         *     verification. Invalid success responses and transport failures remain
+         *     uncertain. Missing backend records during preflight return 409 without
+         *     creating an issue operation.
          */
         post: operations["issueCredentialExchange"];
         delete?: never;
@@ -4436,10 +4446,24 @@ export interface operations {
                     "application/json": components["schemas"]["Operation"];
                 };
             };
+            /** @description Backend definitively rejected issuance; attempt failed and claim released for a corrected retry */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+            /** @description Token acquisition failed before issuance was sent; attempt failed and claim released for retry */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Submission outcome uncertain; reconcile the local exchange instead of resending */
             503: {
                 headers: {

@@ -2,8 +2,10 @@ import { randomBytes, randomUUID } from 'crypto';
 
 import {
   ConnectionState as AdapterConnectionState,
+  BackendNotFoundError,
   CredentialExchangeState,
   TimeoutError,
+  SubmissionRejectedError,
 } from '@app/credential-ports';
 import { PgBossService } from '@app/pg-boss';
 import {
@@ -49,8 +51,12 @@ describe('credential exchanges (integration)', () => {
   const issueCredential = jest.fn();
   const getExchange = jest.fn();
   const listConnections = jest.fn();
+  const getConnection = jest.fn();
   const resolve = jest.fn();
-  const dispatch = jest.fn();
+  const dispatch = jest.fn<
+    Promise<string>,
+    [string, { event?: string }, unknown?]
+  >();
   const audit = jest.fn();
   const remote = () => ({
     id: exchange.externalId!,
@@ -159,8 +165,14 @@ describe('credential exchanges (integration)', () => {
       return Promise.resolve(remote());
     });
     listConnections.mockResolvedValue([]);
+    getConnection.mockImplementation(() => Promise.resolve(remoteConnection()));
     resolve.mockResolvedValue({
-      adapter: { issueCredential, getExchange, list: listConnections },
+      adapter: {
+        issueCredential,
+        getExchange,
+        list: listConnections,
+        getById: getConnection,
+      },
       context: { tenantId: tenant.id, connectorId: connector.id },
       connector,
     });
@@ -236,6 +248,173 @@ describe('credential exchanges (integration)', () => {
     expect(
       (await service.reconcile(tenant.id, exchange.id)).issueSubmission,
     ).toBe('submitted');
+  });
+
+  it.each(['authentication', 'validation', 'not-found'] as const)(
+    'retries a definite %s failure but retains both attempt histories',
+    async (reason) => {
+      issueCredential.mockRejectedValueOnce(
+        new SubmissionRejectedError(reason),
+      );
+      await expect(service.issue(tenant.id, exchange.id)).rejects.toMatchObject(
+        {
+          status:
+            reason === 'authentication'
+              ? 502
+              : reason === 'not-found'
+                ? 409
+                : 400,
+        },
+      );
+      const failed = await service.get(tenant.id, exchange.id);
+      expect(failed.issueSubmission).toBe('not-submitted');
+      expect(
+        await operations.getForTenant(tenant.id, failed.issueOperationId!),
+      ).toMatchObject({
+        state: OperationState.FAILED,
+        result: {
+          code: 'SUBMISSION_REJECTED',
+          message: 'Credential issue was not submitted',
+        },
+      });
+      expect((await operations.getForTenant(tenant.id, offer.id)).state).toBe(
+        OperationState.PROCESSING,
+      );
+
+      const retried = await Promise.all([
+        service.issue(tenant.id, exchange.id),
+        service.issue(tenant.id, exchange.id),
+      ]);
+      expect(retried[0].id).toBe(retried[1].id);
+      expect(retried[0].id).not.toBe(failed.issueOperationId);
+      expect(
+        (await operations.getForTenant(tenant.id, retried[0].id)).state,
+      ).toBe(OperationState.COMPLETED);
+      expect(issueCredential).toHaveBeenCalledTimes(2);
+      expect((await service.get(tenant.id, exchange.id)).issueOperationId).toBe(
+        retried[0].id,
+      );
+      expect(
+        await db.getRepository(Operation).countBy({
+          tenantId: tenant.id,
+          exchangeId: exchange.id,
+          type: OPERATION_TYPE.CREDENTIAL_ISSUE,
+        }),
+      ).toBe(2);
+    },
+  );
+
+  it('does not release a definitively failed claim when its notification rolls back', async () => {
+    issueCredential.mockImplementationOnce(() => {
+      dispatch.mockRejectedValueOnce(new Error('notification failed'));
+      return Promise.reject(new SubmissionRejectedError('validation'));
+    });
+    await expect(service.issue(tenant.id, exchange.id)).rejects.toThrow(
+      'notification failed',
+    );
+    const stored = await service.get(tenant.id, exchange.id);
+    expect(stored.issueSubmission).toBe('submitting');
+    expect(
+      (await operations.getForTenant(tenant.id, stored.issueOperationId!))
+        .state,
+    ).toBe(OperationState.PROCESSING);
+    await service.issue(tenant.id, exchange.id);
+    expect(issueCredential).toHaveBeenCalledTimes(1);
+  });
+
+  it('can retry a definitively rejected attempt after its failed operation is purged', async () => {
+    issueCredential.mockRejectedValueOnce(
+      new SubmissionRejectedError('validation'),
+    );
+    await expect(service.issue(tenant.id, exchange.id)).rejects.toMatchObject({
+      status: 400,
+    });
+    const failed = await service.get(tenant.id, exchange.id);
+    await db
+      .getRepository(Operation)
+      .delete({ id: failed.issueOperationId!, tenantId: tenant.id });
+    expect(
+      (await service.get(tenant.id, exchange.id)).issueOperationId,
+    ).toBeNull();
+    expect((await service.issue(tenant.id, exchange.id)).state).toBe(
+      OperationState.COMPLETED,
+    );
+    expect(issueCredential).toHaveBeenCalledTimes(2);
+  });
+
+  it('never retries an uncertain attempt after its operation is purged', async () => {
+    issueCredential.mockRejectedValueOnce(new TimeoutError());
+    await expect(service.issue(tenant.id, exchange.id)).rejects.toBeInstanceOf(
+      ServiceUnavailableException,
+    );
+    const uncertain = await service.get(tenant.id, exchange.id);
+    await db
+      .getRepository(Operation)
+      .delete({ id: uncertain.issueOperationId!, tenantId: tenant.id });
+    expect((await service.get(tenant.id, exchange.id)).issueSubmission).toBe(
+      'uncertain',
+    );
+    await expect(service.issue(tenant.id, exchange.id)).rejects.toBeInstanceOf(
+      ConflictException,
+    );
+    expect(issueCredential).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(['reconcile', 'issue'] as const)(
+    'reports a missing remote exchange as conflict on %s without creating an issue operation',
+    async (method) => {
+      getExchange.mockRejectedValueOnce(new BackendNotFoundError());
+      await expect(
+        service[method](tenant.id, exchange.id),
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(issueCredential).not.toHaveBeenCalled();
+      expect(
+        await db.getRepository(Operation).countBy({
+          tenantId: tenant.id,
+          type: OPERATION_TYPE.CREDENTIAL_ISSUE,
+        }),
+      ).toBe(0);
+    },
+  );
+
+  it('notifies holder requests exactly once and rolls progress back with a failed enqueue', async () => {
+    await db
+      .getRepository(CredentialExchange)
+      .update(exchange.id, { state: CredentialExchangeState.OfferSent });
+    await operations.transitionStateIfForward(
+      offer.id,
+      OperationState.PROCESSING,
+      [OperationState.PENDING],
+    );
+    dispatch.mockRejectedValueOnce(new Error('notification unavailable'));
+    await expect(service.reconcile(tenant.id, exchange.id)).rejects.toThrow(
+      'notification unavailable',
+    );
+    expect((await service.get(tenant.id, exchange.id)).state).toBe(
+      CredentialExchangeState.OfferSent,
+    );
+    dispatch.mockClear();
+    await Promise.all([
+      service.reconcile(tenant.id, exchange.id),
+      service.reconcile(tenant.id, exchange.id),
+    ]);
+    backendState = CredentialExchangeState.OfferSent;
+    await service.reconcile(tenant.id, exchange.id);
+    expect(
+      dispatch.mock.calls.filter(
+        ([queue, payload]) =>
+          queue === 'webhook.dispatch' &&
+          payload.event === 'credential-exchange.request-received',
+      ),
+    ).toHaveLength(1);
+    expect(dispatch).toHaveBeenCalledWith(
+      'webhook.dispatch',
+      expect.objectContaining({ tenantId: tenant.id, resourceId: exchange.id }),
+      expect.anything(),
+    );
+    expect((await operations.getForTenant(tenant.id, offer.id)).state).toBe(
+      OperationState.PROCESSING,
+    );
   });
 
   it('never replays a successful backend issue when transactional notification persistence fails', async () => {

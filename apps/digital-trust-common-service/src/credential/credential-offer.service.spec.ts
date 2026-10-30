@@ -1,5 +1,4 @@
 import {
-  BackendNotFoundError,
   CredentialExchangeState,
   CredentialFormat as PortCredentialFormat,
   FormatValidatorRegistry,
@@ -26,6 +25,7 @@ import {
 } from '../credential-definition/credential-definition.entity';
 import { CredentialDefinitionRepository } from '../credential-definition/credential-definition.repository';
 import { CredentialExchangeRepository } from '../credential-exchange/credential-exchange.repository';
+import { CredentialExchangeService } from '../credential-exchange/credential-exchange.service';
 import {
   IssuanceProfile,
   IssuanceProfileProtocolHint,
@@ -37,7 +37,6 @@ import { OPERATION_TYPE } from '../operation/operation-type.constants';
 import { Operation, OperationState } from '../operation/operation.entity';
 import { OperationRepository } from '../operation/operation.repository';
 import { OperationService } from '../operation/operation.service';
-import { ProtocolStateChangeService } from '../protocol-state-change/protocol-state-change.service';
 import {
   credentialStatesBelow,
   operationStatesBelow,
@@ -71,11 +70,11 @@ describe('CredentialOfferService', () => {
   let mockResolveConnection: jest.Mock;
   let mockResolveIdentity: jest.Mock;
   let mockGetExchange: jest.Mock;
-  let mockProtocolProcess: jest.Mock;
+  let mockExchangeReconcile: jest.Mock;
   let mockCredentialFindByExternalId: jest.Mock;
   let mockExchangeObserve: jest.Mock;
-  const mockManagerUpdate = jest.fn();
-  const mockManager = { update: mockManagerUpdate } as unknown as EntityManager;
+  const mockMarkFailed = jest.fn();
+  const mockManager = {} as EntityManager;
 
   const tenantId = '123e4567-e89b-12d3-a456-426614174001';
   const profileId = '123e4567-e89b-12d3-a456-426614174010';
@@ -186,7 +185,8 @@ describe('CredentialOfferService', () => {
       state: 'abandoned',
     });
     mockGetExchange = jest.fn();
-    mockProtocolProcess = jest.fn().mockResolvedValue(undefined);
+    mockExchangeReconcile = jest.fn().mockResolvedValue(undefined);
+    mockMarkFailed.mockReset().mockResolvedValue(undefined);
     mockCredentialFindByExternalId = jest.fn();
     mockExchangeObserve = jest.fn().mockResolvedValue(undefined);
     mockUpdateStateIfForward = jest.fn().mockResolvedValue(true);
@@ -223,6 +223,7 @@ describe('CredentialOfferService', () => {
           useValue: {
             create: jest.fn().mockResolvedValue({ id: 'local-exchange' }),
             observe: mockExchangeObserve,
+            markFailed: mockMarkFailed,
           },
         },
         {
@@ -233,8 +234,8 @@ describe('CredentialOfferService', () => {
           },
         },
         {
-          provide: ProtocolStateChangeService,
-          useValue: { process: mockProtocolProcess },
+          provide: CredentialExchangeService,
+          useValue: { reconcile: mockExchangeReconcile },
         },
         {
           provide: CredentialRepository,
@@ -410,44 +411,38 @@ describe('CredentialOfferService', () => {
 
   describe('reconcile', () => {
     beforeEach(() => {
-      mockOperationFindById.mockResolvedValue(buildOperation({ externalId }));
-      mockCredentialFindByExternalId.mockResolvedValue(
-        buildCredential({ externalId }),
+      mockOperationFindById.mockResolvedValue(
+        buildOperation({ externalId, exchangeId: 'local-exchange' }),
       );
-      mockGetExchange.mockResolvedValue({
-        id: externalId,
-        externalId,
-        connectionId: 'backend-connection',
-        state: CredentialExchangeState.Done,
-      });
     });
 
-    it('reads the original wallet/exchange and reuses guarded state synchronization without resending', async () => {
-      await service.reconcile(tenantId, operationId);
-      expect(mockOperationFindById).toHaveBeenCalledWith(operationId, tenantId);
-      expect(mockCredentialFindByExternalId).toHaveBeenCalledWith(
-        tenantId,
+    it('delegates correlated observation and returns the refreshed tenant operation', async () => {
+      const updated = buildOperation({
         externalId,
-      );
-      expect(mockResolveAdapter).toHaveBeenCalledWith(
-        tenantId,
-        PortCredentialFormat.AnonCreds,
-        { connectorId },
-      );
-      expect(mockGetExchange).toHaveBeenCalledWith(
-        expect.anything(),
-        externalId,
-      );
-      expect(mockProtocolProcess).toHaveBeenCalledWith({
-        tenantId,
-        topic: 'issue_credential',
-        externalId,
-        protocolState: CredentialExchangeState.Done,
-        payload: {
-          exchange_id: externalId,
-          state: CredentialExchangeState.Done,
-        },
+        exchangeId: 'local-exchange',
+        state: OperationState.COMPLETED,
       });
+      mockOperationFindById
+        .mockResolvedValueOnce(
+          buildOperation({ externalId, exchangeId: 'local-exchange' }),
+        )
+        .mockResolvedValueOnce(updated);
+      expect(await service.reconcile(tenantId, operationId)).toBe(updated);
+      expect(mockOperationFindById).toHaveBeenNthCalledWith(
+        1,
+        operationId,
+        tenantId,
+      );
+      expect(mockOperationFindById).toHaveBeenNthCalledWith(
+        2,
+        operationId,
+        tenantId,
+      );
+      expect(mockExchangeReconcile).toHaveBeenCalledWith(
+        tenantId,
+        'local-exchange',
+      );
+      expect(mockGetExchange).not.toHaveBeenCalled();
       expect(mockOfferCredential).not.toHaveBeenCalled();
     });
 
@@ -456,45 +451,17 @@ describe('CredentialOfferService', () => {
       await expect(
         service.reconcile(tenantId, operationId),
       ).rejects.toBeInstanceOf(NotFoundException);
-      expect(mockGetExchange).not.toHaveBeenCalled();
+      expect(mockExchangeReconcile).not.toHaveBeenCalled();
     });
 
     it('refuses unknown submission outcomes instead of resending', async () => {
       mockOperationFindById.mockResolvedValue(
-        buildOperation({ externalId: null }),
+        buildOperation({ exchangeId: null }),
       );
       await expect(
         service.reconcile(tenantId, operationId),
       ).rejects.toBeInstanceOf(ConflictException);
-      expect(mockOfferCredential).not.toHaveBeenCalled();
-    });
-
-    it('refuses an exchange for another holder', async () => {
-      mockGetExchange.mockResolvedValue({
-        id: externalId,
-        externalId,
-        connectionId: 'different-holder',
-        state: CredentialExchangeState.Done,
-      });
-      await expect(
-        service.reconcile(tenantId, operationId),
-      ).rejects.toBeInstanceOf(ConflictException);
-      expect(mockProtocolProcess).not.toHaveBeenCalled();
-    });
-
-    it('leaves an in-progress exchange processing', async () => {
-      mockGetExchange.mockResolvedValue({
-        id: externalId,
-        externalId,
-        connectionId: 'backend-connection',
-        state: CredentialExchangeState.OfferSent,
-      });
-      await service.reconcile(tenantId, operationId);
-      expect(mockProtocolProcess).toHaveBeenCalledWith(
-        expect.objectContaining({
-          protocolState: CredentialExchangeState.OfferSent,
-        }),
-      );
+      expect(mockExchangeReconcile).not.toHaveBeenCalled();
       expect(mockOfferCredential).not.toHaveBeenCalled();
     });
 
@@ -505,115 +472,32 @@ describe('CredentialOfferService', () => {
       await expect(
         service.reconcile(tenantId, operationId),
       ).rejects.toBeInstanceOf(NotFoundException);
-      expect(mockCredentialFindByExternalId).not.toHaveBeenCalled();
-      expect(mockGetExchange).not.toHaveBeenCalled();
-    });
-
-    it.each([
-      null,
-      { connectorId: null },
-      { connectionId: null },
-      { operationId: 'another-operation' },
-    ])(
-      'rejects a missing or inconsistent wallet-bound credential: %p',
-      async (change) => {
-        mockCredentialFindByExternalId.mockResolvedValue(
-          change === null ? null : buildCredential({ externalId, ...change }),
-        );
-        await expect(service.reconcile(tenantId, operationId)).rejects.toThrow(
-          'Offer has no matching wallet-bound credential',
-        );
-        expect(mockResolveAdapter).not.toHaveBeenCalled();
-        expect(mockProtocolProcess).not.toHaveBeenCalled();
-      },
-    );
-
-    it('refuses a response for a different backend exchange', async () => {
-      mockGetExchange.mockResolvedValue({
-        id: externalId,
-        externalId: 'another-exchange',
-        state: CredentialExchangeState.Done,
-      });
-      await expect(service.reconcile(tenantId, operationId)).rejects.toThrow(
-        'Backend returned a different credential exchange',
-      );
-      expect(mockResolveConnection).not.toHaveBeenCalled();
-      expect(mockProtocolProcess).not.toHaveBeenCalled();
-    });
-
-    it('uses the backend record ID when no separate external ID is returned', async () => {
-      mockGetExchange.mockResolvedValue({
-        id: externalId,
-        connectionId: 'backend-connection',
-        state: CredentialExchangeState.Done,
-      });
-      await service.reconcile(tenantId, operationId);
-      expect(mockProtocolProcess).toHaveBeenCalledWith(
-        expect.objectContaining({ externalId }),
-      );
-    });
-
-    it('does not synthesize protocol progress for an unmapped backend state', async () => {
-      mockGetExchange.mockResolvedValue({
-        id: externalId,
-        connectionId: 'backend-connection',
-        state: 'unknown-future-state',
-      });
-      const operation = buildOperation({ externalId });
-      mockOperationFindById.mockResolvedValue(operation);
-      expect(await service.reconcile(tenantId, operationId)).toBe(operation);
-      expect(mockProtocolProcess).not.toHaveBeenCalled();
-      expect(mockOfferCredential).not.toHaveBeenCalled();
+      expect(mockExchangeReconcile).not.toHaveBeenCalled();
     });
 
     it('reports a concurrently purged operation after observation', async () => {
       mockOperationFindById
-        .mockResolvedValueOnce(buildOperation({ externalId }))
+        .mockResolvedValueOnce(
+          buildOperation({ externalId, exchangeId: 'local-exchange' }),
+        )
         .mockResolvedValueOnce(null);
       await expect(
         service.reconcile(tenantId, operationId),
       ).rejects.toBeInstanceOf(NotFoundException);
-      expect(mockProtocolProcess).toHaveBeenCalledTimes(1);
+      expect(mockExchangeReconcile).toHaveBeenCalledTimes(1);
       expect(mockOfferCredential).not.toHaveBeenCalled();
     });
 
-    it('propagates failed authenticated reads without processing or resubmitting', async () => {
-      const error = new TimeoutError('Read timed out');
-      mockGetExchange.mockRejectedValue(error);
-      await expect(service.reconcile(tenantId, operationId)).rejects.toBe(
-        error,
-      );
-      expect(mockProtocolProcess).not.toHaveBeenCalled();
-      expect(mockOfferCredential).not.toHaveBeenCalled();
-    });
-
-    it('returns a correlation conflict for a deleted backend exchange', async () => {
-      mockGetExchange.mockRejectedValue(new BackendNotFoundError());
-      await expect(
-        service.reconcile(tenantId, operationId),
-      ).rejects.toBeInstanceOf(ConflictException);
-      expect(mockProtocolProcess).not.toHaveBeenCalled();
-      expect(mockResolveIdentity).not.toHaveBeenCalled();
-      expect(mockOfferCredential).not.toHaveBeenCalled();
-    });
-
-    it.each([CredentialExchangeState.Done, CredentialExchangeState.Abandoned])(
-      'observes terminal exchange %s after connection abandonment using identity only',
-      async (state) => {
-        mockGetExchange.mockResolvedValue({
-          id: externalId,
-          connectionId: 'backend-connection',
-          state,
-        });
-        await service.reconcile(tenantId, operationId);
-        expect(mockResolveIdentity).toHaveBeenCalledWith(
-          tenantId,
-          connectionId,
-          connectorId,
-        );
-        expect(mockResolveConnection).not.toHaveBeenCalled();
-        expect(mockProtocolProcess).toHaveBeenCalledWith(
-          expect.objectContaining({ protocolState: state }),
+    it.each([
+      new TimeoutError('Read timed out'),
+      new ConflictException('Backend credential exchange was not found'),
+      new ConflictException('Exchange holder correlation is inconsistent'),
+    ])(
+      'propagates observation errors without resubmitting: %p',
+      async (error) => {
+        mockExchangeReconcile.mockRejectedValue(error);
+        await expect(service.reconcile(tenantId, operationId)).rejects.toBe(
+          error,
         );
         expect(mockOfferCredential).not.toHaveBeenCalled();
       },
@@ -911,6 +795,52 @@ describe('CredentialOfferService', () => {
   });
 
   describe('successful submission', () => {
+    it.each([true, false])(
+      'notifies a synchronous holder request only when its exchange advances (%s)',
+      async (advanced) => {
+        mockCreateOperation.mockResolvedValue(
+          buildOperation({ exchangeId: 'local-exchange' }),
+        );
+        mockOfferCredential.mockResolvedValue({
+          id: externalId,
+          externalId,
+          state: CredentialExchangeState.RequestReceived,
+          format: PortCredentialFormat.AnonCreds,
+          attributes: [],
+          createdAt: createdAt.toISOString(),
+          updatedAt: createdAt.toISOString(),
+        });
+        mockExchangeObserve.mockResolvedValue(
+          advanced
+            ? {
+                exchangeId: 'local-exchange',
+                from: 'pending',
+                to: CredentialExchangeState.RequestReceived,
+              }
+            : null,
+        );
+
+        const result = await service.offer(tenantId, buildDto());
+
+        if (advanced) {
+          expect(mockSendInTransaction).toHaveBeenCalledWith(
+            mockManager,
+            JOB_QUEUES.WEBHOOK_DISPATCH,
+            expect.objectContaining({
+              tenantId,
+              event: 'credential-exchange.request-received',
+              resourceId: 'local-exchange',
+            }),
+          );
+          expect(mockSendInTransaction).toHaveBeenCalledTimes(1);
+        } else {
+          expect(mockSendInTransaction).not.toHaveBeenCalled();
+        }
+        expect(result.state).toBe(OperationState.PROCESSING);
+        expect(mockEventEmit).not.toHaveBeenCalled();
+      },
+    );
+
     it('creates the Operation and Credential and sends the external (not local) credential definition id to the adapter', async () => {
       mockOfferCredential.mockResolvedValue({
         id: 'exchange-1',
@@ -1120,10 +1050,10 @@ describe('CredentialOfferService', () => {
 
       await service.offer(tenantId, buildDto());
 
-      expect(mockManagerUpdate).toHaveBeenCalledWith(
-        'credential_exchange',
-        { id: 'local-exchange', tenantId },
-        { state: 'failed' },
+      expect(mockMarkFailed).toHaveBeenCalledWith(
+        tenantId,
+        'local-exchange',
+        mockManager,
       );
     });
 

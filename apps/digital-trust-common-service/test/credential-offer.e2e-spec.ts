@@ -616,6 +616,40 @@ describe('Credential offer (e2e)', () => {
       ).toHaveLength(1);
     },
   );
+
+  it.each(['reconcile', 'issue'])(
+    'returns 409 for a missing backend exchange through the exchange %s endpoint',
+    async (action) => {
+      prepareBackend();
+      const offered = await request(app.getHttpServer())
+        .post(`${API_BASE_PATH}/tenants/${tenant.id}/credentials/offer`)
+        .send(offerBody())
+        .expect(202);
+      const exchangeId = (offered.body as { exchange_id: string }).exchange_id;
+      const original = backendRequest.getMockImplementation()!;
+      backendRequest.mockImplementation((config, retry) =>
+        config.url.includes('/records/')
+          ? Promise.reject(
+              Object.assign(new Error('record deleted'), {
+                isAxiosError: true,
+                response: { status: 404 },
+              }),
+            )
+          : original(config, retry),
+      );
+      await request(app.getHttpServer())
+        .post(
+          `${API_BASE_PATH}/tenants/${tenant.id}/credential-exchanges/${exchangeId}/${action}`,
+        )
+        .expect(409);
+      expect(
+        backendRequest.mock.calls.filter(
+          ([config]) => config.method === 'POST',
+        ),
+      ).toHaveLength(1);
+    },
+  );
+
   it.each([ConnectionState.INVITED, ConnectionState.ABANDONED])(
     'adopts an exactly matched legacy invitation without reviving %s connections',
     async (state) => {

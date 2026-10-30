@@ -2,6 +2,7 @@ import {
   CredentialFormat,
   ConnectionState,
   ConnectorUnavailableError,
+  SubmissionRejectedError,
   TimeoutError,
   ValidationError,
 } from '@app/credential-ports';
@@ -218,6 +219,72 @@ describe('TractionAdapter', () => {
       ),
     ).rejects.toBeInstanceOf(TimeoutError);
     expect(mockRequest).toHaveBeenCalledTimes(1);
+  });
+
+  describe('definitive versus ambiguous issue failures', () => {
+    const context = {
+      tenantId: 'tenant',
+      connectorId: 'connector',
+      endpointUrl: 'https://traction.example.com',
+      credentials: {},
+    };
+
+    it('identifies token failure as non-submission without exposing the cause', async () => {
+      mockGetToken.mockRejectedValue(new Error('Authentication unavailable'));
+      await expect(
+        adapter.issueCredential(context, 'exchange'),
+      ).rejects.toEqual(new SubmissionRejectedError('authentication'));
+      expect(mockRequest).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      [400, 'validation'],
+      [401, 'validation'],
+      [404, 'not-found'],
+    ] as const)(
+      'identifies HTTP %s as a definitive rejection',
+      async (status, reason) => {
+        mockRequest.mockRejectedValue({
+          isAxiosError: true,
+          message: 'Rejected',
+          response: { status },
+        });
+        await expect(
+          adapter.issueCredential(context, 'exchange'),
+        ).rejects.toMatchObject({
+          code: 'SUBMISSION_REJECTED',
+          reason,
+        });
+        expect(mockRequest).toHaveBeenCalledTimes(1);
+      },
+    );
+
+    it.each([408, 429, 500])(
+      'does not release an HTTP %s write as definitely rejected',
+      async (status) => {
+        mockRequest.mockRejectedValue({
+          isAxiosError: true,
+          message: 'Response unavailable',
+          response: { status },
+        });
+        await expect(
+          adapter.issueCredential(context, 'exchange'),
+        ).rejects.toBeInstanceOf(
+          status === 408 ? TimeoutError : ConnectorUnavailableError,
+        );
+        expect(mockRequest).toHaveBeenCalledTimes(1);
+      },
+    );
+
+    it('does not classify a malformed successful write response as a rejection', async () => {
+      mockRequest.mockResolvedValue({
+        data: { cred_ex_record: { state: 'unknown' } },
+      });
+      await expect(
+        adapter.issueCredential(context, 'exchange'),
+      ).rejects.toBeInstanceOf(ValidationError);
+      expect(mockRequest).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe('offer and exchange validation', () => {

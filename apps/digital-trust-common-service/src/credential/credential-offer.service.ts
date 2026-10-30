@@ -1,8 +1,7 @@
 import {
   AdapterError,
-  BackendNotFoundError,
   CredentialAttribute,
-  CredentialExchange,
+  CredentialExchangeState,
   CredentialFormat as PortCredentialFormat,
   FormatValidatorRegistry,
   OfferCredentialRequest,
@@ -34,6 +33,7 @@ import {
 import { CredentialDefinitionRepository } from '../credential-definition/credential-definition.repository';
 import { toPortCredentialFormat } from '../credential-definition/credential-definition.service';
 import { CredentialExchangeRepository } from '../credential-exchange/credential-exchange.repository';
+import { CredentialExchangeService } from '../credential-exchange/credential-exchange.service';
 import {
   IssuanceProfile,
   IssuanceProfileStatus,
@@ -44,7 +44,6 @@ import { OPERATION_TYPE } from '../operation/operation-type.constants';
 import { Operation, OperationState } from '../operation/operation.entity';
 import { OperationRepository } from '../operation/operation.repository';
 import { OperationService } from '../operation/operation.service';
-import { ProtocolStateChangeService } from '../protocol-state-change/protocol-state-change.service';
 import {
   credentialStatesBelow,
   operationStatesBelow,
@@ -110,7 +109,7 @@ export class CredentialOfferService {
     private readonly eventEmitter: EventEmitter2,
     private readonly dataSource: DataSource,
     private readonly connectionService: ConnectionService,
-    private readonly protocolStateChanges: ProtocolStateChangeService,
+    private readonly exchangeService: CredentialExchangeService,
     private readonly exchanges: CredentialExchangeRepository,
   ) {}
 
@@ -125,69 +124,12 @@ export class CredentialOfferService {
     if (!operation || operation.type !== OPERATION_TYPE.CREDENTIAL_OFFER) {
       throw new NotFoundException('Credential offer operation not found');
     }
-    if (!operation.externalId) {
+    if (!operation.exchangeId) {
       throw new ConflictException(
-        'Offer submission has no verified exchange correlation; do not resend',
+        'Offer has no linked credential exchange; do not resend',
       );
     }
-    const credential = await this.credentialRepository.findByExternalId(
-      tenantId,
-      operation.externalId,
-    );
-    if (
-      !credential?.connectorId ||
-      !credential.connectionId ||
-      credential.operationId !== operation.id
-    ) {
-      throw new ConflictException(
-        'Offer has no matching wallet-bound credential',
-      );
-    }
-    const { adapter, context } = await this.resolveAdapter(
-      tenantId,
-      this.resolvePortFormat(credential.format),
-      credential.connectorId,
-    );
-    let exchange: CredentialExchange;
-    try {
-      exchange = await adapter.getExchange(context, operation.externalId);
-    } catch (error) {
-      if (error instanceof BackendNotFoundError) {
-        throw new ConflictException(
-          'Backend credential exchange was not found',
-        );
-      }
-      throw error;
-    }
-    if ((exchange.externalId ?? exchange.id) !== operation.externalId) {
-      throw new ConflictException(
-        'Backend returned a different credential exchange',
-      );
-    }
-    if (credential.connectionId) {
-      const connection = await this.connectionService.resolveIdentity(
-        tenantId,
-        credential.connectionId,
-        credential.connectorId,
-      );
-      if (exchange.connectionId !== connection.externalConnectionId) {
-        throw new ConflictException(
-          'Exchange does not belong to the expected holder connection',
-        );
-      }
-    }
-    if (resolveProtocolOutcome('issue_credential', exchange.state)) {
-      await this.protocolStateChanges.process({
-        tenantId,
-        topic: 'issue_credential',
-        externalId: operation.externalId,
-        protocolState: exchange.state,
-        payload: {
-          exchange_id: operation.externalId,
-          state: exchange.state,
-        },
-      });
-    }
+    await this.exchangeService.reconcile(tenantId, operation.exchangeId);
     const updated = await this.operationRepository.findByIdForTenant(
       operationId,
       tenantId,
@@ -604,7 +546,7 @@ export class CredentialOfferService {
       const { current, won } = await this.dataSource.transaction(
         async (manager) => {
           if (operation.exchangeId) {
-            await this.exchanges.observe(
+            const transition = await this.exchanges.observe(
               tenantId,
               resolvedAdapter.connector.id,
               externalId,
@@ -612,6 +554,18 @@ export class CredentialOfferService {
               manager,
               operation.exchangeId,
             );
+            if (transition?.to === CredentialExchangeState.RequestReceived) {
+              await this.jobsService.sendInTransaction(
+                manager,
+                JOB_QUEUES.WEBHOOK_DISPATCH,
+                {
+                  tenantId,
+                  event: 'credential-exchange.request-received',
+                  resourceId: transition.exchangeId,
+                  occurredAt: new Date().toISOString(),
+                },
+              );
+            }
           }
           const updatedOperation =
             await this.operationService.transitionStateIfForward(
@@ -715,10 +669,10 @@ export class CredentialOfferService {
       // case of a duplicate delivery of this same request.
       const current = await this.dataSource.transaction(async (manager) => {
         if (operation.exchangeId) {
-          await manager.update(
-            'credential_exchange',
-            { id: operation.exchangeId, tenantId },
-            { state: 'failed' },
+          await this.exchanges.markFailed(
+            tenantId,
+            operation.exchangeId,
+            manager,
           );
         }
         const failedOperation =

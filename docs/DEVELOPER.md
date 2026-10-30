@@ -1521,13 +1521,43 @@ without resubmission. Explicit issuance is
 `POST .../:exchangeId/issue`: it is valid only for an issuer exchange after
 `request-received`, returns a `credential.issue` operation, and concurrent or
 repeated calls reuse the same retained tenant-owned action without contacting
-the backend, including during an outage. Use reconciliation to refresh its
-outcome. A timed-out, uncertain, or interrupted
+the backend, including during an outage, unless the previous attempt was
+definitively rejected or never sent. Token acquisition failure returns 502,
+backend request rejection returns 400, and a missing backend exchange returns
+409. A definite failed attempt ends its operation with
+`{ code: "SUBMISSION_REJECTED", message: "Credential issue was not submitted" }`
+and releases the claim to `not-submitted`; a repeated POST creates a new issue
+operation after fresh holder/exchange verification. The failed operation remains
+available until normal retention. Its parent offer stays processing because the
+holder request is still valid. Failure notification and claim release commit
+together; an interrupted failure transaction keeps the claim protected instead
+of risking a replay.
+
+Use reconciliation to refresh an ambiguous outcome. A timed-out, uncertain,
+malformed-success-response, or interrupted
 submission is never replayed, even after operation retention; reconcile the
 exchange instead. Existing offer operation IDs remain unchanged.
 Backfilled connections without a connector binding are adopted only through
 exact invitation identity in the exchange's pinned connector. Exchange
 observation does not require or advance the connection's handshake state.
+Missing remote exchange records return 409 from both exchange actions, before
+an issue claim is created. Transient read failures are not converted into
+missing-record conflicts.
+
+A newly observed holder request enqueues a `webhook.dispatch` notification for
+`credential-exchange.request-received`, with the local exchange UUID as
+`resourceId`, even when the offer is already processing.
+Notification enqueue and monotonic progress commit together: concurrent,
+duplicate, or delayed observations do not send a second request notification.
+Use that UUID to read the exchange and explicitly issue when `auto_issue` is
+false. The current dispatcher is a stub that acknowledges intents without HTTP
+delivery; callers must poll the exchange for now. Without inbound backend
+webhooks, reconcile to discover the request.
+
+The additive retry migration removes the redundant issue unique index while
+retaining the latest-action FK/index and the durable marker. Rolling it back
+after multiple attempts for an exchange fails the old uniqueness constraint
+rather than deleting operation history; plan a forward fix instead.
 
 ## Adapter registry (CA-02)
 

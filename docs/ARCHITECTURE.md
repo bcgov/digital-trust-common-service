@@ -542,21 +542,29 @@ invitation correlation, and a completed DIDComm v1 handshake. New connections pi
 their connector; legacy rows require exact discovery in the definition's wallet,
 never an automatic binding to the current tenant default.
 
-`POST /credentials/offer/:operationId/reconcile` reads the existing exchange from
-the credential's pinned connector and checks holder correlation. It reuses
+`POST /credentials/offer/:operationId/reconcile` delegates to the linked durable
+exchange's reconciliation path, reading its pinned connector and checking
+authenticated holder identity. It reuses
 `ProtocolStateChangeService` for monotonic transactional state updates and
 notifications without resending. This supports local development without an
 inbound webhook. Issuer-side `credential-issued` completion is distinct from
 holder acknowledgement (`done`).
 
 Offers accept optional `options.auto_issue` (boolean, default true), mapped to
-the issuer port's `autoIssue`. False waits for a future explicit issue action,
-which is available on the durable local credential-exchange resource after a
+the issuer port's `autoIssue`. False waits for the explicit issue action
+available on the durable local credential-exchange resource after a
 holder request. It does not control wallet acceptance or transport delivery.
 Backend exchange retention is fixed on for reconciliation; auto-removal flags
 are not exposed. The local exchange UUID is independent of operation retention;
 its row-lock-protected issue-submission marker prevents concurrent or ambiguous
 issue requests from replaying the backend call.
+Only definitively rejected or unsent attempts release this marker for retry:
+their issue operation becomes failed, while the parent offer remains in flight.
+The exchange lock and latest issue-operation pointer serialize those retries;
+the pointer's FK index supports operation purge, but a second unique issue
+index is not needed. An observed `request-received` transition enqueues
+`credential-exchange.request-received` with the local exchange UUID in the same
+transaction, including when the offer operation is already processing.
 
 The MVP ships with **only the Traction adapter**. The adapter interfaces are designed and tested, but the Credo adapter is deferred to post-MVP.
 
@@ -738,18 +746,25 @@ CREATE INDEX idx_operations_batch_id ON operations (batch_id) WHERE batch_id IS 
 GET /api/v1/tenants/:tenantId/operations/:operationId
 ```
 
-Response uses a consistent envelope — every response has the same 6 top-level fields.
+Response uses a consistent envelope, with an additional `exchange_id` for
+exchange-linked operations.
 Result semantics determined by `(type, state)`:
+
+**Breaking compatibility change:** completed exchange-linked operations expose
+only `result: { exchange_id }`, not the stored backend payload, attributes, or
+backend identifiers. This also applies to historical offers linked by the
+exchange backfill migration. Consumers must read the local exchange resource for
+normalized progress. Failed results retain `{ code, message }`.
 
 ```json
 // Pending — result is null
 { "id": "uuid", "type": "credential.offer", "state": "pending",
   "created_at": "...", "updated_at": "...", "result": null }
 
-// Completed — result contains operation-type-specific data
+// Completed exchange-linked offer — result contains only a local reference
 { "id": "uuid", "type": "credential.offer", "state": "completed",
-  "created_at": "...", "updated_at": "...",
-  "result": { "credential_exchange_id": "...", "state": "credential_issued", "attributes": {...} } }
+  "exchange_id": "local-exchange-uuid", "created_at": "...", "updated_at": "...",
+  "result": { "exchange_id": "local-exchange-uuid" } }
 
 // Failed — result contains { code, message }
 { "id": "uuid", "type": "credential.offer", "state": "failed",

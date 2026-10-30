@@ -43,6 +43,17 @@ export class BackendNotFoundError extends AdapterError {
   }
 }
 
+// Only raised when a write was not sent or was definitively rejected.
+export class SubmissionRejectedError extends AdapterError {
+  public readonly code = 'SUBMISSION_REJECTED';
+
+  public constructor(
+    public readonly reason: 'authentication' | 'validation' | 'not-found',
+  ) {
+    super('Credential issue was not submitted');
+  }
+}
+
 // Error thrown when multiple active connectors require an explicit selection.
 export class ConnectorSelectionAmbiguousError extends AdapterError {
   public readonly code = 'CONNECTOR_SELECTION_AMBIGUOUS';

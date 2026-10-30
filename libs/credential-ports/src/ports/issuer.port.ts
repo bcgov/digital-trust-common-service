@@ -7,7 +7,11 @@ import { ConnectorContext } from './connector-context';
  * Defines agent-agnostic issuer operations for credential offers and exchanges.
  */
 export abstract class IssuerPort {
-  /** Continues an existing holder-requested exchange; never creates an offer. */
+  /**
+   * Continues an existing holder-requested exchange; never creates an offer.
+   * SubmissionRejectedError guarantees no issuance was accepted. Every other
+   * error, including an invalid success response, may follow an accepted write.
+   */
   public abstract issueCredential(
     context: ConnectorContext,
     id: string,

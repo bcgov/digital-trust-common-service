@@ -1,9 +1,15 @@
 import {
+  BackendNotFoundError,
   CredentialExchange as RemoteExchange,
   CredentialExchangeState,
   CredentialFormat,
+  SubmissionRejectedError,
+  TimeoutError,
+  ValidationError,
 } from '@app/credential-ports';
 import {
+  BadGatewayException,
+  BadRequestException,
   ConflictException,
   NotFoundException,
   ServiceUnavailableException,
@@ -18,6 +24,7 @@ import { Connection, ConnectionState } from '../connection/connection.entity';
 import { ConnectionRepository } from '../connection/connection.repository';
 import { ConnectionService } from '../connection/connection.service';
 import { CredentialDefinitionFormat } from '../credential-definition/credential-definition.entity';
+import { JobsService } from '../jobs/jobs.service';
 import { OPERATION_TYPE } from '../operation/operation-type.constants';
 import { Operation, OperationState } from '../operation/operation.entity';
 import { OperationRepository } from '../operation/operation.repository';
@@ -51,6 +58,7 @@ describe('CredentialExchangeService', () => {
   const transaction = jest.fn();
   const getExchange = jest.fn();
   const issueCredential = jest.fn();
+  const sendInTransaction = jest.fn();
   let service: CredentialExchangeService;
 
   const local = (
@@ -132,6 +140,7 @@ describe('CredentialExchangeService', () => {
     );
     processProtocolState.mockResolvedValue(undefined);
     emitAudit.mockResolvedValue(undefined);
+    sendInTransaction.mockResolvedValue('job');
     transaction.mockImplementation(
       (callback: (value: EntityManager) => Promise<unknown>) =>
         callback(manager),
@@ -161,6 +170,7 @@ describe('CredentialExchangeService', () => {
       } as unknown as ProtocolStateChangeService,
       { emit: emitAudit } as unknown as DomainAuditService,
       { transaction } as unknown as DataSource,
+      { sendInTransaction } as unknown as JobsService,
     );
   });
 
@@ -194,7 +204,11 @@ describe('CredentialExchangeService', () => {
     );
     expect(getExchange).toHaveBeenCalledWith(context, backendId);
     expect(findConnection).toHaveBeenCalledWith(tenantId, 'local-connection');
-    expect(resolveIdentity).not.toHaveBeenCalled();
+    expect(resolveIdentity).toHaveBeenCalledWith(
+      tenantId,
+      'local-connection',
+      connectorId,
+    );
     expect(processProtocolState).toHaveBeenCalledWith(
       {
         tenantId,
@@ -207,6 +221,93 @@ describe('CredentialExchangeService', () => {
         },
       },
       { exchangeId, connectorId },
+    );
+  });
+
+  it.each(['reconcile', 'issue'] as const)(
+    'maps a missing backend record to a conflict during %s without claiming issuance',
+    async (method) => {
+      getExchange.mockRejectedValue(new BackendNotFoundError());
+      await expect(service[method](tenantId, exchangeId)).rejects.toThrow(
+        new ConflictException('Backend credential exchange was not found'),
+      );
+      expect(transaction).not.toHaveBeenCalled();
+      expect(processProtocolState).not.toHaveBeenCalled();
+      expect(issueCredential).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['reconcile', 'issue'] as const)(
+    'preserves transient read failures during %s',
+    async (method) => {
+      const error = new TimeoutError();
+      getExchange.mockRejectedValue(error);
+      await expect(service[method](tenantId, exchangeId)).rejects.toBe(error);
+      expect(transaction).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    ['authentication', BadGatewayException],
+    ['validation', BadRequestException],
+    ['not-found', ConflictException],
+  ] as const)(
+    'fails and releases a definitively rejected %s attempt for a later retry',
+    async (reason, exception) => {
+      const claimed = local();
+      lock.mockResolvedValue(claimed);
+      issueCredential.mockRejectedValueOnce(
+        new SubmissionRejectedError(reason),
+      );
+
+      await expect(service.issue(tenantId, exchangeId)).rejects.toBeInstanceOf(
+        exception,
+      );
+
+      expect(transitionOperation).toHaveBeenLastCalledWith(
+        'issue-operation',
+        OperationState.FAILED,
+        [OperationState.PROCESSING],
+        {
+          code: 'SUBMISSION_REJECTED',
+          message: 'Credential issue was not submitted',
+        },
+        manager,
+      );
+      expect(claimed.issueSubmission).toBe('not-submitted');
+      expect(sendInTransaction).toHaveBeenCalledWith(
+        manager,
+        'webhook.dispatch',
+        expect.objectContaining({
+          event: 'operation.issue.failed',
+          resourceId: 'issue-operation',
+        }),
+      );
+      expect(setSubmission).not.toHaveBeenCalled();
+
+      issueCredential.mockResolvedValueOnce(
+        remote({ state: CredentialExchangeState.CredentialIssued }),
+      );
+      await service.issue(tenantId, exchangeId);
+      expect(issueCredential).toHaveBeenCalledTimes(2);
+    },
+  );
+
+  it('does not release an attempt when failure notification persistence rolls back', async () => {
+    lock.mockResolvedValue(local());
+    issueCredential.mockRejectedValue(
+      new SubmissionRejectedError('validation'),
+    );
+    sendInTransaction.mockRejectedValueOnce(
+      new Error('Notification unavailable'),
+    );
+    await expect(service.issue(tenantId, exchangeId)).rejects.toThrow(
+      'Notification unavailable',
+    );
+    expect(setSubmission).not.toHaveBeenCalledWith(
+      tenantId,
+      exchangeId,
+      'not-submitted',
     );
   });
 
@@ -542,6 +643,13 @@ describe('CredentialExchangeService', () => {
 
   it.each([
     ['backend failure', () => Promise.reject(new Error('network reset'))],
+    [
+      'invalid success response',
+      () =>
+        Promise.reject(
+          new ValidationError(['Invalid credential exchange response']),
+        ),
+    ],
     [
       'unexpected backend correlation',
       () => Promise.resolve(remote({ id: 'other-backend' })),

@@ -18,6 +18,7 @@ import {
   PresentationRequest,
   RevocationResult,
   SupportedFormats,
+  SubmissionRejectedError,
   TimeoutError,
   ValidationError,
 } from '@app/credential-ports';
@@ -171,7 +172,13 @@ export class TractionAdapter implements AgentAdapter, OnModuleInit {
     context: ConnectorContext,
     id: string,
   ): Promise<CredentialExchange> {
-    const token = await this.tokenManager.getToken(context);
+    let token: string;
+    try {
+      token = await this.tokenManager.getToken(context);
+    } catch {
+      throw new SubmissionRejectedError('authentication');
+    }
+    let record: TractionCredentialExchange;
     try {
       const response = await this.httpClient.request<{
         cred_ex_record: TractionCredentialExchange;
@@ -185,10 +192,24 @@ export class TractionAdapter implements AgentAdapter, OnModuleInit {
         },
         false,
       );
-      return this.mapCredentialExchange(response.data.cred_ex_record);
+      record = response.data.cred_ex_record;
     } catch (error) {
-      throw this.mapHttpError(error, context);
+      if (axios.isAxiosError(error) && error.response?.status === 408) {
+        throw new TimeoutError('Traction issue request timed out', {
+          connectorId: context.connectorId,
+        });
+      }
+      const mapped = this.mapHttpError(error, context);
+      if (mapped instanceof BackendNotFoundError) {
+        throw new SubmissionRejectedError('not-found');
+      }
+      if (mapped instanceof ValidationError) {
+        throw new SubmissionRejectedError('validation');
+      }
+      throw mapped;
     }
+    // A successful POST with an invalid response may already have issued.
+    return this.mapCredentialExchange(record);
   }
 
   public async getExchange(

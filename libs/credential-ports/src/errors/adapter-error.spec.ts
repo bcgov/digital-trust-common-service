@@ -5,6 +5,7 @@ import {
   ConnectorUnavailableError,
   FormatNotSupportedError,
   FormatValidationError,
+  SubmissionRejectedError,
   TimeoutError,
   ValidationError,
 } from './adapter-error';
@@ -73,6 +74,19 @@ describe('BackendNotFoundError', () => {
       'Backend record was not found',
     );
   });
+});
+
+describe('SubmissionRejectedError', () => {
+  it.each(['authentication', 'validation', 'not-found'] as const)(
+    'exposes a safe non-submission result for %s',
+    (reason) => {
+      const error = new SubmissionRejectedError(reason);
+      expect(error).toBeInstanceOf(AdapterError);
+      expect(error.code).toBe('SUBMISSION_REJECTED');
+      expect(error.reason).toBe(reason);
+      expect(error.message).toBe('Credential issue was not submitted');
+    },
+  );
 });
 
 describe('ConnectorSelectionAmbiguousError', () => {
