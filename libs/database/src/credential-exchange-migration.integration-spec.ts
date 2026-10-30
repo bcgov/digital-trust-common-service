@@ -4,6 +4,7 @@ import { DataSource, QueryRunner } from 'typeorm';
 
 import { CreateCredentialExchanges1792506949095 } from './migrations/000036_create-credential-exchanges';
 import { IndexExchangeIssueOperation1792543244948 } from './migrations/000037_index-exchange-issue-operation';
+import { DropRedundantExchangeIssueIndex1793375254070 } from './migrations/000038_drop-redundant-exchange-issue-index';
 import { buildSslConfig } from './ssl.util';
 
 describe('credential exchange migration (integration)', () => {
@@ -172,5 +173,51 @@ describe('credential exchange migration (integration)', () => {
       await runner.query('SELECT id FROM credential_exchange'),
     ).toHaveLength(2);
     await indexMigration.up(runner);
+  });
+
+  it('removes only the duplicate issue uniqueness constraint and preserves legacy links and purge protection', async () => {
+    await migration.up(runner);
+    await new IndexExchangeIssueOperation1792543244948().up(runner);
+    const retryMigration = new DropRedundantExchangeIssueIndex1793375254070();
+    await retryMigration.up(runner);
+    expect(
+      await runner.query(
+        `SELECT indexname FROM pg_indexes WHERE schemaname = current_schema()
+       AND indexname = 'uq_operation_exchange_issue'`,
+      ),
+    ).toEqual([]);
+    await retryMigration.down(runner);
+    expect(
+      await runner.query(
+        `SELECT indexname FROM pg_indexes WHERE schemaname = current_schema()
+       AND indexname = 'uq_operation_exchange_issue'`,
+      ),
+    ).toHaveLength(1);
+    await retryMigration.up(runner);
+    const first = randomUUID();
+    const retry = randomUUID();
+    await runner.query(
+      `INSERT INTO operation(id,tenant_id,type,request,exchange_id)
+       VALUES ($1,$3,'credential.issue','{}',$4),($2,$3,'credential.issue','{}',$4)`,
+      [first, retry, tenant, pendingCredential],
+    );
+    await runner.query(
+      `UPDATE credential_exchange SET issue_submission='submitting',
+       issue_operation_id=$1 WHERE id=$2`,
+      [retry, pendingCredential],
+    );
+    await runner.query('DELETE FROM operation WHERE id=$1', [retry]);
+    expect(
+      await runner.query(
+        'SELECT issue_operation_id,issue_submission FROM credential_exchange WHERE id=$1',
+        [pendingCredential],
+      ),
+    ).toEqual([{ issue_operation_id: null, issue_submission: 'submitting' }]);
+    expect(
+      await runner.query('SELECT exchange_id FROM operation WHERE id=$1', [
+        pendingOffer,
+      ]),
+    ).toEqual([{ exchange_id: pendingCredential }]);
+    expect(await runner.query('SELECT id FROM credential')).toHaveLength(5);
   });
 });

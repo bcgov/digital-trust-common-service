@@ -61,12 +61,61 @@ describe('CredentialExchangeRepository', () => {
   });
 
   it('locks using tenant and connector predicates', async () => {
-    await observe(CredentialExchangeState.CredentialIssued);
+    await expect(
+      observe(CredentialExchangeState.CredentialIssued),
+    ).resolves.toEqual({
+      exchangeId: row.id,
+      from: CredentialExchangeState.RequestReceived,
+      to: CredentialExchangeState.CredentialIssued,
+    });
     expect(findOne).toHaveBeenCalledWith(CredentialExchange, {
       where: { tenantId: 'tenant', connectorId: 'wallet', id: 'local' },
       lock: { mode: 'pessimistic_write' },
     });
     expect(row.state).toBe(CredentialExchangeState.CredentialIssued);
+  });
+
+  it('returns a holder-request transition only once and ignores delayed states', async () => {
+    row.state = CredentialExchangeState.OfferSent;
+    await expect(observe('request_received')).resolves.toEqual({
+      exchangeId: row.id,
+      from: CredentialExchangeState.OfferSent,
+      to: CredentialExchangeState.RequestReceived,
+    });
+    await expect(observe('request_received')).resolves.toBeNull();
+    await expect(observe('offer_sent')).resolves.toBeNull();
+  });
+
+  it.each([
+    CredentialExchangeState.CredentialIssued,
+    CredentialExchangeState.Done,
+    CredentialExchangeState.Abandoned,
+    'failed',
+  ] as const)(
+    'does not overwrite %s on a local offer failure',
+    async (state) => {
+      row.state = state;
+      await repository.markFailed('tenant', 'local', manager);
+      expect(row.state).toBe(state);
+      expect(save).not.toHaveBeenCalled();
+    },
+  );
+
+  it('marks a pending offer failed through the same monotonic guard', async () => {
+    row.state = 'pending';
+    await repository.markFailed('tenant', 'local', manager);
+    expect(row.state).toBe('failed');
+    expect(save).toHaveBeenCalledWith(row);
+    expect(findOne).toHaveBeenCalledWith(CredentialExchange, {
+      where: { tenantId: 'tenant', id: 'local' },
+      lock: { mode: 'pessimistic_write' },
+    });
+  });
+
+  it('does not fail another tenant or missing exchange', async () => {
+    findOne.mockResolvedValue(null);
+    await repository.markFailed('tenant', 'local', manager);
+    expect(save).not.toHaveBeenCalled();
   });
 
   it('never regresses from done or overwrites issued with abandonment', async () => {

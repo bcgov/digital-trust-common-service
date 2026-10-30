@@ -23,6 +23,16 @@ const STATE_RANK: Record<ExchangeState, number> = {
   failed: 5,
 };
 
+export interface ExchangeTransition {
+  readonly exchangeId: string;
+  readonly from: ExchangeState;
+  readonly to: ExchangeState;
+}
+
+function isExchangeState(state: string): state is ExchangeState {
+  return Object.prototype.hasOwnProperty.call(STATE_RANK, state);
+}
+
 @Injectable()
 export class CredentialExchangeRepository {
   public constructor(
@@ -76,6 +86,34 @@ export class CredentialExchangeRepository {
     );
   }
 
+  private advance(
+    exchange: CredentialExchange,
+    next: ExchangeState,
+  ): ExchangeTransition | null {
+    const from = exchange.state;
+    const isFailure =
+      next === 'failed' || next === CredentialExchangeState.Abandoned;
+    if (
+      STATE_RANK[next] <= STATE_RANK[from] ||
+      (isFailure && STATE_RANK[from] >= 4)
+    ) {
+      return null;
+    }
+    exchange.state = next;
+    return { exchangeId: exchange.id, from, to: next };
+  }
+
+  public async markFailed(
+    tenantId: string,
+    id: string,
+    manager: EntityManager,
+  ): Promise<void> {
+    const exchange = await this.lock(tenantId, id, manager);
+    if (exchange && this.advance(exchange, 'failed')) {
+      await this.save(exchange, manager);
+    }
+  }
+
   public async observe(
     tenantId: string,
     connectorId: string,
@@ -83,7 +121,7 @@ export class CredentialExchangeRepository {
     state: string,
     manager: EntityManager,
     id?: string,
-  ): Promise<void> {
+  ): Promise<ExchangeTransition | null> {
     state = state.replace(/_/g, '-');
     const exchange = await manager.findOne(CredentialExchange, {
       where: id
@@ -91,21 +129,14 @@ export class CredentialExchangeRepository {
         : { tenantId, connectorId, externalId },
       lock: { mode: 'pessimistic_write' },
     });
-    if (!exchange) return;
+    if (!exchange) return null;
     if (exchange.externalId && exchange.externalId !== externalId) {
       throw new ConflictException('Exchange backend correlation changed');
     }
     exchange.externalId = externalId;
-    if (Object.prototype.hasOwnProperty.call(STATE_RANK, state)) {
-      const next = state as ExchangeState;
-      const isFailure =
-        next === 'failed' || next === CredentialExchangeState.Abandoned;
-      if (
-        STATE_RANK[next] > STATE_RANK[exchange.state] &&
-        (!isFailure || STATE_RANK[exchange.state] < 4)
-      ) {
-        exchange.state = next;
-      }
+    let transition: ExchangeTransition | null = null;
+    if (isExchangeState(state)) {
+      transition = this.advance(exchange, state);
       if (
         (exchange.state === CredentialExchangeState.CredentialIssued ||
           exchange.state === CredentialExchangeState.CredentialReceived ||
@@ -116,5 +147,6 @@ export class CredentialExchangeRepository {
       }
     }
     await manager.save(exchange);
+    return transition;
   }
 }

@@ -1,3 +1,4 @@
+import { CredentialExchangeState } from '@app/credential-ports';
 import { JOB_QUEUES } from '@app/pg-boss';
 import { Injectable, Logger } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
@@ -10,7 +11,10 @@ import { ConnectionState } from '../connection/connection.entity';
 import { ConnectionService } from '../connection/connection.service';
 import { CredentialState } from '../credential/credential.entity';
 import { CredentialRepository } from '../credential/credential.repository';
-import { CredentialExchangeRepository } from '../credential-exchange/credential-exchange.repository';
+import {
+  CredentialExchangeRepository,
+  ExchangeTransition,
+} from '../credential-exchange/credential-exchange.repository';
 import { JobsService } from '../jobs/jobs.service';
 import { OPERATION_TYPE } from '../operation/operation-type.constants';
 import { OperationResult, OperationState } from '../operation/operation.entity';
@@ -109,6 +113,7 @@ export class ProtocolStateChangeService {
     // the enqueue means a redelivery instead sees the pre-transition state
     // again and retries both together.
     const result = await this.dataSource.transaction(async (manager) => {
+      let exchangeTransition: ExchangeTransition | null = null;
       if (data.topic === 'issue_credential') {
         const credential = exchangeCorrelation
           ? null
@@ -119,7 +124,7 @@ export class ProtocolStateChangeService {
         const connectorId =
           exchangeCorrelation?.connectorId ?? credential?.connectorId;
         if (connectorId) {
-          await this.exchanges.observe(
+          exchangeTransition = await this.exchanges.observe(
             data.tenantId,
             connectorId,
             data.externalId,
@@ -128,6 +133,18 @@ export class ProtocolStateChangeService {
             exchangeCorrelation?.exchangeId,
           );
         }
+      }
+      if (exchangeTransition?.to === CredentialExchangeState.RequestReceived) {
+        await this.jobsService.sendInTransaction(
+          manager,
+          JOB_QUEUES.WEBHOOK_DISPATCH,
+          {
+            tenantId: data.tenantId,
+            event: 'credential-exchange.request-received',
+            resourceId: exchangeTransition.exchangeId,
+            occurredAt: new Date().toISOString(),
+          },
+        );
       }
       const operationOutcome = await this.applyOperationOutcome(
         data,
@@ -169,7 +186,11 @@ export class ProtocolStateChangeService {
       }
 
       if (!transitioned) {
-        return { matched, transitioned, event: null };
+        return {
+          matched: matched || exchangeTransition !== null,
+          transitioned: exchangeTransition !== null,
+          event: null,
+        };
       }
 
       // A holder-initiated accept still confirms via an issue_credential

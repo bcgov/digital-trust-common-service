@@ -1,8 +1,13 @@
 import {
+  BackendNotFoundError,
   CredentialExchange as RemoteExchange,
   CredentialExchangeState,
+  SubmissionRejectedError,
 } from '@app/credential-ports';
+import { JOB_QUEUES } from '@app/pg-boss';
 import {
+  BadGatewayException,
+  BadRequestException,
   ConflictException,
   Injectable,
   Logger,
@@ -12,12 +17,14 @@ import {
 import { DataSource, EntityManager } from 'typeorm';
 
 import { AdapterRegistry } from '../adapter-registry/adapter-registry.service';
+import { ResolvedAdapter } from '../adapter-registry/adapter-registry.types';
 import { AuditAction } from '../audit-log/audit-log.entity';
 import { DomainAuditService } from '../audit-log/domain-audit.service';
 import { API_BASE_PATH } from '../common/constants/api-version.constants';
 import { ConnectionRepository } from '../connection/connection.repository';
 import { ConnectionService } from '../connection/connection.service';
 import { toPortCredentialFormat } from '../credential-definition/credential-definition.service';
+import { JobsService } from '../jobs/jobs.service';
 import { OPERATION_TYPE } from '../operation/operation-type.constants';
 import { Operation, OperationState } from '../operation/operation.entity';
 import { OperationRepository } from '../operation/operation.repository';
@@ -41,6 +48,7 @@ export class CredentialExchangeService {
     private readonly protocolStateChanges: ProtocolStateChangeService,
     private readonly audit: DomainAuditService,
     private readonly dataSource: DataSource,
+    private readonly jobs: JobsService,
   ) {}
 
   public async get(tenantId: string, id: string): Promise<CredentialExchange> {
@@ -79,6 +87,7 @@ export class CredentialExchangeService {
       exchange.tenantId,
       exchange.connectionId,
     );
+    const alreadyBound = !!connection?.connectorId;
     if (connection && !connection.connectorId) {
       connection = await this.connectionService.resolveIdentity(
         exchange.tenantId,
@@ -94,6 +103,13 @@ export class CredentialExchangeService {
     ) {
       throw new ConflictException(
         'Exchange holder or connector correlation is inconsistent',
+      );
+    }
+    if (alreadyBound) {
+      await this.connectionService.resolveIdentity(
+        exchange.tenantId,
+        exchange.connectionId,
+        exchange.connectorId,
       );
     }
   }
@@ -114,13 +130,32 @@ export class CredentialExchangeService {
     );
   }
 
+  private async readRemote(
+    exchange: CredentialExchange,
+    resolved: ResolvedAdapter,
+  ): Promise<RemoteExchange> {
+    try {
+      return await resolved.adapter.getExchange(
+        resolved.context,
+        exchange.externalId!,
+      );
+    } catch (error) {
+      if (error instanceof BackendNotFoundError) {
+        throw new ConflictException(
+          'Backend credential exchange was not found',
+        );
+      }
+      throw error;
+    }
+  }
+
   public async reconcile(
     tenantId: string,
     id: string,
   ): Promise<CredentialExchange> {
     const exchange = await this.get(tenantId, id);
-    const { adapter, context } = await this.resolve(exchange);
-    const remote = await adapter.getExchange(context, exchange.externalId!);
+    const resolved = await this.resolve(exchange);
+    const remote = await this.readRemote(exchange, resolved);
     await this.assertCorrelation(exchange, remote);
     await this.synchronize(exchange, remote);
     return this.get(tenantId, id);
@@ -134,8 +169,9 @@ export class CredentialExchangeService {
       const existing = await this.retainedIssueOperation(exchange);
       return this.operationService.getForTenant(tenantId, existing.id);
     }
-    const { adapter, context } = await this.resolve(exchange);
-    const remote = await adapter.getExchange(context, exchange.externalId!);
+    const resolved = await this.resolve(exchange);
+    const { adapter, context } = resolved;
+    const remote = await this.readRemote(exchange, resolved);
     await this.assertCorrelation(exchange, remote);
     await this.synchronize(exchange, remote);
 
@@ -193,15 +229,61 @@ export class CredentialExchangeService {
 
     if (!claim.submit)
       return this.operationService.getForTenant(tenantId, claim.operation.id);
+    let submitted = false;
     try {
       const issued = await adapter.issueCredential(
         context,
         exchange.externalId!,
       );
+      submitted = true;
       await this.assertCorrelation(exchange, issued);
       await this.exchanges.setSubmission(tenantId, id, 'submitted');
       await this.synchronize(exchange, issued);
     } catch (error) {
+      if (!submitted && error instanceof SubmissionRejectedError) {
+        await this.dataSource.transaction(async (manager) => {
+          const locked = await this.exchanges.lock(tenantId, id, manager);
+          if (
+            !locked ||
+            locked.issueSubmission !== 'submitting' ||
+            locked.issueOperationId !== claim.operation.id
+          ) {
+            return;
+          }
+          const failed = await this.operationService.transitionStateIfForward(
+            claim.operation.id,
+            OperationState.FAILED,
+            [OperationState.PROCESSING],
+            { code: error.code, message: error.message },
+            manager,
+          );
+          if (!failed) return;
+          locked.issueSubmission = 'not-submitted';
+          await this.exchanges.save(locked, manager);
+          await this.jobs.sendInTransaction(
+            manager,
+            JOB_QUEUES.WEBHOOK_DISPATCH,
+            {
+              tenantId,
+              event: 'operation.issue.failed',
+              resourceId: claim.operation.id,
+              occurredAt: new Date().toISOString(),
+            },
+          );
+        });
+        const response = {
+          message: error.message,
+          exchange_id: id,
+          operation_id: claim.operation.id,
+        };
+        if (error.reason === 'not-found') {
+          throw new ConflictException(response);
+        }
+        if (error.reason === 'authentication') {
+          throw new BadGatewayException(response);
+        }
+        throw new BadRequestException(response);
+      }
       await this.exchanges.setSubmission(tenantId, id, 'uncertain');
       this.logger.warn(
         { exchange_id: id, operation_id: claim.operation.id },

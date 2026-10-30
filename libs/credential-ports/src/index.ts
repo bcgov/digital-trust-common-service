@@ -37,6 +37,7 @@ export {
   ConnectorUnavailableError,
   FormatNotSupportedError,
   FormatValidationError,
+  SubmissionRejectedError,
   TimeoutError,
   ValidationError,
 } from './errors/adapter-error';

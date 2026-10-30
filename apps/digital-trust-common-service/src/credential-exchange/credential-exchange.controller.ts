@@ -20,6 +20,8 @@ import {
 import {
   ApiAcceptedResponse,
   ApiBody,
+  ApiBadGatewayResponse,
+  ApiBadRequestResponse,
   ApiConflictResponse,
   ApiForbiddenResponse,
   ApiNotFoundResponse,
@@ -84,7 +86,8 @@ export class CredentialExchangeController {
   @HttpCode(HttpStatus.OK)
   @ApiOkResponse({ type: CredentialExchangeResponseDto })
   @ApiConflictResponse({
-    description: 'Backend correlation is unavailable or inconsistent',
+    description:
+      'Backend exchange/holder is missing or correlation is inconsistent',
   })
   public async reconcile(
     @Param('tenantId', ParseUUIDPipe) tenantId: string,
@@ -111,7 +114,15 @@ export class CredentialExchangeController {
   })
   @ApiConflictResponse({
     description:
-      'Holder request missing, invalid role, or submission already attempted without retained operation',
+      'Backend exchange/holder missing, invalid role/state, or attempted submission without retained operation',
+  })
+  @ApiBadRequestResponse({
+    description:
+      'Backend definitively rejected issuance; failed attempt may be retried',
+  })
+  @ApiBadGatewayResponse({
+    description:
+      'Token acquisition failed before submission; failed attempt may be retried',
   })
   @ApiServiceUnavailableResponse({
     description:
