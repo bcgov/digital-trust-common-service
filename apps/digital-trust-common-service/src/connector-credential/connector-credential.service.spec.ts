@@ -520,6 +520,49 @@ describe('ConnectorCredentialService', () => {
         }),
       );
     });
+
+    it.each([
+      ['credentials', { credentials: { apiKey: 'rotated-key' } }],
+      [
+        'endpoint-only',
+        { endpointUrl: 'https://traction-two.example.com/api' },
+      ],
+    ])(
+      'rejects a %s refresh that drops an established identifier',
+      async (_name, dto) => {
+        mockFindById.mockResolvedValue(mockCredential);
+        mockDecrypt.mockReturnValue({
+          ...mockCredentials,
+          agentLogId: walletId,
+        });
+        mockHealthCheck.mockResolvedValue({ status: 'healthy', latencyMs: 10 });
+
+        await expect(
+          service.update(mockCredential.tenantId, mockCredential.id, dto, auth),
+        ).rejects.toThrow(UnprocessableEntityException);
+
+        expect(mockUpdate).not.toHaveBeenCalled();
+        expect(mockEnsureWebhookRegistered).not.toHaveBeenCalled();
+      },
+    );
+
+    it('allows a never-bound connector to stay unbound on update', async () => {
+      mockFindById.mockResolvedValue(mockCredential);
+      mockHealthCheck.mockResolvedValue({ status: 'healthy', latencyMs: 10 });
+      mockUpdate.mockResolvedValue(mockCredential);
+
+      await service.update(
+        mockCredential.tenantId,
+        mockCredential.id,
+        { credentials: { apiKey: 'rotated-key' } },
+        auth,
+      );
+
+      expect(mockUpdate).toHaveBeenCalledWith(
+        mockCredential.id,
+        expect.objectContaining({ agentLogIdHash: null }),
+      );
+    });
   });
 
   describe('findById', () => {

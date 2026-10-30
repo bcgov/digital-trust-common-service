@@ -495,6 +495,7 @@ export class ConnectorCredentialService {
       updates.agentLogIdHash = await this.assertAgentLogIdAvailable(
         existing,
         agentLogId,
+        existingCredentials,
       );
 
       const encryptedCredentials =
@@ -523,6 +524,7 @@ export class ConnectorCredentialService {
         updates.agentLogIdHash = await this.assertAgentLogIdAvailable(
           existing,
           agentLogId,
+          existingCredentials,
         );
 
         const encryptedCredentials = this.encryptionService.encrypt(
@@ -585,12 +587,25 @@ export class ConnectorCredentialService {
    * index remains the atomic guarantee; this only avoids the side effect.
    * The connector being updated is excluded so re-saving the same sub-wallet
    * stays idempotent. Deliberately not tenant-filtered: a binding is global.
+   * A refresh that returns no identifier for an already-bound connector is
+   * rejected so an update can never silently erase an established binding.
    */
   private async assertAgentLogIdAvailable(
     existing: ConnectorCredential,
     agentLogId: string | undefined,
+    existingCredentials: StoredConnectorCredentials,
   ): Promise<string | null> {
     const hash = this.hashAgentLogId(existing.connectorType, agentLogId);
+
+    if (
+      hash === null &&
+      (existing.agentLogIdHash !== null ||
+        existingCredentials.agentLogId !== undefined)
+    ) {
+      throw new UnprocessableEntityException(
+        'The connector no longer reports its agent identifier; the existing binding was kept.',
+      );
+    }
 
     if (
       hash !== null &&
