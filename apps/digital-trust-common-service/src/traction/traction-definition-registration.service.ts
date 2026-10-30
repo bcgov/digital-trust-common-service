@@ -254,7 +254,7 @@ export class TractionDefinitionRegistration implements AnonCredsRegistrationPort
     if (
       record.cred_def_id !== definitionId ||
       record.state !== 'finished' ||
-      !record.tails_local_path ||
+      !record.tails_public_uri ||
       !record.revoc_reg_id ||
       !Number.isSafeInteger(record.max_cred_num) ||
       record.max_cred_num <= 0
@@ -281,7 +281,7 @@ export class TractionDefinitionRegistration implements AnonCredsRegistrationPort
     // and do not forward the wallet token or follow redirects.
     await this.http.request({
       method: 'HEAD',
-      url: record.tails_local_path,
+      url: record.tails_public_uri,
       maxRedirects: 0,
     });
     return true;

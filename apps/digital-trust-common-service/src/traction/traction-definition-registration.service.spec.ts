@@ -603,7 +603,8 @@ describe('Traction artifact registration', () => {
             cred_def_id: 'definition',
             state: 'finished',
             revoc_reg_id: 'registry',
-            tails_local_path: 'https://tails.example/tails',
+            tails_local_path: '/var/lib/aca-py/tails/registry',
+            tails_public_uri: 'https://tails.example/tails',
             max_cred_num: 1000,
           },
         },
@@ -626,6 +627,24 @@ describe('Traction artifact registration', () => {
   it('does not treat pending infrastructure as ready', async () => {
     request.mockResolvedValueOnce({
       data: { result: { cred_def_id: 'definition', state: 'wait' } },
+    });
+    await expect(service.verifyRevocation(context, 'definition')).resolves.toBe(
+      false,
+    );
+    expect(request).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not probe the agent filesystem when the public tails URI is missing', async () => {
+    request.mockResolvedValueOnce({
+      data: {
+        result: {
+          cred_def_id: 'definition',
+          state: 'finished',
+          revoc_reg_id: 'registry',
+          tails_local_path: '/var/lib/aca-py/tails/registry',
+          max_cred_num: 1000,
+        },
+      },
     });
     await expect(service.verifyRevocation(context, 'definition')).resolves.toBe(
       false,
@@ -662,7 +681,8 @@ describe('Traction artifact registration', () => {
               cred_def_id: 'definition',
               state: 'finished',
               revoc_reg_id: 'registry',
-              tails_local_path: 'https://tails.example/tails',
+              tails_local_path: '/var/lib/aca-py/tails/registry',
+              tails_public_uri: 'https://tails.example/tails',
               max_cred_num: 10,
             },
           },
