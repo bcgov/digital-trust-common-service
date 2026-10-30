@@ -222,11 +222,14 @@ describe('ConnectionService', () => {
         id: mockConnection.externalConnectionId,
       });
       mockReconcile.mockResolvedValue({
-        ...mockConnection,
-        connectorId: mockConnector.id,
-        externalConnectionId: remote.id,
-        state: ConnectionState.COMPLETED,
-        protocol: ConnectionProtocol.DIDCOMM_V1,
+        established: false,
+        connection: {
+          ...mockConnection,
+          connectorId: mockConnector.id,
+          externalConnectionId: remote.id,
+          state: ConnectionState.COMPLETED,
+          protocol: ConnectionProtocol.DIDCOMM_V1,
+        },
       });
     });
 
@@ -344,8 +347,8 @@ describe('ConnectionService', () => {
 
     it('does not revive an abandoned local connection', async () => {
       mockReconcile.mockResolvedValue({
-        ...mockConnection,
-        state: ConnectionState.ABANDONED,
+        established: false,
+        connection: { ...mockConnection, state: ConnectionState.ABANDONED },
       });
       await expect(resolve()).rejects.toBeInstanceOf(ConflictException);
     });
@@ -391,51 +394,26 @@ describe('ConnectionService', () => {
       expect(mockReconcile).not.toHaveBeenCalled();
     });
 
-    it('searches later pages without adopting unrelated invitation records', async () => {
+    it('requests at most two invitation matches without scanning the wallet', async () => {
+      await resolve();
+      expect(mockList).toHaveBeenCalledTimes(1);
+      expect(mockList).toHaveBeenCalledWith(mockContext, {
+        invitationId: remote.invitationId,
+        limit: 2,
+        offset: 0,
+      });
+    });
+
+    it('rejects a backend that returns unrelated invitation records', async () => {
       const unrelated = {
         ...remote,
         id: 'unrelated-holder',
         invitationId: 'different-invitation',
       };
-      mockList
-        .mockResolvedValueOnce(Array.from({ length: 100 }, () => unrelated))
-        .mockResolvedValueOnce([remote]);
-      await resolve();
-      expect(mockList).toHaveBeenNthCalledWith(1, mockContext, {
-        limit: 100,
-        offset: 0,
-      });
-      expect(mockList).toHaveBeenNthCalledWith(2, mockContext, {
-        limit: 100,
-        offset: 100,
-      });
-      expect(mockReconcile).toHaveBeenCalledWith(
-        mockConnection.tenantId,
-        mockConnection.id,
-        mockConnector.id,
-        expect.objectContaining({ id: remote.id }),
-        expect.any(Array),
-        expect.any(Function),
-      );
-    });
-
-    it('refuses even a unique match when the discovery limit prevents a complete search', async () => {
-      const page = Array.from({ length: 100 }, (_, index) => ({
-        ...remote,
-        id: `holder-${index}`,
-        invitationId: 'unrelated-invitation',
-      }));
-      mockList
-        .mockResolvedValue(page)
-        .mockResolvedValueOnce([remote, ...page.slice(1)]);
+      mockList.mockResolvedValue([remote, unrelated]);
       await expect(resolve()).rejects.toThrow(
-        'Connection discovery limit reached; reconciliation incomplete',
+        'Backend returned a different invitation',
       );
-      expect(mockList).toHaveBeenCalledTimes(100);
-      expect(mockList).toHaveBeenLastCalledWith(mockContext, {
-        limit: 100,
-        offset: 9900,
-      });
       expect(mockReconcile).not.toHaveBeenCalled();
     });
 
@@ -449,9 +427,12 @@ describe('ConnectionService', () => {
 
     it('rejects a missing external ID after a concurrent reconciliation result', async () => {
       mockReconcile.mockResolvedValue({
-        ...mockConnection,
-        state: ConnectionState.COMPLETED,
-        externalConnectionId: null,
+        established: false,
+        connection: {
+          ...mockConnection,
+          state: ConnectionState.COMPLETED,
+          externalConnectionId: null,
+        },
       });
       await expect(resolve()).rejects.toThrow(
         'Connection handshake is not complete',
@@ -476,7 +457,10 @@ describe('ConnectionService', () => {
       mockReconcile.mockImplementation(async (...args) => {
         await args[5](manager);
         expect(eventEmit).not.toHaveBeenCalled();
-        return { ...mockConnection, externalConnectionId: remote.id };
+        return {
+          connection: { ...mockConnection, externalConnectionId: remote.id },
+          established: true,
+        };
       });
       await resolve();
       expect(sendInTransaction).toHaveBeenCalledWith(

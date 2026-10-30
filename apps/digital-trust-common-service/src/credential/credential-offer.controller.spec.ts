@@ -1,5 +1,9 @@
 import { JwtGuard, ScopeGuard, TenantGuard } from '@app/auth';
-import { CanActivate, BadRequestException } from '@nestjs/common';
+import {
+  CanActivate,
+  BadRequestException,
+  ConflictException,
+} from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import type { Response } from 'express';
 
@@ -97,6 +101,22 @@ describe('CredentialOfferController', () => {
     expect(mockOffer).toHaveBeenCalledWith(tenantId, dto);
     expect(res.status).toHaveBeenCalledWith(202);
     expect(result.state).toBe(OperationState.PROCESSING);
+  });
+
+  it('declares conflict responses without intercepting runtime conflicts', async () => {
+    const responses = Reflect.getMetadata(
+      'swagger/apiResponse',
+      Reflect.get(CredentialOfferController.prototype, 'offer'),
+    );
+    expect(responses).toHaveProperty('409');
+    const conflict = new ConflictException(
+      'Connection handshake is not complete',
+    );
+    mockOffer.mockRejectedValue(conflict);
+    await expect(
+      controller.offer(tenantId, dto, res as unknown as Response),
+    ).rejects.toBe(conflict);
+    expect(res.status).not.toHaveBeenCalled();
   });
 
   it('responds 202 when the offer is still PENDING', async () => {

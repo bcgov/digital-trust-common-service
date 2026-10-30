@@ -94,6 +94,10 @@ export class CredentialOfferController {
       'delivery or subject claims are invalid, profile/' +
       'credential_definition_id resolution failed, or attribute validation failed',
   })
+  @ApiConflictResponse({
+    description:
+      'Holder handshake is incomplete, or connection binding is unavailable or inconsistent',
+  })
   public async offer(
     @Param('tenantId', ParseUUIDPipe) tenantId: string,
     @Body() dto: OfferCredentialRequestDto,

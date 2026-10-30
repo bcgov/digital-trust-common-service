@@ -1473,6 +1473,17 @@ exact invitation correlation in that explicitly selected wallet; ambiguous,
 missing, cross-wallet, or abandoned connections cannot issue. The original
 top-level `format`, `attributes`, and `connection_id` fields are rejected.
 
+An incomplete handshake or unavailable/inconsistent connection binding returns
+HTTP 409. Legacy invitation discovery sends `invitation_msg_id` to Traction's
+`GET /connections` with `limit=2`, distinguishing zero, one, or multiple matches
+without scanning the wallet. Every returned invitation ID must still match.
+This filter is implemented before pagination in ACA-Py
+[1.4.0](https://github.com/openwallet-foundation/acapy/blob/1.4.0/acapy_agent/connections/routes.py)
+and [1.7.0](https://github.com/openwallet-foundation/acapy/blob/1.7.0/acapy_agent/connections/routes.py);
+the [Traction plugin image](https://github.com/bcgov/traction/blob/2073ebeab8a0884f53eaf947482b44f29bc58123/plugins/docker/Dockerfile)
+uses ACA-Py 1.7.0. An unrelated result is a correlation conflict, not a fallback
+to wallet-wide discovery.
+
 Optional `options: { "auto_issue": true }` preserves the default: the issuer
 automatically issues after a holder requests the credential. Set `auto_issue`
 to false to wait for a future explicit issue action, which this API does not
@@ -1494,6 +1505,10 @@ adopted only through an exact, unambiguous invitation match in that pinned
 connector. New offers still require a completed handshake. A newly observed
 connection establishment and its durable notification commit together; delayed
 or racing webhooks do not send a second establishment notification.
+Reconciliation and webhook processing share the guarded ACTIVE-boundary helper,
+including direct-to-completed observations. Reconciliation returns an explicit
+`established` result after its row-locked state writes and durable enqueue commit;
+only then may the caller emit the in-process event.
 Reconciliation never resends an offer. Missing backend exchange or holder records
 and inconsistent exchange correlation return 409; transient backend failures
 remain failures, not missing-record conflicts. Do not retry offer submission

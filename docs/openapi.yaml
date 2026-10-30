@@ -1576,6 +1576,8 @@ paths:
                 result: null
         "400":
           $ref: "#/components/responses/BadRequest"
+        "409":
+          $ref: "#/components/responses/Conflict"
         "422":
           $ref: "#/components/responses/ValidationError"
 
