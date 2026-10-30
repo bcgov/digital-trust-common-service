@@ -551,7 +551,7 @@ describe('credential exchanges (integration)', () => {
 
       expect(listConnections).toHaveBeenCalledWith(
         { tenantId: tenant.id, connectorId: connector.id },
-        { limit: 100, offset: 0 },
+        { invitationId: 'backfilled-invitation', limit: 2, offset: 0 },
       );
       expect(resolve).toHaveBeenCalledWith(tenant.id, undefined, {
         connectorId: connector.id,
