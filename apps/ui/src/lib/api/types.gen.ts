@@ -510,8 +510,9 @@ export interface paths {
         /**
          * Register a credential definition
          * @description Create a credential definition for any declared credential format.
-         *     AnonCreds issuer artifact registration runs asynchronously; formats
-         *     without a registration step complete immediately. The required format
+         *     Only AnonCreds currently has a registered handler and runs asynchronously.
+         *     Other declared formats return FORMAT_NOT_SUPPORTED without creating a
+         *     definition or operation. The required format
          *     discriminator is inside immutable options (not a root request field),
          *     and selects the format-specific options schema. This intentionally
          *     differs from the review's wording that described format as a shared
@@ -529,8 +530,12 @@ export interface paths {
          *     metadata is not part of publication identity. A ready registration
          *     returns its completed operation, a pending registration queues one
          *     singleton continuation, and a failed registration starts a new operation
-         *     from saved progress. A deactivated ready definition returns
-         *     REGISTRATION_REPLAY_UNAVAILABLE.
+         *     from saved progress. An explicit schema.id must match the original
+         *     resolved artifact, not just its schema content. A deactivated ready
+         *     definition returns REGISTRATION_REPLAY_UNAVAILABLE without reactivation.
+         *     Publication intent is persisted before writing to the backend. Lost
+         *     responses are reconciled by lookup without repeating an uncertain write;
+         *     only conclusive rejection allows another publication attempt.
          */
         post: operations["createCredentialDefinition"];
         delete?: never;

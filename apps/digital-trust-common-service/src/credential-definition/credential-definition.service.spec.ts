@@ -283,7 +283,7 @@ describe('CredentialDefinitionService', () => {
         },
         {
           provide: CREDENTIAL_DEFINITION_FORMAT_HANDLERS,
-          useValue: [anonCredsHandler, noRegistrationHandler],
+          useValue: [anonCredsHandler],
         },
       ],
     }).compile();
@@ -298,13 +298,17 @@ describe('CredentialDefinitionService', () => {
   });
 
   describe('create', () => {
-    it('rejects formats without a registered handler', async () => {
+    it.each([
+      CredentialDefinitionFormat.SD_JWT,
+      CredentialDefinitionFormat.MDL,
+      CredentialDefinitionFormat.W3C_VC,
+    ])('rejects %s without a registered handler', async (format) => {
       await expect(
         service.create(
           auth.tenantId,
           {
             name: 'Employee',
-            options: { format: CredentialDefinitionFormat.W3C_VC },
+            options: { format },
             schema: { definition: mockCredentialDefinition.schemaDefinition },
           },
           auth,
@@ -425,6 +429,33 @@ describe('CredentialDefinitionService', () => {
         id: 'existing-operation',
         state: 'processing',
       });
+    });
+
+    it('rejects a different explicit schema ID even with identical schema content', async () => {
+      mockFindExistingByTenantAndNameAndFormat.mockResolvedValueOnce(
+        sameDefinition({
+          registration: {
+            issuerId: 'did:indy:issuer',
+            schema: { id: 'original-schema', state: 'finished' },
+            definition: {},
+          },
+        }),
+      );
+      await expect(
+        service.create(
+          auth.tenantId,
+          {
+            name: 'Employee',
+            options: { format: CredentialDefinitionFormat.ANONCREDS },
+            schema: { id: 'schema-1' },
+          },
+          auth,
+        ),
+      ).rejects.toThrow(
+        'Credential definition registration settings differ from the existing definition.',
+      );
+      expect(mockCreate).not.toHaveBeenCalled();
+      expect(enqueue).not.toHaveBeenCalled();
     });
 
     it.each([
@@ -601,7 +632,12 @@ describe('CredentialDefinitionService', () => {
           auth,
         ),
       ).rejects.toMatchObject({
-        response: { code: 'REGISTRATION_REPLAY_UNAVAILABLE' },
+        response: {
+          code: 'REGISTRATION_REPLAY_UNAVAILABLE',
+          message:
+            'A deactivated credential definition with this name and format already exists and will not be reactivated.',
+          credential_definition_id: mockCredentialDefinition.id,
+        },
       });
       expect(enqueue).not.toHaveBeenCalled();
     });
@@ -800,7 +836,7 @@ describe('CredentialDefinitionService', () => {
       expect(mockEmit).not.toHaveBeenCalled();
     });
 
-    it('creates formats without a registration step as ready', async () => {
+    it('does not persist unsupported formats or complete their operations', async () => {
       const tenantId = mockCredentialDefinition.tenantId;
       const dto: CreateCredentialDefinitionDto = {
         name: mockCredentialDefinition.name,
@@ -812,25 +848,12 @@ describe('CredentialDefinitionService', () => {
       mockFindByTenantAndNameAndFormat.mockResolvedValue(null);
       mockCreate.mockResolvedValue(mockCredentialDefinition);
 
-      await service.create(tenantId, dto, auth);
-
-      expect(mockCreate).toHaveBeenCalledWith(
-        expect.objectContaining({
-          format: CredentialDefinitionFormat.SD_JWT,
-          registrationState: 'pending',
-          registration: null,
-          options: { format: CredentialDefinitionFormat.SD_JWT },
-        }),
-        manager,
-      );
-      expect(noRegistrationHandler.register).toHaveBeenCalled();
-      expect(transitionState).toHaveBeenCalledWith(
-        'operation-1',
-        'completed',
-        { credential_definition_id: mockCredentialDefinition.id },
-        manager,
-        tenantId,
-      );
+      await expect(service.create(tenantId, dto, auth)).rejects.toMatchObject({
+        response: { code: 'FORMAT_NOT_SUPPORTED' },
+      });
+      expect(mockCreate).not.toHaveBeenCalled();
+      expect(noRegistrationHandler.register).not.toHaveBeenCalled();
+      expect(transitionState).not.toHaveBeenCalled();
     });
 
     it('delegates schema normalization to the selected format handler', async () => {

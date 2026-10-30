@@ -35,16 +35,18 @@ describe('AnonCreds credential-definition registration worker', () => {
   const sendInTransaction = jest.fn();
   const definitionRepository = { findOne: jest.fn() };
   const operationRepository = { findOne: jest.fn() };
-  const manager = { update: jest.fn() };
+  const manager = { update: jest.fn(), query: jest.fn() };
   const transitionState = jest.fn();
   const resolve = jest.fn();
+  const publishSchema = jest.fn();
+  const publishDefinition = jest.fn();
   const port: jest.Mocked<AnonCredsRegistrationPort> = {
     resolveIssuer: jest.fn(),
     resolveSchema: jest.fn(),
     findSchema: jest.fn(),
-    publishSchema: jest.fn(),
+    publishSchema,
     findDefinition: jest.fn(),
-    publishDefinition: jest.fn(),
+    publishDefinition,
     verifyRevocation: jest.fn(),
   };
   const context: ConnectorContext = {
@@ -101,6 +103,19 @@ describe('AnonCreds credential-definition registration worker', () => {
       state: OperationState.PENDING,
     });
     manager.update.mockResolvedValue({ affected: 1 });
+    const intents = new Map<string, string>();
+    manager.query.mockImplementation((sql: string, values: string[]) => {
+      const key = JSON.stringify(values.slice(0, 3));
+      if (sql.includes('INSERT INTO anoncreds_publication_intent')) {
+        if (intents.has(key) && intents.get(key) !== 'rejected') {
+          return Promise.resolve([]);
+        }
+        intents.set(key, 'publishing');
+        return Promise.resolve([{ artifact_key: values[2] }]);
+      }
+      intents.set(key, values[3]);
+      return Promise.resolve([]);
+    });
     transitionState.mockResolvedValue(undefined);
     resolve.mockResolvedValue({
       adapter: { anonCredsRegistration: port },
@@ -515,6 +530,120 @@ describe('AnonCreds credential-definition registration worker', () => {
       'tenant',
     );
     expect(sendInTransaction).not.toHaveBeenCalled();
+  });
+
+  it.each(['schema', 'definition'] as const)(
+    'does not repeat %s publication after a lost response and later adopts discovery',
+    async (artifact) => {
+      const row = definition();
+      if (artifact === 'definition') {
+        row.registration!.schema = { id: 'schema', state: 'finished' };
+      }
+      definitionRepository.findOne.mockResolvedValue(row);
+      const publish = artifact === 'schema' ? publishSchema : publishDefinition;
+      publish.mockRejectedValueOnce(new Error('response lost'));
+
+      await worker.process('tenant', row.id);
+      expect(publish).toHaveBeenCalledTimes(1);
+      expect(manager.query.mock.invocationCallOrder[0]).toBeLessThan(
+        publish.mock.invocationCallOrder[0],
+      );
+      expect(manager.query).toHaveBeenCalledWith(
+        expect.stringContaining('INSERT INTO anoncreds_publication_intent'),
+        ['tenant', 'connector', expect.stringMatching(/^[a-f0-9]{64}$/)],
+      );
+      await worker.process('tenant', row.id);
+      expect(publish).toHaveBeenCalledTimes(1);
+      expect(transitionState).toHaveBeenLastCalledWith(
+        'operation',
+        OperationState.PROCESSING,
+        expect.objectContaining({
+          registration: expect.objectContaining({
+            stage:
+              artifact === 'schema'
+                ? 'awaiting_schema_discovery'
+                : 'awaiting_definition_discovery',
+          }),
+        }),
+        expect.any(Object),
+        'tenant',
+      );
+
+      if (artifact === 'schema') {
+        port.findSchema.mockResolvedValueOnce({
+          id: 'schema',
+          definition: row.schemaDefinition,
+        });
+      } else {
+        port.findDefinition.mockResolvedValueOnce('external-definition');
+      }
+      await worker.process('tenant', row.id);
+      expect(publish).toHaveBeenCalledTimes(1);
+      expect(transitionState).toHaveBeenLastCalledWith(
+        'operation',
+        OperationState.COMPLETED,
+        expect.any(Object),
+        expect.any(Object),
+        'tenant',
+      );
+    },
+  );
+
+  it.each(['schema', 'definition'] as const)(
+    'permits %s publication on replay after a conclusive rejection',
+    async (artifact) => {
+      const row = definition();
+      if (artifact === 'definition') {
+        row.registration!.schema = { id: 'schema', state: 'finished' };
+      }
+      definitionRepository.findOne.mockResolvedValue(row);
+      const publish = artifact === 'schema' ? publishSchema : publishDefinition;
+      publish.mockResolvedValueOnce({
+        state: 'failed',
+        jobId: 'rejected-job',
+        transactionId: 'rejected-txn',
+      });
+      await worker.process('tenant', row.id);
+      const failure = manager.update.mock.calls.find(
+        ([, , values]) => values.registrationState === 'failed',
+      );
+      expect(failure).toBeDefined();
+      row.registration = failure![2].registration;
+      await worker.process('tenant', row.id);
+      expect(publish).toHaveBeenCalledTimes(2);
+      expect(transitionState).toHaveBeenLastCalledWith(
+        'operation',
+        OperationState.COMPLETED,
+        expect.any(Object),
+        expect.any(Object),
+        'tenant',
+      );
+    },
+  );
+
+  it('shares durable schema intent across definitions pinned to the same wallet', async () => {
+    port.publishSchema.mockRejectedValueOnce(new Error('response lost'));
+    await worker.process('tenant', 'definition');
+    definitionRepository.findOne.mockResolvedValue({
+      ...definition(),
+      id: 'another-definition',
+    });
+    await worker.process('tenant', 'another-definition');
+    expect(port.publishSchema.mock.calls).toHaveLength(1);
+    expect(port.publishDefinition.mock.calls).toHaveLength(0);
+  });
+
+  it('permits a new attempt after a conclusive HTTP rejection but not after a timeout', async () => {
+    port.publishSchema.mockRejectedValueOnce(
+      new RegistrationBackendError(400, 'INVALID_ISSUER', 'Issuer rejected'),
+    );
+    await worker.process('tenant', 'definition');
+    port.publishSchema.mockRejectedValueOnce(
+      new RegistrationBackendError(408, 'TIMEOUT', 'Response timed out'),
+    );
+    await worker.process('tenant', 'definition');
+    await worker.process('tenant', 'definition');
+    expect(port.publishSchema.mock.calls).toHaveLength(2);
   });
 
   it('fails when a completed schema response has no ID', async () => {

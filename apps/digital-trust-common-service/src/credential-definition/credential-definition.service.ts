@@ -229,6 +229,9 @@ export class CredentialDefinitionService {
         definition.schemaDefinition,
         prepared.schemaDefinition,
       ) ||
+      (dto.schema.id !== undefined &&
+        definition.registration?.schema.id !==
+          prepared.registration?.schema.id) ||
       !isDeepStrictEqual(definition.options ?? {}, options) ||
       definition.registration?.issuerId !== prepared.registration?.issuerId
     ) {
@@ -240,7 +243,7 @@ export class CredentialDefinitionService {
       throw new ConflictException({
         code: 'REGISTRATION_REPLAY_UNAVAILABLE',
         message:
-          'A deactivated ready credential definition cannot be replayed.',
+          'A deactivated credential definition with this name and format already exists and will not be reactivated.',
         credential_definition_id: definition.id,
       });
     }

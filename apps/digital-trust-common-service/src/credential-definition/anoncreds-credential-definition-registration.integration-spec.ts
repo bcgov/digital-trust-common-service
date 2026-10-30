@@ -94,6 +94,10 @@ describe('credential definition registration (integration)', () => {
     port.findSchema.mockResolvedValue(null);
     port.findDefinition.mockResolvedValue(null);
     port.publishSchema.mockResolvedValue({ state: 'finished', id: 'schema' });
+    port.publishDefinition.mockResolvedValue({
+      state: 'finished',
+      id: 'cred-def',
+    });
     tenant = await db.getRepository(Tenant).save({
       name: 'Registration integration',
       slug: `registration-${randomUUID()}`,
@@ -175,6 +179,35 @@ describe('credential definition registration (integration)', () => {
     expect(completed.state).toBe(OperationState.COMPLETED);
     expect(port.publishSchema).toHaveBeenCalledTimes(1);
     expect(port.publishDefinition).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    CredentialDefinitionFormat.SD_JWT,
+    CredentialDefinitionFormat.MDL,
+    CredentialDefinitionFormat.W3C_VC,
+  ])('does not register the unsupported %s placeholder', async (format) => {
+    await expect(
+      service.create(
+        tenant.id,
+        {
+          ...dto,
+          options: { format },
+        },
+        auth,
+      ),
+    ).rejects.toMatchObject({
+      response: { code: 'FORMAT_NOT_SUPPORTED' },
+    });
+    expect(
+      await db.getRepository(CredentialDefinition).countBy({
+        tenantId: tenant.id,
+      }),
+    ).toBe(0);
+    expect(
+      await db.getRepository(Operation).countBy({
+        tenantId: tenant.id,
+      }),
+    ).toBe(0);
   });
 
   it('preserves concurrent registration progress when a name patch follows a stale read', async () => {
@@ -339,6 +372,187 @@ describe('credential definition registration (integration)', () => {
         })
       ).registrationState,
     ).toBe('failed');
+  });
+
+  it('serializes concurrent failed replays into a single new operation', async () => {
+    const original = await service.create(tenant.id, dto, auth);
+    await db
+      .getRepository(CredentialDefinition)
+      .update(
+        { tenantId: tenant.id, registrationOperationId: original.id },
+        { registrationState: 'failed' },
+      );
+    await db
+      .getRepository(Operation)
+      .update(
+        { tenantId: tenant.id, id: original.id },
+        { state: OperationState.FAILED },
+      );
+    const [first, second] = await Promise.all([
+      service.create(tenant.id, dto, auth),
+      service.create(tenant.id, dto, auth),
+    ]);
+    expect(first.id).not.toBe(original.id);
+    expect(second.id).toBe(first.id);
+    expect(
+      await db.getRepository(Operation).countBy({ tenantId: tenant.id }),
+    ).toBe(2);
+    const saved = await db.getRepository(CredentialDefinition).findOneByOrFail({
+      tenantId: tenant.id,
+      name: dto.name,
+    });
+    expect(saved.registrationOperationId).toBe(first.id);
+  });
+
+  it('prefers the active definition over an inactive predecessor', async () => {
+    const original = await service.create(tenant.id, dto, auth);
+    const repository = db.getRepository(CredentialDefinition);
+    const row = await repository.findOneByOrFail({
+      tenantId: tenant.id,
+      registrationOperationId: original.id,
+    });
+    await repository.insert({
+      ...row,
+      id: randomUUID(),
+      isActive: false,
+      registrationState: 'ready',
+      options: { ...dto.options, tag: 'old' },
+    });
+    const replay = await service.create(tenant.id, dto, auth);
+    expect(replay.id).toBe(original.id);
+  });
+
+  it('chooses the newest inactive fallback and breaks timestamp ties by ID', async () => {
+    const operation = await service.create(tenant.id, dto, auth);
+    const repository = db.getRepository(CredentialDefinition);
+    const row = await repository.findOneByOrFail({
+      tenantId: tenant.id,
+      registrationOperationId: operation.id,
+    });
+    await repository.update(
+      { tenantId: tenant.id, id: row.id },
+      { isActive: false, createdAt: new Date(0) },
+    );
+    const firstId = '00000000-0000-4000-8000-000000000001';
+    const secondId = '00000000-0000-4000-8000-000000000002';
+    for (const id of [secondId, firstId]) {
+      await repository.insert({
+        ...row,
+        id,
+        isActive: false,
+        createdAt: new Date(1),
+      });
+    }
+    const scopedRepository = app
+      .select(CredentialDefinitionModule)
+      .get(CredentialDefinitionRepository, { strict: true });
+    const selected =
+      await scopedRepository.findExistingByTenantAndNameAndFormat(
+        tenant.id,
+        dto.name,
+        CredentialDefinitionFormat.ANONCREDS,
+      );
+    expect(selected?.id).toBe(firstId);
+  });
+
+  it.each(['schema', 'definition'] as const)(
+    'continues %s publication after a conclusive backend rejection',
+    async (artifact) => {
+      const original = await service.create(tenant.id, dto, auth);
+      const repository = db.getRepository(CredentialDefinition);
+      const row = await repository.findOneByOrFail({
+        tenantId: tenant.id,
+        registrationOperationId: original.id,
+      });
+      if (artifact === 'definition') {
+        await repository.update(
+          { tenantId: tenant.id, id: row.id },
+          {
+            registration: {
+              ...row.registration!,
+              schema: { id: 'schema', state: 'finished' },
+            },
+          },
+        );
+      }
+      const publish =
+        artifact === 'schema' ? port.publishSchema : port.publishDefinition;
+      publish.mockResolvedValueOnce({ state: 'failed' });
+      await worker.process(tenant.id, row.id);
+      const replay = await service.create(tenant.id, dto, auth);
+      expect(replay.id).not.toBe(original.id);
+      await worker.process(tenant.id, row.id);
+      expect(publish).toHaveBeenCalledTimes(2);
+      expect(
+        (
+          await repository.findOneByOrFail({
+            tenantId: tenant.id,
+            id: row.id,
+          })
+        ).registrationState,
+      ).toBe('ready');
+    },
+  );
+
+  it.each(['schema', 'definition'] as const)(
+    'does not repeat %s publication after a lost response across POST replay',
+    async (artifact) => {
+      const original = await service.create(tenant.id, dto, auth);
+      const repository = db.getRepository(CredentialDefinition);
+      const row = await repository.findOneByOrFail({
+        tenantId: tenant.id,
+        registrationOperationId: original.id,
+      });
+      if (artifact === 'definition') {
+        await repository.update(
+          { tenantId: tenant.id, id: row.id },
+          {
+            registration: {
+              ...row.registration!,
+              schema: { id: 'schema', state: 'finished' },
+            },
+          },
+        );
+      }
+      const publish =
+        artifact === 'schema' ? port.publishSchema : port.publishDefinition;
+      publish.mockRejectedValueOnce(new Error('response lost'));
+      await worker.process(tenant.id, row.id);
+      const replay = await service.create(tenant.id, dto, auth);
+      expect(replay.id).not.toBe(original.id);
+      await worker.process(tenant.id, row.id);
+      expect(publish).toHaveBeenCalledTimes(1);
+      if (artifact === 'schema') {
+        port.findSchema.mockResolvedValueOnce({
+          id: 'schema',
+          definition: row.schemaDefinition,
+        });
+      } else {
+        port.findDefinition.mockResolvedValueOnce('cred-def');
+      }
+      await worker.process(tenant.id, row.id);
+      expect(publish).toHaveBeenCalledTimes(1);
+      expect(
+        (
+          await repository.findOneByOrFail({
+            tenantId: tenant.id,
+            id: row.id,
+          })
+        ).registrationState,
+      ).toBe('ready');
+    },
+  );
+
+  it('claims a shared schema once across concurrent definitions in the same wallet', async () => {
+    await Promise.all([
+      service.create(tenant.id, dto, auth),
+      service.create(tenant.id, { ...dto, name: 'Another employee' }, auth),
+    ]);
+    const rows = await db
+      .getRepository(CredentialDefinition)
+      .findBy({ tenantId: tenant.id });
+    await Promise.all(rows.map((row) => worker.process(tenant.id, row.id)));
+    expect(port.publishSchema).toHaveBeenCalledTimes(1);
   });
 
   it('persists waiting publication correlations without advancing to definition creation', async () => {

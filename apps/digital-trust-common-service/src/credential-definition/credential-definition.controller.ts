@@ -95,7 +95,7 @@ export class CredentialDefinitionController {
   @HttpCode(HttpStatus.ACCEPTED)
   @ApiAcceptedResponse({
     description:
-      'Credential definition accepted. AnonCreds registration runs asynchronously; other formats complete immediately.',
+      'Credential definition accepted. AnonCreds registration runs asynchronously; formats without a registered handler return FORMAT_NOT_SUPPORTED.',
     type: OperationResponseDto,
   })
   @ApiConflictResponse({

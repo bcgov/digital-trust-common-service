@@ -1283,9 +1283,11 @@ formats can define their own status settings. Each format handler strictly
 validates and normalizes its own options.
 Options are stored in a separate JSONB column, returned read-only, and rejected
 on PATCH; metadata remains editable free-form annotations. All declared
-credential-definition formats are accepted, with formats that have no
-registration step completing immediately. Signing keys never enter the
-registration request or application database.
+credential-definition formats pass DTO validation, but only AnonCreds has a
+registered handler. Other formats return `FORMAT_NOT_SUPPORTED` without
+creating a definition or operation. The no-registration handler is an
+unregistered placeholder, not a supported issuance path. Signing keys never
+enter the registration request or application database.
 
 The response is a `202` Operation with `result.credential_definition_id`.
 Poll the existing operation endpoint; the definition's GET response includes
@@ -1294,13 +1296,18 @@ and its pinned `connector_id`. The `credential-definition.register` queue
 processes AnonCreds definitions only; it has no recurring reconciliation job.
 
 Create is idempotent by `(tenantId, name, format)`. A matching request must
-resolve to the same connector, issuer, schema, and normalized immutable options;
+resolve to the same connector, issuer, schema, and normalized immutable options,
 otherwise it returns `409`. Metadata is free-form annotation data and does not
-affect publication identity. A ready definition returns its completed
+affect publication identity.
+An explicit `schema.id` must match the original artifact ID, even when two
+published schemas have identical content. The transactional lookup prefers an
+active row and locks it so concurrent failed replays return one new operation.
+An inactive fallback is selected deterministically by newest creation time and ID.
+A ready definition returns its completed
 operation. A pending definition returns its current operation and enqueues a
 singleton-keyed continuation. A failed definition gets a new operation and
 continues from its saved progress. A deactivated ready definition returns
-`409 REGISTRATION_REPLAY_UNAVAILABLE`.
+`409 REGISTRATION_REPLAY_UNAVAILABLE`, with its existing ID and no reactivation.
 
 The worker looks up deterministic schema and definition IDs before publishing.
 It stores the backend job/transaction correlation as soon as a publication
@@ -1313,14 +1320,21 @@ check. Backend rejection or another error settles the operation as `FAILED`;
 there is no automatic failure retry. Repeating POST creates a new operation
 and resumes from the definition's saved progress.
 
-Two edge cases still need backend-aware handling. If publication succeeds but
-times out before the job/transaction ID is saved, a repeated POST may submit
-again and the backend may reject the duplicate; repeat POST after confirming
-the artifact state so deterministic lookup can adopt a completed artifact.
-Two different definitions can also look up the same schema concurrently and
-both attempt publication; the backend may reject one duplicate. Repeat POST
-for the rejected definition after the schema is visible so it can continue
-using that schema. Published artifacts are not deleted on local failure.
+Before either schema or definition publication, a short transaction records
+durable intent keyed by tenant, pinned connector wallet and deterministic
+artifact identity. Different local definitions sharing that identity cannot
+both publish it. No database connection is retained across backend calls.
+A lost response, timeout or indeterminate backend error leaves that intent
+closed: later runs perform lookup and adopt the artifact once visible, without
+submitting it again. These checks use `awaiting_schema_discovery` or
+`awaiting_definition_discovery` rather than claiming endorsement is pending.
+A conclusive rejection (an explicit failed publication or
+a non-transient 4xx response) permits a new attempt after lookup finds nothing.
+Pending and uncertain outcomes are never treated as rejection.
+If the backend never exposes an uncertain artifact, backend-aware manual
+investigation is still needed; repeating POST does not clear the intent.
+Deleting a local definition also does not clear it. Published artifacts are
+not deleted on local failure.
 Revocable definitions remain pending until the backend's active registry is
 finished, an initial accumulator exists, capacity remains, and its public
 tails file is reachable. ACA-Py owns registry initialization and rollover.

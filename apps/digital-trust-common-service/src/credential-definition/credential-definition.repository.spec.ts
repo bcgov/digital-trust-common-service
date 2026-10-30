@@ -168,6 +168,8 @@ describe('CredentialDefinitionRepository', () => {
           name: 'Employee',
           format: CredentialDefinitionFormat.ANONCREDS,
         },
+        order: { isActive: 'DESC', createdAt: 'DESC', id: 'ASC' },
+        lock: { mode: 'pessimistic_write' },
       });
     });
   });

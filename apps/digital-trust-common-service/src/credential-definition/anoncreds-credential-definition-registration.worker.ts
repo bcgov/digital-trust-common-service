@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 import {
   CredentialFormat,
   AnonCredsRegistrationPort,
@@ -195,11 +197,6 @@ export class AnonCredsCredentialDefinitionRegistrationWorker implements OnModule
       };
       await this.saveProgress(work);
     } else if (this.hasSubmission(work.registration.definition)) {
-      if (work.registration.definition.state === 'failed') {
-        throw new ValidationError([
-          'The backend rejected credential-definition publication',
-        ]);
-      }
       if (
         work.registration.definition.state === 'finished' &&
         !work.registration.definition.id
@@ -213,12 +210,17 @@ export class AnonCredsCredentialDefinitionRegistrationWorker implements OnModule
       return;
     } else {
       work.registration.stage = 'definition_publication';
-      const submitted = await backend.port.publishDefinition(
-        backend.context,
-        work.registration.issuerId,
+      const submitted = await this.publishArtifact(
+        work,
+        backend,
+        'definition',
         schemaId,
-        options,
       );
+      if (!submitted) {
+        work.registration.stage = 'awaiting_definition_discovery';
+        await this.persistWaiting(work);
+        return;
+      }
       work.registration.definition = this.toProgress(submitted);
       if (submitted.state === 'failed') {
         await this.saveProgress(work);
@@ -290,19 +292,16 @@ export class AnonCredsCredentialDefinitionRegistrationWorker implements OnModule
       return found.id;
     }
     if (this.hasSubmission(progress)) {
-      if (progress.state === 'failed') {
-        throw new ValidationError(['The backend rejected schema publication']);
-      }
       work.registration.stage = 'awaiting_schema_endorsement';
       return null;
     }
 
     work.registration.stage = 'schema_publication';
-    const submitted = await backend.port.publishSchema(
-      backend.context,
-      work.registration.issuerId,
-      work.definition.schemaDefinition,
-    );
+    const submitted = await this.publishArtifact(work, backend, 'schema');
+    if (!submitted) {
+      work.registration.stage = 'awaiting_schema_discovery';
+      return null;
+    }
     work.registration.schema = this.toProgress(submitted);
     await this.saveProgress(work);
     if (submitted.state === 'failed') {
@@ -323,9 +322,115 @@ export class AnonCredsCredentialDefinitionRegistrationWorker implements OnModule
   }
 
   private hasSubmission(progress: ArtifactProgress): boolean {
+    if (progress.state === 'failed') {
+      return false;
+    }
     return Boolean(
       progress.id || progress.jobId || progress.transactionId || progress.state,
     );
+  }
+
+  private async publishArtifact(
+    work: RegistrationWork,
+    backend: RegistrationBackend,
+    artifact: 'schema' | 'definition',
+    schemaId?: string,
+  ): Promise<RegistrationSubmission | null> {
+    const connectorId = work.definition.connectorId;
+    if (!connectorId) {
+      throw new ValidationError(['The registration connector is unavailable']);
+    }
+    const options = this.definitionOptions(work.definition);
+    const identity =
+      artifact === 'schema'
+        ? [
+            artifact,
+            work.registration.issuerId,
+            work.definition.schemaDefinition.schema_name,
+            work.definition.schemaDefinition.schema_version,
+          ]
+        : [artifact, work.registration.issuerId, schemaId, options.tag];
+    const key = createHash('sha256')
+      .update(JSON.stringify(identity))
+      .digest('hex');
+    const parameters = [work.tenantId, connectorId, key];
+    const claimed = await this.dataSource.transaction((manager) =>
+      manager.query<{ artifact_key: string }[]>(
+        `
+        INSERT INTO anoncreds_publication_intent
+          (tenant_id, connector_id, artifact_key, state)
+        VALUES ($1, $2, $3, 'publishing')
+        ON CONFLICT (tenant_id, connector_id, artifact_key) DO UPDATE
+          SET state = 'publishing'
+          WHERE anoncreds_publication_intent.state = 'rejected'
+        RETURNING artifact_key
+      `,
+        parameters,
+      ),
+    );
+    if (claimed.length === 0) {
+      return null;
+    }
+
+    // A missing response leaves the committed intent closed to new writes.
+    let submitted: RegistrationSubmission;
+    try {
+      if (artifact === 'schema') {
+        submitted = await backend.port.publishSchema(
+          backend.context,
+          work.registration.issuerId,
+          work.definition.schemaDefinition,
+        );
+      } else {
+        if (!schemaId) {
+          throw new ValidationError([
+            'Credential definition requires a schema ID',
+          ]);
+        }
+        submitted = await backend.port.publishDefinition(
+          backend.context,
+          work.registration.issuerId,
+          schemaId,
+          options,
+        );
+      }
+    } catch (error) {
+      const status =
+        error instanceof RegistrationBackendError
+          ? error.status
+          : axios.isAxiosError(error)
+            ? error.response?.status
+            : undefined;
+      if (
+        status &&
+        status >= 400 &&
+        status < 500 &&
+        ![408, 429].includes(status)
+      ) {
+        await this.recordPublication(parameters, 'rejected');
+      }
+      throw error;
+    }
+    await this.recordPublication(
+      parameters,
+      submitted.state === 'failed' ? 'rejected' : 'submitted',
+    );
+    return submitted;
+  }
+
+  private async recordPublication(
+    parameters: string[],
+    state: 'rejected' | 'submitted',
+  ): Promise<void> {
+    await this.dataSource.transaction(async (manager) => {
+      await manager.query(
+        `
+        UPDATE anoncreds_publication_intent SET state = $4
+        WHERE tenant_id = $1 AND connector_id = $2 AND artifact_key = $3
+      `,
+        [...parameters, state],
+      );
+    });
   }
 
   private toProgress(submission: RegistrationSubmission): ArtifactProgress {
@@ -522,13 +627,15 @@ export class AnonCredsCredentialDefinitionRegistrationWorker implements OnModule
 
     if (
       stage.startsWith('schema_') ||
-      stage === 'awaiting_schema_endorsement'
+      stage === 'awaiting_schema_endorsement' ||
+      stage === 'awaiting_schema_discovery'
     ) {
       artifact = 'schema';
       current = registration.schema;
     } else if (
       stage.startsWith('definition_') ||
       stage === 'awaiting_definition_endorsement' ||
+      stage === 'awaiting_definition_discovery' ||
       stage === 'awaiting_revocation_registry'
     ) {
       artifact = 'credential_definition';

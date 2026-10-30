@@ -75,6 +75,8 @@ export class CredentialDefinitionRepository {
       manager?.getRepository(CredentialDefinition) ?? this.repository;
     return await repository.findOne({
       where: { tenantId, name, format },
+      order: { isActive: 'DESC', createdAt: 'DESC', id: 'ASC' },
+      ...(manager ? { lock: { mode: 'pessimistic_write' as const } } : {}),
     });
   }
 
