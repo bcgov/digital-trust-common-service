@@ -1,3 +1,6 @@
+import { ConnectorType as PortConnectorType } from '@app/credential-ports';
+import type { ConnectorProbe } from '@app/credential-ports';
+
 import { ConnectorType } from '../connection/connection.entity';
 
 import { ConnectorHealthCheckService } from './connector-health-check.service';
@@ -14,9 +17,16 @@ const { lookup } = require('node:dns/promises') as {
 describe('ConnectorHealthCheckService', () => {
   let service: ConnectorHealthCheckService;
   let originalFetch: typeof global.fetch | undefined;
+  let tractionProbe: ConnectorProbe;
+  let probeCheck: jest.Mock;
 
   beforeEach(() => {
-    service = new ConnectorHealthCheckService();
+    probeCheck = jest.fn();
+    tractionProbe = {
+      connectorType: PortConnectorType.Traction,
+      check: probeCheck,
+    };
+    service = new ConnectorHealthCheckService([tractionProbe]);
     originalFetch = global.fetch;
     global.fetch = jest.fn();
     lookup.mockResolvedValue([{ address: '93.184.216.34', family: 4 }]);
@@ -27,71 +37,9 @@ describe('ConnectorHealthCheckService', () => {
     jest.restoreAllMocks();
   });
 
-  it('rejects an endpoint that resolves to a private address before fetching', async () => {
-    lookup.mockResolvedValue([{ address: '10.0.0.5', family: 4 }]);
-
-    await expect(
-      service.check(ConnectorType.TRACTION, 'https://internal.example.com', {
-        apiKey: 'key-1',
-      }),
-    ).rejects.toThrow(
-      'Connector endpoint resolves to a private, loopback, or reserved network address.',
-    );
-    expect(global.fetch).not.toHaveBeenCalled();
-  });
-
-  describe('traction', () => {
-    it('requests a tenant token when tractionTenantId is provided', async () => {
-      (global.fetch as jest.Mock).mockResolvedValue({ ok: true, status: 200 });
-
-      const result = await service.check(
-        ConnectorType.TRACTION,
-        'https://traction.example.com',
-        { apiKey: 'key-1', tractionTenantId: 'tenant-abc' },
-      );
-
-      expect(global.fetch).toHaveBeenCalledWith(
-        'https://traction.example.com/multitenancy/tenant/tenant-abc/token',
-        expect.objectContaining({
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ api_key: 'key-1' }),
-        }),
-      );
-      expect(result.status).toBe('healthy');
-    });
-
-    it('reports unhealthy on a non-ok response', async () => {
-      (global.fetch as jest.Mock).mockResolvedValue({
-        ok: false,
-        status: 401,
-      });
-
-      const result = await service.check(
-        ConnectorType.TRACTION,
-        'https://traction.example.com',
-        { apiKey: 'bad-key', tractionTenantId: 'tenant-abc' },
-      );
-
-      expect(result.status).toBe('unhealthy');
-      expect(result.message).toContain('401');
-    });
-
-    it('reports unhealthy on a network error', async () => {
-      (global.fetch as jest.Mock).mockRejectedValue(new Error('ECONNREFUSED'));
-
-      const result = await service.check(
-        ConnectorType.TRACTION,
-        'https://traction.example.com',
-        { apiKey: 'key-1', tractionTenantId: 'tenant-abc' },
-      );
-
-      expect(result.status).toBe('unhealthy');
-      expect(result.message).toBe('ECONNREFUSED');
-    });
-
-    it('reports unhealthy without fetching when tractionTenantId is missing', async () => {
-      const result = await service.check(
+  describe('probe dispatch', () => {
+    it('reports unhealthy when no probe is registered for the type', async () => {
+      const result = await new ConnectorHealthCheckService([]).check(
         ConnectorType.TRACTION,
         'https://traction.example.com',
         { apiKey: 'key-1' },
@@ -99,13 +47,78 @@ describe('ConnectorHealthCheckService', () => {
 
       expect(result.status).toBe('unhealthy');
       expect(result.message).toBe(
-        'Traction connectors require traction_tenant_id.',
+        'No connectivity probe is registered for connector type traction.',
       );
+    });
+
+    it('delegates to the probe registered for the connector type', async () => {
+      probeCheck.mockResolvedValue({
+        status: 'healthy',
+        latencyMs: 3,
+      });
+
+      const result = await service.check(
+        ConnectorType.TRACTION,
+        'https://traction.example.com',
+        { apiKey: 'key-1', tractionTenantId: 'tenant-abc' },
+      );
+
+      expect(probeCheck).toHaveBeenCalledWith('https://traction.example.com', {
+        apiKey: 'key-1',
+        tractionTenantId: 'tenant-abc',
+      });
+      expect(result).toEqual({ status: 'healthy', latencyMs: 3 });
       expect(global.fetch).not.toHaveBeenCalled();
+    });
+
+    it('keeps a Loki-safe agent log identifier from the probe', async () => {
+      probeCheck.mockResolvedValue({
+        status: 'healthy',
+        latencyMs: 3,
+        agentLogId: 'wallet-1',
+      });
+
+      const result = await service.check(
+        ConnectorType.TRACTION,
+        'https://traction.example.com',
+        { apiKey: 'key-1' },
+      );
+
+      expect(result.agentLogId).toBe('wallet-1');
+    });
+
+    it('discards an agent log identifier that is not Loki-safe', async () => {
+      probeCheck.mockResolvedValue({
+        status: 'healthy',
+        latencyMs: 3,
+        agentLogId: 'a|t-other',
+      });
+
+      const result = await service.check(
+        ConnectorType.TRACTION,
+        'https://traction.example.com',
+        { apiKey: 'key-1' },
+      );
+
+      expect(result.status).toBe('healthy');
+      expect(result.agentLogId).toBeUndefined();
     });
   });
 
   describe('credo', () => {
+    it('reports unhealthy on a network error', async () => {
+      (global.fetch as jest.Mock).mockRejectedValue(new Error('ECONNREFUSED'));
+
+      const result = await service.check(
+        ConnectorType.CREDO,
+        'https://credo.example.com',
+        { apiKey: 'key-1' },
+      );
+
+      expect(result.status).toBe('unhealthy');
+      expect(result.message).toBe('ECONNREFUSED');
+    });
+
     it('calls the health endpoint with a bearer token', async () => {
       (global.fetch as jest.Mock).mockResolvedValue({ ok: true, status: 200 });
 

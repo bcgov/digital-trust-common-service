@@ -1,84 +1,67 @@
-import { Injectable, Logger } from '@nestjs/common';
-
-import { assertSafeConnectorUrl } from '../common/assert-safe-connector-url';
 import {
-  buildTractionTokenRequestBody,
-  buildTractionTokenUrl,
-} from '../common/traction-request';
+  CONNECTOR_PROBES,
+  type ConnectorHealthCheckResult,
+  type ConnectorProbe,
+} from '@app/credential-ports';
+import { Inject, Injectable, Logger } from '@nestjs/common';
+
+import { isValidAgentLogId } from '../common/agent-log-partition-key';
+import { assertSafeConnectorUrl } from '../common/assert-safe-connector-url';
 import { ConnectorType } from '../connection/connection.entity';
 
 import { ConnectorCredentialsDto } from './dto/create-connector-credential.dto';
 
 const HEALTH_CHECK_TIMEOUT_MS = 5000;
 
-export type ConnectorHealthStatus = 'healthy' | 'unhealthy';
-
-export interface ConnectorHealthCheckResult {
-  status: ConnectorHealthStatus;
-  latencyMs: number;
-  message?: string;
-}
-
 /**
- * Attempts to authenticate against, and health-check, a tenant's backend
- * agent endpoint (Traction or Credo Agent Service).
+ * Health-checks a tenant's backend agent endpoint. Connector types with a
+ * registered ConnectorProbe are dispatched to it; Credo still uses the
+ * provisional check below.
  */
 @Injectable()
 export class ConnectorHealthCheckService {
   private readonly logger = new Logger(ConnectorHealthCheckService.name);
+
+  public constructor(
+    @Inject(CONNECTOR_PROBES)
+    private readonly probes: readonly ConnectorProbe[],
+  ) {}
 
   public async check(
     connectorType: ConnectorType,
     endpointUrl: string,
     credentials: ConnectorCredentialsDto,
   ): Promise<ConnectorHealthCheckResult> {
-    switch (connectorType) {
-      case ConnectorType.TRACTION:
-        return await this.checkTraction(endpointUrl, credentials);
-      case ConnectorType.CREDO:
-        return await this.checkCredo(endpointUrl, credentials);
-    }
-  }
+    const probe = this.probes.find(
+      (candidate) =>
+        (candidate.connectorType as string) === (connectorType as string),
+    );
 
-  private async checkTraction(
-    endpointUrl: string,
-    credentials: ConnectorCredentialsDto,
-  ): Promise<ConnectorHealthCheckResult> {
-    await assertSafeConnectorUrl(endpointUrl);
+    if (probe) {
+      const result = await probe.check(endpointUrl, { ...credentials });
 
-    const start = Date.now();
+      if (
+        result.agentLogId !== undefined &&
+        !isValidAgentLogId(result.agentLogId)
+      ) {
+        this.logger.warn(
+          'Connector probe returned an unusable agent log identifier; discarding it.',
+        );
+        delete result.agentLogId;
+      }
 
-    if (!credentials.tractionTenantId) {
-      return {
-        status: 'unhealthy',
-        latencyMs: Date.now() - start,
-        message: 'Traction connectors require traction_tenant_id.',
-      };
+      return result;
     }
 
-    try {
-      // codeql[js/request-forgery]: endpointUrl is validated immediately
-      // above by assertSafeConnectorUrl (https-only, DNS-checked against
-      // private/loopback/reserved ranges); tractionTenantId is
-      // percent-encoded by buildTractionTokenUrl so it can only affect the
-      // path on that already-validated host.
-      const response = await fetch(
-        buildTractionTokenUrl(endpointUrl, credentials.tractionTenantId),
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(
-            buildTractionTokenRequestBody(credentials.apiKey),
-          ),
-          signal: AbortSignal.timeout(HEALTH_CHECK_TIMEOUT_MS),
-          redirect: 'manual',
-        },
-      );
-
-      return this.toResult(response, start);
-    } catch (error) {
-      return this.toErrorResult(error, start, endpointUrl);
+    if (connectorType === ConnectorType.CREDO) {
+      return await this.checkCredo(endpointUrl, credentials);
     }
+
+    return {
+      status: 'unhealthy',
+      latencyMs: 0,
+      message: `No connectivity probe is registered for connector type ${connectorType}.`,
+    };
   }
 
   // TODO: provisional — confirm the real Credo Agent Service health/auth

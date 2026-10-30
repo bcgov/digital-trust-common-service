@@ -224,4 +224,29 @@ describe('EncryptionService', () => {
       });
     });
   });
+
+  describe('deriveBlindIndex', () => {
+    it('is deterministic and separated by domain and value', () => {
+      const hash = service.deriveBlindIndex('domain-a', 'value');
+
+      expect(hash).toMatch(/^[0-9a-f]{64}$/);
+      expect(service.deriveBlindIndex('domain-a', 'value')).toBe(hash);
+      expect(service.deriveBlindIndex('domain-b', 'value')).not.toBe(hash);
+      expect(service.deriveBlindIndex('domain-a', 'other')).not.toBe(hash);
+    });
+
+    it('is keyed with version 1 even when a newer key is current', () => {
+      (keyProvider.getCurrentKey as jest.Mock).mockReturnValue({
+        version: 2,
+        key: KEY_V2,
+      });
+
+      service.deriveBlindIndex('domain-a', 'value');
+
+      /* eslint-disable @typescript-eslint/unbound-method */
+      expect(keyProvider.getKey).toHaveBeenCalledWith(1);
+      expect(keyProvider.getCurrentKey).not.toHaveBeenCalled();
+      /* eslint-enable @typescript-eslint/unbound-method */
+    });
+  });
 });

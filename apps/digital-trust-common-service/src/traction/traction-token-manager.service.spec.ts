@@ -171,6 +171,42 @@ describe('TractionTokenManager', () => {
     expect(mockRequest).toHaveBeenCalledTimes(2);
   });
 
+  it.each([
+    ['endpointUrl', { endpointUrl: 'https://traction-two.example.com' }],
+    [
+      'tractionTenantId',
+      {
+        credentials: { apiKey: 'key-1', tractionTenantId: 'traction-tenant-2' },
+      },
+    ],
+  ])(
+    'acquires a fresh token when the connector %s changes under a warm cache',
+    async (_field, change) => {
+      const firstToken = makeJwt({ exp: 3600, wallet_id: 'old' });
+      const secondToken = makeJwt({ exp: 3600, wallet_id: 'new' });
+      mockRequest
+        .mockResolvedValueOnce({ data: { token: firstToken } })
+        .mockResolvedValueOnce({ data: { token: secondToken } });
+
+      await manager.getToken(makeContext());
+      const result = await manager.getToken(makeContext(change));
+
+      expect(result).toBe(secondToken);
+      expect(mockRequest).toHaveBeenCalledTimes(2);
+    },
+  );
+
+  it('drops a cached token on evict', async () => {
+    const token = makeJwt({ exp: 3600 });
+    mockRequest.mockResolvedValue({ data: { token } });
+
+    await manager.getToken(makeContext());
+    manager.evict('connector-1');
+    await manager.getToken(makeContext());
+
+    expect(mockRequest).toHaveBeenCalledTimes(2);
+  });
+
   it('treats a token with no usable exp claim as already expired', async () => {
     const token = makeJwt({});
     mockRequest.mockResolvedValue({ data: { token } });
