@@ -45,10 +45,9 @@ function displayStatus(
   return definition.status ?? 'draft';
 }
 
-function statusTone(
-  status: keyof typeof STATUS_KEYS,
-): StatusBadgeTone {
+function statusTone(status: keyof typeof STATUS_KEYS): StatusBadgeTone {
   if (status === 'published') return 'success';
+  if (status === 'failed') return 'danger';
   if (status === 'draft' || status === 'pending' || status === 'unverified') {
     return 'pending';
   }
@@ -108,8 +107,7 @@ export function CredentialDefinitionsTable({
                 : '';
             const connectorUrl = definition.connector_id
               ? connectors.find(
-                  (connector) =>
-                    connector.id === definition.connector_id,
+                  (connector) => connector.id === definition.connector_id,
                 )?.endpoint_url
               : undefined;
             const currentStatus = displayStatus(definition);

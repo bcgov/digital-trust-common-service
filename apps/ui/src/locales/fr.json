@@ -19,8 +19,8 @@
       "draft": "brouillon",
       "published": "publié",
       "deprecated": "obsolète",
-      "pending": "enregistrement en attente",
-      "failed": "échec de l'enregistrement",
+      "pending": "en attente",
+      "failed": "échec",
       "unverified": "non enregistré"
     },
     "formats": {

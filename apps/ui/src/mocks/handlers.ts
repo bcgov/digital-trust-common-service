@@ -374,8 +374,7 @@ export const handlers = [
       if (!connector) {
         return HttpResponse.json(
           {
-            message:
-              'Selected connector is not active for this tenant.',
+            message: 'Selected connector is not active for this tenant.',
           },
           { status: 400 },
         );
@@ -391,7 +390,10 @@ export const handlers = [
           item.name === body.name &&
           item.format === body.options.format,
       );
-      if (existing && (body.status === 'draft' || existing.status !== 'draft')) {
+      if (
+        existing &&
+        (body.status === 'draft' || existing.status !== 'draft')
+      ) {
         return HttpResponse.json(
           {
             message:
@@ -461,8 +463,7 @@ export const handlers = [
       );
       if (!definition) return new HttpResponse(null, { status: 404 });
       const changesSchema =
-        body.schema_definition !== undefined ||
-        body.connector_id !== undefined;
+        body.schema_definition !== undefined || body.connector_id !== undefined;
       if (
         definition.status !== 'draft' &&
         (changesSchema || body.status === 'draft')

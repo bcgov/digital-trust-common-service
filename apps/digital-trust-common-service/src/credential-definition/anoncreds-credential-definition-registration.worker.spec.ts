@@ -351,7 +351,7 @@ describe('AnonCreds credential-definition registration worker', () => {
     );
   });
 
-  it('stops delayed checks at the bounded limit and leaves the operation processing', async () => {
+  it('fails delayed checks at the bounded limit instead of leaving them processing', async () => {
     const row = definition();
     row.registration!.schema = {
       transactionId: 'transaction-1',
@@ -364,8 +364,16 @@ describe('AnonCreds credential-definition registration worker', () => {
     expect(sendInTransaction).not.toHaveBeenCalled();
     expect(transitionState).toHaveBeenLastCalledWith(
       'operation',
-      OperationState.PROCESSING,
-      expect.any(Object),
+      OperationState.FAILED,
+      expect.objectContaining({
+        code: 'REGISTRATION_FAILED',
+        problem_details: expect.objectContaining({
+          backend_code: 'REGISTRATION_TIMEOUT',
+          detail: 'Registration did not become ready before the polling limit',
+          retryable: false,
+          stage: 'awaiting_schema_endorsement',
+        }),
+      }),
       expect.any(Object),
       'tenant',
     );
@@ -506,6 +514,59 @@ describe('AnonCreds credential-definition registration worker', () => {
       expect.any(Object),
       'tenant',
     );
+  });
+
+  it('records an exception during revocation verification at the correct stage', async () => {
+    port.findSchema.mockResolvedValueOnce({
+      id: 'schema',
+      definition: definition().schemaDefinition,
+    });
+    port.findDefinition.mockResolvedValueOnce('external-definition');
+    port.verifyRevocation.mockRejectedValueOnce(
+      new Error('verification failed'),
+    );
+
+    await worker.process('tenant', 'definition');
+
+    expect(transitionState).toHaveBeenLastCalledWith(
+      'operation',
+      OperationState.FAILED,
+      expect.objectContaining({
+        problem_details: expect.objectContaining({
+          stage: 'revocation_verification',
+        }),
+      }),
+      expect.any(Object),
+      'tenant',
+    );
+  });
+
+  it('fails registration after the readiness polling limit instead of leaving it processing', async () => {
+    port.findSchema.mockResolvedValueOnce({
+      id: 'schema',
+      definition: definition().schemaDefinition,
+    });
+    port.findDefinition.mockResolvedValueOnce('external-definition');
+    port.verifyRevocation.mockResolvedValueOnce(false);
+
+    await worker.process('tenant', 'definition', 20);
+
+    expect(transitionState).toHaveBeenLastCalledWith(
+      'operation',
+      OperationState.FAILED,
+      expect.objectContaining({
+        code: 'REGISTRATION_FAILED',
+        problem_details: expect.objectContaining({
+          backend_code: 'REGISTRATION_TIMEOUT',
+          detail: 'Registration did not become ready before the polling limit',
+          retryable: false,
+          stage: 'awaiting_revocation_registry',
+        }),
+      }),
+      expect.any(Object),
+      'tenant',
+    );
+    expect(sendInTransaction).not.toHaveBeenCalled();
   });
 
   it('settles publication failures as terminal and preserves sanitized problem details', async () => {

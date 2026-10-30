@@ -14,10 +14,10 @@ import { DataSource, QueryFailedError } from 'typeorm';
 import { AuditAction } from '../audit-log/audit-log.entity';
 import { DomainAuditService } from '../audit-log/domain-audit.service';
 import { RegistrationBackendError } from '../common/registration-backend-error';
+import { ConnectorCredentialRepository } from '../connector-credential/connector-credential.repository';
 import { JobsService } from '../jobs/jobs.service';
 import { OperationState } from '../operation/operation.entity';
 import { OperationService } from '../operation/operation.service';
-import { ConnectorCredentialRepository } from '../connector-credential/connector-credential.repository';
 import { TenantStatus } from '../tenant/tenant.entity';
 
 import { CREDENTIAL_DEFINITION_FORMAT_HANDLERS } from './credential-definition-format-handler';
@@ -882,12 +882,14 @@ describe('CredentialDefinitionService', () => {
       const dto: CreateCredentialDefinitionDto = {
         name: mockCredentialDefinition.name,
         options: { format: CredentialDefinitionFormat.ANONCREDS },
-        schema: { definition: {
-          attr_names: [],
-          schema_name: mockCredentialDefinition.name,
-          schema_version: '1.0',
-          version: '1.0',
-        } },
+        schema: {
+          definition: {
+            attr_names: [],
+            schema_name: mockCredentialDefinition.name,
+            schema_version: '1.0',
+            version: '1.0',
+          },
+        },
         connectorId: mockCredentialDefinition.connectorId!,
         status: CredentialDefinitionStatus.DRAFT,
       };
@@ -1502,9 +1504,11 @@ describe('CredentialDefinitionService', () => {
       const result = await service.update(tenantId, id, dto, auth);
 
       expect(mockFindById).toHaveBeenCalledWith(id);
-      expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({
-        name: 'Updated Name',
-      }));
+      expect(mockUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'Updated Name',
+        }),
+      );
       expect(mockEmit).toHaveBeenCalledWith({
         tenantId: updatedDefinition.tenantId,
         action: AuditAction.UPDATE,
@@ -1550,9 +1554,11 @@ describe('CredentialDefinitionService', () => {
 
       const result = await service.update(tenantId, id, dto, auth);
 
-      expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({
-        metadata: dto.metadata,
-      }));
+      expect(mockUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          metadata: dto.metadata,
+        }),
+      );
       expect(result.metadata).toEqual(dto.metadata);
     });
 

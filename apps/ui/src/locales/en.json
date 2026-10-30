@@ -426,8 +426,8 @@
       "draft": "draft",
       "published": "published",
       "deprecated": "deprecated",
-      "pending": "registration pending",
-      "failed": "registration failed",
+      "pending": "pending",
+      "failed": "failed",
       "unverified": "not registered"
     },
     "formats": {

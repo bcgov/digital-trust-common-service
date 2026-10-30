@@ -72,7 +72,9 @@ export class IssuanceProfileService {
       credentialDefinition.status === CredentialDefinitionStatus.PUBLISHED &&
       !isCredentialDefinitionReadyForIssuance(credentialDefinition)
     ) {
-      throw new BadRequestException('Credential definition is not ready for issuance');
+      throw new BadRequestException(
+        'Credential definition is not ready for issuance',
+      );
     }
 
     this.validateAttributeSchema(

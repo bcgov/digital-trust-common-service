@@ -35,6 +35,12 @@ export function useCredentialDefinitions(
       return listCredentialDefinitions(tenantId);
     },
     enabled: Boolean(tenantId) && options.enabled !== false,
+    refetchInterval: (query) =>
+      query.state.data?.data.some(
+        (definition) => definition.registration_state === 'pending',
+      )
+        ? 5_000
+        : false,
   });
 }
 

@@ -241,7 +241,10 @@ export function CreateOrEditCredentialDefinitionPage() {
       if (draftId) {
         updateMutation.mutate(
           { credentialDefinitionId: draftId, body: draftUpdate },
-          { onSuccess: (definition) => finishDraftSave(definition.id), onError },
+          {
+            onSuccess: (definition) => finishDraftSave(definition.id),
+            onError,
+          },
         );
       } else {
         createMutation.mutate(request, {

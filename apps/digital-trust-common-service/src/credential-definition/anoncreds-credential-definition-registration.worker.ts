@@ -243,16 +243,17 @@ export class AnonCredsCredentialDefinitionRegistrationWorker implements OnModule
       await this.saveProgress(work);
     }
 
-    if (
-      options.status.revocation.enabled &&
-      !(await backend.port.verifyRevocation(
+    if (options.status.revocation.enabled) {
+      work.registration.stage = 'revocation_verification';
+      const revocationReady = await backend.port.verifyRevocation(
         backend.context,
         work.definition.externalId,
-      ))
-    ) {
-      work.registration.stage = 'awaiting_revocation_registry';
-      await this.persistWaiting(work);
-      return;
+      );
+      if (!revocationReady) {
+        work.registration.stage = 'awaiting_revocation_registry';
+        await this.persistWaiting(work);
+        return;
+      }
     }
 
     work.registration.stage = 'completed';
@@ -485,6 +486,19 @@ export class AnonCredsCredentialDefinitionRegistrationWorker implements OnModule
   }
 
   private async persistWaiting(work: RegistrationWork): Promise<void> {
+    if (work.checks >= MAX_WAIT_CHECKS) {
+      await this.persistFailure(
+        new RegistrationBackendError(
+          undefined,
+          'REGISTRATION_TIMEOUT',
+          'Registration did not become ready before the polling limit',
+        ),
+        work,
+        work.registration.stage ?? 'preflight',
+      );
+      return;
+    }
+
     work.definition.registrationState = 'pending';
     await this.persistOutcome(work, OperationState.PROCESSING, undefined, true);
   }

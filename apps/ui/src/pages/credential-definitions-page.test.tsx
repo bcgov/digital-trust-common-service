@@ -151,7 +151,7 @@ describe('CredentialDefinitionsPage', () => {
     const publishedRow = await screen.findByRole('row', {
       name: /Shared visitor pass.*pending/,
     });
-    expect(within(publishedRow).getByText('registration pending')).toBeVisible();
+    expect(within(publishedRow).getByText('pending')).toBeVisible();
     await user.click(
       screen.getByRole('button', { name: 'Delete Shared visitor pass' }),
     );
@@ -160,6 +160,66 @@ describe('CredentialDefinitionsPage', () => {
       expect(screen.queryByText('Shared visitor pass')).not.toBeInTheDocument(),
     );
   });
+
+  it('refreshes a pending registration until it reaches a terminal state', async () => {
+    const pendingDefinition: CredentialDefinition = {
+      id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      tenant_id: tenantId,
+      name: 'Registration in progress',
+      format: 'anoncreds',
+      version: '1.0',
+      status: 'published',
+      registration_state: 'pending',
+      connector_type: 'traction',
+      connector_id: connector.id,
+      options: anonCredsOptions,
+      is_active: true,
+    };
+    let listRequests = 0;
+    server.use(
+      http.get(`${API_BASE_PATH}/tenants/:id/credential-definitions`, () => {
+        listRequests += 1;
+        return HttpResponse.json([
+          listRequests === 1
+            ? pendingDefinition
+            : { ...pendingDefinition, registration_state: 'failed' },
+        ]);
+      }),
+    );
+
+    const client = createMockAuthClient();
+    await client.login();
+    renderWithAuth(
+      [
+        {
+          path: '/credential-definitions',
+          element: <CredentialDefinitionsPage />,
+        },
+      ],
+      { client, initialEntries: ['/credential-definitions'] },
+    );
+
+    expect(
+      await screen.findByRole('row', {
+        name: /Registration in progress.*pending/i,
+      }),
+    ).toBeVisible();
+    let failedRow: HTMLElement;
+    await waitFor(
+      () => {
+        failedRow = screen.getByRole('row', {
+          name: /Registration in progress.*failed/i,
+        });
+        expect(failedRow).toBeVisible();
+        expect(within(failedRow).getByText('failed')).toHaveAttribute(
+          'data-variant',
+          'destructive',
+        );
+      },
+      { timeout: 8_000 },
+    );
+    expect(listRequests).toBeGreaterThan(1);
+  }, 12_000);
 
   it('saves a draft from the setup step without attributes', async () => {
     const user = userEvent.setup();

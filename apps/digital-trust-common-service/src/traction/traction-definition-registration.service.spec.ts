@@ -595,7 +595,7 @@ describe('Traction artifact registration', () => {
     });
   });
 
-  it('requires finished registry, ledger accumulator, capacity and reachable public tails', async () => {
+  it('requires a finished registry, ledger accumulator and available capacity', async () => {
     request
       .mockResolvedValueOnce({
         data: {
@@ -603,8 +603,6 @@ describe('Traction artifact registration', () => {
             cred_def_id: 'definition',
             state: 'finished',
             revoc_reg_id: 'registry',
-            tails_local_path: '/var/lib/aca-py/tails/registry',
-            tails_public_uri: 'https://tails.example/tails',
             max_cred_num: 1000,
           },
         },
@@ -613,15 +611,10 @@ describe('Traction artifact registration', () => {
         data: { rev_reg_delta: { value: { accum: 'accumulator' } } },
       })
       .mockResolvedValueOnce({ data: { result: 0 } })
-      .mockResolvedValueOnce({ status: 200 });
     await expect(service.verifyRevocation(context, 'definition')).resolves.toBe(
       true,
     );
-    expect(request).toHaveBeenLastCalledWith({
-      method: 'HEAD',
-      url: 'https://tails.example/tails',
-      maxRedirects: 0,
-    });
+    expect(request).toHaveBeenCalledTimes(3);
   });
 
   it('does not treat pending infrastructure as ready', async () => {
@@ -634,22 +627,26 @@ describe('Traction artifact registration', () => {
     expect(request).toHaveBeenCalledTimes(1);
   });
 
-  it('does not probe the agent filesystem when the public tails URI is missing', async () => {
-    request.mockResolvedValueOnce({
-      data: {
-        result: {
-          cred_def_id: 'definition',
-          state: 'finished',
-          revoc_reg_id: 'registry',
-          tails_local_path: '/var/lib/aca-py/tails/registry',
-          max_cred_num: 1000,
+  it('accepts a completed registry when Traction omits the public tails URI', async () => {
+    request
+      .mockResolvedValueOnce({
+        data: {
+          result: {
+            cred_def_id: 'definition',
+            state: 'finished',
+            revoc_reg_id: 'registry',
+            max_cred_num: 1000,
+          },
         },
-      },
-    });
+      })
+      .mockResolvedValueOnce({
+        data: { rev_reg_delta: { value: { accum: 'accumulator' } } },
+      })
+      .mockResolvedValueOnce({ data: { result: 0 } });
     await expect(service.verifyRevocation(context, 'definition')).resolves.toBe(
-      false,
+      true,
     );
-    expect(request).toHaveBeenCalledTimes(1);
+    expect(request).toHaveBeenCalledTimes(3);
   });
 
   it('returns false when the active registry is not found and propagates other backend errors', async () => {
@@ -681,8 +678,6 @@ describe('Traction artifact registration', () => {
               cred_def_id: 'definition',
               state: 'finished',
               revoc_reg_id: 'registry',
-              tails_local_path: '/var/lib/aca-py/tails/registry',
-              tails_public_uri: 'https://tails.example/tails',
               max_cred_num: 10,
             },
           },

@@ -609,7 +609,6 @@ describe('CredentialOfferService', () => {
       );
       expect(mockOfferCredential).not.toHaveBeenCalled();
     });
-
   });
 
   describe('attribute + format validation', () => {

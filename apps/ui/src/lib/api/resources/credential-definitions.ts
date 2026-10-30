@@ -26,10 +26,11 @@ export async function registerCredentialDefinition(
   tenantId: string,
   body: CreateCredentialDefinitionRequest,
 ): Promise<CredentialDefinitionRegistrationOperation> {
-  const response = await apiClient.post<CredentialDefinitionRegistrationOperation>(
-    `/tenants/${tenantId}/credential-definitions`,
-    body,
-  );
+  const response =
+    await apiClient.post<CredentialDefinitionRegistrationOperation>(
+      `/tenants/${tenantId}/credential-definitions`,
+      body,
+    );
   return response.data;
 }
 
