@@ -1,5 +1,3 @@
-import { createHash } from 'node:crypto';
-
 import {
   ConnectorContext,
   ConnectorUnavailableError,
@@ -19,8 +17,9 @@ import { TractionHttpClient } from './traction-http-client.service';
 interface CachedToken {
   readonly token: string;
   readonly expiresAtMs: number;
-  // Digest of the endpoint and credentials the token was issued for.
-  readonly targetFingerprint: string;
+  // The non-secret identity of the sub-wallet the token was issued for.
+  readonly endpointUrl: string;
+  readonly tractionTenantId: unknown;
 }
 
 interface TractionTokenResponse {
@@ -59,11 +58,12 @@ interface DescribedFailure {
  * ConnectorCredential row (e.g. after rotating its api_key), and that should
  * start with a fresh token rather than reusing one cached under the old row.
  *
- * Each entry also records a SHA-256 fingerprint of the endpoint URL,
- * tractionTenantId and apiKey it was issued for. Updating a connector in
- * place changes the fingerprint, so a warm entry on any pod is treated as a
- * miss rather than serving a token for the previous target. Only the digest
- * is kept; the apiKey is never stored in the cache.
+ * Each entry also records the endpoint URL and tractionTenantId it was
+ * issued for, and a lookup for a different pair is treated as a miss. A
+ * connector updated in place to another sub-wallet therefore never serves the
+ * previous wallet's token on a warm pod. The apiKey is never stored in the
+ * cache; a rotated key still names the same sub-wallet, and `evict` drops the
+ * token issued under the old key on the pod that handled the update.
  *
  * The cache is a plain per-pod in-memory Map (see docs/ARCHITECTURE.md,
  * "Why No Redis"): not shared across pods and does not survive a restart —
@@ -83,9 +83,13 @@ export class TractionTokenManager {
   public constructor(private readonly httpClient: TractionHttpClient) {}
 
   public async getToken(context: ConnectorContext): Promise<string> {
-    const fingerprint = this.fingerprintTarget(context);
     const entry = this.cache.get(context.connectorId);
-    const cached = entry?.targetFingerprint === fingerprint ? entry : undefined;
+    const cached =
+      entry !== undefined &&
+      entry.endpointUrl === context.endpointUrl &&
+      entry.tractionTenantId === context.credentials.tractionTenantId
+        ? entry
+        : undefined;
 
     if (cached && cached.expiresAtMs > Date.now() + EXPIRY_SAFETY_MARGIN_MS) {
       // Debug rather than info: a hit happens on every outbound Traction call,
@@ -141,6 +145,10 @@ export class TractionTokenManager {
     }
   }
 
+  public evict(connectorId: string): void {
+    this.cache.delete(connectorId);
+  }
+
   public reset(): void {
     this.cache.clear();
   }
@@ -169,24 +177,11 @@ export class TractionTokenManager {
     this.cache.set(context.connectorId, {
       token,
       expiresAtMs: this.readExpiry(token, context),
-      targetFingerprint: this.fingerprintTarget(context),
+      endpointUrl: context.endpointUrl,
+      tractionTenantId,
     });
 
     return token;
-  }
-
-  private fingerprintTarget(context: ConnectorContext): string {
-    const { apiKey, tractionTenantId } = context.credentials;
-
-    return createHash('sha256')
-      .update(
-        JSON.stringify([
-          context.endpointUrl,
-          String(tractionTenantId),
-          String(apiKey),
-        ]),
-      )
-      .digest('hex');
   }
 
   private readCredentials(context: ConnectorContext): {

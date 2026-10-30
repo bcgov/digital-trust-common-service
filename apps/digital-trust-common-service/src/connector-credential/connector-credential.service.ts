@@ -28,6 +28,7 @@ import {
 import { ConnectorType } from '../connection/connection.entity';
 import { CredentialRepository } from '../credential/credential.repository';
 import { TenantService } from '../tenant/tenant.service';
+import { TractionTokenManager } from '../traction/traction-token-manager.service';
 import { TractionWebhookRegistrar } from '../traction/traction-webhook-registrar.service';
 
 import { ConnectorCredential } from './connector-credential.entity';
@@ -68,6 +69,7 @@ export class ConnectorCredentialService {
     private readonly healthCheckService: ConnectorHealthCheckService,
     private readonly credentialUsageRepository: CredentialRepository,
     private readonly webhookRegistrar: TractionWebhookRegistrar,
+    private readonly tokenManager: TractionTokenManager,
     private readonly oidcConfigService: OidcConfigService,
   ) {}
 
@@ -442,6 +444,7 @@ export class ConnectorCredentialService {
         continue;
       }
 
+      this.tokenManager.evict(id);
       await this.lazyRotateKeyIfNeeded(updated);
       return updated;
     }

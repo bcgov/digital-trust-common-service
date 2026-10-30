@@ -12,6 +12,7 @@ import { EncryptionService } from '../common/crypto/encryption.service';
 import { ConnectorType } from '../connection/connection.entity';
 import { CredentialRepository } from '../credential/credential.repository';
 import { TenantService } from '../tenant/tenant.service';
+import { TractionTokenManager } from '../traction/traction-token-manager.service';
 import { TractionWebhookRegistrar } from '../traction/traction-webhook-registrar.service';
 
 import { ConnectorCredential } from './connector-credential.entity';
@@ -43,6 +44,7 @@ describe('ConnectorCredentialService', () => {
   let mockHealthCheck: jest.Mock;
   let mockExistsByConnectorId: jest.Mock;
   let mockEnsureWebhookRegistered: jest.Mock;
+  let mockEvict: jest.Mock;
   let mockIsWebhookRegistered: jest.Mock;
   let mockGetConfig: jest.Mock;
   let mockDeriveBlindIndex: jest.Mock;
@@ -107,6 +109,7 @@ describe('ConnectorCredentialService', () => {
       .mockResolvedValue({ status: 'healthy', latencyMs: 10 });
     mockExistsByConnectorId = jest.fn().mockResolvedValue(false);
     mockEnsureWebhookRegistered = jest.fn().mockResolvedValue(undefined);
+    mockEvict = jest.fn();
     // Verification defaults to "not registered", matching a registration
     // call that genuinely never reached Traction.
     mockIsWebhookRegistered = jest.fn().mockResolvedValue(false);
@@ -183,6 +186,7 @@ describe('ConnectorCredentialService', () => {
             existsByConnectorId: mockExistsByConnectorId,
           },
         },
+        { provide: TractionTokenManager, useValue: { evict: mockEvict } },
         {
           provide: TractionWebhookRegistrar,
           useValue: {
@@ -545,6 +549,21 @@ describe('ConnectorCredentialService', () => {
         expect(mockEnsureWebhookRegistered).not.toHaveBeenCalled();
       },
     );
+
+    it('evicts the cached Traction token after a successful update', async () => {
+      mockFindById.mockResolvedValue(mockCredential);
+      mockHealthCheck.mockResolvedValue({ status: 'healthy', latencyMs: 10 });
+      mockUpdate.mockResolvedValue(mockCredential);
+
+      await service.update(
+        mockCredential.tenantId,
+        mockCredential.id,
+        { credentials: { apiKey: 'rotated-key' } },
+        auth,
+      );
+
+      expect(mockEvict).toHaveBeenCalledWith(mockCredential.id);
+    });
 
     it('allows a never-bound connector to stay unbound on update', async () => {
       mockFindById.mockResolvedValue(mockCredential);

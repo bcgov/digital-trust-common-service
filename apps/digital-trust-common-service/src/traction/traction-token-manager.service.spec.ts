@@ -179,12 +179,6 @@ describe('TractionTokenManager', () => {
         credentials: { apiKey: 'key-1', tractionTenantId: 'traction-tenant-2' },
       },
     ],
-    [
-      'apiKey',
-      {
-        credentials: { apiKey: 'key-2', tractionTenantId: 'traction-tenant-1' },
-      },
-    ],
   ])(
     'acquires a fresh token when the connector %s changes under a warm cache',
     async (_field, change) => {
@@ -201,6 +195,17 @@ describe('TractionTokenManager', () => {
       expect(mockRequest).toHaveBeenCalledTimes(2);
     },
   );
+
+  it('drops a cached token on evict', async () => {
+    const token = makeJwt({ exp: 3600 });
+    mockRequest.mockResolvedValue({ data: { token } });
+
+    await manager.getToken(makeContext());
+    manager.evict('connector-1');
+    await manager.getToken(makeContext());
+
+    expect(mockRequest).toHaveBeenCalledTimes(2);
+  });
 
   it('treats a token with no usable exp claim as already expired', async () => {
     const token = makeJwt({});
