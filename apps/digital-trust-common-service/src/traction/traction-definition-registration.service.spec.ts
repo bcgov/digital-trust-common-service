@@ -610,7 +610,7 @@ describe('Traction artifact registration', () => {
       .mockResolvedValueOnce({
         data: { rev_reg_delta: { value: { accum: 'accumulator' } } },
       })
-      .mockResolvedValueOnce({ data: { result: 0 } })
+      .mockResolvedValueOnce({ data: { result: 0 } });
     await expect(service.verifyRevocation(context, 'definition')).resolves.toBe(
       true,
     );
