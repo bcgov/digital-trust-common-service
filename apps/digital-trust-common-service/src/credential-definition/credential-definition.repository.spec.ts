@@ -6,14 +6,22 @@ import {
   CredentialDefinition,
   CredentialDefinitionConnectorType,
   CredentialDefinitionFormat,
+  CredentialDefinitionStatus,
 } from './credential-definition.entity';
 import { CredentialDefinitionRepository } from './credential-definition.repository';
 
 describe('CredentialDefinitionRepository', () => {
   let repository: CredentialDefinitionRepository;
   let mockRepo: jest.Mocked<Partial<Repository<CredentialDefinition>>>;
+  const lockedRepository = { findOne: jest.fn(), save: jest.fn() };
+  const manager = { getRepository: jest.fn(() => lockedRepository) };
+  const transaction = jest.fn(
+    (work: (transactionManager: typeof manager) => Promise<unknown>) =>
+      work(manager),
+  );
 
   beforeEach(async () => {
+    jest.clearAllMocks();
     mockRepo = {
       create: jest.fn(),
       find: jest.fn(),
@@ -21,6 +29,7 @@ describe('CredentialDefinitionRepository', () => {
       save: jest.fn(),
       update: jest.fn(),
     };
+    Object.assign(mockRepo, { manager: { transaction } });
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -68,6 +77,64 @@ describe('CredentialDefinitionRepository', () => {
       });
       expect(transactionRepository.save).toHaveBeenCalledWith(created);
       expect(mockRepo.create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('updateWithLock', () => {
+    it('checks tenant and activity while locking the row inside the save transaction', async () => {
+      const definition = {
+        id: 'cd-1',
+        tenantId: 'tenant-1',
+        isActive: true,
+        status: CredentialDefinitionStatus.DRAFT,
+      } as CredentialDefinition;
+      lockedRepository.findOne.mockResolvedValue(definition);
+      lockedRepository.save.mockImplementation((value: CredentialDefinition) =>
+        Promise.resolve(value),
+      );
+      const applyUpdate = jest.fn((current: CredentialDefinition) => {
+        current.status = CredentialDefinitionStatus.PUBLISHED;
+        return Promise.resolve();
+      });
+
+      await expect(
+        repository.updateWithLock('tenant-1', 'cd-1', applyUpdate),
+      ).resolves.toEqual(definition);
+
+      expect(transaction).toHaveBeenCalledTimes(1);
+      expect(manager.getRepository).toHaveBeenCalledWith(CredentialDefinition);
+      expect(lockedRepository.findOne).toHaveBeenCalledWith({
+        where: { id: 'cd-1', tenantId: 'tenant-1', isActive: true },
+        lock: { mode: 'pessimistic_write' },
+      });
+      expect(applyUpdate).toHaveBeenCalledWith(definition);
+      expect(lockedRepository.save).toHaveBeenCalledWith(definition);
+      expect(mockRepo.update).not.toHaveBeenCalled();
+    });
+
+    it('does not apply or save changes when the tenant-scoped row is absent', async () => {
+      lockedRepository.findOne.mockResolvedValue(null);
+      const applyUpdate = jest.fn();
+
+      await expect(
+        repository.updateWithLock('other-tenant', 'cd-1', applyUpdate),
+      ).resolves.toBeNull();
+
+      expect(applyUpdate).not.toHaveBeenCalled();
+      expect(lockedRepository.save).not.toHaveBeenCalled();
+    });
+
+    it('does not save when validation of the locked row rejects the edit', async () => {
+      lockedRepository.findOne.mockResolvedValue({
+        status: CredentialDefinitionStatus.PUBLISHED,
+      });
+      const error = new Error('Rejected stale draft edit');
+      const applyUpdate = jest.fn().mockRejectedValue(error);
+
+      await expect(
+        repository.updateWithLock('tenant-1', 'cd-1', applyUpdate),
+      ).rejects.toBe(error);
+      expect(lockedRepository.save).not.toHaveBeenCalled();
     });
   });
 

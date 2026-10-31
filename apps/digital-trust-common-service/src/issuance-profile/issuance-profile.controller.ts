@@ -79,14 +79,15 @@ export class IssuanceProfileController {
   @ApiBadRequestResponse({
     description:
       'attribute_schema is not a subset of the credential definition schema, ' +
-      'or connector_id does not support the credential definition format',
+      'or the credential definition connector binding is missing, unavailable, or incompatible',
   })
   @ApiConflictResponse({
     description:
       'An issuance profile with this name and version already exists for this tenant',
   })
   @ApiBody({
-    description: 'Issuance profile creation request',
+    description:
+      'Issuance profile creation request. The connector is inherited from the credential definition.',
     type: CreateIssuanceProfileDto,
     examples: {
       example1: {
@@ -226,7 +227,7 @@ export class IssuanceProfileController {
   @ApiNotFoundResponse({ description: 'Issuance profile not found' })
   @ApiBadRequestResponse({
     description:
-      "The profile's connector no longer exists, is inactive, or its " +
+      'The credential definition is not published, or its connector no longer exists, is inactive, or its ' +
       'adapter no longer resolves',
   })
   @ApiConflictResponse({

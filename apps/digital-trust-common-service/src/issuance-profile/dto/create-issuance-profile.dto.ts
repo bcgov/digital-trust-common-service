@@ -34,11 +34,6 @@ export class CreateIssuanceProfileDto {
   @IsUUID()
   public credentialDefinitionId!: string;
 
-  @Expose({ name: 'connector_id' })
-  @IsOptional()
-  @IsUUID()
-  public connectorId?: string;
-
   @Expose({ name: 'attribute_schema' })
   @IsObject()
   public attributeSchema!: Record<string, unknown>;

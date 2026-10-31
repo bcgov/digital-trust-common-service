@@ -126,6 +126,24 @@ export class CredentialDefinitionRepository {
     return await this.repository.save(credentialDefinition);
   }
 
+  public async updateWithLock(
+    tenantId: string,
+    id: string,
+    applyUpdate: (definition: CredentialDefinition) => Promise<void>,
+  ): Promise<CredentialDefinition | null> {
+    return await this.repository.manager.transaction(async (manager) => {
+      const repository = manager.getRepository(CredentialDefinition);
+      const definition = await repository.findOne({
+        where: { id, tenantId, isActive: true },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!definition) return null;
+
+      await applyUpdate(definition);
+      return await repository.save(definition);
+    });
+  }
+
   /**
    * Deactivates a credential definition rather than removing its row: other
    * records (e.g. an issuance profile) may still reference its id, and

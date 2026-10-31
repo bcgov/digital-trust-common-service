@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { createMockAuthClient, MOCK_AUTH_TENANTS } from '@/lib/auth/mock-auth';
 import { renderWithAuth } from '@/test/render-with-auth';
 
-import { AppShell, type AppShellHandle } from './app-shell';
+import { AppShell } from './app-shell';
 
 describe('AppShell', () => {
   it('frames the page with the tenant switcher, navigation and account menu', async () => {
@@ -31,7 +31,13 @@ describe('AppShell', () => {
       within(navigation)
         .getAllByRole('link')
         .map((link) => link.textContent?.trim()),
-    ).toEqual(['Dashboard', 'Connectors', 'API integrations', 'Manage Users']);
+    ).toEqual([
+      'Dashboard',
+      'Connectors',
+      'Credential Configurations',
+      'API integrations',
+      'Manage Users',
+    ]);
     expect(
       within(screen.getByRole('complementary')).getByText('Acme Ministry'),
     ).toBeInTheDocument();
@@ -48,6 +54,9 @@ describe('AppShell', () => {
       'href',
       `/tenants/${MOCK_AUTH_TENANTS[0].id}/users`,
     );
+    expect(
+      screen.getByRole('link', { name: 'Credential Configurations' }),
+    ).toHaveAttribute('href', '/credential-definitions');
     expect(screen.getByText('page content')).toBeInTheDocument();
   });
 
@@ -68,6 +77,9 @@ describe('AppShell', () => {
 
     expect(
       screen.queryByRole('link', { name: 'Connectors' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('link', { name: 'Credential Configurations' }),
     ).not.toBeInTheDocument();
     expect(
       screen.getByRole('link', { name: 'API integrations' }),
@@ -97,6 +109,9 @@ describe('AppShell', () => {
       screen.queryByRole('link', { name: 'Manage Users' }),
     ).not.toBeInTheDocument();
     expect(
+      screen.queryByRole('link', { name: 'Credential Configurations' }),
+    ).not.toBeInTheDocument();
+    expect(
       screen.queryByRole('link', { name: 'API integrations' }),
     ).not.toBeInTheDocument();
   });
@@ -120,6 +135,9 @@ describe('AppShell', () => {
     expect(
       screen.queryByRole('link', { name: 'Manage Users' }),
     ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('link', { name: 'Credential Configurations' }),
+    ).toHaveAttribute('href', '/credential-definitions');
   });
 
   it('navigates to the active tenant users route', async () => {
@@ -175,19 +193,19 @@ describe('AppShell', () => {
     expect(router.state.location.pathname).toBe('/connectors');
   });
 
-  it('drops the sidebar for routes that opt into the centered layout', async () => {
+  it('navigates through the Credential Configurations link', async () => {
     const client = createMockAuthClient();
     await client.login();
-    renderWithAuth(
+    const { router } = renderWithAuth(
       [
         {
           path: '/',
           element: <AppShell />,
           children: [
+            { index: true, element: <p>home page</p> },
             {
-              index: true,
-              handle: { layout: 'centered' } satisfies AppShellHandle,
-              element: <p>centered page</p>,
+              path: 'credential-definitions',
+              element: <p>credential definitions route</p>,
             },
           ],
         },
@@ -195,9 +213,13 @@ describe('AppShell', () => {
       { client },
     );
 
-    expect(await screen.findByText('centered page')).toBeInTheDocument();
+    await userEvent.click(
+      await screen.findByRole('link', { name: 'Credential Configurations' }),
+    );
+
     expect(
-      screen.queryByRole('navigation', { name: 'Primary' }),
-    ).not.toBeInTheDocument();
+      await screen.findByText('credential definitions route'),
+    ).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe('/credential-definitions');
   });
 });

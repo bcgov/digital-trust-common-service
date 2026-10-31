@@ -13,6 +13,7 @@ import {
   CredentialDefinition,
   CredentialDefinitionConnectorType,
   CredentialDefinitionFormat,
+  CredentialDefinitionStatus,
 } from './credential-definition.entity';
 import { CredentialDefinitionService } from './credential-definition.service';
 import { CreateCredentialDefinitionDto } from './dto/create-credential-definition.dto';
@@ -57,6 +58,9 @@ describe('CredentialDefinitionController', () => {
     schemaDefinition: { schema: 'test' },
     externalId: 'external-123',
     connectorType: CredentialDefinitionConnectorType.TRACTION,
+    connectorId: '123e4567-e89b-12d3-a456-426614174002',
+    version: '1.0',
+    status: CredentialDefinitionStatus.DRAFT,
     isActive: true,
     metadata: { key: 'value' },
     options: {

@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { toast, Toaster as SonnerToaster } from 'sonner';
 
 import { cn } from '@/lib/utils';
+import { t } from 'i18next';
 
 // Vendored from shadcn/ui (radix-nova registry) and restyled onto the BC
 // Design System, because BCDS v5 ships no toast component. It is the dark
@@ -84,12 +85,12 @@ const notify = {
 };
 
 function Toaster() {
-  const { t } = useTranslation();
-
   return (
     <SonnerToaster
-      position="bottom-right"
+      position="top-right"
       containerAriaLabel={t('common.notifications')}
+      offset={{ top: 72, right: 24 }}
+      mobileOffset={{ top: 72, right: 16 }}
     />
   );
 }

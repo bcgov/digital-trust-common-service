@@ -41,6 +41,12 @@ export interface DefinitionRegistration {
   stage?: string;
 }
 
+export enum CredentialDefinitionStatus {
+  DRAFT = 'draft',
+  PUBLISHED = 'published',
+  DEPRECATED = 'deprecated',
+}
+
 @Entity({ name: 'credential_definition' })
 @Check(
   'chk_credential_definition_options_format',
@@ -57,6 +63,7 @@ export interface DefinitionRegistration {
   'connectorType',
 ])
 @Index('idx_credential_definition_external_id', ['externalId'])
+@Index('idx_credential_definition_connector_id', ['connectorId'])
 export class CredentialDefinition {
   @ApiProperty({
     description: 'The unique identifier of the credential definition',
@@ -150,6 +157,26 @@ export class CredentialDefinition {
     enum: CredentialDefinitionConnectorType,
   })
   public connectorType!: CredentialDefinitionConnectorType;
+
+  @ApiProperty({
+    description: 'The version of this credential definition',
+    example: '1.0',
+  })
+  @Column({ type: 'varchar', length: 255, default: '1.0' })
+  public version!: string;
+
+  @ApiProperty({
+    description: 'The lifecycle status of this credential definition',
+    enum: CredentialDefinitionStatus,
+    example: CredentialDefinitionStatus.DRAFT,
+  })
+  @Column({
+    type: 'enum',
+    enum: CredentialDefinitionStatus,
+    enumName: 'credential_definition_status',
+    default: CredentialDefinitionStatus.DRAFT,
+  })
+  public status!: CredentialDefinitionStatus;
 
   @ApiPropertyOptional({
     description: 'Free-form client annotations',

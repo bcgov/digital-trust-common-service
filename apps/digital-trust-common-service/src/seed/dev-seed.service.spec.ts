@@ -61,6 +61,7 @@ describe('DevSeedService', () => {
 
   const connectorCredentialRepo = {
     findByTenant: jest.fn(),
+    findByTenantAndConnectorTypeAndActive: jest.fn(),
     create: jest.fn(),
     update: jest.fn(),
   };
@@ -198,6 +199,9 @@ describe('DevSeedService', () => {
 
     connectorCredentialRepo.findByTenant.mockResolvedValue([]);
     connectorCredentialRepo.create.mockResolvedValue({ id: 'connector-1' });
+    connectorCredentialRepo.findByTenantAndConnectorTypeAndActive.mockResolvedValue(
+      [{ id: 'connector-1' }],
+    );
 
     credentialDefinitionRepo.findByTenantAndNameAndFormat.mockResolvedValue(
       null,
@@ -727,7 +731,7 @@ describe('DevSeedService', () => {
     expect(connectorCredentialRepo.create).not.toHaveBeenCalled();
   });
 
-  it('binds issuance profiles to the mock traction connector', async () => {
+  it('seeds profiles with a definition reference rather than copied connector fields', async () => {
     connectorCredentialRepo.findByTenant.mockResolvedValue([
       {
         id: 'connector-other',
@@ -741,9 +745,16 @@ describe('DevSeedService', () => {
 
     await service.run();
 
-    expect(issuanceProfileRepo.create).toHaveBeenCalledWith(
-      expect.objectContaining({ connectorId: 'connector-seed' }),
+    expect(credentialDefinitionRepo.create).toHaveBeenCalledWith(
+      expect.objectContaining({ connectorId: 'connector-1' }),
     );
+    expect(issuanceProfileRepo.create).toHaveBeenCalledWith(
+      expect.objectContaining({ credentialDefinitionId: expect.any(String) }),
+    );
+    for (const [profile] of issuanceProfileRepo.create.mock.calls) {
+      expect(profile).not.toHaveProperty('connectorId');
+      expect(profile).not.toHaveProperty('format');
+    }
   });
 
   it('updates existing credential definitions on re-run', async () => {

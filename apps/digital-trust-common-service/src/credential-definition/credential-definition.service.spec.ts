@@ -14,6 +14,7 @@ import { DataSource, QueryFailedError } from 'typeorm';
 import { AuditAction } from '../audit-log/audit-log.entity';
 import { DomainAuditService } from '../audit-log/domain-audit.service';
 import { RegistrationBackendError } from '../common/registration-backend-error';
+import { ConnectorCredentialRepository } from '../connector-credential/connector-credential.repository';
 import { JobsService } from '../jobs/jobs.service';
 import { OperationState } from '../operation/operation.entity';
 import { OperationService } from '../operation/operation.service';
@@ -24,6 +25,7 @@ import {
   CredentialDefinition,
   CredentialDefinitionConnectorType,
   CredentialDefinitionFormat,
+  CredentialDefinitionStatus,
 } from './credential-definition.entity';
 import { CredentialDefinitionRepository } from './credential-definition.repository';
 import {
@@ -41,6 +43,7 @@ describe('CredentialDefinitionService', () => {
   let mockFindByTenantAndNameAndFormat: jest.Mock;
   let mockFindByFormat: jest.Mock;
   let mockFindByConnector: jest.Mock;
+  let mockFindActiveByTenantAndId: jest.Mock;
   let mockUpdate: jest.Mock;
   let mockDeactivate: jest.Mock;
   let mockEmit: jest.Mock;
@@ -179,6 +182,15 @@ describe('CredentialDefinitionService', () => {
     schemaDefinition: { schema: 'test' },
     externalId: 'external-123',
     connectorType: CredentialDefinitionConnectorType.TRACTION,
+    connectorId: '123e4567-e89b-12d3-a456-426614174002',
+    registrationState: 'unverified',
+    options: {
+      format: CredentialDefinitionFormat.ANONCREDS,
+      tag: 'default',
+      status: { revocation: { enabled: true } },
+    },
+    version: '1.0',
+    status: CredentialDefinitionStatus.DRAFT,
     isActive: true,
     metadata: { key: 'value' },
     createdAt: new Date(),
@@ -219,6 +231,10 @@ describe('CredentialDefinitionService', () => {
     mockFindByTenantAndNameAndFormat = mockFindExistingByTenantAndNameAndFormat;
     mockFindByFormat = jest.fn();
     mockFindByConnector = jest.fn();
+    mockFindActiveByTenantAndId = jest.fn().mockResolvedValue({
+      id: mockCredentialDefinition.connectorId,
+      connectorType: CredentialDefinitionConnectorType.TRACTION,
+    });
     mockUpdate = jest.fn();
     mockDeactivate = jest.fn();
     mockEmit = jest.fn().mockResolvedValue(undefined);
@@ -250,10 +266,32 @@ describe('CredentialDefinitionService', () => {
       findByTenantId: mockFindByTenantId,
       findExistingByTenantAndNameAndFormat:
         mockFindExistingByTenantAndNameAndFormat,
+      findByTenantAndNameAndFormat: mockFindByTenantAndNameAndFormat,
       findByFormat: mockFindByFormat,
       findByConnector: mockFindByConnector,
       update: mockUpdate,
-      updateEditableFields: mockUpdate,
+      updateWithLock: jest
+        .fn()
+        .mockImplementation(
+          async (
+            tenantId: string,
+            id: string,
+            applyUpdate: (definition: CredentialDefinition) => Promise<void>,
+          ) => {
+            const definition = (await mockFindById(
+              id,
+            )) as CredentialDefinition | null;
+            if (
+              !definition ||
+              definition.tenantId !== tenantId ||
+              !definition.isActive
+            ) {
+              return null;
+            }
+            await applyUpdate(definition);
+            return (await mockUpdate(definition)) as CredentialDefinition;
+          },
+        ),
       deactivate: mockDeactivate,
     };
 
@@ -276,6 +314,10 @@ describe('CredentialDefinitionService', () => {
         {
           provide: CredentialDefinitionRepository,
           useValue: mockRepository,
+        },
+        {
+          provide: ConnectorCredentialRepository,
+          useValue: { findActiveByTenantAndId: mockFindActiveByTenantAndId },
         },
         {
           provide: DomainAuditService,
@@ -353,6 +395,7 @@ describe('CredentialDefinitionService', () => {
     ): CredentialDefinition => ({
       ...mockCredentialDefinition,
       connectorId: 'connector-1',
+      status: CredentialDefinitionStatus.PUBLISHED,
       registrationState: 'pending',
       registrationOperationId: 'existing-operation',
       options: {
@@ -810,6 +853,107 @@ describe('CredentialDefinitionService', () => {
       expect(result).toEqual(expect.objectContaining({ id: 'operation-1' }));
     });
 
+    it('starts registration with published lifecycle status', async () => {
+      const tenantId = mockCredentialDefinition.tenantId;
+      const dto: CreateCredentialDefinitionDto = {
+        name: mockCredentialDefinition.name,
+        options: { format: CredentialDefinitionFormat.ANONCREDS },
+        schema: { definition: mockCredentialDefinition.schemaDefinition },
+        connectorId: mockCredentialDefinition.connectorId!,
+        status: CredentialDefinitionStatus.PUBLISHED,
+      };
+
+      mockFindByTenantAndNameAndFormat.mockResolvedValue(null);
+      mockCreate.mockResolvedValue(mockCredentialDefinition);
+
+      await service.create(tenantId, dto, auth);
+
+      expect(mockCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: CredentialDefinitionStatus.PUBLISHED,
+          registrationState: 'pending',
+        }),
+        manager,
+      );
+    });
+
+    it('skips schema validation for an explicitly requested draft', async () => {
+      const tenantId = mockCredentialDefinition.tenantId;
+      const dto: CreateCredentialDefinitionDto = {
+        name: mockCredentialDefinition.name,
+        options: { format: CredentialDefinitionFormat.ANONCREDS },
+        schema: {
+          definition: {
+            attr_names: [],
+            schema_name: mockCredentialDefinition.name,
+            schema_version: '1.0',
+            version: '1.0',
+          },
+        },
+        connectorId: mockCredentialDefinition.connectorId!,
+        status: CredentialDefinitionStatus.DRAFT,
+      };
+
+      mockFindByTenantAndNameAndFormat.mockResolvedValue(null);
+      mockCreate.mockResolvedValue(mockCredentialDefinition);
+      await service.createDraft(tenantId, dto, auth);
+
+      expect(resolveAdapter).not.toHaveBeenCalled();
+      expect(register.resolveIssuer).not.toHaveBeenCalled();
+      expect(enqueue).not.toHaveBeenCalled();
+      expect(mockCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: CredentialDefinitionStatus.DRAFT,
+          schemaDefinition: dto.schema.definition,
+          externalId: null,
+          registrationState: 'unverified',
+        }),
+      );
+    });
+
+    it('rejects a connector that is not active for the tenant and type', async () => {
+      const tenantId = mockCredentialDefinition.tenantId;
+      const dto: CreateCredentialDefinitionDto = {
+        name: mockCredentialDefinition.name,
+        options: { format: CredentialDefinitionFormat.ANONCREDS },
+        schema: { definition: mockCredentialDefinition.schemaDefinition },
+        connectorId: mockCredentialDefinition.connectorId!,
+        status: CredentialDefinitionStatus.DRAFT,
+      };
+
+      mockFindByTenantAndNameAndFormat.mockResolvedValue(null);
+      mockFindActiveByTenantAndId.mockResolvedValue(null);
+
+      await expect(service.createDraft(tenantId, dto, auth)).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(mockCreate).not.toHaveBeenCalled();
+      expect(mockEmit).not.toHaveBeenCalled();
+    });
+
+    it('rejects a draft connector with an unsupported type', async () => {
+      const tenantId = mockCredentialDefinition.tenantId;
+      const dto: CreateCredentialDefinitionDto = {
+        name: mockCredentialDefinition.name,
+        options: { format: CredentialDefinitionFormat.ANONCREDS },
+        schema: { definition: mockCredentialDefinition.schemaDefinition },
+        connectorId: mockCredentialDefinition.connectorId!,
+        status: CredentialDefinitionStatus.DRAFT,
+      };
+
+      mockFindByTenantAndNameAndFormat.mockResolvedValue(null);
+      mockFindActiveByTenantAndId.mockResolvedValue({
+        id: dto.connectorId,
+        connectorType: 'unsupported',
+      });
+
+      await expect(service.createDraft(tenantId, dto, auth)).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(mockCreate).not.toHaveBeenCalled();
+      expect(mockEmit).not.toHaveBeenCalled();
+    });
+
     it('should throw ConflictException if name already exists for tenant', async () => {
       const tenantId = mockCredentialDefinition.tenantId;
       const dto: CreateCredentialDefinitionDto = {
@@ -1211,6 +1355,22 @@ describe('CredentialDefinitionService', () => {
   });
 
   describe('findById', () => {
+    it.each([
+      CredentialDefinitionStatus.DRAFT,
+      CredentialDefinitionStatus.DEPRECATED,
+    ])('allows management reads of active %s definitions', async (status) => {
+      const definition = {
+        ...mockCredentialDefinition,
+        status,
+        isActive: true,
+      };
+      mockFindById.mockResolvedValue(definition);
+
+      await expect(
+        service.findById(definition.tenantId, definition.id, auth),
+      ).resolves.toEqual(definition);
+    });
+
     it('should return a credential definition if found', async () => {
       const tenantId = mockCredentialDefinition.tenantId;
       const id = mockCredentialDefinition.id;
@@ -1314,6 +1474,24 @@ describe('CredentialDefinitionService', () => {
   });
 
   describe('update', () => {
+    it.each([
+      CredentialDefinitionStatus.PUBLISHED,
+      CredentialDefinitionStatus.DEPRECATED,
+    ])('rejects returning a %s definition to draft', async (status) => {
+      mockFindById.mockResolvedValue({ ...mockCredentialDefinition, status });
+
+      await expect(
+        service.update(
+          mockCredentialDefinition.tenantId,
+          mockCredentialDefinition.id,
+          { status: CredentialDefinitionStatus.DRAFT },
+          auth,
+        ),
+      ).rejects.toThrow(BadRequestException);
+      expect(mockUpdate).not.toHaveBeenCalled();
+      expect(mockEmit).not.toHaveBeenCalled();
+    });
+
     it('should update a credential definition if found', async () => {
       const tenantId = mockCredentialDefinition.tenantId;
       const id = mockCredentialDefinition.id;
@@ -1326,9 +1504,11 @@ describe('CredentialDefinitionService', () => {
       const result = await service.update(tenantId, id, dto, auth);
 
       expect(mockFindById).toHaveBeenCalledWith(id);
-      expect(mockUpdate).toHaveBeenCalledWith(tenantId, id, {
-        name: 'Updated Name',
-      });
+      expect(mockUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'Updated Name',
+        }),
+      );
       expect(mockEmit).toHaveBeenCalledWith({
         tenantId: updatedDefinition.tenantId,
         action: AuditAction.UPDATE,
@@ -1336,6 +1516,23 @@ describe('CredentialDefinitionService', () => {
         resourceId: updatedDefinition.id,
       });
       expect(result).toEqual(updatedDefinition);
+    });
+
+    it('updates the status when provided', async () => {
+      const tenantId = mockCredentialDefinition.tenantId;
+      const id = mockCredentialDefinition.id;
+
+      mockFindById.mockResolvedValue({ ...mockCredentialDefinition });
+      mockUpdate.mockImplementation((value: unknown) => Promise.resolve(value));
+
+      const result = await service.update(
+        tenantId,
+        id,
+        { status: CredentialDefinitionStatus.DEPRECATED },
+        auth,
+      );
+
+      expect(result.status).toBe(CredentialDefinitionStatus.DEPRECATED);
     });
 
     it('should update metadata when provided', async () => {
@@ -1357,9 +1554,11 @@ describe('CredentialDefinitionService', () => {
 
       const result = await service.update(tenantId, id, dto, auth);
 
-      expect(mockUpdate).toHaveBeenCalledWith(tenantId, id, {
-        metadata: dto.metadata,
-      });
+      expect(mockUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          metadata: dto.metadata,
+        }),
+      );
       expect(result.metadata).toEqual(dto.metadata);
     });
 
@@ -1375,9 +1574,7 @@ describe('CredentialDefinitionService', () => {
         auth,
       );
       expect(mockUpdate).toHaveBeenCalledWith(
-        auth.tenantId,
-        mockCredentialDefinition.id,
-        { metadata },
+        expect.objectContaining({ metadata }),
       );
     });
 

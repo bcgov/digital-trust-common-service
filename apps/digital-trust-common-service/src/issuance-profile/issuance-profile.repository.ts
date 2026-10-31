@@ -3,7 +3,10 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 
 import { Cursor } from '../common/cursor-pagination';
-import { CredentialDefinitionFormat } from '../credential-definition/credential-definition.entity';
+import {
+  CredentialDefinitionFormat,
+  CredentialDefinitionStatus,
+} from '../credential-definition/credential-definition.entity';
 
 import {
   IssuanceProfile,
@@ -73,7 +76,10 @@ export class IssuanceProfileRepository {
     }
 
     if (filters.format !== undefined) {
-      qb.andWhere('profile.format = :format', { format: filters.format });
+      qb.andWhere(
+        'profile.credential_definition_id IN (SELECT id FROM credential_definition WHERE tenant_id = :tenantId AND format = :format)',
+        { tenantId, format: filters.format },
+      );
     }
 
     if (filters.name !== undefined) {
@@ -133,20 +139,19 @@ export class IssuanceProfileRepository {
    * can win the transition, and a caller racing against an already-moved
    * profile gets 0 affected rows back instead of silently overwriting it.
    *
-   * `expectedConnectorId`, when provided, additionally guards on
-   * `connector_id` matching. `publish()` passes the connector id it just
-   * validated as healthy, closing the window between that check and this
-   * update: if the connector changes (or is removed, setting `connector_id`
-   * to null via `ON DELETE SET NULL`) in between, the guard no longer
-   * matches and this returns `false` instead of publishing against a
-   * connector that was never revalidated.
+   * Publishing also locks and rechecks the definition and active connector
+   * against the binding validated by the service, within this statement.
    */
   public async transitionStatus(
     tenantId: string,
     id: string,
     fromStatus: IssuanceProfileStatus,
     toStatus: IssuanceProfileStatus,
-    expectedConnectorId?: string,
+    expectedDefinition?: {
+      id: string;
+      connectorId: string;
+      format: CredentialDefinitionFormat;
+    },
   ): Promise<boolean> {
     const query = this.repository
       .createQueryBuilder()
@@ -156,10 +161,33 @@ export class IssuanceProfileRepository {
       .andWhere('tenant_id = :tenantId', { tenantId })
       .andWhere('status = :fromStatus', { fromStatus });
 
-    if (expectedConnectorId !== undefined) {
-      query.andWhere('connector_id = :expectedConnectorId', {
-        expectedConnectorId,
-      });
+    if (expectedDefinition !== undefined) {
+      query.andWhere(
+        `EXISTS (
+          SELECT 1 FROM credential_definition definition
+          INNER JOIN connector_credential connector
+            ON connector.id = definition.connector_id
+            AND connector.tenant_id = definition.tenant_id
+          WHERE definition.id = issuance_profile.credential_definition_id
+            AND definition.id = :expectedDefinitionId
+            AND definition.tenant_id = :tenantId
+            AND definition.is_active = true
+            AND definition.status = :expectedDefinitionStatus
+            AND definition.registration_state = 'ready'
+            AND definition.external_id IS NOT NULL
+            AND definition.external_id <> ''
+            AND definition.connector_id = :expectedConnectorId
+            AND definition.format = :expectedFormat
+            AND connector.active = true
+          FOR SHARE OF definition, connector
+        )`,
+        {
+          expectedDefinitionId: expectedDefinition.id,
+          expectedConnectorId: expectedDefinition.connectorId,
+          expectedFormat: expectedDefinition.format,
+          expectedDefinitionStatus: CredentialDefinitionStatus.PUBLISHED,
+        },
+      );
     }
 
     const result = await query.execute();

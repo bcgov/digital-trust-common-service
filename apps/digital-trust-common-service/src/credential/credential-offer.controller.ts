@@ -76,7 +76,7 @@ export class CredentialOfferController {
   @ApiBadRequestResponse({
     description:
       'connection_id is missing (OID4VCI not yet supported), profile/' +
-      'credential_definition_id resolution failed, or attribute validation failed',
+      'credential_definition_id resolution failed, the credential definition is not published, or attribute validation failed',
   })
   public async offer(
     @Param('tenantId', ParseUUIDPipe) tenantId: string,
