@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { Link, useNavigate, useSearchParams } from 'react-router';
 import valid from 'semver/functions/valid';
 
+import { AccessDenied } from '@/components/common/access-denied';
 import { Button } from '@/components/common/button';
 import { notify } from '@/components/common/sonner';
 import {
@@ -21,18 +22,10 @@ import {
   useRegisterCredentialDefinition,
   useUpdateCredentialDefinition,
 } from '@/lib/api/queries/credential-definitions';
-import type { CredentialDefinition } from '@/lib/api/resources/credential-definitions';
 import { useTenant } from '@/lib/api/queries/tenants';
 import { useAuth } from '@/lib/auth/context';
 import { hasScope, TENANT_ADMIN_SCOPE } from '@/lib/auth/scopes';
 import { useActiveTenant } from '@/lib/tenant/active-tenant';
-
-const FORMAT_KEYS = {
-  anoncreds: 'credentialDefinitions.setup.anoncreds',
-  'sd-jwt': 'credentialDefinitions.formats.sdJwt',
-  mdl: 'credentialDefinitions.formats.mdl',
-  'w3c-vc': 'credentialDefinitions.formats.w3cVc',
-} as const;
 
 export function CreateOrEditCredentialDefinitionPage() {
   const { t } = useTranslation();
@@ -44,7 +37,9 @@ export function CreateOrEditCredentialDefinitionPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const draftId = searchParams.get('id');
-  const draftQuery = useCredentialDefinition(tenant?.id, draftId);
+  const draftQuery = useCredentialDefinition(tenant?.id, draftId, {
+    enabled: canManage,
+  });
   const createMutation = useCreateCredentialDefinition(tenant?.id);
   const registerMutation = useRegisterCredentialDefinition(tenant?.id);
   const updateMutation = useUpdateCredentialDefinition(tenant?.id);
@@ -58,8 +53,6 @@ export function CreateOrEditCredentialDefinitionPage() {
   const [loadedDraftId, setLoadedDraftId] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [version, setVersion] = useState('');
-  const [format, setFormat] =
-    useState<NonNullable<CredentialDefinition['format']>>('anoncreds');
   const [description, setDescription] = useState('');
   const [attributes, setAttributes] = useState<Attribute[]>(() => [
     { id: `${attributeIdPrefix}-initial`, name: '' },
@@ -69,7 +62,8 @@ export function CreateOrEditCredentialDefinitionPage() {
   );
   useEffect(() => {
     const definition = draftQuery.data;
-    if (!draftId || !definition || loadedDraftId === draftId) return;
+    if (!canManage || !draftId || !definition || loadedDraftId === draftId)
+      return;
     if (definition.status !== 'draft') {
       notify.danger(t('credentialDefinitions.wizard.draftNotEditable'));
       void navigate('/credential-definitions');
@@ -86,7 +80,6 @@ export function CreateOrEditCredentialDefinitionPage() {
       const attributeNames = schemaDefinition.attr_names;
       setName(definition.name ?? '');
       setVersion(definition.version ?? '');
-      setFormat('anoncreds');
       setDescription(
         typeof definition.metadata?.description === 'string'
           ? definition.metadata.description
@@ -111,14 +104,14 @@ export function CreateOrEditCredentialDefinitionPage() {
       setChosenConnectorId(definition.connector_id ?? null);
       setLoadedDraftId(draftId);
     });
-  }, [draftId, draftQuery.data, loadedDraftId, navigate, t]);
+  }, [canManage, draftId, draftQuery.data, loadedDraftId, navigate, t]);
 
   useEffect(() => {
-    if (draftQuery.isError) {
+    if (canManage && draftQuery.isError) {
       notify.danger(t('credentialDefinitions.wizard.draftLoadFailed'));
       void navigate('/credential-definitions');
     }
-  }, [draftQuery.isError, navigate, t]);
+  }, [canManage, draftQuery.isError, navigate, t]);
   const activeConnectors = (connectorsQuery.data?.data ?? []).filter(
     (connector) => connector.active === true,
   );
@@ -148,7 +141,10 @@ export function CreateOrEditCredentialDefinitionPage() {
       t('credentialDefinitions.review.connector'),
       selectedConnector?.connector_type ?? '',
     ],
-    [t('credentialDefinitions.review.format'), t(FORMAT_KEYS[format])],
+    [
+      t('credentialDefinitions.review.format'),
+      t('credentialDefinitions.setup.anoncreds'),
+    ],
   ];
   const namedAttributes = attributes.filter((attribute) =>
     attribute.name.trim(),
@@ -160,10 +156,7 @@ export function CreateOrEditCredentialDefinitionPage() {
     `${version.trim()}.0.0`,
   ].some((candidate) => valid(candidate) !== null);
   const isSetupValid =
-    format === 'anoncreds' &&
-    name.trim() !== '' &&
-    isVersionValid &&
-    selectedConnector?.id !== undefined;
+    name.trim() !== '' && isVersionValid && selectedConnector?.id !== undefined;
 
   const canPublish = isSetupValid && namedAttributes.length > 0;
 
@@ -176,11 +169,9 @@ export function CreateOrEditCredentialDefinitionPage() {
     const trimmedVersion = version.trim();
     const schemaDefinition = {
       ...(draftQuery.data?.schema_definition ?? {}),
-      ...(format === 'anoncreds' && {
-        attr_names: namedAttributes.map((attribute) => attribute.name.trim()),
-        schema_name: trimmedName,
-        schema_version: trimmedVersion,
-      }),
+      attr_names: namedAttributes.map((attribute) => attribute.name.trim()),
+      schema_name: trimmedName,
+      schema_version: trimmedVersion,
       version: trimmedVersion,
     };
     const metadata = { ...(draftQuery.data?.metadata ?? {}) };
@@ -286,6 +277,16 @@ export function CreateOrEditCredentialDefinitionPage() {
     if (canPublish) createDefinition('published');
   };
 
+  if (!canManage) {
+    return (
+      <AccessDenied
+        title={t('credentialDefinitions.title')}
+        headingLevel={1}
+        description={t('credentialDefinitions.forbidden')}
+      />
+    );
+  }
+
   if (draftId && (draftQuery.isLoading || loadedDraftId !== draftId)) {
     return (
       <p role="status">{t('credentialDefinitions.wizard.loadingDraft')}</p>
@@ -320,7 +321,6 @@ export function CreateOrEditCredentialDefinitionPage() {
           description={description}
           onDescriptionChange={setDescription}
           connectors={activeConnectors}
-          format={format}
           connectorId={connectorId}
           defaultConnectorId={
             typeof defaultConnectorId === 'string'

@@ -46,6 +46,9 @@ import { CredentialDefinitionRepository } from './credential-definition.reposito
 import { CreateCredentialDefinitionDto } from './dto/create-credential-definition.dto';
 import { UpdateCredentialDefinitionDto } from './dto/update-credential-definition.dto';
 
+const DUPLICATE_CREDENTIAL_DEFINITION_MESSAGE =
+  'Credential definition with this name and format already exists for this tenant.';
+
 /**
  * Maps entity formats onto port-layer formats when their values match. The
  * entity enum accepts more formats than the port layer currently supports.
@@ -184,9 +187,7 @@ export class CredentialDefinitionService {
         dto.options.format,
       );
     if (existing)
-      throw new ConflictException(
-        'Credential definition with this name and format already exists for this tenant.',
-      );
+      throw new ConflictException(DUPLICATE_CREDENTIAL_DEFINITION_MESSAGE);
     const connector =
       await this.connectorCredentialRepository.findActiveByTenantAndId(
         tenantId,
@@ -201,23 +202,25 @@ export class CredentialDefinitionService {
       );
     const schemaVersion =
       dto.schema.definition.version ?? dto.schema.definition.schema_version;
-    const created = await this.credentialDefinitionRepository.create({
-      tenantId,
-      name: dto.name,
-      format: dto.options.format,
-      schemaDefinition: dto.schema.definition,
-      externalId: null,
-      connectorId: connector.id,
-      connectorType,
-      options: handler.normalizeOptions(dto.options),
-      registrationState: 'unverified',
-      status: CredentialDefinitionStatus.DRAFT,
-      version:
-        typeof schemaVersion === 'string' && schemaVersion.trim()
-          ? schemaVersion
-          : '1.0',
-      metadata: dto.metadata,
-    });
+    const created = await this.credentialDefinitionRepository
+      .create({
+        tenantId,
+        name: dto.name,
+        format: dto.options.format,
+        schemaDefinition: dto.schema.definition,
+        externalId: null,
+        connectorId: connector.id,
+        connectorType,
+        options: handler.normalizeOptions(dto.options),
+        registrationState: 'unverified',
+        status: CredentialDefinitionStatus.DRAFT,
+        version:
+          typeof schemaVersion === 'string' && schemaVersion.trim()
+            ? schemaVersion
+            : '1.0',
+        metadata: dto.metadata,
+      })
+      .catch((error: unknown) => this.throwNameConflictOrRethrow(error));
     await this.domainAudit.emit({
       tenantId,
       action: AuditAction.CREATE,
@@ -313,7 +316,24 @@ export class CredentialDefinitionService {
     operation: Operation;
     created: boolean;
   }> {
+    if (!definition.isActive && definition.registrationState === 'ready') {
+      throw new ConflictException({
+        code: 'REGISTRATION_REPLAY_UNAVAILABLE',
+        message:
+          'A deactivated credential definition with this name and format already exists and will not be reactivated.',
+        credential_definition_id: definition.id,
+      });
+    }
+    if (!definition.isActive && definition.registrationState !== 'failed') {
+      throw new ConflictException({
+        code: 'REGISTRATION_REPLAY_UNAVAILABLE',
+        message: 'The inactive credential definition cannot be continued.',
+        credential_definition_id: definition.id,
+      });
+    }
+
     const isLocalDraft =
+      definition.isActive &&
       definition.status === CredentialDefinitionStatus.DRAFT &&
       definition.registrationState === 'unverified';
     if (
@@ -335,82 +355,27 @@ export class CredentialDefinitionService {
       );
     }
     if (isLocalDraft) {
-      const operation = await this.createRegistrationOperation(
+      return await this.startExistingRegistration(
+        manager,
+        handler,
+        definition,
         tenantId,
         dto,
-        manager,
-      );
-      Object.assign(definition, {
-        status: CredentialDefinitionStatus.PUBLISHED,
-        registrationState: 'pending',
-        registrationOperationId: operation.id,
-        registration: prepared.registration,
-      });
-      await manager.update(
-        CredentialDefinition,
-        { id: definition.id, tenantId },
         {
           status: CredentialDefinitionStatus.PUBLISHED,
-          registrationState: 'pending',
-          registrationOperationId: operation.id,
           registration: prepared.registration,
         },
       );
-      operation.result = { credential_definition_id: definition.id };
-      await manager.save(Operation, operation);
-      await handler.register(definition, manager);
-      await this.completeImmediateRegistration(
-        definition,
-        operation,
-        tenantId,
-        manager,
-      );
-      return { definition, operation, created: false };
     }
-    if (!definition.isActive && definition.registrationState === 'ready') {
-      throw new ConflictException({
-        code: 'REGISTRATION_REPLAY_UNAVAILABLE',
-        message:
-          'A deactivated credential definition with this name and format already exists and will not be reactivated.',
-        credential_definition_id: definition.id,
-      });
-    }
-    if (!definition.isActive && definition.registrationState !== 'failed') {
-      throw new ConflictException({
-        code: 'REGISTRATION_REPLAY_UNAVAILABLE',
-        message: 'The inactive credential definition cannot be continued.',
-        credential_definition_id: definition.id,
-      });
-    }
-
     if (definition.registrationState === 'failed') {
-      const operation = await this.createRegistrationOperation(
+      return await this.startExistingRegistration(
+        manager,
+        handler,
+        definition,
         tenantId,
         dto,
-        manager,
+        {},
       );
-      definition.isActive = true;
-      definition.registrationState = 'pending';
-      definition.registrationOperationId = operation.id;
-      await manager.update(
-        CredentialDefinition,
-        { id: definition.id, tenantId },
-        {
-          isActive: true,
-          registrationState: 'pending',
-          registrationOperationId: operation.id,
-        },
-      );
-      operation.result = { credential_definition_id: definition.id };
-      await manager.save(Operation, operation);
-      await handler.register(definition, manager);
-      await this.completeImmediateRegistration(
-        definition,
-        operation,
-        tenantId,
-        manager,
-      );
-      return { definition, operation, created: false };
     }
 
     if (definition.registrationState === 'pending') {
@@ -456,6 +421,47 @@ export class CredentialDefinitionService {
     throw new ConflictException(
       'Credential definition registration cannot be continued.',
     );
+  }
+
+  private async startExistingRegistration(
+    manager: import('typeorm').EntityManager,
+    handler: CredentialDefinitionFormatHandler,
+    definition: CredentialDefinition,
+    tenantId: string,
+    dto: CreateCredentialDefinitionDto,
+    changes: Partial<Pick<CredentialDefinition, 'status' | 'registration'>>,
+  ): Promise<{
+    definition: CredentialDefinition;
+    operation: Operation;
+    created: boolean;
+  }> {
+    const operation = await this.createRegistrationOperation(
+      tenantId,
+      dto,
+      manager,
+    );
+    const updates = {
+      ...changes,
+      isActive: true,
+      registrationState: 'pending' as const,
+      registrationOperationId: operation.id,
+    };
+    Object.assign(definition, updates);
+    await manager.update(
+      CredentialDefinition,
+      { id: definition.id, tenantId },
+      updates,
+    );
+    operation.result = { credential_definition_id: definition.id };
+    await manager.save(Operation, operation);
+    await handler.register(definition, manager);
+    await this.completeImmediateRegistration(
+      definition,
+      operation,
+      tenantId,
+      manager,
+    );
+    return { definition, operation, created: false };
   }
 
   private async createRegistrationOperation(
@@ -505,6 +511,13 @@ export class CredentialDefinitionService {
       'code' in driver &&
       driver.code === '23505'
     );
+  }
+
+  private throwNameConflictOrRethrow(error: unknown): never {
+    if (this.isUniqueViolation(error)) {
+      throw new ConflictException(DUPLICATE_CREDENTIAL_DEFINITION_MESSAGE);
+    }
+    throw error;
   }
 
   private registrationError(error: unknown): never {
@@ -601,10 +614,8 @@ export class CredentialDefinitionService {
     auth: AuthContext,
   ): Promise<CredentialDefinition> {
     const notFound = `Credential definition '${id}' was not found.`;
-    const updated = await this.credentialDefinitionRepository.updateWithLock(
-      tenantId,
-      id,
-      async (credentialDefinition) => {
+    const updated = await this.credentialDefinitionRepository
+      .updateWithLock(tenantId, id, async (credentialDefinition) => {
         assertResourceTenantOrNotFound(auth, tenantId, notFound);
         if (
           dto.status === CredentialDefinitionStatus.DRAFT &&
@@ -643,7 +654,7 @@ export class CredentialDefinitionService {
             );
           if (existing && existing.id !== credentialDefinition.id) {
             throw new ConflictException(
-              'Credential definition with this name and format already exists for this tenant.',
+              DUPLICATE_CREDENTIAL_DEFINITION_MESSAGE,
             );
           }
         }
@@ -698,8 +709,8 @@ export class CredentialDefinitionService {
         if (dto.status !== undefined) {
           credentialDefinition.status = dto.status;
         }
-      },
-    );
+      })
+      .catch((error: unknown) => this.throwNameConflictOrRethrow(error));
     if (!updated) throw new NotFoundException(notFound);
 
     await this.domainAudit.emit({

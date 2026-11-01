@@ -3893,6 +3893,18 @@ components:
               sd-jwt: "#/components/schemas/SdJwtCredentialDefinitionOptionsDto"
               mdl: "#/components/schemas/MdlCredentialDefinitionOptionsDto"
               w3c-vc: "#/components/schemas/W3cVcCredentialDefinitionOptionsDto"
+      allOf:
+        - if:
+            properties:
+              status:
+                const: draft
+            required: [status]
+          then:
+            required: [connector_id]
+            properties:
+              schema:
+                type: object
+                required: [definition]
 
     UpdateCredentialDefinitionRequest:
       type: object

@@ -47,6 +47,7 @@ export function useCredentialDefinitions(
 export function useCredentialDefinition(
   tenantId: string | undefined,
   credentialDefinitionId: string | null,
+  options: { enabled?: boolean } = {},
 ) {
   return useQuery({
     queryKey: credentialDefinitionKeys.detail(
@@ -59,7 +60,8 @@ export function useCredentialDefinition(
       }
       return getCredentialDefinition(tenantId, credentialDefinitionId);
     },
-    enabled: Boolean(tenantId && credentialDefinitionId),
+    enabled:
+      Boolean(tenantId && credentialDefinitionId) && options.enabled !== false,
   });
 }
 

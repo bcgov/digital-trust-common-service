@@ -83,6 +83,60 @@ describe('credential definition registration contract', () => {
     ).rejects.toThrow();
   });
 
+  it.each(['draft', 'published'])(
+    'accepts %s as a credential-definition creation status',
+    async (status) => {
+      const request =
+        status === 'draft'
+          ? {
+              ...input,
+              status,
+              connector_id: '123e4567-e89b-42d3-a456-426614174001',
+              schema: {
+                definition: {
+                  schema_name: 'Employee',
+                  schema_version: '1.0',
+                  attr_names: ['name'],
+                },
+              },
+            }
+          : { ...input, status };
+      await expect(validate(request)).resolves.toMatchObject({ status });
+    },
+  );
+
+  it('requires schema.definition and connector_id for drafts', async () => {
+    const connectorId = '123e4567-e89b-42d3-a456-426614174001';
+    const schema = {
+      definition: {
+        schema_name: 'Employee',
+        schema_version: '1.0',
+        attr_names: ['name'],
+      },
+    };
+
+    await expect(
+      validate({ ...input, status: 'draft', connector_id: connectorId }),
+    ).rejects.toThrow();
+    await expect(
+      validate({
+        ...input,
+        status: 'draft',
+        connector_id: connectorId,
+        schema,
+      }),
+    ).resolves.toMatchObject({ status: 'draft', connectorId });
+    await expect(
+      validate({ ...input, status: 'draft', schema }),
+    ).rejects.toThrow();
+  });
+
+  it('rejects deprecated as a credential-definition creation status', async () => {
+    await expect(
+      validate({ ...input, status: 'deprecated' }),
+    ).rejects.toThrow();
+  });
+
   it('does not accept options on PATCH', async () => {
     const patchPipe = new ValidationPipe({
       transform: true,

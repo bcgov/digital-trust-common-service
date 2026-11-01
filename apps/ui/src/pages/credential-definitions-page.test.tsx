@@ -27,6 +27,46 @@ const anonCredsOptions = {
 };
 
 describe('CredentialDefinitionsPage', () => {
+  it('shows access denied and skips draft queries without the admin scope', async () => {
+    const client = createMockAuthClient();
+    await client.login();
+    const adminTenantId = MOCK_AUTH_TENANTS[1]?.id;
+    if (!adminTenantId) throw new Error('Expected mock admin tenant');
+    await client.switchTenant(adminTenantId);
+
+    const requestedDraft = vi.fn();
+    server.use(
+      http.get(
+        `${API_BASE_PATH}/tenants/:id/credential-definitions/:definitionId`,
+        () => {
+          requestedDraft();
+          return HttpResponse.json({});
+        },
+      ),
+    );
+
+    renderWithAuth(
+      [
+        {
+          path: '/credential-definitions/create-or-edit',
+          element: <CreateOrEditCredentialDefinitionPage />,
+        },
+      ],
+      {
+        client,
+        initialEntries: [
+          '/credential-definitions/create-or-edit?id=bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+        ],
+      },
+    );
+
+    expect(
+      screen.getByText(/need the tenants:admin scope/i),
+    ).toBeInTheDocument();
+    expect(requestedDraft).not.toHaveBeenCalled();
+    expect(screen.queryByLabelText('Credential name')).not.toBeInTheDocument();
+  });
+
   it.each(['sd-jwt', 'mdl', 'w3c-vc'] as const)(
     'does not open or save a %s draft in the Anoncreds wizard',
     async (format) => {

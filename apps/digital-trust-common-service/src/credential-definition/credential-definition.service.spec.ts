@@ -411,6 +411,48 @@ describe('CredentialDefinitionService', () => {
       ...overrides,
     });
 
+    it('starts registration from a matching local draft', async () => {
+      const localDraft = sameDefinition({
+        status: CredentialDefinitionStatus.DRAFT,
+        registrationState: 'unverified',
+        registrationOperationId: null,
+        registration: null,
+      });
+      mockFindExistingByTenantAndNameAndFormat.mockResolvedValueOnce(
+        localDraft,
+      );
+      createOperation.mockResolvedValueOnce({
+        id: 'draft-operation',
+        state: OperationState.PENDING,
+      });
+
+      await expect(
+        service.create(
+          auth.tenantId,
+          {
+            name: 'Employee',
+            options: { format: CredentialDefinitionFormat.ANONCREDS },
+            schema: { definition: mockCredentialDefinition.schemaDefinition },
+          },
+          auth,
+        ),
+      ).resolves.toMatchObject({ id: 'draft-operation' });
+
+      expect(localDraft).toMatchObject({
+        status: CredentialDefinitionStatus.PUBLISHED,
+        isActive: true,
+        registrationState: 'pending',
+        registrationOperationId: 'draft-operation',
+        registration: { issuerId: 'did:indy:issuer' },
+      });
+      expect(enqueue).toHaveBeenCalledWith(
+        manager,
+        'credential-definition.register',
+        { tenantId: auth.tenantId, definitionId: localDraft.id },
+        { singletonKey: localDraft.id },
+      );
+    });
+
     it('queues one keyed continuation and returns the pending operation', async () => {
       mockFindExistingByTenantAndNameAndFormat.mockResolvedValueOnce(
         sameDefinition(),
@@ -687,7 +729,12 @@ describe('CredentialDefinitionService', () => {
 
     it('rejects replay of an inactive non-failed definition', async () => {
       mockFindExistingByTenantAndNameAndFormat.mockResolvedValueOnce(
-        sameDefinition({ isActive: false, registrationState: 'pending' }),
+        sameDefinition({
+          isActive: false,
+          status: CredentialDefinitionStatus.DRAFT,
+          registrationState: 'unverified',
+          registration: null,
+        }),
       );
 
       await expect(
@@ -703,6 +750,9 @@ describe('CredentialDefinitionService', () => {
       ).rejects.toMatchObject({
         response: { code: 'REGISTRATION_REPLAY_UNAVAILABLE' },
       });
+      expect(createOperation).not.toHaveBeenCalled();
+      expect(enqueue).not.toHaveBeenCalled();
+      expect(manager.update).not.toHaveBeenCalled();
     });
 
     it('rejects pending and ready definitions whose operation is unavailable', async () => {
@@ -909,6 +959,28 @@ describe('CredentialDefinitionService', () => {
           registrationState: 'unverified',
         }),
       );
+    });
+
+    it('maps a unique-index race during draft creation to conflict', async () => {
+      const dto: CreateCredentialDefinitionDto = {
+        name: 'Employee',
+        options: { format: CredentialDefinitionFormat.ANONCREDS },
+        schema: { definition: mockCredentialDefinition.schemaDefinition },
+        connectorId: mockCredentialDefinition.connectorId!,
+        status: CredentialDefinitionStatus.DRAFT,
+      };
+      const driverError = Object.assign(new Error('duplicate'), {
+        code: '23505',
+      });
+      mockFindByTenantAndNameAndFormat.mockResolvedValueOnce(null);
+      mockCreate.mockRejectedValueOnce(
+        new QueryFailedError('INSERT', [], driverError),
+      );
+
+      await expect(
+        service.createDraft(auth.tenantId, dto, auth),
+      ).rejects.toThrow(ConflictException);
+      expect(mockEmit).not.toHaveBeenCalled();
     });
 
     it('rejects a connector that is not active for the tenant and type', async () => {
@@ -1474,6 +1546,31 @@ describe('CredentialDefinitionService', () => {
   });
 
   describe('update', () => {
+    it('maps a unique-index race during a name update to conflict', async () => {
+      mockFindById.mockResolvedValue({
+        ...mockCredentialDefinition,
+        status: CredentialDefinitionStatus.DRAFT,
+        isActive: true,
+      });
+      mockFindByTenantAndNameAndFormat.mockResolvedValueOnce(null);
+      const driverError = Object.assign(new Error('duplicate'), {
+        code: '23505',
+      });
+      mockUpdate.mockRejectedValueOnce(
+        new QueryFailedError('UPDATE', [], driverError),
+      );
+
+      await expect(
+        service.update(
+          auth.tenantId,
+          mockCredentialDefinition.id,
+          { name: 'Employee' },
+          auth,
+        ),
+      ).rejects.toThrow(ConflictException);
+      expect(mockEmit).not.toHaveBeenCalled();
+    });
+
     it.each([
       CredentialDefinitionStatus.PUBLISHED,
       CredentialDefinitionStatus.DEPRECATED,

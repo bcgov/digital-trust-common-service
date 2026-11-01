@@ -2,15 +2,7 @@ import { Input } from '@/components/common/input';
 import { Label } from '@/components/common/label';
 import { SelectMenu } from '@/components/common/select-menu';
 import type { Connector } from '@/lib/api/resources/connectors';
-import type { CredentialDefinition } from '@/lib/api/resources/credential-definitions';
 import { useTranslation } from 'react-i18next';
-
-const FORMAT_KEYS = {
-  anoncreds: 'credentialDefinitions.setup.anoncreds',
-  'sd-jwt': 'credentialDefinitions.formats.sdJwt',
-  mdl: 'credentialDefinitions.formats.mdl',
-  'w3c-vc': 'credentialDefinitions.formats.w3cVc',
-} as const;
 
 export function DetailsStep({
   name,
@@ -21,7 +13,6 @@ export function DetailsStep({
   description,
   onDescriptionChange,
   connectors,
-  format,
   connectorId,
   defaultConnectorId,
   onConnectorChange,
@@ -34,7 +25,6 @@ export function DetailsStep({
   description: string;
   onDescriptionChange: (value: string) => void;
   connectors: readonly Connector[];
-  format: NonNullable<CredentialDefinition['format']>;
   connectorId: string;
   defaultConnectorId: string | undefined;
   onConnectorChange: (value: string) => void;
@@ -144,26 +134,24 @@ export function DetailsStep({
         </h3>
         <div className="flex w-1/2 items-start gap-3 rounded-lg border-2 border-input bg-card p-4 has-[:checked]:border-primary">
           <input
-            id={`format-${format}`}
+            id="format-anoncreds"
             type="radio"
             name="format"
-            value={format}
+            value="anoncreds"
             checked
             readOnly
-            aria-describedby={`format-${format}-description`}
+            aria-describedby="format-anoncreds-description"
             className="mt-0.5 size-4 accent-primary"
           />
           <div className="flex flex-col gap-1">
-            <Label htmlFor={`format-${format}`} className="text-base">
-              {t(FORMAT_KEYS[format])}
+            <Label htmlFor="format-anoncreds" className="text-base">
+              {t('credentialDefinitions.setup.anoncreds')}
             </Label>
             <p
-              id={`format-${format}-description`}
+              id="format-anoncreds-description"
               className="text-sm text-muted-foreground"
             >
-              {format === 'anoncreds'
-                ? t('credentialDefinitions.setup.anoncredsDescription')
-                : t('credentialDefinitions.setup.formatLocked')}
+              {t('credentialDefinitions.setup.anoncredsDescription')}
             </p>
           </div>
         </div>

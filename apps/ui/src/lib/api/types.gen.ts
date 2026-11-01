@@ -2071,7 +2071,7 @@ export interface components {
              *     selects the format-specific publication options.
              */
             options: components["schemas"]["AnonCredsCredentialDefinitionOptionsDto"] | components["schemas"]["SdJwtCredentialDefinitionOptionsDto"] | components["schemas"]["MdlCredentialDefinitionOptionsDto"] | components["schemas"]["W3cVcCredentialDefinitionOptionsDto"];
-        };
+        } & unknown;
         /** @description Schema and connector fields may only be changed while the definition is a draft. */
         UpdateCredentialDefinitionRequest: {
             name?: string;
