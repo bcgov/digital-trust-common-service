@@ -1,0 +1,72 @@
+suite: Log access internal listener
+templates:
+  - templates/deployment.yaml
+  - templates/log-access-service.yaml
+  # deployment.yaml checksums these, so they must be loaded alongside it
+  - templates/configmap.yaml
+  - templates/secret.yaml
+  - templates/connector-encryption-secret.yaml
+  - templates/oidc-signing-secret.yaml
+set:
+  upstreamFederation:
+    existingSecret:
+      name: dtsc-ci-oidc-client
+tests:
+  - it: renders nothing and opens no port by default
+    asserts:
+      - hasDocuments:
+          count: 0
+        template: templates/log-access-service.yaml
+      - notContains:
+          path: spec.template.spec.containers[0].ports
+          content:
+            name: log-access
+            containerPort: 8443
+            protocol: TCP
+        template: templates/deployment.yaml
+
+  - it: exposes the internal port on its own TLS-serving Service
+    set:
+      logAccess:
+        enabled: true
+        gatewayPodSelector:
+          app.kubernetes.io/name: log-gateway
+    asserts:
+      - equal:
+          path: spec.ports[0].port
+          value: 8443
+        template: templates/log-access-service.yaml
+        documentIndex: 0
+      - isNotNull:
+          path: metadata.annotations["service.beta.openshift.io/serving-cert-secret-name"]
+        template: templates/log-access-service.yaml
+        documentIndex: 0
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: LOG_ACCESS_INTERNAL_PORT
+            value: "8443"
+        template: templates/deployment.yaml
+
+  - it: admits only the gateway pods to the internal port
+    set:
+      logAccess:
+        enabled: true
+        gatewayPodSelector:
+          app.kubernetes.io/name: log-gateway
+    asserts:
+      - equal:
+          path: spec.ingress[0].from[0].podSelector.matchLabels
+          value:
+            app.kubernetes.io/name: log-gateway
+        template: templates/log-access-service.yaml
+        documentIndex: 1
+
+  - it: refuses to render without a gateway selector
+    set:
+      logAccess:
+        enabled: true
+    asserts:
+      - failedTemplate:
+          errorPattern: gatewayPodSelector is required
+        template: templates/log-access-service.yaml

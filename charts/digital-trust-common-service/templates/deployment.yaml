@@ -58,11 +58,24 @@ spec:
             - name: http
               containerPort: {{ .Values.service.targetPort }}
               protocol: TCP
+            {{- if .Values.logAccess.enabled }}
+            - name: log-access
+              containerPort: {{ .Values.logAccess.port }}
+              protocol: TCP
+            {{- end }}
           envFrom:
             {{- include "digital-trust-common-service.envFrom" . | nindent 12 }}
           env:
             {{- with .Values.extraEnv }}
             {{- toYaml . | nindent 12 }}
+            {{- end }}
+            {{- if .Values.logAccess.enabled }}
+            - name: LOG_ACCESS_INTERNAL_PORT
+              value: {{ .Values.logAccess.port | quote }}
+            - name: LOG_ACCESS_INTERNAL_TLS_CERT_PATH
+              value: {{ printf "%s/tls.crt" .Values.logAccess.tls.mountPath | quote }}
+            - name: LOG_ACCESS_INTERNAL_TLS_KEY_PATH
+              value: {{ printf "%s/tls.key" .Values.logAccess.tls.mountPath | quote }}
             {{- end }}
             - name: UPSTREAM_IDENTITY_FEDERATION_CONFIG_PATH
               value: {{ printf "%s/%s" .Values.upstreamFederation.mountPath .Values.upstreamFederation.fileName | quote }}
@@ -131,6 +144,11 @@ spec:
               mountPath: {{ .Values.oidcSigning.mountPath }}
               readOnly: true
             {{- end }}
+            {{- if .Values.logAccess.enabled }}
+            - name: log-access-tls
+              mountPath: {{ .Values.logAccess.tls.mountPath }}
+              readOnly: true
+            {{- end }}
             - name: upstream-federation-config
               mountPath: {{ .Values.upstreamFederation.mountPath }}
               readOnly: true
@@ -148,6 +166,11 @@ spec:
         - name: oidc-signing
           secret:
             secretName: {{ include "digital-trust-common-service.oidcSigningSecretName" . }}
+        {{- end }}
+        {{- if .Values.logAccess.enabled }}
+        - name: log-access-tls
+          secret:
+            secretName: {{ include "digital-trust-common-service.fullname" . }}-log-access-tls
         {{- end }}
         - name: upstream-federation-config
           secret:

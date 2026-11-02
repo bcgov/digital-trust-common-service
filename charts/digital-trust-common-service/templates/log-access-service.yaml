@@ -1,0 +1,48 @@
+{{- if .Values.logAccess.enabled }}
+{{- if not .Values.logAccess.gatewayPodSelector }}
+{{- fail "logAccess.gatewayPodSelector is required when logAccess.enabled is true; an empty selector would admit every pod" }}
+{{- end }}
+# Internal decision endpoint for the log gateway's ext_authz filter. A separate
+# Service keeps the port off the one the Route targets, and lets OpenShift issue
+# a serving certificate for exactly this Service's DNS name.
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "digital-trust-common-service.fullname" . }}-log-access
+  labels:
+    {{- include "digital-trust-common-service.api.labels" . | nindent 4 }}
+  annotations:
+    service.beta.openshift.io/serving-cert-secret-name: {{ include "digital-trust-common-service.fullname" . }}-log-access-tls
+spec:
+  type: ClusterIP
+  ports:
+    - port: {{ .Values.logAccess.port }}
+      targetPort: log-access
+      protocol: TCP
+      name: log-access
+  selector:
+    {{- include "digital-trust-common-service.api.selectorLabels" . | nindent 4 }}
+{{- if .Values.networkPolicy.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "digital-trust-common-service.fullname" . }}-allow-log-gateway
+  labels:
+    {{- include "digital-trust-common-service.api.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "digital-trust-common-service.api.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- toYaml .Values.logAccess.gatewayPodSelector | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: log-access
+{{- end }}
+{{- end }}
