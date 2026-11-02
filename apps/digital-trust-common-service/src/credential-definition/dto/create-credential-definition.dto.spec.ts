@@ -152,6 +152,27 @@ describe('credential definition registration contract', () => {
     ).rejects.toThrow();
   });
 
+  it('rejects null status on PATCH', async () => {
+    const patchPipe = new ValidationPipe({
+      transform: true,
+      whitelist: true,
+      forbidNonWhitelisted: true,
+    });
+
+    await expect(
+      patchPipe.transform({}, {
+        type: 'body',
+        metatype: UpdateCredentialDefinitionDto,
+      }),
+    ).resolves.toBeDefined();
+    await expect(
+      patchPipe.transform(
+        { status: null },
+        { type: 'body', metatype: UpdateCredentialDefinitionDto },
+      ),
+    ).rejects.toThrow();
+  });
+
   it.each([
     { external_id: 'legacy' },
     { connector_type: 'traction' },

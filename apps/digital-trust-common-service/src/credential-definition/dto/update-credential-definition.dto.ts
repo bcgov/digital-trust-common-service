@@ -7,6 +7,7 @@ import {
   IsString,
   MaxLength,
   IsUUID,
+  ValidateIf,
 } from 'class-validator';
 
 import { CredentialDefinitionStatus } from '../credential-definition.entity';
@@ -42,7 +43,7 @@ export class UpdateCredentialDefinitionDto {
 
   @Expose()
   @ApiPropertyOptional({ enum: CredentialDefinitionStatus })
-  @IsOptional()
+  @ValidateIf((_object, value) => value !== undefined)
   @IsEnum(CredentialDefinitionStatus)
   public status?: CredentialDefinitionStatus;
 
