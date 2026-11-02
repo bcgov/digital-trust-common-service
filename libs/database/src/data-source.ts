@@ -33,11 +33,11 @@ import { AddOperationInflightRevokeUniqueIndex1789751397831 } from './migrations
 import { RemoveVerificationProfileIssuanceProfileLink1790623456139 } from './migrations/000030_remove-verification-profile-issuance-profile-link';
 import { AllowNullableConnectionExternalId1790703557000 } from './migrations/000031_allow-nullable-connection-external-id';
 import { AddTenantUserPlatformOperator1790900000000 } from './migrations/000032_add-tenant-user-platform-operator';
-import { AddCredentialDefinitionLifecycle1792713600000 } from './migrations/000033_add-credential-definition-lifecycle';
 import { ExtendCredentialDefinitionRegistration1792018018010 } from './migrations/000033_extend-credential-definition-registration';
-import { CreateAnoncredsPublicationIntent1793375200834 } from './migrations/000034_create-anoncreds-publication-intent';
-import { RemoveIssuanceProfileDerivedFields1793377253689 } from './migrations/000034_remove-issuance-profile-derived-fields';
-import { ConsolidateCredentialDefinitionConnector1793383965371 } from './migrations/000035_consolidate-credential-definition-connector';
+import { AddCredentialDefinitionLifecycle1792713600000 } from './migrations/000034_add-credential-definition-lifecycle';
+import { CreateAnoncredsPublicationIntent1793375200834 } from './migrations/000035_create-anoncreds-publication-intent';
+import { RemoveIssuanceProfileDerivedFields1793377253689 } from './migrations/000036_remove-issuance-profile-derived-fields';
+import { ConsolidateCredentialDefinitionConnector1793383965371 } from './migrations/000037_consolidate-credential-definition-connector';
 import { buildSslConfig } from './ssl.util';
 
 export const AppDataSource = new DataSource({

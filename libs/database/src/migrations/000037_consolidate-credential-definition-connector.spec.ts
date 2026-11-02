@@ -1,7 +1,7 @@
 import {
   ConsolidateCredentialDefinitionConnector1793383965371,
   migrationName,
-} from './000035_consolidate-credential-definition-connector';
+} from './000037_consolidate-credential-definition-connector';
 
 describe('ConsolidateCredentialDefinitionConnector migration', () => {
   it('exports a stable migration name', () => {

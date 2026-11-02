@@ -1,7 +1,7 @@
 import {
   migrationName,
   RemoveIssuanceProfileDerivedFields1793377253689,
-} from './000034_remove-issuance-profile-derived-fields';
+} from './000036_remove-issuance-profile-derived-fields';
 
 describe('RemoveIssuanceProfileDerivedFields migration', () => {
   it('exports a stable migration name', () => {

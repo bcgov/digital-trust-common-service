@@ -1,7 +1,7 @@
 import {
   AddCredentialDefinitionLifecycle1792713600000,
   migrationName,
-} from './000033_add-credential-definition-lifecycle';
+} from './000034_add-credential-definition-lifecycle';
 
 describe('AddCredentialDefinitionLifecycle migration', () => {
   it('exports a stable migration name', () => {
