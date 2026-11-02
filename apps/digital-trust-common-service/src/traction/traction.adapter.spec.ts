@@ -475,9 +475,14 @@ describe('TractionAdapter', () => {
       updated_at: 'updated',
       auto_remove_on_failure: false,
     };
+    const preservedSettings = {
+      data: { no_preserve_failed_exchange_records: false },
+    };
 
     it('sends and retains a v2 AnonCreds request without retrying writes', async () => {
-      mockRequest.mockResolvedValue({ data: record });
+      mockRequest
+        .mockResolvedValueOnce(preservedSettings)
+        .mockResolvedValueOnce({ data: record });
       await expect(
         adapter.requestPresentation(context, request),
       ).resolves.toMatchObject({
@@ -489,7 +494,14 @@ describe('TractionAdapter', () => {
         updatedAt: 'updated',
       });
       expect(mockGetToken).toHaveBeenCalledWith(context);
-      expect(mockRequest).toHaveBeenCalledWith(
+      expect(mockRequest).toHaveBeenNthCalledWith(1, {
+        method: 'GET',
+        url: 'https://traction.example.com/settings',
+        headers: { Authorization: 'Bearer token-1' },
+        maxRedirects: 0,
+      });
+      expect(mockRequest).toHaveBeenNthCalledWith(
+        2,
         {
           method: 'POST',
           url: 'https://traction.example.com/present-proof-2.0/send-request',
@@ -511,6 +523,107 @@ describe('TractionAdapter', () => {
         },
         false,
       );
+      expect(mockRequest).toHaveBeenCalledTimes(2);
+    });
+
+    it.each([
+      { no_preserve_failed_exchange_records: true },
+      {},
+      { preserve_exchange_records: true },
+      { no_preserve_failed_exchange_records: 'false' },
+      { no_preserve_failed_exchange_records: 0 },
+      { no_preserve_failed_exchange_records: null },
+      { settings: { no_preserve_failed_exchange_records: false } },
+      null,
+    ])(
+      'does not send a proof when effective failure preservation is unverified: %p',
+      async (settings) => {
+        mockRequest.mockResolvedValue({ data: settings });
+        await expect(
+          adapter.requestPresentation(context, request),
+        ).rejects.toMatchObject({
+          code: 'CONNECTOR_UNAVAILABLE',
+          message: expect.stringContaining(
+            'GET /settings to expose effective no_preserve_failed_exchange_records: false',
+          ),
+          context: { connectorId: 'connector-1' },
+        });
+        expect(mockRequest).toHaveBeenCalledTimes(1);
+        expect(mockRequest).toHaveBeenCalledWith(
+          expect.objectContaining({ method: 'GET' }),
+        );
+      },
+    );
+
+    it.each([401, 403, 404, 503, undefined])(
+      'does not send a proof when settings cannot be read (HTTP %p)',
+      async (status) => {
+        mockRequest.mockRejectedValue({
+          isAxiosError: true,
+          message: 'Settings unavailable',
+          response: status === undefined ? undefined : { status },
+        });
+        await expect(
+          adapter.requestPresentation(context, request),
+        ).rejects.toMatchObject({
+          code: 'CONNECTOR_UNAVAILABLE',
+          message: expect.stringContaining('could not read agent settings'),
+        });
+        expect(mockRequest).toHaveBeenCalledTimes(1);
+        expect(mockRequest).toHaveBeenCalledWith(
+          expect.objectContaining({ method: 'GET' }),
+        );
+      },
+    );
+
+    it('checks effective preservation again for every submission', async () => {
+      mockRequest
+        .mockResolvedValueOnce(preservedSettings)
+        .mockResolvedValueOnce({ data: record })
+        .mockResolvedValueOnce({
+          data: { no_preserve_failed_exchange_records: true },
+        });
+      await adapter.requestPresentation(context, request);
+      await expect(
+        adapter.requestPresentation(context, request),
+      ).rejects.toBeInstanceOf(ConnectorUnavailableError);
+      expect(mockRequest).toHaveBeenCalledTimes(3);
+      expect(mockRequest).toHaveBeenNthCalledWith(
+        3,
+        expect.objectContaining({
+          method: 'GET',
+          url: 'https://traction.example.com/settings',
+        }),
+      );
+    });
+
+    it('reads a retained problem-report failure after a verified submission', async () => {
+      mockRequest
+        .mockResolvedValueOnce(preservedSettings)
+        .mockResolvedValueOnce({ data: record })
+        .mockResolvedValueOnce({
+          data: {
+            ...record,
+            state: 'abandoned',
+            error_msg: 'abandoned: holder declined',
+          },
+        });
+      const exchange = await adapter.requestPresentation(context, request);
+      await expect(
+        adapter.getPresentation(context, exchange.id),
+      ).resolves.toMatchObject({
+        id: record.pres_ex_id,
+        state: 'abandoned',
+        error: 'abandoned: holder declined',
+      });
+      expect(mockRequest).toHaveBeenCalledTimes(3);
+      expect(mockRequest).toHaveBeenNthCalledWith(
+        3,
+        expect.objectContaining({
+          method: 'GET',
+          url: 'https://traction.example.com/present-proof-2.0/records/proof-1',
+        }),
+      );
     });
 
     it('reads the direct v2 record with encoded ID and wallet-scoped authorization', async () => {
@@ -530,9 +643,11 @@ describe('TractionAdapter', () => {
       async (autoRemoveOnFailure) => {
         const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
         try {
-          mockRequest.mockResolvedValue({
-            data: { ...record, auto_remove_on_failure: autoRemoveOnFailure },
-          });
+          mockRequest
+            .mockResolvedValueOnce(preservedSettings)
+            .mockResolvedValueOnce({
+              data: { ...record, auto_remove_on_failure: autoRemoveOnFailure },
+            });
           await expect(
             adapter.requestPresentation(context, request),
           ).resolves.toMatchObject({ id: 'proof-1', state: 'request-sent' });
@@ -540,7 +655,7 @@ describe('TractionAdapter', () => {
             { connector_id: 'connector-1', external_id: 'proof-1' },
             'Traction proof failure retention is not confirmed; configure failed exchange preservation on the agent',
           );
-          expect(mockRequest).toHaveBeenCalledTimes(1);
+          expect(mockRequest).toHaveBeenCalledTimes(2);
           expect(mockRequest).toHaveBeenCalledWith(
             expect.objectContaining({
               data: expect.not.objectContaining({
@@ -558,9 +673,9 @@ describe('TractionAdapter', () => {
     it('does not warn when the agent confirms failed record preservation', async () => {
       const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
       try {
-        mockRequest.mockResolvedValue({
-          data: { ...record, auto_remove_on_failure: false },
-        });
+        mockRequest
+          .mockResolvedValueOnce(preservedSettings)
+          .mockResolvedValueOnce({ data: record });
         await adapter.requestPresentation(context, request);
         expect(warn).not.toHaveBeenCalled();
       } finally {
@@ -590,6 +705,7 @@ describe('TractionAdapter', () => {
         message: 'Backend rejected request',
         response: { status },
       });
+      mockRequest.mockResolvedValueOnce(preservedSettings);
       await expect(
         adapter.requestPresentation(context, request),
       ).rejects.toBeInstanceOf(errorType);
@@ -600,11 +716,13 @@ describe('TractionAdapter', () => {
 
     it('does not replay an uncertain proof submission', async () => {
       const error = new TimeoutError('Response unavailable');
-      mockRequest.mockRejectedValue(error);
+      mockRequest
+        .mockResolvedValueOnce(preservedSettings)
+        .mockRejectedValueOnce(error);
       await expect(adapter.requestPresentation(context, request)).rejects.toBe(
         error,
       );
-      expect(mockRequest).toHaveBeenCalledTimes(1);
+      expect(mockRequest).toHaveBeenCalledTimes(2);
       expect(mockRequest).toHaveBeenCalledWith(expect.anything(), false);
     });
 

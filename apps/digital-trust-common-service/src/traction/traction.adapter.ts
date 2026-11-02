@@ -269,6 +269,28 @@ export class TractionAdapter implements AgentAdapter, OnModuleInit {
   ): Promise<PresentationExchange> {
     const data = buildTractionPresentationRequest(req);
     const token = await this.tokenManager.getToken(context);
+    const retentionRequirement =
+      'Traction proof requests require wallet GET /settings to expose effective no_preserve_failed_exchange_records: false';
+    const settings = await this.httpClient
+      .request<{
+        readonly no_preserve_failed_exchange_records?: unknown;
+      }>({
+        method: 'GET',
+        url: `${context.endpointUrl}/settings`,
+        headers: { Authorization: `Bearer ${token}` },
+        maxRedirects: 0,
+      })
+      .catch(() => {
+        throw new ConnectorUnavailableError(
+          `${retentionRequirement}; could not read agent settings`,
+          { connectorId: context.connectorId },
+        );
+      });
+    if (settings.data?.no_preserve_failed_exchange_records !== false) {
+      throw new ConnectorUnavailableError(retentionRequirement, {
+        connectorId: context.connectorId,
+      });
+    }
     try {
       const response =
         await this.httpClient.request<TractionPresentationRecord>(
