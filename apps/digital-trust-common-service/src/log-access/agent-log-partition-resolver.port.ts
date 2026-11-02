@@ -1,8 +1,8 @@
 /**
  * Resolves the agent-side partition keys for a tenant's active connectors
- * (Rules M9–M16). Implementations return already-derived keys, never raw
+ * Implementations return already-derived keys, never raw
  * agent identifiers, and throw on any resolution failure so the caller can
- * fail closed (M14).
+ * fail closed.
  */
 export interface AgentLogPartitionResolverPort {
   resolveAgentPartitions(tenantId: string): Promise<string[]>;

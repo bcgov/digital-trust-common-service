@@ -46,7 +46,7 @@ export class LogAccessService {
       throw new LogAccessDeniedError(403, 'resolution_failed');
     }
 
-    // An unusable key denies the whole request rather than being dropped (M14).
+    // An unusable key denies the whole request rather than being dropped.
     if (!agentPartitions.every(isSafePartitionKey)) {
       throw new LogAccessDeniedError(403, 'resolution_failed');
     }
@@ -56,7 +56,7 @@ export class LogAccessService {
       ...new Set(agentPartitions),
     ];
 
-    // Rule M17: deny rather than silently truncate.
+    // Deny rather than silently truncate.
     if (partitions.length > MAX_PARTITIONS_PER_SCOPE) {
       throw new LogAccessDeniedError(403, 'partition_bound_exceeded');
     }

@@ -16,7 +16,7 @@ export interface LogAccessIdentity {
 }
 
 /**
- * Token rules of `docs/tenant-log-access-contract.md` (T1–T7, T9–T12),
+ * Token rules of `docs/tenant-log-access-contract.md`,
  * evaluated per request from the presented token. Nothing is cached, and
  * roles never widen access, so platform-admin gets no cross-tenant read.
  */
@@ -51,7 +51,7 @@ export class LogAccessTokenService {
       throw error;
     }
 
-    // Rules T3/T4: exactly one canonical tenant_id. An array is a repeated
+    // Exactly one canonical tenant_id. An array is a repeated
     // claim and is rejected by the type check, not collapsed to a value.
     if (!isCanonicalTenantId(payload.tenant_id)) {
       throw new LogAccessDeniedError(401, 'invalid_tenant_id');
@@ -74,7 +74,7 @@ export class LogAccessTokenService {
   }
 
   /**
-   * Rule T10: the audience is explicit configuration, never derived from the
+   * The audience is explicit configuration, never derived from the
    * request. It must also be an audience the provider can mint, otherwise no
    * valid token could ever reach this check.
    */

@@ -26,7 +26,7 @@ const DENIAL_BODIES = {
  * and the OpenAPI document: tenants must never call it.
  *
  * The caller's query, path and every header except `Authorization` are
- * ignored (Rule S1). Allow is a `200` with an empty body carrying the
+ * ignored. Allow is a `200` with an empty body carrying the
  * computed scope header; every denial for a given status has one fixed body.
  */
 @ApiExcludeController()
@@ -44,7 +44,7 @@ export class LogAccessController {
     @Headers('x-scope-orgid') inboundScope: string | undefined,
     @Res() res: Response,
   ): Promise<void> {
-    // Rule S6: a caller-supplied partition header is recorded and ignored.
+    // A caller-supplied partition header is recorded and ignored.
     if (inboundScope !== undefined) {
       this.logger.warn('Inbound scope header ignored');
     }

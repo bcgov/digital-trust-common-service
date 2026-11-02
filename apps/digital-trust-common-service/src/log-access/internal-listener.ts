@@ -47,7 +47,7 @@ export function createInternalListenerMiddleware(): RequestHandler {
 
 /**
  * Serves the Nest application a second time over TLS on a private port. The
- * token it carries never crosses a plaintext hop (Rule T13), and no Route or
+ * token it carries never crosses a plaintext hop, and no Route or
  * Ingress points at the port.
  */
 @Injectable()

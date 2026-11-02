@@ -227,9 +227,10 @@ export class JwtValidationService {
   public async validateAuthorizationHeader(
     authorizationHeader: string | undefined,
   ): Promise<AuthContext> {
-    const { audience } = this.oidcConfigService.getConfig();
-    const payload = await this.verifyBearerForAudience(
+    const { issuer, audience } = this.oidcConfigService.getConfig();
+    const payload = await this.verifyBearer(
       authorizationHeader,
+      issuer,
       audience,
     );
 
@@ -246,8 +247,17 @@ export class JwtValidationService {
     authorizationHeader: string | undefined,
     audience: string,
   ): Promise<JWTPayload> {
-    const token = extractBearerToken(authorizationHeader);
     const { issuer } = this.oidcConfigService.getConfig();
+
+    return this.verifyBearer(authorizationHeader, issuer, audience);
+  }
+
+  private async verifyBearer(
+    authorizationHeader: string | undefined,
+    issuer: string,
+    audience: string,
+  ): Promise<JWTPayload> {
+    const token = extractBearerToken(authorizationHeader);
 
     try {
       return await verifyAccessToken(

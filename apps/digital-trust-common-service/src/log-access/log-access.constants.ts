@@ -3,7 +3,7 @@ export const LOG_ACCESS_INTERNAL_PATH = 'internal/log-access/check';
 
 export const SCOPE_HEADER = 'X-Scope-OrgID';
 
-/** Rule M17: a single scope never exceeds ten partitions. */
+/** A single scope never exceeds ten partitions. */
 export const MAX_PARTITIONS_PER_SCOPE = 10;
 
 export const LOG_READ_SCOPE = 'logs:read';

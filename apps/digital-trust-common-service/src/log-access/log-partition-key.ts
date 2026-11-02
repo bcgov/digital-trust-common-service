@@ -7,7 +7,7 @@ export function isCanonicalTenantId(value: unknown): value is string {
 }
 
 /**
- * Rule L8/L9: a tenant's partition key is `t-` plus its `tenant_id`, with no
+ * A tenant's partition key is `t-` plus its `tenant_id`, with no
  * case folding or trimming. The collector derives the same value
  * independently, so a non-canonical id is rejected rather than normalised.
  */
