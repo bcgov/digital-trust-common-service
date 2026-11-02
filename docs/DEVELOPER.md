@@ -1379,6 +1379,64 @@ For local development without an inbound webhook, use the explicit offer
 reconciliation read below. OID4VCI and VC proof/envelope configuration remain
 out of scope.
 
+### Traction credential revocation
+
+The Traction `RevocationPort` uses the native AnonCreds endpoints documented in
+[ACA-Py 1.6.0's credential revocation routes](https://github.com/openwallet-foundation/acapy/blob/1.6.0/acapy_agent/anoncreds/routes/revocation/credentials/routes.py),
+not the legacy `/revocation/*` API. The live Traction version is unverified;
+confirm compatibility before deployment.
+
+The port's credential identifier is the issuer's external credential exchange
+ID, not the local credential UUID or the numeric credential revocation index.
+The existing credential revoke service resolves the tenant-owned credential and
+its original connector. The adapter then uses that connector's wallet token to
+resolve `GET /anoncreds/revocation/credential-record?cred_ex_id=...`, checking
+that the returned record matches the exchange. Its `rev_reg_id` and
+`cred_rev_id` identify the credential even after its original registry fills
+and a new registry becomes active.
+
+Both single and batch revocation queue unpublished changes with
+`POST /anoncreds/revocation/revoke` (`publish: false`, `notify: false`), then
+make one `POST /anoncreds/revocation/publish-revocations` call per batch.
+The `rrid2crid` map includes only the selected registry/index pairs, never an
+empty map or empty per-registry list that would publish unrelated pending
+revocations. Duplicate exchange IDs are queued once and results preserve input
+order, including duplicates. An empty batch performs no calls. All records and
+initial ledger states are checked before any writes. A batch is not atomic:
+a queue failure can leave earlier items pending, and a publication failure can
+leave some registries published. The call rejects rather than reporting
+unconfirmed items as successful; retrying reads the ledger again and skips
+already confirmed revocations. HTTP writes are not automatically retried.
+
+ACA-Py's [revocation manager](https://github.com/openwallet-foundation/acapy/blob/1.6.0/acapy_agent/anoncreds/revocation/manager.py)
+updates wallet state before ledger publication, and its update implementation
+can return a publication map even when the ledger update failed. Therefore the
+adapter confirms the selected indexes against
+`GET /anoncreds/revocation/registry/{rev_reg_id}/issued/indy_recs` before
+returning `revoked: true`. This ledger check uses the legacy Indy registry,
+matching the current registration implementation. `revokedAt` is the time this
+call observed confirmation, not the original ledger transaction timestamp.
+A wallet-only `revoked` state or a publication not yet visible on the ledger
+raises `ConnectorUnavailableError` with a reconciliation message. The port
+has no pending/endorsement result state; it does not mark a credential revoked
+merely because endorsement was requested. Reconcile failed/pending publication
+in the backend and retry after ledger confirmation; blindly requeuing a
+wallet-only revocation cannot repair its already-updated local accumulator.
+Holder DIDComm notifications are not requested by this port; the existing
+service handles application webhook notifications.
+
+Registry lifecycle remains in the existing definition registration flow:
+`support_revocation` triggers ACA-Py's
+[default revocation setup](https://github.com/openwallet-foundation/acapy/blob/1.6.0/acapy_agent/anoncreds/revocation/revocation_setup.py),
+which creates an active and backup registry, promotes the backup at capacity,
+and creates its replacement. Registration readiness still checks the active
+registry, accumulator, capacity and tails availability. The adapter does not
+create competing registries or manually rotate during revocation.
+
+`batchRevoke` is available to port callers. The bulk-item queue is declared but
+there is currently no bulk worker implementation; this port implementation does
+not introduce a new bulk REST endpoint or worker.
+
 ### Traction presentation verification
 
 The Traction verifier implements `VerifierPort` using ACA-Py present-proof v2:
