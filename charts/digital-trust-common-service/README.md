@@ -221,7 +221,7 @@ Generate the JWKS payload with `npm run oidc:generate-keys > oidc-keys.json`, th
 | livenessProbe.initialDelaySeconds | int | `15` |  |
 | livenessProbe.periodSeconds | int | `15` |  |
 | livenessProbe.timeoutSeconds | int | `3` |  |
-| logAccess.enabled | bool | `false` | Serve the internal log-access listener. Needs `gatewayPodSelector`. |
+| logAccess.enabled | bool | `false` | Serve the internal log-access listener. Needs `gatewayPodSelector` and `networkPolicy.enabled`. |
 | logAccess.gatewayPodSelector | object | `{}` | Labels of the log gateway pods, the only peers allowed to reach the internal port. Required when `enabled` is true. |
 | logAccess.port | int | `8443` | Container and Service port of the internal TLS listener |
 | logAccess.tls.mountPath | string | `"/var/run/secrets/log-access-tls"` | Where the serving-cert Secret (tls.crt, tls.key) is mounted. The certificate is read once at start, so a pod restart picks up a rotation. |

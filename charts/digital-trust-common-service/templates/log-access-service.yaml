@@ -1,4 +1,7 @@
 {{- if .Values.logAccess.enabled }}
+{{- if not .Values.networkPolicy.enabled }}
+{{- fail "networkPolicy.enabled must be true when logAccess.enabled is true; the NetworkPolicy is the only thing limiting the internal endpoint to the log gateway" }}
+{{- end }}
 {{- if not .Values.logAccess.gatewayPodSelector }}
 {{- fail "logAccess.gatewayPodSelector is required when logAccess.enabled is true; an empty selector would admit every pod" }}
 {{- end }}
@@ -22,7 +25,6 @@ spec:
       name: log-access
   selector:
     {{- include "digital-trust-common-service.api.selectorLabels" . | nindent 4 }}
-{{- if .Values.networkPolicy.enabled }}
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -44,5 +46,4 @@ spec:
       ports:
         - protocol: TCP
           port: log-access
-{{- end }}
 {{- end }}

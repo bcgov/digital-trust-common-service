@@ -62,6 +62,19 @@ tests:
         template: templates/log-access-service.yaml
         documentIndex: 1
 
+  - it: refuses to render with network policies disabled
+    set:
+      networkPolicy:
+        enabled: false
+      logAccess:
+        enabled: true
+        gatewayPodSelector:
+          app.kubernetes.io/name: log-gateway
+    asserts:
+      - failedTemplate:
+          errorPattern: networkPolicy.enabled must be true
+        template: templates/log-access-service.yaml
+
   - it: refuses to render without a gateway selector
     set:
       logAccess:

@@ -64,7 +64,8 @@ service:
 # Internal decision endpoint for the log gateway (Envoy ext_authz). Served over
 # TLS on its own port and Service, never through the Route or the main Service.
 logAccess:
-  # -- Serve the internal log-access listener. Needs `gatewayPodSelector`.
+  # -- Serve the internal log-access listener. Needs `gatewayPodSelector` and
+  # `networkPolicy.enabled`.
   enabled: false
   # -- Container and Service port of the internal TLS listener
   port: 8443

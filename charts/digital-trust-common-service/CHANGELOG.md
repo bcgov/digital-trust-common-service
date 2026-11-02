@@ -16,8 +16,9 @@ and this chart adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.h
   carrying an OpenShift serving-certificate annotation, mounts that certificate
   into the API pod, opens a TLS container port, and adds a NetworkPolicy that
   admits only pods matching `gatewayPodSelector` to it. Rendering fails if the
-  selector is empty, since an empty selector would admit every pod. The port is
-  never on the main Service or the Route.
+  selector is empty (it would admit every pod) or `networkPolicy.enabled` is
+  false (nothing would restrict the port). The port is never on the main
+  Service or the Route.
 - `config.SEED_PLATFORM_OPERATOR_EMAILS` (default `""`), comma-separated emails
   the development seed makes owners of the demo tenant `acme-corp` with the
   platform-operator flag, so a real sign-in to a PR environment lands as owner
