@@ -83,6 +83,9 @@ describe('AdapterRegistry (e2e)', () => {
   const createdTenantIds: string[] = [];
 
   beforeAll(async () => {
+    // A .env copied from .env.example sets the flag to false; clear it so the
+    // app boots with it unset, as it does in CI.
+    delete process.env.ADAPTER_OVERRIDE_ENABLED;
     moduleFixture = await bootstrap();
 
     app = moduleFixture.createNestApplication();
