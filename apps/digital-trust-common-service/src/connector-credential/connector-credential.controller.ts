@@ -68,6 +68,10 @@ export class ConnectorCredentialController {
       'Connector registered. The first connector for a tenant is set as its default connector.',
     type: ConnectorCredentialResponseDto,
   })
+  @ApiConflictResponse({
+    description:
+      'The connector agent is already bound to another active connector',
+  })
   @ApiUnprocessableEntityResponse({
     description: 'Connectivity to the connector endpoint could not be verified',
   })
@@ -132,7 +136,8 @@ export class ConnectorCredentialController {
   })
   @ApiNotFoundResponse({ description: 'Connector not found' })
   @ApiConflictResponse({
-    description: 'Connector changed during validation; retry the update',
+    description:
+      'Connector changed during validation (retry the update), or the connector agent is already bound to another active connector',
   })
   @ApiUnprocessableEntityResponse({
     description: 'Connectivity to the connector endpoint could not be verified',

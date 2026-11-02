@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { EntityManager, Repository } from 'typeorm';
+import { EntityManager, Not, Repository } from 'typeorm';
 
 import { ConnectorType } from '../connection/connection.entity';
 import { Tenant } from '../tenant/tenant.entity';
@@ -75,6 +75,15 @@ export class ConnectorCredentialRepository {
   ): Promise<ConnectorCredential | null> {
     return await this.repository.findOne({
       where: { tenantId, id, active: true },
+    });
+  }
+
+  public async existsOtherActiveWithAgentLogIdHash(
+    agentLogIdHash: string,
+    excludeId: string,
+  ): Promise<boolean> {
+    return await this.repository.exists({
+      where: { agentLogIdHash, active: true, id: Not(excludeId) },
     });
   }
 

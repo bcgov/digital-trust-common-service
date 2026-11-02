@@ -20,6 +20,10 @@ import { Tenant } from '../tenant/tenant.entity';
   'active',
 ])
 @Index('idx_connector_credential_tenant', ['tenantId'])
+@Index('uq_connector_credential_agent_log_id_hash', ['agentLogIdHash'], {
+  unique: true,
+  where: '"active" = true AND "agent_log_id_hash" IS NOT NULL',
+})
 export class ConnectorCredential {
   @ApiProperty({
     description: 'The unique identifier of the connector credential',
@@ -94,6 +98,19 @@ export class ConnectorCredential {
     default: 1,
   })
   public keyVersion!: number;
+
+  /**
+   * One-way HMAC of the connector type and the agent log identifier. It only
+   * enforces that one active connector binds a given agent sub-wallet; the
+   * identifier itself lives solely in the encrypted credentials, so there is
+   * no reverse lookup from an identifier to a tenant. System-populated.
+   */
+  @Column({
+    name: 'agent_log_id_hash',
+    type: 'text',
+    nullable: true,
+  })
+  public agentLogIdHash!: string | null;
 
   @ApiProperty({
     description: 'The date and time when the connector credential was created',

@@ -37,6 +37,7 @@ describe('ConnectorCredentialController', () => {
     endpointUrl: 'https://api.salesforce.com/v57.0',
     active: true,
     keyVersion: 1,
+    agentLogIdHash: null,
     createdAt: new Date(),
     updatedAt: new Date(),
     tenant: undefined as any,
