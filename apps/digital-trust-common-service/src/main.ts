@@ -7,6 +7,7 @@ import { NativeLogger } from 'nestjs-pino';
 
 import { configureApp } from './app.config';
 import { AppModule } from './app.module';
+import { InternalListener } from './log-access/internal-listener';
 import { DevSeedService } from './seed/dev-seed.service';
 import { shouldRunDevSeedOnStart } from './seed/seed-on-start.util';
 import { SwaggerService } from './swagger/swagger.service';
@@ -32,5 +33,6 @@ async function bootstrap() {
 
   const port = parseInt(configService.get<string>('PORT', '3000'), 10);
   await app.listen(port);
+  await app.get(InternalListener).start(app);
 }
 void bootstrap();

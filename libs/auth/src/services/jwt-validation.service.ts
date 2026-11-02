@@ -227,20 +227,34 @@ export class JwtValidationService {
   public async validateAuthorizationHeader(
     authorizationHeader: string | undefined,
   ): Promise<AuthContext> {
+    const { audience } = this.oidcConfigService.getConfig();
+    const payload = await this.verifyBearerForAudience(
+      authorizationHeader,
+      audience,
+    );
+
+    return normalizeAuthPayload(payload);
+  }
+
+  /**
+   * Verifies a bearer token against this service's issuer and JWKS for an
+   * explicitly supplied audience, returning the raw claims. Used by
+   * downstream gateways that accept a different resource audience than the
+   * API, and that must inspect claim cardinality themselves.
+   */
+  public async verifyBearerForAudience(
+    authorizationHeader: string | undefined,
+    audience: string,
+  ): Promise<JWTPayload> {
     const token = extractBearerToken(authorizationHeader);
-    const { issuer, audience } = this.oidcConfigService.getConfig();
+    const { issuer } = this.oidcConfigService.getConfig();
 
     try {
-      const payload = await verifyAccessToken(
+      return await verifyAccessToken(
         token,
         async (kid) => this.resolveKeyWithRefresh(kid),
-        {
-          issuer,
-          audience,
-        },
+        { issuer, audience },
       );
-
-      return normalizeAuthPayload(payload);
     } catch (error) {
       throw mapJoseError(error);
     }

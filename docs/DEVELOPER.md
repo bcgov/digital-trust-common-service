@@ -1260,6 +1260,7 @@ App-issued access tokens carry a stable API `aud`, not the OIDC issuer URL:
 - Clients omit `resource` at `/oidc/token` for API tokens
 - Downstream gateways (OB-07 Loki) request `resource=<absolute URI>` and must be listed in `JWT_ADDITIONAL_AUDIENCES` (e.g. `https://loki-gateway`). Those JWTs are rejected by `JwtGuard` by design.
 - A token carries exactly one audience. `JwtGuard` rejects a token whose `aud` holds more than one value, so a token cannot be made to satisfy both this API and a downstream gateway.
+- `LOG_GATEWAY_AUDIENCE` names the audience the internal log-access endpoint accepts. It must also appear in `JWT_ADDITIONAL_AUDIENCES`; when unset or not listed, every request is denied. `LOG_ACCESS_INTERNAL_PORT`, `LOG_ACCESS_INTERNAL_TLS_CERT_PATH` and `LOG_ACCESS_INTERNAL_TLS_KEY_PATH` enable the separate TLS listener for that endpoint (off when the port is unset). Helm: `logAccess.*`, with certificate rotation requiring a pod restart.
 
 `JWT_AUDIENCE` and extra resources must be absolute URIs without fragments (RFC 8707 / oidc-provider). Override via `.env` if needed; Helm `config.JWT_AUDIENCE` defaults to the same URI in every environment and `config.JWT_ADDITIONAL_AUDIENCES` defaults to empty.
 

@@ -32,6 +32,7 @@ import { CredentialDefinitionModule } from './credential-definition/credential-d
 import { HealthModule } from './health/health.module';
 import { IssuanceProfileModule } from './issuance-profile/issuance-profile.module';
 import { JobsModule } from './jobs/jobs.module';
+import { LogAccessModule } from './log-access/log-access.module';
 import { createLoggerModuleParams } from './logging/logger.config';
 import { OAuthClientLookupAdapter } from './oauth-client/oauth-client-lookup.adapter';
 import { OAuthClientModule } from './oauth-client/oauth-client.module';
@@ -76,6 +77,7 @@ import { WebhookIngestionModule } from './webhook-ingestion/webhook-ingestion.mo
     HealthModule,
     IssuanceProfileModule,
     JobsModule,
+    LogAccessModule,
     OAuthClientModule,
     RequestContextModule,
     OidcModule.forRoot({
