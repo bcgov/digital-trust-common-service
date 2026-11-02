@@ -34,6 +34,6 @@ import { ConnectorHealthCheckService } from './connector-health-check.service';
     ConnectorCredentialRepository,
     ConnectorHealthCheckService,
   ],
-  exports: [ConnectorCredentialService],
+  exports: [ConnectorCredentialService, ConnectorCredentialRepository],
 })
 export class ConnectorCredentialModule {}

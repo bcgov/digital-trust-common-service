@@ -1,5 +1,6 @@
 import type { ParseKeys } from 'i18next';
 import {
+  Certificate,
   KeyRound,
   LayoutDashboard,
   LogOut,
@@ -45,6 +46,12 @@ const NAV_ITEMS: {
     to: '/connectors',
     label: 'nav.connectors',
     icon: Share2,
+    scope: TENANT_ADMIN_SCOPE,
+  },
+  {
+    to: '/credential-definitions',
+    label: 'credentialDefinitions.title',
+    icon: Certificate,
     scope: TENANT_ADMIN_SCOPE,
   },
   {

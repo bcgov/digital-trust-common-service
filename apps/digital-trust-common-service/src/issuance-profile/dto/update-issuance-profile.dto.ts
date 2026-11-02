@@ -11,7 +11,7 @@ import { IssuanceProfileProtocolHint } from '../issuance-profile.entity';
 
 /**
  * Narrower than CreateIssuanceProfileDto by design: name, version,
- * credential_definition_id, connector_id, and attribute_schema are
+ * credential_definition_id and attribute_schema are
  * immutable once set (mirrors UpdateCredentialDefinitionDto's pattern of
  * excluding identity/type fields from updates).
  */

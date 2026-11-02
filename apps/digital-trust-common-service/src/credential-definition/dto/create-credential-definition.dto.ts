@@ -6,6 +6,7 @@ import {
 import { Expose, Type } from 'class-transformer';
 import {
   IsDefined,
+  IsIn,
   IsObject,
   IsOptional,
   IsString,
@@ -15,9 +16,12 @@ import {
   ValidateNested,
   ValidateIf,
   Validate,
+  ValidationArguments,
   ValidatorConstraint,
   ValidatorConstraintInterface,
 } from 'class-validator';
+
+import { CredentialDefinitionStatus } from '../credential-definition.entity';
 
 import {
   AnonCredsCredentialDefinitionOptionsDto,
@@ -49,16 +53,25 @@ export type RegistrationSchema =
 
 @ValidatorConstraint({ name: 'schemaSourceExclusive', async: false })
 class SchemaSourceExclusiveConstraint implements ValidatorConstraintInterface {
-  public validate(value: unknown): boolean {
+  public validate(value: unknown, args: ValidationArguments): boolean {
     if (!value || typeof value !== 'object' || Array.isArray(value)) {
       return false;
     }
 
     const schema = value as RegistrationSchemaDto;
-    return (schema.id !== undefined) !== (schema.definition !== undefined);
+    const request = args.object as { status?: CredentialDefinitionStatus };
+    return (
+      (schema.id !== undefined) !== (schema.definition !== undefined) &&
+      (request.status !== CredentialDefinitionStatus.DRAFT ||
+        schema.definition !== undefined)
+    );
   }
 
-  public defaultMessage(): string {
+  public defaultMessage(args: ValidationArguments): string {
+    const request = args.object as { status?: CredentialDefinitionStatus };
+    if (request.status === CredentialDefinitionStatus.DRAFT) {
+      return 'Drafts require schema.definition';
+    }
     return 'Supply schema.id or schema.definition, not both';
   }
 }
@@ -87,10 +100,32 @@ export class CreateCredentialDefinitionDto {
   public name!: string;
 
   @Expose({ name: 'connector_id' })
-  @ApiPropertyOptional({ name: 'connector_id', format: 'uuid' })
-  @ValidateIf((_object: unknown, value: unknown) => value !== undefined)
+  @ApiPropertyOptional({
+    name: 'connector_id',
+    format: 'uuid',
+    description: 'Required when status is draft.',
+  })
+  @ValidateIf(
+    (object: { status?: CredentialDefinitionStatus }, value: unknown) =>
+      object.status === CredentialDefinitionStatus.DRAFT || value !== undefined,
+  )
   @IsUUID()
   public connectorId?: string;
+
+  @Expose()
+  @ApiPropertyOptional({
+    enum: [
+      CredentialDefinitionStatus.DRAFT,
+      CredentialDefinitionStatus.PUBLISHED,
+    ],
+  })
+  @ValidateIf((_object: unknown, value: unknown) => value !== undefined)
+  @IsIn([
+    CredentialDefinitionStatus.DRAFT,
+    CredentialDefinitionStatus.PUBLISHED,
+  ])
+  public status?:
+    CredentialDefinitionStatus.DRAFT | CredentialDefinitionStatus.PUBLISHED;
 
   @ApiProperty({
     oneOf: [
@@ -117,7 +152,7 @@ export class CreateCredentialDefinitionDto {
       },
     ],
     description:
-      'Supply exactly one of id or definition. AnonCreds definitions require schema_name, schema_version, and attr_names.',
+      'Supply exactly one of id or definition. Drafts require definition. AnonCreds definitions require schema_name, schema_version, and attr_names.',
   })
   @IsDefined()
   @IsObject()

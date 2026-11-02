@@ -282,12 +282,32 @@ export class AdapterRegistry {
 Resolution picks the connector in this order, then resolves the adapter from its type:
 
 1. `options.adapterOverride` — platform-admin escape hatch, gated by `ADAPTER_OVERRIDE_ENABLED`
-2. `options.connectorId` — explicit connector (an issuance profile's `connector_id`)
+2. `options.connectorId` — explicit connector (the credential definition's binding for issuance)
 3. `tenant.config.default_connector` — the tenant default, set via the tenant config endpoint
 4. Fallback — the tenant's single active `ConnectorCredential`
 
 The result carries the `ConnectorCredential` alongside the adapter, because callers need the
 connector's endpoint and credentials to perform the operation.
+
+Credential offers and issuance-profile creation use a credential definition's stored
+`connector_credential_id` as the explicit connector. Issuance-profile create requests do not accept
+`connector_id`; the profile stores only its `credential_definition_id` and resolves the definition's
+format and connector when needed. Missing or unavailable definition bindings fail resolution rather
+than falling back to another agent. Publishing locks and rechecks the tenant-matched definition and
+active connector against the validated binding during its guarded status transition. Development-seeded
+profiles reference their seeded definitions in the same way.
+
+Both direct and profile-based offers require the referenced credential definition to be active and
+published. Issuance-profile publication enforces the same rule and rechecks the definition's published
+status in its guarded transition. Active draft and deprecated definitions remain readable for management,
+and profiles may be prepared against drafts, but cannot be published or used for issuance until the
+definition is published.
+
+Credential-definition management updates lock the active, tenant-matched row with `FOR UPDATE`
+and perform lifecycle checks, schema validation, and persistence in the same transaction. An edit
+waiting on publication therefore sees the published row and cannot overwrite its schema or restore
+draft status. When an edit completes first, publication validates the edited schema. Published and
+deprecated definitions cannot transition back to draft; rejected updates emit no update audit event.
 
 Invariants:
 
@@ -515,7 +535,8 @@ sequenceDiagram
 
     Client->>Controller: POST /tenants/:id/credentials/offer {profile_id: "drivers-license/1.0", connection_id, attributes}
     Controller->>ProfileSvc: resolve("drivers-license/1.0", tenantId)
-    ProfileSvc-->>Controller: IssuanceProfile {cred_def_id, format: anoncreds, connector_id}
+    ProfileSvc-->>Controller: IssuanceProfile {credential_definition_id}
+    Controller->>Controller: Resolve credential definition format and connector binding
     Controller->>Controller: Validate attributes against profile.attribute_schema
     Controller->>Registry: resolve(connector_id, "anoncreds")
     Registry-->>Controller: TractionAdapter instance
@@ -1264,7 +1285,7 @@ erDiagram
     CREDENTIAL_DEFINITION ||--o{ ISSUANCE_PROFILE : wraps
     ISSUANCE_PROFILE ||--o{ VERIFICATION_PROFILE : verifies
     ISSUANCE_PROFILE ||--o{ CREDENTIAL : issues_via
-    CONNECTOR_CREDENTIAL ||--o{ ISSUANCE_PROFILE : delivers_via
+    CONNECTOR_CREDENTIAL ||--o{ CREDENTIAL_DEFINITION : registers_via
     CONNECTION |o--o{ CREDENTIAL : receives
     CONNECTOR_CREDENTIAL ||--o{ CREDENTIAL : issues_via
     OPERATION ||--o| CREDENTIAL : creates
@@ -1296,6 +1317,7 @@ erDiagram
         jsonb schema_definition
         string external_id
         enum connector_type
+        uuid connector_credential_id FK
         jsonb metadata
     }
 
@@ -1303,7 +1325,6 @@ erDiagram
         uuid id PK
         uuid tenant_id FK
         uuid credential_definition_id FK
-        uuid connector_id FK
         string name
         string version
         jsonb attribute_schema
