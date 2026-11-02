@@ -69,6 +69,15 @@ export class ConnectorCredentialRepository {
     });
   }
 
+  public async findActiveByTenantAndId(
+    tenantId: string,
+    id: string,
+  ): Promise<ConnectorCredential | null> {
+    return await this.repository.findOne({
+      where: { tenantId, id, active: true },
+    });
+  }
+
   public async existsOtherActiveWithAgentLogIdHash(
     agentLogIdHash: string,
     excludeId: string,

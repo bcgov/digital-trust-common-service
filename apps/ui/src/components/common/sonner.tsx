@@ -85,7 +85,6 @@ const notify = {
 
 function Toaster() {
   const { t } = useTranslation();
-
   return (
     <SonnerToaster
       position="bottom-right"

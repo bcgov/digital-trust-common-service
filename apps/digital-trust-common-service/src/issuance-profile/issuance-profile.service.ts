@@ -19,6 +19,7 @@ import { decodeCursor, encodeCursor } from '../common/cursor-pagination';
 import {
   CredentialDefinitionFormat,
   isCredentialDefinitionReadyForIssuance,
+  CredentialDefinitionStatus,
 } from '../credential-definition/credential-definition.entity';
 import {
   CredentialDefinitionService,
@@ -67,17 +68,12 @@ export class IssuanceProfileService {
         auth,
       );
 
-    if (!isCredentialDefinitionReadyForIssuance(credentialDefinition)) {
-      throw new BadRequestException(
-        'Credential definition is not ready for issuance',
-      );
-    }
     if (
-      dto.connectorId &&
-      dto.connectorId !== credentialDefinition.connectorId
+      credentialDefinition.status === CredentialDefinitionStatus.PUBLISHED &&
+      !isCredentialDefinitionReadyForIssuance(credentialDefinition)
     ) {
       throw new BadRequestException(
-        'Profile connector must match the credential definition issuer wallet',
+        'Credential definition is not ready for issuance',
       );
     }
 
@@ -99,10 +95,16 @@ export class IssuanceProfileService {
       );
     }
 
-    const connectorId = await this.resolveConnector(
+    if (!credentialDefinition.connectorId) {
+      throw new BadRequestException(
+        'Credential definition has no connector binding.',
+      );
+    }
+
+    await this.resolveConnector(
       tenantId,
       credentialDefinition.format,
-      credentialDefinition.connectorId ?? undefined,
+      credentialDefinition.connectorId,
     );
 
     const created = await this.createProfile({
@@ -111,8 +113,6 @@ export class IssuanceProfileService {
       version: dto.version,
       description: dto.description,
       credentialDefinitionId: credentialDefinition.id,
-      format: credentialDefinition.format,
-      connectorId,
       attributeSchema: dto.attributeSchema,
       defaults: dto.defaults,
       display: dto.display,
@@ -205,9 +205,8 @@ export class IssuanceProfileService {
 
   /**
    * Resolves the connector to bind this profile to and validates it
-   * supports the credential definition's format. AdapterRegistry.resolve()
-   * already falls back to tenant.config.default_connector when connectorId
-   * is omitted, so that fallback is not duplicated here. AdapterError
+   * supports the credential definition's format. The connector is inherited
+   * from the definition and is always passed explicitly. AdapterError
    * (FormatNotSupportedError, ConnectorUnavailableError) is treated as a
    * client-input problem, not a server error.
    *
@@ -220,7 +219,7 @@ export class IssuanceProfileService {
   private async resolveConnector(
     tenantId: string,
     format: CredentialDefinitionFormat,
-    connectorId?: string,
+    connectorId: string,
   ): Promise<string> {
     const portFormat = toPortCredentialFormat(format);
 
@@ -335,16 +334,8 @@ export class IssuanceProfileService {
   }
 
   /**
-   * Publishes a draft profile, making it eligible for issuance. `format`,
-   * `credential_definition_id`, and `attribute_schema` are already
-   * immutable once a profile leaves draft, since `update()` never permits
-   * changing them at any status.
-   *
-   * "Healthy connector" is interpreted as: the connector this profile was
-   * bound to at create time still exists, is active, and its adapter still
-   * resolves. There is no live connectivity/health-check port in this
-   * codebase, so this re-runs the same `AdapterRegistry.resolve` call
-   * `create()` used, rather than a network probe.
+   * Publishes a draft profile after resolving its definition's current
+   * connector and format. The guarded transition rechecks that binding.
    */
   public async publish(
     tenantId: string,
@@ -359,28 +350,14 @@ export class IssuanceProfileService {
       );
     }
 
-    const connectorId = await this.assertConnectorHealthy(profile);
-
-    const definition = await this.credentialDefinitionService.findById(
-      tenantId,
-      profile.credentialDefinitionId,
-      auth,
-    );
-    if (
-      !isCredentialDefinitionReadyForIssuance(definition) ||
-      definition.connectorId !== connectorId
-    ) {
-      throw new BadRequestException(
-        'Credential definition is not ready on the profile connector',
-      );
-    }
+    const binding = await this.assertConnectorHealthy(profile, auth);
 
     const transitioned = await this.issuanceProfileRepository.transitionStatus(
       tenantId,
       id,
       IssuanceProfileStatus.DRAFT,
       IssuanceProfileStatus.PUBLISHED,
-      connectorId,
+      binding,
     );
 
     if (!transitioned) {
@@ -445,33 +422,43 @@ export class IssuanceProfileService {
   }
 
   /**
-   * Rejects publish when the profile's bound connector was removed
-   * (`connectorId` is null after an `ON DELETE SET NULL`) or no longer
-   * resolves. `connectorId` is passed explicitly rather than left
-   * undefined, so this does not fall back to a different connector the
-   * profile was never bound to.
-   *
-   * Returns the validated connector id so the caller can pin the guarded
-   * status transition to it via `transitionStatus`'s `expectedConnectorId`,
-   * closing the window between this check and that update: a connector
-   * change or removal in between makes the guard no longer match instead
-   * of silently publishing against an unrevalidated connector.
+   * Returns the definition binding checked against the adapter registry.
+   * The repository locks and rechecks it during the publish transition.
    */
   private async assertConnectorHealthy(
     profile: IssuanceProfile,
-  ): Promise<string> {
-    if (!profile.connectorId) {
+    auth: AuthContext,
+  ): Promise<{
+    id: string;
+    connectorId: string;
+    format: CredentialDefinitionFormat;
+  }> {
+    const definition = await this.credentialDefinitionService.findById(
+      profile.tenantId,
+      profile.credentialDefinitionId,
+      auth,
+    );
+    if (definition.status !== CredentialDefinitionStatus.PUBLISHED) {
       throw new BadRequestException(
-        `Issuance profile '${profile.id}' cannot be published because its connector no longer exists.`,
+        'Credential definition must be published before publishing an issuance profile.',
+      );
+    }
+    if (!isCredentialDefinitionReadyForIssuance(definition)) {
+      throw new BadRequestException(
+        'Credential definition is not ready for issuance',
       );
     }
 
     await this.resolveConnector(
       profile.tenantId,
-      profile.format,
-      profile.connectorId,
+      definition.format,
+      definition.connectorId!,
     );
 
-    return profile.connectorId;
+    return {
+      id: definition.id,
+      connectorId: definition.connectorId!,
+      format: definition.format,
+    };
   }
 }

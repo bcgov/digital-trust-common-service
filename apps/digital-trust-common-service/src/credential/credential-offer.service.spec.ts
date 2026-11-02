@@ -1,4 +1,5 @@
 import {
+  ConnectorUnavailableError,
   CredentialExchangeState,
   CredentialFormat as PortCredentialFormat,
   FormatValidatorRegistry,
@@ -15,6 +16,7 @@ import { AuditAction } from '../audit-log/audit-log.entity';
 import { DomainAuditService } from '../audit-log/domain-audit.service';
 import { CredentialDefinition } from '../credential-definition/credential-definition.entity';
 import {
+  CredentialDefinitionStatus,
   CredentialDefinitionFormat,
   CredentialDefinitionConnectorType,
 } from '../credential-definition/credential-definition.entity';
@@ -96,6 +98,8 @@ describe('CredentialOfferService', () => {
       connectorId,
       registrationState: 'ready',
       connectorType: CredentialDefinitionConnectorType.TRACTION,
+      version: '1.0',
+      status: CredentialDefinitionStatus.PUBLISHED,
       isActive: true,
       createdAt,
       updatedAt: createdAt,
@@ -111,8 +115,6 @@ describe('CredentialOfferService', () => {
       name: 'diploma',
       version: '1.0',
       credentialDefinitionId,
-      format: CredentialDefinitionFormat.ANONCREDS,
-      connectorId,
       attributeSchema: {},
       defaults: { family_name: 'Doe' },
       metadata: {},
@@ -318,7 +320,88 @@ describe('CredentialOfferService', () => {
     });
   });
 
+  describe.each([
+    CredentialDefinitionStatus.DRAFT,
+    CredentialDefinitionStatus.DEPRECATED,
+  ])('definition status %s', (status) => {
+    it.each(['direct', 'profile'] as const)(
+      'rejects %s offers before connector resolution or writes',
+      async (mode) => {
+        mockCredentialDefinitionFindById.mockResolvedValue(
+          buildCredentialDefinition({ status, isActive: true }),
+        );
+        const dto =
+          mode === 'profile'
+            ? buildDto()
+            : buildDto({
+                profileId: undefined,
+                credentialDefinitionId,
+                format: CredentialDefinitionFormat.ANONCREDS,
+              });
+
+        await expect(service.offer(tenantId, dto)).rejects.toThrow(
+          'Credential definition must be published before issuing credentials',
+        );
+        expect(mockResolveAdapter).not.toHaveBeenCalled();
+        expect(mockOfferCredential).not.toHaveBeenCalled();
+        expect(mockTransaction).not.toHaveBeenCalled();
+        expect(mockCreateOperation).not.toHaveBeenCalled();
+        expect(mockCredentialCreate).not.toHaveBeenCalled();
+        expect(mockSendInTransaction).not.toHaveBeenCalled();
+      },
+    );
+  });
+
   describe('profile mode', () => {
+    it('uses the definition binding for a profile without copied connector fields', async () => {
+      await service.offer(tenantId, buildDto());
+
+      expect(mockResolveAdapter).toHaveBeenCalledWith(
+        tenantId,
+        PortCredentialFormat.AnonCreds,
+        { connectorId },
+      );
+    });
+
+    it('resolves a profile through its credential definition connector binding', async () => {
+      const boundConnectorId = '123e4567-e89b-12d3-a456-426614174014';
+      mockCredentialDefinitionFindById.mockResolvedValue(
+        buildCredentialDefinition({ connectorId: boundConnectorId }),
+      );
+
+      await service.offer(tenantId, buildDto());
+
+      expect(mockResolveAdapter).toHaveBeenCalledWith(
+        tenantId,
+        PortCredentialFormat.AnonCreds,
+        { connectorId: boundConnectorId },
+      );
+    });
+
+    it('rejects an unbound definition for a profile offer', async () => {
+      mockCredentialDefinitionFindById.mockResolvedValue(
+        buildCredentialDefinition({ connectorId: null }),
+      );
+
+      await expect(service.offer(tenantId, buildDto())).rejects.toThrow(
+        'Credential definition is not ready for issuance',
+      );
+      expect(mockResolveAdapter).not.toHaveBeenCalled();
+      expect(mockTransaction).not.toHaveBeenCalled();
+    });
+
+    it('rejects an offer when neither definition nor profile is bound', async () => {
+      mockCredentialDefinitionFindById.mockResolvedValue(
+        buildCredentialDefinition({ connectorId: null }),
+      );
+
+      await expect(service.offer(tenantId, buildDto())).rejects.toThrow(
+        'Credential definition is not ready for issuance',
+      );
+      expect(mockResolveAdapter).not.toHaveBeenCalled();
+      expect(mockTransaction).not.toHaveBeenCalled();
+    });
+
     it('throws 400 when the profile is not found', async () => {
       mockProfileFindById.mockResolvedValue(null);
 
@@ -394,6 +477,52 @@ describe('CredentialOfferService', () => {
         credentialDefinitionId,
         format: CredentialDefinitionFormat.ANONCREDS,
       });
+
+    it('resolves a direct offer using the definition connector binding', async () => {
+      const boundConnectorId = '123e4567-e89b-12d3-a456-426614174014';
+      mockCredentialDefinitionFindById.mockResolvedValue(
+        buildCredentialDefinition({ connectorId: boundConnectorId }),
+      );
+      await service.offer(tenantId, legacyDto());
+
+      expect(mockResolveAdapter).toHaveBeenCalledWith(
+        tenantId,
+        PortCredentialFormat.AnonCreds,
+        { connectorId: boundConnectorId },
+      );
+    });
+
+    it.each([null, undefined])(
+      'rejects a direct offer for an unbound definition (%s)',
+      async (connectorId) => {
+        mockCredentialDefinitionFindById.mockResolvedValue(
+          buildCredentialDefinition({ connectorId }),
+        );
+
+        await expect(service.offer(tenantId, legacyDto())).rejects.toThrow(
+          'Credential definition is not ready for issuance',
+        );
+        expect(mockResolveAdapter).not.toHaveBeenCalled();
+        expect(mockTransaction).not.toHaveBeenCalled();
+      },
+    );
+
+    it('does not fall back when the bound connector is unavailable', async () => {
+      mockResolveAdapter.mockRejectedValue(
+        new ConnectorUnavailableError('Bound connector is unavailable'),
+      );
+
+      await expect(service.offer(tenantId, legacyDto())).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(mockResolveAdapter).toHaveBeenCalledTimes(1);
+      expect(mockResolveAdapter).toHaveBeenCalledWith(
+        tenantId,
+        PortCredentialFormat.AnonCreds,
+        { connectorId },
+      );
+      expect(mockTransaction).not.toHaveBeenCalled();
+    });
 
     it('throws 400 when format is missing', async () => {
       await expect(
@@ -480,23 +609,10 @@ describe('CredentialOfferService', () => {
       );
       expect(mockOfferCredential).not.toHaveBeenCalled();
     });
-
-    it('rejects a profile bound to another issuer wallet', async () => {
-      mockProfileFindById.mockResolvedValue(
-        buildProfile({ connectorId: 'another-connector' }),
-      );
-      await expect(service.offer(tenantId, buildDto())).rejects.toThrow(
-        'Profile connector does not own this credential definition',
-      );
-      expect(mockOfferCredential).not.toHaveBeenCalled();
-    });
   });
 
   describe('attribute + format validation', () => {
     it('throws 400 when the resolved format has no port mapping', async () => {
-      mockProfileFindById.mockResolvedValue(
-        buildProfile({ format: CredentialDefinitionFormat.SD_JWT }),
-      );
       mockCredentialDefinitionFindById.mockResolvedValue(
         buildCredentialDefinition({
           format: CredentialDefinitionFormat.SD_JWT,

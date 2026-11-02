@@ -1,4 +1,4 @@
-import { AddConnectorAgentLogIdHash1793385084139 } from './000035_add-connector-agent-log-id-hash';
+import { AddConnectorAgentLogIdHash1793385084139 } from './000038_add-connector-agent-log-id-hash';
 
 describe('connector agent log id hash migration', () => {
   it('adds a nullable hash with a partial unique index over active rows', async () => {

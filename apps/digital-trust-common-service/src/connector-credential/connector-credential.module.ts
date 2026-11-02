@@ -41,6 +41,6 @@ import { ConnectorHealthCheckService } from './connector-health-check.service';
       inject: [TractionConnectorProbe],
     },
   ],
-  exports: [ConnectorCredentialService],
+  exports: [ConnectorCredentialService, ConnectorCredentialRepository],
 })
 export class ConnectorCredentialModule {}

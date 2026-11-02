@@ -72,6 +72,21 @@ export const routes: RouteObject[] = [
                 ),
               },
               {
+                path: '/credential-definitions',
+                lazy: lazyPage(
+                  () => import('@/pages/credential-definitions-page'),
+                  'CredentialDefinitionsPage',
+                ),
+              },
+              {
+                path: '/credential-definitions/create-or-edit',
+                lazy: lazyPage(
+                  () =>
+                    import('@/pages/create-or-edit-credential-definition-page'),
+                  'CreateOrEditCredentialDefinitionPage',
+                ),
+              },
+              {
                 path: '/api-clients',
                 lazy: lazyPage(
                   () => import('@/pages/api-clients-page'),

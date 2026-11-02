@@ -5,6 +5,7 @@ import { afterAll, afterEach, beforeAll } from 'vitest';
 import { setAuthHandlers } from '@/lib/api/client';
 import i18n from '@/lib/i18n';
 
+import { resetCredentialDefinitionMocks } from '@/mocks/handlers';
 import { server } from '@/mocks/server';
 
 // jsdom implements no media queries at all, and vaul reads `matchMedia` on
@@ -52,6 +53,7 @@ beforeAll(async () => {
 afterEach(() => {
   cleanup();
   server.resetHandlers();
+  resetCredentialDefinitionMocks();
   sessionStorage.clear();
   setAuthHandlers(null);
 });

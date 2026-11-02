@@ -34,8 +34,11 @@ import { RemoveVerificationProfileIssuanceProfileLink1790623456139 } from './mig
 import { AllowNullableConnectionExternalId1790703557000 } from './migrations/000031_allow-nullable-connection-external-id';
 import { AddTenantUserPlatformOperator1790900000000 } from './migrations/000032_add-tenant-user-platform-operator';
 import { ExtendCredentialDefinitionRegistration1792018018010 } from './migrations/000033_extend-credential-definition-registration';
-import { CreateAnoncredsPublicationIntent1793375200834 } from './migrations/000034_create-anoncreds-publication-intent';
-import { AddConnectorAgentLogIdHash1793385084139 } from './migrations/000035_add-connector-agent-log-id-hash';
+import { AddCredentialDefinitionLifecycle1792713600000 } from './migrations/000034_add-credential-definition-lifecycle';
+import { CreateAnoncredsPublicationIntent1793375200834 } from './migrations/000035_create-anoncreds-publication-intent';
+import { RemoveIssuanceProfileDerivedFields1793377253689 } from './migrations/000036_remove-issuance-profile-derived-fields';
+import { ConsolidateCredentialDefinitionConnector1793383965371 } from './migrations/000037_consolidate-credential-definition-connector';
+import { AddConnectorAgentLogIdHash1793385084139 } from './migrations/000038_add-connector-agent-log-id-hash';
 import { buildSslConfig } from './ssl.util';
 
 export const AppDataSource = new DataSource({
@@ -84,7 +87,10 @@ export const AppDataSource = new DataSource({
     AllowNullableConnectionExternalId1790703557000,
     AddTenantUserPlatformOperator1790900000000,
     ExtendCredentialDefinitionRegistration1792018018010,
+    AddCredentialDefinitionLifecycle1792713600000,
     CreateAnoncredsPublicationIntent1793375200834,
+    RemoveIssuanceProfileDerivedFields1793377253689,
+    ConsolidateCredentialDefinitionConnector1793383965371,
     AddConnectorAgentLogIdHash1793385084139,
   ],
   ssl: buildSslConfig(
