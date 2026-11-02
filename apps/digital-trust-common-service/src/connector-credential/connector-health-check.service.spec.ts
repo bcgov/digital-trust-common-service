@@ -38,6 +38,19 @@ describe('ConnectorHealthCheckService', () => {
   });
 
   describe('probe dispatch', () => {
+    it('reports unhealthy for credo, which has no probe', async () => {
+      const result = await service.check(
+        ConnectorType.CREDO,
+        'https://credo.example.com',
+        { apiKey: 'key-1' },
+      );
+
+      expect(result.message).toBe(
+        'No connectivity probe is registered for connector type credo.',
+      );
+      expect(global.fetch).not.toHaveBeenCalled();
+    });
+
     it('reports unhealthy when no probe is registered for the type', async () => {
       const result = await new ConnectorHealthCheckService([]).check(
         ConnectorType.TRACTION,
@@ -102,55 +115,6 @@ describe('ConnectorHealthCheckService', () => {
 
       expect(result.status).toBe('healthy');
       expect(result.agentLogId).toBeUndefined();
-    });
-  });
-
-  describe('credo', () => {
-    it('reports unhealthy on a network error', async () => {
-      (global.fetch as jest.Mock).mockRejectedValue(new Error('ECONNREFUSED'));
-
-      const result = await service.check(
-        ConnectorType.CREDO,
-        'https://credo.example.com',
-        { apiKey: 'key-1' },
-      );
-
-      expect(result.status).toBe('unhealthy');
-      expect(result.message).toBe('ECONNREFUSED');
-    });
-
-    it('calls the health endpoint with a bearer token', async () => {
-      (global.fetch as jest.Mock).mockResolvedValue({ ok: true, status: 200 });
-
-      const result = await service.check(
-        ConnectorType.CREDO,
-        'https://credo.example.com',
-        { apiKey: 'key-1' },
-      );
-
-      expect(global.fetch).toHaveBeenCalledWith(
-        'https://credo.example.com/health',
-        expect.objectContaining({
-          headers: { Authorization: 'Bearer key-1' },
-        }),
-      );
-      expect(result.status).toBe('healthy');
-    });
-
-    it('reports unhealthy on a non-ok response', async () => {
-      (global.fetch as jest.Mock).mockResolvedValue({
-        ok: false,
-        status: 503,
-      });
-
-      const result = await service.check(
-        ConnectorType.CREDO,
-        'https://credo.example.com',
-        { apiKey: 'key-1' },
-      );
-
-      expect(result.status).toBe('unhealthy');
-      expect(result.message).toContain('503');
     });
   });
 });
