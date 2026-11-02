@@ -11,6 +11,13 @@ import { LogAccessTokenService } from './log-access-token.service';
 
 const AUDIENCE = 'https://log-gateway.example.test';
 const TENANT_ID = '3f2b8c1e-5d4a-4e7b-9a10-0c6d2f8e7b11';
+const VALID_CLAIMS = {
+  sub: 'client:gateway-test',
+  iat: 1_700_000_000,
+  exp: 1_700_000_300,
+  tenant_id: TENANT_ID,
+  scope: 'logs:read',
+};
 
 describe('LogAccessTokenService', () => {
   let verify: jest.Mock;
@@ -27,8 +34,7 @@ describe('LogAccessTokenService', () => {
 
   beforeEach(() => {
     verify = jest.fn().mockResolvedValue({
-      tenant_id: TENANT_ID,
-      scope: 'logs:read',
+      ...VALID_CLAIMS,
     });
     audiences = [AUDIENCE];
     configured = AUDIENCE;
@@ -68,18 +74,31 @@ describe('LogAccessTokenService', () => {
     ['non-uuid', 'tenant-a'],
     ['delimiter-bearing', `${TENANT_ID}|other`],
   ])('denies 401 for a %s tenant_id', async (_name, tenantId) => {
-    verify.mockResolvedValue({ tenant_id: tenantId, scope: 'logs:read' });
+    verify.mockResolvedValue({ ...VALID_CLAIMS, tenant_id: tenantId });
     await deniedWith(401, 'invalid_tenant_id');
   });
 
+  it.each(['sub', 'exp', 'iat'])(
+    'denies 401 when %s is missing',
+    async (claim) => {
+      verify.mockResolvedValue({ ...VALID_CLAIMS, [claim]: undefined });
+      await deniedWith(401, 'missing_required_claims');
+    },
+  );
+
+  it('denies 401 when sub is empty', async () => {
+    verify.mockResolvedValue({ ...VALID_CLAIMS, sub: '' });
+    await deniedWith(401, 'missing_required_claims');
+  });
+
   it('denies 403 without logs:read', async () => {
-    verify.mockResolvedValue({ tenant_id: TENANT_ID, scope: 'tenant:read' });
+    verify.mockResolvedValue({ ...VALID_CLAIMS, scope: 'tenant:read' });
     await deniedWith(403, 'missing_logs_read_scope');
   });
 
   it('gives a platform-admin role no cross-tenant bypass', async () => {
     verify.mockResolvedValue({
-      tenant_id: TENANT_ID,
+      ...VALID_CLAIMS,
       roles: ['platform-admin'],
       scope: 'openid',
     });

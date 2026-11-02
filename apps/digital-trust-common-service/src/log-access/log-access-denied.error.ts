@@ -1,6 +1,7 @@
 export type LogAccessDenialReason =
   | 'audience_not_configured'
   | 'invalid_token'
+  | 'missing_required_claims'
   | 'invalid_tenant_id'
   | 'missing_logs_read_scope'
   | 'resolution_failed'

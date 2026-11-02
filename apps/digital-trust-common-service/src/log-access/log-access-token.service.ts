@@ -51,6 +51,17 @@ export class LogAccessTokenService {
       throw error;
     }
 
+    // The verifier checks signature, issuer, audience and expiry only when
+    // the claims are present, so their presence is required here.
+    if (
+      typeof payload.sub !== 'string' ||
+      !payload.sub ||
+      typeof payload.exp !== 'number' ||
+      typeof payload.iat !== 'number'
+    ) {
+      throw new LogAccessDeniedError(401, 'missing_required_claims');
+    }
+
     // Exactly one canonical tenant_id. An array is a repeated
     // claim and is rejected by the type check, not collapsed to a value.
     if (!isCanonicalTenantId(payload.tenant_id)) {
