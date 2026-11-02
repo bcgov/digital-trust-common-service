@@ -160,10 +160,13 @@ describe('credential definition registration contract', () => {
     });
 
     await expect(
-      patchPipe.transform({}, {
-        type: 'body',
-        metatype: UpdateCredentialDefinitionDto,
-      }),
+      patchPipe.transform(
+        {},
+        {
+          type: 'body',
+          metatype: UpdateCredentialDefinitionDto,
+        },
+      ),
     ).resolves.toBeDefined();
     await expect(
       patchPipe.transform(
