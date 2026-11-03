@@ -181,24 +181,36 @@ export class OperationService {
     tenantId: string,
     id: string,
     query: ListOperationItemsQueryDto = {},
+    signal?: AbortSignal,
   ): Promise<PaginatedOperations> {
-    const parent = await this.operations.findByIdForTenant(id, tenantId);
+    const parent = await this.awaitWhileConnected(
+      () => this.operations.findByIdForTenant(id, tenantId),
+      signal,
+    );
     if (!parent || !this.isBatchParent(parent)) {
       throw new NotFoundException('Batch operation not found');
     }
 
-    const page = await this.operations.findPageForTenant({
-      tenantId,
-      batchId: id,
-      state: query.state,
-      limit: query.limit,
-      cursor:
-        query.cursor === undefined ? undefined : decodeCursor(query.cursor),
-    });
+    const page = await this.awaitWhileConnected(
+      () =>
+        this.operations.findPageForTenant({
+          tenantId,
+          batchId: id,
+          state: query.state,
+          limit: query.limit,
+          cursor:
+            query.cursor === undefined ? undefined : decodeCursor(query.cursor),
+        }),
+      signal,
+    );
 
     return {
-      data: await Promise.all(
-        page.items.map((item) => this.prepareForRead(item)),
+      data: await this.awaitWhileConnected(
+        () =>
+          Promise.all(
+            page.items.map((item) => this.prepareForRead(item, signal)),
+          ),
+        signal,
       ),
       pagination: {
         next_cursor: page.nextCursor ? encodeCursor(page.nextCursor) : null,
@@ -217,56 +229,89 @@ export class OperationService {
     if (query.cursor !== undefined) {
       decodeCursor(query.cursor);
     }
+    await this.waitForBatchChange(tenantId, id, waitSeconds, signal);
+    return this.listItemsForTenant(tenantId, id, query, signal);
+  }
+
+  private async waitForBatchChange(
+    tenantId: string,
+    id: string,
+    waitSeconds: number,
+    signal?: AbortSignal,
+  ): Promise<void> {
     const deadline = Date.now() + Math.min(Math.max(waitSeconds, 0), 30) * 1000;
-    const parent = await this.operations.findByIdForTenant(id, tenantId);
+    const parent = await this.awaitWhileConnected(
+      () => this.operations.findByIdForTenant(id, tenantId),
+      signal,
+    );
     if (!parent || !this.isBatchParent(parent)) {
       throw new NotFoundException('Batch operation not found');
     }
     if (isTerminalOperationState(parent.state) || Date.now() >= deadline) {
-      return this.listItemsForTenant(tenantId, id, query);
+      return;
     }
 
-    const initial = await this.operations.findBatchStateFingerprintForTenant(
-      id,
-      tenantId,
+    const initial = await this.awaitWhileConnected(
+      () => this.operations.findBatchStateFingerprintForTenant(id, tenantId),
+      signal,
     );
     while (Date.now() < deadline) {
       await this.waitForPoll(Math.min(1000, deadline - Date.now()), signal);
-      const current = await this.operations.findByIdForTenant(id, tenantId);
+      const current = await this.awaitWhileConnected(
+        () => this.operations.findByIdForTenant(id, tenantId),
+        signal,
+      );
       if (!current || !this.isBatchParent(current)) {
         throw new NotFoundException('Batch operation not found');
       }
       if (current.state !== parent.state) {
-        break;
+        return;
       }
-      const fingerprint =
-        await this.operations.findBatchStateFingerprintForTenant(id, tenantId);
+      const fingerprint = await this.awaitWhileConnected(
+        () => this.operations.findBatchStateFingerprintForTenant(id, tenantId),
+        signal,
+      );
       if (fingerprint !== initial) {
-        break;
+        return;
       }
     }
-    return this.listItemsForTenant(tenantId, id, query);
+  }
+
+  private async awaitWhileConnected<T>(
+    load: () => Promise<T>,
+    signal?: AbortSignal,
+  ): Promise<T> {
+    if (!signal) {
+      return load();
+    }
+    if (signal.aborted) {
+      throw new ServiceUnavailableException('Operation polling cancelled');
+    }
+    let onAbort!: () => void;
+    const cancelled = new Promise<never>((_resolve, reject) => {
+      onAbort = () =>
+        reject(new ServiceUnavailableException('Operation polling cancelled'));
+      signal.addEventListener('abort', onAbort, { once: true });
+    });
+    try {
+      return await Promise.race([load(), cancelled]);
+    } finally {
+      signal.removeEventListener('abort', onAbort);
+    }
   }
 
   private waitForPoll(
     milliseconds: number,
     signal?: AbortSignal,
   ): Promise<void> {
-    return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
-        signal?.removeEventListener('abort', onAbort);
-        resolve();
-      }, milliseconds);
-      const onAbort = () => {
-        clearTimeout(timer);
-        signal?.removeEventListener('abort', onAbort);
-        reject(new ServiceUnavailableException('Operation polling cancelled'));
-      };
-      signal?.addEventListener('abort', onAbort, { once: true });
-      if (signal?.aborted) {
-        onAbort();
-      }
-    });
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    return this.awaitWhileConnected(
+      () =>
+        new Promise<void>((resolve) => {
+          timer = setTimeout(resolve, milliseconds);
+        }),
+      signal,
+    ).finally(() => clearTimeout(timer));
   }
 
   private isBatchParent(operation: Operation): boolean {
@@ -284,9 +329,12 @@ export class OperationService {
     };
   }
 
-  private async prepareForRead(operation: Operation): Promise<Operation> {
+  private async prepareForRead(
+    operation: Operation,
+    signal?: AbortSignal,
+  ): Promise<Operation> {
     if (isTerminalOperationState(operation.state) && !operation.viewedAt) {
-      operation = await this.applyViewed(operation);
+      operation = await this.applyViewed(operation, signal);
     }
 
     const settled = operation.result;
@@ -313,9 +361,13 @@ export class OperationService {
     ) {
       const counts =
         settledCounts ??
-        (await this.operations.countByBatchGroupedByState(
-          operation.id,
-          operation.tenantId,
+        (await this.awaitWhileConnected(
+          () =>
+            this.operations.countByBatchGroupedByState(
+              operation.id,
+              operation.tenantId,
+            ),
+          signal,
         ));
       const total = Object.values(counts).reduce(
         (sum, count) => sum + count,
@@ -325,9 +377,13 @@ export class OperationService {
         return { ...operation, result: { total, ...counts } };
       }
 
-      const failures = await this.operations.findFailedBatchItemsForTenant(
-        operation.id,
-        operation.tenantId,
+      const failures = await this.awaitWhileConnected(
+        () =>
+          this.operations.findFailedBatchItemsForTenant(
+            operation.id,
+            operation.tenantId,
+          ),
+        signal,
       );
       return {
         ...operation,
@@ -375,8 +431,14 @@ export class OperationService {
     return this.applyViewed(operation);
   }
 
-  private async applyViewed(operation: Operation): Promise<Operation> {
-    const tenant = await this.tenants.findById(operation.tenantId);
+  private async applyViewed(
+    operation: Operation,
+    signal?: AbortSignal,
+  ): Promise<Operation> {
+    const tenant = await this.awaitWhileConnected(
+      () => this.tenants.findById(operation.tenantId),
+      signal,
+    );
     const viewedAt = new Date();
     const expiresAt = this.computeExpiresAt(
       operation.state,
@@ -385,10 +447,9 @@ export class OperationService {
       tenant.config,
     );
 
-    const stored = await this.operations.markFirstView(
-      operation.id,
-      viewedAt,
-      expiresAt,
+    const stored = await this.awaitWhileConnected(
+      () => this.operations.markFirstView(operation.id, viewedAt, expiresAt),
+      signal,
     );
 
     // No row updated means either a concurrent poll stamped it first, or the
@@ -396,7 +457,10 @@ export class OperationService {
     // them apart: the winner's values are authoritative, and a row that is gone
     // must not be served from the copy loaded moments ago.
     if (!stored) {
-      const current = await this.operations.findById(operation.id);
+      const current = await this.awaitWhileConnected(
+        () => this.operations.findById(operation.id),
+        signal,
+      );
 
       if (!current) {
         throw new NotFoundException('Operation not found');

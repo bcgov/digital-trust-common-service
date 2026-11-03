@@ -483,6 +483,167 @@ describe('OperationService', () => {
       expect(mockFindPageForTenant).not.toHaveBeenCalled();
     });
 
+    it('rejects promptly on abort while a repository lookup is still pending', async () => {
+      const abort = new AbortController();
+      const removed = jest.spyOn(abort.signal, 'removeEventListener');
+      let finishLookup!: (value: Operation) => void;
+      mockFindByIdForTenant.mockReturnValueOnce(new Promise<Operation>((resolve) => {
+        finishLookup = resolve;
+      }));
+      const pending = service.waitForItemsForTenant('t1', 'op-1', query, 30, abort.signal);
+      const assertion = expect(pending).rejects.toThrow('Operation polling cancelled');
+
+      abort.abort();
+      await assertion;
+      expect(removed).toHaveBeenCalledWith('abort', expect.any(Function));
+
+      finishLookup(buildOperation({
+        type: 'credential.offer-batch', state: OperationState.COMPLETED,
+      }));
+      await jest.advanceTimersByTimeAsync(0);
+      expect(mockFindPageForTenant).not.toHaveBeenCalled();
+      expect(mockMarkFirstView).not.toHaveBeenCalled();
+      expect(jest.getTimerCount()).toBe(0);
+    });
+
+    it('does not start a repository lookup for an already-aborted request', async () => {
+      const abort = new AbortController();
+      abort.abort();
+
+      await expect(service.waitForItemsForTenant('t1', 'op-1', query, 30, abort.signal))
+        .rejects.toThrow('Operation polling cancelled');
+      expect(mockFindByIdForTenant).not.toHaveBeenCalled();
+      expect(jest.getTimerCount()).toBe(0);
+    });
+
+    it('removes abort listeners after a successful read', async () => {
+      const abort = new AbortController();
+      const added = jest.spyOn(abort.signal, 'addEventListener');
+      const removed = jest.spyOn(abort.signal, 'removeEventListener');
+      mockFindByIdForTenant.mockResolvedValue(buildOperation({
+        type: 'credential.offer-batch', state: OperationState.COMPLETED,
+      }));
+
+      await service.waitForItemsForTenant('t1', 'op-1', query, 30, abort.signal);
+
+      expect(added).toHaveBeenCalled();
+      for (const [event, listener] of added.mock.calls) {
+        expect(removed).toHaveBeenCalledWith(event, listener);
+      }
+      expect(jest.getTimerCount()).toBe(0);
+    });
+
+    it('removes the abort listener when a repository lookup rejects', async () => {
+      const abort = new AbortController();
+      const removed = jest.spyOn(abort.signal, 'removeEventListener');
+      mockFindByIdForTenant.mockRejectedValueOnce(new Error('Lookup failed'));
+
+      await expect(service.waitForItemsForTenant('t1', 'op-1', query, 30, abort.signal))
+        .rejects.toThrow('Lookup failed');
+      expect(removed).toHaveBeenCalledWith('abort', expect.any(Function));
+      expect(mockFindPageForTenant).not.toHaveBeenCalled();
+      expect(jest.getTimerCount()).toBe(0);
+    });
+
+    it.each([
+      'initial parent',
+      'initial fingerprint',
+      'polled parent',
+      'polled fingerprint',
+      'final parent',
+      'final page',
+      'view tenant',
+    ])(
+      'does not mark children viewed when disconnected during the %s lookup',
+      async (stage) => {
+        const abort = new AbortController();
+        let finishLookup!: (value: unknown) => void;
+        const lookup = new Promise<unknown>((resolve) => {
+          finishLookup = resolve;
+        });
+        const parent = buildOperation({
+          type: 'credential.offer-batch',
+          state: OperationState.PROCESSING,
+        });
+        const terminalParent = { ...parent, state: OperationState.COMPLETED };
+        const page = {
+          items: [buildOperation({ state: OperationState.COMPLETED })],
+          nextCursor: null,
+          hasMore: false,
+        };
+        let value: unknown;
+        let elapsed = 0;
+        switch (stage) {
+          case 'initial parent':
+            mockFindByIdForTenant.mockReturnValueOnce(lookup);
+            value = terminalParent;
+            break;
+          case 'initial fingerprint':
+            mockBatchFingerprint.mockReturnValueOnce(lookup);
+            value = 'initial';
+            break;
+          case 'polled parent':
+            mockFindByIdForTenant
+              .mockResolvedValueOnce(parent)
+              .mockReturnValueOnce(lookup);
+            value = terminalParent;
+            elapsed = 1000;
+            break;
+          case 'polled fingerprint':
+            mockBatchFingerprint
+              .mockResolvedValueOnce('initial')
+              .mockReturnValueOnce(lookup);
+            value = 'changed';
+            elapsed = 1000;
+            break;
+          case 'final parent':
+            mockFindByIdForTenant
+              .mockResolvedValueOnce(parent)
+              .mockResolvedValueOnce(terminalParent)
+              .mockReturnValueOnce(lookup);
+            value = terminalParent;
+            elapsed = 1000;
+            break;
+          case 'final page':
+            mockFindByIdForTenant.mockResolvedValue(terminalParent);
+            mockFindPageForTenant.mockReturnValueOnce(lookup);
+            value = page;
+            break;
+          case 'view tenant':
+            mockFindByIdForTenant.mockResolvedValue(terminalParent);
+            mockFindPageForTenant.mockResolvedValue(page);
+            mockTenantFindById.mockReturnValueOnce(lookup);
+            value = { id: 't1', config: {} };
+            break;
+        }
+        const readItems = jest.spyOn(service, 'listItemsForTenant');
+        const pending = service.waitForItemsForTenant(
+          't1',
+          'op-1',
+          query,
+          30,
+          abort.signal,
+        );
+        const assertion = expect(pending).rejects.toThrow(
+          'Operation polling cancelled',
+        );
+        await jest.advanceTimersByTimeAsync(elapsed);
+        abort.abort();
+        finishLookup(value);
+        await assertion;
+
+        if (stage.startsWith('initial') || stage.startsWith('polled')) {
+          expect(readItems).not.toHaveBeenCalled();
+        }
+        if (stage !== 'final page' && stage !== 'view tenant') {
+          expect(mockFindPageForTenant).not.toHaveBeenCalled();
+        }
+        expect(mockMarkFirstView).not.toHaveBeenCalled();
+        expect(mockSave).not.toHaveBeenCalled();
+        expect(jest.getTimerCount()).toBe(0);
+      },
+    );
+
     it('rejects invalid cursors without waiting', async () => {
       await expect(
         service.waitForItemsForTenant('t1', 'op-1', { cursor: 'invalid' }, 30),
