@@ -2,16 +2,26 @@ import { AuthModule } from '@app/auth';
 import { OidcConfigModule } from '@app/oidc';
 import { Module } from '@nestjs/common';
 
+import { EncryptionModule } from '../common/crypto/encryption.module';
+import { ConnectorCredentialModule } from '../connector-credential/connector-credential.module';
+
+import { AgentLogPartitionCacheModule } from './agent-log-partition-cache.module';
+import { ConnectorAgentLogPartitionResolver } from './connector-agent-log-partition.resolver';
 import { InternalListener } from './internal-listener';
 import { InternalListenerGuard } from './internal-listener.guard';
 import { LogAccessTokenService } from './log-access-token.service';
 import { AGENT_LOG_PARTITION_RESOLVER } from './log-access.constants';
 import { LogAccessController } from './log-access.controller';
 import { LogAccessService } from './log-access.service';
-import { NoAgentLogPartitionResolver } from './no-agent-log-partition.resolver';
 
 @Module({
-  imports: [AuthModule, OidcConfigModule],
+  imports: [
+    AuthModule,
+    OidcConfigModule,
+    EncryptionModule,
+    ConnectorCredentialModule,
+    AgentLogPartitionCacheModule,
+  ],
   controllers: [LogAccessController],
   providers: [
     InternalListener,
@@ -20,7 +30,7 @@ import { NoAgentLogPartitionResolver } from './no-agent-log-partition.resolver';
     LogAccessTokenService,
     {
       provide: AGENT_LOG_PARTITION_RESOLVER,
-      useClass: NoAgentLogPartitionResolver,
+      useClass: ConnectorAgentLogPartitionResolver,
     },
   ],
   exports: [InternalListener],

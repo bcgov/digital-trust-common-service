@@ -1260,9 +1260,10 @@ service requires a canonical `tenant_id` and the `logs:read` scope. Roles never 
 platform-admin has no cross-tenant read.
 
 An allow is a `200` with an empty body and the computed `X-Scope-OrgID` header (`t-<tenant_id>`, plus
-agent partitions once resolution lands, at most ten, denied rather than truncated). Every denial has one
-fixed body per status: `401` for a token that fails the contract and `403` for a missing scope or a
-resolution failure. Agent partitions currently resolve to none.
+an agent partition for each active connector with a log identifier, at most ten, denied rather than
+truncated). Every denial has one fixed body per status: `401` for a token that fails the contract and
+`403` for a missing scope or a resolution failure. Resolved agent partitions are cached per tenant for
+up to five minutes and invalidated when a connector changes.
 
 The endpoint is served by a second TLS listener on `LOG_ACCESS_INTERNAL_PORT`, mounted behind its own
 Service and a NetworkPolicy limited to the gateway pods. The route is excluded from the global prefix and
