@@ -291,7 +291,9 @@ describe('ConnectorAgentLogPartitionResolver', () => {
           authorize: jest.fn().mockResolvedValue({ tenantId: TENANT_ID }),
         } as unknown as LogAccessTokenService,
         resolver,
-        new LogAccessRateLimiter(),
+        {
+          tryConsume: jest.fn().mockResolvedValue(true),
+        } as unknown as LogAccessRateLimiter,
       );
 
     it('scopes to the tenant and agent partitions', async () => {

@@ -1266,8 +1266,11 @@ to five minutes; the cache is invalidated when a connector is created, updated, 
 and a resolution, decryption or malformed-identifier failure denies the request rather than falling back
 to the tenant partition alone. Every denial has one fixed body per status: `401` for a token that fails
 the contract, `403` for a missing scope or a resolution failure, and `429` `{ "error": "too_many_requests" }`
-when the tenant exceeds its per-tenant request budget (Rule L11). The limit is keyed by the validated
-`tenant_id` and checked before agent partitions are resolved, so one tenant never consumes another's budget.
+when the tenant exceeds its per-tenant request budget (Rule L11). The budget is counted through the
+shared `RateLimitStorageService` (`rate_limit_hits`) under a dedicated `log-access` route key, so it is
+enforced consistently across replicas and never mixes with API budgets. It is keyed by the validated
+`tenant_id` and checked before agent partitions are resolved, so one tenant never consumes another's
+budget.
 
 The caller's query is never an input to the scope. A tenant-selecting query parameter (such as `tenant`,
 `tenant_id` or `org_id`, including on the forwarded original path) and an inbound `X-Scope-OrgID` header

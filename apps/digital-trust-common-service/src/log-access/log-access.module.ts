@@ -4,6 +4,7 @@ import { Module } from '@nestjs/common';
 
 import { EncryptionModule } from '../common/crypto/encryption.module';
 import { ConnectorCredentialModule } from '../connector-credential/connector-credential.module';
+import { RateLimitStorageModule } from '../rate-limit/rate-limit-storage.module';
 
 import { AgentLogPartitionCacheModule } from './agent-log-partition-cache.module';
 import { ConnectorAgentLogPartitionResolver } from './connector-agent-log-partition.resolver';
@@ -22,6 +23,7 @@ import { LogAccessService } from './log-access.service';
     EncryptionModule,
     ConnectorCredentialModule,
     AgentLogPartitionCacheModule,
+    RateLimitStorageModule,
   ],
   controllers: [LogAccessController],
   providers: [

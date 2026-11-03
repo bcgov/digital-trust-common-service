@@ -35,7 +35,7 @@ export class LogAccessService {
   ): Promise<string> {
     const { tenantId } = await this.tokens.authorize(authorizationHeader);
 
-    if (!this.rateLimiter.tryConsume(tenantId)) {
+    if (!(await this.rateLimiter.tryConsume(tenantId))) {
       throw new LogAccessDeniedError(429, 'rate_limited');
     }
 
