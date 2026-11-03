@@ -37,7 +37,7 @@ describe('agent log partition key', () => {
     expect(() => buildAgentPartitionKey(unknown, walletId)).toThrow();
   });
 
-  it.each(['wallet-1', 'ABC-123', 'a'.repeat(100)])(
+  it.each(['wallet-1', 'abc-123', 'a'.repeat(100)])(
     'accepts the Loki-safe identifier %s',
     (value) => {
       expect(isValidAgentLogId(value)).toBe(true);
@@ -48,6 +48,7 @@ describe('agent log partition key', () => {
   );
 
   it.each([
+    ['an uppercase character', walletId.toUpperCase()],
     ['the multi-partition separator', `${walletId}|t-other`],
     ['a path character', `${walletId}/..`],
     ['surrounding whitespace', ` ${walletId} `],

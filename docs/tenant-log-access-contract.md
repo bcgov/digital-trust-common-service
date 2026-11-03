@@ -140,12 +140,13 @@ caused confusion.
 
 | Identifier | What it is for | Where we get it | Appears on agent log lines? |
 |---|---|---|---|
-| **Agent API sub-tenant id** | Addressing the agent's API — the identifier under which we request a bearer token for this sub-wallet | Supplied when the connector is configured, held with the connector's other credential material | **No** |
-| **Agent log identifier** (the wallet id, for the current agent) | Correlating log lines to a sub-wallet — the value the agent stamps on each of its own log records | Present in the bearer token the connector already obtains from the agent | **Yes** |
+| **Agent API sub-tenant id** | Addressing the agent's API — the identifier under which we request a bearer token for this sub-wallet | Supplied when the connector is configured, held with the connector's other credential material | **Sometimes** (the Traction plugin logs its sub-tenant id as `tenant_id`, a different UUID from `wallet_id`; never used for routing) |
+| **Agent log identifier** (the wallet id, for the current agent) | Correlating log lines to a sub-wallet — the value the agent stamps on each of its own log records | Present in the bearer token the connector already obtains from the agent | **Yes** (as `wallet_id`) |
 
-Both identify the same sub-wallet. Only the second one appears in logs, so only the second one
-can be used to partition or query them. Using the API sub-tenant id as a log partition key
-produces a partition that is either empty or, worse, populated by a coincidental match.
+Both identify the same sub-wallet, but their values are distinct UUIDs. Only the agent log
+identifier (`wallet_id`) is bound by this service and used to partition or query agent logs.
+Using the API sub-tenant id as a log partition key produces a partition that is either empty
+or, worse, populated by a coincidental match.
 
 A future agent implementation will have its own pair of identifiers with its own names. The
 contract is written against the **roles** — "the identifier the agent's API is addressed by"
@@ -165,10 +166,10 @@ because each one is a place an implementer would otherwise guess:
 - That token also carries an expiry, and on the credential path the connector uses it carries
   **no wallet key material**. The identifier is not a secret
   ([M7](#42-provenance-at-query-time)); the token around it still is.
-- The agent **already stamps the log identifier on its log records**, and the label it prints it
-  under reads `TENANT`. The value behind that label is the log identifier, **not** the API
-  sub-tenant id. Anyone reading those lines, or writing an extraction rule against them, will
-  assume otherwise.
+- The agent emits structured JSON log records where ACA-Py's log filter stamps `wallet_id`
+  (the agent log identifier) and the Traction multitenant plugin may also stamp `tenant_id`
+  (the API sub-tenant id, a different UUID). The collector routes exclusively on `wallet_id`
+  and ignores `tenant_id` on agent log lines.
 
 ### 2.2 Grafana orgs are not an isolation boundary here
 
@@ -600,7 +601,7 @@ valid         = ^t-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
   gateway each compute it independently and cannot disagree about which tenants exist.
 - **No collisions by construction.** A `tenant_id` is a UUID, so distinct tenants yield distinct
   keys. The `t-` prefix is the domain separation (L8): it keeps tenant keys out of the namespace
-  of agent keys (proposed prefix `a-`; their derivation is still to be defined)
+  of agent keys (`a-`, defined below)
   and of the names the write path assigns to direct-push producers.
 - **Reserved prefixes.** The write path **MUST NOT** assign any producer an identity beginning
   `t-` or `a-`, since that is what closes the write-into-a-tenant-partition case above.
@@ -611,6 +612,22 @@ valid         = ^t-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
   its line goes to the platform partition ([L7](#53-the-routing-field-must-be-trusted-not-merely-structured)).
   Being strict here leaves one form to agree on, which is what [L9](#54-partition-keys-must-be-derived-not-passed-through)
   needs.
+
+**The agent partition key.** An agent sub-wallet's partition key is the `a-` prefix, the
+connector type, and the agent log identifier:
+
+```text
+partition_key = "a-" + connector_type + "-" + agent_log_id
+                e.g.  a-traction-3f2a9c1e-7b4d-4e08-9a15-c2d4e6f80b13
+valid         = ^a-(traction|credo)-[a-z0-9-]{1,100}$
+```
+
+- **Domain-separated across connector types.** Including `connector_type` ensures that even if
+  two different agent implementations ever emit the same `agent_log_id`, their partition keys
+  cannot collide.
+- **Lowercase and strict.** `agent_log_id` must match `^[a-z0-9-]{1,100}$` (for Traction, a
+  canonical lowercase UUID matching `^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`),
+  with no case-folding or trimming. Any value outside that pattern is rejected.
 
 The collector and the gateway **MUST** each be tested against the same fixed vectors, including
 an uppercase UUID, one with surrounding whitespace, and one containing `|`, so that L9 is

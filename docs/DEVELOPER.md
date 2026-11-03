@@ -1215,7 +1215,7 @@ smoke lives in `test/product-controller-auth.e2e-spec.ts`.
 
 Each connector type defines where its agent log identifier comes from and its
 format, through its `ConnectorProbe`; shared code only requires the identifier
-to be Loki-safe (`[A-Za-z0-9-]`, 1-100 characters). For a Traction connector,
+to be Loki-safe (`[a-z0-9-]`, 1-100 characters). For a Traction connector,
 `TractionConnectorProbe` reads the `wallet_id` claim (a canonical lowercase
 UUID) from the token the agent issues during the connectivity check, and the
 service stores it as `agentLogId` inside `connector_credential.credentials_encrypted`. It is
