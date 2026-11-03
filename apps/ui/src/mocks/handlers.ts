@@ -442,6 +442,7 @@ export const handlers = [
       definition.registration_operation_id = operationId;
       const operation: CredentialDefinitionRegistrationOperation = {
         id: operationId,
+        batch_id: null,
         type: 'credential-definition.register',
         state: 'pending',
         created_at: now,
