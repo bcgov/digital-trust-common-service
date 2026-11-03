@@ -204,6 +204,23 @@ describe('ConnectorAgentLogPartitionResolver', () => {
       expect(cache.get(TENANT_ID)).toBeUndefined();
     });
 
+    it('rejects a lookup slower than the staleness window', async () => {
+      let release!: (value: ConnectorCredential[]) => void;
+      findByTenant.mockReset();
+      findByTenant.mockReturnValueOnce(
+        new Promise<ConnectorCredential[]>((resolve) => {
+          release = resolve;
+        }),
+      );
+
+      const pending = resolver.resolveAgentPartitions(TENANT_ID);
+      jest.advanceTimersByTime(AGENT_PARTITION_CACHE_TTL_MS);
+      release([connector('c1', 'wallet-1')]);
+
+      await expect(pending).rejects.toThrow('maximum staleness window');
+      expect(cache.get(TENANT_ID)).toBeUndefined();
+    });
+
     it('evicts the oldest entry when full', () => {
       for (let i = 0; i < AGENT_PARTITION_CACHE_MAX_ENTRIES; i += 1) {
         cache.set(`tenant-${i}`, [`a-traction-w${i}`]);

@@ -52,7 +52,13 @@ export class AgentLogPartitionCache {
   ): void {
     const expiresAt = lookup.startedAt + AGENT_PARTITION_CACHE_TTL_MS;
 
-    if (lookup.generation !== this.generation || expiresAt <= Date.now()) {
+    if (expiresAt <= Date.now()) {
+      throw new Error(
+        'Agent partition lookup exceeded the maximum staleness window.',
+      );
+    }
+
+    if (lookup.generation !== this.generation) {
       return;
     }
 
