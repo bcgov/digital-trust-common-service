@@ -9,6 +9,16 @@ and this chart adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.h
 
 ### Added
 
+- `logAccess` values (`enabled` default `false`, `port`, `tls.mountPath`,
+  `gatewayPodSelector`) and `config.LOG_GATEWAY_AUDIENCE` (default `""`) for the
+  internal log-access decision endpoint that the log gateway's `ext_authz`
+  filter calls. When enabled the chart adds a separate `-log-access` Service
+  carrying an OpenShift serving-certificate annotation, mounts that certificate
+  into the API pod, opens a TLS container port, and adds a NetworkPolicy that
+  admits only pods matching `gatewayPodSelector` to it. Rendering fails if the
+  selector is empty (it would admit every pod) or `networkPolicy.enabled` is
+  false (nothing would restrict the port). The port is never on the main
+  Service or the Route.
 - `config.SEED_PLATFORM_OPERATOR_EMAILS` (default `""`), comma-separated emails
   the development seed makes owners of the demo tenant `acme-corp` with the
   platform-operator flag, so a real sign-in to a PR environment lands as owner

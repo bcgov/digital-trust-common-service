@@ -61,6 +61,22 @@ service:
   # -- Container port the NestJS app binds to (the `PORT` env)
   targetPort: 3000
 
+# Internal decision endpoint for the log gateway (Envoy ext_authz). Served over
+# TLS on its own port and Service, never through the Route or the main Service.
+logAccess:
+  # -- Serve the internal log-access listener. Needs `gatewayPodSelector` and
+  # `networkPolicy.enabled`.
+  enabled: false
+  # -- Container and Service port of the internal TLS listener
+  port: 8443
+  tls:
+    # -- Where the serving-cert Secret (tls.crt, tls.key) is mounted. The
+    # certificate is read once at start, so a pod restart picks up a rotation.
+    mountPath: /var/run/secrets/log-access-tls
+  # -- Labels of the log gateway pods, the only peers allowed to reach the
+  # internal port. Required when `enabled` is true.
+  gatewayPodSelector: {}
+
 # OpenShift Route (default exposure mechanism on BC Gov clusters).
 route:
   # -- Expose the service via an OpenShift Route
@@ -421,6 +437,9 @@ config:
   # exactly one audience, and tokens minted for these resources are rejected
   # by JwtGuard by design.
   JWT_ADDITIONAL_AUDIENCES: ""
+  # -- Audience the internal log-access endpoint accepts. Must be one of
+  # JWT_ADDITIONAL_AUDIENCES, otherwise no token can ever pass.
+  LOG_GATEWAY_AUDIENCE: ""
   AUDIT_AUTO_INTERCEPTOR_ENABLED: "false"
   AUDIT_PARTITION_CRON: "0 3 * * *"
   AUDIT_PARTITION_MONTHS_AHEAD: "3"

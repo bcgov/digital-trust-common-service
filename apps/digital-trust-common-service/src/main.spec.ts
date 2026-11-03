@@ -3,6 +3,7 @@ import { NestFactory } from '@nestjs/core';
 import { NativeLogger } from 'nestjs-pino';
 
 import { AppModule } from './app.module';
+import { InternalListener } from './log-access/internal-listener';
 import { DevSeedService } from './seed/dev-seed.service';
 import { shouldRunDevSeedOnStart } from './seed/seed-on-start.util';
 
@@ -52,6 +53,9 @@ describe('application bootstrap', () => {
         }
         if (token.name === NativeLogger.name) {
           return loggerService;
+        }
+        if (token.name === InternalListener.name) {
+          return { start: jest.fn().mockResolvedValue(undefined) };
         }
         return seedService;
       }),

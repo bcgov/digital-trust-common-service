@@ -1251,6 +1251,24 @@ See [DEVELOPER.md](./DEVELOPER.md#jwt-audience-au-164) for configuration, and
 normative rules on the API vs gateway split — in particular that a log-gateway token must be
 rejected by `JwtGuard` and an API token must be rejected by the gateway.
 
+### Log access decision endpoint
+
+`log-access/` serves the internal endpoint the log gateway's Envoy `ext_authz` filter calls for every
+Loki read. It is the one place a gateway token is validated: `JwtValidationService.verifyBearerForAudience`
+checks it against `LOG_GATEWAY_AUDIENCE` (which must also be in `JWT_ADDITIONAL_AUDIENCES`), then the
+service requires a canonical `tenant_id` and the `logs:read` scope. Roles never widen access, so
+platform-admin has no cross-tenant read.
+
+An allow is a `200` with an empty body and the computed `X-Scope-OrgID` header (`t-<tenant_id>`, plus
+agent partitions once resolution lands, at most ten, denied rather than truncated). Every denial has one
+fixed body per status: `401` for a token that fails the contract and `403` for a missing scope or a
+resolution failure. Agent partitions currently resolve to none.
+
+The endpoint is served by a second TLS listener on `LOG_ACCESS_INTERNAL_PORT`, mounted behind its own
+Service and a NetworkPolicy limited to the gateway pods. The route is excluded from the global prefix and
+the OpenAPI document, and `InternalListenerGuard` answers `404` for the same path on the public port.
+The certificate is read at start, so a rotation needs a pod restart.
+
 ### Key Libraries
 
 | Library | Role |

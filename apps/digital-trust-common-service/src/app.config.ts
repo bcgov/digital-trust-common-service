@@ -16,6 +16,7 @@ import { buildCorsOptions } from './common/cors-options';
 import { buildValidationExceptionFactory } from './common/filters/validation-exception-factory';
 import { DeprecationInterceptor } from './common/interceptors/deprecation.interceptor';
 import { createRequestIdMiddleware } from './common/middleware/request-id.middleware';
+import { createInternalListenerMiddleware } from './log-access/internal-listener';
 
 /**
  * Applies the global prefix/versioning setup (and other cross-cutting
@@ -50,6 +51,8 @@ export function configureApp(app: INestApplication): void {
   // the logger and adapter instrumentation read from.
   app.use(createRequestIdMiddleware(app.get(RequestContextService)));
 
+  app.use(createInternalListenerMiddleware());
+
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
@@ -70,6 +73,8 @@ export function configureApp(app: INestApplication): void {
       { path: 'health', method: RequestMethod.ALL },
       { path: 'health/(.*)', method: RequestMethod.ALL },
       { path: 'oidc/(.*)', method: RequestMethod.ALL },
+      // Internal-only ext_authz endpoint; see log-access.controller.ts.
+      { path: 'internal/log-access/(.*)', method: RequestMethod.ALL },
     ],
   });
   app.enableVersioning({

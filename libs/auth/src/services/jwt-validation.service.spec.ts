@@ -335,6 +335,25 @@ describe('JwtValidationService', () => {
     });
   });
 
+  it('verifyBearerForAudience accepts a gateway token the API path rejects', async () => {
+    const gateway = 'https://log-gateway.example';
+    const token = await new SignJWT({ sub: 'client:test-client' })
+      .setProtectedHeader({ alg: 'RS256', kid: 'test-key' })
+      .setIssuer(issuer)
+      .setAudience(gateway)
+      .setIssuedAt()
+      .setExpirationTime('5m')
+      .sign(privateKey);
+    const header = `Bearer ${token}`;
+
+    await expect(
+      service.verifyBearerForAudience(header, gateway),
+    ).resolves.toMatchObject({ aud: gateway });
+    await expect(
+      service.validateAuthorizationHeader(header),
+    ).rejects.toMatchObject({ wwwAuthenticateError: 'invalid_token' });
+  });
+
   it('maps malformed tokens to invalid_token', async () => {
     await expect(
       service.validateAuthorizationHeader('Bearer not-a-jwt'),
