@@ -1,8 +1,7 @@
-import type { ChangeEvent } from 'react';
+import { Button, TextField } from '@bcgov/design-system-react-components';
 import { useTranslation } from 'react-i18next';
 
-import { AddActionButton } from '@/components/common/add-action-button';
-import { SearchInput } from '@/components/common/search-input';
+import { PlusIcon, SearchIcon } from '@/components/common/icons';
 
 export function TenantUsersHeader({
   search,
@@ -20,20 +19,23 @@ export function TenantUsersHeader({
       <div className="flex flex-col gap-1">
         <h1 className="text-xl font-semibold">{t('users.manageTitle')}</h1>
         <p className="text-sm text-muted-foreground">{t('users.subtitle')}</p>
-        <SearchInput
+        <TextField
           aria-label={t('users.search')}
+          // Untyped in BCDS 0.8.1's TextFieldProps, but forwarded by
+          // react-aria's useTextField to the input at runtime.
+          {...{ placeholder: t('common.search') }}
+          type="search"
+          className="my-2 w-full max-w-md"
           value={search}
-          onChange={(event: ChangeEvent<HTMLInputElement>) =>
-            onSearchChange(event.target.value)
-          }
-          wrapperClassName="my-2 max-w-md"
-          className="h-10 px-3 pl-10"
+          onChange={onSearchChange}
+          iconLeft={<SearchIcon className="size-5 shrink-0" />}
         />
       </div>
       <div className="ml-auto">
-        <AddActionButton onClick={onAddUser}>
+        <Button onPress={onAddUser}>
+          <PlusIcon className="size-5" />
           {t('users.addUser')}
-        </AddActionButton>
+        </Button>
       </div>
     </div>
   );

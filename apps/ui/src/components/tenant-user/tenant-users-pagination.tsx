@@ -1,7 +1,9 @@
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import {
+  Button,
+  SvgChevronLeftIcon,
+  SvgChevronRightIcon,
+} from '@bcgov/design-system-react-components';
 import { useTranslation } from 'react-i18next';
-
-import { Button } from '@/components/common/button';
 
 export function TenantUsersPagination({
   pageIndex,
@@ -24,27 +26,28 @@ export function TenantUsersPagination({
       className="flex items-center justify-end gap-3"
     >
       <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        disabled={pageIndex === 0 || isLoading}
-        onClick={onPrevious}
+        variant="secondary"
+        size="small"
+        isDisabled={pageIndex === 0 || isLoading}
+        onPress={onPrevious}
       >
-        <ChevronLeft aria-hidden="true" />
+        <SvgChevronLeftIcon />
         {t('users.pagination.previous')}
       </Button>
-      <span aria-live="polite" className="text-sm text-muted-foreground">
+      <span
+        aria-live="polite"
+        className="text-sm text-(--typography-color-secondary)"
+      >
         {t('users.pagination.page', { page: pageIndex + 1 })}
       </span>
       <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        disabled={!hasNextPage || isLoading}
-        onClick={onNext}
+        variant="secondary"
+        size="small"
+        isDisabled={!hasNextPage || isLoading}
+        onPress={onNext}
       >
         {t('users.pagination.next')}
-        <ChevronRight aria-hidden="true" />
+        <SvgChevronRightIcon />
       </Button>
     </nav>
   );

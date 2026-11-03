@@ -1,3 +1,4 @@
+import { Button, InlineAlert } from '@bcgov/design-system-react-components';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router';
@@ -10,7 +11,6 @@ import {
 import { TenantUsersHeader } from '@/components/tenant-user/tenant-users-header';
 import { TenantUsersPagination } from '@/components/tenant-user/tenant-users-pagination';
 import { TenantUsersTable } from '@/components/tenant-user/tenant-users-table';
-import { Button } from '@/components/common/button';
 import { ApiError } from '@/lib/api/errors';
 import { useAuthTenants } from '@/lib/api/queries/auth';
 import { useTenantRoles } from '@/lib/api/queries/tenant-roles';
@@ -80,16 +80,24 @@ export function TenantUsersPage() {
 
   if (error) {
     return (
-      <div role="alert" className="flex items-center gap-3">
-        <p className="text-sm text-destructive">
-          {error instanceof ApiError
+      <InlineAlert
+        variant="danger"
+        role="alert"
+        description={
+          error instanceof ApiError
             ? t('users.loadFailedWithReason', { reason: error.message })
-            : t('users.loadFailed')}
-        </p>
-        <Button type="button" variant="outline" onClick={() => void refetch()}>
-          {t('common.retry')}
-        </Button>
-      </div>
+            : t('users.loadFailed')
+        }
+        buttons={
+          <Button
+            variant="secondary"
+            size="small"
+            onPress={() => void refetch()}
+          >
+            {t('common.retry')}
+          </Button>
+        }
+      />
     );
   }
 
