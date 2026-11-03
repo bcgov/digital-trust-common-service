@@ -487,19 +487,32 @@ describe('OperationService', () => {
       const abort = new AbortController();
       const removed = jest.spyOn(abort.signal, 'removeEventListener');
       let finishLookup!: (value: Operation) => void;
-      mockFindByIdForTenant.mockReturnValueOnce(new Promise<Operation>((resolve) => {
-        finishLookup = resolve;
-      }));
-      const pending = service.waitForItemsForTenant('t1', 'op-1', query, 30, abort.signal);
-      const assertion = expect(pending).rejects.toThrow('Operation polling cancelled');
+      mockFindByIdForTenant.mockReturnValueOnce(
+        new Promise<Operation>((resolve) => {
+          finishLookup = resolve;
+        }),
+      );
+      const pending = service.waitForItemsForTenant(
+        't1',
+        'op-1',
+        query,
+        30,
+        abort.signal,
+      );
+      const assertion = expect(pending).rejects.toThrow(
+        'Operation polling cancelled',
+      );
 
       abort.abort();
       await assertion;
       expect(removed).toHaveBeenCalledWith('abort', expect.any(Function));
 
-      finishLookup(buildOperation({
-        type: 'credential.offer-batch', state: OperationState.COMPLETED,
-      }));
+      finishLookup(
+        buildOperation({
+          type: 'credential.offer-batch',
+          state: OperationState.COMPLETED,
+        }),
+      );
       await jest.advanceTimersByTimeAsync(0);
       expect(mockFindPageForTenant).not.toHaveBeenCalled();
       expect(mockMarkFirstView).not.toHaveBeenCalled();
@@ -510,8 +523,9 @@ describe('OperationService', () => {
       const abort = new AbortController();
       abort.abort();
 
-      await expect(service.waitForItemsForTenant('t1', 'op-1', query, 30, abort.signal))
-        .rejects.toThrow('Operation polling cancelled');
+      await expect(
+        service.waitForItemsForTenant('t1', 'op-1', query, 30, abort.signal),
+      ).rejects.toThrow('Operation polling cancelled');
       expect(mockFindByIdForTenant).not.toHaveBeenCalled();
       expect(jest.getTimerCount()).toBe(0);
     });
@@ -520,11 +534,20 @@ describe('OperationService', () => {
       const abort = new AbortController();
       const added = jest.spyOn(abort.signal, 'addEventListener');
       const removed = jest.spyOn(abort.signal, 'removeEventListener');
-      mockFindByIdForTenant.mockResolvedValue(buildOperation({
-        type: 'credential.offer-batch', state: OperationState.COMPLETED,
-      }));
+      mockFindByIdForTenant.mockResolvedValue(
+        buildOperation({
+          type: 'credential.offer-batch',
+          state: OperationState.COMPLETED,
+        }),
+      );
 
-      await service.waitForItemsForTenant('t1', 'op-1', query, 30, abort.signal);
+      await service.waitForItemsForTenant(
+        't1',
+        'op-1',
+        query,
+        30,
+        abort.signal,
+      );
 
       expect(added).toHaveBeenCalled();
       for (const [event, listener] of added.mock.calls) {
@@ -538,8 +561,9 @@ describe('OperationService', () => {
       const removed = jest.spyOn(abort.signal, 'removeEventListener');
       mockFindByIdForTenant.mockRejectedValueOnce(new Error('Lookup failed'));
 
-      await expect(service.waitForItemsForTenant('t1', 'op-1', query, 30, abort.signal))
-        .rejects.toThrow('Lookup failed');
+      await expect(
+        service.waitForItemsForTenant('t1', 'op-1', query, 30, abort.signal),
+      ).rejects.toThrow('Lookup failed');
       expect(removed).toHaveBeenCalledWith('abort', expect.any(Function));
       expect(mockFindPageForTenant).not.toHaveBeenCalled();
       expect(jest.getTimerCount()).toBe(0);
@@ -871,7 +895,8 @@ describe('OperationService', () => {
       );
       const result = (await service.getForTenant('t1', 'op-1')).result;
       expect(result).toMatchObject({ total: 103, completed: 2, failed: 101 });
-      expect(result?.errors).toHaveLength(100);
+      const errors = result && 'errors' in result ? result.errors : undefined;
+      expect(errors).toHaveLength(100);
       expect(mockCountByBatch).not.toHaveBeenCalled();
     });
 
@@ -925,8 +950,9 @@ describe('OperationService', () => {
       );
       const result = (await service.getForTenant('t1', 'op-1')).result;
       expect(result).toMatchObject({ total: 103, completed: 2, failed: 101 });
-      expect(result?.errors).toHaveLength(100);
-      expect((result?.errors as unknown[])[0]).toEqual({
+      const errors = result && 'errors' in result ? result.errors : undefined;
+      expect(errors).toHaveLength(100);
+      expect((errors as unknown[])[0]).toEqual({
         id: 'child-0',
         code: 'FAILED',
         message: 'Failure',

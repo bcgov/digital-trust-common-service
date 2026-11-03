@@ -1050,9 +1050,12 @@ export interface paths {
          *     Sets viewed_at once on first retrieval of a completed/failed operation and
          *     recalculates expires_at using the tenant's TTL settings, without changing updated_at.
          *     Failed operations still return HTTP 200 with state=failed.
-         *     Processing batch summaries use live tenant-scoped child counts. Completed
-         *     summaries prefer stored settlement counts so totals survive child purge;
-         *     older parents without a snapshot fall back to counting retained children.
+         *     Processing batch summaries use live tenant-scoped child counts. Settlement
+         *     marks a parent failed if any child fails, otherwise completed. Completed
+         *     and failed parents with stored settlement counts return a settled summary
+         *     whose totals survive child purge. Older completed parents without a snapshot
+         *     fall back to counting retained children. Failed parents without settlement
+         *     counts retain the ordinary { code, message } parent-level failure shape.
          *     At most 100 retained child errors are included; use /items?state=failed for
          *     all retained failures. Failure details remain subject to child TTL.
          *     Long-polling is supported only on /items.
@@ -2370,15 +2373,17 @@ export interface components {
              *     - pending/processing: usually null; credential-definition.register
              *       includes { credential_definition_id } immediately
              *     - completed: operation-type-specific data
-             *     - failed: { code, message }; credential registration additionally
+             *     - ordinary failures: { code, message }; credential registration additionally
              *       retains credential_definition_id, external_id, and registration
              *       progress/correlation identifiers.
              *     - batch processing: { total, pending, processing, completed, failed }
-             *     - batch completed: { total, completed, failed, errors: [{ id, code, message }] }
+             *     - settled batch (completed, or failed with stored settlement counts):
+             *       { total, completed, failed, errors: [{ id, code, message }] }
              *       with settled counts preserved when available and errors capped at 100;
              *       use /items?state=failed for all retained failures. Child failure details
              *       expire according to child TTL even while the parent remains retained.
-             *     - batch pending: null; batch failed: { code, message }
+             *     - batch pending: null; parent-level batch failure without settlement
+             *       counts: { code, message }
              *     Registration progress includes the active artifact, its id, and any
              *     job_id, transaction_id, and state. IDs returned with wait/action are
              *     provisional, not readiness proof.
