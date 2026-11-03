@@ -12,7 +12,7 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { argon2i, hash } from 'argon2';
 import request from 'supertest';
 import { App } from 'supertest/types';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 
 import { configureApp } from '../src/app.config';
 import { AppModule } from '../src/app.module';
@@ -181,12 +181,15 @@ describe('OAuth client management (e2e)', () => {
     );
   });
 
+  // Scoped to this suite's tenants: a blanket delete trips fk_operation_tenant
+  // when an earlier suite leaves operation rows behind.
   afterEach(async () => {
+    const seededTenantIds = [tenantId, otherTenantId];
     if (oauthClientRepo) {
-      await oauthClientRepo.query('DELETE FROM oauth_client');
+      await oauthClientRepo.delete({ tenantId: In(seededTenantIds) });
     }
     if (tenantRepo) {
-      await tenantRepo.query('DELETE FROM tenant');
+      await tenantRepo.delete({ id: In(seededTenantIds) });
     }
   });
 

@@ -113,9 +113,11 @@ describe('OIDC client_credentials grant (e2e)', () => {
     );
   });
 
+  // Scoped to this suite's tenant: a blanket delete trips fk_operation_tenant
+  // when an earlier suite leaves operation rows behind.
   afterEach(async () => {
-    await oauthClientRepo.query('DELETE FROM oauth_client');
-    await tenantRepo.query('DELETE FROM tenant');
+    await oauthClientRepo.delete({ tenantId });
+    await tenantRepo.delete({ id: tenantId });
   });
 
   afterAll(async () => {
