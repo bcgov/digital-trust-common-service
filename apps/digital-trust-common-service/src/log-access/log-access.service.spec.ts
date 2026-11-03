@@ -1,3 +1,4 @@
+import { LogAccessRateLimiter } from './log-access-rate-limiter';
 import { LogAccessTokenService } from './log-access-token.service';
 import { LogAccessService } from './log-access.service';
 
@@ -6,14 +7,19 @@ const TENANT_ID = '3f2b8c1e-5d4a-4e7b-9a10-0c6d2f8e7b11';
 describe('LogAccessService', () => {
   let authorize: jest.Mock;
   let resolve: jest.Mock;
+  let tryConsume: jest.Mock;
   let service: LogAccessService;
 
   beforeEach(() => {
     authorize = jest.fn().mockResolvedValue({ tenantId: TENANT_ID });
     resolve = jest.fn().mockResolvedValue([]);
+    tryConsume = jest.fn().mockResolvedValue(true);
     service = new LogAccessService(
       { authorize } as unknown as LogAccessTokenService,
       { resolveAgentPartitions: resolve },
+      {
+        tryConsume,
+      } as unknown as LogAccessRateLimiter,
     );
   });
 
@@ -28,6 +34,16 @@ describe('LogAccessService', () => {
     await expect(service.resolveScope('Bearer t')).resolves.toBe(
       `t-${TENANT_ID}|a-one|a-two`,
     );
+  });
+
+  it('denies 429 before resolving when the tenant is rate limited', async () => {
+    tryConsume.mockResolvedValue(false);
+    await expect(service.resolveScope('Bearer x')).rejects.toMatchObject({
+      status: 429,
+      reason: 'rate_limited',
+    });
+    expect(tryConsume).toHaveBeenCalledWith(TENANT_ID);
+    expect(resolve).not.toHaveBeenCalled();
   });
 
   it('propagates token denials', async () => {

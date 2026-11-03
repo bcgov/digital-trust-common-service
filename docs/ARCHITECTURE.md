@@ -1260,10 +1260,24 @@ service requires a canonical `tenant_id` and the `logs:read` scope. Roles never 
 platform-admin has no cross-tenant read.
 
 An allow is a `200` with an empty body and the computed `X-Scope-OrgID` header (`t-<tenant_id>`, plus
-an agent partition for each active connector with a log identifier, at most ten, denied rather than
-truncated). Every denial has one fixed body per status: `401` for a token that fails the contract and
-`403` for a missing scope or a resolution failure. Resolved agent partitions are cached per tenant for
-up to five minutes and invalidated when a connector changes.
+one agent partition per active connector, at most ten, denied rather than truncated). Agent partitions are
+resolved from the tenant's active connectors (decrypting each `agentLogId`) and cached per tenant for up
+to five minutes; the cache is invalidated when a connector is created, updated, deleted or deactivated,
+and a resolution, decryption or malformed-identifier failure denies the request rather than falling back
+to the tenant partition alone. Every denial has one fixed body per status: `401` for a token that fails
+the contract, `403` for a missing scope or a resolution failure, and `429` `{ "error": "too_many_requests" }`
+when the tenant exceeds its per-tenant request budget. The budget is counted through the
+shared `RateLimitStorageService` (`rate_limit_hits`) under a dedicated `log-access` route key, so it is
+enforced consistently across replicas and never mixes with API budgets. It is keyed by the validated
+`tenant_id` and checked before agent partitions are resolved, so one tenant never consumes another's
+budget. This is a best-effort request budget, not a concurrency limit: the shared storage counts and
+inserts separately, so simultaneous requests can exceed it, and it does not by itself keep a tenant to
+its share of query capacity or meet the fairness target. Those still have to be shown by the load
+benchmark in the tenant log access contract.
+
+The caller's query is never an input to the scope. A tenant-selecting query parameter (such as `tenant`,
+`tenant_id` or `org_id`, including on the forwarded original path) and an inbound `X-Scope-OrgID` header
+are ignored and recorded as an operator warning naming the parameter only (Rules S4, S6).
 
 The endpoint is served by a second TLS listener on `LOG_ACCESS_INTERNAL_PORT`, mounted behind its own
 Service and a NetworkPolicy limited to the gateway pods. The route is excluded from the global prefix and
