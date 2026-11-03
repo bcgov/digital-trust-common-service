@@ -101,6 +101,8 @@ describe('LogAccessController', () => {
       ['?tenant=t-victim', 'tenant'],
       ['?Tenant_Id=t-victim&x=1', 'tenant_id'],
       ['?org_id=t-victim', 'org_id'],
+      ['?org=t-victim', 'org'],
+      ['?scope=t-victim', 'scope'],
     ])('ignores and records %s', async (query, name) => {
       await check(undefined, {
         originalUrl: `/internal/log-access/check/loki/api/v1/query${query}`,

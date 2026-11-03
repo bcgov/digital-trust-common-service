@@ -48,17 +48,17 @@ C4Context
 
 ## Technology Stack
 
-| Layer                          | Technology                                                                     | Rationale                                                                                                                                                                                                  |
-| ------------------------------ | ------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **API**                        | NestJS (TypeScript)                                                            | Modular architecture, dependency injection, first-class TypeScript, OpenAPI generation, guards/interceptors for cross-cutting concerns                                                                     |
-| **Frontend**                   | React + Vite + Tailwind + shadcn/ui (standalone app in `apps/ui`)              | Fast DX, typed components, accessible UI primitives, BC Gov design alignment; the UI is a separate package from the root NestJS build                                                                      |
-| **Ingress / local front door** | Caddy                                                                          | Provides the same-origin local dev front door (`https://app.localhost`) for the SPA, `/api`, `/oidc`, and `/health`; also serves the built SPA in the UI container                                         |
-| **Database**                   | PostgreSQL 18 + TypeORM                                                        | Relational integrity for multi-tenant data, JSONB for flexible config, mature migration tooling                                                                                                            |
-| **Cache**                      | In-memory (per-pod)                                                            | Traction token cache, config lookups. No shared cache needed at MVP scale.                                                                                                                                 |
-| **Job Queue**                  | pg-boss (PostgreSQL-backed)                                                    | Async credential state updates, webhook dispatch, dead-letter handling. Reuses existing PostgreSQL — no additional infrastructure. Transactional enqueue ensures atomic Operation creation + job dispatch. |
-| **Auth**                       | `oidc-provider` (in-app OIDC server) + Keycloak (upstream identity federation) | App owns token issuance, permissions, and client lifecycle. Keycloak is upstream IdP for user login only. OpenID Certified library handles JWT signing, JWKS, `.well-known`, `client_credentials` grant.   |
-| **Adapters (MVP)**             | Traction REST API                                                              | Traction is BC Gov's hosted ACA-Py; sole adapter for MVP. Credo Agent Service adapter deferred to post-MVP                                                                                                 |
-| **Infra**                      | Docker Compose (dev), Helm + OpenShift (prod), GitHub Actions (CI/CD)          | Standard BC Gov deployment model                                                                                                                                                                           |
+| Layer | Technology | Rationale |
+|-------|-----------|-----------|
+| **API** | NestJS (TypeScript) | Modular architecture, dependency injection, first-class TypeScript, OpenAPI generation, guards/interceptors for cross-cutting concerns |
+| **Frontend** | React + Vite + Tailwind + shadcn/ui (standalone app in `apps/ui`) | Fast DX, typed components, accessible UI primitives, BC Gov design alignment; the UI is a separate package from the root NestJS build |
+| **Ingress / local front door** | Caddy | Provides the same-origin local dev front door (`https://app.localhost`) for the SPA, `/api`, `/oidc`, and `/health`; also serves the built SPA in the UI container |
+| **Database** | PostgreSQL 18 + TypeORM | Relational integrity for multi-tenant data, JSONB for flexible config, mature migration tooling |
+| **Cache** | In-memory (per-pod) | Traction token cache, config lookups. No shared cache needed at MVP scale. |
+| **Job Queue** | pg-boss (PostgreSQL-backed) | Async credential state updates, webhook dispatch, dead-letter handling. Reuses existing PostgreSQL — no additional infrastructure. Transactional enqueue ensures atomic Operation creation + job dispatch. |
+| **Auth** | `oidc-provider` (in-app OIDC server) + Keycloak (upstream identity federation) | App owns token issuance, permissions, and client lifecycle. Keycloak is upstream IdP for user login only. OpenID Certified library handles JWT signing, JWKS, `.well-known`, `client_credentials` grant. |
+| **Adapters (MVP)** | Traction REST API | Traction is BC Gov's hosted ACA-Py; sole adapter for MVP. Credo Agent Service adapter deferred to post-MVP |
+| **Infra** | Docker Compose (dev), Helm + OpenShift (prod), GitHub Actions (CI/CD) | Standard BC Gov deployment model |
 
 ---
 
@@ -163,18 +163,17 @@ graph LR
     PortsMod -.->|emits events| AuditMod
 ```
 
-| Module                 | Responsibility                                                                       | Extractable?           |
-| ---------------------- | ------------------------------------------------------------------------------------ | ---------------------- |
-| **Auth**               | JWT validation, RBAC guards, tenant-scoping, API key auth                            | Shared library         |
-| **Tenant**             | Tenant CRUD, user management, config, quotas                                         | Yes — separate service |
-| **Credential (Ports)** | Port interfaces, DTOs, adapter registry, orchestration                               | Yes — core service     |
-| **Traction Adapter**   | Implements all ports against ACA-Py/Traction REST API                                | Plugin (MVP)           |
-| **Credo Adapter**      | Implements all ports against Credo Agent Service REST API (same pattern as Traction) | Plugin (post-MVP)      |
-| **Webhook**            | Registration, HMAC-signed dispatch, retry logic                                      | Yes — worker service   |
-| **Audit**              | Append-only log writes, query interface                                              | Yes — event sink       |
+| Module | Responsibility | Extractable? |
+|--------|---------------|--------------|
+| **Auth** | JWT validation, RBAC guards, tenant-scoping, API key auth | Shared library |
+| **Tenant** | Tenant CRUD, user management, config, quotas | Yes — separate service |
+| **Credential (Ports)** | Port interfaces, DTOs, adapter registry, orchestration | Yes — core service |
+| **Traction Adapter** | Implements all ports against ACA-Py/Traction REST API | Plugin (MVP) |
+| **Credo Adapter** | Implements all ports against Credo Agent Service REST API (same pattern as Traction) | Plugin (post-MVP) |
+| **Webhook** | Registration, HMAC-signed dispatch, retry logic | Yes — worker service |
+| **Audit** | Append-only log writes, query interface | Yes — event sink |
 
 **Why modular monolith over microservices:**
-
 - Team is small; operational overhead of 5+ services is premature
 - Shared PostgreSQL keeps transactional consistency simple
 - Module boundaries are enforced via NestJS DI — extraction is mechanical when needed
@@ -186,7 +185,7 @@ graph LR
 
 The core design challenge: multiple credential formats × multiple back-end agents = combinatorial complexity. We solve this with the **Adapter Pattern** (hexagonal architecture / ports & adapters):
 
-- **Ports** — abstract interfaces defining _what_ the system can do (issue, verify, hold, connect). These are stable, prescriptive, and format-agnostic.
+- **Ports** — abstract interfaces defining *what* the system can do (issue, verify, hold, connect). These are stable, prescriptive, and format-agnostic.
 - **Adapters** — concrete implementations that translate port calls into agent-specific REST API calls (Traction adapter, future Credo adapter, etc.).
 
 The API surface is **prescriptive** — it uses high-level, agent-agnostic operation names. Callers never reference Traction, ACA-Py, or Credo concepts directly.
@@ -328,13 +327,13 @@ Invariants:
 
 The API uses a **hybrid** approach for identifying credential format and backend service:
 
-| Concern                           | Mechanism                                    | Rationale                                                                                     |
-| --------------------------------- | -------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| **Operation**                     | Path segment                                 | REST-natural; `/credentials/offer`, `/presentations/request` are self-describing              |
-| **Credential format**             | Resolved from profile (implicit)             | Consumers don't need to know format details — profile abstracts it                            |
-| **Backend service**               | Resolved from profile → connector (implicit) | Callers shouldn't need to know which agent backs their tenant — the abstraction's whole point |
-| **Protocol (DIDComm vs OID4VCI)** | Presence/absence of `connection_id`          | DIDComm needs an existing connection; OID4VCI is connectionless                               |
-| **Backend override**              | Query param `?adapter=traction`              | Escape hatch for platform-admins; optional, ignored in v1 MVP                                 |
+| Concern | Mechanism | Rationale |
+|---------|-----------|----------|
+| **Operation** | Path segment | REST-natural; `/credentials/offer`, `/presentations/request` are self-describing |
+| **Credential format** | Resolved from profile (implicit) | Consumers don't need to know format details — profile abstracts it |
+| **Backend service** | Resolved from profile → connector (implicit) | Callers shouldn't need to know which agent backs their tenant — the abstraction's whole point |
+| **Protocol (DIDComm vs OID4VCI)** | Presence/absence of `connection_id` | DIDComm needs an existing connection; OID4VCI is connectionless |
+| **Backend override** | Query param `?adapter=traction` | Escape hatch for platform-admins; optional, ignored in v1 MVP |
 
 ### API Versioning (AG-01)
 
@@ -344,12 +343,12 @@ business routes live under `/api/v1`. The prefix and version are centralized in
 `common/constants/api-version.constants.ts`; code needing a full path builds it from `API_BASE_PATH`
 rather than hardcoding `/api/v1`.
 
-| Decision                  | Choice              | Rationale                                                                                                                                                                      |
-| ------------------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Strategy**              | URI (`/api/v1/...`) | Single visible, cacheable, copy-pasteable version location; matches the path-addressed API. No Accept-header negotiation (avoids a second axis that can disagree with the URL) |
-| **Explicitness**          | No `defaultVersion` | Each business controller sets `version: API_VERSION`; an unversioned business request returns `404`, keeping the version an explicit part of every client contract             |
-| **Operational endpoints** | Version-neutral     | `/health/live` and `/api/docs` stay on stable, unversioned paths (Helm probes, monitoring, codegen) — excluded from the prefix, never dual-exposed under `/api/v1`             |
-| **Deprecation**           | Scaffolded, inert   | `@Deprecated()` + a global interceptor can emit `Deprecation`/`Sunset`/`Link` headers; unused until the first v2 transition                                                    |
+| Decision | Choice | Rationale |
+|----------|--------|----------|
+| **Strategy** | URI (`/api/v1/...`) | Single visible, cacheable, copy-pasteable version location; matches the path-addressed API. No Accept-header negotiation (avoids a second axis that can disagree with the URL) |
+| **Explicitness** | No `defaultVersion` | Each business controller sets `version: API_VERSION`; an unversioned business request returns `404`, keeping the version an explicit part of every client contract |
+| **Operational endpoints** | Version-neutral | `/health/live` and `/api/docs` stay on stable, unversioned paths (Helm probes, monitoring, codegen) — excluded from the prefix, never dual-exposed under `/api/v1` |
+| **Deprecation** | Scaffolded, inert | `@Deprecated()` + a global interceptor can emit `Deprecation`/`Sunset`/`Link` headers; unused until the first v2 transition |
 
 ### API Documentation Strategy (Multi-Document)
 
@@ -357,11 +356,11 @@ The API is organized into three audience-scoped surfaces. A single NestJS applic
 three separate OpenAPI documents at runtime using `SwaggerModule.createDocument` with `include:`
 filters — one document per surface, all from the same codebase.
 
-| Surface                           | Swagger UI         | Raw JSON                | Audience                       |
-| --------------------------------- | ------------------ | ----------------------- | ------------------------------ |
-| **Platform Administration**       | `/api/docs/admin`  | `/api/docs/admin/json`  | Platform operators             |
-| **Tenant Management**             | `/api/docs/tenant` | `/api/docs/tenant/json` | Tenant administrators          |
-| **Digital Credential Operations** | `/api/docs/dc`     | `/api/docs/dc/json`     | App developers / API consumers |
+| Surface | Swagger UI | Raw JSON | Audience |
+|---|---|---|---|
+| **Platform Administration** | `/api/docs/admin` | `/api/docs/admin/json` | Platform operators |
+| **Tenant Management** | `/api/docs/tenant` | `/api/docs/tenant/json` | Tenant administrators |
+| **Digital Credential Operations** | `/api/docs/dc` | `/api/docs/dc/json` | App developers / API consumers |
 
 Each document includes only the NestJS modules relevant to that audience:
 
@@ -374,28 +373,17 @@ SwaggerModule.setup('api/docs/admin', app, adminDoc);
 
 const tenantDoc = SwaggerModule.createDocument(app, tenantConfig, {
   include: [
-    TenantSettingsModule,
-    TenantUsersModule,
-    ConnectorsModule,
-    CredentialDefinitionsModule,
-    ProfilesModule,
-    ClientsModule,
-    WebhooksModule,
-    LogsModule,
-    AuditLogsModule,
-    EventsModule,
+    TenantSettingsModule, TenantUsersModule, ConnectorsModule,
+    CredentialDefinitionsModule, ProfilesModule, ClientsModule,
+    WebhooksModule, LogsModule, AuditLogsModule, EventsModule,
   ],
 });
 SwaggerModule.setup('api/docs/tenant', app, tenantDoc);
 
 const dcDoc = SwaggerModule.createDocument(app, dcConfig, {
   include: [
-    CredentialsModule,
-    PresentationsModule,
-    ConnectionsModule,
-    OperationsModule,
-    DiscoveryModule,
-    WebhookIngestionModule,
+    CredentialsModule, PresentationsModule, ConnectionsModule,
+    OperationsModule, DiscoveryModule, WebhookIngestionModule,
   ],
 });
 SwaggerModule.setup('api/docs/dc', app, dcDoc);
@@ -427,36 +415,25 @@ GET  /api/v1/issuers/:tenantSlug/.well-known/openid-credential-issuer → Public
 ```
 
 **Request body example (issue via profile — DIDComm delivery):**
-
 ```json
 {
   "profile_id": "drivers-license/1.0",
   "connection_id": "uuid",
-  "attributes": {
-    "given_name": "Alice",
-    "family_name": "Smith",
-    "birth_date": "1995-03-15"
-  }
+  "attributes": { "given_name": "Alice", "family_name": "Smith", "birth_date": "1995-03-15" }
 }
 ```
 
 **Request body example (issue via profile — OID4VCI delivery, connectionless):**
-
 ```json
 {
   "profile_id": "drivers-license/1.0",
-  "attributes": {
-    "given_name": "Alice",
-    "family_name": "Smith",
-    "birth_date": "1995-03-15"
-  }
+  "attributes": { "given_name": "Alice", "family_name": "Smith", "birth_date": "1995-03-15" }
 }
 ```
 
 When `connection_id` is absent, the adapter generates a `credential_offer_uri` that the holder opens in their wallet. The profile's `protocol_hint` and adapter capabilities determine the exact protocol used.
 
 **Legacy mode** (direct format + cred_def — still supported):
-
 ```json
 {
   "connection_id": "uuid",
@@ -497,7 +474,6 @@ graph TD
 ```
 
 **Key design decisions:**
-
 - **Name + version** as identifier: enables schema evolution (deprecate v1.0, publish v2.0)
 - **Profile wraps cred_def**: consumers never reference `credential_definition_id` or `format` directly
 - **Lifecycle (draft → published → deprecated)**: prevents issuing against incomplete or retired configurations
@@ -509,16 +485,16 @@ graph TD
 
 The service supports two credential exchange protocols, selected at request time based on `connection_id` presence:
 
-|                       | DIDComm                                              | OID4VCI / OID4VP                                                           |
-| --------------------- | ---------------------------------------------------- | -------------------------------------------------------------------------- |
-| **When**              | `connection_id` provided                             | `connection_id` absent                                                     |
-| **Prerequisite**      | Existing peer connection (CA-06)                     | None — generates one-time URI                                              |
-| **Issuance flow**     | Issuer pushes offer → holder agent auto-negotiates   | Holder opens `credential_offer_uri` → authorization → retrieves credential |
-| **Verification flow** | Verifier sends proof request → holder agent responds | Holder opens `authorization_request_uri` → presents via wallet             |
-| **Response**          | 202 Accepted (async, webhook-driven)                 | 200 with URI in result (issuer's part done; holder acts later)             |
-| **State tracking**    | Webhook → ME-02 updates Operation                    | Webhook from agent when holder completes flow                              |
-| **MVP adapter**       | TractionAdapter (DIDComm-only)                       | Post-MVP via CredoAdapter                                                  |
-| **Standards**         | Aries RFC 0453/0454, DIDComm v1/v2                   | OID4VCI draft-14+, OID4VP draft-20+, DIF PE                                |
+| | DIDComm | OID4VCI / OID4VP |
+|---|---|---|
+| **When** | `connection_id` provided | `connection_id` absent |
+| **Prerequisite** | Existing peer connection (CA-06) | None — generates one-time URI |
+| **Issuance flow** | Issuer pushes offer → holder agent auto-negotiates | Holder opens `credential_offer_uri` → authorization → retrieves credential |
+| **Verification flow** | Verifier sends proof request → holder agent responds | Holder opens `authorization_request_uri` → presents via wallet |
+| **Response** | 202 Accepted (async, webhook-driven) | 200 with URI in result (issuer's part done; holder acts later) |
+| **State tracking** | Webhook → ME-02 updates Operation | Webhook from agent when holder completes flow |
+| **MVP adapter** | TractionAdapter (DIDComm-only) | Post-MVP via CredoAdapter |
+| **Standards** | Aries RFC 0453/0454, DIDComm v1/v2 | OID4VCI draft-14+, OID4VP draft-20+, DIF PE |
 
 ```mermaid
 flowchart TD
@@ -542,7 +518,6 @@ flowchart TD
 ```
 
 **Why both protocols:**
-
 - DIDComm: mature, proven in BC Gov ecosystem (Traction), agent-to-agent automation
 - OID4VCI/VP: emerging standard for wallet interop (EU EUDI, mDL), mobile-first UX (QR → deep-link)
 - Same credential, different delivery — profile defines WHAT, protocol determines HOW
@@ -590,14 +565,13 @@ issuance require a ready definition on its pinned connector. See
 
 The MVP ships with **only the Traction adapter**. The adapter interfaces are designed and tested, but the Credo adapter is deferred to post-MVP.
 
-| Phase        | Adapters Available             | Formats                                            | Protocols                |
-| ------------ | ------------------------------ | -------------------------------------------------- | ------------------------ |
-| **MVP**      | TractionAdapter                | AnonCreds (primary), W3C VC (if Traction supports) | DIDComm v1               |
-| **Post-MVP** | TractionAdapter + CredoAdapter | + SD-JWT, mDL via Credo Agent Service              | + OID4VCI/VP, DIDComm v2 |
-| **Future**   | Any adapter implementing ports | Extensible by third parties                        | Protocol per adapter     |
+| Phase | Adapters Available | Formats | Protocols |
+|-------|-------------------|---------|-----------|
+| **MVP** | TractionAdapter | AnonCreds (primary), W3C VC (if Traction supports) | DIDComm v1 |
+| **Post-MVP** | TractionAdapter + CredoAdapter | + SD-JWT, mDL via Credo Agent Service | + OID4VCI/VP, DIDComm v2 |
+| **Future** | Any adapter implementing ports | Extensible by third parties | Protocol per adapter |
 
 This means:
-
 - Port interfaces are defined and unit-tested against mocks in MVP
 - TractionAdapter is the only production adapter in MVP (DIDComm delivery only)
 - OID4VCI/VP delivery requires an OID4VCI-capable adapter (post-MVP) — in MVP, omitting `connection_id` returns 400 (PROTOCOL_NOT_SUPPORTED) because Traction only supports DIDComm. The API shape supports both protocols by design; connectionless delivery becomes functional when an OID4VCI-capable adapter (e.g., CredoAdapter) is registered.
@@ -610,15 +584,15 @@ This means:
 
 The digital-trust-common-service is a **Digital Credential service layer** — it orchestrates credential operations, manages tenants, and exposes a uniform API. Agent runtimes (Traction, Credo) are **infrastructure concerns** that should live outside this layer.
 
-| Factor                      | Embedded Agent (rejected)                                                                                                       | Separate Credo Agent Service                                                                                   |
-| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| **Separation of concerns**  | digital-trust-common-service becomes tightly coupled to Credo SDK, wallet storage, DIDComm transport                            | digital-trust-common-service remains a pure orchestration layer; agent complexity is encapsulated              |
-| **Deployment independence** | Credo version upgrades require redeploying the entire API                                                                       | Agent service can be upgraded, scaled, and rolled back independently                                           |
-| **Resource isolation**      | Credo's wallet operations, DIDComm message processing, and ledger interactions compete for CPU/memory with API request handling | Agent workload runs in its own pod with dedicated resources                                                    |
-| **Multi-tenancy**           | Must manage per-tenant Credo agent instances or shared agent with tenant isolation inside the process                           | Agent service owns its own multi-tenancy model (same as Traction)                                              |
-| **Consistency**             | Two fundamentally different adapter patterns: HTTP client (Traction) vs embedded SDK (Credo)                                    | Both adapters are HTTP clients — same error handling, retry logic, circuit breaker, and observability patterns |
-| **Team boundaries**         | Agent expertise required in the digital-trust-common-service codebase                                                           | Agent service can be maintained by a team with Credo/DIDComm expertise                                         |
-| **Testing**                 | Integration tests require full Credo agent setup (wallet, ledger, mediator)                                                     | Adapter tests are simple HTTP mocks (same as Traction tests)                                                   |
+| Factor | Embedded Agent (rejected) | Separate Credo Agent Service |
+|--------|--------------------------|------------------------------|
+| **Separation of concerns** | digital-trust-common-service becomes tightly coupled to Credo SDK, wallet storage, DIDComm transport | digital-trust-common-service remains a pure orchestration layer; agent complexity is encapsulated |
+| **Deployment independence** | Credo version upgrades require redeploying the entire API | Agent service can be upgraded, scaled, and rolled back independently |
+| **Resource isolation** | Credo's wallet operations, DIDComm message processing, and ledger interactions compete for CPU/memory with API request handling | Agent workload runs in its own pod with dedicated resources |
+| **Multi-tenancy** | Must manage per-tenant Credo agent instances or shared agent with tenant isolation inside the process | Agent service owns its own multi-tenancy model (same as Traction) |
+| **Consistency** | Two fundamentally different adapter patterns: HTTP client (Traction) vs embedded SDK (Credo) | Both adapters are HTTP clients — same error handling, retry logic, circuit breaker, and observability patterns |
+| **Team boundaries** | Agent expertise required in the digital-trust-common-service codebase | Agent service can be maintained by a team with Credo/DIDComm expertise |
+| **Testing** | Integration tests require full Credo agent setup (wallet, ledger, mediator) | Adapter tests are simple HTTP mocks (same as Traction tests) |
 
 The Credo Agent Service exposes a REST API that mirrors the operations digital-trust-common-service needs: issue, verify, hold, connect, revoke. It receives webhook callbacks from the DIDComm layer and forwards state changes to digital-trust-common-service via the same webhook ingestion endpoint Traction uses.
 
@@ -630,27 +604,27 @@ Credential operations are inherently **asynchronous**. A holder must accept an o
 
 ### Why pg-boss Over RabbitMQ
 
-| Factor                    | pg-boss                                                      | RabbitMQ (rejected)                                              |
-| ------------------------- | ------------------------------------------------------------ | ---------------------------------------------------------------- |
-| **Infrastructure**        | Zero — reuses existing PostgreSQL                            | Separate StatefulSet, operator, PVCs                             |
+| Factor | pg-boss | RabbitMQ (rejected) |
+|--------|---------|---------------------|
+| **Infrastructure** | Zero — reuses existing PostgreSQL | Separate StatefulSet, operator, PVCs |
 | **Transactional enqueue** | Same DB transaction: INSERT Operation + enqueue job = atomic | Two-phase: write Operation → publish message (can lose messages) |
-| **Dead-letter**           | Built-in (`deadLetter` option per queue)                     | Separate DLX/DLQ config                                          |
-| **Retry + backoff**       | Built-in `retryLimit`, `retryDelay`, `retryBackoff`          | Manual (re-publish with delay exchange)                          |
-| **Scheduling**            | Built-in `startAfter`, cron schedules                        | Requires delayed message plugin                                  |
-| **Monitoring**            | Query `pgboss.job` table directly                            | Requires Management UI or Prometheus exporter                    |
-| **Dev setup**             | Already have PostgreSQL                                      | Extra Docker Compose service                                     |
-| **OpenShift deploy**      | Nothing additional                                           | RabbitMQ Helm chart + NetworkPolicies                            |
+| **Dead-letter** | Built-in (`deadLetter` option per queue) | Separate DLX/DLQ config |
+| **Retry + backoff** | Built-in `retryLimit`, `retryDelay`, `retryBackoff` | Manual (re-publish with delay exchange) |
+| **Scheduling** | Built-in `startAfter`, cron schedules | Requires delayed message plugin |
+| **Monitoring** | Query `pgboss.job` table directly | Requires Management UI or Prometheus exporter |
+| **Dev setup** | Already have PostgreSQL | Extra Docker Compose service |
+| **OpenShift deploy** | Nothing additional | RabbitMQ Helm chart + NetworkPolicies |
 
 ### Problems Solved
 
-| Problem                   | Solution                                                                                                          |
-| ------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| **Async credential flow** | API returns 202 immediately; pg-boss workers process state updates as Traction/Credo report progress              |
-| **Webhook reliability**   | `webhook.dispatch` queue with built-in retry (`retryLimit: 3, retryBackoff: true`) + dead-letter on final failure |
-| **Atomic enqueue**        | Operation record + job created in same PostgreSQL transaction — impossible to lose a message                      |
-| **Backpressure**          | pg-boss `batchSize` + `teamConcurrency` control processing rate                                                   |
-| **Failure isolation**     | A failing webhook worker doesn't block credential issuance (separate queues)                                      |
-| **Ordered processing**    | pg-boss `singletonKey` per tenant ensures state transitions don't race                                            |
+| Problem | Solution |
+|---------|----------|
+| **Async credential flow** | API returns 202 immediately; pg-boss workers process state updates as Traction/Credo report progress |
+| **Webhook reliability** | `webhook.dispatch` queue with built-in retry (`retryLimit: 3, retryBackoff: true`) + dead-letter on final failure |
+| **Atomic enqueue** | Operation record + job created in same PostgreSQL transaction — impossible to lose a message |
+| **Backpressure** | pg-boss `batchSize` + `teamConcurrency` control processing rate |
+| **Failure isolation** | A failing webhook worker doesn't block credential issuance (separate queues) |
+| **Ordered processing** | pg-boss `singletonKey` per tenant ensures state transitions don't race |
 
 ### Message Flow
 
@@ -698,14 +672,14 @@ sequenceDiagram
 
 At MVP scale, every role traditionally filled by Redis can be served by PostgreSQL or in-memory caches, eliminating a separate infrastructure dependency.
 
-| Role                       | Traditional (Redis)             | Our Approach (PostgreSQL / In-Memory)                                                 |
-| -------------------------- | ------------------------------- | ------------------------------------------------------------------------------------- |
-| **OIDC sessions & grants** | Redis adapter for oidc-provider | PostgreSQL adapter — `oidc_sessions` table with TTL; pg-boss scheduled cleanup job    |
-| **Rate limiting**          | Sliding window counters         | `rate_limit_hits` table + indexed `hit_at` column; `SELECT count(*)` with time window |
-| **Idempotency keys**       | SETNX + TTL                     | `idempotency_keys` table; `INSERT ... ON CONFLICT` for atomic check-and-lock          |
-| **Distributed locks**      | SETNX / Redlock                 | `pg_advisory_lock` / `pg_try_advisory_lock` (built into PostgreSQL)                   |
-| **Traction token cache**   | Key with TTL                    | In-memory `Map` with TTL per pod (tokens are short-lived, cheap to re-fetch)          |
-| **General cache**          | cache-manager-redis-store       | In-memory cache-manager (default store); per-pod, no shared state needed              |
+| Role | Traditional (Redis) | Our Approach (PostgreSQL / In-Memory) |
+|------|--------------------|-----------------------------------------|
+| **OIDC sessions & grants** | Redis adapter for oidc-provider | PostgreSQL adapter — `oidc_sessions` table with TTL; pg-boss scheduled cleanup job |
+| **Rate limiting** | Sliding window counters | `rate_limit_hits` table + indexed `hit_at` column; `SELECT count(*)` with time window |
+| **Idempotency keys** | SETNX + TTL | `idempotency_keys` table; `INSERT ... ON CONFLICT` for atomic check-and-lock |
+| **Distributed locks** | SETNX / Redlock | `pg_advisory_lock` / `pg_try_advisory_lock` (built into PostgreSQL) |
+| **Traction token cache** | Key with TTL | In-memory `Map` with TTL per pod (tokens are short-lived, cheap to re-fetch) |
+| **General cache** | cache-manager-redis-store | In-memory cache-manager (default store); per-pod, no shared state needed |
 
 ### Trade-offs
 
@@ -716,7 +690,6 @@ At MVP scale, every role traditionally filled by Redis can be served by PostgreS
 ### Infrastructure Simplification
 
 With Redis removed, the entire infrastructure is:
-
 - **Dev**: Docker Compose with `app` + `PostgreSQL` + `Keycloak` (3 services; optional Loki via DITP-DevOps wiki pattern for log aggregation)
 - **Prod**: API pod + Worker pod + PostgreSQL + Keycloak (no Redis StatefulSet, no Redis Sentinel/HA)
 - **Loki**: Assumed pre-existing in deployed environments (not provisioned by this project's Helm chart)
@@ -729,9 +702,9 @@ With Redis removed, the entire infrastructure is:
 
 Backend agents (Traction, Credo Agent Service) communicate results via webhooks — but the API caller needs a way to retrieve results. The service uses a **dual-response pattern**:
 
-| Response Type    | When                                                                                                        | HTTP Status  | Caller Experience                                                     |
-| ---------------- | ----------------------------------------------------------------------------------------------------------- | ------------ | --------------------------------------------------------------------- |
-| **Synchronous**  | Operation completes within request timeout (e.g., creating an invitation, listing connections)              | 200          | Result in response body directly                                      |
+| Response Type | When | HTTP Status | Caller Experience |
+|---------------|------|-------------|-------------------|
+| **Synchronous** | Operation completes within request timeout (e.g., creating an invitation, listing connections) | 200 | Result in response body directly |
 | **Asynchronous** | Operation requires external party action or agent processing (e.g., issue credential, request presentation) | 202 Accepted | Response contains `operation_id`; caller polls or listens via webhook |
 
 Both types create an Operation record — synchronous results are also pollable (useful for idempotent retries or if the caller's connection drops).
@@ -800,39 +773,30 @@ Result semantics determined by `(type, state)`:
 ```
 
 Original request details accessible via sub-resource:
-
 ```
 GET /api/v1/tenants/:tenantId/operations/:operationId/request
 ```
 
 Response:
-
 ```json
 {
   "method": "POST",
   "path": "/api/v1/tenants/b7e4a1f0-.../credentials/offer",
-  "body": {
-    "profile_id": "drivers-license/1.0",
-    "connection_id": "uuid",
-    "attributes": { "given_name": "Alice", "birth_date": "1995-03-15" }
-  }
+  "body": { "profile_id": "drivers-license/1.0", "connection_id": "uuid", "attributes": { "given_name": "Alice", "birth_date": "1995-03-15" } }
 }
 ```
 
 > **⚠️ PII concern:** The `body` field contains the original request payload including credential attributes (names, dates of birth, addresses, government IDs). This data is already accessible to the caller who submitted it, but care must be taken:
->
 > - Data is transient (purged with the Operation on TTL expiry — not a permanent store)
 > - Access is logged in the audit trail
 > - Future: optional per-tenant field-level redaction policy (P2)
 
 Batch child items are accessible via sub-resource:
-
 ```
 GET /api/v1/tenants/:tenantId/operations/:batchOperationId/items?state=failed&limit=20
 ```
 
 List operations (with filtering):
-
 ```
 GET /api/v1/tenants/:tenantId/operations?state=pending&type=credential.offer&limit=20
 ```
@@ -841,13 +805,13 @@ GET /api/v1/tenants/:tenantId/operations?state=pending&type=credential.offer&lim
 
 Operations are transient — they're not the long-term audit trail (that's the audit log). Purge rules:
 
-| Condition              | TTL                         | Rationale                                  |
-| ---------------------- | --------------------------- | ------------------------------------------ |
-| Completed + viewed     | 1 hour after `viewed_at`    | Caller got the result; no need to retain   |
-| Completed + not viewed | 72 hours after `created_at` | Grace period for polling                   |
-| Failed + viewed        | 24 hours after `viewed_at`  | Longer retention for debugging             |
-| Failed + not viewed    | 7 days after `created_at`   | Unacknowledged failures need investigation |
-| Pending (stale)        | 24 hours after `created_at` | Likely abandoned or agent never responded  |
+| Condition | TTL | Rationale |
+|-----------|-----|-----------|
+| Completed + viewed | 1 hour after `viewed_at` | Caller got the result; no need to retain |
+| Completed + not viewed | 72 hours after `created_at` | Grace period for polling |
+| Failed + viewed | 24 hours after `viewed_at` | Longer retention for debugging |
+| Failed + not viewed | 7 days after `created_at` | Unacknowledged failures need investigation |
+| Pending (stale) | 24 hours after `created_at` | Likely abandoned or agent never responded |
 
 The `expires_at` field is computed at creation (default: 72h) and updated when `viewed_at` is set (shortened to 1h). A scheduled job (cron or pg_cron) purges expired records:
 
@@ -944,23 +908,22 @@ graph LR
 The dead-letter queue is a single PostgreSQL-backed table (`pgboss.job WHERE state = 'failed'`), but
 access is split by audience to enforce tenant isolation:
 
-| Endpoint                                                        | Audience       | Scope                 | Behaviour                                                               |
-| --------------------------------------------------------------- | -------------- | --------------------- | ----------------------------------------------------------------------- |
-| `GET /api/v1/admin/events/dead-letter`                          | Platform Admin | `platform-admin` role | Returns ALL failed jobs; optional `?tenant_id` filter                   |
-| `POST /api/v1/admin/events/dead-letter/:id/replay`              | Platform Admin | `platform-admin` role | Replays any job by ID; no ownership check                               |
-| `POST /api/v1/admin/events/dead-letter/replay-bulk`             | Platform Admin | `platform-admin` role | Bulk replay by date range / queue across all tenants                    |
-| `GET /api/v1/tenants/{tenantId}/events/dead-letter`             | Tenant Admin   | `tenants:admin` scope | Returns only jobs where `job.data.tenant_id = jwt.tenant_id`            |
-| `POST /api/v1/tenants/{tenantId}/events/dead-letter/:id/replay` | Tenant Admin   | `tenants:admin` scope | Validates ownership before `boss.resume(id)` — returns 404 if not owned |
+| Endpoint | Audience | Scope | Behaviour |
+|---|---|---|---|
+| `GET /api/v1/admin/events/dead-letter` | Platform Admin | `platform-admin` role | Returns ALL failed jobs; optional `?tenant_id` filter |
+| `POST /api/v1/admin/events/dead-letter/:id/replay` | Platform Admin | `platform-admin` role | Replays any job by ID; no ownership check |
+| `POST /api/v1/admin/events/dead-letter/replay-bulk` | Platform Admin | `platform-admin` role | Bulk replay by date range / queue across all tenants |
+| `GET /api/v1/tenants/{tenantId}/events/dead-letter` | Tenant Admin | `tenants:admin` scope | Returns only jobs where `job.data.tenant_id = jwt.tenant_id` |
+| `POST /api/v1/tenants/{tenantId}/events/dead-letter/:id/replay` | Tenant Admin | `tenants:admin` scope | Validates ownership before `boss.resume(id)` — returns 404 if not owned |
 
 **Why not expose raw job data to tenants:**
 The `data` column in `pgboss.job` can contain sensitive fields (connector auth tokens, raw credential
 attributes passed to the agent). The tenant-scoped endpoints return a `TenantDeadLetterJob` projection
 that redacts everything except correlation IDs (`operation_id`, `external_id`, `webhook_id`) and the
-error message. This is sufficient for tenant admins to identify _what_ failed without exposing
+error message. This is sufficient for tenant admins to identify *what* failed without exposing
 system internals.
 
 **PostgreSQL index required for tenant filtering:**
-
 ```sql
 -- GIN index on JSONB data column for tenant_id path filtering
 CREATE INDEX idx_pgboss_job_tenant_id ON pgboss.job USING GIN ((data -> 'tenant_id'));
@@ -973,7 +936,6 @@ CREATE INDEX idx_pgboss_job_tenant_id_btree ON pgboss.job ((data->>'tenant_id'))
 Bulk issuance and revocation allow a tenant to process hundreds of credentials in a single API call. The design ensures the main process is never blocked:
 
 **Why no worker threads:**
-
 - Every "heavy" operation is an HTTP POST to an external agent service (Traction, Credo Agent Service) — I/O-bound, not CPU-bound
 - Node.js handles I/O concurrency natively with async/await
 - pg-boss workers are lightweight async functions polling a PostgreSQL table
@@ -1013,7 +975,6 @@ sequenceDiagram
 ```
 
 **Safeguards:**
-
 - Max batch size: 500 items per request (configurable via `BULK_MAX_BATCH_SIZE`)
 - Max concurrent batches per tenant: 3 (prevents a single tenant from monopolizing workers)
 - pg-boss `teamConcurrency` controls per-worker parallelism (default: 5 concurrent bulk-item jobs per worker pod)
@@ -1029,7 +990,6 @@ sequenceDiagram
 The app runs its own OpenID-certified OIDC provider (via [`oidc-provider`](https://github.com/panva/node-oidc-provider)) and owns all token issuance, client registration, and permission management. Keycloak serves only as the **upstream identity federation** — users prove their identity via Keycloak, then the app issues its own access tokens with custom claims derived from the app's permission database.
 
 **Why:**
-
 - Zero Keycloak Admin API dependency — no client lifecycle calls to external service
 - Full control over permission granularity (tenant-scoped, resource-scoped)
 - Standards-compliant `client_credentials` grant with `.well-known/openid-configuration` auto-generated
@@ -1122,23 +1082,23 @@ sequenceDiagram
 
 ### OIDC Endpoints (auto-generated by oidc-provider)
 
-| Endpoint                                     | Purpose                                                                      |
-| -------------------------------------------- | ---------------------------------------------------------------------------- |
-| `GET /oidc/.well-known/openid-configuration` | Discovery document                                                           |
-| `GET /oidc/jwks`                             | Public keys for JWT verification                                             |
-| `POST /oidc/token`                           | Token issuance (`client_credentials`, `authorization_code`, `refresh_token`) |
-| `GET /oidc/auth`                             | Authorization endpoint (user login flow)                                     |
-| `POST /oidc/token/introspection`             | Token introspection (RFC 7662)                                               |
-| `POST /oidc/token/revocation`                | Token revocation (RFC 7009)                                                  |
+| Endpoint | Purpose |
+|----------|--------|
+| `GET /oidc/.well-known/openid-configuration` | Discovery document |
+| `GET /oidc/jwks` | Public keys for JWT verification |
+| `POST /oidc/token` | Token issuance (`client_credentials`, `authorization_code`, `refresh_token`) |
+| `GET /oidc/auth` | Authorization endpoint (user login flow) |
+| `POST /oidc/token/introspection` | Token introspection (RFC 7662) |
+| `POST /oidc/token/revocation` | Token revocation (RFC 7009) |
 
 ### Token & Session Lifecycle
 
-| Artifact      | Default TTL  | Env var                          |
-| ------------- | ------------ | -------------------------------- |
-| Access token  | 5 min        | `OIDC_ACCESS_TOKEN_TTL_SECONDS`  |
-| Refresh token | 8 hours      | `OIDC_REFRESH_TOKEN_TTL_SECONDS` |
-| Session       | 8 hours idle | `OIDC_SESSION_TTL_SECONDS`       |
-| Grant         | 14 days      | `OIDC_GRANT_TTL_SECONDS`         |
+| Artifact | Default TTL | Env var |
+|----------|-------------|---------|
+| Access token | 5 min | `OIDC_ACCESS_TOKEN_TTL_SECONDS` |
+| Refresh token | 8 hours | `OIDC_REFRESH_TOKEN_TTL_SECONDS` |
+| Session | 8 hours idle | `OIDC_SESSION_TTL_SECONDS` |
+| Grant | 14 days | `OIDC_GRANT_TTL_SECONDS` |
 
 - **Rotation**: on by default; each use issues a new refresh token and invalidates the old one.
 - **Session TTL is idle, not absolute**: `oidc-provider` re-saves the session on every request, so an active browser session persists until the Grant expires.
@@ -1194,7 +1154,6 @@ graph TD
 ```
 
 **Key rules:**
-
 - Every API endpoint requires a valid app-issued JWT (JwtGuard)
 - Scopes are checked at the guard level — token must contain the scope required by the endpoint
 - `tenants:admin` is a **tenant superuser scope** — ScopeGuard treats it as having ALL Level 2 + Level 3 scopes
@@ -1225,13 +1184,13 @@ Overrides are written under a tenant-scoped advisory lock, and removing a scope
 revokes the affected users' sessions — the `scope` claim is fixed by the OIDC
 grant at login and is not refreshed when a refresh token rotates.
 
-| Role           | Scopes                                                                                                                                                                                                            |
-| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| platform-admin | _bypasses guards_                                                                                                                                                                                                 |
-| owner          | tenants:admin (superuser — implicitly has all)                                                                                                                                                                    |
-| admin          | all Level 2 + Level 3 (`credentials:offer`, `credentials:verify`, `credentials:hold`, `credentials:revoke`, `connections:manage`, `profiles:manage`, `users:manage`, `clients:manage`, `logs:read`, `audit:read`) |
-| member         | credentials:offer, credentials:verify                                                                                                                                                                             |
-| readonly       | _(no scopes — GET endpoints only)_                                                                                                                                                                                |
+| Role | Scopes |
+|------|--------|
+| platform-admin | _bypasses guards_ |
+| owner | tenants:admin (superuser — implicitly has all) |
+| admin | all Level 2 + Level 3 (`credentials:offer`, `credentials:verify`, `credentials:hold`, `credentials:revoke`, `connections:manage`, `profiles:manage`, `users:manage`, `clients:manage`, `logs:read`, `audit:read`) |
+| member | credentials:offer, credentials:verify |
+| readonly | _(no scopes — GET endpoints only)_ |
 
 ### JWT Claims Structure (App-Issued)
 
@@ -1241,7 +1200,7 @@ grant at login and is not refreshed when a refresh token rotates.
   "client_id": null,
   "email": "user@example.com",
   "tenant_id": "b7e4a1f0-...",
-  "external_user_id": "upstream-identity-subject",
+    "external_user_id": "upstream-identity-subject",
   "roles": ["admin"],
   "scope": "credentials:offer credentials:verify connections:manage profiles:manage",
   "aud": "https://digital-trust-common-service",
@@ -1257,7 +1216,6 @@ current tenant-user row is removed. Tenant-scoped authorization still requires
 an active membership row; the claim does not grant tenant access by itself.
 
 For API clients (`client_credentials` grant):
-
 ```json
 {
   "sub": "client:ext-service-1",
@@ -1276,15 +1234,15 @@ For API clients (`client_credentials` grant):
 
 API access tokens use a **fixed API resource audience**, not the OIDC issuer URL.
 
-| Token                  | How it is minted                                               | `aud` claim                                             | Who validates it                 |
-| ---------------------- | -------------------------------------------------------------- | ------------------------------------------------------- | -------------------------------- |
-| This API               | Omit `resource` (default)                                      | `https://digital-trust-common-service` (`JWT_AUDIENCE`) | `JwtGuard`                       |
-| Downstream (e.g. Loki) | `resource=<absolute URI>` listed in `JWT_ADDITIONAL_AUDIENCES` | that resource URI                                       | that gateway, **not** `JwtGuard` |
+| Token | How it is minted | `aud` claim | Who validates it |
+|-------|------------------|-------------|------------------|
+| This API | Omit `resource` (default) | `https://digital-trust-common-service` (`JWT_AUDIENCE`) | `JwtGuard` |
+| Downstream (e.g. Loki) | `resource=<absolute URI>` listed in `JWT_ADDITIONAL_AUDIENCES` | that resource URI | that gateway, **not** `JwtGuard` |
 
 `oidc-provider` requires RFC 8707 resource indicators to be absolute URIs, so the documented logical name `digital-trust-common-service` is minted as `https://digital-trust-common-service`. The AU-01 interim of `aud = OIDC_ISSUER` is no longer used.
 
 A token resolves to **exactly one** audience, and `verifyAccessToken` rejects any token whose `aud`
-carries more than one value. Ordinary JWT validation tests audience _membership_, so a token listing
+carries more than one value. Ordinary JWT validation tests audience *membership*, so a token listing
 both the API and a gateway audience would satisfy both validators and erase the separation between
 them.
 
@@ -1322,13 +1280,13 @@ The certificate is read at start, so a rotation needs a pod restart.
 
 ### Key Libraries
 
-| Library                                                        | Role                                                                                                        |
-| -------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| [`oidc-provider`](https://github.com/panva/node-oidc-provider) | OpenID Certified OIDC server — handles token signing, JWKS, discovery, and grants                           |
-| [`jose`](https://github.com/panva/jose)                        | Low-level JWT/JWK operations (used internally by oidc-provider; available for custom needs)                 |
-| `argon2`                                                       | Client secret hashing                                                                                       |
-| [`openid-client`](https://github.com/panva/openid-client)      | Upstream OIDC federation client (Keycloak login), including discovery and Authorization Code + PKCE support |
-| PostgreSQL                                                     | Session/grant storage adapter for oidc-provider (custom adapter using TypeORM)                              |
+| Library | Role |
+|---------|------|
+| [`oidc-provider`](https://github.com/panva/node-oidc-provider) | OpenID Certified OIDC server — handles token signing, JWKS, discovery, and grants |
+| [`jose`](https://github.com/panva/jose) | Low-level JWT/JWK operations (used internally by oidc-provider; available for custom needs) |
+| `argon2` | Client secret hashing |
+| [`openid-client`](https://github.com/panva/openid-client) | Upstream OIDC federation client (Keycloak login), including discovery and Authorization Code + PKCE support |
+| PostgreSQL | Session/grant storage adapter for oidc-provider (custom adapter using TypeORM) |
 
 ---
 
@@ -1507,7 +1465,6 @@ erDiagram
 > **Note on timestamps:** All entities include `created_at` and `updated_at` columns unless shown otherwise. The ER diagram shows only structurally significant fields; audit timestamps are omitted for brevity.
 
 **Why shared schema (not schema-per-tenant or DB-per-tenant):**
-
 - Simpler operations: single migration target, single connection pool
 - BC Gov OpenShift typically provisions one PostgreSQL instance per app
 - Tenant count expected in dozens, not thousands
@@ -1546,7 +1503,6 @@ graph TB
 ```
 
 **Notes:**
-
 - API and Worker share the same container image; differentiated by entrypoint command
 - Migrations run as an opt-in Helm hook Job (`migrations.enabled`), not an init container: once per release before the app pods roll, so replicas and HPA scale-ups cannot run them concurrently
 - Horizontal scaling: API pods are stateless (scale freely); Worker pods use pg-boss `teamSize` + `teamConcurrency` for competing consumers
@@ -1556,19 +1512,19 @@ graph TB
 
 ## Security Considerations
 
-| Concern               | Mitigation                                                                                                                                                       |
-| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Tenant data isolation | `tenant_id` FK on all data; TenantGuard enforces at request level                                                                                                |
-| Token issuance        | App owns OIDC provider (`oidc-provider`); RS256 signing with operator-rotated keys (see [OIDC key rotation](./OIDC-KEY-ROTATION.md)); short-lived tokens (5 min) |
-| Client secret storage | Argon2 hash; full secret shown only once at registration                                                                                                         |
-| Credential at rest    | Connector credentials encrypted with app-level key (AES-256-GCM)                                                                                                 |
-| Token security        | No long-lived tokens; refresh rotation; PostgreSQL-backed session store                                                                                          |
-| Scope enforcement     | Scopes embedded in JWT claims; ScopeGuard checks every request                                                                                                   |
-| Webhook integrity     | HMAC-SHA256 signature on every payload; tenant-specific signing secret                                                                                           |
-| Rate limiting         | Per-tenant sliding window in PostgreSQL (`rate_limit_hits` table); prevents resource exhaustion                                                                  |
-| Audit trail           | Append-only log; no UPDATE/DELETE on audit table                                                                                                                 |
-| Network               | OpenShift NetworkPolicy; TLS everywhere; no plaintext internal traffic                                                                                           |
-| Federation            | Keycloak used for identity only; no Admin API calls; swappable upstream                                                                                          |
+| Concern | Mitigation |
+|---------|-----------|
+| Tenant data isolation | `tenant_id` FK on all data; TenantGuard enforces at request level |
+| Token issuance | App owns OIDC provider (`oidc-provider`); RS256 signing with operator-rotated keys (see [OIDC key rotation](./OIDC-KEY-ROTATION.md)); short-lived tokens (5 min) |
+| Client secret storage | Argon2 hash; full secret shown only once at registration |
+| Credential at rest | Connector credentials encrypted with app-level key (AES-256-GCM) |
+| Token security | No long-lived tokens; refresh rotation; PostgreSQL-backed session store |
+| Scope enforcement | Scopes embedded in JWT claims; ScopeGuard checks every request |
+| Webhook integrity | HMAC-SHA256 signature on every payload; tenant-specific signing secret |
+| Rate limiting | Per-tenant sliding window in PostgreSQL (`rate_limit_hits` table); prevents resource exhaustion |
+| Audit trail | Append-only log; no UPDATE/DELETE on audit table |
+| Network | OpenShift NetworkPolicy; TLS everywhere; no plaintext internal traffic |
+| Federation | Keycloak used for identity only; no Admin API calls; swappable upstream |
 
 ---
 
@@ -1589,7 +1545,6 @@ graph TD
 ```
 
 All errors are:
-
 - Logged with correlation ID (tenant + request ID)
 - Mapped to appropriate HTTP status codes at the controller level
 - Recorded in audit log for credential operations
@@ -1652,15 +1607,14 @@ flowchart LR
 
 Every log line emitted by digital-trust-common-service includes labels for Loki indexing:
 
-| Label                | Cardinality                  | Source                                                                                    |
-| -------------------- | ---------------------------- | ----------------------------------------------------------------------------------------- |
-| `app`                | Low (1-2)                    | `digital-trust-common-service` (or `traction` for raw agent logs)                         |
-| `tenant_id`          | Medium                       | Extracted from AsyncLocalStorage request context                                          |
-| `source`             | Low (bounded by queue count) | `api`, `job:<queue>`, `adapter:traction`, `adapter:credo`                                 |
-| `traction_tenant_id` | Medium                       | Traction sub-tenant id (only on `app=traction` streams; surfaced once Traction logs JSON) |
+| Label | Cardinality | Source |
+|-------|-------------|--------|
+| `app` | Low (1-2) | `digital-trust-common-service` (or `traction` for raw agent logs) |
+| `tenant_id` | Medium | Extracted from AsyncLocalStorage request context |
+| `source` | Low (bounded by queue count) | `api`, `job:<queue>`, `adapter:traction`, `adapter:credo` |
+| `traction_tenant_id` | Medium | Traction sub-tenant id (only on `app=traction` streams; surfaced once Traction logs JSON) |
 
 Structured metadata (Loki 3.x) or JSON fields (queryable with `| json`):
-
 - `operation_id`, `request_id`, `level`, `traction_state`, `traction_endpoint`, `error_code`, `duration_ms`
 
 #### Log routing (Loki multi-tenancy)
@@ -1696,7 +1650,6 @@ sequenceDiagram
 **Key invariant**: the tenant scope is derived **only** from the validated app JWT (with a `logs:read` check) plus a server-side `ConnectorCredential` lookup — never from a client-supplied parameter. A tenant may craft any LogQL (Explore, `/api/ds/query`, curl) and still only ever receives their own streams, because Loki enforces the `X-Scope-OrgID` the gateway set.
 
 Attack prevention:
-
 - Tenant manipulates `traction_tenant_id` / `tenant_id` in a query → the gateway ignores query content; scope comes from the JWT + `ConnectorCredential` lookup
 - Tenant without `logs:read` → the gateway fails closed (403) before any Loki call
 - Tenant spoofs `X-Scope-OrgID` → the gateway strips and sets the header itself; Loki is network-isolated (NetworkPolicy — dev/test hardening required) and not directly reachable
@@ -1706,14 +1659,14 @@ Attack prevention:
 
 #### Adapter Instrumentation Points
 
-| Layer                                     | What to capture                                                                                             | Source label       |
-| ----------------------------------------- | ----------------------------------------------------------------------------------------------------------- | ------------------ |
-| **HTTP outbound to Traction**             | method, path, status, duration_ms, error_code                                                               | `adapter:traction` |
-| **Traction response parsing**             | external_id (cred_ex_id, thread_id), state                                                                  | `adapter:traction` |
-| **Webhook ingestion**                     | wire_topic, topic, protocol_state, external_id, connector_id, outcome                                       | `api`              |
-| **Token lifecycle**                       | cache_state (hit/miss/expiring), outcome, duration_ms, status_code on failure                               | `adapter:traction` |
-| **Error interpretation**                  | map Traction error → actionable message + suggestion                                                        | `adapter:traction` |
-| **Credo Agent Service events (post-MVP)** | CredentialStateChanged, ProofStateChanged, DIDComm messages (via webhook callback from Credo Agent Service) | `adapter:credo`    |
+| Layer | What to capture | Source label |
+|-------|----------------|--------------|
+| **HTTP outbound to Traction** | method, path, status, duration_ms, error_code | `adapter:traction` |
+| **Traction response parsing** | external_id (cred_ex_id, thread_id), state | `adapter:traction` |
+| **Webhook ingestion** | wire_topic, topic, protocol_state, external_id, connector_id, outcome | `api` |
+| **Token lifecycle** | cache_state (hit/miss/expiring), outcome, duration_ms, status_code on failure | `adapter:traction` |
+| **Error interpretation** | map Traction error → actionable message + suggestion | `adapter:traction` |
+| **Credo Agent Service events (post-MVP)** | CredentialStateChanged, ProofStateChanged, DIDComm messages (via webhook callback from Credo Agent Service) | `adapter:credo` |
 
 Redaction rules: never log `api_key`, credential claim values, DID private keys. Log: DIDs, connection_ids, thread_ids (public identifiers), operation_ids, cred_def_ids.
 
@@ -1728,14 +1681,14 @@ either — it is vendor-shaped JSON carrying credential attribute values, which
 is exactly the case the redaction rules above mean by not relying on redaction
 for payloads this codebase did not shape.
 
-| Event                                   | Level         | Fields                                                                                                                                  |
-| --------------------------------------- | ------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `webhook accepted`                      | log           | `connector_id`, `connector_type`, `external_id`, `outcome: accepted`, `protocol_state`, `topic`, `wire_topic`                           |
-| `webhook dropped`                       | debug or warn | `connector_id`, `connector_type`, `drop_reason`, `outcome: dropped`, `wire_topic`, plus `topic` and `external_id` once each is resolved |
-| `protocol state change applied`         | log           | `domain_event` (when one was emitted), `duration_ms`, `external_id`, `operation_state`, `outcome: applied`, `protocol_state`, `topic`   |
-| `protocol state change had no effect`   | debug         | the above without `domain_event`, `outcome: no_op`                                                                                      |
-| `protocol state change matched nothing` | warn          | the above without `domain_event`, `outcome: unmatched`                                                                                  |
-| `protocol state change ignored`         | warn          | `external_id`, `outcome: ignored`, `protocol_state`, `topic`                                                                            |
+| Event | Level | Fields |
+|-------|-------|--------|
+| `webhook accepted` | log | `connector_id`, `connector_type`, `external_id`, `outcome: accepted`, `protocol_state`, `topic`, `wire_topic` |
+| `webhook dropped` | debug or warn | `connector_id`, `connector_type`, `drop_reason`, `outcome: dropped`, `wire_topic`, plus `topic` and `external_id` once each is resolved |
+| `protocol state change applied` | log | `domain_event` (when one was emitted), `duration_ms`, `external_id`, `operation_state`, `outcome: applied`, `protocol_state`, `topic` |
+| `protocol state change had no effect` | debug | the above without `domain_event`, `outcome: no_op` |
+| `protocol state change matched nothing` | warn | the above without `domain_event`, `outcome: unmatched` |
+| `protocol state change ignored` | warn | `external_id`, `outcome: ignored`, `protocol_state`, `topic` |
 
 `wire_topic` is the raw path segment the agent posted to (`issue_credential_v2_0`)
 and `topic` the internal `ProtocolTopic` it mapped to (`issue_credential`). Both
@@ -1786,12 +1739,12 @@ event rather than replacing it, so an acquisition that succeeded but cannot be
 cached usefully shows up as both lines. The Traction bearer token is never a
 field on any of them, and neither is the `api_key` exchanged for it.
 
-| Event                         | Level | Fields                                                                                                                      |
-| ----------------------------- | ----- | --------------------------------------------------------------------------------------------------------------------------- |
-| `token served from cache`     | debug | `cache_state: hit`, `connector_id`, `outcome: success`                                                                      |
-| `token acquired`              | log   | `cache_state: miss \| expiring`, `connector_id`, `duration_ms`, `outcome: success`                                          |
-| `token acquisition failed`    | error | the above plus `error_message`, `error_stack`, `error_type`, `status_code` (when the endpoint answered), `outcome: failure` |
-| `token expiry claim unusable` | warn  | `connector_id`, `error_message`                                                                                             |
+| Event | Level | Fields |
+|-------|-------|--------|
+| `token served from cache` | debug | `cache_state: hit`, `connector_id`, `outcome: success` |
+| `token acquired` | log | `cache_state: miss \| expiring`, `connector_id`, `duration_ms`, `outcome: success` |
+| `token acquisition failed` | error | the above plus `error_message`, `error_stack`, `error_type`, `status_code` (when the endpoint answered), `outcome: failure` |
+| `token expiry claim unusable` | warn | `connector_id`, `error_message` |
 
 A cache hit is logged at debug because one fires on every outbound Traction
 call: at info it would roughly double the access log while saying only that
@@ -1839,16 +1792,16 @@ graph LR
 
 ### Instrumentation Strategy
 
-| Layer           | Method                      | What it captures                                                       |
-| --------------- | --------------------------- | ---------------------------------------------------------------------- |
-| HTTP (inbound)  | Auto-instrumentation        | Route, method, status, duration, request size                          |
-| HTTP (outbound) | Auto-instrumentation        | Calls to Traction/Credo Agent Service backends with full timing        |
-| PostgreSQL      | Auto-instrumentation (`pg`) | Query text (sanitized), duration, row count                            |
-| OIDC sessions   | Manual spans                | session.create, session.destroy, grant.upsert                          |
-| pg-boss         | Manual spans                | job.send, job.complete, job.fail, queue name, duration                 |
-| Adapter layer   | Manual spans                | adapter.resolve, adapter.offerCredential, adapter.requestPresentation  |
-| Operations      | Manual spans                | operation.create, operation.stateTransition, operation_id as attribute |
-| OIDC Provider   | Manual spans                | token.issue, token.introspect, client.authenticate                     |
+| Layer | Method | What it captures |
+|-------|--------|-----------------|
+| HTTP (inbound) | Auto-instrumentation | Route, method, status, duration, request size |
+| HTTP (outbound) | Auto-instrumentation | Calls to Traction/Credo Agent Service backends with full timing |
+| PostgreSQL | Auto-instrumentation (`pg`) | Query text (sanitized), duration, row count |
+| OIDC sessions | Manual spans | session.create, session.destroy, grant.upsert |
+| pg-boss | Manual spans | job.send, job.complete, job.fail, queue name, duration |
+| Adapter layer | Manual spans | adapter.resolve, adapter.offerCredential, adapter.requestPresentation |
+| Operations | Manual spans | operation.create, operation.stateTransition, operation_id as attribute |
+| OIDC Provider | Manual spans | token.issue, token.introspect, client.authenticate |
 
 ### Trace Context Propagation
 
@@ -1982,15 +1935,15 @@ caused using nothing but the shared `trace_id`.
 Every port-method call on an `AgentAdapter` produces one line when it settles,
 from the same wrapper that records the span and the counter:
 
-| Field           | Notes                                                                       |
-| --------------- | --------------------------------------------------------------------------- |
-| `connector`     | The connector type the call went to, e.g. `traction`                        |
-| `method`        | The port method called, e.g. `offerCredential`                              |
-| `outcome`       | `success`, the `AdapterError` code, or `unknown`                            |
-| `duration_ms`   | Time from entering the adapter to the call settling                         |
-| `error_type`    | Failure lines only — the error's class name, or the thrown value's `typeof` |
-| `error_message` | Failure lines only — the error's message, or the thrown value stringified   |
-| `error_stack`   | Failure lines only, and only when an `Error` was thrown                     |
+| Field | Notes |
+| --- | --- |
+| `connector` | The connector type the call went to, e.g. `traction` |
+| `method` | The port method called, e.g. `offerCredential` |
+| `outcome` | `success`, the `AdapterError` code, or `unknown` |
+| `duration_ms` | Time from entering the adapter to the call settling |
+| `error_type` | Failure lines only — the error's class name, or the thrown value's `typeof` |
+| `error_message` | Failure lines only — the error's message, or the thrown value stringified |
+| `error_stack` | Failure lines only, and only when an `Error` was thrown |
 
 Success is logged at `log`, failure at `error`, matching the job lines above.
 The correlation fields come from the mixin, so an adapter line carries the
@@ -2014,12 +1967,12 @@ A thrown non-Error is stringified for the same reason.
 
 One line per request is emitted when the response finishes:
 
-| Field         | Notes                                                         |
-| ------------- | ------------------------------------------------------------- |
-| `method`      | HTTP method                                                   |
-| `route`       | The matched route _pattern_, e.g. `/api/v1/tenants/:tenantId` |
-| `status_code` | Response status                                               |
-| `duration_ms` | Time from request received to response finished               |
+| Field | Notes |
+| --- | --- |
+| `method` | HTTP method |
+| `route` | The matched route *pattern*, e.g. `/api/v1/tenants/:tenantId` |
+| `status_code` | Response status |
+| `duration_ms` | Time from request received to response finished |
 
 The line is built explicitly rather than by serializing the request and
 response, so headers, bodies, query strings, and credential attributes are
@@ -2053,10 +2006,10 @@ when they are, they must follow the same rule.
 
 ### Health Endpoints
 
-| Endpoint             | Purpose              | Checks                                                |
-| -------------------- | -------------------- | ----------------------------------------------------- |
-| `GET /health/live`   | Liveness probe       | Process running                                       |
-| `GET /health/ready`  | Readiness probe      | Graceful shutdown state and database connectivity     |
+| Endpoint | Purpose | Checks |
+|----------|---------|--------|
+| `GET /health/live` | Liveness probe | Process running |
+| `GET /health/ready` | Readiness probe | Graceful shutdown state and database connectivity |
 | `GET /health/status` | Operator diagnostics | Database, pg-boss, and in-process OIDC provider state |
 
 Liveness answers only whether the process is wedged and should be restarted, so it ignores graceful shutdown: draining a terminating pod is readiness' job, and failing liveness would ask the kubelet to restart a container that is shutting down on purpose. Readiness answers only whether the pod should receive traffic. It returns 503 during graceful shutdown or when the database is unavailable, and it deliberately does not consult pg-boss, the in-process OIDC provider, Traction, or migration state. pg-boss and OIDC state are exposed through `/health/status` for humans and monitoring without turning non-routing concerns into Kubernetes probe failures. Runtime migration checks are omitted because Helm runs migrations as a pre-install/pre-upgrade hook before application pods start.
@@ -2073,7 +2026,6 @@ Liveness answers only whether the process is wedged and should be restarted, so 
 ### Why Post-MVP
 
 OTel instrumentation is **additive and non-breaking** — the application architecture is designed so that:
-
 1. All log output already goes to stdout (container-native from day one)
 2. Health endpoints can be added without changing business logic
 3. Auto-instrumentation requires only a `--require` flag or small bootstrap change

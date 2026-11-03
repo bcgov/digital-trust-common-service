@@ -20,6 +20,8 @@ export const LOG_ACCESS_RATE_LIMIT_MAX_TENANTS = 1_000;
 /** Lower-case names that would select a tenant if honoured (Rules S4, S6). */
 export const TENANT_SELECTING_PARAMETERS: ReadonlySet<string> = new Set([
   'tenant',
+  'org',
+  'scope',
   'tenant_id',
   'tenantid',
   'org_id',

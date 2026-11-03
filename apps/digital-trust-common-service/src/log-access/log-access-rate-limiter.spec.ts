@@ -41,30 +41,26 @@ describe('LogAccessRateLimiter', () => {
     expect(limiter.tryConsume(TENANT_A)).toBe(true);
   });
 
-  it('evicts the oldest bucket when full', () => {
+  it('refuses new tenants rather than evicting live buckets when full', () => {
     exhaust(TENANT_A);
     for (let i = 0; i < LOG_ACCESS_RATE_LIMIT_MAX_TENANTS - 1; i += 1) {
       limiter.tryConsume(`tenant-${i}`);
     }
+
+    expect(limiter.tryConsume('one-more')).toBe(false);
     expect(limiter.tryConsume(TENANT_A)).toBe(false);
-
-    limiter.tryConsume('one-more');
-
-    // TENANT_A was oldest, so its exhausted bucket was dropped.
-    expect(limiter.tryConsume(TENANT_A)).toBe(true);
   });
 
-  it('drops expired buckets before evicting live ones', () => {
-    for (let i = 0; i < LOG_ACCESS_RATE_LIMIT_MAX_TENANTS; i += 1) {
+  it('admits new tenants once earlier buckets expire', () => {
+    for (let i = 0; i < LOG_ACCESS_RATE_LIMIT_MAX_TENANTS - 1; i += 1) {
       limiter.tryConsume(`tenant-${i}`);
     }
     jest.advanceTimersByTime(LOG_ACCESS_RATE_LIMIT_WINDOW_MS / 2);
-    exhaust(TENANT_B);
+    exhaust(TENANT_A);
     jest.advanceTimersByTime(LOG_ACCESS_RATE_LIMIT_WINDOW_MS / 2);
 
-    limiter.tryConsume('fresh');
-
-    expect(limiter.tryConsume(TENANT_B)).toBe(false);
+    expect(limiter.tryConsume('fresh')).toBe(true);
+    expect(limiter.tryConsume(TENANT_A)).toBe(false);
   });
 });
 
