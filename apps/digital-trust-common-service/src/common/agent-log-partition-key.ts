@@ -13,7 +13,7 @@ import { ConnectorType } from '../connection/connection.entity';
  */
 export const AGENT_PARTITION_KEY_PREFIX = 'a-';
 
-const AGENT_LOG_ID_PATTERN = /^[A-Za-z0-9-]{1,100}$/;
+const AGENT_LOG_ID_PATTERN = /^[a-z0-9-]{1,100}$/;
 
 export function isValidAgentLogId(value: unknown): value is string {
   return typeof value === 'string' && AGENT_LOG_ID_PATTERN.test(value);
