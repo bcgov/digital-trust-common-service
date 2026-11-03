@@ -234,7 +234,7 @@ export class OperationController {
   @ApiOperation({
     summary: 'Retrieve operation status and result',
     description:
-      'Any authenticated token scoped to this tenant may poll the operation, including readonly users. Operation failures remain HTTP 200 with state=failed. On the first completed/failed retrieval, viewed_at is set once and expires_at is recalculated using the tenant operation TTL settings; updated_at does not change. Processing batch summaries use live tenant-scoped child counts; completed summaries prefer stored settlement counts so totals survive child purge. At most 100 retained child errors are included; use /items?state=failed for all retained failures. Original requests are exposed only by the separately audited /request endpoint.',
+      'Any authenticated token scoped to this tenant may poll the operation, including readonly users. Operation failures remain HTTP 200 with state=failed. On the first completed/failed retrieval, viewed_at is set once and expires_at is recalculated using the tenant operation TTL settings; updated_at does not change. Processing batch summaries use live tenant-scoped child counts. Settlement marks a parent failed if any child fails; completed and failed parents with stored counts return a settled summary whose totals survive child purge. Parent-level failures without stored counts retain { code, message }. At most 100 retained child errors are included; use /items?state=failed for all retained failures. Original requests are exposed only by the separately audited /request endpoint.',
   })
   @ApiParam({ name: 'tenantId', format: 'uuid' })
   @ApiParam({ name: 'operationId', format: 'uuid' })
@@ -278,11 +278,20 @@ export class OperationController {
         },
       },
       batchCompleted: {
-        summary: 'Completed batch with a bounded error list',
+        summary: 'Successfully settled batch',
         value: {
           ...operationExample,
           type: 'credential.offer-batch',
           state: 'completed',
+          result: { total: 10, completed: 10, failed: 0, errors: [] },
+        },
+      },
+      batchFailed: {
+        summary: 'Mixed-success batch settled as failed',
+        value: {
+          ...operationExample,
+          type: 'credential.offer-batch',
+          state: 'failed',
           result: {
             total: 10,
             completed: 9,

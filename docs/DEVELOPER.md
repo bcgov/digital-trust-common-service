@@ -1435,7 +1435,8 @@ for batch children. Credential-registration operations additionally include
 `problem_details`; other operation types omit it.
 
 Non-batch pending and processing reads return `result: null`. Completed results
-contain operation-type-specific data; failures contain `code` and `message`.
+contain operation-type-specific data; ordinary failures contain `code` and
+`message`.
 Historical failures without usable details return `OPERATION_FAILED` and
 `Operation failed`. Credential registration currently also retains resource
 references and progress in `result`, including while processing and on failure.
@@ -1445,14 +1446,17 @@ remain transient data stored on the Operation, subject to its TTL and purge.
 
 Batch parents have a type ending in `-batch` and no `batch_id`. Processing
 parent reads compute `{ total, pending, processing, completed, failed }` from
-their tenant-scoped children. Completed parent reads return
+their tenant-scoped children. Settlement marks the parent `failed` if any
+child fails, otherwise `completed`. Completed parents and failed parents
+with stored settlement counts return
 `{ total, completed, failed, errors }`, using the final counts stored at
-settlement so totals survive child purge. Older parents without stored counts
-fall back to counting retained children. Errors are sampled from retained
-children, capped at 100, and shaped as `{ id, code, message }`; individual
+settlement so totals survive child purge. Older completed parents without
+stored counts fall back to counting retained children. Errors are sampled from
+retained children, capped at 100, and shaped as `{ id, code, message }`; individual
 failure details remain subject to child TTL. Reads do not overwrite the stored
 settlement counts.
-Pending parents return null; failed parents use the ordinary failure shape.
+Pending parents return null. Parent-level failures without settlement counts
+use the ordinary `{ code, message }` failure shape rather than a batch summary.
 Terminal operations returned by single or list reads are marked viewed on
 first retrieval, using the existing TTL calculation without moving `updated_at`.
 

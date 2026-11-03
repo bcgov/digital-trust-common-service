@@ -606,32 +606,112 @@ describe('OperationService', () => {
       expect(mockSave).not.toHaveBeenCalled();
     });
 
-    it('preserves settled batch counts when all children have been purged', async () => {
-      const settled = { pending: 0, processing: 0, completed: 9, failed: 1 };
-      const operation = buildOperation({
-        type: 'credential.offer-batch',
-        state: OperationState.COMPLETED,
-        viewedAt,
-        result: settled,
-      });
-      mockFindByIdForTenant.mockResolvedValue(operation);
-      mockCountByBatch.mockResolvedValue({
-        pending: 0,
-        processing: 0,
-        completed: 0,
-        failed: 0,
-      });
-      mockFindFailedBatchItems.mockResolvedValue([]);
+    it.each([
+      { state: OperationState.COMPLETED, completed: 10, failed: 0 },
+      { state: OperationState.FAILED, completed: 9, failed: 1 },
+    ])(
+      'preserves settled $state batch counts when all children have been purged',
+      async ({ state, completed, failed }) => {
+        const settled = { pending: 0, processing: 0, completed, failed };
+        const operation = buildOperation({
+          type: 'credential.offer-batch',
+          state,
+          viewedAt,
+          result: settled,
+        });
+        mockFindByIdForTenant.mockResolvedValue(operation);
+        mockCountByBatch.mockResolvedValue({
+          pending: 0,
+          processing: 0,
+          completed: 0,
+          failed: 0,
+        });
+        mockFindFailedBatchItems.mockResolvedValue([]);
 
-      expect((await service.getForTenant('t1', 'op-1')).result).toEqual({
-        total: 10,
-        completed: 9,
-        failed: 1,
-        errors: [],
+        expect((await service.getForTenant('t1', 'op-1')).result).toEqual({
+          total: 10,
+          completed,
+          failed,
+          errors: [],
+        });
+        expect(mockCountByBatch).not.toHaveBeenCalled();
+        expect(operation.result).toEqual(settled);
+        expect(mockSave).not.toHaveBeenCalled();
+      },
+    );
+
+    it('returns a failed batch settlement summary and marks its first view', async () => {
+      jest.useFakeTimers().setSystemTime(viewedAt);
+      const settled = { pending: 0, processing: 0, completed: 2, failed: 1 };
+      mockFindByIdForTenant.mockResolvedValue(
+        buildOperation({
+          type: 'credential.offer-batch',
+          state: OperationState.FAILED,
+          result: settled,
+        }),
+      );
+      mockMarkFirstView.mockResolvedValue({
+        viewedAt,
+        expiresAt: new Date(viewedAt.getTime() + 24 * HOUR_MS),
       });
+      mockFindFailedBatchItems.mockResolvedValue([
+        buildOperation({
+          id: 'failed-child',
+          state: OperationState.FAILED,
+          result: {
+            code: 'ADAPTER_TIMEOUT',
+            message: 'Adapter timed out',
+            internal: 'hidden',
+          },
+        }),
+      ]);
+
+      const result = await service.getForTenant('t1', 'op-1');
+
+      expect(result.state).toBe(OperationState.FAILED);
+      expect(result.result).toEqual({
+        total: 3,
+        completed: 2,
+        failed: 1,
+        errors: [
+          {
+            id: 'failed-child',
+            code: 'ADAPTER_TIMEOUT',
+            message: 'Adapter timed out',
+          },
+        ],
+      });
+      expect(result.viewedAt).toEqual(viewedAt);
+      expect(result.expiresAt.getTime()).toBe(
+        viewedAt.getTime() + 24 * HOUR_MS,
+      );
       expect(mockCountByBatch).not.toHaveBeenCalled();
-      expect(operation.result).toEqual(settled);
+      expect(mockFindFailedBatchItems).toHaveBeenCalledWith('op-1', 't1');
       expect(mockSave).not.toHaveBeenCalled();
+    });
+
+    it('caps a failed batch settlement error sample at 100', async () => {
+      mockFindByIdForTenant.mockResolvedValue(
+        buildOperation({
+          type: 'credential.offer-batch',
+          state: OperationState.FAILED,
+          viewedAt,
+          result: { pending: 0, processing: 0, completed: 2, failed: 101 },
+        }),
+      );
+      mockFindFailedBatchItems.mockResolvedValue(
+        Array.from({ length: 101 }, (_, index) =>
+          buildOperation({
+            id: `failed-child-${index}`,
+            state: OperationState.FAILED,
+            result: { code: 'FAILED', message: 'Failure' },
+          }),
+        ),
+      );
+      const result = (await service.getForTenant('t1', 'op-1')).result;
+      expect(result).toMatchObject({ total: 103, completed: 2, failed: 101 });
+      expect(result?.errors).toHaveLength(100);
+      expect(mockCountByBatch).not.toHaveBeenCalled();
     });
 
     it('uses live counts rather than a stored snapshot while processing', async () => {
@@ -659,7 +739,7 @@ describe('OperationService', () => {
       expect(mockCountByBatch).toHaveBeenCalledWith('op-1', 't1');
     });
 
-    it('caps completed batch errors and keeps child IDs and safe failure fields', async () => {
+    it('caps legacy completed batch errors without a settlement snapshot', async () => {
       mockFindByIdForTenant.mockResolvedValue(
         buildOperation({
           type: 'credential.offer-batch',

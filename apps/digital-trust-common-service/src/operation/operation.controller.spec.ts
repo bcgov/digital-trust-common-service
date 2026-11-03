@@ -140,7 +140,21 @@ describe('OperationController', () => {
                   value: { result: { total: 10, pending: 2 } },
                 },
                 batchCompleted: {
-                  value: { result: { total: 10, errors: expect.any(Array) } },
+                  value: {
+                    state: 'completed',
+                    result: { total: 10, completed: 10, failed: 0, errors: [] },
+                  },
+                },
+                batchFailed: {
+                  value: {
+                    state: 'failed',
+                    result: {
+                      total: 10,
+                      completed: 9,
+                      failed: 1,
+                      errors: expect.any(Array),
+                    },
+                  },
                 },
               },
             },

@@ -289,29 +289,34 @@ export class OperationService {
       operation = await this.applyViewed(operation);
     }
 
+    const settled = operation.result;
+    const settledCounts =
+      isTerminalOperationState(operation.state) &&
+      settled &&
+      'completed' in settled &&
+      typeof settled.completed === 'number' &&
+      'failed' in settled &&
+      typeof settled.failed === 'number'
+        ? {
+            pending: 0,
+            processing: 0,
+            completed: settled.completed,
+            failed: settled.failed,
+          }
+        : null;
+
     if (
       this.isBatchParent(operation) &&
       (operation.state === OperationState.PROCESSING ||
-        operation.state === OperationState.COMPLETED)
+        operation.state === OperationState.COMPLETED ||
+        (operation.state === OperationState.FAILED && settledCounts !== null))
     ) {
-      const settled = operation.result;
       const counts =
-        operation.state === OperationState.COMPLETED &&
-        settled &&
-        'completed' in settled &&
-        typeof settled.completed === 'number' &&
-        'failed' in settled &&
-        typeof settled.failed === 'number'
-          ? {
-              pending: 0,
-              processing: 0,
-              completed: settled.completed,
-              failed: settled.failed,
-            }
-          : await this.operations.countByBatchGroupedByState(
-              operation.id,
-              operation.tenantId,
-            );
+        settledCounts ??
+        (await this.operations.countByBatchGroupedByState(
+          operation.id,
+          operation.tenantId,
+        ));
       const total = Object.values(counts).reduce(
         (sum, count) => sum + count,
         0,

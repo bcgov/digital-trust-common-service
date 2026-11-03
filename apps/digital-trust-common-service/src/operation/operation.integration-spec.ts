@@ -8,6 +8,7 @@ import { AddAuditReadAction1793733978162 } from '@app/database/migrations/000039
 import { buildSslConfig } from '@app/database/ssl.util';
 import { ExecutionContext, INestApplication } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { DataSource, LessThan } from 'typeorm';
@@ -20,8 +21,13 @@ import {
 } from '../audit-log/audit-log.entity';
 import { AuditLogRepository } from '../audit-log/audit-log.repository';
 import { AuditLogService } from '../audit-log/audit-log.service';
+import { DomainAuditService } from '../audit-log/domain-audit.service';
 import { decodeCursor, encodeCursor } from '../common/cursor-pagination';
 import { BusinessMetricsService } from '../common/telemetry/business-metrics.service';
+import { ConnectionService } from '../connection/connection.service';
+import { CredentialRepository } from '../credential/credential.repository';
+import { JobsService } from '../jobs/jobs.service';
+import { ProtocolStateChangeService } from '../protocol-state-change/protocol-state-change.service';
 import { TenantTierRateLimitGuard } from '../rate-limit/tenant-tier-rate-limit.guard';
 import { SEED_ENTITIES } from '../seed/seed.constants';
 import { TenantStatusGuard } from '../tenant/tenant-status.guard';
@@ -54,6 +60,7 @@ describe('operation tenant isolation integration', () => {
   let dataSource: DataSource;
   let repository: OperationRepository;
   let service: OperationService;
+  let protocolStateChanges: ProtocolStateChangeService;
   let app: INestApplication<Server>;
   let tenantAId: string;
   let tenantBId: string;
@@ -96,6 +103,22 @@ describe('operation tenant isolation integration', () => {
         RequestContextService,
         ScopeAuthorizationService,
         OperationService,
+        ProtocolStateChangeService,
+        { provide: DataSource, useValue: dataSource },
+        {
+          provide: CredentialRepository,
+          useValue: { findByExternalId: jest.fn().mockResolvedValue(null) },
+        },
+        { provide: ConnectionService, useValue: {} },
+        {
+          provide: JobsService,
+          useValue: { sendInTransaction: jest.fn().mockResolvedValue('job') },
+        },
+        {
+          provide: DomainAuditService,
+          useValue: { emit: jest.fn().mockResolvedValue(undefined) },
+        },
+        { provide: EventEmitter2, useValue: { emit: jest.fn() } },
         { provide: OperationRepository, useValue: repository },
         {
           provide: TenantService,
@@ -104,7 +127,10 @@ describe('operation tenant isolation integration', () => {
               dataSource.getRepository(Tenant).findOneByOrFail({ id }),
           },
         },
-        { provide: BusinessMetricsService, useValue: {} },
+        {
+          provide: BusinessMetricsService,
+          useValue: { recordCredentialOperation: jest.fn() },
+        },
         {
           provide: AuditLogService,
           useValue: new AuditLogService(
@@ -135,6 +161,7 @@ describe('operation tenant isolation integration', () => {
       .useValue({ canActivate: () => true })
       .compile();
     service = module.get(OperationService);
+    protocolStateChanges = module.get(ProtocolStateChangeService);
     app = module.createNestApplication();
     configureApp(app);
     await app.init();
@@ -625,7 +652,7 @@ describe('operation tenant isolation integration', () => {
       .expect(403);
   });
 
-  it('serves batch summaries and filtered child pages through HTTP', async () => {
+  it('reads mixed-success settlement summaries and preserves failed batch totals after child purge', async () => {
     const parent = await repository.save(
       repository.create({
         tenantId: tenantAId,
@@ -683,16 +710,30 @@ describe('operation tenant isolation integration', () => {
       .getRepository(Operation)
       .update(
         { id: children[0].id, tenantId: tenantAId },
-        { state: OperationState.COMPLETED },
+        { externalId: children[0].id },
       );
-    await dataSource
-      .getRepository(Operation)
-      .update(
-        { id: parent.id, tenantId: tenantAId },
-        { state: OperationState.COMPLETED },
-      );
-    const completed = await request(app.getHttpServer()).get(base).expect(200);
-    expect((completed.body as HttpOperation).result).toEqual({
+    await protocolStateChanges.process({
+      tenantId: tenantAId,
+      topic: 'issue_credential',
+      externalId: children[0].id,
+      protocolState: 'credential-issued',
+      payload: { credential_exchange_id: children[0].id },
+    });
+    const settledCounts = {
+      pending: 0,
+      processing: 0,
+      completed: 2,
+      failed: 1,
+    };
+    expect(
+      await repository.findByIdForTenant(parent.id, tenantAId),
+    ).toMatchObject({
+      state: OperationState.FAILED,
+      result: settledCounts,
+    });
+    const failed = await request(app.getHttpServer()).get(base).expect(200);
+    expect(failed.body).toMatchObject({ state: OperationState.FAILED });
+    expect((failed.body as HttpOperation).result).toEqual({
       total: 3,
       completed: 2,
       failed: 1,
@@ -700,6 +741,34 @@ describe('operation tenant isolation integration', () => {
         { id: children[2].id, code: 'TEST_FAILURE', message: 'Test failure' },
       ],
     });
+    const stored = await repository.findByIdForTenant(parent.id, tenantAId);
+    expect(stored?.expiresAt.getTime()).toBe(
+      stored!.viewedAt!.getTime() + 24 * 60 * 60 * 1000,
+    );
+    expect(stored?.result).toEqual(settledCounts);
+
+    const operationRepo = dataSource.getRepository(Operation);
+    await operationRepo.update(
+      { tenantId: tenantAId, batchId: parent.id },
+      { expiresAt: new Date(Date.now() - 1000) },
+    );
+    const purged = await operationRepo.delete({
+      tenantId: tenantAId,
+      batchId: parent.id,
+      expiresAt: LessThan(new Date()),
+    });
+    expect(purged.affected).toBe(3);
+    const afterPurge = await request(app.getHttpServer()).get(base).expect(200);
+    expect(afterPurge.body).toMatchObject({ state: OperationState.FAILED });
+    expect((afterPurge.body as HttpOperation).result).toEqual({
+      total: 3,
+      completed: 2,
+      failed: 1,
+      errors: [],
+    });
+    expect(
+      (await repository.findByIdForTenant(parent.id, tenantAId))?.result,
+    ).toEqual(settledCounts);
     await request(app.getHttpServer())
       .get(`${base}/items`)
       .set('Prefer', 'wait=30')
@@ -709,6 +778,30 @@ describe('operation tenant isolation integration', () => {
         `/api/v1/tenants/${tenantAId}/operations/${tenantAOperationId}/items`,
       )
       .expect(404);
+  });
+
+  it('preserves ordinary parent-level batch failures through HTTP', async () => {
+    const failure = {
+      code: 'BATCH_UNAVAILABLE',
+      message: 'Batch could not start',
+    };
+    const parent = await repository.save(
+      repository.create({
+        tenantId: tenantAId,
+        type: 'credential.offer-batch',
+        state: OperationState.FAILED,
+        result: failure,
+        request: { method: 'POST', path: '/test', body: {} },
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      }),
+    );
+    const response = await request(app.getHttpServer())
+      .get(`/api/v1/tenants/${tenantAId}/operations/${parent.id}`)
+      .expect(200);
+    expect(response.body).toMatchObject({
+      state: OperationState.FAILED,
+      result: failure,
+    });
   });
 
   it('preserves settled batch totals after an expired child is purged', async () => {

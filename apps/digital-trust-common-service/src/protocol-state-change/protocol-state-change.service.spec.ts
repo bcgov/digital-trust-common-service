@@ -805,6 +805,12 @@ describe('ProtocolStateChangeService', () => {
         OperationState.FAILED,
         mockManager,
       );
+      expect(operationService.transitionState).toHaveBeenCalledWith(
+        'batch-1',
+        OperationState.FAILED,
+        { pending: 0, processing: 0, completed: 1, failed: 1 },
+        mockManager,
+      );
       expect(jobsService.sendInTransaction).toHaveBeenCalledWith(
         mockManager,
         'webhook.dispatch',
