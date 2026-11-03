@@ -11,6 +11,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { EncryptionService } from '../common/crypto/encryption.service';
 import { ConnectorType } from '../connection/connection.entity';
 import { CredentialRepository } from '../credential/credential.repository';
+import { AgentLogPartitionCache } from '../log-access/agent-log-partition.cache';
 import { TenantService } from '../tenant/tenant.service';
 import { TractionTokenManager } from '../traction/traction-token-manager.service';
 import { TractionWebhookRegistrar } from '../traction/traction-webhook-registrar.service';
@@ -27,6 +28,7 @@ import { UpdateConnectorCredentialDto } from './dto/update-connector-credential.
 
 describe('ConnectorCredentialService', () => {
   let service: ConnectorCredentialService;
+  let partitionCache: { invalidate: jest.Mock };
   let mockFindById: jest.Mock<Promise<ConnectorCredential | null>, [string]>;
   let mockFindByTenant: jest.Mock;
   let mockFindByTenantAndConnectorType: jest.Mock;
@@ -92,6 +94,7 @@ describe('ConnectorCredentialService', () => {
       .fn()
       .mockResolvedValue(ConnectorDeletionResult.DELETED);
     mockDeactivateAllForTenant = jest.fn();
+    partitionCache = { invalidate: jest.fn() };
     mockTenantServiceFindById = jest
       .fn()
       .mockResolvedValue({ id: mockCredential.tenantId });
@@ -194,6 +197,7 @@ describe('ConnectorCredentialService', () => {
             isWebhookRegistered: mockIsWebhookRegistered,
           },
         },
+        { provide: AgentLogPartitionCache, useValue: partitionCache },
         {
           provide: OidcConfigService,
           useValue: {
@@ -210,6 +214,65 @@ describe('ConnectorCredentialService', () => {
 
   it('should be defined', () => {
     expect(service).toBeDefined();
+  });
+
+  describe('agent partition cache invalidation', () => {
+    it('invalidates the tenant entry on create', async () => {
+      mockCreate.mockResolvedValue(mockCredential);
+
+      await service.create(
+        mockCredential.tenantId,
+        {
+          connectorType: ConnectorType.TRACTION,
+          endpointUrl: 'https://traction.example.com/api',
+          credentials: { ...mockCredentials },
+        },
+        auth,
+      );
+
+      expect(partitionCache.invalidate).toHaveBeenCalledWith(
+        mockCredential.tenantId,
+      );
+    });
+
+    it('invalidates the tenant entry on update', async () => {
+      mockFindById.mockResolvedValue(mockCredential);
+      mockUpdate.mockResolvedValue(mockCredential);
+
+      await service.update(
+        mockCredential.tenantId,
+        mockCredential.id,
+        { endpointUrl: 'https://traction.example.com/new-endpoint' },
+        auth,
+      );
+
+      expect(partitionCache.invalidate).toHaveBeenCalledWith(
+        mockCredential.tenantId,
+      );
+    });
+
+    it('invalidates the tenant entry on delete', async () => {
+      mockFindById.mockResolvedValue(mockCredential);
+      mockDeleteUnlessDefault.mockResolvedValue(
+        ConnectorDeletionResult.DELETED,
+      );
+
+      await service.delete(mockCredential.tenantId, mockCredential.id, auth);
+
+      expect(partitionCache.invalidate).toHaveBeenCalledWith(
+        mockCredential.tenantId,
+      );
+    });
+
+    it('invalidates the tenant entry on deactivateAllForTenant', async () => {
+      mockDeactivateAllForTenant.mockResolvedValue(1);
+
+      await service.deactivateAllForTenant(mockCredential.tenantId);
+
+      expect(partitionCache.invalidate).toHaveBeenCalledWith(
+        mockCredential.tenantId,
+      );
+    });
   });
 
   describe('create', () => {

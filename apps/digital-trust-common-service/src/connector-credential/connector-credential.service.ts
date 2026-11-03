@@ -28,6 +28,7 @@ import {
 } from '../common/postgres-error';
 import { ConnectorType } from '../connection/connection.entity';
 import { CredentialRepository } from '../credential/credential.repository';
+import { AgentLogPartitionCache } from '../log-access/agent-log-partition.cache';
 import { TenantService } from '../tenant/tenant.service';
 import { TractionTokenManager } from '../traction/traction-token-manager.service';
 import { TractionWebhookRegistrar } from '../traction/traction-webhook-registrar.service';
@@ -72,6 +73,7 @@ export class ConnectorCredentialService {
     private readonly webhookRegistrar: TractionWebhookRegistrar,
     private readonly tokenManager: TractionTokenManager,
     private readonly oidcConfigService: OidcConfigService,
+    private readonly agentPartitionCache: AgentLogPartitionCache,
   ) {}
 
   public async create(
@@ -116,6 +118,8 @@ export class ConnectorCredentialService {
       throw error;
     }
 
+    this.agentPartitionCache.invalidate(tenantId);
+
     if (dto.connectorType === ConnectorType.TRACTION) {
       const webhookUrl = this.buildWebhookUrl(credential.id);
       const webhookSecret = dto.credentials.webhookSecret as string;
@@ -139,6 +143,8 @@ export class ConnectorCredentialService {
           webhookSecret,
           () => this.deleteOrLogFailure(credential.id),
         );
+
+        this.agentPartitionCache.invalidate(tenantId);
 
         if (!confirmedRegistered) {
           throw registrationError;
@@ -434,6 +440,8 @@ export class ConnectorCredentialService {
         throw error;
       }
 
+      this.agentPartitionCache.invalidate(tenantId);
+
       if (!updated) {
         throw new NotFoundException(
           `Connector credential with ID '${id}' was not found.`,
@@ -645,6 +653,7 @@ export class ConnectorCredentialService {
         tenantId,
         id,
       );
+      this.agentPartitionCache.invalidate(tenantId);
       if (result === ConnectorDeletionResult.DEFAULT) {
         throw new ConflictException(
           'Cannot delete the default connector. Select a different default connector in tenant settings first.',
@@ -669,7 +678,11 @@ export class ConnectorCredentialService {
 
   /** Used by the tenant status-change cascade when a tenant is deactivated. */
   public async deactivateAllForTenant(tenantId: string): Promise<number> {
-    return this.credentialRepository.deactivateAllForTenant(tenantId);
+    try {
+      return await this.credentialRepository.deactivateAllForTenant(tenantId);
+    } finally {
+      this.agentPartitionCache.invalidate(tenantId);
+    }
   }
 
   public async testConnectivity(

@@ -1,0 +1,67 @@
+import { Injectable, Logger } from '@nestjs/common';
+
+import { buildAgentPartitionKey } from '../common/agent-log-partition-key';
+import { EncryptionService } from '../common/crypto/encryption.service';
+import { ConnectorCredentialRepository } from '../connector-credential/connector-credential.repository';
+
+import type { AgentLogPartitionResolverPort } from './agent-log-partition-resolver.port';
+import { AgentLogPartitionCache } from './agent-log-partition.cache';
+
+/**
+ * Forward-only lookup of a tenant's agent partitions from its active
+ * connectors (Rules M4, M5, M14, M16). Any datastore, decryption or
+ * malformed-identifier failure throws so the request is denied; it never
+ * degrades to the tenant partition alone.
+ */
+@Injectable()
+export class ConnectorAgentLogPartitionResolver implements AgentLogPartitionResolverPort {
+  private readonly logger = new Logger(ConnectorAgentLogPartitionResolver.name);
+
+  public constructor(
+    private readonly connectors: ConnectorCredentialRepository,
+    private readonly encryption: EncryptionService,
+    private readonly cache: AgentLogPartitionCache,
+  ) {}
+
+  public async resolveAgentPartitions(tenantId: string): Promise<string[]> {
+    const cached = this.cache.get(tenantId);
+
+    if (cached) {
+      return cached;
+    }
+
+    const credentials = await this.connectors.findByTenant(tenantId);
+    const partitions: string[] = [];
+
+    for (const credential of credentials) {
+      if (!credential.active) {
+        continue;
+      }
+
+      const { agentLogId } = this.encryption.decrypt<{
+        agentLogId?: unknown;
+      }>(credential.credentialsEncrypted, credential.keyVersion);
+
+      if (agentLogId === undefined) {
+        this.logger.warn(
+          `Active connector ${credential.id} of tenant ${tenantId} has no agent log identifier; its agent logs are not exposed.`,
+        );
+        continue;
+      }
+
+      if (typeof agentLogId !== 'string') {
+        throw new Error(
+          `Connector ${credential.id} has a malformed agent log identifier.`,
+        );
+      }
+
+      partitions.push(
+        buildAgentPartitionKey(credential.connectorType, agentLogId),
+      );
+    }
+
+    this.cache.set(tenantId, partitions);
+
+    return partitions;
+  }
+}

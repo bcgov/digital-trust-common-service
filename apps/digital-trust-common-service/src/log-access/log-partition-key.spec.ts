@@ -2,7 +2,6 @@ import {
   deriveTenantPartitionKey,
   isSafePartitionKey,
 } from './log-partition-key';
-import { NoAgentLogPartitionResolver } from './no-agent-log-partition.resolver';
 
 describe('log partition keys', () => {
   it('derives the tenant key from a canonical tenant id only', () => {
@@ -18,10 +17,4 @@ describe('log partition keys', () => {
       expect(isSafePartitionKey(key)).toBe(false);
     },
   );
-
-  it('resolves no agent partitions until a resolver is provided', async () => {
-    await expect(
-      new NoAgentLogPartitionResolver().resolveAgentPartitions(),
-    ).resolves.toEqual([]);
-  });
 });
