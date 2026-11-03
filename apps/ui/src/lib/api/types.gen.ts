@@ -1016,7 +1016,13 @@ export interface paths {
             };
             cookie?: never;
         };
-        /** List operations */
+        /**
+         * List operations
+         * @description Requires any authenticated tenant-scoped token; no operations:read scope is required.
+         *     Filters combine by exact match. Pages sort by created_at DESC, then id DESC,
+         *     using opaque cursors. Terminal results receive first-view TTL treatment without
+         *     changing updated_at. Original request payloads are not included.
+         */
         get: operations["listOperations"];
         put?: never;
         post?: never;
@@ -1039,10 +1045,17 @@ export interface paths {
         };
         /**
          * Get operation status and result
-         * @description Poll an operation's current state and result. Sets `viewed_at` on first retrieval
-         *     of a completed/failed operation (triggers TTL recalculation).
-         *
-         *     Supports long-polling via `Prefer: wait=<seconds>` header.
+         * @description Poll an operation's current state and result using any authenticated token scoped
+         *     to this tenant, including readonly users. No operations:read scope is required.
+         *     Sets viewed_at once on first retrieval of a completed/failed operation and
+         *     recalculates expires_at using the tenant's TTL settings, without changing updated_at.
+         *     Failed operations still return HTTP 200 with state=failed.
+         *     Processing batch summaries use live tenant-scoped child counts. Completed
+         *     summaries prefer stored settlement counts so totals survive child purge;
+         *     older parents without a snapshot fall back to counting retained children.
+         *     At most 100 retained child errors are included; use /items?state=failed for
+         *     all retained failures. Failure details remain subject to child TTL.
+         *     Long-polling is supported only on /items.
          */
         get: operations["getOperation"];
         put?: never;
@@ -1067,7 +1080,13 @@ export interface paths {
         /**
          * Get the original request that created the operation
          * @description Returns the HTTP method, path, and body that triggered this operation.
-         *     **Note**: The body may contain PII (credential attributes). Data is purged with the operation on TTL expiry.
+         *     Any authenticated token scoped to this tenant can retrieve the unredacted body;
+         *     no dedicated scope is required. The body may contain PII (credential attributes).
+         *     Request data shares the operation TTL and is removed by operation purge.
+         *     Terminal reads receive first-view TTL treatment. Before disclosure, access is
+         *     synchronously audited with actor identity/type, access time, and operation_id.
+         *     The body is never copied into audit metadata. If auditing fails, no payload is
+         *     returned. Optional per-tenant field-level redaction is a future enhancement.
          */
         get: operations["getOperationRequest"];
         put?: never;
@@ -1091,7 +1110,17 @@ export interface paths {
         };
         /**
          * List child operations of a batch
-         * @description Returns 404 if the operation is not a batch parent.
+         * @description Requires any authenticated token scoped to this tenant, not a dedicated scope.
+         *     Returns 404 for a missing, foreign, or non-batch parent. A batch parent has a
+         *     type ending in -batch and a null batch_id. Supports state filtering and the
+         *     shared opaque cursor format. Terminal children returned on a page receive
+         *     first-view TTL treatment.
+         *
+         *     Prefer: wait=30 checks all tenant-scoped child states and the parent once per
+         *     second until a state change or timeout, including changes outside the requested
+         *     page or state filter. Terminal parents return immediately. Timeout returns
+         *     HTTP 200 with the normal paginated response and no additional fields.
+         *     Client disconnects cancel polling; no database connection is held between checks.
          */
         get: operations["listBatchOperationItems"];
         put?: never;
@@ -1317,7 +1346,7 @@ export interface paths {
         /**
          * Query audit log entries
          * @description Retrieve structured audit log records for the tenant.
-         *     Audit logs track business actions (issue, verify, revoke, create, update, delete, login, token_grant)
+         *     Audit logs track business actions (read, issue, verify, revoke, create, update, delete, login, token_grant)
          *     and are stored in PostgreSQL (separate from operational Loki logs).
          */
         get: operations["listAuditLogs"];
@@ -2310,12 +2339,11 @@ export interface components {
             id: string;
             /**
              * Format: uuid
-             * @description UUID of the parent batch operation. Present only on child operations
-             *     created by a batch issuance or revocation request (`credential.offer-batch`,
-             *     `credential.revoke-batch`). Use this to navigate to the parent via
-             *     `GET /operations/{batch_id}`.
+             * @description UUID of the parent batch operation for child operations; null for
+             *     standalone operations and batch parents. Retrieve a parent using
+             *     GET /api/v1/tenants/{tenantId}/operations/{batch_id}.
              */
-            batch_id?: string | null;
+            batch_id: string | null;
             /**
              * @description Operation type. Known values:
              *     `credential-definition.register`, `credential.offer`, `credential.offer-batch`,
@@ -2345,8 +2373,12 @@ export interface components {
              *     - failed: { code, message }; credential registration additionally
              *       retains credential_definition_id, external_id, and registration
              *       progress/correlation identifiers.
-             *     - batch processing: { total, completed, failed, pending }
-             *     - batch completed: { total, completed, failed, errors }
+             *     - batch processing: { total, pending, processing, completed, failed }
+             *     - batch completed: { total, completed, failed, errors: [{ id, code, message }] }
+             *       with settled counts preserved when available and errors capped at 100;
+             *       use /items?state=failed for all retained failures. Child failure details
+             *       expire according to child TTL even while the parent remains retained.
+             *     - batch pending: null; batch failed: { code, message }
              *     Registration progress includes the active artifact, its id, and any
              *     job_id, transaction_id, and state. IDs returned with wait/action are
              *     provisional, not readiness proof.
@@ -2540,7 +2572,7 @@ export interface components {
             /** @enum {string} */
             actor_type?: "user" | "system" | "client";
             /** @enum {string} */
-            action?: "issue" | "verify" | "hold" | "revoke" | "create" | "update" | "delete" | "login" | "token_grant";
+            action?: "read" | "issue" | "verify" | "hold" | "revoke" | "create" | "update" | "delete" | "login" | "token_grant";
             resource_type?: string;
             /** Format: uuid */
             resource_id?: string;
@@ -4672,15 +4704,19 @@ export interface operations {
                     };
                 };
             };
+            /** @description Invalid tenant UUID, query filters, limit, or pagination cursor */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     getOperation: {
         parameters: {
             query?: never;
-            header?: {
-                /** @description Long-polling: hold connection until state changes or timeout */
-                Prefer?: string;
-            };
+            header?: never;
             path: {
                 /** @description Tenant UUID */
                 tenantId: components["parameters"]["TenantId"];
@@ -4698,6 +4734,13 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["Operation"];
                 };
+            };
+            /** @description A path parameter is not a valid UUID */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             404: components["responses"]["NotFound"];
         };
@@ -4718,20 +4761,38 @@ export interface operations {
             /** @description Original request details */
             200: {
                 headers: {
+                    /** @description Original requests must not be cached */
+                    "Cache-Control"?: string;
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": {
                         /** @example POST */
-                        method?: string;
+                        method: string;
                         /** @example /api/v1/tenants/b7e4a1f0-.../credentials/offer */
-                        path?: string;
-                        /** @description Original request body */
-                        body?: Record<string, never>;
+                        path: string;
+                        /** @description Original unredacted request body; may contain PII */
+                        body: {
+                            [key: string]: unknown;
+                        };
                     };
                 };
             };
+            /** @description A path parameter is not a valid UUID */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             404: components["responses"]["NotFound"];
+            /** @description Audit write failed; the original request is not returned */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     listBatchOperationItems: {
@@ -4743,7 +4804,14 @@ export interface operations {
                 limit?: components["parameters"]["Limit"];
                 state?: components["schemas"]["OperationState"];
             };
-            header?: never;
+            header?: {
+                /**
+                 * @description Non-negative integer wait in seconds, capped at 30; wait=0 returns
+                 *     immediately. Invalid or duplicate wait values return 400.
+                 *     Unrelated preferences are ignored.
+                 */
+                Prefer?: string;
+            };
             path: {
                 /** @description Tenant UUID */
                 tenantId: components["parameters"]["TenantId"];
@@ -4763,6 +4831,13 @@ export interface operations {
                         data?: components["schemas"]["Operation"][];
                     };
                 };
+            };
+            /** @description Invalid path UUID, query filters, limit, cursor, or Prefer wait value */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             404: components["responses"]["NotFound"];
         };
@@ -5099,7 +5174,7 @@ export interface operations {
                 cursor?: components["parameters"]["Cursor"];
                 /** @description Number of items per page */
                 limit?: components["parameters"]["Limit"];
-                action?: "issue" | "verify" | "hold" | "revoke" | "create" | "update" | "delete" | "login" | "token_grant";
+                action?: "read" | "issue" | "verify" | "hold" | "revoke" | "create" | "update" | "delete" | "login" | "token_grant";
                 /** @description Filter by actor (user ID or client ID) */
                 actorId?: string;
                 /** @description Filter by resource type (e.g., credential, connection, tenant) */

@@ -1,5 +1,6 @@
 import type { Server } from 'node:http';
 
+import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 
@@ -97,7 +98,7 @@ describe('buildCorsOptions', () => {
     'handles long-poll preflight from $origin',
     async ({ origin, allowed }) => {
       const module = await Test.createTestingModule({}).compile();
-      const app = module.createNestApplication<Server>();
+      const app: INestApplication<Server> = module.createNestApplication();
       app.enableCors(buildCorsOptions('https://app.example.com', 'production'));
 
       try {
@@ -111,9 +112,7 @@ describe('buildCorsOptions', () => {
 
         if (allowed) {
           expect(response.headers['access-control-allow-origin']).toBe(origin);
-          const headers = response.headers[
-            'access-control-allow-headers'
-          ] as string;
+          const headers = response.headers['access-control-allow-headers'];
           expect(
             headers
               .toLowerCase()
