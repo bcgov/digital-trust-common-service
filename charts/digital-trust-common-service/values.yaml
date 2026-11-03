@@ -437,8 +437,8 @@ config:
   # exactly one audience, and tokens minted for these resources are rejected
   # by JwtGuard by design.
   JWT_ADDITIONAL_AUDIENCES: ""
-  # Audience the internal log-access endpoint accepts (rule T10). Must be one
-  # of JWT_ADDITIONAL_AUDIENCES, otherwise no token can ever pass.
+  # -- Audience the internal log-access endpoint accepts. Must be one of
+  # JWT_ADDITIONAL_AUDIENCES, otherwise no token can ever pass.
   LOG_GATEWAY_AUDIENCE: ""
   AUDIT_AUTO_INTERCEPTOR_ENABLED: "false"
   AUDIT_PARTITION_CRON: "0 3 * * *"
