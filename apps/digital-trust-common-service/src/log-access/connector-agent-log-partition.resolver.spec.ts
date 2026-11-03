@@ -138,6 +138,56 @@ describe('ConnectorAgentLogPartitionResolver', () => {
     expect(cache.get(TENANT_ID)).toBeUndefined();
   });
 
+  describe('tenant isolation', () => {
+    const OTHER_TENANT_ID = '9a1c2d3e-4f5a-4b6c-8d7e-0f1a2b3c4d5e';
+
+    beforeEach(() => {
+      findByTenant.mockImplementation((tenantId: string) =>
+        Promise.resolve(
+          tenantId === TENANT_ID
+            ? [connector('c1', 'wallet-a')]
+            : [connector('c2', 'wallet-b')],
+        ),
+      );
+    });
+
+    it('queries and caches each tenant separately', async () => {
+      await expect(resolver.resolveAgentPartitions(TENANT_ID)).resolves.toEqual(
+        ['a-traction-wallet-a'],
+      );
+      await expect(
+        resolver.resolveAgentPartitions(OTHER_TENANT_ID),
+      ).resolves.toEqual(['a-traction-wallet-b']);
+
+      expect(findByTenant).toHaveBeenNthCalledWith(1, TENANT_ID);
+      expect(findByTenant).toHaveBeenNthCalledWith(2, OTHER_TENANT_ID);
+
+      await expect(resolver.resolveAgentPartitions(TENANT_ID)).resolves.toEqual(
+        ['a-traction-wallet-a'],
+      );
+      await expect(
+        resolver.resolveAgentPartitions(OTHER_TENANT_ID),
+      ).resolves.toEqual(['a-traction-wallet-b']);
+      expect(findByTenant).toHaveBeenCalledTimes(2);
+    });
+
+    it('invalidating one tenant leaves the other cached', async () => {
+      await resolver.resolveAgentPartitions(TENANT_ID);
+      await resolver.resolveAgentPartitions(OTHER_TENANT_ID);
+
+      cache.invalidate(TENANT_ID);
+
+      await expect(
+        resolver.resolveAgentPartitions(OTHER_TENANT_ID),
+      ).resolves.toEqual(['a-traction-wallet-b']);
+      expect(findByTenant).toHaveBeenCalledTimes(2);
+
+      await resolver.resolveAgentPartitions(TENANT_ID);
+      expect(findByTenant).toHaveBeenCalledTimes(3);
+      expect(findByTenant).toHaveBeenLastCalledWith(TENANT_ID);
+    });
+  });
+
   describe('cache', () => {
     beforeEach(() => {
       findByTenant.mockResolvedValue([connector('c1', 'wallet-1')]);

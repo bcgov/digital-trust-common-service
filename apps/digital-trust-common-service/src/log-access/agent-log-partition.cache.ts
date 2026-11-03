@@ -15,8 +15,8 @@ export interface AgentLogPartitionLookup {
 
 /**
  * Bounded positive cache of resolved agent partitions, keyed only by tenant
- * id (Rules M10–M12). Insertion order doubles as age, so the oldest entry
- * is evicted when the cache is full.
+ * id. Insertion order doubles as age, so the oldest entry is evicted when
+ * the cache is full.
  */
 @Injectable()
 export class AgentLogPartitionCache {

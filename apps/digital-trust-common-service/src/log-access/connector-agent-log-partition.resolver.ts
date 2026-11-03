@@ -9,7 +9,7 @@ import { AgentLogPartitionCache } from './agent-log-partition.cache';
 
 /**
  * Forward-only lookup of a tenant's agent partitions from its active
- * connectors (Rules M4, M5, M14, M16). Any datastore, decryption or
+ * connectors. Any datastore, decryption or
  * malformed-identifier failure throws so the request is denied; it never
  * degrades to the tenant partition alone.
  */
