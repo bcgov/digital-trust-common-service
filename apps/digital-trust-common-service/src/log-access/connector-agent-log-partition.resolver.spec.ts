@@ -109,6 +109,19 @@ describe('ConnectorAgentLogPartitionResolver', () => {
     },
   );
 
+  it.each([null, [], 'string', 123, true])(
+    'throws on unexpected decrypted shape %j and does not cache',
+    async (decrypted) => {
+      findByTenant.mockResolvedValue([connector('c1', 'wallet-1')]);
+      decrypt.mockReturnValueOnce(decrypted);
+
+      await expect(resolver.resolveAgentPartitions(TENANT_ID)).rejects.toThrow(
+        'unexpected decrypted credentials shape',
+      );
+      expect(cache.get(TENANT_ID)).toBeUndefined();
+    },
+  );
+
   it('throws on repository and decryption errors without caching', async () => {
     findByTenant.mockRejectedValueOnce(new Error('db down'));
     await expect(resolver.resolveAgentPartitions(TENANT_ID)).rejects.toThrow(
@@ -153,6 +166,42 @@ describe('ConnectorAgentLogPartitionResolver', () => {
       await resolver.resolveAgentPartitions(TENANT_ID);
 
       expect(findByTenant).toHaveBeenCalledTimes(2);
+    });
+
+    it('does not cache a lookup invalidated while in flight', async () => {
+      let release!: (value: ConnectorCredential[]) => void;
+      findByTenant.mockReset();
+      findByTenant.mockReturnValueOnce(
+        new Promise<ConnectorCredential[]>((resolve) => {
+          release = resolve;
+        }),
+      );
+
+      const pending = resolver.resolveAgentPartitions(TENANT_ID);
+      cache.invalidate(TENANT_ID);
+      release([connector('c1', 'wallet-1')]);
+
+      await expect(pending).resolves.toEqual(['a-traction-wallet-1']);
+      expect(cache.get(TENANT_ID)).toBeUndefined();
+    });
+
+    it('anchors expiry to the lookup start', async () => {
+      let release!: (value: ConnectorCredential[]) => void;
+      findByTenant.mockReset();
+      findByTenant.mockReturnValueOnce(
+        new Promise<ConnectorCredential[]>((resolve) => {
+          release = resolve;
+        }),
+      );
+
+      const pending = resolver.resolveAgentPartitions(TENANT_ID);
+      jest.advanceTimersByTime(AGENT_PARTITION_CACHE_TTL_MS - 1_000);
+      release([connector('c1', 'wallet-1')]);
+      await pending;
+
+      expect(cache.get(TENANT_ID)).toEqual(['a-traction-wallet-1']);
+      jest.advanceTimersByTime(1_000);
+      expect(cache.get(TENANT_ID)).toBeUndefined();
     });
 
     it('evicts the oldest entry when full', () => {

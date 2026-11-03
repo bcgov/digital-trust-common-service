@@ -8,6 +8,11 @@ interface CacheEntry {
   expiresAt: number;
 }
 
+export interface AgentLogPartitionLookup {
+  generation: number;
+  startedAt: number;
+}
+
 /**
  * Bounded positive cache of resolved agent partitions, keyed only by tenant
  * id (Rules M10–M12). Insertion order doubles as age, so the oldest entry
@@ -16,6 +21,14 @@ interface CacheEntry {
 @Injectable()
 export class AgentLogPartitionCache {
   private readonly entries = new Map<string, CacheEntry>();
+  // Bumped on every invalidation; any invalidation (even for another
+  // tenant) only causes a harmless cache miss for in-flight lookups.
+  private generation = 0;
+
+  /** Call before reading the datastore so a stale result can be rejected. */
+  public beginLookup(): AgentLogPartitionLookup {
+    return { generation: this.generation, startedAt: Date.now() };
+  }
 
   public get(tenantId: string): string[] | undefined {
     const entry = this.entries.get(tenantId);
@@ -32,7 +45,17 @@ export class AgentLogPartitionCache {
     return [...entry.partitions];
   }
 
-  public set(tenantId: string, partitions: string[]): void {
+  public set(
+    tenantId: string,
+    partitions: string[],
+    lookup: AgentLogPartitionLookup = this.beginLookup(),
+  ): void {
+    const expiresAt = lookup.startedAt + AGENT_PARTITION_CACHE_TTL_MS;
+
+    if (lookup.generation !== this.generation || expiresAt <= Date.now()) {
+      return;
+    }
+
     this.entries.delete(tenantId);
 
     if (this.entries.size >= AGENT_PARTITION_CACHE_MAX_ENTRIES) {
@@ -44,11 +67,12 @@ export class AgentLogPartitionCache {
 
     this.entries.set(tenantId, {
       partitions: [...partitions],
-      expiresAt: Date.now() + AGENT_PARTITION_CACHE_TTL_MS,
+      expiresAt,
     });
   }
 
   public invalidate(tenantId: string): void {
+    this.generation += 1;
     this.entries.delete(tenantId);
   }
 }

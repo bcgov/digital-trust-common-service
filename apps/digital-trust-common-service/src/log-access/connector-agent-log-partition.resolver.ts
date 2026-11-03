@@ -30,6 +30,7 @@ export class ConnectorAgentLogPartitionResolver implements AgentLogPartitionReso
       return cached;
     }
 
+    const lookup = this.cache.beginLookup();
     const credentials = await this.connectors.findByTenant(tenantId);
     const partitions: string[] = [];
 
@@ -38,9 +39,22 @@ export class ConnectorAgentLogPartitionResolver implements AgentLogPartitionReso
         continue;
       }
 
-      const { agentLogId } = this.encryption.decrypt<{
-        agentLogId?: unknown;
-      }>(credential.credentialsEncrypted, credential.keyVersion);
+      const decrypted = this.encryption.decrypt<unknown>(
+        credential.credentialsEncrypted,
+        credential.keyVersion,
+      );
+
+      if (
+        typeof decrypted !== 'object' ||
+        decrypted === null ||
+        Array.isArray(decrypted)
+      ) {
+        throw new Error(
+          `Connector ${credential.id} has an unexpected decrypted credentials shape.`,
+        );
+      }
+
+      const { agentLogId } = decrypted as { agentLogId?: unknown };
 
       if (agentLogId === undefined) {
         this.logger.warn(
@@ -60,7 +74,7 @@ export class ConnectorAgentLogPartitionResolver implements AgentLogPartitionReso
       );
     }
 
-    this.cache.set(tenantId, partitions);
+    this.cache.set(tenantId, partitions, lookup);
 
     return partitions;
   }
