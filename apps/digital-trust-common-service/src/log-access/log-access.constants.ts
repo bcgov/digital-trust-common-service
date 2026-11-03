@@ -11,3 +11,19 @@ export const LOG_READ_SCOPE = 'logs:read';
 export const AGENT_LOG_PARTITION_RESOLVER = Symbol(
   'AGENT_LOG_PARTITION_RESOLVER',
 );
+
+/** Per-tenant request budget on the decision endpoint (Rule L11). */
+export const LOG_ACCESS_RATE_LIMIT_MAX_REQUESTS = 120;
+export const LOG_ACCESS_RATE_LIMIT_WINDOW_MS = 60_000;
+export const LOG_ACCESS_RATE_LIMIT_MAX_TENANTS = 1_000;
+
+/** Lower-case names that would select a tenant if honoured (Rules S4, S6). */
+export const TENANT_SELECTING_PARAMETERS: ReadonlySet<string> = new Set([
+  'tenant',
+  'tenant_id',
+  'tenantid',
+  'org_id',
+  'orgid',
+  'x-scope-orgid',
+  'scope_orgid',
+]);

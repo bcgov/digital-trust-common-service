@@ -2,6 +2,7 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 
 import type { AgentLogPartitionResolverPort } from './agent-log-partition-resolver.port';
 import { LogAccessDeniedError } from './log-access-denied.error';
+import { LogAccessRateLimiter } from './log-access-rate-limiter';
 import { LogAccessTokenService } from './log-access-token.service';
 import {
   AGENT_LOG_PARTITION_RESOLVER,
@@ -26,12 +27,17 @@ export class LogAccessService {
     private readonly tokens: LogAccessTokenService,
     @Inject(AGENT_LOG_PARTITION_RESOLVER)
     private readonly resolver: AgentLogPartitionResolverPort,
+    private readonly rateLimiter: LogAccessRateLimiter,
   ) {}
 
   public async resolveScope(
     authorizationHeader: string | undefined,
   ): Promise<string> {
     const { tenantId } = await this.tokens.authorize(authorizationHeader);
+
+    if (!this.rateLimiter.tryConsume(tenantId)) {
+      throw new LogAccessDeniedError(429, 'rate_limited');
+    }
 
     let agentPartitions: string[];
 

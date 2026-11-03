@@ -12,6 +12,7 @@ import {
 } from './agent-log-partition.cache';
 import { ConnectorAgentLogPartitionResolver } from './connector-agent-log-partition.resolver';
 import { LogAccessDeniedError } from './log-access-denied.error';
+import { LogAccessRateLimiter } from './log-access-rate-limiter';
 import { LogAccessTokenService } from './log-access-token.service';
 import { LogAccessService } from './log-access.service';
 
@@ -290,6 +291,7 @@ describe('ConnectorAgentLogPartitionResolver', () => {
           authorize: jest.fn().mockResolvedValue({ tenantId: TENANT_ID }),
         } as unknown as LogAccessTokenService,
         resolver,
+        new LogAccessRateLimiter(),
       );
 
     it('scopes to the tenant and agent partitions', async () => {

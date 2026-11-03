@@ -1,3 +1,4 @@
+import { LogAccessRateLimiter } from './log-access-rate-limiter';
 import { LogAccessTokenService } from './log-access-token.service';
 import { LogAccessService } from './log-access.service';
 
@@ -14,6 +15,7 @@ describe('LogAccessService', () => {
     service = new LogAccessService(
       { authorize } as unknown as LogAccessTokenService,
       { resolveAgentPartitions: resolve },
+      new LogAccessRateLimiter(),
     );
   });
 
