@@ -12,13 +12,13 @@ export const AGENT_LOG_PARTITION_RESOLVER = Symbol(
   'AGENT_LOG_PARTITION_RESOLVER',
 );
 
-/** Per-tenant request budget on the decision endpoint (Rule L11). */
+/** Per-tenant request budget on the decision endpoint. */
 export const LOG_ACCESS_RATE_LIMIT_MAX_REQUESTS = 120;
 export const LOG_ACCESS_RATE_LIMIT_WINDOW_MS = 60_000;
 /** Dedicated `rate_limit_hits` route key, separate from API budgets. */
 export const LOG_ACCESS_RATE_LIMIT_ROUTE_KEY = 'log-access';
 
-/** Lower-case names that would select a tenant if honoured (Rules S4, S6). */
+/** Lower-case names that would select a tenant if honoured. */
 export const TENANT_SELECTING_PARAMETERS: ReadonlySet<string> = new Set([
   'tenant',
   'org',

@@ -32,8 +32,7 @@ const DENIAL_BODIES = {
  * and the OpenAPI document: tenants must never call it.
  *
  * The caller's query, path and every header except `Authorization` are
- * ignored; a tenant-selecting query parameter is only recorded (Rules S4,
- * S6). Allow is a `200` with an empty body carrying the
+ * ignored; a tenant-selecting query parameter is only recorded. Allow is a `200` with an empty body carrying the
  * computed scope header; every denial for a given status has one fixed body.
  */
 @ApiExcludeController()

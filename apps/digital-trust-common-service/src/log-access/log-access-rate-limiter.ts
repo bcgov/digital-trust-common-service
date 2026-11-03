@@ -10,7 +10,7 @@ import {
 } from './log-access.constants';
 
 /**
- * Per-tenant request budget for the decision endpoint (Rule L11), counted
+ * Per-tenant request budget for the decision endpoint, counted
  * in the shared `rate_limit_hits` table under a dedicated route key so it
  * holds across replicas and never mixes with API budgets. Keyed by the
  * validated tenant id only, so one tenant never consumes another's budget.
