@@ -39,6 +39,7 @@ import { CreateAnoncredsPublicationIntent1793375200834 } from './migrations/0000
 import { RemoveIssuanceProfileDerivedFields1793377253689 } from './migrations/000036_remove-issuance-profile-derived-fields';
 import { ConsolidateCredentialDefinitionConnector1793383965371 } from './migrations/000037_consolidate-credential-definition-connector';
 import { AddConnectorAgentLogIdHash1793385084139 } from './migrations/000038_add-connector-agent-log-id-hash';
+import { AddAuditReadAction1793733978162 } from './migrations/000039_add-audit-read-action';
 import { buildSslConfig } from './ssl.util';
 
 export const AppDataSource = new DataSource({
@@ -92,6 +93,7 @@ export const AppDataSource = new DataSource({
     RemoveIssuanceProfileDerivedFields1793377253689,
     ConsolidateCredentialDefinitionConnector1793383965371,
     AddConnectorAgentLogIdHash1793385084139,
+    AddAuditReadAction1793733978162,
   ],
   ssl: buildSslConfig(
     process.env.DB_SSL,

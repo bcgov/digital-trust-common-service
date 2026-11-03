@@ -10,6 +10,7 @@ const ALLOWED_HEADERS = [
   'Content-Type',
   'X-Request-Id',
   'Idempotency-Key',
+  'Prefer',
 ];
 
 const EXPOSED_HEADERS = [

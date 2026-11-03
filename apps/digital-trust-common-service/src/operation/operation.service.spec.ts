@@ -2,6 +2,9 @@ import { NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import type { EntityManager } from 'typeorm';
 
+import { AuditAction, AuditActorType } from '../audit-log/audit-log.entity';
+import { AuditLogService } from '../audit-log/audit-log.service';
+import { decodeCursor, encodeCursor } from '../common/cursor-pagination';
 import {
   BusinessMetricsService,
   UNCLASSIFIED_LABEL,
@@ -30,6 +33,13 @@ describe('OperationService', () => {
   let mockTenantFindById: jest.Mock;
   let mockTransitionIfForward: jest.Mock;
   let mockRecordCredentialOperation: jest.Mock;
+  let mockFindPageForTenant: jest.Mock;
+  let mockCountByBatch: jest.Mock;
+  let mockFindFailedBatchItems: jest.Mock;
+  let mockBatchFingerprint: jest.Mock;
+  let mockAuditWrite: jest.Mock;
+
+  const requestActor = { sub: 'reader', tokenType: 'user' as const };
 
   const createdAt = new Date('2024-01-01T00:00:00.000Z');
   const viewedAt = new Date('2024-01-02T00:00:00.000Z');
@@ -66,6 +76,11 @@ describe('OperationService', () => {
     mockTenantFindById = jest.fn();
     mockTransitionIfForward = jest.fn();
     mockRecordCredentialOperation = jest.fn();
+    mockFindPageForTenant = jest.fn();
+    mockCountByBatch = jest.fn();
+    mockFindFailedBatchItems = jest.fn();
+    mockBatchFingerprint = jest.fn().mockResolvedValue('unchanged');
+    mockAuditWrite = jest.fn().mockResolvedValue({});
     mockTenantFindById.mockResolvedValue({ id: 't1', config: {} });
 
     const mockRepository = {
@@ -75,6 +90,10 @@ describe('OperationService', () => {
       findByIdForTenant: mockFindByIdForTenant,
       markFirstView: mockMarkFirstView,
       transitionIfForward: mockTransitionIfForward,
+      findPageForTenant: mockFindPageForTenant,
+      countByBatchGroupedByState: mockCountByBatch,
+      findFailedBatchItemsForTenant: mockFindFailedBatchItems,
+      findBatchStateFingerprintForTenant: mockBatchFingerprint,
     };
 
     const mockTenantService = {
@@ -84,6 +103,7 @@ describe('OperationService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         OperationService,
+        { provide: AuditLogService, useValue: { write: mockAuditWrite } },
         {
           provide: OperationRepository,
           useValue: mockRepository,
@@ -106,6 +126,573 @@ describe('OperationService', () => {
 
   afterEach(() => {
     jest.useRealTimers();
+  });
+
+  describe('tenant read services', () => {
+    it('uses shared cursors and forwards tenant list filters', async () => {
+      const cursor = {
+        createdAt: createdAt.toISOString(),
+        id: '123e4567-e89b-42d3-a456-426614174002',
+      };
+      const item = buildOperation();
+      mockFindPageForTenant.mockResolvedValue({
+        items: [item],
+        nextCursor: cursor,
+        hasMore: true,
+      });
+
+      const page = await service.listForTenant('t1', {
+        cursor: encodeCursor(cursor),
+        type: 'credential.offer',
+        state: OperationState.PENDING,
+        limit: 1,
+      });
+
+      expect(mockFindPageForTenant).toHaveBeenCalledWith({
+        tenantId: 't1',
+        cursor,
+        type: 'credential.offer',
+        state: OperationState.PENDING,
+        limit: 1,
+      });
+      expect(page.data).toEqual([item]);
+      expect(decodeCursor(page.pagination.next_cursor!)).toEqual(cursor);
+      expect(page.pagination.has_more).toBe(true);
+    });
+
+    it('rejects malformed cursors before querying', async () => {
+      await expect(
+        service.listForTenant('t1', { cursor: 'invalid' }),
+      ).rejects.toThrow('Invalid pagination cursor');
+      expect(mockFindPageForTenant).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      { createdAt: 'not-a-date', id: '123e4567-e89b-42d3-a456-426614174002' },
+      { createdAt: '2024-01-01T00:00:00.000Z', id: 'not-a-uuid' },
+    ])(
+      'rejects invalid decoded cursor values %j before querying',
+      async (cursor) => {
+        await expect(
+          service.listForTenant('t1', { cursor: encodeCursor(cursor) }),
+        ).rejects.toThrow('Invalid pagination cursor');
+        expect(mockFindPageForTenant).not.toHaveBeenCalled();
+      },
+    );
+
+    it('returns an empty final page', async () => {
+      mockFindPageForTenant.mockResolvedValue({
+        items: [],
+        nextCursor: null,
+        hasMore: false,
+      });
+      await expect(service.listForTenant('t1')).resolves.toEqual({
+        data: [],
+        pagination: { next_cursor: null, has_more: false },
+      });
+    });
+
+    it('applies first-view TTL to terminal list results', async () => {
+      jest.useFakeTimers().setSystemTime(viewedAt);
+      mockFindPageForTenant.mockResolvedValue({
+        items: [buildOperation({ state: OperationState.COMPLETED })],
+        nextCursor: null,
+        hasMore: false,
+      });
+      mockMarkFirstView.mockResolvedValue({
+        viewedAt,
+        expiresAt: new Date(viewedAt.getTime() + HOUR_MS),
+      });
+      const page = await service.listForTenant('t1');
+      expect(page.data[0].viewedAt).toEqual(viewedAt);
+      expect(mockMarkFirstView).toHaveBeenCalledTimes(1);
+      expect(mockSave).not.toHaveBeenCalled();
+    });
+
+    it('returns the original request through a tenant-scoped read', async () => {
+      mockFindByIdForTenant.mockResolvedValue(buildOperation());
+      await expect(
+        service.getRequestForTenant('t1', 'op-1', requestActor),
+      ).resolves.toEqual(baseRequest);
+      expect(mockFindByIdForTenant).toHaveBeenCalledWith('op-1', 't1');
+    });
+
+    it('does not expose a missing or foreign request', async () => {
+      mockFindByIdForTenant.mockResolvedValue(null);
+      await expect(
+        service.getRequestForTenant('t2', 'op-1', requestActor),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it.each([null, 'credential.offer', 'credential.offer-batch-child'])(
+      'rejects a missing or non-batch parent %s',
+      async (type) => {
+        mockFindByIdForTenant.mockResolvedValue(
+          type ? buildOperation({ type }) : null,
+        );
+        await expect(
+          service.listItemsForTenant('t1', 'op-1'),
+        ).rejects.toBeInstanceOf(NotFoundException);
+        expect(mockFindPageForTenant).not.toHaveBeenCalled();
+      },
+    );
+
+    it('does not treat a batch child as a parent', async () => {
+      mockFindByIdForTenant.mockResolvedValue(
+        buildOperation({
+          type: 'credential.offer-batch',
+          batchId: 'parent',
+        }),
+      );
+      await expect(
+        service.listItemsForTenant('t1', 'op-1'),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('filters batch items by parent and tenant with shared cursors', async () => {
+      const cursor = {
+        createdAt: createdAt.toISOString(),
+        id: '123e4567-e89b-42d3-a456-426614174002',
+      };
+      mockFindByIdForTenant.mockResolvedValue(
+        buildOperation({
+          type: 'credential.offer-batch',
+        }),
+      );
+      mockFindPageForTenant.mockResolvedValue({
+        items: [],
+        nextCursor: null,
+        hasMore: false,
+      });
+      await service.listItemsForTenant('t1', 'op-1', {
+        state: OperationState.FAILED,
+        cursor: encodeCursor(cursor),
+        limit: 20,
+      });
+      expect(mockFindPageForTenant).toHaveBeenCalledWith({
+        tenantId: 't1',
+        batchId: 'op-1',
+        state: OperationState.FAILED,
+        cursor,
+        limit: 20,
+      });
+    });
+  });
+
+  describe('request access auditing', () => {
+    it.each(['user', 'client'] as const)(
+      'records the %s actor without copying PII',
+      async (tokenType) => {
+        jest.useFakeTimers().setSystemTime(viewedAt);
+        mockFindByIdForTenant.mockResolvedValue(buildOperation());
+
+        await expect(
+          service.getRequestForTenant('t1', 'op-1', {
+            sub: 'reader',
+            tokenType,
+          }),
+        ).resolves.toEqual(baseRequest);
+
+        expect(mockAuditWrite).toHaveBeenCalledWith({
+          tenantId: 't1',
+          actorId: 'reader',
+          actorType:
+            tokenType === 'client'
+              ? AuditActorType.CLIENT
+              : AuditActorType.USER,
+          action: AuditAction.READ,
+          resourceType: 'operation_request',
+          resourceId: 'op-1',
+          operationId: 'op-1',
+          metadata: { accessed_at: viewedAt.toISOString() },
+        });
+      },
+    );
+
+    it('does not audit or disclose a missing or foreign request', async () => {
+      mockFindByIdForTenant.mockResolvedValue(null);
+      await expect(
+        service.getRequestForTenant('t2', 'op-1', requestActor),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(mockAuditWrite).not.toHaveBeenCalled();
+    });
+
+    it('does not return the payload if the audit write fails', async () => {
+      mockFindByIdForTenant.mockResolvedValue(buildOperation());
+      mockAuditWrite.mockRejectedValue(new Error('Audit unavailable'));
+      await expect(
+        service.getRequestForTenant('t1', 'op-1', requestActor),
+      ).rejects.toThrow('Audit unavailable');
+    });
+
+    it('waits for the audit write before returning the payload', async () => {
+      mockFindByIdForTenant.mockResolvedValue(buildOperation());
+      let finishAudit!: () => void;
+      let startAudit!: () => void;
+      const auditing = new Promise<void>((resolve) => {
+        startAudit = resolve;
+      });
+      mockAuditWrite.mockImplementation(
+        () =>
+          new Promise<void>((resolve) => {
+            finishAudit = resolve;
+            startAudit();
+          }),
+      );
+      let disclosed = false;
+      const read = service
+        .getRequestForTenant('t1', 'op-1', requestActor)
+        .then((value) => {
+          disclosed = true;
+          return value;
+        });
+      await auditing;
+      expect(mockAuditWrite).toHaveBeenCalledTimes(1);
+      expect(disclosed).toBe(false);
+      finishAudit();
+      await expect(read).resolves.toEqual(baseRequest);
+    });
+  });
+
+  describe('batch item long-polling', () => {
+    const query = { state: OperationState.FAILED, limit: 20 };
+
+    beforeEach(() => {
+      jest.useFakeTimers();
+      mockFindByIdForTenant.mockImplementation(() =>
+        Promise.resolve(
+          buildOperation({
+            type: 'credential.offer-batch',
+            state: OperationState.PROCESSING,
+          }),
+        ),
+      );
+      mockFindPageForTenant.mockResolvedValue({
+        items: [],
+        nextCursor: null,
+        hasMore: false,
+      });
+    });
+
+    it('returns a normal page when a child changes, including outside the filtered page', async () => {
+      mockBatchFingerprint
+        .mockResolvedValueOnce('before')
+        .mockResolvedValue('after');
+      const pending = service.waitForItemsForTenant('t1', 'op-1', query, 30);
+      await jest.advanceTimersByTimeAsync(1000);
+      await expect(pending).resolves.toEqual({
+        data: [],
+        pagination: { next_cursor: null, has_more: false },
+      });
+      expect(mockBatchFingerprint).toHaveBeenCalledWith('op-1', 't1');
+      expect(mockFindPageForTenant).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId: 't1',
+          batchId: 'op-1',
+          state: OperationState.FAILED,
+          limit: 20,
+        }),
+      );
+      expect(jest.getTimerCount()).toBe(0);
+    });
+
+    it('caps the wait at 30 seconds and returns the normal page on timeout', async () => {
+      const pending = service.waitForItemsForTenant('t1', 'op-1', query, 60);
+      await jest.advanceTimersByTimeAsync(29_999);
+      expect(mockFindPageForTenant).not.toHaveBeenCalled();
+      await jest.advanceTimersByTimeAsync(1);
+      await expect(pending).resolves.toMatchObject({ data: [] });
+      expect(jest.getTimerCount()).toBe(0);
+    });
+
+    it('returns when the parent state changes', async () => {
+      mockFindByIdForTenant
+        .mockResolvedValueOnce(
+          buildOperation({
+            type: 'credential.offer-batch',
+            state: OperationState.PROCESSING,
+          }),
+        )
+        .mockResolvedValue(
+          buildOperation({
+            type: 'credential.offer-batch',
+            state: OperationState.COMPLETED,
+          }),
+        );
+      const pending = service.waitForItemsForTenant('t1', 'op-1', query, 30);
+      await jest.advanceTimersByTimeAsync(1000);
+      await expect(pending).resolves.toMatchObject({ data: [] });
+      expect(mockBatchFingerprint).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not wait for a terminal parent', async () => {
+      mockFindByIdForTenant.mockResolvedValue(
+        buildOperation({
+          type: 'credential.offer-batch',
+          state: OperationState.COMPLETED,
+        }),
+      );
+      await expect(
+        service.waitForItemsForTenant('t1', 'op-1', query, 30),
+      ).resolves.toMatchObject({ data: [] });
+      expect(mockBatchFingerprint).not.toHaveBeenCalled();
+      expect(jest.getTimerCount()).toBe(0);
+    });
+
+    it('returns 404 immediately for a foreign or missing parent', async () => {
+      mockFindByIdForTenant.mockResolvedValue(null);
+      await expect(
+        service.waitForItemsForTenant('t2', 'op-1', query, 30),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(mockBatchFingerprint).not.toHaveBeenCalled();
+    });
+
+    it('returns 404 if the parent is purged during the wait', async () => {
+      mockFindByIdForTenant
+        .mockResolvedValueOnce(
+          buildOperation({
+            type: 'credential.offer-batch',
+            state: OperationState.PROCESSING,
+          }),
+        )
+        .mockResolvedValue(null);
+      const pending = service.waitForItemsForTenant('t1', 'op-1', query, 30);
+      const assertion =
+        expect(pending).rejects.toBeInstanceOf(NotFoundException);
+      await jest.advanceTimersByTimeAsync(1000);
+      await assertion;
+    });
+
+    it('cancels the timer on disconnect without further database queries', async () => {
+      const abort = new AbortController();
+      const pending = service.waitForItemsForTenant(
+        't1',
+        'op-1',
+        query,
+        30,
+        abort.signal,
+      );
+      const assertion = expect(pending).rejects.toThrow(
+        'Operation polling cancelled',
+      );
+      await jest.advanceTimersByTimeAsync(0);
+      abort.abort();
+      await assertion;
+      expect(jest.getTimerCount()).toBe(0);
+      expect(mockFindByIdForTenant).toHaveBeenCalledTimes(1);
+      expect(mockFindPageForTenant).not.toHaveBeenCalled();
+    });
+
+    it('rejects invalid cursors without waiting', async () => {
+      await expect(
+        service.waitForItemsForTenant('t1', 'op-1', { cursor: 'invalid' }, 30),
+      ).rejects.toThrow('Invalid pagination cursor');
+      expect(mockFindByIdForTenant).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('read result semantics', () => {
+    it('preserves type-specific completed results', async () => {
+      const result = { credential_exchange_id: 'exchange' };
+      mockFindByIdForTenant.mockResolvedValue(
+        buildOperation({
+          state: OperationState.COMPLETED,
+          viewedAt,
+          result,
+        }),
+      );
+      expect((await service.getForTenant('t1', 'op-1')).result).toEqual(result);
+    });
+
+    it('returns a safe failure when stored details are absent', async () => {
+      mockFindByIdForTenant.mockResolvedValue(
+        buildOperation({
+          state: OperationState.FAILED,
+          viewedAt,
+          result: null,
+        }),
+      );
+      expect((await service.getForTenant('t1', 'op-1')).result).toEqual({
+        code: 'OPERATION_FAILED',
+        message: 'Operation failed',
+      });
+    });
+
+    it.each([OperationState.PENDING, OperationState.FAILED])(
+      'does not aggregate a %s batch parent',
+      async (state) => {
+        mockFindByIdForTenant.mockResolvedValue(
+          buildOperation({
+            type: 'credential.offer-batch',
+            state,
+            viewedAt,
+            result: { code: 'BATCH_FAILED', message: 'Batch failed' },
+          }),
+        );
+        const operation = await service.getForTenant('t1', 'op-1');
+        expect(operation.result).toEqual(
+          state === OperationState.PENDING
+            ? null
+            : { code: 'BATCH_FAILED', message: 'Batch failed' },
+        );
+        expect(mockCountByBatch).not.toHaveBeenCalled();
+        expect(mockFindFailedBatchItems).not.toHaveBeenCalled();
+      },
+    );
+
+    it.each([OperationState.PENDING, OperationState.PROCESSING])(
+      'hides stored partial results for %s non-batch operations',
+      async (state) => {
+        mockFindByIdForTenant.mockResolvedValue(
+          buildOperation({
+            state,
+            result: { partial: true },
+          }),
+        );
+        expect((await service.getForTenant('t1', 'op-1')).result).toBeNull();
+      },
+    );
+
+    it('returns only code and message for ordinary failures', async () => {
+      mockFindByIdForTenant.mockResolvedValue(
+        buildOperation({
+          state: OperationState.FAILED,
+          viewedAt,
+          result: { code: 'FAILED', message: 'Failure', internal: 'hidden' },
+        }),
+      );
+      expect((await service.getForTenant('t1', 'op-1')).result).toEqual({
+        code: 'FAILED',
+        message: 'Failure',
+      });
+    });
+
+    it('preserves registration progress', async () => {
+      const result = {
+        credential_definition_id: 'definition',
+        stage: 'pending',
+      };
+      mockFindByIdForTenant.mockResolvedValue(
+        buildOperation({
+          type: OPERATION_TYPE.CREDENTIAL_DEFINITION_REGISTER,
+          result,
+        }),
+      );
+      expect((await service.getForTenant('t1', 'op-1')).result).toEqual(result);
+    });
+
+    it('computes processing batch counters without saving the summary', async () => {
+      mockFindByIdForTenant.mockResolvedValue(
+        buildOperation({
+          type: 'credential.offer-batch',
+          state: OperationState.PROCESSING,
+        }),
+      );
+      mockCountByBatch.mockResolvedValue({
+        pending: 2,
+        processing: 1,
+        completed: 3,
+        failed: 1,
+      });
+      expect((await service.getForTenant('t1', 'op-1')).result).toEqual({
+        total: 7,
+        pending: 2,
+        processing: 1,
+        completed: 3,
+        failed: 1,
+      });
+      expect(mockCountByBatch).toHaveBeenCalledWith('op-1', 't1');
+      expect(mockFindFailedBatchItems).not.toHaveBeenCalled();
+      expect(mockSave).not.toHaveBeenCalled();
+    });
+
+    it('preserves settled batch counts when all children have been purged', async () => {
+      const settled = { pending: 0, processing: 0, completed: 9, failed: 1 };
+      const operation = buildOperation({
+        type: 'credential.offer-batch',
+        state: OperationState.COMPLETED,
+        viewedAt,
+        result: settled,
+      });
+      mockFindByIdForTenant.mockResolvedValue(operation);
+      mockCountByBatch.mockResolvedValue({
+        pending: 0,
+        processing: 0,
+        completed: 0,
+        failed: 0,
+      });
+      mockFindFailedBatchItems.mockResolvedValue([]);
+
+      expect((await service.getForTenant('t1', 'op-1')).result).toEqual({
+        total: 10,
+        completed: 9,
+        failed: 1,
+        errors: [],
+      });
+      expect(mockCountByBatch).not.toHaveBeenCalled();
+      expect(operation.result).toEqual(settled);
+      expect(mockSave).not.toHaveBeenCalled();
+    });
+
+    it('uses live counts rather than a stored snapshot while processing', async () => {
+      mockFindByIdForTenant.mockResolvedValue(
+        buildOperation({
+          type: 'credential.offer-batch',
+          state: OperationState.PROCESSING,
+          result: { completed: 9, failed: 1 },
+        }),
+      );
+      mockCountByBatch.mockResolvedValue({
+        pending: 1,
+        processing: 1,
+        completed: 2,
+        failed: 0,
+      });
+
+      expect((await service.getForTenant('t1', 'op-1')).result).toEqual({
+        total: 4,
+        pending: 1,
+        processing: 1,
+        completed: 2,
+        failed: 0,
+      });
+      expect(mockCountByBatch).toHaveBeenCalledWith('op-1', 't1');
+    });
+
+    it('caps completed batch errors and keeps child IDs and safe failure fields', async () => {
+      mockFindByIdForTenant.mockResolvedValue(
+        buildOperation({
+          type: 'credential.offer-batch',
+          state: OperationState.COMPLETED,
+          viewedAt,
+        }),
+      );
+      mockCountByBatch.mockResolvedValue({
+        pending: 0,
+        processing: 0,
+        completed: 2,
+        failed: 101,
+      });
+      mockFindFailedBatchItems.mockResolvedValue(
+        Array.from({ length: 101 }, (_, index) =>
+          buildOperation({
+            id: `child-${index}`,
+            state: OperationState.FAILED,
+            result: { code: 'FAILED', message: 'Failure', internal: 'hidden' },
+          }),
+        ),
+      );
+      const result = (await service.getForTenant('t1', 'op-1')).result;
+      expect(result).toMatchObject({ total: 103, completed: 2, failed: 101 });
+      expect(result?.errors).toHaveLength(100);
+      expect((result?.errors as unknown[])[0]).toEqual({
+        id: 'child-0',
+        code: 'FAILED',
+        message: 'Failure',
+      });
+      expect(mockFindFailedBatchItems).toHaveBeenCalledWith('op-1', 't1');
+      expect(mockSave).not.toHaveBeenCalled();
+    });
   });
 
   it('uses the original creation time for registration retention', async () => {

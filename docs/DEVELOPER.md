@@ -1394,6 +1394,68 @@ can use `endorse_transaction` and `revocation_registry` topics matched against
 the saved transaction ID; note that ACA-Py's wire topic `revocation_registry`
 differs from our internal `ProtocolTopic` of the same name.
 
+### Operation Response Contract
+
+Operation reads require an authenticated tenant-scoped token, not a dedicated
+operations scope. The routes under `/api/v1/tenants/:tenantId/operations` are:
+
+- `GET /:operationId`: operation status and result.
+- `GET /`: list with optional `state`, `type`, `cursor`, and `limit` filters.
+- `GET /:operationId/items`: batch children with optional `state`, `cursor`,
+  and `limit`; returns 404 for a missing, foreign, or non-batch parent.
+- `GET /:operationId/request`: original `{ method, path, body }`, unredacted,
+  with `Cache-Control: no-store`. Each successful retrieval synchronously
+  records a `read` audit entry with user/client actor identity, access time,
+  resource type `operation_request`, and the operation ID. Audit metadata does
+  not contain the request body or credential attributes. If auditing fails,
+  the endpoint fails without returning the payload. Unknown or foreign
+  operations return 404 without a successful-access audit entry.
+
+Migration `000039` adds the audit `read` action and must be applied before using
+request retrieval. Its rollback refuses to remove the enum value while any
+retained audit entry uses it, preserving append-only audit history.
+
+List responses use `{ data, pagination: { next_cursor, has_more } }`, with
+default limit 20 and maximum 100. Cursors use the shared cursor-pagination
+utility.
+
+Batch-item reads accept `Prefer: wait=30` to wait for a parent or child state
+change. The wait is capped at 30 seconds; `wait=0` or no wait preference returns
+immediately. Invalid or duplicate wait values return 400. Checks run once per
+second and cover all tenant-scoped batch children, not just the requested
+page or state filter. Timeout returns the normal HTTP 200 paginated response,
+without extra envelope fields. Terminal parents return immediately. A missing
+or purged parent returns 404. Client disconnects cancel the pending timer;
+no database transaction or connection is held between checks.
+
+Operation representations share six core fields: `id`, `type`, `state`,
+`created_at`, `updated_at`, and `result`. They also include `batch_id`, which
+is null for standalone operations and batch parents and identifies the parent
+for batch children. Credential-registration operations additionally include
+`problem_details`; other operation types omit it.
+
+Non-batch pending and processing reads return `result: null`. Completed results
+contain operation-type-specific data; failures contain `code` and `message`.
+Historical failures without usable details return `OPERATION_FAILED` and
+`Operation failed`. Credential registration currently also retains resource
+references and progress in `result`, including while processing and on failure.
+Request bodies and internal tenant, external-ID, view, and expiry fields are
+not included in these representations. Original requests may contain PII and
+remain transient data stored on the Operation, subject to its TTL and purge.
+
+Batch parents have a type ending in `-batch` and no `batch_id`. Processing
+parent reads compute `{ total, pending, processing, completed, failed }` from
+their tenant-scoped children. Completed parent reads return
+`{ total, completed, failed, errors }`, using the final counts stored at
+settlement so totals survive child purge. Older parents without stored counts
+fall back to counting retained children. Errors are sampled from retained
+children, capped at 100, and shaped as `{ id, code, message }`; individual
+failure details remain subject to child TTL. Reads do not overwrite the stored
+settlement counts.
+Pending parents return null; failed parents use the ordinary failure shape.
+Terminal operations returned by single or list reads are marked viewed on
+first retrieval, using the existing TTL calculation without moving `updated_at`.
+
 Registration Operation responses include `problem_details: null` when no
 diagnostic is recorded. When a worker step encounters an error, this becomes
 an RFC 9457-aligned object with `type`, `title`, `detail`, `instance`,
@@ -1641,7 +1703,8 @@ every exception and normalizes the response into the `ErrorResponse` envelope do
 OpenShift route (see `APP_PUBLIC_URL`) and does not need this — it exists for other cross-origin API
 callers.
 
-- `allowedHeaders` is fixed: `Authorization`, `Content-Type`, `X-Request-Id`, `Idempotency-Key`.
+- `allowedHeaders` is fixed: `Authorization`, `Content-Type`, `X-Request-Id`,
+  `Idempotency-Key`, `Prefer` (for operation batch-item long-polling).
 - `exposedHeaders` is fixed: `Retry-After`, `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`, `X-Request-Id` — the
   latter two are set by `RateLimitGuard` (global, IP-keyed flood protection; see
   [Per-tenant rate limiting](#per-tenant-rate-limiting)) on every response via the base

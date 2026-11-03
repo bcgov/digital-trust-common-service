@@ -1,4 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
+import { isISO8601, isRFC3339, isUUID } from 'class-validator';
 
 /** Keyset cursor shape shared by every paginated list in this service. */
 export interface Cursor {
@@ -25,7 +26,18 @@ export function decodeCursor(raw: string): Cursor {
       throw new Error('invalid cursor shape');
     }
 
-    return parsed as Cursor;
+    const cursor = parsed as Cursor;
+    if (
+      !isRFC3339(cursor.createdAt) ||
+      !isISO8601(cursor.createdAt, { strict: true }) ||
+      cursor.createdAt.startsWith('0000-') ||
+      !Number.isFinite(Date.parse(cursor.createdAt)) ||
+      !isUUID(cursor.id)
+    ) {
+      throw new Error('invalid cursor values');
+    }
+
+    return cursor;
   } catch {
     throw new BadRequestException('Invalid pagination cursor.');
   }
