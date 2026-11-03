@@ -67,10 +67,10 @@ describe('LogAccessController', () => {
     expect(res.json).toHaveBeenCalledWith({ error: 'unauthorized' });
   });
 
-  it('fails closed with 403 on an unexpected error', async () => {
+  it('rethrows an unexpected error so Nest surfaces it as 5xx', async () => {
     resolveScope.mockRejectedValue(new Error('boom'));
-    await check();
-    expect(res.status).toHaveBeenCalledWith(403);
-    expect(res.json).toHaveBeenCalledWith({ error: 'forbidden' });
+    await expect(check()).rejects.toThrow('boom');
+    expect(res.status).not.toHaveBeenCalled();
+    expect(res.json).not.toHaveBeenCalled();
   });
 });

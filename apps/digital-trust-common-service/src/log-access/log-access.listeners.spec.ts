@@ -91,6 +91,17 @@ describe('log access listeners with the production app configuration', () => {
     expect(resolveScope).toHaveBeenCalledWith('Bearer t');
   });
 
+  it('surfaces an unexpected error as 500 on the internal listener', async () => {
+    resolveScope.mockRejectedValue(new Error('boom'));
+
+    const res = await request(internal)
+      .get('/internal/log-access/check/loki/api/v1/query_range')
+      .set('Authorization', 'Bearer t')
+      .expect(500);
+
+    expect(res.headers['x-scope-orgid']).toBeUndefined();
+  });
+
   it.each([
     '/internal/log-access/check',
     '/internal/log-access/check/loki/api/v1/query_range',

@@ -55,9 +55,7 @@ export class LogAccessController {
       res.status(200).setHeader(SCOPE_HEADER, scope).end();
     } catch (error) {
       if (!(error instanceof LogAccessDeniedError)) {
-        this.logger.error('Unexpected error evaluating log access');
-        res.status(403).json(DENIAL_BODIES[403]);
-        return;
+        throw error;
       }
 
       this.logger.warn(`Log access denied: ${error.reason}`);
