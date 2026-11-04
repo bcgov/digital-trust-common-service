@@ -1058,7 +1058,13 @@ export interface paths {
          *     counts retain the ordinary { code, message } parent-level failure shape.
          *     At most 100 retained child errors are included; use /items?state=failed for
          *     all retained failures. Failure details remain subject to child TTL.
-         *     Long-polling is supported only on /items.
+         *     Prefer: wait=30 checks this operation's state once per second until it
+         *     changes or the timeout expires. The wait is capped at 30 seconds;
+         *     terminal operations return immediately. Timeout returns HTTP 200 with
+         *     the normal operation envelope, without additional fields. First-view
+         *     TTL treatment happens only when preparing the final response.
+         *     Client disconnects stop further polling and response preparation.
+         *     Batch-item /items polling remains available as an additional capability.
          */
         get: operations["getOperation"];
         put?: never;
@@ -4721,7 +4727,14 @@ export interface operations {
     getOperation: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description Non-negative integer wait in seconds, capped at 30; wait=0 returns
+                 *     immediately. Invalid or duplicate wait values return 400.
+                 *     Unrelated preferences are ignored.
+                 */
+                Prefer?: string;
+            };
             path: {
                 /** @description Tenant UUID */
                 tenantId: components["parameters"]["TenantId"];
@@ -4740,7 +4753,7 @@ export interface operations {
                     "application/json": components["schemas"]["Operation"];
                 };
             };
-            /** @description A path parameter is not a valid UUID */
+            /** @description Invalid path UUID or Prefer wait value */
             400: {
                 headers: {
                     [name: string]: unknown;
