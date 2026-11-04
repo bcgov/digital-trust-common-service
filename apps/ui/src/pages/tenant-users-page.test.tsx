@@ -194,6 +194,35 @@ describe('TenantUsersPage', () => {
     expect(screen.getAllByRole('table')).toHaveLength(1);
   });
 
+  it('shows the email once when the display name is the email', async () => {
+    server.use(
+      http.get(usersPath, () =>
+        HttpResponse.json({
+          data: [
+            {
+              ...admin,
+              id: 'email-named-user',
+              email: 'jane@example.com',
+              display_name: 'Jane@Example.com',
+              status: 'active',
+            },
+          ],
+          pagination: { next_cursor: null, has_more: false },
+          self_actions_allowed: false,
+        }),
+      ),
+    );
+    renderPage(await signedIn());
+    const { members } = await tables();
+
+    const row = await within(members).findByRole('row', {
+      name: /jane@example.com/i,
+    });
+    expect(within(row).getAllByRole('cell')[0]).toHaveTextContent(
+      /^jane@example\.com$/,
+    );
+  });
+
   it('marks the signed-in user and offers no actions on that row', async () => {
     renderPage(await signedIn());
     const { members } = await tables();

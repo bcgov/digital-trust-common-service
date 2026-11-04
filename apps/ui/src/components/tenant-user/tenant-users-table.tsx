@@ -154,7 +154,9 @@ export function TenantUsersTable({
                 <div className="flex w-full min-w-0 flex-col items-start">
                   <div className="flex max-w-full min-w-0 flex-wrap items-center gap-2 font-bold text-(--typography-color-primary)">
                     <span className="break-words">
-                      {user.status === 'invited'
+                      {user.status === 'invited' ||
+                      user.display_name?.toLowerCase() ===
+                        user.email?.toLowerCase()
                         ? ''
                         : (user.display_name ?? '')}
                     </span>
