@@ -1,0 +1,28 @@
+{{- if and .Values.logGateway.enabled .Values.logGateway.route.enabled -}}
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: {{ include "digital-trust-common-service.logGateway.fullname" . }}
+  labels:
+    {{- include "digital-trust-common-service.logGateway.labels" . | nindent 4 }}
+  {{- with .Values.logGateway.route.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with .Values.logGateway.route.host }}
+  host: {{ . | quote }}
+  {{- end }}
+  to:
+    kind: Service
+    name: {{ include "digital-trust-common-service.logGateway.fullname" . }}
+    weight: 100
+  port:
+    targetPort: https
+  # Re-encrypted, never edge: the token must be TLS-protected on the leg from
+  # the router to Envoy as well. Not configurable.
+  tls:
+    termination: reencrypt
+    insecureEdgeTerminationPolicy: Redirect
+  wildcardPolicy: None
+{{- end }}

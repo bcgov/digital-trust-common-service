@@ -9,6 +9,19 @@ and this chart adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.h
 
 ### Added
 
+- `logGateway` values (`enabled` default `false`) and `networkPolicy.loki` for a
+  standalone Envoy in front of Loki, following the `frontend` and `worker`
+  layout: ConfigMap, Deployment, Service with a serving-certificate annotation,
+  re-encrypted Route, optional HPA, and NetworkPolicies limiting its egress to
+  the log-access endpoint, Loki and DNS. Every route, including the catch-all,
+  calls the log-access endpoint first; only the Loki read paths are routed (no
+  live tail); a failed or slow decision answers the same `403` as a denial; the
+  caller's `Authorization` is replaced with a Loki login read from
+  `logGateway.upstream.auth.existingSecret`. The probe listener has its own
+  port and is not on the Service or Route. `logAccess.gatewayPodSelector`
+  defaults to the gateway's labels when the gateway is enabled. CI validates the
+  rendered config with the Envoy tag from `logGateway.image.tag`. Off in every
+  overlay.
 - `logAccess` values (`enabled` default `false`, `port`, `tls.mountPath`,
   `gatewayPodSelector`) and `config.LOG_GATEWAY_AUDIENCE` (default `""`) for the
   internal log-access decision endpoint that the log gateway's `ext_authz`

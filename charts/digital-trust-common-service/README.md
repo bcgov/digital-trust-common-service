@@ -223,9 +223,40 @@ Generate the JWKS payload with `npm run oidc:generate-keys > oidc-keys.json`, th
 | livenessProbe.periodSeconds | int | `15` |  |
 | livenessProbe.timeoutSeconds | int | `3` |  |
 | logAccess.enabled | bool | `false` | Serve the internal log-access listener. Needs `gatewayPodSelector` and `networkPolicy.enabled`. |
-| logAccess.gatewayPodSelector | object | `{}` | Labels of the log gateway pods, the only peers allowed to reach the internal port. Required when `enabled` is true. |
+| logAccess.gatewayPodSelector | object | `{}` | Labels of the log gateway pods, the only peers allowed to reach the internal port. Required when `enabled` is true, except that it defaults to the labels of the gateway deployed by `logGateway` when that is enabled. |
 | logAccess.port | int | `8443` | Container and Service port of the internal TLS listener |
 | logAccess.tls.mountPath | string | `"/var/run/secrets/log-access-tls"` | Where the serving-cert Secret (tls.crt, tls.key) is mounted. The certificate is read once at start, so a pod restart picks up a rotation. |
+| logGateway.affinity | object | `{}` | Affinity for log gateway pods |
+| logGateway.autoscaling.enabled | bool | `false` | Enable autoscaling for the log gateway Deployment |
+| logGateway.autoscaling.maxReplicas | int | `3` | Maximum log gateway replicas |
+| logGateway.autoscaling.minReplicas | int | `1` | Minimum log gateway replicas |
+| logGateway.autoscaling.targetCPUUtilizationPercentage | int | `80` | Target average CPU utilization (percentage) |
+| logGateway.enabled | bool | `false` | Deploy the log gateway. Needs `logAccess.enabled`, `networkPolicy.enabled`, `upstream.host` and `upstream.auth.existingSecret.name`. |
+| logGateway.extAuthz.timeout | string | `"2s"` | How long Envoy waits for the decision endpoint before denying |
+| logGateway.image.pullPolicy | string | `"IfNotPresent"` | Envoy image pull policy |
+| logGateway.image.registry | string | `"docker.io"` | Envoy image registry |
+| logGateway.image.repository | string | `"envoyproxy/envoy"` | Envoy image repository |
+| logGateway.image.tag | string | `"v1.40.2"` | Envoy image tag. CI validates the rendered config with this exact tag, so bumping it here bumps the validator too. |
+| logGateway.livenessProbe | object | `{"failureThreshold":3,"httpGet":{"path":"/livez","port":"probe"},"initialDelaySeconds":5,"periodSeconds":15,"timeoutSeconds":3}` | Liveness probe for the log gateway container |
+| logGateway.nodeSelector | object | `{}` | Node selector for log gateway pods |
+| logGateway.podAnnotations | object | `{}` | Annotations added to log gateway pods |
+| logGateway.podLabels | object | `{}` | Labels added to log gateway pods |
+| logGateway.probePort | int | `8081` | Container port of the probe listener. It answers only the kubelet probes and is on neither the Service nor the Route. |
+| logGateway.readinessProbe | object | `{"failureThreshold":3,"httpGet":{"path":"/ready","port":"probe"},"initialDelaySeconds":3,"periodSeconds":10,"timeoutSeconds":3}` | Readiness probe for the log gateway container |
+| logGateway.replicaCount | int | `1` | Log gateway replicas (ignored when `logGateway.autoscaling.enabled=true`) |
+| logGateway.resources | object | `{"limits":{"cpu":"250m","memory":"128Mi"},"requests":{"cpu":"50m","memory":"64Mi"}}` | Resource requests and limits for the log gateway container |
+| logGateway.route.annotations | object | `{}` | Additional annotations for the Route |
+| logGateway.route.enabled | bool | `false` | Expose the gateway through an OpenShift Route (always re-encrypted) |
+| logGateway.route.host | string | `""` | Route hostname (OpenShift generates one when empty) |
+| logGateway.service.port | int | `8443` | Log gateway Service port exposed to the cluster |
+| logGateway.service.targetPort | int | `8443` | Log gateway container port (Envoy TLS listener) |
+| logGateway.service.type | string | `"ClusterIP"` | Log gateway Service type |
+| logGateway.tls.mountPath | string | `"/var/run/secrets/log-gateway-tls"` | Where the serving-cert Secret (tls.crt, tls.key) is mounted. The certificate is read once at start, so a pod restart picks up a rotation. |
+| logGateway.tolerations | list | `[]` | Tolerations for log gateway pods |
+| logGateway.upstream.auth.existingSecret | object | `{"key":"authorization","name":""}` | Existing Secret holding the complete `Authorization` header value for the Loki gateway (for example `Basic <base64 of user:password>`). The chart never creates it. It is read at start, so a change needs a pod restart. |
+| logGateway.upstream.host | string | `""` | Host of the Loki gateway Service. Required when `enabled` is true. |
+| logGateway.upstream.port | int | `80` | Service port of the Loki gateway. Envoy connects over plain HTTP: the Service offers no TLS, and the caller's bearer token never reaches it. |
+| logGateway.upstream.timeout | string | `"60s"` | How long Envoy waits for Loki to answer a query |
 | migrations.activeDeadlineSeconds | int | `300` | Maximum seconds the migration Job may run before Kubernetes marks it failed. Prevents hung migrations (e.g. waiting on a lock) from blocking a release indefinitely. |
 | migrations.argocd | object | `{"enabled":false}` | Emit an ArgoCD PreSync hook annotation so migrations also run under GitOps (ArgoCD does not execute Helm hooks natively) |
 | migrations.args | list | `["node_modules/typeorm/cli.js","migration:run","-d","dist/libs/database/src/data-source.js"]` | Migration entrypoint args: the TypeORM CLI against the compiled DataSource — what `npm run migrate:up` runs, invoked directly so the Job needs neither npm nor a writable home directory. |
@@ -257,6 +288,9 @@ Generate the JWKS payload with `npm run oidc:generate-keys > oidc-keys.json`, th
 | networkPolicy.keycloak.namespaceSelector | object | `{}` | Namespace selector matching the Keycloak namespace |
 | networkPolicy.keycloak.podSelector | object | `{}` | Pod selector matching the Keycloak pods |
 | networkPolicy.keycloak.port | int | `443` | Keycloak port |
+| networkPolicy.loki.namespaceSelector | object | `{}` | Namespace selector matching the Loki namespace |
+| networkPolicy.loki.podSelector | object | `{}` | Pod selector matching the Loki gateway pods. When both podSelector and namespaceSelector are empty, egress is allowed to any destination on that port. Set these in per-env values. |
+| networkPolicy.loki.port | int | `8080` | Loki gateway pod port the log gateway may reach. Egress policy is evaluated after the Service port is rewritten (see `dnsEgress`), so this is the pod's port, not the Service port. |
 | nodeSelector | object | `{}` | Node selector for API pods |
 | oidcSigning.cookieKeys | string | `""` | Comma-separated cookie signing secrets (OIDC_COOKIE_KEYS). Generated once and preserved across upgrades when empty. Preservation needs an in-cluster `helm upgrade`; a client-side render (template/diff/GitOps) would rotate them and drop active sessions, so pin them if you use one. |
 | oidcSigning.create | bool | `false` | Create a chart-managed Secret from the values below |

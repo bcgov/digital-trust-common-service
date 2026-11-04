@@ -258,4 +258,80 @@ spec:
         {{- end }}
 {{- end }}
 {{- end }}
+{{- if .Values.logGateway.enabled }}
+{{- if .Values.networkPolicy.ingress.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "digital-trust-common-service.logGateway.fullname" . }}-allow-router
+  labels:
+    {{- include "digital-trust-common-service.logGateway.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "digital-trust-common-service.logGateway.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              {{- toYaml .Values.networkPolicy.ingress.routerNamespaceSelector | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: https
+{{- end }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "digital-trust-common-service.logGateway.fullname" . }}-egress
+  labels:
+    {{- include "digital-trust-common-service.logGateway.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "digital-trust-common-service.logGateway.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "digital-trust-common-service.api.selectorLabels" . | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.logAccess.port }}
+    - {{- if or .Values.networkPolicy.loki.namespaceSelector .Values.networkPolicy.loki.podSelector }}
+      to:
+        {{- if .Values.networkPolicy.loki.namespaceSelector }}
+        - namespaceSelector:
+            matchLabels:
+              {{- toYaml .Values.networkPolicy.loki.namespaceSelector | nindent 14 }}
+          {{- with .Values.networkPolicy.loki.podSelector }}
+          podSelector:
+            matchLabels:
+              {{- toYaml . | nindent 14 }}
+          {{- end }}
+        {{- else if .Values.networkPolicy.loki.podSelector }}
+        - podSelector:
+            matchLabels:
+              {{- toYaml .Values.networkPolicy.loki.podSelector | nindent 14 }}
+        {{- end }}
+      {{- end }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.networkPolicy.loki.port }}
+{{- if .Values.networkPolicy.dnsEgress.enabled }}
+    - to: []
+      ports:
+        {{- range .Values.networkPolicy.dnsEgress.ports }}
+        - protocol: UDP
+          port: {{ . }}
+        - protocol: TCP
+          port: {{ . }}
+        {{- end }}
+{{- end }}
+{{- end }}
 {{- end }}

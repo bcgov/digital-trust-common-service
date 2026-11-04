@@ -1284,6 +1284,40 @@ Service and a NetworkPolicy limited to the gateway pods. The route is excluded f
 the OpenAPI document, and `InternalListenerGuard` answers `404` for the same path on the public port.
 The certificate is read at start, so a rotation needs a pod restart.
 
+### Log gateway
+
+The caller of that endpoint is a standalone Envoy deployed by the chart (`logGateway.enabled`, off by
+default) in front of Loki. It holds no tenant logic: it asks the decision endpoint about every request and
+forwards only what that endpoint allows. The chart follows the `frontend` and `worker` layout (ConfigMap,
+Deployment, Service, optional HPA, re-encrypted Route, NetworkPolicies).
+
+- **Allow-list of read routes.** Only the Loki read paths (query, query_range, labels, series, the index
+  statistics and volume endpoints, format_query, detected fields and labels, patterns, and the label and
+  detected-field values paths) on `GET` or `POST` are routed. Live tail is not, and every other path,
+  method, `..`, `//` or escaped slash gets the same `403` as an unknown path. Paths are matched as sent
+  (no normalisation), so a trick cannot reach a route it does not literally name.
+- **`ext_authz` on every route**, the catch-all included, so a caller with no token cannot tell a real
+  route from an unknown one. There is no decision caching and no request body is forwarded to the check.
+  Failure never allows: an unreachable, slow or `5xx` decision endpoint is answered with the same
+  `{"error":"forbidden"}` body and headers as a real denial, and only the content type of a decision
+  response is passed back to the caller.
+- **Scope header.** `X-Scope-OrgID` is taken from the decision response with `allowed_upstream_headers`,
+  which overwrites any value the caller sent. It is never appended.
+- **Loki credential.** The caller's `Authorization` header is replaced after the decision (the decision
+  endpoint still sees the caller's token) with the gateway's own Loki login, read from a Secret into an
+  environment variable. It is never in the ConfigMap. The hop to Loki's nginx gateway is plain HTTP because
+  that Service offers no TLS, and it carries no tenant token.
+- **Access log.** One JSON line per request on stdout with method, path without the query string, status
+  and response flags. No tokens and no query strings are logged. A tenant-selecting field in a `POST` body
+  is ignored, but not recorded, because the check endpoint never sees the body.
+- **Probes.** The admin listener stays on loopback. A separate probe listener on its own port answers the
+  kubelet and is on neither the Service nor the Route.
+- **Network.** The gateway's pods may reach only the decision endpoint (port `logAccess.port`), Loki
+  (`networkPolicy.loki`, pod port 8080) and DNS. `logAccess.gatewayPodSelector` defaults to the gateway's
+  labels when the gateway is enabled.
+
+`envoy --mode validate` runs against the rendered config in CI, using the tag in `logGateway.image.tag`.
+
 ### Key Libraries
 
 | Library | Role |

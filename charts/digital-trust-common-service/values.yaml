@@ -74,8 +74,116 @@ logAccess:
     # certificate is read once at start, so a pod restart picks up a rotation.
     mountPath: /var/run/secrets/log-access-tls
   # -- Labels of the log gateway pods, the only peers allowed to reach the
-  # internal port. Required when `enabled` is true.
+  # internal port. Required when `enabled` is true, except that it defaults to
+  # the labels of the gateway deployed by `logGateway` when that is enabled.
   gatewayPodSelector: {}
+
+# Standalone Envoy proxy in front of Loki for tenant log queries. It asks the
+# internal log-access endpoint to decide every request, then forwards only the
+# enumerated Loki read routes with the partition header that decision computed.
+logGateway:
+  # -- Deploy the log gateway. Needs `logAccess.enabled`, `networkPolicy.enabled`,
+  # `upstream.host` and `upstream.auth.existingSecret.name`.
+  enabled: false
+  # -- Log gateway replicas (ignored when `logGateway.autoscaling.enabled=true`)
+  replicaCount: 1
+  image:
+    # -- Envoy image registry
+    registry: docker.io
+    # -- Envoy image repository
+    repository: envoyproxy/envoy
+    # -- Envoy image tag. CI validates the rendered config with this exact tag,
+    # so bumping it here bumps the validator too.
+    tag: v1.40.2
+    # -- Envoy image pull policy
+    pullPolicy: IfNotPresent
+  service:
+    # -- Log gateway Service type
+    type: ClusterIP
+    # -- Log gateway Service port exposed to the cluster
+    port: 8443
+    # -- Log gateway container port (Envoy TLS listener)
+    targetPort: 8443
+  tls:
+    # -- Where the serving-cert Secret (tls.crt, tls.key) is mounted. The
+    # certificate is read once at start, so a pod restart picks up a rotation.
+    mountPath: /var/run/secrets/log-gateway-tls
+  # -- Container port of the probe listener. It answers only the kubelet probes
+  # and is on neither the Service nor the Route.
+  probePort: 8081
+  route:
+    # -- Expose the gateway through an OpenShift Route (always re-encrypted)
+    enabled: false
+    # -- Route hostname (OpenShift generates one when empty)
+    host: ""
+    # -- Additional annotations for the Route
+    annotations: {}
+  upstream:
+    # -- Host of the Loki gateway Service. Required when `enabled` is true.
+    host: ""
+    # -- Service port of the Loki gateway. Envoy connects over plain HTTP: the
+    # Service offers no TLS, and the caller's bearer token never reaches it.
+    port: 80
+    # -- How long Envoy waits for Loki to answer a query
+    timeout: 60s
+    auth:
+      # -- Existing Secret holding the complete `Authorization` header value
+      # for the Loki gateway (for example `Basic <base64 of user:password>`).
+      # The chart never creates it. It is read at start, so a change needs a
+      # pod restart.
+      existingSecret:
+        name: ""
+        key: authorization
+  extAuthz:
+    # -- How long Envoy waits for the decision endpoint before denying
+    timeout: 2s
+  # -- Resource requests and limits for the log gateway container
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 250m
+      memory: 128Mi
+  # -- Liveness probe for the log gateway container
+  livenessProbe:
+    httpGet:
+      path: /livez
+      port: probe
+    initialDelaySeconds: 5
+    periodSeconds: 15
+    timeoutSeconds: 3
+    failureThreshold: 3
+  # -- Readiness probe for the log gateway container
+  readinessProbe:
+    httpGet:
+      path: /ready
+      port: probe
+    initialDelaySeconds: 3
+    periodSeconds: 10
+    timeoutSeconds: 3
+    failureThreshold: 3
+  # -- Annotations added to log gateway pods
+  podAnnotations: {}
+  # -- Labels added to log gateway pods
+  podLabels: {}
+  autoscaling:
+    # -- Enable autoscaling for the log gateway Deployment
+    enabled: false
+    # -- Minimum log gateway replicas
+    minReplicas: 1
+    # -- Maximum log gateway replicas
+    maxReplicas: 3
+    # -- Target average CPU utilization (percentage)
+    targetCPUUtilizationPercentage: 80
+    # -- Target average memory utilization (percentage)
+    # targetMemoryUtilizationPercentage: 80
+  # -- Node selector for log gateway pods
+  nodeSelector: {}
+  # -- Tolerations for log gateway pods
+  tolerations: []
+  # -- Affinity for log gateway pods
+  affinity: {}
 
 # OpenShift Route (default exposure mechanism on BC Gov clusters).
 route:
@@ -598,6 +706,17 @@ networkPolicy:
     # Keycloak rules. Set these in per-env values.
     podSelector: {}
     # -- Namespace selector matching the collector's namespace
+    namespaceSelector: {}
+  loki:
+    # -- Loki gateway pod port the log gateway may reach. Egress policy is
+    # evaluated after the Service port is rewritten (see `dnsEgress`), so this
+    # is the pod's port, not the Service port.
+    port: 8080
+    # -- Pod selector matching the Loki gateway pods.
+    # When both podSelector and namespaceSelector are empty, egress is allowed
+    # to any destination on that port. Set these in per-env values.
+    podSelector: {}
+    # -- Namespace selector matching the Loki namespace
     namespaceSelector: {}
 
 # -- Extra volumes for the API/Worker pods
