@@ -5,7 +5,7 @@ import {
   CredentialFormat,
 } from '@app/credential-ports';
 
-import { ConnectorCredential } from '../connector-credential/connector-credential.entity';
+import { Connector } from '../connector/connector.entity';
 
 /**
  * Everything a caller needs to perform a credential operation: the adapter to
@@ -15,7 +15,7 @@ import { ConnectorCredential } from '../connector-credential/connector-credentia
  */
 export interface ResolvedAdapter {
   readonly adapter: AgentAdapter;
-  readonly connector: ConnectorCredential;
+  readonly connector: Connector;
   readonly context: ConnectorContext;
   readonly format: CredentialFormat;
 }

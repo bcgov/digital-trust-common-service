@@ -7,7 +7,7 @@ import { Repository } from 'typeorm';
 
 import { AppModule } from '../app.module';
 import { ConnectorType } from '../connection/connection.entity';
-import { ConnectorCredential } from '../connector-credential/connector-credential.entity';
+import { Connector } from '../connector/connector.entity';
 import { Credential, CredentialState } from '../credential/credential.entity';
 import { CredentialDefinitionFormat } from '../credential-definition/credential-definition.entity';
 import { OPERATION_TYPE } from '../operation/operation-type.constants';
@@ -42,7 +42,7 @@ describe('ProtocolStateChange worker (integration)', () => {
   let operationService: OperationService;
   let operationRepository: OperationRepository;
   let tenantRepo: Repository<Tenant>;
-  let connectorCredentialRepo: Repository<ConnectorCredential>;
+  let connectorCredentialRepo: Repository<Connector>;
   let credentialRepo: Repository<Credential>;
   let operationRepo: Repository<Operation>;
 
@@ -66,9 +66,7 @@ describe('ProtocolStateChange worker (integration)', () => {
     operationService = moduleFixture.get(OperationService);
     operationRepository = moduleFixture.get(OperationRepository);
     tenantRepo = moduleFixture.get(getRepositoryToken(Tenant));
-    connectorCredentialRepo = moduleFixture.get(
-      getRepositoryToken(ConnectorCredential),
-    );
+    connectorCredentialRepo = moduleFixture.get(getRepositoryToken(Connector));
     credentialRepo = moduleFixture.get(getRepositoryToken(Credential));
     operationRepo = moduleFixture.get(getRepositoryToken(Operation));
   }, 30000);
@@ -86,7 +84,7 @@ describe('ProtocolStateChange worker (integration)', () => {
     );
   }
 
-  async function seedConnector(tenantId: string): Promise<ConnectorCredential> {
+  async function seedConnector(tenantId: string): Promise<Connector> {
     return connectorCredentialRepo.save(
       connectorCredentialRepo.create({
         tenantId,

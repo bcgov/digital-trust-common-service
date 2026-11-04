@@ -26,7 +26,7 @@ import {
 import { API_BASE_PATH } from '../common/constants/api-version.constants';
 import { RegistrationBackendError } from '../common/registration-backend-error';
 import { ConnectorType } from '../connection/connection.entity';
-import { ConnectorCredentialRepository } from '../connector-credential/connector-credential.repository';
+import { ConnectorRepository } from '../connector/connector.repository';
 import { JobsService } from '../jobs/jobs.service';
 import { OPERATION_TYPE } from '../operation/operation-type.constants';
 import { Operation, OperationState } from '../operation/operation.entity';
@@ -80,7 +80,7 @@ export function toCredentialDefinitionConnectorType(
 export class CredentialDefinitionService {
   public constructor(
     private readonly credentialDefinitionRepository: CredentialDefinitionRepository,
-    private readonly connectorCredentialRepository: ConnectorCredentialRepository,
+    private readonly connectorCredentialRepository: ConnectorRepository,
     private readonly domainAudit: DomainAuditService,
     private readonly operations: OperationService,
     private readonly jobs: JobsService,

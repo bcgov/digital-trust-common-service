@@ -76,7 +76,7 @@ const modulesToMock = [
   '../connection/connection.module',
   '../credential/credential-action.module',
   '../oauth-client/oauth-client.module',
-  '../connector-credential/connector-credential.module',
+  '../connector/connector.module',
   '../operation/operation.module',
   '../audit-log/audit-log.module',
   '../admin/admin.module',

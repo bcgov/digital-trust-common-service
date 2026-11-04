@@ -12,7 +12,7 @@ import { AdapterRegistry } from '../adapter-registry/adapter-registry.service';
 import { AuditAction } from '../audit-log/audit-log.entity';
 import { DomainAuditService } from '../audit-log/domain-audit.service';
 import { encodeCursor } from '../common/cursor-pagination';
-import { ConnectorCredential } from '../connector-credential/connector-credential.entity';
+import { Connector } from '../connector/connector.entity';
 import { JobsService } from '../jobs/jobs.service';
 import { OPERATION_TYPE } from '../operation/operation-type.constants';
 import { Operation, OperationState } from '../operation/operation.entity';
@@ -20,9 +20,9 @@ import { OperationService } from '../operation/operation.service';
 
 import {
   Connection,
-  ConnectorType,
-  ConnectionState,
   ConnectionProtocol,
+  ConnectionState,
+  ConnectorType,
 } from './connection.entity';
 import { ConnectionRepository } from './connection.repository';
 import { ConnectionService } from './connection.service';
@@ -67,7 +67,7 @@ describe('ConnectionService', () => {
     updatedAt: new Date(),
   };
 
-  const mockConnector: ConnectorCredential = {
+  const mockConnector: Connector = {
     id: '123e4567-e89b-12d3-a456-426614174002',
     tenantId: mockConnection.tenantId,
     connectorType: ConnectorType.TRACTION,

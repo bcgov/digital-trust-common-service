@@ -7,7 +7,7 @@ import { Test } from '@nestjs/testing';
 import { DataSource, EntitySchema, Repository } from 'typeorm';
 
 import { DomainAuditService } from '../audit-log/domain-audit.service';
-import { ConnectorCredentialRepository } from '../connector-credential/connector-credential.repository';
+import { ConnectorRepository } from '../connector/connector.repository';
 import { JobsService } from '../jobs/jobs.service';
 import { OperationService } from '../operation/operation.service';
 
@@ -165,7 +165,7 @@ describe('CredentialDefinition update concurrency', () => {
       providers: [
         CredentialDefinitionService,
         { provide: CredentialDefinitionRepository, useValue: repository },
-        { provide: ConnectorCredentialRepository, useValue: {} },
+        { provide: ConnectorRepository, useValue: {} },
         { provide: DomainAuditService, useValue: { emit } },
         { provide: OperationService, useValue: {} },
         { provide: JobsService, useValue: {} },
