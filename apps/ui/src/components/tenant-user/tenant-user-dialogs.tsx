@@ -39,6 +39,7 @@ export function TenantUserRoleSelect({
   value,
   onChange,
   hideLabel = false,
+  size,
   ariaLabel,
   isDisabled = false,
 }: {
@@ -46,6 +47,7 @@ export function TenantUserRoleSelect({
   value: TenantRole;
   onChange: (role: TenantRole) => void;
   hideLabel?: boolean;
+  size?: 'small' | 'medium';
   ariaLabel?: string;
   isDisabled?: boolean;
 }) {
@@ -68,6 +70,7 @@ export function TenantUserRoleSelect({
     <Select
       label={hideLabel ? undefined : t('users.role')}
       aria-label={ariaLabel}
+      size={size}
       description={caveat}
       items={items}
       selectedKey={value}

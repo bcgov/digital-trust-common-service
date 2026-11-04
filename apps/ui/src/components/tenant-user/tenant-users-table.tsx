@@ -124,12 +124,12 @@ export function TenantUsersTable({
   };
 
   return (
-    <div className="min-w-0 border-y border-(--surface-color-border-default)">
+    <div className="min-w-0 border-b border-(--surface-color-border-default)">
       <Table
         aria-label={t('users.tableLabel')}
         className="min-w-[64rem] table-fixed"
       >
-        <TableHeader className="bg-(--surface-color-background-light-gray) [&_th]:h-12 [&_th]:px-5 [&_th]:font-bold">
+        <TableHeader className="bg-(--surface-color-background-light-gray) [&_th]:h-15 [&_th]:px-(--layout-margin-medium) [&_th]:text-small-body [&_th]:font-normal [&_th]:text-black">
           <TableRow className="hover:bg-transparent">
             <TableHead scope="col" className="w-56">
               {t('users.name')}
@@ -143,12 +143,12 @@ export function TenantUsersTable({
             <TableHead scope="col" className="w-36">
               {t('users.added')}
             </TableHead>
-            <TableHead scope="col" className="w-24 text-right">
+            <TableHead scope="col" className="w-18 text-right">
               <span className="sr-only">{t('common.actions')}</span>
             </TableHead>
           </TableRow>
         </TableHeader>
-        <TableBody className="[&_td]:px-5 [&_td]:py-5">
+        <TableBody className="[&_td]:p-(--layout-margin-medium) [&_td]:text-body">
           {isLoading && <SkeletonRows columns={5} />}
           {!isLoading && users.length === 0 && (
             <EmptyRow>{emptyMessage}</EmptyRow>
@@ -159,7 +159,7 @@ export function TenantUsersTable({
               className="border-(--surface-color-border-default)"
             >
               <TableCell className="w-56 whitespace-normal">
-                <div className="flex w-full min-w-0 flex-col items-start gap-1">
+                <div className="flex w-full min-w-0 flex-col items-start">
                   <div className="flex max-w-full min-w-0 flex-wrap items-center gap-2 font-bold text-(--typography-color-primary)">
                     <span className="break-words">
                       {user.status === 'invited'
@@ -204,23 +204,28 @@ export function TenantUsersTable({
                     )}
                   </div>
                   {user.email && (
-                    <span className="max-w-full break-all text-sm text-(--typography-color-secondary)">
+                    <span className="max-w-full break-all text-(--typography-color-primary)">
                       {user.email}
                     </span>
                   )}
                 </div>
               </TableCell>
               <TableCell>
-                <TenantUserRoleSelect
-                  tenantId={tenantId}
-                  value={user.role ?? 'member'}
-                  hideLabel
-                  ariaLabel={t('users.roleFor', {
-                    email: user.email ?? t('users.unknownUser'),
-                  })}
-                  isDisabled={!canActOn(user)}
-                  onChange={(role) => onRoleChange(user, role)}
-                />
+                {/* The select's value span inherits line height, and the body
+                    line height would make the small select taller. */}
+                <div className="w-40 leading-none">
+                  <TenantUserRoleSelect
+                    tenantId={tenantId}
+                    value={user.role ?? 'member'}
+                    hideLabel
+                    size="small"
+                    ariaLabel={t('users.roleFor', {
+                      email: user.email ?? t('users.unknownUser'),
+                    })}
+                    isDisabled={!canActOn(user)}
+                    onChange={(role) => onRoleChange(user, role)}
+                  />
+                </div>
               </TableCell>
               <TableCell>
                 {user.status && (
