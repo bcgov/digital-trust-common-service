@@ -159,9 +159,6 @@ describe('TenantUsersPage', () => {
     expect(await within(members).findByText('Ada Admin')).toBeInTheDocument();
     expect(within(members).getAllByRole('columnheader')).toHaveLength(5);
     expect(
-      within(members).getByRole('columnheader', { name: 'Name' }),
-    ).toHaveClass('w-56');
-    expect(
       within(members).queryByRole('columnheader', { name: 'Email' }),
     ).not.toBeInTheDocument();
     expect(

@@ -131,18 +131,10 @@ export function TenantUsersTable({
       >
         <TableHeader className="bg-(--surface-color-background-light-gray) [&_th]:h-15 [&_th]:px-(--layout-margin-medium) [&_th]:text-small-body [&_th]:font-normal [&_th]:text-black">
           <TableRow className="hover:bg-transparent">
-            <TableHead scope="col" className="w-56">
-              {t('users.name')}
-            </TableHead>
-            <TableHead scope="col" className="w-56">
-              {t('users.role')}
-            </TableHead>
-            <TableHead scope="col" className="w-36">
-              {t('common.status')}
-            </TableHead>
-            <TableHead scope="col" className="w-36">
-              {t('users.added')}
-            </TableHead>
+            <TableHead scope="col">{t('users.name')}</TableHead>
+            <TableHead scope="col">{t('users.role')}</TableHead>
+            <TableHead scope="col">{t('common.status')}</TableHead>
+            <TableHead scope="col">{t('users.added')}</TableHead>
             <TableHead scope="col" className="w-18 text-right">
               <span className="sr-only">{t('common.actions')}</span>
             </TableHead>
@@ -158,7 +150,7 @@ export function TenantUsersTable({
               key={user.id}
               className="border-(--surface-color-border-default)"
             >
-              <TableCell className="w-56 whitespace-normal">
+              <TableCell className="whitespace-normal">
                 <div className="flex w-full min-w-0 flex-col items-start">
                   <div className="flex max-w-full min-w-0 flex-wrap items-center gap-2 font-bold text-(--typography-color-primary)">
                     <span className="break-words">
