@@ -195,7 +195,7 @@ export function TenantUsersPage() {
       });
   };
   return (
-    <div className="flex flex-1 flex-col gap-4">
+    <div className="flex flex-1 flex-col gap-(--layout-margin-large)">
       {announcement && (
         <p role="status" aria-live="polite" className="text-sm text-green-700">
           {announcement}

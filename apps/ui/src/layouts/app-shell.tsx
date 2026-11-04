@@ -201,10 +201,7 @@ export function AppShell() {
         <main
           id="main-content"
           tabIndex={-1}
-          className={cn(
-            'flex min-w-0 flex-1 flex-col overflow-y-auto',
-            layout === 'centered' ? 'p-8' : 'p-6',
-          )}
+          className="flex min-w-0 flex-1 flex-col overflow-y-auto p-8"
         >
           <div className="mx-auto w-full max-w-7xl">
             <Outlet />

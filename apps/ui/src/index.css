@@ -209,6 +209,15 @@ span.bcds-react-aria-Tag.user-tag {
   cursor: default;
 }
 
+/* BCDS pins the Select menu to the trigger width, so in a narrow select
+   each option description wraps over several lines. Let the menu grow to
+   fit its options, never narrower than the trigger. (0,2,0) vs (0,1,0). */
+.bcds-react-aria-Select--Popover[data-trigger='Select'] {
+  min-width: var(--trigger-width);
+  width: max-content;
+  max-width: 26rem;
+}
+
 /* Record context menu (Figma "Menu", 160px): 8px icon gap, centred
    20px icons, primary text and medium radius on BCDS menu items. */
 .bcds-react-aria-Popover:has(> .record-menu) {
