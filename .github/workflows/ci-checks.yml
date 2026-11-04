@@ -167,6 +167,28 @@ jobs:
               --set-file oidcSigning.keys=digital-trust-common-service/ci/placeholder-oidc-keys.json \
               --set-json connectorEncryption.keys='{"1":"ci-connector-encryption-key"}' > /dev/null
           done
+      - name: Validate log gateway Envoy config
+        run: |
+          # The tag comes from values.yaml so the validator and the deployed
+          # image cannot drift apart.
+          tag="$(yq -r '.logGateway.image.tag' charts/digital-trust-common-service/values.yaml)"
+          mkdir -p "$RUNNER_TEMP/envoy/tls" "$RUNNER_TEMP/envoy/ca"
+          helm template ci charts/digital-trust-common-service \
+            -f charts/digital-trust-common-service/ci/ci-values.yaml \
+            --show-only templates/log-gateway/configmap.yaml \
+            | yq 'select(.data."envoy.yaml") | .data."envoy.yaml"' \
+            > "$RUNNER_TEMP/envoy/envoy.yaml"
+          # Dummy material: validation loads the files but never connects.
+          openssl req -x509 -nodes -newkey rsa:2048 -days 1 -subj /CN=ci \
+            -keyout "$RUNNER_TEMP/envoy/tls/tls.key" \
+            -out "$RUNNER_TEMP/envoy/tls/tls.crt"
+          cp "$RUNNER_TEMP/envoy/tls/tls.crt" "$RUNNER_TEMP/envoy/ca/service-ca.crt"
+          docker run --rm \
+            -e LOKI_AUTHORIZATION="Basic ci" \
+            -v "$RUNNER_TEMP/envoy/envoy.yaml:/etc/envoy/envoy.yaml:ro" \
+            -v "$RUNNER_TEMP/envoy/tls:/var/run/secrets/log-gateway-tls:ro" \
+            -v "$RUNNER_TEMP/envoy/ca:/var/run/secrets/openshift-service-ca:ro" \
+            "envoyproxy/envoy:${tag}" --mode validate -c /etc/envoy/envoy.yaml
       - name: Helm unit tests
         run: |
           helm plugin install https://github.com/helm-unittest/helm-unittest --version v1.0.1
