@@ -23,6 +23,7 @@ import {
   isTerminalOperationState,
 } from './operation-ttl.util';
 import {
+  isBatchOperationType,
   isKnownOperationType,
   OPERATION_TYPE,
 } from './operation-type.constants';
@@ -353,7 +354,7 @@ export class OperationService {
   }
 
   private isBatchParent(operation: Operation): boolean {
-    return !operation.batchId && operation.type.endsWith('-batch');
+    return !operation.batchId && isBatchOperationType(operation.type);
   }
 
   private failureResult(operation: Operation): OperationFailure {
