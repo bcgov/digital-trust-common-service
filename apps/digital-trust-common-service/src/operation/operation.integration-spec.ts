@@ -889,6 +889,104 @@ describe('operation tenant isolation integration', () => {
     },
   );
 
+  it('holds the status HTTP response until the operation changes and then applies first-view TTL', async () => {
+    const operation = await repository.save(
+      repository.create({
+        tenantId: tenantAId,
+        type: 'credential.offer',
+        state: OperationState.PENDING,
+        request: { method: 'POST', path: '/test', body: {} },
+        expiresAt: new Date(Date.now() + 72 * 60 * 60 * 1000),
+      }),
+    );
+    let initialRead!: () => void;
+    const started = new Promise<void>((resolve) => {
+      initialRead = resolve;
+    });
+    const find = repository.findByIdForTenant.bind(repository);
+    const lookup = jest
+      .spyOn(repository, 'findByIdForTenant')
+      .mockImplementationOnce(async (id, tenantId) => {
+        const current = await find(id, tenantId);
+        initialRead();
+        return current;
+      });
+    let returned = false;
+    const pending = request(app.getHttpServer())
+      .get(`/api/v1/tenants/${tenantAId}/operations/${operation.id}`)
+      .set('Prefer', 'wait=30')
+      .expect(200)
+      .then((response) => {
+        returned = true;
+        return response;
+      });
+    try {
+      await started;
+      expect(returned).toBe(false);
+      expect((await find(operation.id, tenantAId))?.viewedAt).toBeNull();
+      const result = { credential_exchange_id: 'status-exchange' };
+      await dataSource
+        .getRepository(Operation)
+        .update(
+          { id: operation.id, tenantId: tenantAId },
+          { state: OperationState.COMPLETED, result },
+        );
+      const response = await pending;
+      expect(response.body).toMatchObject({
+        id: operation.id,
+        state: 'completed',
+        result,
+      });
+      expect(response.body).not.toHaveProperty('request');
+      const stored = await find(operation.id, tenantAId);
+      expect(stored?.viewedAt).toBeInstanceOf(Date);
+      expect(stored?.expiresAt.getTime()).toBe(
+        stored!.viewedAt!.getTime() + 60 * 60 * 1000,
+      );
+    } finally {
+      lookup.mockRestore();
+    }
+  });
+
+  it('returns the normal status envelope after a long-poll timeout without marking processing viewed', async () => {
+    const operation = await repository.save(
+      repository.create({
+        tenantId: tenantAId,
+        type: 'credential.offer',
+        state: OperationState.PROCESSING,
+        request: { method: 'POST', path: '/test', body: {} },
+        expiresAt: new Date(Date.now() + 72 * 60 * 60 * 1000),
+      }),
+    );
+    const lookup = jest.spyOn(repository, 'findByIdForTenant');
+    try {
+      const response = await request(app.getHttpServer())
+        .get(`/api/v1/tenants/${tenantAId}/operations/${operation.id}`)
+        .set('Prefer', 'wait=1')
+        .expect(200);
+      expect(response.body).toMatchObject({
+        id: operation.id,
+        state: 'processing',
+        result: null,
+      });
+      expect(lookup.mock.calls.length).toBeGreaterThanOrEqual(2);
+      expect(Object.keys(response.body as HttpOperation).sort()).toEqual([
+        'batch_id',
+        'created_at',
+        'id',
+        'result',
+        'state',
+        'type',
+        'updated_at',
+      ]);
+      expect(
+        (await repository.findByIdForTenant(operation.id, tenantAId))?.viewedAt,
+      ).toBeNull();
+    } finally {
+      lookup.mockRestore();
+    }
+  });
+
   it('returns null for another tenant, indistinguishable from a missing row', async () => {
     const foreign = await repository.findByIdForTenant(
       tenantAOperationId,

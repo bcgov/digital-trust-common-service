@@ -1399,7 +1399,7 @@ differs from our internal `ProtocolTopic` of the same name.
 Operation reads require an authenticated tenant-scoped token, not a dedicated
 operations scope. The routes under `/api/v1/tenants/:tenantId/operations` are:
 
-- `GET /:operationId`: operation status and result.
+- `GET /:operationId`: operation status and result; supports `Prefer: wait=30`.
 - `GET /`: list with optional `state`, `type`, `cursor`, and `limit` filters.
 - `GET /:operationId/items`: batch children with optional `state`, `cursor`,
   and `limit`; returns 404 for a missing, foreign, or non-batch parent.
@@ -1419,14 +1419,18 @@ List responses use `{ data, pagination: { next_cursor, has_more } }`, with
 default limit 20 and maximum 100. Cursors use the shared cursor-pagination
 utility.
 
-Batch-item reads accept `Prefer: wait=30` to wait for a parent or child state
-change. The wait is capped at 30 seconds; `wait=0` or no wait preference returns
+Status reads accept `Prefer: wait=30` to wait for the requested operation's
+state to change, for standalone operations and batch parents alike. Batch-item
+reads additionally support the same preference, watching the parent and all
+tenant-scoped child states, not just the requested page or state filter.
+The wait is capped at 30 seconds; `wait=0` or no wait preference returns
 immediately. Invalid or duplicate wait values return 400. Checks run once per
-second and cover all tenant-scoped batch children, not just the requested
-page or state filter. Timeout returns the normal HTTP 200 paginated response,
-without extra envelope fields. Terminal parents return immediately. A missing
-or purged parent returns 404. Client disconnects cancel the pending timer;
-no database transaction or connection is held between checks.
+second. Terminal operations return immediately. Timeout returns HTTP 200 with
+the normal operation envelope (status) or paginated response (items), without
+extra fields. First-view TTL treatment applies only when preparing the final
+response, not during the wait. Missing or purged operations return 404.
+Client disconnects stop further reads and response preparation; database calls
+already in flight may finish, but no connection is held between checks.
 
 Operation representations share six core fields: `id`, `type`, `state`,
 `created_at`, `updated_at`, and `result`. They also include `batch_id`, which
@@ -1708,7 +1712,7 @@ OpenShift route (see `APP_PUBLIC_URL`) and does not need this — it exists for 
 callers.
 
 - `allowedHeaders` is fixed: `Authorization`, `Content-Type`, `X-Request-Id`,
-  `Idempotency-Key`, `Prefer` (for operation batch-item long-polling).
+  `Idempotency-Key`, `Prefer` (for operation status and batch-item long-polling).
 - `exposedHeaders` is fixed: `Retry-After`, `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`, `X-Request-Id` — the
   latter two are set by `RateLimitGuard` (global, IP-keyed flood protection; see
   [Per-tenant rate limiting](#per-tenant-rate-limiting)) on every response via the base

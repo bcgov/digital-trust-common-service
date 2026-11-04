@@ -131,6 +131,44 @@ export class OperationService {
     return this.prepareForRead(operation);
   }
 
+  public async waitForStatusForTenant(
+    tenantId: string,
+    id: string,
+    waitSeconds: number,
+    signal?: AbortSignal,
+  ): Promise<Operation> {
+    const deadline = Date.now() + Math.min(Math.max(waitSeconds, 0), 30) * 1000;
+    let operation = await this.awaitWhileConnected(
+      () => this.operations.findByIdForTenant(id, tenantId),
+      signal,
+    );
+    if (!operation) {
+      throw new NotFoundException('Operation not found');
+    }
+    const initialState = operation.state;
+    while (
+      !isTerminalOperationState(operation.state) &&
+      Date.now() < deadline
+    ) {
+      await this.waitForPoll(Math.min(1000, deadline - Date.now()), signal);
+      operation = await this.awaitWhileConnected(
+        () => this.operations.findByIdForTenant(id, tenantId),
+        signal,
+      );
+      if (!operation) {
+        throw new NotFoundException('Operation not found');
+      }
+      if (operation.state !== initialState) {
+        break;
+      }
+    }
+    const current = operation;
+    return this.awaitWhileConnected(
+      () => this.prepareForRead(current, signal),
+      signal,
+    );
+  }
+
   public async listForTenant(
     tenantId: string,
     query: ListOperationsQueryDto = {},

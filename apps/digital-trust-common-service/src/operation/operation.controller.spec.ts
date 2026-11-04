@@ -43,6 +43,7 @@ describe('OperationController', () => {
   let mockGetRequestForTenant: jest.Mock;
   let mockListItemsForTenant: jest.Mock;
   let mockWaitForItemsForTenant: jest.Mock;
+  let mockWaitForStatusForTenant: jest.Mock;
 
   const tenantId = '123e4567-e89b-12d3-a456-426614174001';
   const operationId = '123e4567-e89b-12d3-a456-426614174000';
@@ -75,6 +76,7 @@ describe('OperationController', () => {
     mockGetRequestForTenant = jest.fn();
     mockListItemsForTenant = jest.fn();
     mockWaitForItemsForTenant = jest.fn();
+    mockWaitForStatusForTenant = jest.fn();
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [OperationController],
@@ -89,6 +91,7 @@ describe('OperationController', () => {
             getRequestForTenant: mockGetRequestForTenant,
             listItemsForTenant: mockListItemsForTenant,
             waitForItemsForTenant: mockWaitForItemsForTenant,
+            waitForStatusForTenant: mockWaitForStatusForTenant,
           },
         },
       ],
@@ -121,6 +124,15 @@ describe('OperationController', () => {
     const base = '/api/v1/tenants/{tenantId}/operations';
     const detail = document.paths[`${base}/{operationId}`]?.get;
 
+    expect(detail?.parameters).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: 'Prefer',
+          in: 'header',
+          required: false,
+        }),
+      ]),
+    );
     expect(detail).toMatchObject({
       summary: 'Retrieve operation status and result',
       responses: {
@@ -205,6 +217,85 @@ describe('OperationController', () => {
         '500': { description: expect.stringContaining('Audit write failed') },
       },
     });
+  });
+
+  it.each([
+    ['wait=30', 30],
+    ['wait=60', 30],
+    ['return=minimal, wait="2"', 2],
+  ])('long-polls operation status with Prefer: %s', async (prefer, seconds) => {
+    mockWaitForStatusForTenant.mockResolvedValue(
+      buildOperation({
+        state: OperationState.COMPLETED,
+        result: { credential_exchange_id: 'exchange' },
+      }),
+    );
+    const response = await request(app.getHttpServer())
+      .get(`/api/v1/tenants/${tenantId}/operations/${operationId}`)
+      .set('Prefer', prefer)
+      .expect(200);
+    expect(mockWaitForStatusForTenant).toHaveBeenCalledWith(
+      tenantId,
+      operationId,
+      seconds,
+      expect.any(AbortSignal),
+    );
+    expect(mockGetForTenant).not.toHaveBeenCalled();
+    expect(response.body).toMatchObject({
+      id: operationId,
+      state: 'completed',
+      result: { credential_exchange_id: 'exchange' },
+    });
+    expect(response.body).not.toHaveProperty('request');
+  });
+
+  it.each(['wait=0', 'return=minimal'])(
+    'returns operation status immediately with Prefer: %s',
+    async (prefer) => {
+      mockGetForTenant.mockResolvedValue(buildOperation());
+      await request(app.getHttpServer())
+        .get(`/api/v1/tenants/${tenantId}/operations/${operationId}`)
+        .set('Prefer', prefer)
+        .expect(200);
+      expect(mockGetForTenant).toHaveBeenCalledWith(tenantId, operationId);
+      expect(mockWaitForStatusForTenant).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['wait', 'wait=-1', 'wait=1.5', 'wait=invalid', 'wait=1, wait=2'])(
+    'rejects malformed status Prefer: %s',
+    async (prefer) => {
+      await request(app.getHttpServer())
+        .get(`/api/v1/tenants/${tenantId}/operations/${operationId}`)
+        .set('Prefer', prefer)
+        .expect(400);
+      expect(mockWaitForStatusForTenant).not.toHaveBeenCalled();
+      expect(mockGetForTenant).not.toHaveBeenCalled();
+    },
+  );
+
+  it('cancels the status wait and removes its response-close listener on disconnect', async () => {
+    const response = new EventEmitter();
+    mockWaitForStatusForTenant.mockImplementation(
+      (_tenant, _id, _wait, signal: AbortSignal) =>
+        new Promise((_resolve, reject) => {
+          signal.addEventListener(
+            'abort',
+            () => reject(new Error('disconnected')),
+            { once: true },
+          );
+        }),
+    );
+    const pending = controller.findById(
+      tenantId,
+      operationId,
+      'wait=30',
+      response as Response,
+    );
+    const assertion = expect(pending).rejects.toThrow('disconnected');
+    response.emit('close');
+    await assertion;
+    expect(response.listenerCount('close')).toBe(0);
   });
 
   it('serves the versioned list route and transforms query parameters', async () => {

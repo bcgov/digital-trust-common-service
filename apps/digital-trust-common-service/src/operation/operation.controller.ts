@@ -206,21 +206,16 @@ export class OperationController {
   ): Promise<PaginatedOperationsResponseDto> {
     const waitSeconds = parseOperationWait(prefer);
     if (waitSeconds > 0) {
-      const abort = new AbortController();
-      const onClose = () => abort.abort();
-      response?.once('close', onClose);
-      try {
-        const page = await this.operations.waitForItemsForTenant(
+      const page = await this.withDisconnectSignal(response, (signal) =>
+        this.operations.waitForItemsForTenant(
           tenantId,
           operationId,
           query,
           waitSeconds,
-          abort.signal,
-        );
-        return this.toPaginatedResponse(page);
-      } finally {
-        response?.off('close', onClose);
-      }
+          signal,
+        ),
+      );
+      return this.toPaginatedResponse(page);
     }
     const page = await this.operations.listItemsForTenant(
       tenantId,
@@ -231,10 +226,17 @@ export class OperationController {
   }
 
   @Get(':operationId')
+  @ApiHeader({
+    name: 'Prefer',
+    required: false,
+    description:
+      'Optional wait=30 status long-poll. Non-negative integer seconds, capped at 30; wait=0 returns immediately. Invalid or duplicate wait values return 400. Unrelated preferences are ignored.',
+    schema: { type: 'string', example: 'wait=30' },
+  })
   @ApiOperation({
     summary: 'Retrieve operation status and result',
     description:
-      'Any authenticated token scoped to this tenant may poll the operation, including readonly users. Operation failures remain HTTP 200 with state=failed. On the first completed/failed retrieval, viewed_at is set once and expires_at is recalculated using the tenant operation TTL settings; updated_at does not change. Processing batch summaries use live tenant-scoped child counts. Settlement marks a parent failed if any child fails; completed and failed parents with stored counts return a settled summary whose totals survive child purge. Parent-level failures without stored counts retain { code, message }. At most 100 retained child errors are included; use /items?state=failed for all retained failures. Original requests are exposed only by the separately audited /request endpoint.',
+      'Any authenticated token scoped to this tenant may poll the operation, including readonly users. Prefer: wait=30 checks this operation once per second until its state changes or the capped wait expires. Terminal operations return immediately; timeout returns HTTP 200 with the normal operation envelope and no extra fields. Operation failures remain HTTP 200 with state=failed. On the first completed/failed retrieval, viewed_at is set once and expires_at is recalculated using the tenant operation TTL settings; updated_at does not change. Processing batch summaries use live tenant-scoped child counts. Settlement marks a parent failed if any child fails; completed and failed parents with stored counts return a settled summary whose totals survive child purge. Parent-level failures without stored counts retain { code, message }. At most 100 retained child errors are included; use /items?state=failed for all retained failures. Original requests are exposed only by the separately audited /request endpoint.',
   })
   @ApiParam({ name: 'tenantId', format: 'uuid' })
   @ApiParam({ name: 'operationId', format: 'uuid' })
@@ -309,7 +311,7 @@ export class OperationController {
     },
   })
   @ApiBadRequestResponse({
-    description: 'A path parameter is not a valid UUID',
+    description: 'Invalid path UUID or Prefer wait value',
   })
   @ApiNotFoundResponse({
     description:
@@ -318,10 +320,37 @@ export class OperationController {
   public async findById(
     @Param('tenantId', ParseUUIDPipe) tenantId: string,
     @Param('operationId', ParseUUIDPipe) operationId: string,
+    @Headers('prefer') prefer?: string,
+    @Res({ passthrough: true }) response?: Response,
   ): Promise<OperationResponseDto> {
-    const operation = await this.operations.getForTenant(tenantId, operationId);
+    const waitSeconds = parseOperationWait(prefer);
+    const operation =
+      waitSeconds > 0
+        ? await this.withDisconnectSignal(response, (signal) =>
+            this.operations.waitForStatusForTenant(
+              tenantId,
+              operationId,
+              waitSeconds,
+              signal,
+            ),
+          )
+        : await this.operations.getForTenant(tenantId, operationId);
 
     return OperationResponseDto.fromEntity(operation);
+  }
+
+  private async withDisconnectSignal<T>(
+    response: Response | undefined,
+    load: (signal: AbortSignal) => Promise<T>,
+  ): Promise<T> {
+    const abort = new AbortController();
+    const onClose = () => abort.abort();
+    response?.once('close', onClose);
+    try {
+      return await load(abort.signal);
+    } finally {
+      response?.off('close', onClose);
+    }
   }
 
   private toPaginatedResponse(

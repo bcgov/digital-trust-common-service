@@ -354,6 +354,141 @@ describe('OperationService', () => {
     });
   });
 
+  describe('operation status long-polling', () => {
+    beforeEach(() => {
+      jest.useFakeTimers();
+      mockFindByIdForTenant.mockImplementation(() =>
+        Promise.resolve(buildOperation({ state: OperationState.PROCESSING })),
+      );
+    });
+
+    it.each([
+      [OperationState.PENDING, OperationState.PROCESSING],
+      [OperationState.PROCESSING, OperationState.COMPLETED],
+      [OperationState.PROCESSING, OperationState.FAILED],
+    ])('returns when status changes from %s to %s', async (initial, state) => {
+      mockFindByIdForTenant
+        .mockResolvedValueOnce(buildOperation({ state: initial }))
+        .mockResolvedValue(buildOperation({ state, viewedAt }));
+      const pending = service.waitForStatusForTenant('t1', 'op-1', 30);
+
+      await jest.advanceTimersByTimeAsync(999);
+      expect(mockFindByIdForTenant).toHaveBeenCalledTimes(1);
+      await jest.advanceTimersByTimeAsync(1);
+
+      await expect(pending).resolves.toMatchObject({ state });
+      expect(mockFindByIdForTenant).toHaveBeenLastCalledWith('op-1', 't1');
+      expect(mockBatchFingerprint).not.toHaveBeenCalled();
+      expect(jest.getTimerCount()).toBe(0);
+    });
+
+    it('caps the status wait at 30 seconds and returns the unchanged operation on timeout', async () => {
+      let returned = false;
+      const pending = service
+        .waitForStatusForTenant('t1', 'op-1', 60)
+        .then((value) => {
+          returned = true;
+          return value;
+        });
+      await jest.advanceTimersByTimeAsync(29_999);
+      expect(returned).toBe(false);
+      expect(mockMarkFirstView).not.toHaveBeenCalled();
+      await jest.advanceTimersByTimeAsync(1);
+
+      await expect(pending).resolves.toMatchObject({
+        state: OperationState.PROCESSING,
+      });
+      expect(jest.getTimerCount()).toBe(0);
+    });
+
+    it.each([OperationState.COMPLETED, OperationState.FAILED])(
+      'returns an already %s operation immediately',
+      async (state) => {
+        mockFindByIdForTenant.mockResolvedValue(
+          buildOperation({ state, viewedAt }),
+        );
+        await expect(
+          service.waitForStatusForTenant('t1', 'op-1', 30),
+        ).resolves.toMatchObject({ state });
+        expect(mockFindByIdForTenant).toHaveBeenCalledTimes(1);
+        expect(jest.getTimerCount()).toBe(0);
+      },
+    );
+
+    it('marks a newly completed operation viewed only when returning the final response', async () => {
+      const start = Date.now();
+      mockFindByIdForTenant
+        .mockResolvedValueOnce(
+          buildOperation({ state: OperationState.PROCESSING }),
+        )
+        .mockResolvedValue(buildOperation({ state: OperationState.COMPLETED }));
+      mockMarkFirstView.mockImplementation(
+        (_id: string, viewedAt: Date, expiresAt: Date) =>
+          Promise.resolve({ viewedAt, expiresAt }),
+      );
+      const pending = service.waitForStatusForTenant('t1', 'op-1', 30);
+      await jest.advanceTimersByTimeAsync(999);
+      expect(mockMarkFirstView).not.toHaveBeenCalled();
+      await jest.advanceTimersByTimeAsync(1);
+      const result = await pending;
+      expect(result.viewedAt?.getTime()).toBe(start + 1000);
+      expect(mockMarkFirstView).toHaveBeenCalledTimes(1);
+      expect(result.updatedAt).toEqual(createdAt);
+    });
+
+    it('returns 404 for a missing or foreign operation without waiting', async () => {
+      mockFindByIdForTenant.mockResolvedValue(null);
+      await expect(
+        service.waitForStatusForTenant('t2', 'op-1', 30),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(jest.getTimerCount()).toBe(0);
+    });
+
+    it('returns 404 if the operation is purged during the wait', async () => {
+      mockFindByIdForTenant
+        .mockResolvedValueOnce(buildOperation())
+        .mockResolvedValue(null);
+      const pending = service.waitForStatusForTenant('t1', 'op-1', 30);
+      const assertion =
+        expect(pending).rejects.toBeInstanceOf(NotFoundException);
+      await jest.advanceTimersByTimeAsync(1000);
+      await assertion;
+      expect(jest.getTimerCount()).toBe(0);
+    });
+
+    it.each(['initial', 'polled'])(
+      'cancels during the %s status lookup without first-view side effects',
+      async (stage) => {
+        const abort = new AbortController();
+        let finishLookup!: (value: Operation) => void;
+        const lookup = new Promise<Operation>((resolve) => {
+          finishLookup = resolve;
+        });
+        if (stage === 'polled') {
+          mockFindByIdForTenant.mockResolvedValueOnce(buildOperation());
+        }
+        mockFindByIdForTenant.mockReturnValueOnce(lookup);
+        const pending = service.waitForStatusForTenant(
+          't1',
+          'op-1',
+          30,
+          abort.signal,
+        );
+        const assertion = expect(pending).rejects.toThrow(
+          'Operation polling cancelled',
+        );
+        await jest.advanceTimersByTimeAsync(stage === 'polled' ? 1000 : 0);
+        abort.abort();
+        await assertion;
+        finishLookup(buildOperation({ state: OperationState.COMPLETED }));
+        await jest.advanceTimersByTimeAsync(0);
+        expect(mockMarkFirstView).not.toHaveBeenCalled();
+        expect(mockSave).not.toHaveBeenCalled();
+        expect(jest.getTimerCount()).toBe(0);
+      },
+    );
+  });
+
   describe('batch item long-polling', () => {
     const query = { state: OperationState.FAILED, limit: 20 };
 
