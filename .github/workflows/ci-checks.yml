@@ -183,6 +183,10 @@ jobs:
             -keyout "$RUNNER_TEMP/envoy/tls/tls.key" \
             -out "$RUNNER_TEMP/envoy/tls/tls.crt"
           cp "$RUNNER_TEMP/envoy/tls/tls.crt" "$RUNNER_TEMP/envoy/ca/service-ca.crt"
+          # The image runs as a non-root user, which cannot read a 0600 key
+          # owned by the runner.
+          chmod -R a+rX "$RUNNER_TEMP/envoy"
+          chmod a+r "$RUNNER_TEMP/envoy/tls/tls.key"
           docker run --rm \
             -e LOKI_AUTHORIZATION="Basic ci" \
             -v "$RUNNER_TEMP/envoy/envoy.yaml:/etc/envoy/envoy.yaml:ro" \
