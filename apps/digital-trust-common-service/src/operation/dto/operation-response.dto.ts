@@ -26,7 +26,7 @@ export class OperationResponseDto {
   @ApiProperty({
     name: 'batch_id',
     description:
-      'The parent batch operation id. Present only on child operations of a batch.',
+      'The parent batch operation id, or null for standalone operations and batch parents.',
     example: null,
     nullable: true,
   })
@@ -67,7 +67,7 @@ export class OperationResponseDto {
 
   @ApiProperty({
     description:
-      'State-dependent result. Usually null while pending or processing; registration retains credential_definition_id, external_id, and current progress, including on failure. Type-specific data when completed; { code, message } when failed.',
+      'Deserialize by (type, state). Non-batch pending/processing results are null, except credential registration retains resource references and progress. Completed results contain type-specific data; ordinary failures contain { code, message }. Batch parents (type ends in -batch, batch_id null) return { total, pending, processing, completed, failed } while processing. Settled parents return { total, completed, failed, errors: [{ id, code, message }] }; any failed child makes settlement state failed. Completed or failed parents with stored counts use that snapshot, preserving totals after child purge. Legacy completed parents without counts fall back to retained child counts. Errors are capped at 100 and include retained child failures only; use /items?state=failed for all retained failures. Pending parents return null; failed parents without settlement counts retain { code, message }.',
     type: 'object',
     additionalProperties: true,
     example: null,
@@ -102,4 +102,41 @@ export class OperationResponseDto {
     }
     return dto;
   }
+}
+
+export class OperationsPaginationDto {
+  @Expose({ name: 'next_cursor' })
+  @ApiProperty({
+    name: 'next_cursor',
+    description: 'Cursor to fetch the next page, or null if there is none',
+    example: null,
+    nullable: true,
+  })
+  public nextCursor!: string | null;
+
+  @Expose({ name: 'has_more' })
+  @ApiProperty({
+    name: 'has_more',
+    description: 'Whether more results are available beyond this page',
+    example: false,
+  })
+  public hasMore!: boolean;
+
+  public static from(
+    nextCursor: string | null,
+    hasMore: boolean,
+  ): OperationsPaginationDto {
+    const dto = new OperationsPaginationDto();
+    dto.nextCursor = nextCursor;
+    dto.hasMore = hasMore;
+    return dto;
+  }
+}
+
+export class PaginatedOperationsResponseDto {
+  @ApiProperty({ type: [OperationResponseDto] })
+  public data!: OperationResponseDto[];
+
+  @ApiProperty({ type: OperationsPaginationDto })
+  public pagination!: OperationsPaginationDto;
 }

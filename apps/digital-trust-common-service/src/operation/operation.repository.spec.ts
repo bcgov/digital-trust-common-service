@@ -19,10 +19,13 @@ describe('OperationRepository', () => {
     andWhere: jest.Mock;
     groupBy: jest.Mock;
     orderBy: jest.Mock;
+    addOrderBy: jest.Mock;
     take: jest.Mock;
     setLock: jest.Mock;
     getMany: jest.Mock;
+    getRawAndEntities: jest.Mock;
     getRawMany: jest.Mock;
+    getRawOne: jest.Mock;
     getOne: jest.Mock;
   };
 
@@ -34,10 +37,13 @@ describe('OperationRepository', () => {
       andWhere: jest.fn().mockReturnThis(),
       groupBy: jest.fn().mockReturnThis(),
       orderBy: jest.fn().mockReturnThis(),
+      addOrderBy: jest.fn().mockReturnThis(),
       take: jest.fn().mockReturnThis(),
       setLock: jest.fn().mockReturnThis(),
       getMany: jest.fn(),
+      getRawAndEntities: jest.fn(),
       getRawMany: jest.fn(),
+      getRawOne: jest.fn(),
       getOne: jest.fn(),
     };
 
@@ -68,6 +74,26 @@ describe('OperationRepository', () => {
     }).compile();
 
     repository = module.get<OperationRepository>(OperationRepository);
+  });
+
+  it('fingerprints all child states with both tenant and batch predicates', async () => {
+    queryBuilder.getRawOne.mockResolvedValue({ fingerprint: 'state-hash' });
+    await expect(
+      repository.findBatchStateFingerprintForTenant('batch-1', 't1'),
+    ).resolves.toBe('state-hash');
+    expect(queryBuilder.where).toHaveBeenCalledWith(
+      'op.tenant_id = :tenantId',
+      { tenantId: 't1' },
+    );
+    expect(queryBuilder.andWhere).toHaveBeenCalledWith(
+      'op.batch_id = :batchId',
+      { batchId: 'batch-1' },
+    );
+    expect(queryBuilder.select).toHaveBeenCalledWith(
+      expect.stringContaining("op.id::text || ':' || op.state::text"),
+      'fingerprint',
+    );
+    expect(queryBuilder.take).not.toHaveBeenCalled();
   });
 
   it('create delegates to repo.create', () => {
@@ -392,11 +418,15 @@ describe('OperationRepository', () => {
         'DESC',
       );
       expect(queryBuilder.take).toHaveBeenCalledWith(20);
+      expect(queryBuilder.addOrderBy).toHaveBeenCalledWith('op.id', 'DESC');
     });
 
     it('applies state, type, cursor and custom limit', async () => {
       queryBuilder.getMany.mockResolvedValue([]);
-      const cursor = new Date('2024-01-01T00:00:00.000Z');
+      const cursor = {
+        createdAt: '2024-01-01T00:00:00.000Z',
+        id: '123e4567-e89b-42d3-a456-426614174000',
+      };
 
       await repository.findByTenantWithFilters({
         tenantId: 't1',
@@ -413,8 +443,8 @@ describe('OperationRepository', () => {
         type: 'credential.offer',
       });
       expect(queryBuilder.andWhere).toHaveBeenCalledWith(
-        'op.created_at < :cursor',
-        { cursor },
+        '(op.created_at, op.id) < (CAST(:cursorCreatedAt AS timestamptz), CAST(:cursorId AS uuid))',
+        { cursorCreatedAt: cursor.createdAt, cursorId: cursor.id },
       );
       expect(queryBuilder.take).toHaveBeenCalledWith(5);
     });
@@ -443,6 +473,94 @@ describe('OperationRepository', () => {
         { batchId: 'batch-1' },
       );
     });
+  });
+
+  describe('findPageForTenant', () => {
+    it('returns an empty page using the default limit plus one', async () => {
+      queryBuilder.getRawAndEntities.mockResolvedValue({
+        entities: [],
+        raw: [],
+      });
+
+      await expect(
+        repository.findPageForTenant({ tenantId: 't1' }),
+      ).resolves.toEqual({ items: [], nextCursor: null, hasMore: false });
+      expect(queryBuilder.where).toHaveBeenCalledWith(
+        'op.tenant_id = :tenantId',
+        { tenantId: 't1' },
+      );
+      expect(queryBuilder.take).toHaveBeenCalledWith(21);
+    });
+
+    it('preserves microseconds from the last returned item, not the lookahead row', async () => {
+      const createdAt = new Date('2026-01-01T00:00:00.000Z');
+      const items = [
+        { id: 'op-3', createdAt },
+        { id: 'op-2', createdAt },
+        { id: 'op-1', createdAt },
+      ];
+      const exactTimestamp = '2026-01-01T00:00:00.000123Z';
+      queryBuilder.getRawAndEntities.mockResolvedValue({
+        entities: items,
+        raw: items.map(() => ({ cursor_created_at: exactTimestamp })),
+      });
+
+      await expect(
+        repository.findPageForTenant({ tenantId: 't1', limit: 2 }),
+      ).resolves.toEqual({
+        items: items.slice(0, 2),
+        nextCursor: { createdAt: exactTimestamp, id: 'op-2' },
+        hasMore: true,
+      });
+      expect(queryBuilder.take).toHaveBeenCalledWith(3);
+    });
+
+    it('returns no next cursor on a full final page of filtered batch items', async () => {
+      const items = [{ id: 'op-1' }];
+      queryBuilder.getRawAndEntities.mockResolvedValue({
+        entities: items,
+        raw: [],
+      });
+
+      await expect(
+        repository.findPageForTenant({
+          tenantId: 't1',
+          batchId: 'batch-1',
+          state: OperationState.FAILED,
+          limit: 1,
+        }),
+      ).resolves.toEqual({ items, nextCursor: null, hasMore: false });
+      expect(queryBuilder.where).toHaveBeenCalledWith(
+        'op.tenant_id = :tenantId',
+        { tenantId: 't1' },
+      );
+      expect(queryBuilder.andWhere).toHaveBeenCalledWith(
+        'op.batch_id = :batchId',
+        { batchId: 'batch-1' },
+      );
+      expect(queryBuilder.andWhere).toHaveBeenCalledWith('op.state = :state', {
+        state: OperationState.FAILED,
+      });
+    });
+  });
+
+  it('caps the failed-child sample at 100 and filters by tenant and batch', async () => {
+    queryBuilder.getMany.mockResolvedValue([]);
+
+    await repository.findFailedBatchItemsForTenant('batch-1', 't1');
+
+    expect(queryBuilder.where).toHaveBeenCalledWith(
+      'op.tenant_id = :tenantId',
+      { tenantId: 't1' },
+    );
+    expect(queryBuilder.andWhere).toHaveBeenCalledWith(
+      'op.batch_id = :batchId',
+      { batchId: 'batch-1' },
+    );
+    expect(queryBuilder.andWhere).toHaveBeenCalledWith('op.state = :state', {
+      state: OperationState.FAILED,
+    });
+    expect(queryBuilder.take).toHaveBeenCalledWith(100);
   });
 
   describe('lockBatchParent', () => {

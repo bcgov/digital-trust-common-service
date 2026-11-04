@@ -1,3 +1,9 @@
+import type { Server } from 'node:http';
+
+import type { INestApplication } from '@nestjs/common';
+import { Test } from '@nestjs/testing';
+import request from 'supertest';
+
 import { buildCorsOptions } from './cors-options';
 
 describe('buildCorsOptions', () => {
@@ -61,7 +67,7 @@ describe('buildCorsOptions', () => {
     expect(options.credentials).toBe(false);
   });
 
-  it('allows Authorization, Content-Type, X-Request-Id, and Idempotency-Key', () => {
+  it('allows the authentication, request metadata, and Prefer headers', () => {
     const options = buildCorsOptions('*', 'development');
 
     expect(options.allowedHeaders).toEqual([
@@ -69,6 +75,7 @@ describe('buildCorsOptions', () => {
       'Content-Type',
       'X-Request-Id',
       'Idempotency-Key',
+      'Prefer',
     ]);
   });
 
@@ -83,4 +90,46 @@ describe('buildCorsOptions', () => {
       'X-Request-Id',
     ]);
   });
+
+  it.each([
+    { origin: 'https://app.example.com', allowed: true },
+    { origin: 'https://untrusted.example.com', allowed: false },
+  ])(
+    'handles long-poll preflight from $origin',
+    async ({ origin, allowed }) => {
+      const module = await Test.createTestingModule({}).compile();
+      const app: INestApplication<Server> = module.createNestApplication();
+      app.enableCors(buildCorsOptions('https://app.example.com', 'production'));
+
+      try {
+        await app.init();
+        const response = await request(app.getHttpServer())
+          .options('/api/v1/tenants/tenant/operations/batch/items')
+          .set('Origin', origin)
+          .set('Access-Control-Request-Method', 'GET')
+          .set('Access-Control-Request-Headers', 'authorization,prefer')
+          .expect(204);
+
+        if (allowed) {
+          expect(response.headers['access-control-allow-origin']).toBe(origin);
+          const headers = response.headers['access-control-allow-headers'];
+          expect(
+            headers
+              .toLowerCase()
+              .split(',')
+              .map((header) => header.trim()),
+          ).toEqual(expect.arrayContaining(['authorization', 'prefer']));
+        } else {
+          expect(
+            response.headers['access-control-allow-origin'],
+          ).toBeUndefined();
+        }
+        expect(
+          response.headers['access-control-allow-credentials'],
+        ).toBeUndefined();
+      } finally {
+        await app.close();
+      }
+    },
+  );
 });

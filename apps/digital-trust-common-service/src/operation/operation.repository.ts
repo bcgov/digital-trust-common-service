@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { EntityManager, In, Repository } from 'typeorm';
+import { EntityManager, In, Repository, SelectQueryBuilder } from 'typeorm';
+
+import type { Cursor } from '../common/cursor-pagination';
 
 import { Operation, OperationResult, OperationState } from './operation.entity';
 
@@ -10,7 +12,13 @@ export interface FindByTenantFilters {
   type?: string;
   batchId?: string | null;
   limit?: number;
-  cursor?: Date;
+  cursor?: Cursor;
+}
+
+export interface OperationPage {
+  items: Operation[];
+  nextCursor: Cursor | null;
+  hasMore: boolean;
 }
 
 export type BatchStateCounts = Record<OperationState, number>;
@@ -272,6 +280,12 @@ export class OperationRepository {
   public findByTenantWithFilters(
     filters: FindByTenantFilters,
   ): Promise<Operation[]> {
+    return this.buildFilteredQuery(filters).getMany();
+  }
+
+  private buildFilteredQuery(
+    filters: FindByTenantFilters,
+  ): SelectQueryBuilder<Operation> {
     const query = this.repo
       .createQueryBuilder('op')
       .where('op.tenant_id = :tenantId', { tenantId: filters.tenantId });
@@ -293,13 +307,77 @@ export class OperationRepository {
     }
 
     if (filters.cursor !== undefined) {
-      query.andWhere('op.created_at < :cursor', { cursor: filters.cursor });
+      query.andWhere(
+        '(op.created_at, op.id) < (CAST(:cursorCreatedAt AS timestamptz), CAST(:cursorId AS uuid))',
+        {
+          cursorCreatedAt: filters.cursor.createdAt,
+          cursorId: filters.cursor.id,
+        },
+      );
     }
 
     return query
       .orderBy('op.created_at', 'DESC')
-      .take(filters.limit ?? DEFAULT_LIMIT)
-      .getMany();
+      .addOrderBy('op.id', 'DESC')
+      .take(filters.limit ?? DEFAULT_LIMIT);
+  }
+
+  public async findPageForTenant(
+    filters: FindByTenantFilters,
+  ): Promise<OperationPage> {
+    const limit = filters.limit ?? DEFAULT_LIMIT;
+    const { entities: rows, raw } = await this.buildFilteredQuery({
+      ...filters,
+      limit: limit + 1,
+    })
+      .addSelect(
+        `to_char(op.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`,
+        'cursor_created_at',
+      )
+      .getRawAndEntities<{ cursor_created_at: string }>();
+    const hasMore = rows.length > limit;
+    const items = hasMore ? rows.slice(0, limit) : rows;
+    const last = items[items.length - 1];
+    const nextCursor =
+      hasMore && last
+        ? { createdAt: raw[items.length - 1].cursor_created_at, id: last.id }
+        : null;
+
+    return { items, nextCursor, hasMore };
+  }
+
+  public findFailedBatchItemsForTenant(
+    batchId: string,
+    tenantId: string,
+  ): Promise<Operation[]> {
+    return this.findByTenantWithFilters({
+      tenantId,
+      batchId,
+      state: OperationState.FAILED,
+      limit: 100,
+    });
+  }
+
+  /**
+   * Fingerprints tenant-scoped child IDs and states in stable ID order for
+   * long-poll change detection, including changes that leave state counts equal.
+   * Empty batches hash an empty string; MD5 is not used for security here.
+   */
+  public async findBatchStateFingerprintForTenant(
+    batchId: string,
+    tenantId: string,
+  ): Promise<string> {
+    const row = await this.repo
+      .createQueryBuilder('op')
+      .select(
+        `md5(COALESCE(string_agg(op.id::text || ':' || op.state::text, ',' ORDER BY op.id), ''))`,
+        'fingerprint',
+      )
+      .where('op.tenant_id = :tenantId', { tenantId })
+      .andWhere('op.batch_id = :batchId', { batchId })
+      .getRawOne<{ fingerprint: string }>();
+
+    return row!.fingerprint;
   }
 
   /**

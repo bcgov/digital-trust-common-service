@@ -1,19 +1,35 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import type { AuthContext } from '@app/auth';
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import type { EntityManager } from 'typeorm';
 
+import { AuditAction, AuditActorType } from '../audit-log/audit-log.entity';
+import { AuditLogService } from '../audit-log/audit-log.service';
+import { decodeCursor, encodeCursor } from '../common/cursor-pagination';
 import {
   BusinessMetricsService,
   UNCLASSIFIED_LABEL,
 } from '../common/telemetry/business-metrics.service';
 import { TenantService } from '../tenant/tenant.service';
 
+import { ListOperationItemsQueryDto } from './dto/list-operation-items-query.dto';
+import { ListOperationsQueryDto } from './dto/list-operations-query.dto';
 import {
   computeOperationExpiresAt,
   isTerminalOperationState,
 } from './operation-ttl.util';
-import { isKnownOperationType } from './operation-type.constants';
+import {
+  isBatchOperationType,
+  isKnownOperationType,
+  OPERATION_TYPE,
+} from './operation-type.constants';
 import {
   Operation,
+  OperationFailure,
   OperationRequest,
   OperationResult,
   OperationState,
@@ -28,6 +44,14 @@ export interface CreateOperationInput {
   externalId?: string | null;
 }
 
+export interface PaginatedOperations {
+  data: Operation[];
+  pagination: {
+    next_cursor: string | null;
+    has_more: boolean;
+  };
+}
+
 @Injectable()
 export class OperationService {
   private readonly logger = new Logger(OperationService.name);
@@ -36,6 +60,7 @@ export class OperationService {
     private readonly operations: OperationRepository,
     private readonly tenants: TenantService,
     private readonly businessMetrics: BusinessMetricsService,
+    private readonly auditLog: AuditLogService,
   ) {}
 
   /**
@@ -104,11 +129,324 @@ export class OperationService {
       throw new NotFoundException('Operation not found');
     }
 
-    if (!isTerminalOperationState(operation.state) || operation.viewedAt) {
-      return operation;
+    return this.prepareForRead(operation);
+  }
+
+  public async waitForStatusForTenant(
+    tenantId: string,
+    id: string,
+    waitSeconds: number,
+    signal?: AbortSignal,
+  ): Promise<Operation> {
+    const deadline = Date.now() + Math.min(Math.max(waitSeconds, 0), 30) * 1000;
+    let operation = await this.awaitWhileConnected(
+      () => this.operations.findByIdForTenant(id, tenantId),
+      signal,
+    );
+    if (!operation) {
+      throw new NotFoundException('Operation not found');
+    }
+    const initialState = operation.state;
+    while (
+      !isTerminalOperationState(operation.state) &&
+      Date.now() < deadline
+    ) {
+      await this.waitForPoll(Math.min(1000, deadline - Date.now()), signal);
+      operation = await this.awaitWhileConnected(
+        () => this.operations.findByIdForTenant(id, tenantId),
+        signal,
+      );
+      if (!operation) {
+        throw new NotFoundException('Operation not found');
+      }
+      if (operation.state !== initialState) {
+        break;
+      }
+    }
+    const current = operation;
+    return this.awaitWhileConnected(
+      () => this.prepareForRead(current, signal),
+      signal,
+    );
+  }
+
+  public async listForTenant(
+    tenantId: string,
+    query: ListOperationsQueryDto = {},
+  ): Promise<PaginatedOperations> {
+    const page = await this.operations.findPageForTenant({
+      tenantId,
+      state: query.state,
+      type: query.type,
+      limit: query.limit,
+      cursor:
+        query.cursor === undefined ? undefined : decodeCursor(query.cursor),
+    });
+
+    return {
+      data: await Promise.all(
+        page.items.map((item) => this.prepareForRead(item)),
+      ),
+      pagination: {
+        next_cursor: page.nextCursor ? encodeCursor(page.nextCursor) : null,
+        has_more: page.hasMore,
+      },
+    };
+  }
+
+  public async getRequestForTenant(
+    tenantId: string,
+    id: string,
+    actor: Pick<AuthContext, 'sub' | 'tokenType'>,
+  ): Promise<OperationRequest> {
+    const operation = await this.getForTenant(tenantId, id);
+    await this.auditLog.write({
+      tenantId,
+      actorId: actor.sub,
+      actorType:
+        actor.tokenType === 'client'
+          ? AuditActorType.CLIENT
+          : AuditActorType.USER,
+      action: AuditAction.READ,
+      resourceType: 'operation_request',
+      resourceId: operation.id,
+      operationId: operation.id,
+      metadata: { accessed_at: new Date().toISOString() },
+    });
+    return operation.request;
+  }
+
+  public async listItemsForTenant(
+    tenantId: string,
+    id: string,
+    query: ListOperationItemsQueryDto = {},
+    signal?: AbortSignal,
+  ): Promise<PaginatedOperations> {
+    const parent = await this.awaitWhileConnected(
+      () => this.operations.findByIdForTenant(id, tenantId),
+      signal,
+    );
+    if (!parent || !this.isBatchParent(parent)) {
+      throw new NotFoundException('Batch operation not found');
     }
 
-    return this.applyViewed(operation);
+    const page = await this.awaitWhileConnected(
+      () =>
+        this.operations.findPageForTenant({
+          tenantId,
+          batchId: id,
+          state: query.state,
+          limit: query.limit,
+          cursor:
+            query.cursor === undefined ? undefined : decodeCursor(query.cursor),
+        }),
+      signal,
+    );
+
+    return {
+      data: await this.awaitWhileConnected(
+        () =>
+          Promise.all(
+            page.items.map((item) => this.prepareForRead(item, signal)),
+          ),
+        signal,
+      ),
+      pagination: {
+        next_cursor: page.nextCursor ? encodeCursor(page.nextCursor) : null,
+        has_more: page.hasMore,
+      },
+    };
+  }
+
+  public async waitForItemsForTenant(
+    tenantId: string,
+    id: string,
+    query: ListOperationItemsQueryDto,
+    waitSeconds: number,
+    signal?: AbortSignal,
+  ): Promise<PaginatedOperations> {
+    if (query.cursor !== undefined) {
+      decodeCursor(query.cursor);
+    }
+    await this.waitForBatchChange(tenantId, id, waitSeconds, signal);
+    return this.listItemsForTenant(tenantId, id, query, signal);
+  }
+
+  private async waitForBatchChange(
+    tenantId: string,
+    id: string,
+    waitSeconds: number,
+    signal?: AbortSignal,
+  ): Promise<void> {
+    const deadline = Date.now() + Math.min(Math.max(waitSeconds, 0), 30) * 1000;
+    const parent = await this.awaitWhileConnected(
+      () => this.operations.findByIdForTenant(id, tenantId),
+      signal,
+    );
+    if (!parent || !this.isBatchParent(parent)) {
+      throw new NotFoundException('Batch operation not found');
+    }
+    if (isTerminalOperationState(parent.state) || Date.now() >= deadline) {
+      return;
+    }
+
+    const initial = await this.awaitWhileConnected(
+      () => this.operations.findBatchStateFingerprintForTenant(id, tenantId),
+      signal,
+    );
+    while (Date.now() < deadline) {
+      await this.waitForPoll(Math.min(1000, deadline - Date.now()), signal);
+      const current = await this.awaitWhileConnected(
+        () => this.operations.findByIdForTenant(id, tenantId),
+        signal,
+      );
+      if (!current || !this.isBatchParent(current)) {
+        throw new NotFoundException('Batch operation not found');
+      }
+      if (current.state !== parent.state) {
+        return;
+      }
+      const fingerprint = await this.awaitWhileConnected(
+        () => this.operations.findBatchStateFingerprintForTenant(id, tenantId),
+        signal,
+      );
+      if (fingerprint !== initial) {
+        return;
+      }
+    }
+  }
+
+  private async awaitWhileConnected<T>(
+    load: () => Promise<T>,
+    signal?: AbortSignal,
+  ): Promise<T> {
+    if (!signal) {
+      return load();
+    }
+    if (signal.aborted) {
+      throw new ServiceUnavailableException('Operation polling cancelled');
+    }
+    let onAbort!: () => void;
+    const cancelled = new Promise<never>((_resolve, reject) => {
+      onAbort = () =>
+        reject(new ServiceUnavailableException('Operation polling cancelled'));
+      signal.addEventListener('abort', onAbort, { once: true });
+    });
+    try {
+      return await Promise.race([load(), cancelled]);
+    } finally {
+      signal.removeEventListener('abort', onAbort);
+    }
+  }
+
+  private waitForPoll(
+    milliseconds: number,
+    signal?: AbortSignal,
+  ): Promise<void> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    return this.awaitWhileConnected(
+      () =>
+        new Promise<void>((resolve) => {
+          timer = setTimeout(resolve, milliseconds);
+        }),
+      signal,
+    ).finally(() => clearTimeout(timer));
+  }
+
+  private isBatchParent(operation: Operation): boolean {
+    return !operation.batchId && isBatchOperationType(operation.type);
+  }
+
+  private failureResult(operation: Operation): OperationFailure {
+    const result = operation.result;
+    return {
+      code: typeof result?.code === 'string' ? result.code : 'OPERATION_FAILED',
+      message:
+        typeof result?.message === 'string'
+          ? result.message
+          : 'Operation failed',
+    };
+  }
+
+  private async prepareForRead(
+    operation: Operation,
+    signal?: AbortSignal,
+  ): Promise<Operation> {
+    if (isTerminalOperationState(operation.state) && !operation.viewedAt) {
+      operation = await this.applyViewed(operation, signal);
+    }
+
+    const settled = operation.result;
+    const settledCounts =
+      isTerminalOperationState(operation.state) &&
+      settled &&
+      'completed' in settled &&
+      typeof settled.completed === 'number' &&
+      'failed' in settled &&
+      typeof settled.failed === 'number'
+        ? {
+            pending: 0,
+            processing: 0,
+            completed: settled.completed,
+            failed: settled.failed,
+          }
+        : null;
+
+    if (
+      this.isBatchParent(operation) &&
+      (operation.state === OperationState.PROCESSING ||
+        operation.state === OperationState.COMPLETED ||
+        (operation.state === OperationState.FAILED && settledCounts !== null))
+    ) {
+      const counts =
+        settledCounts ??
+        (await this.awaitWhileConnected(
+          () =>
+            this.operations.countByBatchGroupedByState(
+              operation.id,
+              operation.tenantId,
+            ),
+          signal,
+        ));
+      const total = Object.values(counts).reduce(
+        (sum, count) => sum + count,
+        0,
+      );
+      if (operation.state === OperationState.PROCESSING) {
+        return { ...operation, result: { total, ...counts } };
+      }
+
+      const failures = await this.awaitWhileConnected(
+        () =>
+          this.operations.findFailedBatchItemsForTenant(
+            operation.id,
+            operation.tenantId,
+          ),
+        signal,
+      );
+      return {
+        ...operation,
+        result: {
+          total,
+          completed: counts.completed,
+          failed: counts.failed,
+          errors: failures.slice(0, 100).map((child) => ({
+            id: child.id,
+            ...this.failureResult(child),
+          })),
+        },
+      };
+    }
+
+    if (operation.type === OPERATION_TYPE.CREDENTIAL_DEFINITION_REGISTER) {
+      return operation;
+    }
+    if (!isTerminalOperationState(operation.state)) {
+      operation.result = null;
+    } else if (operation.state === OperationState.FAILED) {
+      operation.result = this.failureResult(operation);
+    }
+    return operation;
   }
 
   /**
@@ -132,8 +470,14 @@ export class OperationService {
     return this.applyViewed(operation);
   }
 
-  private async applyViewed(operation: Operation): Promise<Operation> {
-    const tenant = await this.tenants.findById(operation.tenantId);
+  private async applyViewed(
+    operation: Operation,
+    signal?: AbortSignal,
+  ): Promise<Operation> {
+    const tenant = await this.awaitWhileConnected(
+      () => this.tenants.findById(operation.tenantId),
+      signal,
+    );
     const viewedAt = new Date();
     const expiresAt = this.computeExpiresAt(
       operation.state,
@@ -142,10 +486,9 @@ export class OperationService {
       tenant.config,
     );
 
-    const stored = await this.operations.markFirstView(
-      operation.id,
-      viewedAt,
-      expiresAt,
+    const stored = await this.awaitWhileConnected(
+      () => this.operations.markFirstView(operation.id, viewedAt, expiresAt),
+      signal,
     );
 
     // No row updated means either a concurrent poll stamped it first, or the
@@ -153,7 +496,10 @@ export class OperationService {
     // them apart: the winner's values are authoritative, and a row that is gone
     // must not be served from the copy loaded moments ago.
     if (!stored) {
-      const current = await this.operations.findById(operation.id);
+      const current = await this.awaitWhileConnected(
+        () => this.operations.findById(operation.id),
+        signal,
+      );
 
       if (!current) {
         throw new NotFoundException('Operation not found');

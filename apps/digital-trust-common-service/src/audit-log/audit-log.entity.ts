@@ -19,6 +19,7 @@ export enum AuditActorType {
 }
 
 export enum AuditAction {
+  READ = 'read',
   ISSUE = 'issue',
   VERIFY = 'verify',
   HOLD = 'hold',

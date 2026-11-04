@@ -2027,6 +2027,11 @@ paths:
       operationId: listOperations
       summary: List operations
       tags: [Operations]
+      description: |
+        Requires any authenticated tenant-scoped token; no operations:read scope is required.
+        Filters combine by exact match. Pages sort by created_at DESC, then id DESC,
+        using opaque cursors. Terminal results receive first-view TTL treatment without
+        changing updated_at. Original request payloads are not included.
       parameters:
         - $ref: "#/components/parameters/Cursor"
         - $ref: "#/components/parameters/Limit"
@@ -2039,6 +2044,8 @@ paths:
           schema:
             type: string
             description: "Filter by operation type (e.g., credential.offer, presentation.request)"
+            minLength: 1
+            maxLength: 50
       responses:
         "200":
           description: Paginated operation list
@@ -2053,6 +2060,8 @@ paths:
                         type: array
                         items:
                           $ref: "#/components/schemas/Operation"
+        "400":
+          description: Invalid tenant UUID, query filters, limit, or pagination cursor
 
   /api/v1/tenants/{tenantId}/operations/{operationId}:
     parameters:
@@ -2062,18 +2071,38 @@ paths:
       operationId: getOperation
       summary: Get operation status and result
       description: |
-        Poll an operation's current state and result. Sets `viewed_at` on first retrieval
-        of a completed/failed operation (triggers TTL recalculation).
-
-        Supports long-polling via `Prefer: wait=<seconds>` header.
+        Poll an operation's current state and result using any authenticated token scoped
+        to this tenant, including readonly users. No operations:read scope is required.
+        Sets viewed_at once on first retrieval of a completed/failed operation and
+        recalculates expires_at using the tenant's TTL settings, without changing updated_at.
+        Failed operations still return HTTP 200 with state=failed.
+        Processing batch summaries use live tenant-scoped child counts. Settlement
+        marks a parent failed if any child fails, otherwise completed. Completed
+        and failed parents with stored settlement counts return a settled summary
+        whose totals survive child purge. Older completed parents without a snapshot
+        fall back to counting retained children. Failed parents without settlement
+        counts retain the ordinary { code, message } parent-level failure shape.
+        At most 100 retained child errors are included; use /items?state=failed for
+        all retained failures. Failure details remain subject to child TTL.
+        Prefer: wait=30 checks this operation's state once per second until it
+        changes or the timeout expires. The wait is capped at 30 seconds;
+        terminal operations return immediately. Timeout returns HTTP 200 with
+        the normal operation envelope, without additional fields. First-view
+        TTL treatment happens only when preparing the final response.
+        Client disconnects stop further polling and response preparation.
+        Batch-item /items polling remains available as an additional capability.
       tags: [Operations]
       parameters:
         - name: Prefer
           in: header
+          required: false
+          description: |
+            Non-negative integer wait in seconds, capped at 30; wait=0 returns
+            immediately. Invalid or duplicate wait values return 400.
+            Unrelated preferences are ignored.
           schema:
             type: string
             example: "wait=30"
-          description: "Long-polling: hold connection until state changes or timeout"
       responses:
         "200":
           description: Operation status
@@ -2085,7 +2114,8 @@ paths:
                 pending:
                   summary: Pending operation
                   value:
-                    id: "op-uuid"
+                    id: "123e4567-e89b-42d3-a456-426614174000"
+                    batch_id: null
                     type: credential.offer
                     state: pending
                     created_at: "2025-01-15T10:30:00.000Z"
@@ -2094,7 +2124,8 @@ paths:
                 completed:
                   summary: Completed operation
                   value:
-                    id: "op-uuid"
+                    id: "123e4567-e89b-42d3-a456-426614174000"
+                    batch_id: null
                     type: credential.offer
                     state: completed
                     created_at: "2025-01-15T10:30:00.000Z"
@@ -2107,7 +2138,8 @@ paths:
                 failed:
                   summary: Failed operation
                   value:
-                    id: "op-uuid"
+                    id: "123e4567-e89b-42d3-a456-426614174000"
+                    batch_id: null
                     type: credential.offer
                     state: failed
                     created_at: "2025-01-15T10:30:00.000Z"
@@ -2118,7 +2150,8 @@ paths:
                 batch_processing:
                   summary: Batch operation (processing)
                   value:
-                    id: "batch-uuid"
+                    id: "123e4567-e89b-42d3-a456-426614174009"
+                    batch_id: null
                     type: credential.offer-batch
                     state: processing
                     created_at: "2025-01-15T10:30:00.000Z"
@@ -2128,6 +2161,40 @@ paths:
                       completed: 142
                       failed: 3
                       pending: 55
+                      processing: 0
+                batch_completed:
+                  summary: Successfully settled batch
+                  value:
+                    id: "123e4567-e89b-42d3-a456-426614174009"
+                    batch_id: null
+                    type: credential.offer-batch
+                    state: completed
+                    created_at: "2025-01-15T10:30:00.000Z"
+                    updated_at: "2025-01-15T10:32:00.000Z"
+                    result:
+                      total: 200
+                      completed: 200
+                      failed: 0
+                      errors: []
+                batch_failed:
+                  summary: Mixed-success batch settled as failed
+                  value:
+                    id: "123e4567-e89b-42d3-a456-426614174009"
+                    batch_id: null
+                    type: credential.offer-batch
+                    state: failed
+                    created_at: "2025-01-15T10:30:00.000Z"
+                    updated_at: "2025-01-15T10:32:00.000Z"
+                    result:
+                      total: 200
+                      completed: 199
+                      failed: 1
+                      errors:
+                        - id: "123e4567-e89b-42d3-a456-426614174002"
+                          code: ADAPTER_TIMEOUT
+                          message: Adapter timed out
+        "400":
+          description: Invalid path UUID or Prefer wait value
         "404":
           $ref: "#/components/responses/NotFound"
 
@@ -2140,15 +2207,28 @@ paths:
       summary: Get the original request that created the operation
       description: |
         Returns the HTTP method, path, and body that triggered this operation.
-        **Note**: The body may contain PII (credential attributes). Data is purged with the operation on TTL expiry.
+        Any authenticated token scoped to this tenant can retrieve the unredacted body;
+        no dedicated scope is required. The body may contain PII (credential attributes).
+        Request data shares the operation TTL and is removed by operation purge.
+        Terminal reads receive first-view TTL treatment. Before disclosure, access is
+        synchronously audited with actor identity/type, access time, and operation_id.
+        The body is never copied into audit metadata. If auditing fails, no payload is
+        returned. Optional per-tenant field-level redaction is a future enhancement.
       tags: [Operations]
       responses:
         "200":
           description: Original request details
+          headers:
+            Cache-Control:
+              description: Original requests must not be cached
+              schema:
+                type: string
+                example: no-store
           content:
             application/json:
               schema:
                 type: object
+                required: [method, path, body]
                 properties:
                   method:
                     type: string
@@ -2158,9 +2238,21 @@ paths:
                     example: "/api/v1/tenants/b7e4a1f0-.../credentials/offer"
                   body:
                     type: object
-                    description: Original request body
+                    additionalProperties: true
+                    description: Original unredacted request body; may contain PII
+              examples:
+                original_request:
+                  summary: Original request context
+                  value:
+                    method: POST
+                    path: "/api/v1/tenants/123e4567-e89b-42d3-a456-426614174001/credentials/offer"
+                    body: {}
+        "400":
+          description: A path parameter is not a valid UUID
         "404":
           $ref: "#/components/responses/NotFound"
+        "500":
+          description: Audit write failed; the original request is not returned
 
   /api/v1/tenants/{tenantId}/operations/{operationId}/items:
     parameters:
@@ -2169,11 +2261,32 @@ paths:
     get:
       operationId: listBatchOperationItems
       summary: List child operations of a batch
-      description: Returns 404 if the operation is not a batch parent.
+      description: |
+        Requires any authenticated token scoped to this tenant, not a dedicated scope.
+        Returns 404 for a missing, foreign, or non-batch parent. A batch parent has a
+        type ending in -batch and a null batch_id. Supports state filtering and the
+        shared opaque cursor format. Terminal children returned on a page receive
+        first-view TTL treatment.
+
+        Prefer: wait=30 checks all tenant-scoped child states and the parent once per
+        second until a state change or timeout, including changes outside the requested
+        page or state filter. Terminal parents return immediately. Timeout returns
+        HTTP 200 with the normal paginated response and no additional fields.
+        Client disconnects cancel polling; no database connection is held between checks.
       tags: [Operations]
       parameters:
         - $ref: "#/components/parameters/Cursor"
         - $ref: "#/components/parameters/Limit"
+        - name: Prefer
+          in: header
+          required: false
+          description: |
+            Non-negative integer wait in seconds, capped at 30; wait=0 returns
+            immediately. Invalid or duplicate wait values return 400.
+            Unrelated preferences are ignored.
+          schema:
+            type: string
+            example: "wait=30"
         - name: state
           in: query
           schema:
@@ -2192,6 +2305,8 @@ paths:
                         type: array
                         items:
                           $ref: "#/components/schemas/Operation"
+        "400":
+          description: Invalid path UUID, query filters, limit, cursor, or Prefer wait value
         "404":
           $ref: "#/components/responses/NotFound"
 
@@ -2482,7 +2597,7 @@ paths:
       summary: Query audit log entries
       description: |
         Retrieve structured audit log records for the tenant.
-        Audit logs track business actions (issue, verify, revoke, create, update, delete, login, token_grant)
+        Audit logs track business actions (read, issue, verify, revoke, create, update, delete, login, token_grant)
         and are stored in PostgreSQL (separate from operational Loki logs).
       tags: [Audit Logs]
       parameters:
@@ -2492,7 +2607,7 @@ paths:
           in: query
           schema:
             type: string
-            enum: [issue, verify, hold, revoke, create, update, delete, login, token_grant]
+            enum: [read, issue, verify, hold, revoke, create, update, delete, login, token_grant]
         - name: actorId
           in: query
           schema:
@@ -4297,7 +4412,7 @@ components:
       description: |
         Uniform envelope for all async and sync operations. The `result` field
         semantics depend on `(type, state)`.
-      required: [id, type, state, created_at, updated_at, result]
+      required: [id, batch_id, type, state, created_at, updated_at, result]
       properties:
         id:
           type: string
@@ -4307,10 +4422,9 @@ components:
           format: uuid
           nullable: true
           description: |
-            UUID of the parent batch operation. Present only on child operations
-            created by a batch issuance or revocation request (`credential.offer-batch`,
-            `credential.revoke-batch`). Use this to navigate to the parent via
-            `GET /operations/{batch_id}`.
+            UUID of the parent batch operation for child operations; null for
+            standalone operations and batch parents. Retrieve a parent using
+            GET /api/v1/tenants/{tenantId}/operations/{batch_id}.
         type:
           type: string
           description: |
@@ -4358,11 +4472,17 @@ components:
             - pending/processing: usually null; credential-definition.register
               includes { credential_definition_id } immediately
             - completed: operation-type-specific data
-            - failed: { code, message }; credential registration additionally
+            - ordinary failures: { code, message }; credential registration additionally
               retains credential_definition_id, external_id, and registration
               progress/correlation identifiers.
-            - batch processing: { total, completed, failed, pending }
-            - batch completed: { total, completed, failed, errors }
+            - batch processing: { total, pending, processing, completed, failed }
+            - settled batch (completed, or failed with stored settlement counts):
+              { total, completed, failed, errors: [{ id, code, message }] }
+              with settled counts preserved when available and errors capped at 100;
+              use /items?state=failed for all retained failures. Child failure details
+              expire according to child TTL even while the parent remains retained.
+            - batch pending: null; parent-level batch failure without settlement
+              counts: { code, message }
             Registration progress includes the active artifact, its id, and any
             job_id, transaction_id, and state. IDs returned with wait/action are
             provisional, not readiness proof.
@@ -4727,7 +4847,7 @@ components:
           enum: [user, system, client]
         action:
           type: string
-          enum: [issue, verify, hold, revoke, create, update, delete, login, token_grant]
+          enum: [read, issue, verify, hold, revoke, create, update, delete, login, token_grant]
         resource_type:
           type: string
         resource_id:

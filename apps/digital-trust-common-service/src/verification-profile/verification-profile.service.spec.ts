@@ -428,7 +428,10 @@ describe('VerificationProfileService', () => {
         nextCursor: null,
         hasMore: false,
       });
-      const decoded = { createdAt: '2024-01-01T00:00:00.000Z', id: 'vp-1' };
+      const decoded = {
+        createdAt: '2024-01-01T00:00:00.000Z',
+        id: '123e4567-e89b-42d3-a456-426614174001',
+      };
       const validCursor = Buffer.from(JSON.stringify(decoded), 'utf8').toString(
         'base64url',
       );
