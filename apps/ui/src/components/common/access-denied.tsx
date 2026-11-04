@@ -1,6 +1,5 @@
+import { Callout } from '@bcgov/design-system-react-components';
 import type { ReactNode } from 'react';
-
-import { Card, CardDescription, CardHeader } from '@/components/common/card';
 
 /**
  * Clear messaging for a route or section the caller's role/scope cannot use.
@@ -9,6 +8,9 @@ import { Card, CardDescription, CardHeader } from '@/components/common/card';
  * the expected outcome of normal navigation (readonly viewing a tenant,
  * a URL for a tenant the token isn't bound to), not a failure that should
  * interrupt assistive tech the way an unexpected error does.
+ *
+ * Uses the Callout's children slot because its `title` renders a `span`,
+ * and pages rely on this title being a real heading.
  */
 export function AccessDenied({
   title,
@@ -22,13 +24,13 @@ export function AccessDenied({
   const Heading = headingLevel === 1 ? 'h1' : 'h2';
 
   return (
-    <Card className="max-w-lg">
-      <CardHeader>
-        <Heading className="font-heading text-base leading-snug font-medium">
-          {title}
-        </Heading>
-        <CardDescription>{description}</CardDescription>
-      </CardHeader>
-    </Card>
+    <div className="max-w-lg">
+      <Callout>
+        <div className="bcds-Callout--Container">
+          <Heading className="bcds-Callout--Title">{title}</Heading>
+          <div className="bcds-Callout--Description">{description}</div>
+        </div>
+      </Callout>
+    </div>
   );
 }

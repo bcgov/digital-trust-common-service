@@ -1,15 +1,17 @@
-import { Construction, Info, Trash2 } from 'lucide-react';
+import {
+  Button,
+  Separator,
+  SvgExclamationIcon,
+  Tooltip,
+  TooltipTrigger,
+  type Tag,
+} from '@bcgov/design-system-react-components';
+import type { ComponentProps } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { CircleInfoIcon, TrashIcon } from '@/components/common/icons';
 import { TenantUserRoleSelect } from '@/components/tenant-user/tenant-user-dialogs';
-import { Badge } from '@/components/common/badge';
-import { Button } from '@/components/common/button';
-import { Separator } from '@/components/common/separator';
 import { Skeleton } from '@/components/common/skeleton';
-import {
-  StatusBadge,
-  type StatusBadgeTone,
-} from '@/components/common/status-badge';
 import {
   Table,
   TableBody,
@@ -18,18 +20,29 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/common/table';
-import { Tooltip } from '@/components/common/tooltip';
 import type {
   TenantRole,
   TenantUser,
   TenantUserStatus,
 } from '@/lib/api/resources/tenant-users';
 
-const STATUS_TONE: Record<TenantUserStatus, StatusBadgeTone> = {
-  active: 'success',
-  invited: 'pending',
-  disabled: 'neutral',
+type TagColor = ComponentProps<typeof Tag>['color'];
+
+const STATUS_COLOR: Record<TenantUserStatus, TagColor> = {
+  active: 'green',
+  invited: 'grey',
+  disabled: 'grey',
 };
+
+// BCDS Tag styling on a plain span. The BCDS `Tag` only renders inside a
+// `TagGroup`, an interactive grid that makes every label a Tab stop.
+function UserTag({ label, color }: { label: string; color: TagColor }) {
+  return (
+    <span className={`bcds-react-aria-Tag ${color} rectangular small user-tag`}>
+      <span className="bcds-react-aria-Tag--Label">{label}</span>
+    </span>
+  );
+}
 
 function SkeletonRows({ columns }: { columns: number }) {
   return Array.from({ length: 3 }, (_, rowIndex) => (
@@ -46,7 +59,10 @@ function SkeletonRows({ columns }: { columns: number }) {
 function EmptyRow({ children }: { children: string }) {
   return (
     <TableRow>
-      <TableCell colSpan={5} className="text-center text-muted-foreground">
+      <TableCell
+        colSpan={5}
+        className="text-center text-(--typography-color-secondary)"
+      >
         {children}
       </TableCell>
     </TableRow>
@@ -64,14 +80,14 @@ function RemoveUserButton({
 
   return (
     <Button
-      variant="ghost"
-      size="icon"
+      variant="tertiary"
+      isIconButton
       aria-label={t('users.removeUser', {
         email: user.email ?? t('users.unknownUser'),
       })}
-      onClick={onRemove}
+      onPress={onRemove}
     >
-      <Trash2 aria-hidden="true" />
+      <TrashIcon className="size-5" />
     </Button>
   );
 }
@@ -108,12 +124,12 @@ export function TenantUsersTable({
   };
 
   return (
-    <div className="min-w-0 border-y border-border">
+    <div className="min-w-0 border-y border-(--surface-color-border-default)">
       <Table
         aria-label={t('users.tableLabel')}
         className="min-w-[64rem] table-fixed"
       >
-        <TableHeader className="bg-muted/50 [&_th]:h-12 [&_th]:px-5 [&_th]:font-bold">
+        <TableHeader className="bg-(--surface-color-background-light-gray) [&_th]:h-12 [&_th]:px-5 [&_th]:font-bold">
           <TableRow className="hover:bg-transparent">
             <TableHead scope="col" className="w-56">
               {t('users.name')}
@@ -138,10 +154,13 @@ export function TenantUsersTable({
             <EmptyRow>{emptyMessage}</EmptyRow>
           )}
           {users.map((user) => (
-            <TableRow key={user.id} className="border-border">
+            <TableRow
+              key={user.id}
+              className="border-(--surface-color-border-default)"
+            >
               <TableCell className="w-56 whitespace-normal">
                 <div className="flex w-full min-w-0 flex-col items-start gap-1">
-                  <div className="flex max-w-full min-w-0 flex-wrap items-center gap-2 font-bold text-foreground">
+                  <div className="flex max-w-full min-w-0 flex-wrap items-center gap-2 font-bold text-(--typography-color-primary)">
                     <span className="break-words">
                       {user.status === 'invited'
                         ? ''
@@ -149,20 +168,27 @@ export function TenantUsersTable({
                     </span>
                     {isSelf(user) && !selfActionsAllowed && (
                       <>
-                        <Badge variant="outline">{t('users.you')}</Badge>
-                        <Tooltip
-                          content={
+                        <UserTag label={t('users.you')} color="grey" />
+                        <TooltipTrigger delay={300}>
+                          <Button
+                            variant="tertiary"
+                            size="xsmall"
+                            isIconButton
+                            aria-label={t('users.selfLocked.help')}
+                          >
+                            <CircleInfoIcon className="size-4" />
+                          </Button>
+                          <Tooltip className="bcds-react-aria-Tooltip max-w-xs">
                             <div className="flex flex-col gap-1">
                               <div className="flex items-center gap-1.5">
-                                <Construction
-                                  className="size-4 text-destructive"
-                                  aria-hidden="true"
-                                />
+                                <span className="text-(--icons-color-danger)">
+                                  <SvgExclamationIcon />
+                                </span>
                                 <span className="font-semibold">
                                   {t('users.selfLocked.title')}
                                 </span>
                               </div>
-                              <Separator className="my-1" />
+                              <Separator className="bcds-react-aria-Separator small my-1" />
                               <p>{t('users.selfLocked.body')}</p>
                               <p className="font-semibold">
                                 {t('users.selfLocked.stepsTitle')}
@@ -172,22 +198,13 @@ export function TenantUsersTable({
                                 <li>{t('users.selfLocked.changeOwn')}</li>
                               </ol>
                             </div>
-                          }
-                        >
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon-xs"
-                            aria-label={t('users.selfLocked.help')}
-                          >
-                            <Info className="size-4" aria-hidden="true" />
-                          </Button>
-                        </Tooltip>
+                          </Tooltip>
+                        </TooltipTrigger>
                       </>
                     )}
                   </div>
                   {user.email && (
-                    <span className="max-w-full break-all text-sm text-muted-foreground">
+                    <span className="max-w-full break-all text-sm text-(--typography-color-secondary)">
                       {user.email}
                     </span>
                   )}
@@ -207,13 +224,13 @@ export function TenantUsersTable({
               </TableCell>
               <TableCell>
                 {user.status && (
-                  <StatusBadge
-                    tone={STATUS_TONE[user.status]}
+                  <UserTag
                     label={t(`users.status.${user.status}`)}
+                    color={STATUS_COLOR[user.status]}
                   />
                 )}
               </TableCell>
-              <TableCell className="text-muted-foreground">
+              <TableCell className="text-(--typography-color-secondary)">
                 {formatDate(user.created_at)}
               </TableCell>
               <TableCell className="text-right">

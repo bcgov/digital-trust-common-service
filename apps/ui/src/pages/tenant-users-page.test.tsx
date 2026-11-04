@@ -1,4 +1,10 @@
-import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { delay, http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
@@ -170,13 +176,9 @@ describe('TenantUsersPage', () => {
       }),
     ).toBeInTheDocument();
     expect(within(adminRow).queryByText('Role')).not.toBeInTheDocument();
-    const activeStatus = within(adminRow).getByText('Active');
-    expect(activeStatus).toHaveAttribute('data-variant', 'outline');
-    expect(activeStatus).toHaveClass('border-green-600', 'text-green-700');
-    expect(activeStatus).toHaveClass('h-6', 'rounded-md', 'px-3', 'py-1');
-    expect(activeStatus.querySelector('svg')).toHaveAttribute(
-      'aria-hidden',
-      'true',
+    expect(within(adminRow).getByText('Active').parentElement).toHaveClass(
+      'bcds-react-aria-Tag',
+      'green',
     );
     // No display name yet, so the email stands in for the name.
     expect(
@@ -207,16 +209,19 @@ describe('TenantUsersPage', () => {
     });
     expect(infoButton.querySelector('svg')).toHaveClass('size-4');
     expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
-    fireEvent.focus(infoButton);
+    // react-aria opens tooltips on keyboard focus, not programmatic focus.
+    fireEvent.keyDown(document.body, { key: 'Tab' });
+    act(() => infoButton.focus());
     const tooltip = await screen.findByRole('tooltip');
     expect(tooltip).toHaveTextContent("You can't change your role");
     expect(within(tooltip).getByText("You can't change your role")).toHaveClass(
       'font-semibold',
     );
+    expect(within(tooltip).getByRole('separator')).toBeInTheDocument();
     expect(
-      tooltip.querySelector('[data-slot="separator"]'),
-    ).toBeInTheDocument();
-    expect(tooltip.querySelector('svg')).toHaveClass('text-destructive');
+      within(tooltip).getByText("You can't change your role")
+        .previousElementSibling,
+    ).toHaveClass('text-(--icons-color-danger)');
     expect(tooltip).toHaveTextContent(
       'You are either the only administrator or the last owner for this tenant. Both safeguards must be satisfied before changing your own access.',
     );
