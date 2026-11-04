@@ -1,0 +1,26 @@
+{{- if and .Values.logGateway.enabled .Values.logGateway.metrics.podMonitor.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: {{ include "digital-trust-common-service.logGateway.fullname" . }}
+  labels:
+    {{- include "digital-trust-common-service.logGateway.labels" . | nindent 4 }}
+    {{- with .Values.logGateway.metrics.podMonitor.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  # The pod's component label becomes the `job` label the alert rules select on.
+  jobLabel: app.kubernetes.io/component
+  selector:
+    matchLabels:
+      {{- include "digital-trust-common-service.logGateway.selectorLabels" . | nindent 6 }}
+  podMetricsEndpoints:
+    - port: metrics
+      path: /stats/prometheus
+      # Only series that have been touched, which keeps cardinality down.
+      params:
+        usedonly:
+          - ""
+      interval: {{ .Values.logGateway.metrics.podMonitor.interval }}
+      scrapeTimeout: {{ .Values.logGateway.metrics.podMonitor.scrapeTimeout }}
+{{- end }}

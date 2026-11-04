@@ -111,6 +111,36 @@ logGateway:
   # -- Container port of the probe listener. It answers only the kubelet probes
   # and is on neither the Service nor the Route.
   probePort: 8081
+  metrics:
+    # -- Container port that serves only `/stats/prometheus`. It is on neither
+    # the Service nor the Route.
+    port: 9102
+    podMonitor:
+      # -- Create a Prometheus Operator PodMonitor (needs the monitoring.coreos.com CRDs)
+      enabled: false
+      # -- Scrape interval
+      interval: 30s
+      # -- Scrape timeout
+      scrapeTimeout: 10s
+      # -- Extra labels, for a Prometheus that selects monitors by label
+      labels: {}
+    prometheusRule:
+      # -- Create a PrometheusRule with the gateway alerts (needs the monitoring.coreos.com CRDs)
+      enabled: false
+      # -- Extra labels, for a Prometheus that selects rules by label
+      labels: {}
+      # -- Extra labels added to every alert, for example `team` or routing keys
+      alertLabels: {}
+      # -- Fraction of responses that may be 5xx over 10m before alerting
+      errorRatio: 0.05
+      # -- Fraction of requests the decision endpoint may fail to answer over 10m before alerting
+      checkErrorRatio: 0.02
+      # -- p99 request latency in milliseconds over 10m before alerting
+      latencyP99Ms: 5000
+      # -- Fraction of requests the gateway may deny over 15m before alerting
+      denyRatio: 0.5
+      # -- Days of serving certificate validity left before alerting
+      certExpiryDays: 7
   route:
     # -- Expose the gateway through an OpenShift Route (always re-encrypted)
     enabled: false
@@ -707,6 +737,11 @@ networkPolicy:
     podSelector: {}
     # -- Namespace selector matching the collector's namespace
     namespaceSelector: {}
+  monitoring:
+    # -- Namespace selector matching the Prometheus that scrapes the log
+    # gateway. Used only when `logGateway.metrics.podMonitor.enabled`.
+    namespaceSelector:
+      network.openshift.io/policy-group: monitoring
   loki:
     # -- Loki gateway pod port the log gateway may reach. Egress policy is
     # evaluated after the Service port is rewritten (see `dnsEgress`), so this

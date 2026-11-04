@@ -217,6 +217,37 @@ data:
                                 prefix: /
                               direct_response:
                                 status: 404
+        # Serves only the Prometheus scrape path from the loopback admin
+        # interface, so nothing else on the admin listener becomes reachable.
+        - name: metrics
+          address:
+            socket_address:
+              address: 0.0.0.0
+              port_value: {{ .Values.logGateway.metrics.port }}
+          filter_chains:
+            - filters:
+                - name: envoy.filters.network.http_connection_manager
+                  typed_config:
+                    "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+                    stat_prefix: metrics
+                    http_filters:
+                      - name: envoy.filters.http.router
+                        typed_config:
+                          "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+                    route_config:
+                      name: metrics
+                      virtual_hosts:
+                        - name: metrics
+                          domains: ["*"]
+                          routes:
+                            - match:
+                                path: /stats/prometheus
+                              route:
+                                cluster: admin
+                            - match:
+                                prefix: /
+                              direct_response:
+                                status: 404
       clusters:
         - name: log_access
           type: STRICT_DNS

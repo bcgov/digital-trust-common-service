@@ -61,6 +61,9 @@ spec:
             - name: probe
               containerPort: {{ .Values.logGateway.probePort }}
               protocol: TCP
+            - name: metrics
+              containerPort: {{ .Values.logGateway.metrics.port }}
+              protocol: TCP
           {{- with .Values.logGateway.livenessProbe }}
           livenessProbe:
             {{- toYaml . | nindent 12 }}

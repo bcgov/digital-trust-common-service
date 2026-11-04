@@ -6,6 +6,8 @@ templates:
   - templates/log-gateway/route.yaml
   - templates/log-gateway/hpa.yaml
   - templates/log-access-service.yaml
+  - templates/log-gateway/podmonitor.yaml
+  - templates/log-gateway/prometheusrule.yaml
   - templates/networkpolicy.yaml
 tests:
   - it: renders nothing by default
@@ -119,3 +121,73 @@ tests:
       - failedTemplate:
           errorPattern: logAccess.enabled
         template: templates/log-gateway/deployment.yaml
+
+  - it: scrapes the metrics port and admits only the monitoring namespace
+    values:
+      - ../ci/ci-values.yaml
+    asserts:
+      - equal:
+          path: spec.podMetricsEndpoints[0].port
+          value: metrics
+        template: templates/log-gateway/podmonitor.yaml
+      - equal:
+          path: spec.podMetricsEndpoints[0].path
+          value: /stats/prometheus
+        template: templates/log-gateway/podmonitor.yaml
+      - contains:
+          path: spec.template.spec.containers[0].ports
+          content:
+            name: metrics
+            containerPort: 9102
+            protocol: TCP
+        template: templates/log-gateway/deployment.yaml
+      - equal:
+          path: spec.ingress[0].ports[0].port
+          value: metrics
+        template: templates/networkpolicy.yaml
+        documentSelector:
+          path: metadata.name
+          value: RELEASE-NAME-digital-trust-common-service-log-gateway-allow-metrics
+
+  - it: renders no monitoring resources by default
+    set:
+      logAccess:
+        enabled: true
+      logGateway:
+        enabled: true
+        upstream:
+          host: loki.example.svc
+          auth:
+            existingSecret:
+              name: loki-login
+    asserts:
+      - hasDocuments:
+          count: 0
+        template: templates/log-gateway/podmonitor.yaml
+      - hasDocuments:
+          count: 0
+        template: templates/log-gateway/prometheusrule.yaml
+
+  - it: alerts on a down gateway, decision failures and an expiring certificate
+    values:
+      - ../ci/ci-values.yaml
+    set:
+      logGateway:
+        metrics:
+          prometheusRule:
+            alertLabels:
+              team: platform
+    asserts:
+      - exists:
+          path: spec.groups[0].rules[?(@.alert == "LogGatewayDown")]
+        template: templates/log-gateway/prometheusrule.yaml
+      - exists:
+          path: spec.groups[0].rules[?(@.alert == "LogGatewayDecisionEndpointErrors")]
+        template: templates/log-gateway/prometheusrule.yaml
+      - exists:
+          path: spec.groups[0].rules[?(@.alert == "LogGatewayCertificateExpiring")]
+        template: templates/log-gateway/prometheusrule.yaml
+      - equal:
+          path: spec.groups[0].rules[0].labels.team
+          value: platform
+        template: templates/log-gateway/prometheusrule.yaml

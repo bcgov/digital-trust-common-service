@@ -22,6 +22,14 @@ and this chart adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.h
   defaults to the gateway's labels when the gateway is enabled. CI validates the
   rendered config with the Envoy tag from `logGateway.image.tag`. Off in every
   overlay.
+- `logGateway.metrics` for monitoring the log gateway. A `metrics` listener on its own
+  port (`metrics.port`, default `9102`) serves only `/stats/prometheus`, so the
+  loopback admin interface stays unreachable. Optional `PodMonitor`
+  (`metrics.podMonitor.enabled`) and `PrometheusRule` (`metrics.prometheusRule.enabled`),
+  both default `false`, with alerts for a down gateway, unavailable replicas, decision
+  endpoint failures, 5xx responses, Loki connect failures, p99 latency, a high deny rate
+  and an expiring certificate. `networkPolicy.monitoring.namespaceSelector` admits the
+  scraping Prometheus to the metrics port when the `PodMonitor` is enabled.
 - `logAccess` values (`enabled` default `false`, `port`, `tls.mountPath`,
   `gatewayPodSelector`) and `config.LOG_GATEWAY_AUDIENCE` (default `""`) for the
   internal log-access decision endpoint that the log gateway's `ext_authz`

@@ -238,6 +238,19 @@ Generate the JWKS payload with `npm run oidc:generate-keys > oidc-keys.json`, th
 | logGateway.image.repository | string | `"envoyproxy/envoy"` | Envoy image repository |
 | logGateway.image.tag | string | `"v1.40.2"` | Envoy image tag. CI validates the rendered config with this exact tag, so bumping it here bumps the validator too. |
 | logGateway.livenessProbe | object | `{"failureThreshold":3,"httpGet":{"path":"/livez","port":"probe"},"initialDelaySeconds":5,"periodSeconds":15,"timeoutSeconds":3}` | Liveness probe for the log gateway container |
+| logGateway.metrics.podMonitor.enabled | bool | `false` | Create a Prometheus Operator PodMonitor (needs the monitoring.coreos.com CRDs) |
+| logGateway.metrics.podMonitor.interval | string | `"30s"` | Scrape interval |
+| logGateway.metrics.podMonitor.labels | object | `{}` | Extra labels, for a Prometheus that selects monitors by label |
+| logGateway.metrics.podMonitor.scrapeTimeout | string | `"10s"` | Scrape timeout |
+| logGateway.metrics.port | int | `9102` | Container port that serves only `/stats/prometheus`. It is on neither the Service nor the Route. |
+| logGateway.metrics.prometheusRule.alertLabels | object | `{}` | Extra labels added to every alert, for example `team` or routing keys |
+| logGateway.metrics.prometheusRule.certExpiryDays | int | `7` | Days of serving certificate validity left before alerting |
+| logGateway.metrics.prometheusRule.checkErrorRatio | float | `0.02` | Fraction of requests the decision endpoint may fail to answer over 10m before alerting |
+| logGateway.metrics.prometheusRule.denyRatio | float | `0.5` | Fraction of requests the gateway may deny over 15m before alerting |
+| logGateway.metrics.prometheusRule.enabled | bool | `false` | Create a PrometheusRule with the gateway alerts (needs the monitoring.coreos.com CRDs) |
+| logGateway.metrics.prometheusRule.errorRatio | float | `0.05` | Fraction of responses that may be 5xx over 10m before alerting |
+| logGateway.metrics.prometheusRule.labels | object | `{}` | Extra labels, for a Prometheus that selects rules by label |
+| logGateway.metrics.prometheusRule.latencyP99Ms | int | `5000` | p99 request latency in milliseconds over 10m before alerting |
 | logGateway.nodeSelector | object | `{}` | Node selector for log gateway pods |
 | logGateway.podAnnotations | object | `{}` | Annotations added to log gateway pods |
 | logGateway.podLabels | object | `{}` | Labels added to log gateway pods |
@@ -291,6 +304,7 @@ Generate the JWKS payload with `npm run oidc:generate-keys > oidc-keys.json`, th
 | networkPolicy.loki.namespaceSelector | object | `{}` | Namespace selector matching the Loki namespace |
 | networkPolicy.loki.podSelector | object | `{}` | Pod selector matching the Loki gateway pods. When both podSelector and namespaceSelector are empty, egress is allowed to any destination on that port. Set these in per-env values. |
 | networkPolicy.loki.port | int | `8080` | Loki gateway pod port the log gateway may reach. Egress policy is evaluated after the Service port is rewritten (see `dnsEgress`), so this is the pod's port, not the Service port. |
+| networkPolicy.monitoring.namespaceSelector | object | `{"network.openshift.io/policy-group":"monitoring"}` | Namespace selector matching the Prometheus that scrapes the log gateway. Used only when `logGateway.metrics.podMonitor.enabled`. |
 | nodeSelector | object | `{}` | Node selector for API pods |
 | oidcSigning.cookieKeys | string | `""` | Comma-separated cookie signing secrets (OIDC_COOKIE_KEYS). Generated once and preserved across upgrades when empty. Preservation needs an in-cluster `helm upgrade`; a client-side render (template/diff/GitOps) would rotate them and drop active sessions, so pin them if you use one. |
 | oidcSigning.create | bool | `false` | Create a chart-managed Secret from the values below |

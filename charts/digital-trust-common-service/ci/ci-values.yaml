@@ -60,6 +60,11 @@ logGateway:
   enabled: true
   autoscaling:
     enabled: true
+  metrics:
+    podMonitor:
+      enabled: true
+    prometheusRule:
+      enabled: true
   route:
     enabled: true
     host: logs.example.com

@@ -1312,6 +1312,13 @@ Deployment, Service, optional HPA, re-encrypted Route, NetworkPolicies).
   is ignored, but not recorded, because the check endpoint never sees the body.
 - **Probes.** The admin listener stays on loopback. A separate probe listener on its own port answers the
   kubelet and is on neither the Service nor the Route.
+- **Monitoring.** A `metrics` listener on its own port serves only `/stats/prometheus` from the loopback
+  admin interface, so no other admin path is reachable. An optional `PodMonitor` scrapes it with
+  `usedonly` to keep cardinality down, and an optional `PrometheusRule` alerts on a down gateway,
+  unavailable replicas, decision endpoint failures (the gateway fails closed, so each one refuses a tenant
+  their own logs), 5xx responses, Loki connect failures, p99 latency, a high deny rate and an expiring
+  certificate. Both are off by default because they need the Prometheus Operator CRDs; thresholds are
+  `logGateway.metrics.prometheusRule.*`.
 - **Network.** The gateway's pods may reach only the decision endpoint (port `logAccess.port`), Loki
   (`networkPolicy.loki`, pod port 8080) and DNS. `logAccess.gatewayPodSelector` defaults to the gateway's
   labels when the gateway is enabled.
