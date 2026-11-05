@@ -1,13 +1,11 @@
+import {
+  Button,
+  Callout,
+  InlineAlert,
+} from '@bcgov/design-system-react-components';
 import { Navigate } from 'react-router';
 import { useTranslation } from 'react-i18next';
 
-import { Button } from '@/components/common/button';
-import {
-  Card,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/common/card';
 import { useActiveTenant } from '@/lib/tenant/active-tenant';
 
 /**
@@ -24,12 +22,16 @@ export function DashboardPage() {
 
   if (status === 'error') {
     return (
-      <div role="alert" className="flex items-center gap-3">
-        <p>{t('dashboard.loadFailed')}</p>
-        <Button type="button" variant="outline" onClick={refetch}>
-          {t('common.retry')}
-        </Button>
-      </div>
+      <InlineAlert
+        variant="danger"
+        role="alert"
+        description={t('dashboard.loadFailed')}
+        buttons={
+          <Button variant="secondary" size="small" onPress={refetch}>
+            {t('common.retry')}
+          </Button>
+        }
+      />
     );
   }
 
@@ -42,19 +44,19 @@ export function DashboardPage() {
   );
 
   return (
-    <Card className="max-w-lg">
-      <CardHeader>
-        <CardTitle>
-          {hasActiveMembership
+    <div className="max-w-lg">
+      <Callout
+        title={
+          hasActiveMembership
             ? t('dashboard.chooseTitle')
-            : t('dashboard.noMembershipTitle')}
-        </CardTitle>
-        <CardDescription>
-          {hasActiveMembership
+            : t('dashboard.noMembershipTitle')
+        }
+        description={
+          hasActiveMembership
             ? t('dashboard.chooseBody')
-            : t('dashboard.noMembershipBody')}
-        </CardDescription>
-      </CardHeader>
-    </Card>
+            : t('dashboard.noMembershipBody')
+        }
+      />
+    </div>
   );
 }
