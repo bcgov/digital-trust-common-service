@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router';
 
+import { notify } from '@/components/common/sonner';
 import {
   ChangeTenantUserRoleDialog,
   InviteTenantUserDialog,
@@ -64,7 +65,6 @@ export function TenantUsersPage() {
   // Warms the role picker, so a dialog rarely opens before the mapping loads.
   useTenantRoles(tenantId, { enabled: canManage });
   const [dialog, setDialog] = useState<DialogState>(null);
-  const [announcement, setAnnouncement] = useState('');
 
   // A token without the scope is the normal case for members and read-only
   // users, not a failure; a 403 means the same thing from the API's side.
@@ -134,7 +134,7 @@ export function TenantUsersPage() {
     const changedUser = dialog.user;
     setDialog(null);
     if (changedUser.id !== user?.sub || !tenantId) {
-      setAnnouncement(t('users.notice.roleUpdated'));
+      notify.success(t('users.notice.roleUpdated'));
       return;
     }
     void switchTo(tenantId, {
@@ -154,7 +154,7 @@ export function TenantUsersPage() {
     const removedUser = dialog.user;
     setDialog(null);
     if (removedUser.id !== user?.sub || !tenantId) {
-      setAnnouncement(
+      notify.success(
         removedUser.status === 'invited'
           ? t('users.notice.inviteCancelled')
           : t('users.notice.memberRemoved'),
@@ -196,11 +196,6 @@ export function TenantUsersPage() {
   };
   return (
     <div className="flex flex-1 flex-col gap-(--layout-margin-large)">
-      {announcement && (
-        <p role="status" aria-live="polite" className="text-sm text-green-700">
-          {announcement}
-        </p>
-      )}
       <TenantUsersHeader
         search={search}
         onSearchChange={handleSearchChange}
@@ -233,7 +228,7 @@ export function TenantUsersPage() {
           onClose={closeDialog}
           onSuccess={() => {
             closeDialog();
-            setAnnouncement(t('users.notice.inviteCreated'));
+            notify.success(t('users.notice.inviteCreated'));
           }}
         />
       )}

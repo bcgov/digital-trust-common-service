@@ -203,7 +203,8 @@ export function RemoveTenantUserDialog({
       }}
     >
       <AlertDialog
-        variant="destructive"
+        variant="warning"
+        data-destructive
         role="alertdialog"
         aria-label={title}
         title={title}

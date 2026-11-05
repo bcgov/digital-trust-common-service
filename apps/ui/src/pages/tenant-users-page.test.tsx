@@ -7,8 +7,9 @@ import {
 } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { delay, http, HttpResponse } from 'msw';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
+import { notify } from '@/components/common/sonner';
 import { API_BASE_PATH } from '@/lib/api/constants';
 import { tenantRoleKeys } from '@/lib/api/queries/tenant-roles';
 import { createMockAuthClient, MOCK_AUTH_TENANTS } from '@/lib/auth/mock-auth';
@@ -358,6 +359,7 @@ describe('TenantUsersPage', () => {
   });
 
   it('invites a user by email and role', async () => {
+    const successToast = vi.spyOn(notify, 'success');
     const user = userEvent.setup();
     let body: unknown;
     server.use(
@@ -384,9 +386,10 @@ describe('TenantUsersPage', () => {
     await waitFor(() =>
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument(),
     );
-    expect(await screen.findByRole('status')).toHaveTextContent(
-      'Invitation created.',
+    await waitFor(() =>
+      expect(successToast).toHaveBeenCalledWith('Invitation created.'),
     );
+    successToast.mockRestore();
   });
 
   it('keeps the invite dialog open and explains a conflict', async () => {
@@ -473,6 +476,7 @@ describe('TenantUsersPage', () => {
   });
 
   it("changes a member's role", async () => {
+    const successToast = vi.spyOn(notify, 'success');
     const user = userEvent.setup();
     let body: unknown;
     server.use(
@@ -498,9 +502,10 @@ describe('TenantUsersPage', () => {
     await waitFor(() =>
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument(),
     );
-    expect(await screen.findByRole('status')).toHaveTextContent(
-      'Role updated.',
+    await waitFor(() =>
+      expect(successToast).toHaveBeenCalledWith('Role updated.'),
     );
+    successToast.mockRestore();
   });
 
   it('shows the last-owner conflict inside the role dialog', async () => {
@@ -560,6 +565,7 @@ describe('TenantUsersPage', () => {
   });
 
   it('removes a member only after confirmation', async () => {
+    const successToast = vi.spyOn(notify, 'success');
     const user = userEvent.setup();
     let deleted = 0;
     server.use(
@@ -593,9 +599,10 @@ describe('TenantUsersPage', () => {
     await waitFor(() =>
       expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument(),
     );
-    expect(await screen.findByRole('status')).toHaveTextContent(
-      'Member removed.',
+    await waitFor(() =>
+      expect(successToast).toHaveBeenCalledWith('Member removed.'),
     );
+    successToast.mockRestore();
   });
 
   it('shows the access-denied state without fetching when the token lacks the scope', async () => {
