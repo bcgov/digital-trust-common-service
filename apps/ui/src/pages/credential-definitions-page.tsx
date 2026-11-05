@@ -1,10 +1,13 @@
-import { Certificate, Plus } from 'lucide-react';
+import { Button, InlineAlert } from '@bcgov/design-system-react-components';
 import { useState } from 'react';
 import { Trans, useTranslation } from 'react-i18next';
 import { Link, useNavigate } from 'react-router';
 
 import { AccessDenied } from '@/components/common/access-denied';
-import { Button } from '@/components/common/button';
+import { EmptyState } from '@/components/common/empty';
+import { AddressCardIcon, PlusIcon } from '@/components/common/icons';
+import { PageHeader } from '@/components/common/page-header';
+import { LoadError, LoadingMessage } from '@/components/common/query-status';
 import { DeleteCredentialDefinitionDialog } from '@/components/credential-definition/delete-credential-definition-dialog';
 import { CredentialDefinitionsTable } from '@/components/credential-definition/credential-definitions-table';
 import { ApiError } from '@/lib/api/errors';
@@ -32,6 +35,15 @@ export function CredentialDefinitionsPage() {
     (connector) => connector.active === true,
   );
 
+  const registerButton = (
+    <Button
+      onPress={() => void navigate('/credential-definitions/create-or-edit')}
+    >
+      <PlusIcon className="size-5" />
+      {t('credentialDefinitions.register')}
+    </Button>
+  );
+
   if (!canManage) {
     return (
       <AccessDenied
@@ -43,63 +55,59 @@ export function CredentialDefinitionsPage() {
   }
 
   return (
-    <div className="flex flex-1 flex-col gap-5">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <h1 className="text-xl font-semibold">
-          {t('credentialDefinitions.title')}
-        </h1>
-        {tenant && connectorsQuery.isSuccess && activeConnectors.length > 0 && (
-          <Button asChild>
-            <Link to="/credential-definitions/create-or-edit">
-              <Plus aria-hidden="true" />
-              {t('credentialDefinitions.register')}
-            </Link>
-          </Button>
-        )}
-      </div>
+    <div className="flex flex-1 flex-col gap-xlarge">
+      <PageHeader
+        title={t('credentialDefinitions.title')}
+        actions={
+          tenant &&
+          connectorsQuery.isSuccess &&
+          activeConnectors.length > 0 &&
+          registerButton
+        }
+      />
 
       {(status === 'loading' || (tenant && definitionsQuery.isLoading)) && (
-        <p role="status">{t('credentialDefinitions.loading')}</p>
+        <LoadingMessage>{t('credentialDefinitions.loading')}</LoadingMessage>
       )}
       {status === 'error' && (
-        <div role="alert" className="flex items-center gap-3">
-          <p>{t('credentialDefinitions.membershipsLoadFailed')}</p>
-          <Button variant="outline" onClick={refetch}>
-            {t('common.retry')}
-          </Button>
-        </div>
+        <LoadError
+          message={t('credentialDefinitions.membershipsLoadFailed')}
+          onRetry={refetch}
+        />
       )}
       {status === 'ready' && !tenant && (
-        <p>{t('credentialDefinitions.noActiveTenant')}</p>
+        <LoadingMessage>
+          {t('credentialDefinitions.noActiveTenant')}
+        </LoadingMessage>
       )}
       {tenant && definitionsQuery.isError && (
-        <div role="alert" className="flex flex-wrap items-center gap-3">
-          <p className="text-sm text-destructive">
-            {definitionsQuery.error instanceof ApiError
+        <LoadError
+          message={
+            definitionsQuery.error instanceof ApiError
               ? definitionsQuery.error.message
-              : t('credentialDefinitions.loadFailed')}
-          </p>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => void definitionsQuery.refetch()}
-          >
-            {t('common.retry')}
-          </Button>
-        </div>
+              : t('credentialDefinitions.loadFailed')
+          }
+          onRetry={() => void definitionsQuery.refetch()}
+        />
       )}
       {tenant && connectorsQuery.isError && (
-        <p role="alert" className="text-sm text-destructive">
-          <Trans
-            i18nKey="credentialDefinitions.connectorsLoadFailed"
-            components={{
-              connectorsPage: <Link className="underline" to="/connectors" />,
-            }}
-          />
-        </p>
+        // The description prop only takes a string, and this one has a link.
+        <InlineAlert variant="danger" role="alert">
+          <span className="description">
+            <Trans
+              i18nKey="credentialDefinitions.connectorsLoadFailed"
+              components={{
+                connectorsPage: <Link className="underline" to="/connectors" />,
+              }}
+            />
+          </span>
+        </InlineAlert>
       )}
       {tenant && connectorsQuery.isSuccess && activeConnectors.length === 0 && (
-        <p role="status" className="text-sm text-muted-foreground">
+        <p
+          role="status"
+          className="text-small-body text-(--typography-color-secondary)"
+        >
           <Trans
             i18nKey="credentialDefinitions.connectorRequired"
             components={{
@@ -121,26 +129,16 @@ export function CredentialDefinitionsPage() {
         />
       )}
       {tenant && definitionsQuery.isSuccess && definitions.length === 0 && (
-        <div className="flex flex-col items-center gap-3 border-y border-border px-4 py-12 text-center">
-          <Certificate
-            className="size-10 text-muted-foreground"
-            aria-hidden="true"
-          />
-          <h3 className="text-base font-semibold">
-            {t('credentialDefinitions.emptyTitle')}
-          </h3>
-          <p className="max-w-md text-sm text-muted-foreground">
-            {t('credentialDefinitions.emptyBody')}
-          </p>
-          {connectorsQuery.isSuccess && activeConnectors.length > 0 && (
-            <Button asChild>
-              <Link to="/credential-definitions/create-or-edit">
-                <Plus aria-hidden="true" />
-                {t('credentialDefinitions.register')}
-              </Link>
-            </Button>
-          )}
-        </div>
+        <EmptyState
+          icon={<AddressCardIcon />}
+          title={t('credentialDefinitions.emptyTitle')}
+          description={t('credentialDefinitions.emptyBody')}
+          action={
+            connectorsQuery.isSuccess &&
+            activeConnectors.length > 0 &&
+            registerButton
+          }
+        />
       )}
       {definitionToDelete && (
         <DeleteCredentialDefinitionDialog

@@ -64,7 +64,7 @@ describe('CredentialDefinitionsPage', () => {
       screen.getByText(/need the tenants:admin scope/i),
     ).toBeInTheDocument();
     expect(requestedDraft).not.toHaveBeenCalled();
-    expect(screen.queryByLabelText('Credential name')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/^Credential name/)).not.toBeInTheDocument();
   });
 
   it.each(['sd-jwt', 'mdl', 'w3c-vc'] as const)(
@@ -134,7 +134,7 @@ describe('CredentialDefinitionsPage', () => {
           );
         });
         expect(
-          screen.queryByLabelText('Credential name'),
+          screen.queryByLabelText(/^Credential name/),
         ).not.toBeInTheDocument();
         expect(mutationRequest).not.toHaveBeenCalled();
       } finally {
@@ -165,7 +165,7 @@ describe('CredentialDefinitionsPage', () => {
       name: 'Edit draft credential definition Visitor pass',
     });
     await user.click(draftRow);
-    const nameInput = await screen.findByLabelText('Credential name');
+    const nameInput = await screen.findByLabelText(/^Credential name/);
     expect(nameInput).toHaveValue('Visitor pass');
     expect(screen.getByLabelText('Attribute 1 name')).toHaveValue(
       'visitor_name',
@@ -181,7 +181,7 @@ describe('CredentialDefinitionsPage', () => {
         name: 'Edit draft credential definition Shared visitor pass',
       }),
     );
-    expect(await screen.findByLabelText('Credential name')).toHaveValue(
+    expect(await screen.findByLabelText(/^Credential name/)).toHaveValue(
       'Shared visitor pass',
     );
     await user.click(screen.getByRole('button', { name: 'Next: Attributes' }));
@@ -251,10 +251,9 @@ describe('CredentialDefinitionsPage', () => {
           name: /Registration in progress.*failed/i,
         });
         expect(failedRow).toBeVisible();
-        expect(within(failedRow).getByText('failed')).toHaveAttribute(
-          'data-variant',
-          'destructive',
-        );
+        expect(
+          within(failedRow).getByText('failed').closest('.bcds-react-aria-Tag'),
+        ).toHaveClass('red');
       },
       { timeout: 8_000 },
     );
@@ -326,8 +325,8 @@ describe('CredentialDefinitionsPage', () => {
 
     const saveDraft = screen.getByRole('button', { name: 'Save draft' });
     const nextStep = screen.getByRole('button', { name: 'Next: Attributes' });
-    const nameInput = screen.getByLabelText('Credential name');
-    const versionInput = screen.getByLabelText('Version');
+    const nameInput = screen.getByLabelText(/^Credential name/);
+    const versionInput = screen.getByLabelText(/^Version/);
 
     expect(
       screen.getByText(
@@ -359,7 +358,7 @@ describe('CredentialDefinitionsPage', () => {
     for (const validVersion of ['1', '1.0', '2.1', '2.1.0-beta.1+build.7']) {
       await user.clear(versionInput);
       await user.type(versionInput, validVersion);
-      expect(versionInput).toHaveAttribute('aria-invalid', 'false');
+      expect(versionInput).not.toHaveAttribute('aria-invalid');
       expect(saveDraft).toBeEnabled();
       expect(nextStep).toBeEnabled();
     }
@@ -485,10 +484,10 @@ describe('CredentialDefinitionsPage', () => {
       );
 
       await user.type(
-        screen.getByLabelText('Credential name'),
+        screen.getByLabelText(/^Credential name/),
         'Employee badge',
       );
-      await user.type(screen.getByLabelText('Version'), '2.0.0');
+      await user.type(screen.getByLabelText(/^Version/), '2.0.0');
       await user.click(
         screen.getByRole('button', { name: 'Next: Attributes' }),
       );
@@ -498,21 +497,24 @@ describe('CredentialDefinitionsPage', () => {
         'Enter attribute name',
       );
       const firstAttributeRow = firstAttribute.closest('li');
-      expect(firstAttributeRow).toHaveClass('bg-background');
+      expect(firstAttributeRow).toHaveClass(
+        'bg-(--surface-color-background-white)',
+      );
       await user.type(firstAttribute, 'employee_id');
-      expect(firstAttributeRow).toHaveClass('bg-primary/20', 'border-primary');
-      expect(firstAttribute).not.toHaveClass('bg-primary/20');
+      expect(firstAttributeRow).toHaveClass(
+        'bg-(--surface-color-background-light-blue)',
+        'border-(--surface-color-border-active)',
+      );
       await user.click(screen.getByRole('button', { name: 'Add attribute' }));
       expect(screen.getByLabelText('Attribute 2 name')).toHaveValue('');
       expect(
         screen.getByLabelText('Attribute 2 name').closest('li'),
-      ).toHaveClass('bg-background');
+      ).toHaveClass('bg-(--surface-color-background-white)');
       if (saveStep === 'review') {
         await user.click(screen.getByRole('button', { name: 'Next: Review' }));
-        expect(screen.getByRole('link', { name: 'Cancel' })).toHaveAttribute(
-          'href',
-          '/credential-definitions',
-        );
+        expect(
+          screen.getByRole('button', { name: 'Cancel' }),
+        ).toBeInTheDocument();
         await user.click(screen.getByRole('button', { name: 'Previous' }));
         expect(screen.getByLabelText('Attribute 1 name')).toHaveValue(
           'employee_id',
@@ -625,12 +627,12 @@ describe('CredentialDefinitionsPage', () => {
       name: /Edit draft credential definition Employee badge/,
     });
     expect(within(draftRow).getByText('Current description')).toHaveClass(
-      'text-xs',
-      'text-muted-foreground',
+      'text-label',
+      'text-(--typography-color-secondary)',
     );
     expect(
       await within(draftRow).findByText(connector.endpoint_url),
-    ).toHaveClass('text-xs', 'text-muted-foreground');
+    ).toHaveClass('text-label', 'text-(--typography-color-secondary)');
     await user.click(draftRow);
 
     expect(router.state.location.pathname).toBe(
@@ -642,8 +644,8 @@ describe('CredentialDefinitionsPage', () => {
         name: 'Edit credential configuration',
       }),
     ).toBeInTheDocument();
-    const nameInput = screen.getByLabelText('Credential name');
-    const versionInput = screen.getByLabelText('Version');
+    const nameInput = screen.getByLabelText(/^Credential name/);
+    const versionInput = screen.getByLabelText(/^Version/);
     expect(nameInput).toHaveValue('Employee badge');
     expect(versionInput).toHaveValue('1.0.0');
     expect(screen.getByLabelText('Attribute 1 name')).toHaveValue('legal_name');
@@ -714,8 +716,8 @@ describe('CredentialDefinitionsPage', () => {
       },
     );
 
-    await user.type(screen.getByLabelText('Credential name'), 'Visitor pass');
-    await user.type(screen.getByLabelText('Version'), '2.1.0');
+    await user.type(screen.getByLabelText(/^Credential name/), 'Visitor pass');
+    await user.type(screen.getByLabelText(/^Version/), '2.1.0');
     await user.click(screen.getByRole('button', { name: 'Save draft' }));
 
     await waitFor(() => expect(errorToast).toHaveBeenCalledOnce());
@@ -880,7 +882,7 @@ describe('CredentialDefinitionsPage', () => {
     expect(within(existingRow).getByText('published')).toBeInTheDocument();
 
     await user.click(
-      screen.getByRole('link', { name: 'Register configuration' }),
+      screen.getByRole('button', { name: 'Register configuration' }),
     );
     expect(
       await screen.findByRole('heading', {
@@ -888,11 +890,11 @@ describe('CredentialDefinitionsPage', () => {
         name: 'Credential configuration',
       }),
     ).toBeInTheDocument();
-    expect(screen.getByLabelText('Credential name')).toBeInTheDocument();
-    expect(screen.getByLabelText('Version')).toBeInTheDocument();
+    expect(screen.getByLabelText(/^Credential name/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/^Version/)).toBeInTheDocument();
     expect(screen.getByLabelText('Description (optional)')).toBeInTheDocument();
     expect(
-      await screen.findByRole('button', { name: 'Connector' }),
+      await screen.findByRole('button', { name: /Connector/ }),
     ).toHaveTextContent('traction (Default)');
     expect(screen.getByRole('radio', { name: /Anoncreds/ })).toBeChecked();
     expect(
@@ -901,22 +903,16 @@ describe('CredentialDefinitionsPage', () => {
     expect(
       screen.getByRole('link', { name: 'Credential configurations' }),
     ).toHaveAttribute('href', '/credential-definitions');
-    expect(screen.getByRole('link', { name: 'Cancel' })).toHaveAttribute(
-      'href',
-      '/credential-definitions',
-    );
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeInTheDocument();
 
-    await user.type(screen.getByLabelText('Credential name'), 'Visitor pass');
-    await user.type(screen.getByLabelText('Version'), '2.1.0');
+    await user.type(screen.getByLabelText(/^Credential name/), 'Visitor pass');
+    await user.type(screen.getByLabelText(/^Version/), '2.1.0');
     await user.type(screen.getByLabelText('Description (optional)'), 'Pass');
     await user.click(screen.getByRole('button', { name: 'Next: Attributes' }));
     expect(
       screen.getByRole('heading', { name: 'Attributes' }),
     ).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Cancel' })).toHaveAttribute(
-      'href',
-      '/credential-definitions',
-    );
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Previous' }));
     expect(
       screen.getByRole('heading', { name: 'Credential details' }),
@@ -943,9 +939,7 @@ describe('CredentialDefinitionsPage', () => {
       ),
     ).toBeInTheDocument();
     expect(
-      screen.getByText('Credential details', {
-        selector: '[data-slot="card-title"]',
-      }),
+      screen.getByRole('heading', { level: 3, name: 'Credential details' }),
     ).toBeVisible();
     expect(screen.getByText('Visitor pass')).toBeVisible();
     expect(screen.getByText('Anoncreds', { selector: 'dd' })).toBeVisible();
@@ -964,7 +958,7 @@ describe('CredentialDefinitionsPage', () => {
     await user.click(screen.getByRole('button', { name: 'Previous' }));
     expect(screen.getByLabelText('Attribute 1 name')).toHaveValue('first');
     expect(screen.getByText('Attributes', { selector: 'span' })).toHaveClass(
-      'font-semibold',
+      'font-bold',
     );
     await user.click(screen.getByRole('button', { name: 'Next: Review' }));
 

@@ -1,13 +1,8 @@
-import { Button } from '@/components/common/button';
-import { StatusBadge } from '@/components/common/status-badge';
-import { EditIcon } from '@/components/common/icons';
+import { Button } from '@bcgov/design-system-react-components';
 import { useTranslation } from 'react-i18next';
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from '@/components/common/card';
+
+import { EditIcon } from '@/components/common/icons';
+import { StaticTag } from '@/components/common/static-tag';
 import type { Attribute } from '@/components/credential-definition/attributes-step';
 
 export function ReviewStep({
@@ -26,80 +21,74 @@ export function ReviewStep({
   return (
     <div className="flex flex-col gap-5 px-6">
       <div className="flex flex-col gap-1">
-        <h2 className="text-lg font-semibold">
+        <h2 className="text-h5 font-bold">
           {t('credentialDefinitions.review.title')}
         </h2>
-        <p className="text-sm text-muted-foreground">
+        <p className="text-small-body text-(--typography-color-secondary)">
           {t('credentialDefinitions.review.subtitle')}
         </p>
       </div>
-      <Card className="w-full">
-        <CardHeader className="flex flex-row items-center justify-between space-y-0">
-          <CardTitle className="font-bold">
+      <section className="flex w-full flex-col gap-medium rounded-(--layout-border-radius-medium) border border-(--surface-color-border-default) bg-(--surface-color-background-white) p-large">
+        <div className="flex items-center justify-between">
+          <h3 className="text-body font-bold">
             {t('credentialDefinitions.review.details')}
-          </CardTitle>
+          </h3>
           <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="text-link hover:text-link-hover"
+            variant="tertiary"
+            size="small"
             aria-label={t('credentialDefinitions.review.editDetails')}
-            onClick={onEditDetails}
+            onPress={onEditDetails}
           >
-            <EditIcon aria-hidden="true" />
+            <EditIcon className="size-4" />
             {t('common.edit')}
           </Button>
-        </CardHeader>
-        <CardContent>
-          <dl className="grid grid-cols-2 gap-x-8 gap-y-4 text-sm sm:grid-cols-4">
+        </div>
+        <div>
+          <dl className="grid grid-cols-2 gap-x-xlarge gap-y-medium text-small-body sm:grid-cols-4">
             {details.map(([label, value]) => (
               <div key={label} className="flex min-w-0 flex-col gap-1">
-                <dt className="text-xs text-muted-foreground">{label}</dt>
-                <dd className="break-words font-semibold">
+                <dt className="text-label text-(--typography-color-secondary)">
+                  {label}
+                </dt>
+                <dd className="break-words font-bold">
                   {value || t('credentialDefinitions.review.emptyValue')}
                 </dd>
               </div>
             ))}
           </dl>
-        </CardContent>
-      </Card>
-      <Card className="w-full">
-        <CardHeader className="flex flex-row items-center justify-between space-y-0">
-          <CardTitle className="font-bold">
+        </div>
+      </section>
+      <section className="flex w-full flex-col gap-medium rounded-(--layout-border-radius-medium) border border-(--surface-color-border-default) bg-(--surface-color-background-white) p-large">
+        <div className="flex items-center justify-between">
+          <h3 className="text-body font-bold">
             {t('credentialDefinitions.review.attributes')}
-          </CardTitle>
+          </h3>
           <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="text-link hover:text-link-hover"
+            variant="tertiary"
+            size="small"
             aria-label={t('credentialDefinitions.review.editAttributes')}
-            onClick={onEditAttributes}
+            onPress={onEditAttributes}
           >
-            <EditIcon aria-hidden="true" />
+            <EditIcon className="size-4" />
             {t('common.edit')}
           </Button>
-        </CardHeader>
-        <CardContent>
+        </div>
+        <div>
           {attributes.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
+            <p className="text-small-body text-(--typography-color-secondary)">
               {t('credentialDefinitions.review.noAttributes')}
             </p>
           ) : (
             <ul className="flex flex-wrap gap-2">
               {attributes.map((attribute) => (
                 <li key={attribute.id}>
-                  <StatusBadge
-                    label={attribute.name}
-                    tone="success"
-                    showCheck={false}
-                  />
+                  <StaticTag label={attribute.name} color="green" />
                 </li>
               ))}
             </ul>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </section>
     </div>
   );
 }

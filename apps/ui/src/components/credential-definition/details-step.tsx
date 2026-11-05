@@ -1,8 +1,7 @@
-import { Input } from '@/components/common/input';
-import { Label } from '@/components/common/label';
-import { SelectMenu } from '@/components/common/select-menu';
-import type { Connector } from '@/lib/api/resources/connectors';
+import { Select, TextField } from '@bcgov/design-system-react-components';
 import { useTranslation } from 'react-i18next';
+
+import type { Connector } from '@/lib/api/resources/connectors';
 
 export function DetailsStep({
   name,
@@ -35,84 +34,68 @@ export function DetailsStep({
     <div className="flex flex-col gap-5">
       <section className="flex flex-col gap-4 px-6">
         <div className="flex flex-col gap-1">
-          <h2 className="text-lg font-semibold">
+          <h2 className="text-h5 font-bold">
             {t('credentialDefinitions.setup.identity')}
           </h2>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-small-body text-(--typography-color-secondary)">
             {t('credentialDefinitions.setup.subtitle')}
           </p>
         </div>
-        <h3 className="text-base font-semibold">
+        <h3 className="text-body font-bold">
           {t('credentialDefinitions.setup.credentialIdentity')}
         </h3>
         <div className="flex gap-4">
-          <div className="flex min-w-0 flex-1 flex-col gap-2">
-            <Label htmlFor="credential-name">
-              {t('credentialDefinitions.setup.name')}
-            </Label>
-            <Input
-              id="credential-name"
-              name="name"
-              required
-              value={name}
-              onChange={(event) => onNameChange(event.target.value)}
-              placeholder={t('credentialDefinitions.setup.namePlaceholder')}
-            />
-          </div>
-          <div className="flex w-1/6 min-w-24 flex-col gap-2">
-            <Label htmlFor="credential-version">
-              {t('credentialDefinitions.setup.version')}
-            </Label>
-            <Input
-              id="credential-version"
-              name="version"
-              required
-              aria-invalid={versionInvalid}
-              aria-describedby={
-                versionInvalid ? 'credential-version-error' : undefined
-              }
-              value={version}
-              onChange={(event) => onVersionChange(event.target.value)}
-              placeholder={t('credentialDefinitions.setup.versionPlaceholder')}
-            />
-            {versionInvalid && (
-              <p
-                id="credential-version-error"
-                className="text-xs text-destructive"
-              >
-                {t('credentialDefinitions.setup.versionInvalid')}
-              </p>
-            )}
-          </div>
-        </div>
-        <div className="flex flex-col gap-2">
-          <Label htmlFor="credential-description">
-            {t('credentialDefinitions.setup.description')}
-          </Label>
-          <Input
-            id="credential-description"
-            name="description"
-            value={description}
-            onChange={(event) => onDescriptionChange(event.target.value)}
-            placeholder={t(
-              'credentialDefinitions.setup.descriptionPlaceholder',
-            )}
+          <TextField
+            className="min-w-0 flex-1"
+            label={t('credentialDefinitions.setup.name')}
+            name="name"
+            isRequired
+            value={name}
+            onChange={onNameChange}
+            // Untyped in BCDS 0.8.1's TextFieldProps, but forwarded by
+            // react-aria's useTextField to the input at runtime.
+            {...{
+              placeholder: t('credentialDefinitions.setup.namePlaceholder'),
+            }}
+          />
+          <TextField
+            className="w-1/6 min-w-24"
+            label={t('credentialDefinitions.setup.version')}
+            name="version"
+            isRequired
+            isInvalid={versionInvalid}
+            errorMessage={t('credentialDefinitions.setup.versionInvalid')}
+            value={version}
+            onChange={onVersionChange}
+            {...{
+              placeholder: t('credentialDefinitions.setup.versionPlaceholder'),
+            }}
           />
         </div>
+        <TextField
+          label={t('credentialDefinitions.setup.description')}
+          name="description"
+          value={description}
+          onChange={onDescriptionChange}
+          {...{
+            placeholder: t(
+              'credentialDefinitions.setup.descriptionPlaceholder',
+            ),
+          }}
+        />
       </section>
       <section className="flex flex-col gap-4 px-6">
-        <h3 className="text-base font-semibold">
+        <h3 className="text-body font-bold">
           {t('credentialDefinitions.setup.chooseConnector')}
         </h3>
         <div className="flex flex-col gap-2">
-          <p className="text-sm text-muted-foreground">
+          <p className="text-small-body text-(--typography-color-secondary)">
             {t('credentialDefinitions.setup.connectorDescription')}
           </p>
-          <SelectMenu
-            id="credential-connector"
+          <Select
             aria-label={t('credentialDefinitions.setup.connector')}
-            options={connectors.map((connector) => ({
-              value: connector.id ?? '',
+            items={connectors.map((connector) => ({
+              id: connector.id ?? '',
               label:
                 connector.id === defaultConnectorId
                   ? t('credentialDefinitions.setup.defaultConnector', {
@@ -122,17 +105,19 @@ export function DetailsStep({
                   : (connector.connector_type ?? ''),
               description: connector.endpoint_url,
             }))}
-            value={connectorId}
-            onValueChange={onConnectorChange}
+            selectedKey={connectorId || null}
+            onSelectionChange={(key) => {
+              if (typeof key === 'string') onConnectorChange(key);
+            }}
             placeholder={t('credentialDefinitions.setup.noActiveConnectors')}
           />
         </div>
       </section>
       <section className="flex flex-col gap-4 px-6">
-        <h3 className="text-base font-semibold">
+        <h3 className="text-body font-bold">
           {t('credentialDefinitions.setup.format')}
         </h3>
-        <div className="flex w-1/2 items-start gap-3 rounded-lg border-2 border-input bg-card p-4 has-[:checked]:border-primary">
+        <div className="flex w-1/2 items-start gap-3 rounded-lg border-2 border-(--surface-color-border-default) bg-(--surface-color-background-white) p-4 has-[:checked]:border-(--surface-color-border-active)">
           <input
             id="format-anoncreds"
             type="radio"
@@ -141,15 +126,15 @@ export function DetailsStep({
             checked
             readOnly
             aria-describedby="format-anoncreds-description"
-            className="mt-0.5 size-4 accent-primary"
+            className="mt-0.5 size-4 accent-(--surface-color-primary-default)"
           />
           <div className="flex flex-col gap-1">
-            <Label htmlFor="format-anoncreds" className="text-base">
+            <label htmlFor="format-anoncreds" className="text-body font-bold">
               {t('credentialDefinitions.setup.anoncreds')}
-            </Label>
+            </label>
             <p
               id="format-anoncreds-description"
-              className="text-sm text-muted-foreground"
+              className="text-small-body text-(--typography-color-secondary)"
             >
               {t('credentialDefinitions.setup.anoncredsDescription')}
             </p>

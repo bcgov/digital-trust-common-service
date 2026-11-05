@@ -1,11 +1,8 @@
-import { Trash2 } from 'lucide-react';
+import { Button } from '@bcgov/design-system-react-components';
 import { useTranslation } from 'react-i18next';
 
-import { Button } from '@/components/common/button';
-import {
-  StatusBadge,
-  type StatusBadgeTone,
-} from '@/components/common/status-badge';
+import { TrashIcon } from '@/components/common/icons';
+import { StaticTag, type StaticTagColor } from '@/components/common/static-tag';
 import {
   Table,
   TableBody,
@@ -45,13 +42,13 @@ function displayStatus(
   return definition.status ?? 'draft';
 }
 
-function statusTone(status: keyof typeof STATUS_KEYS): StatusBadgeTone {
-  if (status === 'published') return 'success';
-  if (status === 'failed') return 'danger';
+function statusColor(status: keyof typeof STATUS_KEYS): StaticTagColor {
+  if (status === 'published') return 'green';
+  if (status === 'failed') return 'red';
   if (status === 'draft' || status === 'pending' || status === 'unverified') {
-    return 'pending';
+    return 'yellow';
   }
-  return 'neutral';
+  return 'grey';
 }
 
 export function CredentialDefinitionsTable({
@@ -68,13 +65,14 @@ export function CredentialDefinitionsTable({
   const { t } = useTranslation();
 
   return (
-    <div className="min-w-0 border-y border-border">
+    <div className="min-w-0">
       <Table
         aria-label={t('credentialDefinitions.table.label')}
+        variant="record"
         className="min-w-[56rem] table-fixed"
       >
-        <TableHeader className="bg-muted/50 [&_th]:h-12 [&_th]:px-5 [&_th]:font-bold">
-          <TableRow className="hover:bg-transparent">
+        <TableHeader>
+          <TableRow>
             <TableHead scope="col">
               {t('credentialDefinitions.table.name')}
             </TableHead>
@@ -97,7 +95,7 @@ export function CredentialDefinitionsTable({
             </TableHead>
           </TableRow>
         </TableHeader>
-        <TableBody className="[&_td]:px-5 [&_td]:py-5">
+        <TableBody>
           {definitions.map((definition) => {
             const editableDraft =
               definition.status === 'draft' && Boolean(definition.id);
@@ -140,12 +138,14 @@ export function CredentialDefinitionsTable({
                       }
                     : undefined
                 }
-                className={`border-border ${editableDraft ? 'cursor-pointer hover:bg-muted/50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring' : ''}`}
+                className={`border-(--surface-color-border-default) ${editableDraft ? 'cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--surface-color-border-active)' : ''}`}
               >
-                <TableCell className="break-words whitespace-normal font-medium">
-                  <div>{definition.name}</div>
+                <TableCell className="break-words whitespace-normal">
+                  <div className="font-bold text-(--typography-color-primary)">
+                    {definition.name}
+                  </div>
                   {description && (
-                    <p className="mt-1 text-xs font-normal text-muted-foreground">
+                    <p className="mt-1 text-label text-(--typography-color-secondary)">
                       {description}
                     </p>
                   )}
@@ -157,8 +157,8 @@ export function CredentialDefinitionsTable({
                     : t('credentialDefinitions.formats.unknown')}
                 </TableCell>
                 <TableCell>
-                  <StatusBadge
-                    tone={statusTone(currentStatus)}
+                  <StaticTag
+                    color={statusColor(currentStatus)}
                     label={t(STATUS_KEYS[currentStatus])}
                   />
                 </TableCell>
@@ -169,7 +169,7 @@ export function CredentialDefinitionsTable({
                   </div>
                   {connectorUrl && (
                     <p
-                      className="mt-1 truncate text-xs text-muted-foreground"
+                      className="mt-1 truncate text-label text-(--typography-color-secondary)"
                       title={connectorUrl}
                     >
                       {connectorUrl}
@@ -178,17 +178,14 @@ export function CredentialDefinitionsTable({
                 </TableCell>
                 <TableCell className="text-right">
                   <Button
-                    variant="ghost"
-                    size="icon"
+                    variant="tertiary"
+                    isIconButton
                     aria-label={t('credentialDefinitions.delete.rowAction', {
                       name: definition.name,
                     })}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      onDelete(definition);
-                    }}
+                    onPress={() => onDelete(definition)}
                   >
-                    <Trash2 aria-hidden="true" />
+                    <TrashIcon className="size-5" />
                   </Button>
                 </TableCell>
               </TableRow>
