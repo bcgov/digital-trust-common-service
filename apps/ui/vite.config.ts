@@ -69,6 +69,9 @@ export default defineConfig(({ mode }) => {
       environment: 'jsdom',
       setupFiles: ['./src/test/setup.ts'],
       css: false,
+      // Full-page jsdom tests take a few seconds each, and over 5s when
+      // workers compete for CPU on a busy machine.
+      testTimeout: 15_000,
       // Vitest loads .env like the dev server does, so a developer running
       // with VITE_AUTH_MODE=oidc would otherwise have every AuthProvider
       // render try the real OIDC client — without a loaded runtime config.

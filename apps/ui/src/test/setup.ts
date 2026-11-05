@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom/vitest';
-import { cleanup } from '@testing-library/react';
+import { cleanup, configure } from '@testing-library/react';
 import { afterAll, afterEach, beforeAll } from 'vitest';
 
 import { setAuthHandlers } from '@/lib/api/client';
@@ -7,6 +7,9 @@ import i18n from '@/lib/i18n';
 
 import { resetCredentialDefinitionMocks } from '@/mocks/handlers';
 import { server } from '@/mocks/server';
+
+// The default 1s for findBy/waitFor is too short when workers compete for CPU.
+configure({ asyncUtilTimeout: 5_000 });
 
 // jsdom implements no media queries at all, and vaul reads `matchMedia` on
 // mount to decide whether to animate. Report "no match" so components render

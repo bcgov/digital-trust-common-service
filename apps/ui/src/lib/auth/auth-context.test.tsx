@@ -123,6 +123,6 @@ describe('AuthProvider', () => {
     expect(client.clearSession).toHaveBeenCalledTimes(1);
     expect(client.logout).not.toHaveBeenCalled();
     await waitFor(() => expect(router.state.location.pathname).toBe('/login'));
-    expect(screen.getByText('Sign in')).toBeInTheDocument();
+    expect(await screen.findByText('Sign in')).toBeInTheDocument();
   });
 });
