@@ -251,10 +251,9 @@ describe('CredentialDefinitionsPage', () => {
           name: /Registration in progress.*failed/i,
         });
         expect(failedRow).toBeVisible();
-        expect(within(failedRow).getByText('failed')).toHaveAttribute(
-          'data-variant',
-          'destructive',
-        );
+        expect(
+          within(failedRow).getByText('failed').closest('.bcds-react-aria-Tag'),
+        ).toHaveClass('red');
       },
       { timeout: 8_000 },
     );
@@ -625,12 +624,12 @@ describe('CredentialDefinitionsPage', () => {
       name: /Edit draft credential definition Employee badge/,
     });
     expect(within(draftRow).getByText('Current description')).toHaveClass(
-      'text-xs',
-      'text-muted-foreground',
+      'text-label',
+      'text-(--typography-color-secondary)',
     );
     expect(
       await within(draftRow).findByText(connector.endpoint_url),
-    ).toHaveClass('text-xs', 'text-muted-foreground');
+    ).toHaveClass('text-label', 'text-(--typography-color-secondary)');
     await user.click(draftRow);
 
     expect(router.state.location.pathname).toBe(
@@ -880,7 +879,7 @@ describe('CredentialDefinitionsPage', () => {
     expect(within(existingRow).getByText('published')).toBeInTheDocument();
 
     await user.click(
-      screen.getByRole('link', { name: 'Register configuration' }),
+      screen.getByRole('button', { name: 'Register configuration' }),
     );
     expect(
       await screen.findByRole('heading', {
