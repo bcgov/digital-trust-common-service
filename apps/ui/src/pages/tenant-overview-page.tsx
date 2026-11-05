@@ -21,6 +21,11 @@ const QUICK_ACTIONS: { label: ParseKeys; to: string; scope?: string }[] = [
   { label: 'overview.manageUsers', to: 'users', scope: USERS_MANAGE_SCOPE },
 ];
 
+// Only the page heading is in the Figma "Tenant Dashboard" frame. The rest
+// uses the BCDS scale the tenants page is drawn with (layout/margin/*,
+// regular/body, regular/smallBody, bold/H5, surface/color/*).
+const H2 = 'text-h5 font-bold text-black';
+
 interface StatCardProps {
   title: string;
   /** Omitted while the API has no endpoint for this figure. */
@@ -38,7 +43,7 @@ function StatCard({ title, query }: StatCardProps) {
 
   if (!query) {
     hint = (
-      <p className="text-sm text-(--typography-color-secondary)">
+      <p className="text-small-body text-(--typography-color-secondary)">
         {t('overview.comingSoon')}
       </p>
     );
@@ -47,7 +52,7 @@ function StatCard({ title, query }: StatCardProps) {
   } else if (query.error instanceof ApiError && query.error.status === 403) {
     // A role without the read scope is the normal case, not a failure.
     hint = (
-      <p className="text-sm text-(--typography-color-secondary)">
+      <p className="text-small-body text-(--typography-color-secondary)">
         {t('overview.notForRole')}
       </p>
     );
@@ -72,9 +77,11 @@ function StatCard({ title, query }: StatCardProps) {
   }
 
   return (
-    <div className="flex flex-col gap-1 rounded-xl border border-(--surface-color-border-default) bg-(--surface-color-background-white) p-4">
-      <p className="text-sm text-(--typography-color-secondary)">{title}</p>
-      <div className="text-3xl font-medium tabular-nums">{value}</div>
+    <div className="flex flex-col gap-(--layout-margin-xsmall) rounded-(--layout-border-radius-large) border border-(--surface-color-border-default) bg-(--surface-color-background-white) p-(--layout-padding-medium)">
+      <p className="text-small-body text-(--typography-color-secondary)">
+        {title}
+      </p>
+      <div className="text-h1 text-black tabular-nums">{value}</div>
       {hint}
     </div>
   );
@@ -111,16 +118,16 @@ export function TenantOverviewPage() {
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+    <div className="flex flex-col gap-(--layout-margin-large)">
+      <div className="grid gap-(--layout-margin-medium) sm:grid-cols-2 lg:grid-cols-3">
         <StatCard title={t('overview.definitions')} query={definitions} />
         <StatCard title={t('overview.activeConnections')} query={connections} />
         <StatCard title={t('overview.recentOperations')} />
       </div>
 
-      <section className="flex flex-col gap-2">
-        <h2 className="text-base font-medium">{t('overview.quickActions')}</h2>
-        <div className="flex flex-wrap gap-2">
+      <section className="flex flex-col gap-(--layout-margin-small)">
+        <h2 className={H2}>{t('overview.quickActions')}</h2>
+        <div className="flex flex-wrap gap-(--layout-margin-small)">
           {quickActions.map(({ label, to }) => (
             <Link
               key={label}
@@ -133,16 +140,14 @@ export function TenantOverviewPage() {
         </div>
       </section>
 
-      <section className="flex max-w-lg flex-col gap-4 rounded-xl border border-(--surface-color-border-default) bg-(--surface-color-background-white) p-4">
-        <h2 className="text-base font-medium">{t('overview.details')}</h2>
+      <section className="flex max-w-lg flex-col gap-(--layout-margin-medium) rounded-(--layout-border-radius-large) border border-(--surface-color-border-default) bg-(--surface-color-background-white) p-(--layout-padding-medium)">
+        <h2 className={H2}>{t('overview.details')}</h2>
         <div>
-          <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-sm">
+          <dl className="grid grid-cols-[auto_1fr] gap-x-(--layout-margin-large) gap-y-(--layout-margin-small) text-small-body text-black">
             <dt className="text-(--typography-color-secondary)">
               {t('tenants.fields.slug')}
             </dt>
-            <dd className="font-mono text-xs leading-5">
-              {tenant?.slug ?? '—'}
-            </dd>
+            <dd className="font-mono">{tenant?.slug ?? '—'}</dd>
             <dt className="text-(--typography-color-secondary)">
               {t('common.status')}
             </dt>
