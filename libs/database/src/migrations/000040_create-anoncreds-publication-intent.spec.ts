@@ -1,4 +1,4 @@
-import { CreateAnoncredsPublicationIntent1793375200834 } from './000035_create-anoncreds-publication-intent';
+import { CreateAnoncredsPublicationIntent1793375200834 } from './000040_create-anoncreds-publication-intent';
 
 describe('AnonCreds publication intent migration', () => {
   it('keys durable intent by tenant, pinned connector and artifact', async () => {
