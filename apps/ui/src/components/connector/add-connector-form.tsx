@@ -1,21 +1,25 @@
-import { Info, LoaderCircle } from 'lucide-react';
+import {
+  Button,
+  InlineAlert,
+  ProgressCircle,
+  TextField,
+} from '@bcgov/design-system-react-components';
 import { useId, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { Button } from '@/components/common/button';
 import {
   DrawerBody,
-  DrawerClose,
   DrawerDescription,
   DrawerFooter,
 } from '@/components/common/drawer';
-import { Input } from '@/components/common/input';
+import { CircleInfoIcon } from '@/components/common/icons';
 import { Label } from '@/components/common/label';
 import { ApiError } from '@/lib/api/errors';
 import type { useCreateConnector } from '@/lib/api/queries/connectors';
 
 interface AddConnectorFormProps {
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  onCancel: () => void;
   errors: Record<string, string[] | undefined>;
   mutation: ReturnType<typeof useCreateConnector>;
   canCreate: boolean;
@@ -23,6 +27,7 @@ interface AddConnectorFormProps {
 
 export function AddConnectorForm({
   onSubmit,
+  onCancel,
   errors,
   mutation,
   canCreate,
@@ -40,7 +45,7 @@ export function AddConnectorForm({
         className="relative min-h-0 gap-0 px-0 py-6"
         aria-busy={mutation.isPending}
       >
-        <DrawerDescription className="px-6 text-sm leading-6 text-muted-foreground">
+        <DrawerDescription className="px-6 text-sm leading-6 text-(--typography-color-secondary)">
           {t('connectors.form.description')}
         </DrawerDescription>
         <fieldset
@@ -61,91 +66,57 @@ export function AddConnectorForm({
               <option value="traction">{t('connectors.form.traction')}</option>
             </select>
           </div>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor={`${fieldId}-endpoint`}>
-              {t('connectors.form.endpointUrl')}
-            </Label>
-            <Input
-              id={`${fieldId}-endpoint`}
-              name="endpoint_url"
-              type="url"
-              required
-              aria-invalid={Boolean(errors.endpoint_url)}
-              aria-describedby={
-                errors.endpoint_url ? `${fieldId}-endpoint-error` : undefined
-              }
-            />
-            {errors.endpoint_url && (
-              <p
-                id={`${fieldId}-endpoint-error`}
-                role="alert"
-                className="text-sm text-destructive"
-              >
-                {errors.endpoint_url[0]}
-              </p>
-            )}
-          </div>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor={`${fieldId}-api-key`}>
-              {t('connectors.form.apiKey')}
-            </Label>
-            <Input
-              id={`${fieldId}-api-key`}
-              name="credentials.api_key"
-              type="password"
-              autoComplete="off"
-              required
-              aria-invalid={Boolean(errors.api_key)}
-              aria-describedby={
-                errors.api_key ? `${fieldId}-api-key-error` : undefined
-              }
-            />
-            {errors.api_key && (
-              <p
-                id={`${fieldId}-api-key-error`}
-                role="alert"
-                className="text-sm text-destructive"
-              >
-                {errors.api_key[0]}
-              </p>
-            )}
-          </div>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor={`${fieldId}-tenant`}>
-              {t('connectors.form.tractionTenantId')}
-            </Label>
-            <Input
-              id={`${fieldId}-tenant`}
-              name="credentials.traction_tenant_id"
-            />
-          </div>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor={`${fieldId}-webhook`}>
-              {t('connectors.form.webhookSecret')}
-            </Label>
-            <Input
-              id={`${fieldId}-webhook`}
-              name="credentials.webhook_secret"
-              type="password"
-              autoComplete="off"
-            />
-          </div>
+          <TextField
+            label={t('connectors.form.endpointUrl')}
+            name="endpoint_url"
+            type="url"
+            isRequired
+            validationBehavior="aria"
+            isInvalid={Boolean(errors.endpoint_url)}
+            errorMessage={errors.endpoint_url?.[0]}
+          />
+          <TextField
+            label={t('connectors.form.apiKey')}
+            name="credentials.api_key"
+            type="password"
+            autoComplete="off"
+            isRequired
+            validationBehavior="aria"
+            isInvalid={Boolean(errors.api_key)}
+            errorMessage={errors.api_key?.[0]}
+          />
+          <TextField
+            label={t('connectors.form.tractionTenantId')}
+            name="credentials.traction_tenant_id"
+          />
+          <TextField
+            label={t('connectors.form.webhookSecret')}
+            name="credentials.webhook_secret"
+            type="password"
+            autoComplete="off"
+          />
         </fieldset>
         {mutation.isError && (
-          <p role="alert" className="mt-4 px-6 text-sm text-destructive">
-            {mutation.error instanceof ApiError
-              ? mutation.error.message
-              : t('connectors.form.createFailed')}
-          </p>
+          <div className="mt-4 px-6">
+            <InlineAlert
+              variant="danger"
+              role="alert"
+              description={
+                mutation.error instanceof ApiError
+                  ? mutation.error.message
+                  : t('connectors.form.createFailed')
+              }
+            />
+          </div>
         )}
         {mutation.isPending && (
           <div
             role="status"
-            className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-background/90"
+            className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-(--surface-color-background-white)/90"
           >
-            <LoaderCircle
-              className="size-10 animate-spin motion-reduce:animate-none"
-              aria-hidden="true"
+            <ProgressCircle
+              isIndeterminate
+              aria-label={t('connectors.form.testing')}
             />
             <span className="text-sm font-medium">
               {t('connectors.form.testing')}
@@ -154,26 +125,19 @@ export function AddConnectorForm({
         )}
       </DrawerBody>
       <DrawerFooter className="shrink-0 items-center gap-4">
-        <p className="flex min-w-40 flex-1 items-start gap-2 text-xs leading-5 text-muted-foreground">
-          <Info className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+        <p className="flex min-w-40 flex-1 items-start gap-2 text-xs leading-5 text-(--typography-color-secondary)">
+          <CircleInfoIcon className="mt-0.5 size-4 shrink-0" />
           <span>{t('connectors.form.testNotice')}</span>
         </p>
         <div className="ml-auto flex gap-3">
-          <DrawerClose asChild>
-            <Button
-              type="button"
-              variant="outline"
-              className="h-10 bg-white px-6"
-              disabled={mutation.isPending}
-            >
-              {t('common.cancel')}
-            </Button>
-          </DrawerClose>
           <Button
-            type="submit"
-            className="h-10 px-6"
-            disabled={!canCreate || mutation.isPending}
+            variant="secondary"
+            isDisabled={mutation.isPending}
+            onPress={onCancel}
           >
+            {t('common.cancel')}
+          </Button>
+          <Button type="submit" isDisabled={!canCreate || mutation.isPending}>
             {mutation.isPending
               ? t('connectors.form.creating')
               : t('connectors.form.create')}

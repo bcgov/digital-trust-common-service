@@ -46,7 +46,7 @@ describe('AddConnectorButton', () => {
     const queryClient = render(<AddConnectorButton />);
     queryClient.setQueryData(connectorKeys.list('active-tenant'), { data: [] });
     await user.click(screen.getByRole('button', { name: 'Add Connector' }));
-    await user.type(screen.getByLabelText('Endpoint URL'), 'not-a-url');
+    await user.type(screen.getByLabelText(/^Endpoint URL/), 'not-a-url');
     await user.click(screen.getByRole('button', { name: 'Create' }));
     expect(
       screen.getByText('Enter a valid HTTP or HTTPS URL.'),
@@ -54,12 +54,12 @@ describe('AddConnectorButton', () => {
     expect(screen.getByText('Enter an API key.')).toBeInTheDocument();
     expect(requested).not.toHaveBeenCalled();
 
-    await user.clear(screen.getByLabelText('Endpoint URL'));
+    await user.clear(screen.getByLabelText(/^Endpoint URL/));
     await user.type(
-      screen.getByLabelText('Endpoint URL'),
+      screen.getByLabelText(/^Endpoint URL/),
       'https://agent.example.com',
     );
-    await user.type(screen.getByLabelText('API key'), 'test-only-placeholder');
+    await user.type(screen.getByLabelText(/^API key/), 'test-only-placeholder');
     await user.click(screen.getByRole('button', { name: 'Create' }));
     await waitFor(() =>
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument(),
@@ -88,10 +88,10 @@ describe('AddConnectorButton', () => {
     render(<AddConnectorButton />);
     await user.click(screen.getByRole('button', { name: 'Add Connector' }));
     await user.type(
-      screen.getByLabelText('Endpoint URL'),
+      screen.getByLabelText(/^Endpoint URL/),
       'https://agent.example.com',
     );
-    await user.type(screen.getByLabelText('API key'), 'test-only-placeholder');
+    await user.type(screen.getByLabelText(/^API key/), 'test-only-placeholder');
     await user.type(
       screen.getByLabelText('Traction tenant ID (optional)'),
       'sub-tenant',
@@ -124,10 +124,10 @@ describe('AddConnectorButton', () => {
     render(<AddConnectorButton />);
     await user.click(screen.getByRole('button', { name: 'Add Connector' }));
     await user.type(
-      screen.getByLabelText('Endpoint URL'),
+      screen.getByLabelText(/^Endpoint URL/),
       'https://agent.example.com',
     );
-    await user.type(screen.getByLabelText('API key'), 'test-only-placeholder');
+    await user.type(screen.getByLabelText(/^API key/), 'test-only-placeholder');
     await user.type(
       screen.getByLabelText('Traction tenant ID (optional)'),
       'sub-tenant',
@@ -147,12 +147,12 @@ describe('AddConnectorButton', () => {
       'aria-busy',
       'true',
     );
-    expect(screen.getByRole('status').querySelector('svg')).toHaveClass(
-      'animate-spin',
-    );
+    expect(
+      within(screen.getByRole('status')).getByRole('progressbar'),
+    ).toBeInTheDocument();
     expect(creating).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled();
-    expect(screen.getByLabelText('Endpoint URL')).toBeDisabled();
+    expect(screen.getByLabelText(/^Endpoint URL/)).toBeDisabled();
     await user.click(creating);
     await user.keyboard('{Escape}');
     expect(screen.getByRole('dialog')).toBeInTheDocument();
@@ -177,12 +177,11 @@ describe('AddConnectorButton', () => {
     const trigger = screen.getByRole('button', { name: 'Add Connector' });
     await user.click(trigger);
 
-    expect(screen.getByRole('button', { name: 'Create' })).toHaveAttribute(
-      'data-variant',
-      'default',
+    expect(screen.getByRole('button', { name: 'Create' })).toHaveClass(
+      'primary',
     );
     const cancel = screen.getByRole('button', { name: 'Cancel' });
-    expect(cancel).toHaveClass('bg-white');
+    expect(cancel).toHaveClass('secondary');
     await user.click(cancel);
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(trigger).toHaveFocus();
@@ -202,13 +201,13 @@ describe('AddConnectorButton', () => {
     expect(
       within(connectorType).getByRole('option', { name: 'Traction' }),
     ).toHaveValue('traction');
-    expect(screen.getByLabelText('Endpoint URL')).toBeRequired();
-    expect(screen.getByLabelText('Endpoint URL')).toHaveAttribute(
+    expect(screen.getByLabelText(/^Endpoint URL/)).toBeRequired();
+    expect(screen.getByLabelText(/^Endpoint URL/)).toHaveAttribute(
       'type',
       'url',
     );
-    expect(screen.getByLabelText('API key')).toBeRequired();
-    expect(screen.getByLabelText('API key')).toHaveAttribute(
+    expect(screen.getByLabelText(/^API key/)).toBeRequired();
+    expect(screen.getByLabelText(/^API key/)).toHaveAttribute(
       'type',
       'password',
     );

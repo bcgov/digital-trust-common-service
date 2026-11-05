@@ -1,4 +1,5 @@
-import { useState, type FormEvent, type ReactNode } from 'react';
+import { Button } from '@bcgov/design-system-react-components';
+import { useRef, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { z } from 'zod';
 
@@ -7,8 +8,8 @@ import {
   DrawerContent,
   DrawerHeader,
   DrawerTitle,
-  DrawerTrigger,
 } from '@/components/common/drawer.js';
+import { PlusIcon } from '@/components/common/icons';
 import { useCreateConnector } from '@/lib/api/queries/connectors';
 import i18n from '@/lib/i18n';
 import { useActiveTenant } from '@/lib/tenant/active-tenant';
@@ -28,11 +29,12 @@ const connectorSchema = z.object({
   webhook_secret: z.string().optional(),
 });
 
-export function AddConnectorDrawer({ children }: { children: ReactNode }) {
+export function AddConnectorDrawer() {
   const { t } = useTranslation();
   const { tenant } = useActiveTenant();
   const mutation = useCreateConnector(tenant?.id);
   const [open, setOpen] = useState(false);
+  const triggerRef = useRef<HTMLSpanElement>(null);
   const [errors, setErrors] = useState<Record<string, string[] | undefined>>(
     {},
   );
@@ -82,24 +84,40 @@ export function AddConnectorDrawer({ children }: { children: ReactNode }) {
   }
 
   return (
-    <Drawer
-      direction="right"
-      open={open}
-      onOpenChange={changeOpen}
-      dismissible={!mutation.isPending}
-    >
-      <DrawerTrigger asChild>{children}</DrawerTrigger>
-      <DrawerContent showCloseButton={!mutation.isPending}>
-        <DrawerHeader>
-          <DrawerTitle>{t('connectors.add')}</DrawerTitle>
-        </DrawerHeader>
-        <AddConnectorForm
-          onSubmit={submit}
-          errors={errors}
-          mutation={mutation}
-          canCreate={Boolean(tenant)}
-        />
-      </DrawerContent>
-    </Drawer>
+    <>
+      {/* BCDS Button takes no ref, so the drawer finds it through this. */}
+      <span ref={triggerRef} className="contents">
+        <Button onPress={() => changeOpen(true)}>
+          <PlusIcon className="size-5" />
+          {t('connectors.add')}
+        </Button>
+      </span>
+      <Drawer
+        direction="right"
+        open={open}
+        onOpenChange={changeOpen}
+        dismissible={!mutation.isPending}
+      >
+        <DrawerContent
+          showCloseButton={!mutation.isPending}
+          // There is no DrawerTrigger, so vaul has nothing to refocus.
+          onCloseAutoFocus={(event) => {
+            event.preventDefault();
+            triggerRef.current?.querySelector('button')?.focus();
+          }}
+        >
+          <DrawerHeader>
+            <DrawerTitle>{t('connectors.add')}</DrawerTitle>
+          </DrawerHeader>
+          <AddConnectorForm
+            onSubmit={submit}
+            onCancel={() => changeOpen(false)}
+            errors={errors}
+            mutation={mutation}
+            canCreate={Boolean(tenant)}
+          />
+        </DrawerContent>
+      </Drawer>
+    </>
   );
 }
