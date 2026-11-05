@@ -149,16 +149,16 @@ export function AppShell() {
 
       <div className="flex flex-1 overflow-hidden">
         {layout === 'sidebar' && (
-          <aside className="w-60 shrink-0 border-r bg-sidebar text-sidebar-foreground">
-            <div className="flex items-center gap-2 border-b px-3 py-3">
-              <BuildingIcon className="size-4 shrink-0" />
-              <span className="truncate text-sm font-semibold">
+          <aside className="flex w-75 shrink-0 flex-col gap-(--layout-margin-small) overflow-y-auto border-r border-(--surface-color-border-default) bg-sidebar p-3 text-sidebar-foreground">
+            <div className="flex items-center gap-3 rounded-xl border border-(--surface-color-border-default) p-3">
+              <BuildingIcon className="size-6 shrink-0" />
+              <span className="truncate text-body leading-5 font-bold text-black">
                 {tenant?.name ?? t('nav.unknownTenant')}
               </span>
             </div>
             <nav
               aria-label={t('nav.primary')}
-              className="flex flex-col gap-1 p-2"
+              className="flex flex-col gap-(--layout-margin-small)"
             >
               {navigationItems.map(({ to, label, icon: Icon }) => (
                 <NavLink
@@ -166,14 +166,12 @@ export function AppShell() {
                   to={to}
                   className={({ isActive }) =>
                     cn(
-                      'flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors',
-                      isActive
-                        ? 'bg-sidebar-accent text-sidebar-accent-foreground'
-                        : 'text-muted-foreground hover:bg-muted hover:text-sidebar-foreground',
+                      'flex items-center gap-2.5 rounded-xl px-3 py-2 text-small-body text-black transition-colors',
+                      isActive ? 'bg-sidebar-accent' : 'hover:bg-muted',
                     )
                   }
                 >
-                  <Icon className="size-4" aria-hidden="true" />
+                  <Icon className="size-5" aria-hidden="true" />
                   {t(label)}
                 </NavLink>
               ))}
@@ -182,14 +180,12 @@ export function AppShell() {
                   to={manageUsersPath}
                   className={({ isActive }) =>
                     cn(
-                      'flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors',
-                      isActive
-                        ? 'bg-sidebar-accent text-sidebar-accent-foreground'
-                        : 'text-muted-foreground hover:bg-muted hover:text-sidebar-foreground',
+                      'flex items-center gap-2.5 rounded-xl px-3 py-2 text-small-body text-black transition-colors',
+                      isActive ? 'bg-sidebar-accent' : 'hover:bg-muted',
                     )
                   }
                 >
-                  <UsersRound className="size-4" aria-hidden="true" />
+                  <UsersRound className="size-5" aria-hidden="true" />
                   {t('nav.manageUsers')}
                 </NavLink>
               )}
