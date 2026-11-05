@@ -1,4 +1,4 @@
-import { Share2 } from 'lucide-react';
+import { Button, InlineAlert } from '@bcgov/design-system-react-components';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -7,13 +7,8 @@ import { ConnectorDetailsDialog } from '@/components/connector/connector-details
 import { ConnectorsTable } from '@/components/connector/connectors-table';
 import { DeleteConnectorDialog } from '@/components/connector/delete-connector-dialog';
 import { EditConnectorDrawer } from '@/components/connector/edit-connector-drawer';
-import { Button } from '@/components/common/button';
-import {
-  Card,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/common/card';
+import { AccessDenied } from '@/components/common/access-denied';
+import { ShareNodesIcon } from '@/components/common/icons';
 import { useConnectors } from '@/lib/api/queries/connectors';
 import { useTenant } from '@/lib/api/queries/tenants';
 import { ApiError } from '@/lib/api/errors';
@@ -52,14 +47,11 @@ export function ConnectorsPage() {
 
   if (isForbidden) {
     return (
-      <Card className="max-w-lg">
-        <CardHeader>
-          <CardTitle>{t('connectors.title')}</CardTitle>
-          <CardDescription>
-            {t('connectors.forbidden', { scope: TENANT_ADMIN_SCOPE })}
-          </CardDescription>
-        </CardHeader>
-      </Card>
+      <AccessDenied
+        headingLevel={1}
+        title={t('connectors.title')}
+        description={t('connectors.forbidden', { scope: TENANT_ADMIN_SCOPE })}
+      />
     );
   }
 
@@ -77,65 +69,85 @@ export function ConnectorsPage() {
         </div>
       </div>
       {tenantStatus === 'loading' && (
-        <p role="status" className="text-sm text-muted-foreground">
+        <p
+          role="status"
+          className="text-sm text-(--typography-color-secondary)"
+        >
           {t('connectors.loadingActiveTenant')}
         </p>
       )}
       {tenantStatus === 'error' && (
-        <div role="alert" className="flex items-center gap-3">
-          <p className="text-sm text-destructive">
-            {t('connectors.activeTenantFailed')}
-          </p>
-          <Button type="button" variant="outline" onClick={refetchTenant}>
-            {t('common.retry')}
-          </Button>
-        </div>
+        <InlineAlert
+          variant="danger"
+          role="alert"
+          description={t('connectors.activeTenantFailed')}
+          buttons={
+            <Button variant="secondary" size="small" onPress={refetchTenant}>
+              {t('common.retry')}
+            </Button>
+          }
+        />
       )}
       {tenantStatus === 'ready' && !tenant && (
-        <p role="status" className="text-sm text-muted-foreground">
+        <p
+          role="status"
+          className="text-sm text-(--typography-color-secondary)"
+        >
           {t('connectors.noActiveTenant')}
         </p>
       )}
       {tenant && connectorQuery.isLoading && (
-        <p role="status" className="text-sm text-muted-foreground">
+        <p
+          role="status"
+          className="text-sm text-(--typography-color-secondary)"
+        >
           {t('connectors.loading')}
         </p>
       )}
       {tenant && tenantQuery.isLoading && (
-        <p role="status" className="text-sm text-muted-foreground">
+        <p
+          role="status"
+          className="text-sm text-(--typography-color-secondary)"
+        >
           {t('connectors.loadingTenantDetails')}
         </p>
       )}
       {tenant && tenantQuery.isError && (
-        <div role="alert" className="flex items-center gap-3">
-          <p className="text-sm text-destructive">
-            {t('connectors.tenantDetailsFailed')}
-          </p>
-          <Button
-            type="button"
-            variant="outline"
-            aria-label={t('connectors.retryTenantDetails')}
-            onClick={() => void tenantQuery.refetch()}
-          >
-            {t('common.retry')}
-          </Button>
-        </div>
+        <InlineAlert
+          variant="danger"
+          role="alert"
+          description={t('connectors.tenantDetailsFailed')}
+          buttons={
+            <Button
+              variant="secondary"
+              size="small"
+              aria-label={t('connectors.retryTenantDetails')}
+              onPress={() => void tenantQuery.refetch()}
+            >
+              {t('common.retry')}
+            </Button>
+          }
+        />
       )}
       {tenant && connectorQuery.isError && (
-        <div role="alert" className="flex items-center gap-3">
-          <p className="text-sm text-destructive">
-            {connectorQuery.error instanceof Error
+        <InlineAlert
+          variant="danger"
+          role="alert"
+          description={
+            connectorQuery.error instanceof Error
               ? connectorQuery.error.message
-              : t('connectors.loadFailed')}
-          </p>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => void connectorQuery.refetch()}
-          >
-            {t('common.retry')}
-          </Button>
-        </div>
+              : t('connectors.loadFailed')
+          }
+          buttons={
+            <Button
+              variant="secondary"
+              size="small"
+              onPress={() => void connectorQuery.refetch()}
+            >
+              {t('common.retry')}
+            </Button>
+          }
+        />
       )}
       {isSuccess && tenantQuery.isSuccess && connectors.data.length > 0 && (
         <ConnectorsTable
@@ -151,18 +163,24 @@ export function ConnectorsPage() {
         />
       )}
       {isSuccess && tenantQuery.isSuccess && connectors.data.length === 0 && (
-        <div className="flex flex-1 flex-col items-center justify-center gap-4 text-center">
-          <Share2
-            className="size-16 text-muted-foreground"
-            aria-hidden="true"
-          />
-          <h2 className="text-center text-xl font-semibold">
-            {t('connectors.emptyTitle')}
-          </h2>
-          <p className="text-sm text-muted-foreground">
-            {t('connectors.emptyBody')}
-          </p>
-          <AddConnectorButton />
+        // Same layout as the tenants page empty state.
+        <div className="flex flex-1 flex-col items-center justify-center pb-20">
+          <div className="flex w-95 flex-col items-center gap-(--layout-margin-xlarge) text-center">
+            <div className="flex flex-col items-center gap-(--layout-margin-xsmall)">
+              <div className="flex size-25 items-center justify-center">
+                <ShareNodesIcon className="size-18 text-(--icons-color-disabled)" />
+              </div>
+              <div className="flex flex-col gap-(--layout-margin-hair)">
+                <h2 className="text-h5 font-bold text-(--typography-color-primary)">
+                  {t('connectors.emptyTitle')}
+                </h2>
+                <p className="text-body text-(--typography-color-secondary)">
+                  {t('connectors.emptyBody')}
+                </p>
+              </div>
+            </div>
+            <AddConnectorButton />
+          </div>
         </div>
       )}
       {connectorToDelete && (

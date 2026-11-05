@@ -1,6 +1,6 @@
+import { Button, InlineAlert } from '@bcgov/design-system-react-components';
 import { useTranslation } from 'react-i18next';
 
-import { Button } from '@/components/common/button';
 import {
   Drawer,
   DrawerBody,
@@ -41,21 +41,28 @@ export function ConnectorDetailsDialog({
         </DrawerHeader>
         <DrawerBody className="min-h-0">
           {details.isPending && (
-            <p role="status" className="text-sm text-muted-foreground">
+            <p
+              role="status"
+              className="text-sm text-(--typography-color-secondary)"
+            >
               {t('connectors.details.loading')}
             </p>
           )}
           {details.isError && (
-            <p role="alert" className="text-sm text-destructive">
-              {details.error instanceof Error
-                ? details.error.message
-                : t('connectors.details.loadFailed')}
-            </p>
+            <InlineAlert
+              variant="danger"
+              role="alert"
+              description={
+                details.error instanceof Error
+                  ? details.error.message
+                  : t('connectors.details.loadFailed')
+              }
+            />
           )}
           {item && <ConnectorDetailsList item={item} />}
         </DrawerBody>
         <DrawerFooter className="shrink-0">
-          <Button variant="outline" onClick={onClose}>
+          <Button variant="secondary" onPress={onClose}>
             {t('common.close')}
           </Button>
         </DrawerFooter>
