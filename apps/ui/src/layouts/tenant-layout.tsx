@@ -83,15 +83,20 @@ export function TenantLayout() {
   }
 
   return (
-    <div className={cn('flex flex-col', !isUsersPage && 'gap-4')}>
+    <div
+      className={cn(
+        'flex flex-col',
+        !isUsersPage && 'gap-(--layout-margin-large)',
+      )}
+    >
       {!isUsersPage && (
         <>
           <div className="flex items-center gap-3">
             {isLoading ? (
-              <Skeleton className="h-7 w-48" />
+              <Skeleton className="h-12 w-64" />
             ) : (
               <>
-                <h1 className="text-xl font-semibold">
+                <h1 className="text-h1 font-bold text-black">
                   {tenant?.name ?? t('tenant.title')}
                 </h1>
                 {tenant?.status && <TenantStatusTag status={tenant.status} />}
