@@ -1,8 +1,8 @@
-import { Button, InlineAlert } from '@bcgov/design-system-react-components';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router';
 
+import { LoadError } from '@/components/common/query-status';
 import { notify } from '@/components/common/sonner';
 import {
   ChangeTenantUserRoleDialog,
@@ -80,23 +80,13 @@ export function TenantUsersPage() {
 
   if (error) {
     return (
-      <InlineAlert
-        variant="danger"
-        role="alert"
-        description={
+      <LoadError
+        message={
           error instanceof ApiError
             ? t('users.loadFailedWithReason', { reason: error.message })
             : t('users.loadFailed')
         }
-        buttons={
-          <Button
-            variant="secondary"
-            size="small"
-            onPress={() => void refetch()}
-          >
-            {t('common.retry')}
-          </Button>
-        }
+        onRetry={() => void refetch()}
       />
     );
   }

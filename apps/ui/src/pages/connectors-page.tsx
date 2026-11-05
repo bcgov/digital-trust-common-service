@@ -1,4 +1,3 @@
-import { Button, InlineAlert } from '@bcgov/design-system-react-components';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -11,6 +10,7 @@ import { AccessDenied } from '@/components/common/access-denied';
 import { EmptyState } from '@/components/common/empty';
 import { ShareNodesIcon } from '@/components/common/icons';
 import { PageHeader } from '@/components/common/page-header';
+import { LoadError, LoadingMessage } from '@/components/common/query-status';
 import { useConnectors } from '@/lib/api/queries/connectors';
 import { useTenant } from '@/lib/api/queries/tenants';
 import { ApiError } from '@/lib/api/errors';
@@ -65,84 +65,38 @@ export function ConnectorsPage() {
         actions={<AddConnectorButton />}
       />
       {tenantStatus === 'loading' && (
-        <p
-          role="status"
-          className="text-sm text-(--typography-color-secondary)"
-        >
-          {t('connectors.loadingActiveTenant')}
-        </p>
+        <LoadingMessage>{t('connectors.loadingActiveTenant')}</LoadingMessage>
       )}
       {tenantStatus === 'error' && (
-        <InlineAlert
-          variant="danger"
-          role="alert"
-          description={t('connectors.activeTenantFailed')}
-          buttons={
-            <Button variant="secondary" size="small" onPress={refetchTenant}>
-              {t('common.retry')}
-            </Button>
-          }
+        <LoadError
+          message={t('connectors.activeTenantFailed')}
+          onRetry={refetchTenant}
         />
       )}
       {tenantStatus === 'ready' && !tenant && (
-        <p
-          role="status"
-          className="text-sm text-(--typography-color-secondary)"
-        >
-          {t('connectors.noActiveTenant')}
-        </p>
+        <LoadingMessage>{t('connectors.noActiveTenant')}</LoadingMessage>
       )}
       {tenant && connectorQuery.isLoading && (
-        <p
-          role="status"
-          className="text-sm text-(--typography-color-secondary)"
-        >
-          {t('connectors.loading')}
-        </p>
+        <LoadingMessage>{t('connectors.loading')}</LoadingMessage>
       )}
       {tenant && tenantQuery.isLoading && (
-        <p
-          role="status"
-          className="text-sm text-(--typography-color-secondary)"
-        >
-          {t('connectors.loadingTenantDetails')}
-        </p>
+        <LoadingMessage>{t('connectors.loadingTenantDetails')}</LoadingMessage>
       )}
       {tenant && tenantQuery.isError && (
-        <InlineAlert
-          variant="danger"
-          role="alert"
-          description={t('connectors.tenantDetailsFailed')}
-          buttons={
-            <Button
-              variant="secondary"
-              size="small"
-              aria-label={t('connectors.retryTenantDetails')}
-              onPress={() => void tenantQuery.refetch()}
-            >
-              {t('common.retry')}
-            </Button>
-          }
+        <LoadError
+          message={t('connectors.tenantDetailsFailed')}
+          onRetry={() => void tenantQuery.refetch()}
+          retryLabel={t('connectors.retryTenantDetails')}
         />
       )}
       {tenant && connectorQuery.isError && (
-        <InlineAlert
-          variant="danger"
-          role="alert"
-          description={
+        <LoadError
+          message={
             connectorQuery.error instanceof Error
               ? connectorQuery.error.message
               : t('connectors.loadFailed')
           }
-          buttons={
-            <Button
-              variant="secondary"
-              size="small"
-              onPress={() => void connectorQuery.refetch()}
-            >
-              {t('common.retry')}
-            </Button>
-          }
+          onRetry={() => void connectorQuery.refetch()}
         />
       )}
       {isSuccess && tenantQuery.isSuccess && connectors.data.length > 0 && (

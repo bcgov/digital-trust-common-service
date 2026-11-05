@@ -5,6 +5,7 @@ import { Link, useNavigate } from 'react-router';
 
 import { EmptyState } from '@/components/common/empty';
 import { PageHeader } from '@/components/common/page-header';
+import { LoadError } from '@/components/common/query-status';
 import { Skeleton } from '@/components/common/skeleton';
 import {
   Table,
@@ -116,11 +117,13 @@ export function TenantsPage() {
       )}
 
       {error ? (
-        <p role="alert" className="text-body text-destructive">
-          {error instanceof ApiError
-            ? t('tenants.loadFailedWithReason', { reason: error.message })
-            : t('tenants.loadFailed')}
-        </p>
+        <LoadError
+          message={
+            error instanceof ApiError
+              ? t('tenants.loadFailedWithReason', { reason: error.message })
+              : t('tenants.loadFailed')
+          }
+        />
       ) : isEmpty ? (
         <EmptyState
           icon={<BuildingIcon />}
@@ -215,9 +218,7 @@ export function TenantsPage() {
             </TableBody>
           </Table>
           {switchError ? (
-            <p role="alert" className="text-body text-destructive">
-              {switchErrorMessage(switchError)}
-            </p>
+            <LoadError message={switchErrorMessage(switchError)} />
           ) : null}
         </div>
       )}
