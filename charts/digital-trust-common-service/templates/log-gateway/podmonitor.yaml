@@ -9,8 +9,6 @@ metadata:
     {{- toYaml . | nindent 4 }}
     {{- end }}
 spec:
-  # The pod's component label becomes the `job` label the alert rules select on.
-  jobLabel: app.kubernetes.io/component
   selector:
     matchLabels:
       {{- include "digital-trust-common-service.logGateway.selectorLabels" . | nindent 6 }}
@@ -23,4 +21,9 @@ spec:
           - ""
       interval: {{ .Values.logGateway.metrics.podMonitor.interval }}
       scrapeTimeout: {{ .Values.logGateway.metrics.podMonitor.scrapeTimeout }}
+      # Preview environments share a namespace, so the release name is what
+      # tells one gateway's series (and alerts) from another's.
+      relabelings:
+        - sourceLabels: [__meta_kubernetes_pod_label_app_kubernetes_io_instance]
+          targetLabel: release
 {{- end }}

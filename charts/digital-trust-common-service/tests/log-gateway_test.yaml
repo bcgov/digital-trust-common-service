@@ -148,6 +148,22 @@ tests:
         documentSelector:
           path: metadata.name
           value: RELEASE-NAME-digital-trust-common-service-log-gateway-allow-metrics
+      - equal:
+          path: spec.ingress[0].from[0].namespaceSelector.matchLabels
+          value:
+            network.openshift.io/policy-group: monitoring
+        template: templates/networkpolicy.yaml
+        documentSelector:
+          path: metadata.name
+          value: RELEASE-NAME-digital-trust-common-service-log-gateway-allow-metrics
+      - equal:
+          path: spec.ingress[0].from[1].podSelector.matchLabels
+          value:
+            app.kubernetes.io/name: alloy
+        template: templates/networkpolicy.yaml
+        documentSelector:
+          path: metadata.name
+          value: RELEASE-NAME-digital-trust-common-service-log-gateway-allow-metrics
 
   - it: renders no monitoring resources by default
     set:
@@ -191,3 +207,180 @@ tests:
           path: spec.groups[0].rules[0].labels.team
           value: platform
         template: templates/log-gateway/prometheusrule.yaml
+
+  - it: tells one release's series from another's in a shared namespace
+    release:
+      name: pr-12
+    values:
+      - ../ci/ci-values.yaml
+    asserts:
+      - equal:
+          path: spec.podMetricsEndpoints[0].relabelings[0]
+          value:
+            sourceLabels: [__meta_kubernetes_pod_label_app_kubernetes_io_instance]
+            targetLabel: release
+        template: templates/log-gateway/podmonitor.yaml
+      - notExists:
+          path: spec.jobLabel
+        template: templates/log-gateway/podmonitor.yaml
+      - matchRegex:
+          path: spec.groups[0].rules[0].expr
+          pattern: 'up\{release="pr-12",namespace="[^"]+"\}'
+        template: templates/log-gateway/prometheusrule.yaml
+      - notMatchRegex:
+          path: spec.groups[0].rules[0].expr
+          pattern: 'job='
+        template: templates/log-gateway/prometheusrule.yaml
+      - equal:
+          path: spec.groups[0].rules[0].labels.release
+          value: pr-12
+        template: templates/log-gateway/prometheusrule.yaml
+      - equal:
+          path: spec.groups[0].rules[7].labels.release
+          value: pr-12
+        template: templates/log-gateway/prometheusrule.yaml
+
+  - it: pins the security settings in the rendered Envoy config
+    values:
+      - ../ci/ci-values.yaml
+    asserts:
+      - matchRegex:
+          path: data["envoy.yaml"]
+          pattern: 'failure_mode_allow: false'
+        template: templates/log-gateway/configmap.yaml
+        documentIndex: 0
+      - matchRegex:
+          path: data["envoy.yaml"]
+          pattern: 'path_with_escaped_slashes_action: REJECT_REQUEST'
+        template: templates/log-gateway/configmap.yaml
+        documentIndex: 0
+      - matchRegex:
+          path: data["envoy.yaml"]
+          pattern: 'allowed_upstream_headers:\s+patterns:\s+- exact: x-scope-orgid'
+        template: templates/log-gateway/configmap.yaml
+        documentIndex: 0
+      - matchRegex:
+          path: data["envoy.yaml"]
+          pattern: 'request_headers_to_remove:\s+- authorization'
+        template: templates/log-gateway/configmap.yaml
+        documentIndex: 0
+      - matchRegex:
+          path: data["envoy.yaml"]
+          pattern: 'prefix: /\s+direct_response:\s+status: 403'
+        template: templates/log-gateway/configmap.yaml
+        documentIndex: 0
+      - notMatchRegex:
+          path: data["envoy.yaml"]
+          pattern: '/loki/api/v1/tail'
+        template: templates/log-gateway/configmap.yaml
+        documentIndex: 0
+
+  - it: maps Envoy's own failures to JSON and sets the long-query timeouts
+    values:
+      - ../ci/ci-values.yaml
+    asserts:
+      - matchRegex:
+          path: data["envoy.yaml"]
+          pattern: 'op: GE\s+value:\s+default_value: 500[\s\S]*?inline_string: ''\{"error":"unavailable"\}'''
+        template: templates/log-gateway/configmap.yaml
+        documentIndex: 0
+      - matchRegex:
+          path: data["envoy.yaml"]
+          pattern: 'idle_timeout: 4s'
+        template: templates/log-gateway/configmap.yaml
+        documentIndex: 0
+      - notMatchRegex:
+          path: data["envoy.yaml"]
+          pattern: 'retry_policy'
+        template: templates/log-gateway/configmap.yaml
+        documentIndex: 0
+      - matchRegex:
+          path: data["envoy.yaml"]
+          pattern: 'timeout: 65s'
+        template: templates/log-gateway/configmap.yaml
+        documentIndex: 0
+      - equal:
+          path: metadata.annotations["haproxy.router.openshift.io/timeout"]
+          value: 70s
+        template: templates/log-gateway/route.yaml
+
+  - it: admits extra ingress peers to the gateway only when asked
+    values:
+      - ../ci/ci-values.yaml
+    set:
+      networkPolicy:
+        logGateway:
+          ingressPeers:
+            - podSelector:
+                matchLabels:
+                  app.kubernetes.io/name: grafana
+    asserts:
+      - lengthEqual:
+          path: spec.ingress[0].from
+          count: 2
+        template: templates/networkpolicy.yaml
+        documentSelector:
+          path: metadata.name
+          value: RELEASE-NAME-digital-trust-common-service-log-gateway-allow-router
+      - equal:
+          path: spec.ingress[0].from[1].podSelector.matchLabels
+          value:
+            app.kubernetes.io/name: grafana
+        template: templates/networkpolicy.yaml
+        documentSelector:
+          path: metadata.name
+          value: RELEASE-NAME-digital-trust-common-service-log-gateway-allow-router
+
+  - it: has only the router peer by default
+    values:
+      - ../ci/ci-values.yaml
+    asserts:
+      - lengthEqual:
+          path: spec.ingress[0].from
+          count: 1
+        template: templates/networkpolicy.yaml
+        documentSelector:
+          path: metadata.name
+          value: RELEASE-NAME-digital-trust-common-service-log-gateway-allow-router
+
+  - it: keeps both ConfigMap names distinct when the fullname is 49 characters
+    values:
+      - ../ci/ci-values.yaml
+    set:
+      fullnameOverride: abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklm
+    asserts:
+      - equal:
+          path: metadata.name
+          value: abcdefghijklmnopqrstuvwxyz0123456789abcdefgh-log-gateway-config
+        template: templates/log-gateway/configmap.yaml
+        documentIndex: 0
+      - equal:
+          path: metadata.name
+          value: abcdefghijklmnopqrstuvwxyz0123456789abcdefgh-log-gateway-ca
+        template: templates/log-gateway/configmap.yaml
+        documentIndex: 1
+
+  - it: refuses to render with network policies disabled
+    values:
+      - ../ci/ci-values.yaml
+    set:
+      networkPolicy:
+        enabled: false
+    asserts:
+      - failedTemplate:
+          errorPattern: networkPolicy.enabled must be true
+        template: templates/log-gateway/deployment.yaml
+
+  - it: refuses to render without the Loki login Secret name
+    values:
+      - ../ci/ci-values.yaml
+    set:
+      logGateway:
+        upstream:
+          auth:
+            existingSecret:
+              name: ""
+    asserts:
+      - failedTemplate:
+          errorPattern: upstream.auth.existingSecret.name
+        template: templates/log-gateway/deployment.yaml

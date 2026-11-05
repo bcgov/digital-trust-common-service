@@ -258,7 +258,7 @@ Generate the JWKS payload with `npm run oidc:generate-keys > oidc-keys.json`, th
 | logGateway.readinessProbe | object | `{"failureThreshold":3,"httpGet":{"path":"/ready","port":"probe"},"initialDelaySeconds":3,"periodSeconds":10,"timeoutSeconds":3}` | Readiness probe for the log gateway container |
 | logGateway.replicaCount | int | `1` | Log gateway replicas (ignored when `logGateway.autoscaling.enabled=true`) |
 | logGateway.resources | object | `{"limits":{"cpu":"250m","memory":"128Mi"},"requests":{"cpu":"50m","memory":"64Mi"}}` | Resource requests and limits for the log gateway container |
-| logGateway.route.annotations | object | `{}` | Additional annotations for the Route |
+| logGateway.route.annotations | object | `{"haproxy.router.openshift.io/timeout":"70s"}` | Additional annotations for the Route. The router's default timeout is 30s, which would cut off long queries; keep the timeout here above `upstream.timeout`. |
 | logGateway.route.enabled | bool | `false` | Expose the gateway through an OpenShift Route (always re-encrypted) |
 | logGateway.route.host | string | `""` | Route hostname (OpenShift generates one when empty) |
 | logGateway.service.port | int | `8443` | Log gateway Service port exposed to the cluster |
@@ -269,7 +269,7 @@ Generate the JWKS payload with `npm run oidc:generate-keys > oidc-keys.json`, th
 | logGateway.upstream.auth.existingSecret | object | `{"key":"authorization","name":""}` | Existing Secret holding the complete `Authorization` header value for the Loki gateway (for example `Basic <base64 of user:password>`). The chart never creates it. It is read at start, so a change needs a pod restart. |
 | logGateway.upstream.host | string | `""` | Host of the Loki gateway Service. Required when `enabled` is true. |
 | logGateway.upstream.port | int | `80` | Service port of the Loki gateway. Envoy connects over plain HTTP: the Service offers no TLS, and the caller's bearer token never reaches it. |
-| logGateway.upstream.timeout | string | `"60s"` | How long Envoy waits for Loki to answer a query |
+| logGateway.upstream.timeout | string | `"65s"` | How long Envoy waits for Loki to answer a query. Keep it above Loki's `query_timeout` (60s), or Envoy cuts off queries Loki would have answered. |
 | migrations.activeDeadlineSeconds | int | `300` | Maximum seconds the migration Job may run before Kubernetes marks it failed. Prevents hung migrations (e.g. waiting on a lock) from blocking a release indefinitely. |
 | migrations.argocd | object | `{"enabled":false}` | Emit an ArgoCD PreSync hook annotation so migrations also run under GitOps (ArgoCD does not execute Helm hooks natively) |
 | migrations.args | list | `["node_modules/typeorm/cli.js","migration:run","-d","dist/libs/database/src/data-source.js"]` | Migration entrypoint args: the TypeORM CLI against the compiled DataSource — what `npm run migrate:up` runs, invoked directly so the Job needs neither npm nor a writable home directory. |
@@ -301,10 +301,12 @@ Generate the JWKS payload with `npm run oidc:generate-keys > oidc-keys.json`, th
 | networkPolicy.keycloak.namespaceSelector | object | `{}` | Namespace selector matching the Keycloak namespace |
 | networkPolicy.keycloak.podSelector | object | `{}` | Pod selector matching the Keycloak pods |
 | networkPolicy.keycloak.port | int | `443` | Keycloak port |
+| networkPolicy.logGateway.ingressPeers | list | `[]` | Extra peers (NetworkPolicy `from` entries) allowed to call the log gateway besides the OpenShift router, for example an in-cluster Grafana. |
 | networkPolicy.loki.namespaceSelector | object | `{}` | Namespace selector matching the Loki namespace |
 | networkPolicy.loki.podSelector | object | `{}` | Pod selector matching the Loki gateway pods. When both podSelector and namespaceSelector are empty, egress is allowed to any destination on that port. Set these in per-env values. |
 | networkPolicy.loki.port | int | `8080` | Loki gateway pod port the log gateway may reach. Egress policy is evaluated after the Service port is rewritten (see `dnsEgress`), so this is the pod's port, not the Service port. |
 | networkPolicy.monitoring.namespaceSelector | object | `{"network.openshift.io/policy-group":"monitoring"}` | Namespace selector matching the Prometheus that scrapes the log gateway. Used only when `logGateway.metrics.podMonitor.enabled`. |
+| networkPolicy.monitoring.podSelector | object | `{"app.kubernetes.io/name":"alloy"}` | Pod selector matching the in-namespace collector that scrapes the `PodMonitor`. It runs inside the app's namespace, so the namespace selector alone does not admit it. |
 | nodeSelector | object | `{}` | Node selector for API pods |
 | oidcSigning.cookieKeys | string | `""` | Comma-separated cookie signing secrets (OIDC_COOKIE_KEYS). Generated once and preserved across upgrades when empty. Preservation needs an in-cluster `helm upgrade`; a client-side render (template/diff/GitOps) would rotate them and drop active sessions, so pin them if you use one. |
 | oidcSigning.create | bool | `false` | Create a chart-managed Secret from the values below |

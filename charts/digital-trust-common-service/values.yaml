@@ -146,16 +146,20 @@ logGateway:
     enabled: false
     # -- Route hostname (OpenShift generates one when empty)
     host: ""
-    # -- Additional annotations for the Route
-    annotations: {}
+    # -- Additional annotations for the Route. The router's default timeout is
+    # 30s, which would cut off long queries; keep the timeout here above
+    # `upstream.timeout`.
+    annotations:
+      haproxy.router.openshift.io/timeout: 70s
   upstream:
     # -- Host of the Loki gateway Service. Required when `enabled` is true.
     host: ""
     # -- Service port of the Loki gateway. Envoy connects over plain HTTP: the
     # Service offers no TLS, and the caller's bearer token never reaches it.
     port: 80
-    # -- How long Envoy waits for Loki to answer a query
-    timeout: 60s
+    # -- How long Envoy waits for Loki to answer a query. Keep it above Loki's
+    # `query_timeout` (60s), or Envoy cuts off queries Loki would have answered.
+    timeout: 65s
     auth:
       # -- Existing Secret holding the complete `Authorization` header value
       # for the Loki gateway (for example `Basic <base64 of user:password>`).
@@ -742,6 +746,15 @@ networkPolicy:
     # gateway. Used only when `logGateway.metrics.podMonitor.enabled`.
     namespaceSelector:
       network.openshift.io/policy-group: monitoring
+    # -- Pod selector matching the in-namespace collector that scrapes the
+    # `PodMonitor`. It runs inside the app's namespace, so the namespace
+    # selector alone does not admit it.
+    podSelector:
+      app.kubernetes.io/name: alloy
+  logGateway:
+    # -- Extra peers (NetworkPolicy `from` entries) allowed to call the log
+    # gateway besides the OpenShift router, for example an in-cluster Grafana.
+    ingressPeers: []
   loki:
     # -- Loki gateway pod port the log gateway may reach. Egress policy is
     # evaluated after the Service port is rewritten (see `dnsEgress`), so this

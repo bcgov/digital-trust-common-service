@@ -77,6 +77,24 @@ data:
                     # own 403 body is the same, so mapping every 403 is safe.
                     local_reply_config:
                       mappers:
+                        # Loki down or slow: Envoy's own 503 or 504 would
+                        # otherwise be plain text naming the proxy. The status
+                        # is kept so clients and monitoring can still tell an
+                        # outage from a denial.
+                        - filter:
+                            status_code_filter:
+                              comparison:
+                                op: GE
+                                value:
+                                  default_value: 500
+                                  runtime_key: log_gateway.unavailable
+                          body:
+                            inline_string: '{"error":"unavailable"}'
+                          headers_to_add:
+                            - header:
+                                key: content-type
+                                value: application/json
+                              append_action: OVERWRITE_IF_EXISTS_OR_ADD
                         - filter:
                             or_filter:
                               filters:
@@ -252,6 +270,17 @@ data:
         - name: log_access
           type: STRICT_DNS
           connect_timeout: 2s
+          # The decision endpoint closes idle connections after about five
+          # seconds, while Envoy keeps pooled ones for an hour. A check sent on
+          # a connection that is closing fails and is not retried, which would
+          # refuse a valid query. Dropping idle connections sooner avoids it.
+          typed_extension_protocol_options:
+            envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+              "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+              common_http_protocol_options:
+                idle_timeout: 4s
+              explicit_http_config:
+                http_protocol_options: {}
           load_assignment:
             cluster_name: log_access
             endpoints:

@@ -1300,7 +1300,16 @@ Deployment, Service, optional HPA, re-encrypted Route, NetworkPolicies).
   route from an unknown one. There is no decision caching and no request body is forwarded to the check.
   Failure never allows: an unreachable, slow or `5xx` decision endpoint is answered with the same
   `{"error":"forbidden"}` body and headers as a real denial, and only the content type of a decision
-  response is passed back to the caller.
+  response is passed back to the caller. The decision endpoint closes idle connections after about five
+  seconds, so the gateway drops its own idle connections to it after four; otherwise a check sent on a
+  closing connection would fail and a valid query would be refused. Retrying the check is deliberately
+  not used, because it would buffer the request body.
+- **Loki failures.** When Loki is down or slow, Envoy's own `503` or `504` is answered as
+  `{"error":"unavailable"}` (status unchanged, JSON) so the proxy's plain-text error does not expose
+  detail. This is separate from a denial, which stays `403` `{"error":"forbidden"}`.
+- **Timeouts.** `logGateway.upstream.timeout` (default `65s`) is held above Loki's own query timeout
+  (`60s`), and the Route's `haproxy.router.openshift.io/timeout` (default `70s`) above that, so a long
+  query is not cut off by the router's 30 second default.
 - **Scope header.** `X-Scope-OrgID` is taken from the decision response with `allowed_upstream_headers`,
   which overwrites any value the caller sent. It is never appended.
 - **Loki credential.** The caller's `Authorization` header is replaced after the decision (the decision
@@ -1314,14 +1323,19 @@ Deployment, Service, optional HPA, re-encrypted Route, NetworkPolicies).
   kubelet and is on neither the Service nor the Route.
 - **Monitoring.** A `metrics` listener on its own port serves only `/stats/prometheus` from the loopback
   admin interface, so no other admin path is reachable. An optional `PodMonitor` scrapes it with
-  `usedonly` to keep cardinality down, and an optional `PrometheusRule` alerts on a down gateway,
+  `usedonly` to keep cardinality down. The in-namespace Alloy collector does the scraping, so the metrics
+  NetworkPolicy admits both the monitoring namespace and pods matching `networkPolicy.monitoring.podSelector`.
+  The `PodMonitor` copies the pod's `app.kubernetes.io/instance` label to a `release` label, because preview
+  environments share a namespace; the alert rules select on `release` and namespace, and every alert carries
+  a `release` label. An optional `PrometheusRule` alerts on a down gateway,
   unavailable replicas, decision endpoint failures (the gateway fails closed, so each one refuses a tenant
   their own logs), 5xx responses, Loki connect failures, p99 latency, a high deny rate and an expiring
   certificate. Both are off by default because they need the Prometheus Operator CRDs; thresholds are
   `logGateway.metrics.prometheusRule.*`.
 - **Network.** The gateway's pods may reach only the decision endpoint (port `logAccess.port`), Loki
   (`networkPolicy.loki`, pod port 8080) and DNS. `logAccess.gatewayPodSelector` defaults to the gateway's
-  labels when the gateway is enabled.
+  labels when the gateway is enabled. Ingress is the OpenShift router plus any peers listed in
+  `networkPolicy.logGateway.ingressPeers` (empty by default), for example an in-cluster Grafana.
 
 `envoy --mode validate` runs against the rendered config in CI, using the tag in `logGateway.image.tag`.
 

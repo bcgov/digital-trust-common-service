@@ -151,14 +151,14 @@ Log gateway fully-qualified name
 Log gateway Envoy config ConfigMap name
 */}}
 {{- define "digital-trust-common-service.logGateway.configMapName" -}}
-{{- printf "%s-log-gateway-config" (include "digital-trust-common-service.fullname" .) | trunc 63 | trimSuffix "-" }}
+{{- printf "%s-log-gateway-config" (include "digital-trust-common-service.fullname" . | trunc 44 | trimSuffix "-") }}
 {{- end }}
 
 {{/*
 Log gateway ConfigMap that OpenShift fills with the service CA bundle
 */}}
 {{- define "digital-trust-common-service.logGateway.caBundleConfigMapName" -}}
-{{- printf "%s-log-gateway-ca" (include "digital-trust-common-service.fullname" .) | trunc 63 | trimSuffix "-" }}
+{{- printf "%s-log-gateway-ca" (include "digital-trust-common-service.fullname" . | trunc 44 | trimSuffix "-") }}
 {{- end }}
 
 {{/*

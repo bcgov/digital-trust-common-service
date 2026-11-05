@@ -278,6 +278,9 @@ spec:
         - namespaceSelector:
             matchLabels:
               {{- toYaml .Values.networkPolicy.ingress.routerNamespaceSelector | nindent 14 }}
+        {{- with .Values.networkPolicy.logGateway.ingressPeers }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
       ports:
         - protocol: TCP
           port: https
@@ -301,6 +304,9 @@ spec:
         - namespaceSelector:
             matchLabels:
               {{- toYaml .Values.networkPolicy.monitoring.namespaceSelector | nindent 14 }}
+        - podSelector:
+            matchLabels:
+              {{- toYaml .Values.networkPolicy.monitoring.podSelector | nindent 14 }}
       ports:
         - protocol: TCP
           port: metrics
