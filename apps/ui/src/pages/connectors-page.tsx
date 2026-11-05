@@ -8,7 +8,9 @@ import { ConnectorsTable } from '@/components/connector/connectors-table';
 import { DeleteConnectorDialog } from '@/components/connector/delete-connector-dialog';
 import { EditConnectorDrawer } from '@/components/connector/edit-connector-drawer';
 import { AccessDenied } from '@/components/common/access-denied';
+import { EmptyState } from '@/components/common/empty';
 import { ShareNodesIcon } from '@/components/common/icons';
+import { PageHeader } from '@/components/common/page-header';
 import { useConnectors } from '@/lib/api/queries/connectors';
 import { useTenant } from '@/lib/api/queries/tenants';
 import { ApiError } from '@/lib/api/errors';
@@ -56,18 +58,12 @@ export function ConnectorsPage() {
   }
 
   return (
-    <div className="flex flex-1 flex-col gap-4">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="flex flex-col gap-1">
-          <h1 className="text-xl font-semibold">{t('connectors.title')}</h1>
-          <p className="text-sm text-muted-foreground">
-            {t('connectors.subtitle')}
-          </p>
-        </div>
-        <div className="ml-auto">
-          <AddConnectorButton />
-        </div>
-      </div>
+    <div className="flex flex-1 flex-col gap-xlarge">
+      <PageHeader
+        title={t('connectors.title')}
+        subtitle={t('connectors.subtitle')}
+        actions={<AddConnectorButton />}
+      />
       {tenantStatus === 'loading' && (
         <p
           role="status"
@@ -163,25 +159,12 @@ export function ConnectorsPage() {
         />
       )}
       {isSuccess && tenantQuery.isSuccess && connectors.data.length === 0 && (
-        // Same layout as the tenants page empty state.
-        <div className="flex flex-1 flex-col items-center justify-center pb-20">
-          <div className="flex w-95 flex-col items-center gap-xlarge text-center">
-            <div className="flex flex-col items-center gap-xsmall">
-              <div className="flex size-25 items-center justify-center">
-                <ShareNodesIcon className="size-18 text-(--icons-color-disabled)" />
-              </div>
-              <div className="flex flex-col gap-hair">
-                <h2 className="text-h5 font-bold text-(--typography-color-primary)">
-                  {t('connectors.emptyTitle')}
-                </h2>
-                <p className="text-body text-(--typography-color-secondary)">
-                  {t('connectors.emptyBody')}
-                </p>
-              </div>
-            </div>
-            <AddConnectorButton />
-          </div>
-        </div>
+        <EmptyState
+          icon={<ShareNodesIcon />}
+          title={t('connectors.emptyTitle')}
+          description={t('connectors.emptyBody')}
+          action={<AddConnectorButton />}
+        />
       )}
       {connectorToDelete && (
         <DeleteConnectorDialog

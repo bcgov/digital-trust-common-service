@@ -124,13 +124,14 @@ export function TenantUsersTable({
   };
 
   return (
-    <div className="min-w-0 border-b border-(--surface-color-border-default)">
+    <div className="min-w-0">
       <Table
         aria-label={t('users.tableLabel')}
+        variant="record"
         className="min-w-[64rem] table-fixed"
       >
-        <TableHeader className="bg-(--surface-color-background-light-gray) [&_th]:h-15 [&_th]:px-medium [&_th]:text-small-body [&_th]:font-normal [&_th]:text-black">
-          <TableRow className="hover:bg-transparent">
+        <TableHeader>
+          <TableRow>
             <TableHead scope="col">{t('users.name')}</TableHead>
             <TableHead scope="col">{t('users.role')}</TableHead>
             <TableHead scope="col">{t('common.status')}</TableHead>
@@ -140,7 +141,7 @@ export function TenantUsersTable({
             </TableHead>
           </TableRow>
         </TableHeader>
-        <TableBody className="[&_td]:p-medium [&_td]:text-body">
+        <TableBody>
           {isLoading && <SkeletonRows columns={5} />}
           {!isLoading && users.length === 0 && (
             <EmptyRow>{emptyMessage}</EmptyRow>

@@ -102,13 +102,19 @@ function EmptyMedia({
   );
 }
 
-function EmptyTitle({ className, ...props }: React.ComponentProps<'div'>) {
+function EmptyTitle({
+  className,
+  children,
+  ...props
+}: React.ComponentProps<'h2'>) {
   return (
-    <div
+    <h2
       data-slot="empty-title"
       className={cn('font-heading text-h5 font-bold', className)}
       {...props}
-    />
+    >
+      {children}
+    </h2>
   );
 }
 
@@ -138,8 +144,37 @@ function EmptyContent({ className, ...props }: React.ComponentProps<'div'>) {
   );
 }
 
+// Page-level empty state: centred in the space below the page heading and
+// lifted by the 80px bottom padding of the Figma "Empty State" frame.
+function EmptyState({
+  icon,
+  title,
+  description,
+  action,
+}: {
+  icon: React.ReactNode;
+  title: React.ReactNode;
+  description: React.ReactNode;
+  action?: React.ReactNode;
+}) {
+  return (
+    <div className="flex flex-1 flex-col items-center justify-center pb-20">
+      {/* The pages wrap the description normally rather than balanced. */}
+      <Empty className="text-wrap">
+        <EmptyHeader>
+          <EmptyMedia>{icon}</EmptyMedia>
+          <EmptyTitle>{title}</EmptyTitle>
+          <EmptyDescription>{description}</EmptyDescription>
+        </EmptyHeader>
+        {action}
+      </Empty>
+    </div>
+  );
+}
+
 export {
   Empty,
+  EmptyState,
   EmptyContent,
   EmptyDescription,
   EmptyHeader,

@@ -2,6 +2,7 @@ import { Button, TextField } from '@bcgov/design-system-react-components';
 import { useTranslation } from 'react-i18next';
 
 import { PlusIcon, SearchIcon } from '@/components/common/icons';
+import { PageHeader } from '@/components/common/page-header';
 
 export function TenantUsersHeader({
   search,
@@ -16,20 +17,16 @@ export function TenantUsersHeader({
 
   return (
     <div className="flex flex-col gap-xlarge">
-      <div className="flex flex-col gap-xsmall">
-        <div className="flex flex-wrap items-center justify-between gap-medium">
-          <h1 className="text-h1 font-bold text-black">
-            {t('users.manageTitle')}
-          </h1>
+      <PageHeader
+        title={t('users.manageTitle')}
+        subtitle={t('users.subtitle')}
+        actions={
           <Button onPress={onAddUser}>
             <PlusIcon className="size-5" />
             {t('users.addUser')}
           </Button>
-        </div>
-        <p className="py-hair text-body text-muted-foreground">
-          {t('users.subtitle')}
-        </p>
-      </div>
+        }
+      />
       <TextField
         aria-label={t('users.search')}
         // Untyped in BCDS 0.8.1's TextFieldProps, but forwarded by
