@@ -2,9 +2,9 @@ import { randomUUID } from 'crypto';
 
 import { DataSource, QueryRunner } from 'typeorm';
 
-import { CreateCredentialExchanges1792506949095 } from './migrations/000036_create-credential-exchanges';
-import { IndexExchangeIssueOperation1792543244948 } from './migrations/000037_index-exchange-issue-operation';
-import { DropRedundantExchangeIssueIndex1793375254070 } from './migrations/000038_drop-redundant-exchange-issue-index';
+import { CreateCredentialExchanges1792506949095 } from './migrations/000041_create-credential-exchanges';
+import { IndexExchangeIssueOperation1792543244948 } from './migrations/000042_index-exchange-issue-operation';
+import { DropRedundantExchangeIssueIndex1793375254070 } from './migrations/000043_drop-redundant-exchange-issue-index';
 import { buildSslConfig } from './ssl.util';
 
 describe('credential exchange migration (integration)', () => {
