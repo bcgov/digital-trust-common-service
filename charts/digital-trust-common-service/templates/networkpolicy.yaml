@@ -352,7 +352,6 @@ spec:
       ports:
         - protocol: TCP
           port: {{ .Values.networkPolicy.loki.port }}
-{{- if .Values.networkPolicy.dnsEgress.enabled }}
     - to: []
       ports:
         {{- range .Values.networkPolicy.dnsEgress.ports }}
@@ -361,6 +360,5 @@ spec:
         - protocol: TCP
           port: {{ . }}
         {{- end }}
-{{- end }}
 {{- end }}
 {{- end }}

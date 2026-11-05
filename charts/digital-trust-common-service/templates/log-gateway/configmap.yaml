@@ -5,6 +5,12 @@
 {{- if not .Values.networkPolicy.enabled }}
 {{- fail "networkPolicy.enabled must be true when logGateway.enabled is true; the NetworkPolicy is what limits the gateway's egress to the decision endpoint and Loki" }}
 {{- end }}
+{{- if not .Values.networkPolicy.dnsEgress.enabled }}
+{{- fail "networkPolicy.dnsEgress.enabled must be true when logGateway.enabled is true; Envoy finds the decision endpoint and Loki by name, and the gateway's egress policy blocks DNS without it" }}
+{{- end }}
+{{- if not .Values.networkPolicy.dnsEgress.ports }}
+{{- fail "networkPolicy.dnsEgress.ports must not be empty when logGateway.enabled is true; a DNS rule with no ports would open the gateway's egress to everything" }}
+{{- end }}
 {{- if not .Values.logGateway.upstream.host }}
 {{- fail "logGateway.upstream.host is required when logGateway.enabled is true" }}
 {{- end }}

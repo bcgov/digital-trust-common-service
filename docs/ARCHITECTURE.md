@@ -1346,9 +1346,11 @@ Deployment, Service, optional HPA, re-encrypted Route, NetworkPolicies).
   certificate. Both are off by default because they need the Prometheus Operator CRDs; thresholds are
   `logGateway.metrics.prometheusRule.*`.
 - **Network.** The gateway's pods may reach only the decision endpoint (port `logAccess.port`), Loki
-  (`networkPolicy.loki`, pod port 8080) and DNS. `logAccess.gatewayPodSelector` defaults to the gateway's
-  labels when the gateway is enabled. Ingress is the OpenShift router plus any peers listed in
-  `networkPolicy.logGateway.ingressPeers` (empty by default), for example an in-cluster Grafana.
+  (`networkPolicy.loki`, pod port 8080) and DNS. Envoy finds both upstreams by name, so the chart
+  refuses to render if `networkPolicy.dnsEgress` is off or has no ports. `logAccess.gatewayPodSelector`
+  defaults to the gateway's labels when the gateway is enabled. Ingress is the OpenShift router plus
+  any peers listed in `networkPolicy.logGateway.ingressPeers` (empty by default), for example an
+  in-cluster Grafana.
 
 `envoy --mode validate` runs against the rendered config in CI, using the tag in `logGateway.image.tag`.
 

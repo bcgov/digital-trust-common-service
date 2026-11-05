@@ -35,6 +35,10 @@ and this chart adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.h
   alerts select and are labelled on `release`, so releases sharing a namespace stay apart.
 - `networkPolicy.logGateway.ingressPeers` (default `[]`): extra peers allowed to call the
   log gateway besides the router, for example an in-cluster Grafana.
+- Rendering fails when `logGateway.enabled` is true and `networkPolicy.dnsEgress.enabled` is
+  false or `networkPolicy.dnsEgress.ports` is empty. Envoy finds the log-access endpoint and
+  Loki by name, so without DNS every query would be refused, and a DNS rule with no ports
+  would open the gateway's egress to everything.
 - The log gateway drops idle connections to the log-access endpoint after 4s (it closes
   its own after about 5s, which refused some valid queries), and answers a Loki outage or
   timeout as JSON `{"error":"unavailable"}` with the status unchanged.

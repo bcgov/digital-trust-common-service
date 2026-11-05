@@ -99,6 +99,29 @@ tests:
           path: metadata.name
           value: RELEASE-NAME-digital-trust-common-service-log-gateway-egress
 
+  - it: lets the gateway look up the decision endpoint and Loki
+    values:
+      - ../ci/ci-values.yaml
+    asserts:
+      - contains:
+          path: spec.egress[2].ports
+          content:
+            protocol: UDP
+            port: 53
+        template: templates/networkpolicy.yaml
+        documentSelector:
+          path: metadata.name
+          value: RELEASE-NAME-digital-trust-common-service-log-gateway-egress
+      - contains:
+          path: spec.egress[2].ports
+          content:
+            protocol: UDP
+            port: 5353
+        template: templates/networkpolicy.yaml
+        documentSelector:
+          path: metadata.name
+          value: RELEASE-NAME-digital-trust-common-service-log-gateway-egress
+
   - it: refuses to render without a Loki host
     values:
       - ../ci/ci-values.yaml
@@ -369,6 +392,30 @@ tests:
     asserts:
       - failedTemplate:
           errorPattern: networkPolicy.enabled must be true
+        template: templates/log-gateway/deployment.yaml
+
+  - it: refuses to render with DNS egress disabled
+    values:
+      - ../ci/ci-values.yaml
+    set:
+      networkPolicy:
+        dnsEgress:
+          enabled: false
+    asserts:
+      - failedTemplate:
+          errorPattern: networkPolicy.dnsEgress.enabled must be true
+        template: templates/log-gateway/deployment.yaml
+
+  - it: refuses to render with no DNS egress ports
+    values:
+      - ../ci/ci-values.yaml
+    set:
+      networkPolicy:
+        dnsEgress:
+          ports: []
+    asserts:
+      - failedTemplate:
+          errorPattern: networkPolicy.dnsEgress.ports must not be empty
         template: templates/log-gateway/deployment.yaml
 
   - it: refuses to render without the Loki login Secret name
