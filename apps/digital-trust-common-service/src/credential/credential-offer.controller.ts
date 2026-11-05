@@ -98,10 +98,6 @@ export class CredentialOfferController {
     description:
       'Holder handshake is incomplete, or connection binding is unavailable or inconsistent',
   })
-  @ApiConflictResponse({
-    description:
-      'Holder handshake is incomplete, or connection binding is unavailable or inconsistent',
-  })
   public async offer(
     @Param('tenantId', ParseUUIDPipe) tenantId: string,
     @Body() dto: OfferCredentialRequestDto,

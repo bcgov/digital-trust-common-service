@@ -32,6 +32,7 @@ import {
   CredentialDefinition,
   CredentialDefinitionConnectorType,
   CredentialDefinitionFormat,
+  CredentialDefinitionStatus,
 } from '../src/credential-definition/credential-definition.entity';
 import { JobsService } from '../src/jobs/jobs.service';
 import { OPERATION_TYPE } from '../src/operation/operation-type.constants';
@@ -176,6 +177,8 @@ describe('Credential offer (e2e)', () => {
         tenantId: tenant.id,
         name: 'Diploma',
         format: CredentialDefinitionFormat.ANONCREDS,
+        version: '1.0',
+        status: CredentialDefinitionStatus.PUBLISHED,
         options: {
           format: CredentialDefinitionFormat.ANONCREDS,
           tag: 'default',
