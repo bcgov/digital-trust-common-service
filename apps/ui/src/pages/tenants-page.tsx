@@ -30,10 +30,8 @@ import { switchErrorMessage } from '@/lib/tenant/switch-error';
 // Spacing, type and colour follow the "Create Tenant" Figma frames, using
 // the BCDS variables they are drawn with (layout/margin/*, bold/H1,
 // regular/body, regular/smallBody, surface/color/*).
-const HEAD_CELL =
-  'h-15 px-(--layout-margin-medium) text-small-body font-normal text-black';
-const BODY_CELL =
-  'px-(--layout-margin-medium) py-(--layout-margin-medium) text-body';
+const HEAD_CELL = 'h-15 px-medium text-small-body font-normal text-black';
+const BODY_CELL = 'px-medium py-medium text-body';
 
 function isPlainClick(event: MouseEvent<HTMLElement>): boolean {
   return (
@@ -99,13 +97,13 @@ export function TenantsPage() {
   );
 
   return (
-    <div className="flex flex-1 flex-col gap-(--layout-margin-xlarge)">
-      <div className="flex flex-col gap-(--layout-margin-xsmall)">
-        <div className="flex items-center justify-between gap-(--layout-margin-medium)">
+    <div className="flex flex-1 flex-col gap-xlarge">
+      <div className="flex flex-col gap-xsmall">
+        <div className="flex items-center justify-between gap-medium">
           <h1 className="text-h1 font-bold text-black">{t('tenants.title')}</h1>
           {canCreate && createButton(t('tenants.create.submit'))}
         </div>
-        <p className="py-(--layout-margin-hair) text-body text-muted-foreground">
+        <p className="py-hair text-body text-muted-foreground">
           {t(canCreate ? 'tenants.subtitle' : 'tenants.subtitleMember')}
         </p>
       </div>
@@ -135,12 +133,12 @@ export function TenantsPage() {
         // Figma "Empty State": centred in the remaining height, nudged up
         // by its 80px bottom padding.
         <div className="flex flex-1 flex-col items-center justify-center pb-20">
-          <div className="flex w-95 flex-col items-center gap-(--layout-margin-xlarge) text-center">
-            <div className="flex flex-col items-center gap-(--layout-margin-xsmall)">
+          <div className="flex w-95 flex-col items-center gap-xlarge text-center">
+            <div className="flex flex-col items-center gap-xsmall">
               <div className="flex size-25 items-center justify-center">
                 <BuildingIcon className="size-18 text-(--icons-color-disabled)" />
               </div>
-              <div className="flex flex-col gap-(--layout-margin-hair)">
+              <div className="flex flex-col gap-hair">
                 <h2 className="text-h5 font-bold text-(--typography-color-primary)">
                   {t('tenants.emptyTitle')}
                 </h2>
@@ -153,7 +151,7 @@ export function TenantsPage() {
           </div>
         </div>
       ) : (
-        <div className="flex flex-col gap-(--layout-margin-large)">
+        <div className="flex flex-col gap-large">
           <TextField
             aria-label={t('tenants.search')}
             // Untyped in BCDS 0.8.1's TextFieldProps, but forwarded by

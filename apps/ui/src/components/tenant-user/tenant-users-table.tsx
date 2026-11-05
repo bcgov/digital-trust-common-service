@@ -129,7 +129,7 @@ export function TenantUsersTable({
         aria-label={t('users.tableLabel')}
         className="min-w-[64rem] table-fixed"
       >
-        <TableHeader className="bg-(--surface-color-background-light-gray) [&_th]:h-15 [&_th]:px-(--layout-margin-medium) [&_th]:text-small-body [&_th]:font-normal [&_th]:text-black">
+        <TableHeader className="bg-(--surface-color-background-light-gray) [&_th]:h-15 [&_th]:px-medium [&_th]:text-small-body [&_th]:font-normal [&_th]:text-black">
           <TableRow className="hover:bg-transparent">
             <TableHead scope="col">{t('users.name')}</TableHead>
             <TableHead scope="col">{t('users.role')}</TableHead>
@@ -140,7 +140,7 @@ export function TenantUsersTable({
             </TableHead>
           </TableRow>
         </TableHeader>
-        <TableBody className="[&_td]:p-(--layout-margin-medium) [&_td]:text-body">
+        <TableBody className="[&_td]:p-medium [&_td]:text-body">
           {isLoading && <SkeletonRows columns={5} />}
           {!isLoading && users.length === 0 && (
             <EmptyRow>{emptyMessage}</EmptyRow>

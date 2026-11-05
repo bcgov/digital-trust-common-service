@@ -15,9 +15,9 @@ export function TenantUsersHeader({
   const { t } = useTranslation();
 
   return (
-    <div className="flex flex-col gap-(--layout-margin-xlarge)">
-      <div className="flex flex-col gap-(--layout-margin-xsmall)">
-        <div className="flex flex-wrap items-center justify-between gap-(--layout-margin-medium)">
+    <div className="flex flex-col gap-xlarge">
+      <div className="flex flex-col gap-xsmall">
+        <div className="flex flex-wrap items-center justify-between gap-medium">
           <h1 className="text-h1 font-bold text-black">
             {t('users.manageTitle')}
           </h1>
@@ -26,7 +26,7 @@ export function TenantUsersHeader({
             {t('users.addUser')}
           </Button>
         </div>
-        <p className="py-(--layout-margin-hair) text-body text-muted-foreground">
+        <p className="py-hair text-body text-muted-foreground">
           {t('users.subtitle')}
         </p>
       </div>

@@ -195,7 +195,7 @@ export function TenantUsersPage() {
       });
   };
   return (
-    <div className="flex flex-1 flex-col gap-(--layout-margin-large)">
+    <div className="flex flex-1 flex-col gap-large">
       <TenantUsersHeader
         search={search}
         onSearchChange={handleSearchChange}

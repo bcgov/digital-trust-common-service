@@ -24,7 +24,7 @@ import { cn } from '@/lib/utils';
 // Tailwind step, so a token revision flows through.
 
 const emptyVariants = cva(
-  'mx-auto flex w-full min-w-0 flex-col items-center justify-center gap-(--layout-margin-xlarge) text-center text-balance text-foreground',
+  'mx-auto flex w-full min-w-0 flex-col items-center justify-center gap-xlarge text-center text-balance text-foreground',
   {
     variants: {
       // Width of the box. The design is 380px wide; `lg` is for wider
@@ -64,17 +64,14 @@ function EmptyHeader({ className, ...props }: React.ComponentProps<'div'>) {
       data-slot="empty-header"
       // 2px between title and description, and the media adds another 2px
       // below itself to make the 4px the design leaves above the title.
-      className={cn(
-        'flex flex-col items-center gap-(--layout-margin-hair)',
-        className,
-      )}
+      className={cn('flex flex-col items-center gap-hair', className)}
       {...props}
     />
   );
 }
 
 const emptyMediaVariants = cva(
-  'mb-(--layout-margin-hair) flex shrink-0 items-center justify-center text-muted-icon [&_svg]:pointer-events-none [&_svg]:shrink-0',
+  'mb-hair flex shrink-0 items-center justify-center text-muted-icon [&_svg]:pointer-events-none [&_svg]:shrink-0',
   {
     variants: {
       variant: {
@@ -133,7 +130,7 @@ function EmptyContent({ className, ...props }: React.ComponentProps<'div'>) {
     <div
       data-slot="empty-content"
       className={cn(
-        'flex w-full min-w-0 flex-col items-center gap-(--layout-margin-small) text-sm text-balance',
+        'flex w-full min-w-0 flex-col items-center gap-small text-sm text-balance',
         className,
       )}
       {...props}

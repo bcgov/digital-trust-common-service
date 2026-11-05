@@ -165,12 +165,12 @@ export function ConnectorsPage() {
       {isSuccess && tenantQuery.isSuccess && connectors.data.length === 0 && (
         // Same layout as the tenants page empty state.
         <div className="flex flex-1 flex-col items-center justify-center pb-20">
-          <div className="flex w-95 flex-col items-center gap-(--layout-margin-xlarge) text-center">
-            <div className="flex flex-col items-center gap-(--layout-margin-xsmall)">
+          <div className="flex w-95 flex-col items-center gap-xlarge text-center">
+            <div className="flex flex-col items-center gap-xsmall">
               <div className="flex size-25 items-center justify-center">
                 <ShareNodesIcon className="size-18 text-(--icons-color-disabled)" />
               </div>
-              <div className="flex flex-col gap-(--layout-margin-hair)">
+              <div className="flex flex-col gap-hair">
                 <h2 className="text-h5 font-bold text-(--typography-color-primary)">
                   {t('connectors.emptyTitle')}
                 </h2>

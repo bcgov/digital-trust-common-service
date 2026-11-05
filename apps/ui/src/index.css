@@ -84,10 +84,29 @@
      height for the face (a 36px line draws 49px tall) — BCDS's `auto`. */
   --text-h1: var(--typography-font-size-h1);
   --text-h1--line-height: var(--typography-line-heights-auto);
+  --text-h2: var(--typography-font-size-h2);
+  --text-h2--line-height: var(--typography-line-heights-xsparse);
+  --text-h3: var(--typography-font-size-h3);
+  --text-h3--line-height: var(--typography-line-heights-xsparse);
+  --text-h4: var(--typography-font-size-h4);
+  --text-h4--line-height: var(--typography-line-heights-sparse);
   --text-small-body: var(--typography-font-size-small-body);
   --text-small-body--line-height: var(--typography-line-heights-xxdense);
   --text-label: var(--typography-font-size-label);
   --text-label--line-height: var(--typography-line-heights-xxxdense);
+  /* BCDS layout spacing by name, so `gap-xlarge` reads the same as the
+     Figma `layout/margin/xlarge`. BCDS margin and padding steps share
+     values, so one scale covers both. Named keys sit beside Tailwind's
+     numeric scale, which the vendored shadcn components still use. */
+  --spacing-hair: var(--layout-margin-hair);
+  --spacing-xsmall: var(--layout-margin-xsmall);
+  --spacing-small: var(--layout-margin-small);
+  --spacing-medium: var(--layout-margin-medium);
+  --spacing-large: var(--layout-margin-large);
+  --spacing-xlarge: var(--layout-margin-xlarge);
+  --spacing-xxlarge: var(--layout-margin-xxlarge);
+  --spacing-xxxlarge: var(--layout-margin-xxxlarge);
+  --spacing-huge: var(--layout-margin-huge);
   /* The steps the components actually use map to BCDS's discrete radii
      (small 2px / medium 4px / large 6px); the pill-ish steps beyond stay
      derived — they only round things past fully-rounded anyway. */

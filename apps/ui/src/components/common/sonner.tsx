@@ -47,10 +47,10 @@ function Toast({
       data-slot="toast"
       data-variant={variant}
       className={cn(
-        'pointer-events-auto flex w-max max-w-[min(32rem,calc(100vw-2rem))] items-center gap-(--layout-margin-large) overflow-clip rounded-xl bg-(--surface-color-border-dark) p-3 text-sm/[21px] text-(--typography-color-primary-invert) shadow-overlay',
+        'pointer-events-auto flex w-max max-w-[min(32rem,calc(100vw-2rem))] items-center gap-large overflow-clip rounded-xl bg-(--surface-color-border-dark) p-3 text-sm/[21px] text-(--typography-color-primary-invert) shadow-overlay',
       )}
     >
-      <div className="flex items-center gap-(--layout-margin-small) py-px">
+      <div className="flex items-center gap-small py-px">
         <Icon aria-hidden="true" className="size-4 shrink-0" />
         <p className="break-words">{children}</p>
       </div>
