@@ -1,22 +1,23 @@
-import { LoaderCircle } from 'lucide-react';
+import {
+  Button,
+  InlineAlert,
+  ProgressCircle,
+  TextField,
+} from '@bcgov/design-system-react-components';
 import { useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { z } from 'zod';
 
 import { ConnectorStatus } from '@/components/connector/connector-status';
-import { Button } from '@/components/common/button';
 import {
   Drawer,
   DrawerBody,
-  DrawerClose,
   DrawerContent,
   DrawerDescription,
   DrawerFooter,
   DrawerHeader,
   DrawerTitle,
 } from '@/components/common/drawer';
-import { Input } from '@/components/common/input';
-import { Label } from '@/components/common/label';
 import { ApiError } from '@/lib/api/errors';
 import {
   useTestConnector,
@@ -209,136 +210,92 @@ export function EditConnectorDrawer({
             className="relative min-h-0 gap-0 px-0 py-6"
             aria-busy={isPending}
           >
-            <DrawerDescription className="px-6 text-sm leading-6 text-muted-foreground">
+            <DrawerDescription className="px-6 text-sm leading-6 text-(--typography-color-secondary)">
               {t('connectors.edit.description')}
             </DrawerDescription>
             <fieldset
               disabled={isPending}
-              className="mt-6 flex min-w-0 flex-col gap-6 px-6 [&_input]:h-11 [&_input]:rounded-md [&_label]:font-bold"
+              className="mt-6 flex min-w-0 flex-col gap-6 px-6"
             >
               <fieldset className="flex min-w-0 flex-col gap-5">
-                <legend className="mb-5 w-full border-b border-border pb-3 text-base font-bold">
+                <legend className="mb-5 w-full border-b border-(--surface-color-border-default) pb-3 text-body font-bold">
                   {t('connectors.edit.connection')}
                 </legend>
-                <div className="flex flex-col gap-2">
-                  <Label htmlFor="edit-connector-type">
-                    {t('connectors.form.type')}
-                  </Label>
-                  <Input
-                    id="edit-connector-type"
-                    value={connector.connector_type ?? ''}
-                    readOnly
-                    className="border-transparent bg-muted font-medium capitalize text-muted-foreground shadow-none"
-                  />
-                </div>
-                <div className="flex flex-col gap-2">
-                  <Label htmlFor="edit-connector-endpoint">
-                    {t('connectors.form.endpointUrl')}
-                  </Label>
-                  <Input
-                    id="edit-connector-endpoint"
-                    name="endpoint_url"
-                    type="url"
-                    required
-                    className="font-mono"
-                    value={endpointUrl}
-                    onChange={(event) => setEndpointUrl(event.target.value)}
-                    aria-invalid={Boolean(fieldErrors.endpoint_url)}
-                    aria-describedby={
-                      fieldErrors.endpoint_url
-                        ? 'edit-connector-endpoint-error'
-                        : undefined
-                    }
-                  />
-                  {fieldErrors.endpoint_url && (
-                    <p
-                      id="edit-connector-endpoint-error"
-                      role="alert"
-                      className="text-sm text-destructive"
-                    >
-                      {fieldErrors.endpoint_url[0]}
-                    </p>
-                  )}
-                </div>
+                <TextField
+                  label={t('connectors.form.type')}
+                  value={connector.connector_type ?? ''}
+                  isReadOnly
+                  className="[&_input]:capitalize"
+                />
+                <TextField
+                  label={t('connectors.form.endpointUrl')}
+                  name="endpoint_url"
+                  type="url"
+                  isRequired
+                  validationBehavior="aria"
+                  value={endpointUrl}
+                  onChange={setEndpointUrl}
+                  isInvalid={Boolean(fieldErrors.endpoint_url)}
+                  errorMessage={fieldErrors.endpoint_url?.[0]}
+                />
               </fieldset>
               <fieldset className="flex min-w-0 flex-col gap-5">
-                <legend className="mb-5 w-full border-b border-border pb-3 text-base font-bold">
+                <legend className="mb-5 w-full border-b border-(--surface-color-border-default) pb-3 text-body font-bold">
                   {t('connectors.edit.credentials')}
                 </legend>
-                <div className="flex flex-col gap-2">
-                  <Label htmlFor="edit-connector-api-key">
-                    {t('connectors.edit.newApiKey')}{' '}
-                    <span className="font-normal text-muted-foreground">
-                      {t('common.optional')}
-                    </span>
-                  </Label>
-                  <Input
-                    id="edit-connector-api-key"
-                    name="api_key"
-                    type="password"
-                    autoComplete="new-password"
-                    placeholder={t('connectors.edit.keepKey')}
-                    value={apiKey}
-                    onChange={(event) => setApiKey(event.target.value)}
-                  />
-                </div>
+                <TextField
+                  label={`${t('connectors.edit.newApiKey')} ${t('common.optional')}`}
+                  name="api_key"
+                  type="password"
+                  autoComplete="new-password"
+                  // BCDS forwards placeholder to the input but omits it from TextFieldProps.
+                  {...{ placeholder: t('connectors.edit.keepKey') }}
+                  value={apiKey}
+                  onChange={setApiKey}
+                />
                 {canRotateWebhookSecret && (
                   <>
-                    <div className="flex flex-col gap-2">
-                      <Label htmlFor="edit-connector-traction-tenant-id">
-                        {t('connectors.edit.tractionTenantId')}{' '}
-                        <span className="font-normal text-muted-foreground">
-                          {t('common.optional')}
-                        </span>
-                      </Label>
-                      <Input
-                        id="edit-connector-traction-tenant-id"
-                        name="traction_tenant_id"
-                        value={tractionTenantId}
-                        onChange={(event) =>
-                          setTractionTenantId(event.target.value)
-                        }
-                      />
-                    </div>
-                    <div className="flex flex-col gap-2">
-                      <Label htmlFor="edit-connector-webhook-secret">
-                        {t('connectors.edit.newWebhookSecret')}{' '}
-                        <span className="font-normal text-muted-foreground">
-                          {t('common.optional')}
-                        </span>
-                      </Label>
-                      <Input
-                        id="edit-connector-webhook-secret"
-                        name="webhook_secret"
-                        type="password"
-                        autoComplete="new-password"
-                        placeholder={t('connectors.edit.keepSecret')}
-                        value={webhookSecret}
-                        onChange={(event) =>
-                          setWebhookSecret(event.target.value)
-                        }
-                      />
-                    </div>
+                    <TextField
+                      label={`${t('connectors.edit.tractionTenantId')} ${t('common.optional')}`}
+                      name="traction_tenant_id"
+                      value={tractionTenantId}
+                      onChange={setTractionTenantId}
+                    />
+                    <TextField
+                      label={`${t('connectors.edit.newWebhookSecret')} ${t('common.optional')}`}
+                      name="webhook_secret"
+                      type="password"
+                      autoComplete="new-password"
+                      // BCDS forwards placeholder to the input but omits it from TextFieldProps.
+                      {...{ placeholder: t('connectors.edit.keepSecret') }}
+                      value={webhookSecret}
+                      onChange={setWebhookSecret}
+                    />
                   </>
                 )}
               </fieldset>
             </fieldset>
             {submitError && (
-              <p
-                role="alert"
-                className="mx-6 mt-6 border-l-2 border-destructive bg-destructive/5 px-4 py-3 text-sm leading-6 text-destructive"
-              >
-                {submitError}
-              </p>
+              <div className="mx-6 mt-6">
+                <InlineAlert
+                  variant="danger"
+                  role="alert"
+                  description={submitError}
+                />
+              </div>
             )}
             {isPending && (
               <div
                 role="status"
-                className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-background/90"
+                className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-(--surface-color-background-white)/90"
               >
-                <LoaderCircle
-                  className="size-10 animate-spin motion-reduce:animate-none"
-                  aria-hidden="true"
+                <ProgressCircle
+                  isIndeterminate
+                  aria-label={
+                    stage === 'saving'
+                      ? t('connectors.edit.savingChanges')
+                      : t('connectors.form.testing')
+                  }
                 />
                 <span className="text-sm font-medium">
                   {stage === 'saving'
@@ -348,22 +305,15 @@ export function EditConnectorDrawer({
               </div>
             )}
           </DrawerBody>
-          <DrawerFooter className="shrink-0 gap-3 bg-muted/30">
-            <DrawerClose asChild>
-              <Button
-                type="button"
-                variant="outline"
-                className="h-11 px-6"
-                disabled={isPending}
-              >
-                {t('common.cancel')}
-              </Button>
-            </DrawerClose>
+          <DrawerFooter className="shrink-0 gap-3">
             <Button
-              type="submit"
-              className="h-11 px-6"
-              disabled={!canSubmit || isPending}
+              variant="secondary"
+              isDisabled={isPending}
+              onPress={() => changeOpen(false)}
             >
+              {t('common.cancel')}
+            </Button>
+            <Button type="submit" isDisabled={!canSubmit || isPending}>
               {stage === 'saving'
                 ? t('connectors.edit.saving')
                 : stage === 'testing'

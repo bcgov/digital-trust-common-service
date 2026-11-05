@@ -204,8 +204,10 @@ header.bcds-header > .bcds-header--container {
   border-color: var(--theme-gold-100);
 }
 
-/* Manage Users "You" and status tags are static labels. (0,2,1) vs (0,1,0). */
-span.bcds-react-aria-Tag.user-tag {
+/* Manage Users "You" and status tags, and `StaticTag`, are static labels.
+   (0,2,1) vs (0,1,0). */
+span.bcds-react-aria-Tag.user-tag,
+span.bcds-react-aria-Tag.static-tag {
   cursor: default;
 }
 

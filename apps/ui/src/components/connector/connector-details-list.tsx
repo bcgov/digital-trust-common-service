@@ -17,7 +17,7 @@ export function ConnectorDetailsList({ item }: { item: Connector }) {
     value ? dateTime.format(new Date(value)) : t('common.notAvailable');
 
   return (
-    <dl className="divide-y divide-border border-y border-border text-sm [&>div]:grid [&>div]:gap-x-6 [&>div]:gap-y-1.5 [&>div]:py-4 [&>div]:sm:grid-cols-[7rem_minmax(0,1fr)] [&_dd]:min-w-0 [&_dd]:text-muted-foreground [&_dt]:font-bold [&_dt]:text-foreground">
+    <dl className="divide-y divide-(--surface-color-border-default) border-y border-(--surface-color-border-default) text-sm [&>div]:grid [&>div]:gap-x-6 [&>div]:gap-y-1.5 [&>div]:py-4 [&>div]:sm:grid-cols-[7rem_minmax(0,1fr)] [&_dd]:min-w-0 [&_dd]:text-(--typography-color-secondary) [&_dt]:font-bold [&_dt]:text-(--typography-color-primary)">
       <div>
         <dt>{t('common.type')}</dt>
         <dd className="capitalize">{item.connector_type}</dd>

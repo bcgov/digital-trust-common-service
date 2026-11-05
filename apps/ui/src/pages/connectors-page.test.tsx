@@ -73,14 +73,9 @@ describe('ConnectorsPage', () => {
           connector.active ? 'Connected' : 'Inactive',
         );
         expect(status).toBeInTheDocument();
-        if (connector.active) {
-          expect(status).toHaveAttribute('data-variant', 'outline');
-          expect(status).toHaveClass('border-green-600', 'text-green-700');
-          expect(status.querySelector('svg')).toHaveAttribute(
-            'aria-hidden',
-            'true',
-          );
-        }
+        expect(status.parentElement).toHaveClass(
+          connector.active ? 'green' : 'grey',
+        );
       }
       await userEvent.click(
         within(table).getByRole('button', {
@@ -275,9 +270,8 @@ describe('ConnectorsPage', () => {
     const table = await screen.findByRole('table', { name: 'Connectors' });
     const defaultRow = within(table).getByRole('row', { name: /traction/ });
     const otherRow = within(table).getByRole('row', { name: /credo/ });
-    expect(within(defaultRow).getByText('Default')).toHaveClass(
-      'border-blue-600',
-      'text-blue-700',
+    expect(within(defaultRow).getByText('Default').parentElement).toHaveClass(
+      'blue',
     );
     expect(within(otherRow).queryByText('Default')).not.toBeInTheDocument();
   });
@@ -380,10 +374,6 @@ describe('ConnectorsPage', () => {
       }),
     );
     await userEvent.click(screen.getByRole('menuitem', { name: 'Delete' }));
-    expect(screen.getByRole('alertdialog')).toHaveAttribute(
-      'data-vaul-drawer-direction',
-      'right',
-    );
     expect(
       screen.getByRole('alertdialog', { name: 'Delete connector' }),
     ).toHaveTextContent(
@@ -465,9 +455,10 @@ describe('ConnectorsPage', () => {
       const drawerStatus = within(
         screen.getByRole('dialog', { name: 'Connector details' }),
       ).getByText(statusText);
-      expect(drawerStatus).toHaveAttribute('data-slot', 'badge');
-      expect(drawerStatus.className).toBe(tableStatus.className);
-      expect(drawerStatus.querySelector('svg') !== null).toBe(active);
+      expect(drawerStatus.parentElement).toHaveClass('static-tag');
+      expect(drawerStatus.parentElement?.className).toBe(
+        tableStatus.parentElement?.className,
+      );
       expect(
         within(
           screen.getByRole('dialog', { name: 'Connector details' }),
@@ -533,7 +524,9 @@ describe('ConnectorsPage', () => {
     expect(
       screen.getByRole('dialog', { name: 'Edit Connector' }),
     ).toHaveAttribute('data-vaul-drawer-direction', 'right');
-    const endpointInput = screen.getByRole('textbox', { name: 'Endpoint URL' });
+    const endpointInput = screen.getByRole('textbox', {
+      name: /^Endpoint URL/,
+    });
     await userEvent.clear(endpointInput);
     await userEvent.type(endpointInput, 'https://traction.example.test/v2');
     await userEvent.type(
