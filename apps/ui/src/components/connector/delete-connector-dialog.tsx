@@ -1,16 +1,11 @@
-import { InlineAlert } from '@bcgov/design-system-react-components';
+import {
+  AlertDialog,
+  Button,
+  InlineAlert,
+  Modal,
+} from '@bcgov/design-system-react-components';
 import { useTranslation } from 'react-i18next';
 
-import { Button } from '@/components/common/button';
-import {
-  Drawer,
-  DrawerBody,
-  DrawerContent,
-  DrawerDescription,
-  DrawerFooter,
-  DrawerHeader,
-  DrawerTitle,
-} from '@/components/common/drawer';
 import { useDeleteConnector } from '@/lib/api/queries/connectors';
 import type { Connector } from '@/lib/api/resources/connectors';
 
@@ -25,62 +20,62 @@ export function DeleteConnectorDialog({
 }) {
   const { t } = useTranslation();
   const remove = useDeleteConnector(tenantId);
+  const title = t('connectors.delete.title');
 
   return (
-    <Drawer
-      direction="right"
-      open
-      dismissible={!remove.isPending}
+    <Modal
+      isOpen
+      isDismissable={!remove.isPending}
       onOpenChange={(open) => {
         if (!open && !remove.isPending) onClose();
       }}
     >
-      <DrawerContent showCloseButton={!remove.isPending} role="alertdialog">
-        <DrawerHeader>
-          <DrawerTitle>{t('connectors.delete.title')}</DrawerTitle>
-        </DrawerHeader>
-        <DrawerBody className="min-h-0">
-          <DrawerDescription>
-            {t('connectors.delete.confirm', {
-              type: connector.connector_type,
-              endpoint: connector.endpoint_url,
-            })}
-          </DrawerDescription>
-          {remove.isError && (
-            <InlineAlert
-              variant="danger"
-              role="alert"
-              description={
-                remove.error instanceof Error
-                  ? remove.error.message
-                  : t('connectors.delete.failed')
-              }
-            />
-          )}
-        </DrawerBody>
-        <DrawerFooter className="shrink-0">
+      <AlertDialog
+        variant="destructive"
+        role="alertdialog"
+        aria-label={title}
+        title={title}
+        buttons={[
           <Button
-            variant="outline"
-            disabled={remove.isPending}
-            onClick={onClose}
+            key="cancel"
+            variant="secondary"
+            isDisabled={remove.isPending}
+            onPress={onClose}
           >
             {t('common.cancel')}
-          </Button>
+          </Button>,
           <Button
-            variant="destructive"
-            disabled={remove.isPending || !connector.id}
-            onClick={() => {
+            key="confirm"
+            danger
+            isDisabled={remove.isPending || !connector.id}
+            onPress={() => {
               if (connector.id) {
                 remove.mutate(connector.id, { onSuccess: onClose });
               }
             }}
           >
-            {remove.isPending
-              ? t('connectors.delete.deleting')
-              : t('connectors.delete.title')}
-          </Button>
-        </DrawerFooter>
-      </DrawerContent>
-    </Drawer>
+            {remove.isPending ? t('connectors.delete.deleting') : title}
+          </Button>,
+        ]}
+      >
+        <p>
+          {t('connectors.delete.confirm', {
+            type: connector.connector_type,
+            endpoint: connector.endpoint_url,
+          })}
+        </p>
+        {remove.isError && (
+          <InlineAlert
+            variant="danger"
+            role="alert"
+            description={
+              remove.error instanceof Error
+                ? remove.error.message
+                : t('connectors.delete.failed')
+            }
+          />
+        )}
+      </AlertDialog>
+    </Modal>
   );
 }
