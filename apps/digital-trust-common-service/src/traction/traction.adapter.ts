@@ -1,6 +1,7 @@
 import {
   AdapterError,
   AgentAdapter,
+  BackendNotFoundError,
   Connection,
   ConnectionFilters,
   ConnectionState,
@@ -8,6 +9,7 @@ import {
   ConnectorType,
   ConnectorUnavailableError,
   CredentialExchange,
+  CredentialExchangeState,
   CredentialFormat,
   Invitation,
   InvitationOptions,
@@ -78,6 +80,18 @@ interface TractionConnectionListResponse {
   readonly results: readonly TractionConnectionRecord[];
 }
 
+interface TractionCredentialExchange {
+  readonly cred_ex_id: string;
+  readonly connection_id?: string;
+  readonly state: string;
+  readonly cred_preview?: {
+    readonly attributes: readonly { name: string; value: string }[];
+  };
+  readonly created_at: string;
+  readonly updated_at: string;
+  readonly error_msg?: string;
+}
+
 /**
  * AgentAdapter implementation for the Traction (ACA-Py multitenant) backend.
  * Registers itself with the AdapterRegistry at module init so tenants whose
@@ -107,18 +121,96 @@ export class TractionAdapter implements AgentAdapter, OnModuleInit {
     this.adapterRegistry.register(this);
   }
 
-  public offerCredential(
-    _context: ConnectorContext,
-    _req: OfferCredentialRequest,
+  public async offerCredential(
+    context: ConnectorContext,
+    req: OfferCredentialRequest,
   ): Promise<CredentialExchange> {
-    return Promise.reject(this.notImplemented('offerCredential'));
+    if (
+      req.format !== CredentialFormat.AnonCreds ||
+      !req.connectionId ||
+      !req.credentialDefinitionId
+    ) {
+      throw new ValidationError([
+        'AnonCreds offer requires a connection and credential definition',
+      ]);
+    }
+    const token = await this.tokenManager.getToken(context);
+    try {
+      const response =
+        await this.httpClient.request<TractionCredentialExchange>(
+          {
+            method: 'POST',
+            url: `${context.endpointUrl}/issue-credential-2.0/send-offer`,
+            headers: { Authorization: `Bearer ${token}` },
+            data: {
+              connection_id: req.connectionId,
+              filter: {
+                anoncreds: { cred_def_id: req.credentialDefinitionId },
+              },
+              credential_preview: {
+                '@type':
+                  'https://didcomm.org/issue-credential/2.0/credential-preview',
+                attributes: req.attributes,
+              },
+              auto_issue: req.autoIssue ?? true,
+              auto_remove: false,
+              auto_remove_on_failure: false,
+              ...(req.comment ? { comment: req.comment } : {}),
+            },
+            maxRedirects: 0,
+          },
+          false,
+        );
+      return this.mapCredentialExchange(response.data);
+    } catch (error) {
+      throw this.mapHttpError(error, context);
+    }
   }
 
-  public getExchange(
-    _context: ConnectorContext,
-    _id: string,
+  public async getExchange(
+    context: ConnectorContext,
+    id: string,
   ): Promise<CredentialExchange> {
-    return Promise.reject(this.notImplemented('getExchange'));
+    const token = await this.tokenManager.getToken(context);
+    try {
+      const response = await this.httpClient.request<{
+        cred_ex_record: TractionCredentialExchange;
+      }>({
+        method: 'GET',
+        url: `${context.endpointUrl}/issue-credential-2.0/records/${encodeURIComponent(id)}`,
+        headers: { Authorization: `Bearer ${token}` },
+        maxRedirects: 0,
+      });
+      return this.mapCredentialExchange(response.data.cred_ex_record);
+    } catch (error) {
+      throw this.mapHttpError(error, context);
+    }
+  }
+
+  private mapCredentialExchange(
+    record: TractionCredentialExchange,
+  ): CredentialExchange {
+    if (!record || typeof record.state !== 'string' || !record.cred_ex_id) {
+      throw new ValidationError(['Invalid credential exchange response']);
+    }
+    const normalized = record.state.replaceAll('_', '-');
+    const state = Object.values(CredentialExchangeState).find(
+      (candidate) => (candidate as string) === normalized,
+    );
+    if (!state || !record.cred_ex_id) {
+      throw new ValidationError(['Invalid credential exchange response']);
+    }
+    return {
+      id: record.cred_ex_id,
+      externalId: record.cred_ex_id,
+      connectionId: record.connection_id,
+      state,
+      format: CredentialFormat.AnonCreds,
+      attributes: record.cred_preview?.attributes ?? [],
+      createdAt: record.created_at,
+      updatedAt: record.updated_at,
+      error: record.error_msg,
+    };
   }
 
   public requestPresentation(
@@ -222,6 +314,7 @@ export class TractionAdapter implements AgentAdapter, OnModuleInit {
           url: `${context.endpointUrl}/connections`,
           headers: { Authorization: `Bearer ${token}` },
           params: {
+            invitation_msg_id: filters.invitationId,
             alias: filters.alias,
             state: filters.state,
             limit: filters.limit,
@@ -379,6 +472,12 @@ export class TractionAdapter implements AgentAdapter, OnModuleInit {
 
     if (axios.isAxiosError(error)) {
       const status = error.response?.status;
+
+      if (status === 404) {
+        return new BackendNotFoundError('Traction record was not found', {
+          connectorId: context.connectorId,
+        });
+      }
 
       if (status !== undefined && status !== 429 && status < 500) {
         return new ValidationError(

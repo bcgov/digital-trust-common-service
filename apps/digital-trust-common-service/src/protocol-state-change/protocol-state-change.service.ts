@@ -5,6 +5,7 @@ import { DataSource, EntityManager } from 'typeorm';
 
 import { AuditAction } from '../audit-log/audit-log.entity';
 import { DomainAuditService } from '../audit-log/domain-audit.service';
+import { transitionConnectionState } from '../connection/connection-state-transition';
 import { ConnectionState } from '../connection/connection.entity';
 import { ConnectionService } from '../connection/connection.service';
 import { CredentialState } from '../credential/credential.entity';
@@ -17,7 +18,6 @@ import { OperationService } from '../operation/operation.service';
 
 import type { ProtocolStateChangeJobData } from './protocol-state-change.worker';
 import {
-  connectionStatesBelow,
   credentialStatesBelow,
   operationStatesBelow,
   ProtocolOutcome,
@@ -40,6 +40,7 @@ interface OperationOutcomeResult {
 interface ApplyOutcomeResult {
   readonly matched: boolean;
   readonly transitioned: boolean;
+  readonly established?: boolean;
 }
 
 /**
@@ -114,6 +115,7 @@ export class ProtocolStateChangeService {
       // best-effort (see applyOperationOutcome), and the Credential or
       // Connection below may still be this delivery's real target.
       let matched = operationOutcome.matched;
+      let established = false;
 
       if (data.topic === 'connections') {
         const connectionOutcome = await this.applyConnectionOutcome(
@@ -124,6 +126,12 @@ export class ProtocolStateChangeService {
 
         matched = connectionOutcome.matched || matched;
         transitioned = connectionOutcome.transitioned || transitioned;
+        // Connection notifications belong to the winning connection write,
+        // not an independently completing invitation operation.
+        if (!connectionOutcome.transitioned) {
+          return { matched, transitioned, event: null };
+        }
+        established = connectionOutcome.established ?? false;
       } else if (operationType === null || transitioned) {
         const credentialOutcome = await this.applyCredentialOutcome(
           data,
@@ -150,9 +158,10 @@ export class ProtocolStateChangeService {
       // HolderPort.rejectOffer always resolves synchronously (see
       // CredentialActionService.completeReject), so a CREDENTIAL_REJECT
       // Operation is never left in-flight for a later webhook to confirm.
-      const event =
-        outcome.event === 'credential.issued' &&
-        operationType === OPERATION_TYPE.CREDENTIAL_ACCEPT
+      const event = established
+        ? 'connection.established'
+        : outcome.event === 'credential.issued' &&
+            operationType === OPERATION_TYPE.CREDENTIAL_ACCEPT
           ? 'credential.accepted'
           : outcome.event;
 
@@ -520,17 +529,32 @@ export class ProtocolStateChangeService {
     // worst (outcome.connectionState may be INVITED itself, whose
     // `fromStates` guard is empty and could never match).
     if (createdFromTemplate) {
-      return { matched: true, transitioned: true };
+      return {
+        matched: true,
+        transitioned: true,
+        established: [
+          ConnectionState.ACTIVE,
+          ConnectionState.COMPLETED,
+        ].includes(outcome.connectionState),
+      };
     }
 
-    const updated = await this.connectionService.applyProtocolStateIfForward(
-      connection,
+    const transition = await transitionConnectionState(
       outcome.connectionState,
-      connectionStatesBelow(outcome.connectionState),
-      manager,
+      (state, fromStates) =>
+        this.connectionService.applyProtocolStateIfForward(
+          connection,
+          state,
+          fromStates,
+          manager,
+        ),
     );
 
-    return { matched: true, transitioned: updated !== null };
+    return {
+      matched: true,
+      transitioned: transition.connection !== null,
+      established: transition.established,
+    };
   }
 
   /**
