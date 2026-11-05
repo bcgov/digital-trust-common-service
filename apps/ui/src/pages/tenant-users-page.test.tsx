@@ -715,6 +715,7 @@ describe('TenantUsersPage', () => {
   });
 
   it('refreshes the token and leaves user management after self-demotion', async () => {
+    const successToast = vi.spyOn(notify, 'success');
     const user = userEvent.setup();
     const client = await signedIn();
     const selfAdminUsers = allowSelfActions();
@@ -739,13 +740,15 @@ describe('TenantUsersPage', () => {
     await waitFor(() =>
       expect(router.state.location.pathname).toBe(`/tenants/${tenantId}`),
     );
-    expect(await screen.findByRole('status')).toHaveTextContent(
-      'Your role was updated.',
+    await waitFor(() =>
+      expect(successToast).toHaveBeenCalledWith('Your role was updated.'),
     );
     expect(client.getState().user?.tenantId).toBe(tenantId);
+    successToast.mockRestore();
   });
 
   it('switches to another active tenant after self-removal', async () => {
+    const successToast = vi.spyOn(notify, 'success');
     const user = userEvent.setup();
     const client = await signedIn();
     allowSelfActions();
@@ -768,10 +771,13 @@ describe('TenantUsersPage', () => {
     await waitFor(() =>
       expect(router.state.location.pathname).toBe(`/tenants/${nextTenant.id}`),
     );
-    expect(await screen.findByRole('status')).toHaveTextContent(
-      'You were removed from the previous tenant.',
+    await waitFor(() =>
+      expect(successToast).toHaveBeenCalledWith(
+        'You were removed from the previous tenant.',
+      ),
     );
     expect(client.getState().user?.tenantId).toBe(nextTenant.id);
+    successToast.mockRestore();
   });
 
   it('signs out after self-removal from the last tenant', async () => {
@@ -793,6 +799,32 @@ describe('TenantUsersPage', () => {
 
     await waitFor(() => expect(client.getState().user).toBeNull());
     expect(router.state.location.pathname).toBe(`/tenants/${tenantId}/users`);
+  });
+
+  it('warns when the switch after self-removal fails', async () => {
+    const warningToast = vi.spyOn(notify, 'warning');
+    const user = userEvent.setup();
+    const client = await signedIn();
+    allowSelfActions();
+    client.switchTenant = () => Promise.reject(new Error('switch failed'));
+    renderPage(client);
+    const { members } = await tables();
+    await within(members).findByText('Mock User');
+
+    await openRemoveAction(user, members, 'mock.user@example.com');
+    const dialog = await screen.findByRole('alertdialog', {
+      name: 'Remove member',
+    });
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Remove member' }),
+    );
+
+    await waitFor(() =>
+      expect(warningToast).toHaveBeenCalledWith(
+        'You were removed from this tenant, but we could not switch to another tenant. Use the tenant selector to retry.',
+      ),
+    );
+    warningToast.mockRestore();
   });
 
   it('hides the owner role from a caller without tenants:admin', async () => {

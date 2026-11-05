@@ -1,4 +1,4 @@
-import { Navigate, useLocation } from 'react-router';
+import { Navigate } from 'react-router';
 import { useTranslation } from 'react-i18next';
 
 import { Button } from '@/components/common/button';
@@ -16,13 +16,7 @@ import { useActiveTenant } from '@/lib/tenant/active-tenant';
  */
 export function DashboardPage() {
   const { t } = useTranslation();
-  const location = useLocation();
   const { tenant, memberships, status, refetch } = useActiveTenant();
-  const state = location.state as { tenantUserNotice?: unknown } | null;
-  const notice =
-    typeof state?.tenantUserNotice === 'string'
-      ? state.tenantUserNotice
-      : undefined;
 
   if (status === 'loading') {
     return <p role="status">{t('dashboard.loading')}</p>;
@@ -35,15 +29,6 @@ export function DashboardPage() {
         <Button type="button" variant="outline" onClick={refetch}>
           {t('common.retry')}
         </Button>
-        {notice && (
-          <p
-            role="status"
-            aria-live="polite"
-            className="text-sm text-green-700"
-          >
-            {notice}
-          </p>
-        )}
       </div>
     );
   }
@@ -69,15 +54,6 @@ export function DashboardPage() {
             ? t('dashboard.chooseBody')
             : t('dashboard.noMembershipBody')}
         </CardDescription>
-        {notice && (
-          <p
-            role="status"
-            aria-live="polite"
-            className="text-sm text-green-700"
-          >
-            {notice}
-          </p>
-        )}
       </CardHeader>
     </Card>
   );

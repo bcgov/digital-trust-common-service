@@ -1,7 +1,7 @@
 import type { ParseKeys } from 'i18next';
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Link, useLocation, useParams } from 'react-router';
+import { Link, useParams } from 'react-router';
 
 import { Button } from '@/components/common/button';
 import {
@@ -78,13 +78,7 @@ function StatCard({ title, query }: StatCardProps) {
 export function TenantOverviewPage() {
   const { t, i18n } = useTranslation();
   const { tenantId } = useParams();
-  const location = useLocation();
   const { user } = useAuth();
-  const state = location.state as { tenantUserNotice?: unknown } | null;
-  const notice =
-    typeof state?.tenantUserNotice === 'string'
-      ? state.tenantUserNotice
-      : undefined;
   const { data: tenant, isLoading, error } = useTenant(tenantId);
   const definitions = useCredentialDefinitions(tenantId);
   const connections = useConnections(tenantId, { state: 'active', limit: 100 });
@@ -109,11 +103,6 @@ export function TenantOverviewPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      {notice && (
-        <p role="status" aria-live="polite" className="text-sm text-green-700">
-          {notice}
-        </p>
-      )}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <StatCard title={t('overview.definitions')} query={definitions} />
         <StatCard title={t('overview.activeConnections')} query={connections} />
