@@ -1,5 +1,6 @@
 import {
   AdapterError,
+  BackendNotFoundError,
   ConnectorSelectionAmbiguousError,
   ConnectorUnavailableError,
   FormatNotSupportedError,
@@ -54,6 +55,23 @@ describe('ConnectorUnavailableError', () => {
     const error = new ConnectorUnavailableError();
 
     expect(error.message).toBe('Connector is unavailable');
+  });
+});
+
+describe('BackendNotFoundError', () => {
+  it('preserves missing-record identity and context separately from outages', () => {
+    const error = new BackendNotFoundError('Exchange was deleted', {
+      connectorId: 'connector-1',
+    });
+    expect(error).toBeInstanceOf(AdapterError);
+    expect(error).not.toBeInstanceOf(ConnectorUnavailableError);
+    expect(error.code).toBe('BACKEND_NOT_FOUND');
+    expect(error.name).toBe('BackendNotFoundError');
+    expect(error.message).toBe('Exchange was deleted');
+    expect(error.context).toEqual({ connectorId: 'connector-1' });
+    expect(new BackendNotFoundError().message).toBe(
+      'Backend record was not found',
+    );
   });
 });
 

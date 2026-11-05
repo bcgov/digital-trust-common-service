@@ -16,6 +16,6 @@ import { ProtocolStateChangeWorker } from './protocol-state-change.worker';
     OperationModule,
   ],
   providers: [ProtocolStateChangeWorker, ProtocolStateChangeService],
-  exports: [ProtocolStateChangeWorker],
+  exports: [ProtocolStateChangeWorker, ProtocolStateChangeService],
 })
 export class ProtocolStateChangeModule {}

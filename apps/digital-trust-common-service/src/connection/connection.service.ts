@@ -1,12 +1,21 @@
 import type { AuthContext } from '@app/auth';
 import {
   type AgentAdapter,
+  BackendNotFoundError,
   ConnectionState as AdapterConnectionState,
   type Connection as AdapterConnection,
   type ConnectorContext,
   type Invitation,
 } from '@app/credential-ports';
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { JOB_QUEUES } from '@app/pg-boss';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import type { EntityManager } from 'typeorm';
 
 import { AdapterRegistry } from '../adapter-registry/adapter-registry.service';
@@ -18,9 +27,11 @@ import {
 } from '../common/assert-tenant-access';
 import { API_BASE_PATH } from '../common/constants/api-version.constants';
 import { decodeCursor, encodeCursor } from '../common/cursor-pagination';
+import { JobsService } from '../jobs/jobs.service';
 import { OPERATION_TYPE } from '../operation/operation-type.constants';
 import { Operation, OperationState } from '../operation/operation.entity';
 import { OperationService } from '../operation/operation.service';
+import { connectionStatesBelow } from '../protocol-state-change/state-mapping';
 
 import {
   Connection,
@@ -111,6 +122,8 @@ export class ConnectionService {
     private readonly domainAudit: DomainAuditService,
     private readonly adapterRegistry: AdapterRegistry,
     private readonly operationService: OperationService,
+    private readonly jobsService: JobsService,
+    private readonly eventEmitter: EventEmitter2,
   ) {}
 
   /**
@@ -137,6 +150,7 @@ export class ConnectionService {
     const created = await this.connectionRepository.create({
       tenantId,
       connectorType: connector.connectorType,
+      connectorId: connector.id,
       protocol: dto.protocol,
       state: dto.invitationUrl
         ? ConnectionState.REQUESTED
@@ -314,6 +328,203 @@ export class ConnectionService {
     return connection;
   }
 
+  public async resolveForIssuance(
+    tenantId: string,
+    id: string,
+    connectorId: string,
+  ): Promise<Connection> {
+    const connection = await this.reconcile(tenantId, id, connectorId);
+    if (
+      !connection.externalConnectionId ||
+      ![ConnectionState.ACTIVE, ConnectionState.COMPLETED].includes(
+        connection.state,
+      )
+    ) {
+      throw new ConflictException('Connection handshake is not complete');
+    }
+    return connection;
+  }
+
+  public async reconcile(
+    tenantId: string,
+    id: string,
+    selectedConnectorId?: string,
+  ): Promise<Connection> {
+    const { connection, remote, connectorId } =
+      await this.resolveRemoteIdentity(tenantId, id, selectedConnectorId);
+    if (
+      ![
+        AdapterConnectionState.Active,
+        AdapterConnectionState.Completed,
+      ].includes(remote.state)
+    ) {
+      throw new ConflictException(
+        'A completed DIDComm v1 handshake is required',
+      );
+    }
+    const state = mapAdapterConnectionState(remote.state);
+    const updated = await this.connectionRepository.reconcile(
+      tenantId,
+      id,
+      connectorId,
+      { ...remote, state },
+      connectionStatesBelow(state),
+      async (manager) => {
+        await this.jobsService.sendInTransaction(
+          manager,
+          JOB_QUEUES.WEBHOOK_DISPATCH,
+          {
+            tenantId,
+            event: 'connection.established',
+            resourceId: remote.id,
+            occurredAt: new Date().toISOString(),
+          },
+        );
+      },
+    );
+    if (!updated) {
+      throw new ConflictException(
+        'Connection binding changed during reconciliation',
+      );
+    }
+    if (updated.established) {
+      this.eventEmitter.emit('connection.established', {
+        tenantId,
+        externalId: remote.id,
+      });
+    }
+    await this.domainAudit.emit({
+      tenantId,
+      action: AuditAction.UPDATE,
+      resourceType: 'connection',
+      resourceId: connection.id,
+    });
+    return updated.connection;
+  }
+
+  public async resolveIdentity(
+    tenantId: string,
+    id: string,
+    connectorId: string,
+  ): Promise<Connection> {
+    const { connection, remote } = await this.resolveRemoteIdentity(
+      tenantId,
+      id,
+      connectorId,
+    );
+    if (connection.connectorId && connection.externalConnectionId) {
+      return connection;
+    }
+    const adopted = await this.connectionRepository.reconcile(
+      tenantId,
+      id,
+      connectorId,
+      { ...remote, state: connection.state },
+      [],
+    );
+    if (!adopted) {
+      throw new ConflictException(
+        'Connection binding changed during reconciliation',
+      );
+    }
+    return adopted.connection;
+  }
+
+  private async resolveRemoteIdentity(
+    tenantId: string,
+    id: string,
+    selectedConnectorId?: string,
+  ): Promise<{
+    connection: Connection;
+    remote: AdapterConnection;
+    connectorId: string;
+  }> {
+    const connection = await this.connectionRepository.findByIdForTenant(
+      tenantId,
+      id,
+    );
+    if (!connection) throw new NotFoundException('Connection not found');
+    if (connection.metadata.multiUse && !connection.externalConnectionId) {
+      throw new BadRequestException(
+        'Select a holder connection, not a reusable invitation',
+      );
+    }
+    if (
+      connection.connectorId &&
+      selectedConnectorId &&
+      connection.connectorId !== selectedConnectorId
+    ) {
+      throw new BadRequestException(
+        'Connection and definition belong to different connectors',
+      );
+    }
+    const connectorId = connection.connectorId ?? selectedConnectorId;
+    if (!connectorId) {
+      throw new ConflictException(
+        'Legacy connection requires an explicit connector for verified invitation reconciliation',
+      );
+    }
+    const { adapter, context } = await this.adapterRegistry.resolve(
+      tenantId,
+      undefined,
+      { connectorId },
+    );
+    let remote: AdapterConnection | undefined;
+    if (connection.externalConnectionId && connection.connectorId) {
+      try {
+        remote = await adapter.getById(
+          context,
+          connection.externalConnectionId,
+        );
+      } catch (error) {
+        if (error instanceof BackendNotFoundError) {
+          throw new ConflictException('Backend connection was not found');
+        }
+        throw error;
+      }
+      if (remote.id !== connection.externalConnectionId) {
+        throw new ConflictException('Backend returned a different connection');
+      }
+    } else {
+      const invitationId = connection.metadata.invitationId;
+      if (typeof invitationId !== 'string' || !invitationId) {
+        throw new ConflictException(
+          'Connection has no verifiable invitation correlation',
+        );
+      }
+      const matches = await adapter.list(context, {
+        invitationId,
+        limit: 2,
+        offset: 0,
+      });
+      if (matches.some((item) => item.invitationId !== invitationId)) {
+        throw new ConflictException('Backend returned a different invitation');
+      }
+      if (matches.length !== 1) {
+        throw new ConflictException(
+          matches.length
+            ? 'Invitation matches multiple connections'
+            : 'Holder connection is not yet visible',
+        );
+      }
+      remote = matches[0];
+      if (
+        connection.externalConnectionId &&
+        remote.id !== connection.externalConnectionId
+      ) {
+        throw new ConflictException(
+          'Invitation connection does not match the saved connection',
+        );
+      }
+    }
+    if (remote.protocol !== 'didcomm-v1') {
+      throw new ConflictException(
+        'A completed DIDComm v1 handshake is required',
+      );
+    }
+    return { connection, remote, connectorId };
+  }
+
   /**
    * Persists a connection's state, their-label, and external connection id
    * as reported by the connector immediately after accepting an invitation.
@@ -401,7 +612,11 @@ export class ConnectionService {
     const connection = await this.findById(tenantId, id, auth);
 
     if (connection.externalConnectionId) {
-      const { adapter, context } = await this.adapterRegistry.resolve(tenantId);
+      const { adapter, context } = connection.connectorId
+        ? await this.adapterRegistry.resolve(tenantId, undefined, {
+            connectorId: connection.connectorId,
+          })
+        : await this.adapterRegistry.resolve(tenantId);
 
       await adapter.deleteById(context, connection.externalConnectionId);
     }
@@ -490,6 +705,7 @@ export class ConnectionService {
       {
         tenantId: template.tenantId,
         connectorType: template.connectorType,
+        connectorId: template.connectorId,
         protocol: template.protocol,
         state,
         externalConnectionId: externalId,

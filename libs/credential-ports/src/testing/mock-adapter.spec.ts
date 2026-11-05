@@ -211,6 +211,24 @@ describe('MockAdapter', () => {
     );
   });
 
+  it('filters invitation matches before applying the result limit', async () => {
+    const unrelated = await adapter.createInvitation(context, {});
+    const matching = await adapter.createInvitation(context, {});
+    await expect(
+      adapter.list(context, {
+        invitationId: matching.invitationId,
+        limit: 1,
+        offset: 0,
+      }),
+    ).resolves.toEqual([
+      expect.objectContaining({ id: matching.connectionId }),
+    ]);
+    expect(matching.connectionId).not.toBe(unrelated.connectionId);
+    await expect(
+      adapter.list(context, { invitationId: 'missing', limit: 2 }),
+    ).resolves.toEqual([]);
+  });
+
   it('should delay the success path when configured for delayed mode', async () => {
     jest.useFakeTimers();
     adapter.configure({
