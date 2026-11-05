@@ -150,7 +150,7 @@ export function AppShell() {
       <div className="flex flex-1 overflow-hidden">
         {layout === 'sidebar' && (
           <aside className="flex w-75 shrink-0 flex-col gap-(--layout-margin-small) overflow-y-auto border-r border-(--surface-color-border-default) bg-sidebar p-3 text-sidebar-foreground">
-            <div className="flex items-center gap-3 rounded-xl border border-(--surface-color-border-default) p-3">
+            <div className="flex items-center gap-3 rounded-(--layout-border-radius-large) border border-(--surface-color-border-default) p-3">
               <BuildingIcon className="size-6 shrink-0" />
               <span className="truncate text-body leading-5 font-bold text-black">
                 {tenant?.name ?? t('nav.unknownTenant')}
@@ -166,7 +166,7 @@ export function AppShell() {
                   to={to}
                   className={({ isActive }) =>
                     cn(
-                      'flex items-center gap-2.5 rounded-xl px-3 py-2 text-small-body text-black transition-colors',
+                      'flex items-center gap-2.5 rounded-(--layout-border-radius-large) px-3 py-(--layout-padding-small) text-small-body text-black transition-colors',
                       isActive ? 'bg-sidebar-accent' : 'hover:bg-muted',
                     )
                   }
@@ -180,7 +180,7 @@ export function AppShell() {
                   to={manageUsersPath}
                   className={({ isActive }) =>
                     cn(
-                      'flex items-center gap-2.5 rounded-xl px-3 py-2 text-small-body text-black transition-colors',
+                      'flex items-center gap-2.5 rounded-(--layout-border-radius-large) px-3 py-(--layout-padding-small) text-small-body text-black transition-colors',
                       isActive ? 'bg-sidebar-accent' : 'hover:bg-muted',
                     )
                   }
