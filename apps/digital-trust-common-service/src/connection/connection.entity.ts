@@ -125,6 +125,14 @@ export class Connection {
   public connectorType!: ConnectorType;
 
   @ApiProperty({
+    description: 'Pinned connector; null for unverified legacy connections',
+    format: 'uuid',
+    nullable: true,
+  })
+  @Column({ name: 'connector_id', type: 'uuid', nullable: true })
+  public connectorId!: string | null;
+
+  @ApiProperty({
     description: 'The protocol used for this connection',
     enum: ConnectionProtocol,
     example: ConnectionProtocol.DIDCOMM_V1,

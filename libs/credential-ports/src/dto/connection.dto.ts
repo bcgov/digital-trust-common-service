@@ -40,6 +40,7 @@ export interface Connection {
 
 // Filters used when listing connections.
 export interface ConnectionFilters {
+  readonly invitationId?: string;
   readonly state?: ConnectionState;
   readonly alias?: string;
   readonly limit?: number;

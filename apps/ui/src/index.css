@@ -218,6 +218,19 @@ span.bcds-react-aria-Tag.user-tag {
   max-width: 26rem;
 }
 
+/* Alert dialog icon: BCDS centres it but adds 4px top padding, which drops
+   it 2px below the title. Figma centres the 20px icon on the 34px title.
+   A destructive dialog that wants the Figma warning triangle uses the
+   warning variant with data-destructive to keep the danger colour.
+   (0,2,0) vs (0,1,0) and (0,3,0) vs BCDS (0,2,0). */
+.bcds-react-aria-AlertDialog .bcds-react-aria-AlertDialog--Icon {
+  padding-top: 0;
+}
+.bcds-react-aria-AlertDialog.warning[data-destructive]
+  .bcds-react-aria-AlertDialog--Icon {
+  color: var(--icons-color-danger);
+}
+
 /* Record context menu (Figma "Menu", 160px): 8px icon gap, centred
    20px icons, primary text and medium radius on BCDS menu items. */
 .bcds-react-aria-Popover:has(> .record-menu) {

@@ -1,5 +1,9 @@
 import { JwtGuard, ScopeGuard, TenantGuard } from '@app/auth';
-import { CanActivate, BadRequestException } from '@nestjs/common';
+import {
+  CanActivate,
+  BadRequestException,
+  ConflictException,
+} from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import type { Response } from 'express';
 
@@ -21,6 +25,7 @@ class AllowGuard implements CanActivate {
 describe('CredentialOfferController', () => {
   let controller: CredentialOfferController;
   let mockOffer: jest.Mock;
+  let mockReconcile: jest.Mock;
   let res: jest.Mocked<Pick<Response, 'status'>>;
 
   const tenantId = '123e4567-e89b-12d3-a456-426614174001';
@@ -29,7 +34,11 @@ describe('CredentialOfferController', () => {
 
   const dto: OfferCredentialRequestDto = Object.assign(
     new OfferCredentialRequestDto(),
-    { profileId: 'diploma/1.0', connectionId, attributes: {} },
+    {
+      profileId: 'diploma/1.0',
+      delivery: { protocol: 'didcomm-v1', connectionId },
+      credential: { credentialSubject: {} },
+    },
   );
 
   const buildOperation = (overrides: Partial<Operation> = {}): Operation =>
@@ -51,6 +60,7 @@ describe('CredentialOfferController', () => {
 
   beforeEach(async () => {
     mockOffer = jest.fn();
+    mockReconcile = jest.fn();
     res = { status: jest.fn().mockReturnThis() };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -58,7 +68,7 @@ describe('CredentialOfferController', () => {
       providers: [
         {
           provide: CredentialOfferService,
-          useValue: { offer: mockOffer },
+          useValue: { offer: mockOffer, reconcile: mockReconcile },
         },
       ],
     })
@@ -91,6 +101,22 @@ describe('CredentialOfferController', () => {
     expect(mockOffer).toHaveBeenCalledWith(tenantId, dto);
     expect(res.status).toHaveBeenCalledWith(202);
     expect(result.state).toBe(OperationState.PROCESSING);
+  });
+
+  it('declares conflict responses without intercepting runtime conflicts', async () => {
+    const responses = Reflect.getMetadata(
+      'swagger/apiResponse',
+      Reflect.get(CredentialOfferController.prototype, 'offer'),
+    );
+    expect(responses).toHaveProperty('409');
+    const conflict = new ConflictException(
+      'Connection handshake is not complete',
+    );
+    mockOffer.mockRejectedValue(conflict);
+    await expect(
+      controller.offer(tenantId, dto, res as unknown as Response),
+    ).rejects.toBe(conflict);
+    expect(res.status).not.toHaveBeenCalled();
   });
 
   it('responds 202 when the offer is still PENDING', async () => {
@@ -147,5 +173,13 @@ describe('CredentialOfferController', () => {
     await expect(
       controller.offer(tenantId, dto, res as unknown as Response),
     ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('returns the current operation from explicit reconciliation', async () => {
+    mockReconcile.mockResolvedValue(buildOperation());
+    const result = await controller.reconcile(tenantId, 'offer-op-1');
+    expect(mockReconcile).toHaveBeenCalledWith(tenantId, 'offer-op-1');
+    expect(result.state).toBe(OperationState.PROCESSING);
+    expect(mockOffer).not.toHaveBeenCalled();
   });
 });
