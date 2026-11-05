@@ -1,5 +1,4 @@
 import {
-  BackendNotFoundError,
   ConnectorUnavailableError,
   CredentialExchangeState,
   CredentialFormat as PortCredentialFormat,

@@ -172,6 +172,7 @@ describe('registration operation response', () => {
     expect(Object.keys(response).sort()).toEqual([
       'batch_id',
       'created_at',
+      'exchange_id',
       'id',
       'problem_details',
       'result',
