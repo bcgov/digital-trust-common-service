@@ -43,7 +43,7 @@ export function ConnectorDetailsDialog({
           {details.isPending && (
             <p
               role="status"
-              className="text-sm text-(--typography-color-secondary)"
+              className="text-small-body text-(--typography-color-secondary)"
             >
               {t('connectors.details.loading')}
             </p>

@@ -210,7 +210,7 @@ export function EditConnectorDrawer({
             className="relative min-h-0 gap-0 px-0 py-6"
             aria-busy={isPending}
           >
-            <DrawerDescription className="px-6 text-sm leading-6 text-(--typography-color-secondary)">
+            <DrawerDescription className="px-6 text-small-body leading-6 text-(--typography-color-secondary)">
               {t('connectors.edit.description')}
             </DrawerDescription>
             <fieldset
@@ -297,7 +297,7 @@ export function EditConnectorDrawer({
                       : t('connectors.form.testing')
                   }
                 />
-                <span className="text-sm font-medium">
+                <span className="text-small-body font-medium">
                   {stage === 'saving'
                     ? t('connectors.edit.savingChanges')
                     : t('connectors.form.testing')}

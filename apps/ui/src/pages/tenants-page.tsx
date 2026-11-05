@@ -174,7 +174,7 @@ export function TenantsPage() {
                   <TableCell className="truncate">
                     <Link
                       to={`/tenants/${tenant.id}`}
-                      className="text-foreground underline-offset-4 hover:underline"
+                      className="text-(--typography-color-primary) underline-offset-4 hover:underline"
                       onClick={(event) => {
                         // A modified click keeps its browser meaning.
                         if (isPlainClick(event) && switchesInto(tenant)) {
@@ -210,7 +210,10 @@ export function TenantsPage() {
               ))}
               {!isLoading && visible.length === 0 && (
                 <TableRow className="hover:bg-transparent">
-                  <TableCell colSpan={4} className="text-muted-foreground">
+                  <TableCell
+                    colSpan={4}
+                    className="text-(--typography-color-secondary)"
+                  >
                     {t('tenants.noMatch', { query: search.trim() })}
                   </TableCell>
                 </TableRow>

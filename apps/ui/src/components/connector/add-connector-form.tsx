@@ -45,7 +45,7 @@ export function AddConnectorForm({
         className="relative min-h-0 gap-0 px-0 py-6"
         aria-busy={mutation.isPending}
       >
-        <DrawerDescription className="px-6 text-sm leading-6 text-(--typography-color-secondary)">
+        <DrawerDescription className="px-6 text-small-body leading-6 text-(--typography-color-secondary)">
           {t('connectors.form.description')}
         </DrawerDescription>
         <fieldset
@@ -61,7 +61,7 @@ export function AddConnectorForm({
               name="connector_type"
               required
               defaultValue="traction"
-              className="h-10 w-full rounded-lg border border-input bg-card px-2.5 text-sm"
+              className="h-10 w-full rounded-lg border border-(--surface-color-border-default) bg-(--surface-color-background-white) px-2.5 text-small-body"
             >
               <option value="traction">{t('connectors.form.traction')}</option>
             </select>
@@ -118,14 +118,14 @@ export function AddConnectorForm({
               isIndeterminate
               aria-label={t('connectors.form.testing')}
             />
-            <span className="text-sm font-medium">
+            <span className="text-small-body font-medium">
               {t('connectors.form.testing')}
             </span>
           </div>
         )}
       </DrawerBody>
       <DrawerFooter className="shrink-0 items-center gap-4">
-        <p className="flex min-w-40 flex-1 items-start gap-2 text-xs leading-5 text-(--typography-color-secondary)">
+        <p className="flex min-w-40 flex-1 items-start gap-2 text-label leading-5 text-(--typography-color-secondary)">
           <CircleInfoIcon className="mt-0.5 size-4 shrink-0" />
           <span>{t('connectors.form.testNotice')}</span>
         </p>

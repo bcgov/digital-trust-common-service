@@ -9,6 +9,10 @@ import reactRefresh from 'eslint-plugin-react-refresh';
 import globals from 'globals';
 import tseslint from 'typescript-eslint';
 
+// Class names that bypass the BCDS tokens. Written without "/" because
+// esquery ends a selector regex at the first slash.
+const NON_BCDS_CLASS = String.raw`/(^|[\s:])(text-(xs|sm|base|lg|[2-9]?xl)|(text|bg|border)-(muted-foreground|muted|foreground|destructive|card|popover|accent|secondary|primary)|(text|bg|border)-(slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-\d+)(?![\w-])/`;
+
 export default tseslint.config(
   {
     ignores: [
@@ -91,6 +95,36 @@ export default tseslint.config(
             exclude: ['.*'],
           },
         },
+      ],
+    },
+  },
+  {
+    // Screens already on BC Gov components take type and colour from the
+    // BCDS tokens. Tailwind text sizes, shadcn theme colours and the raw
+    // Tailwind palette drift from the Figma frames, so they are rejected
+    // here. Add a screen's files once it has been migrated.
+    files: [
+      'src/pages/tenants-page.tsx',
+      'src/pages/tenant-users-page.tsx',
+      'src/pages/connectors-page.tsx',
+      'src/components/tenant/**',
+      'src/components/tenant-user/**',
+      'src/components/connector/**',
+      'src/components/common/empty.tsx',
+      'src/components/common/page-header.tsx',
+      'src/components/common/query-status.tsx',
+    ],
+    // The tenant switcher lives in the app shell, which moves over with the
+    // dashboard.
+    ignores: ['**/*.test.tsx', 'src/components/tenant/tenant-switcher.tsx'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        ...['Literal', 'TemplateElement'].map((node) => ({
+          selector: `${node}[${node === 'Literal' ? 'value' : 'value.raw'}=${NON_BCDS_CLASS}]`,
+          message:
+            'Use BCDS tokens (text-body, text-small-body, text-(--typography-color-*), text-(--surface-color-*)) instead of Tailwind sizes, shadcn colours or the Tailwind palette.',
+        })),
       ],
     },
   },
