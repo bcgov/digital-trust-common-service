@@ -1,12 +1,9 @@
 import { Copy, Check } from 'lucide-react';
-import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { Button } from '@/components/common/button';
+import { notify } from '@/components/common/sonner';
 import type { ClientCredentials } from '@/lib/api/resources/api-clients';
-
-type SecretCopyMessage =
-  'apiClients.secret.copied' | 'apiClients.secret.copyFailed';
 
 export function ApiClientSecret({
   credentials,
@@ -16,7 +13,6 @@ export function ApiClientSecret({
   onDone: () => void;
 }) {
   const { t } = useTranslation();
-  const [message, setMessage] = useState<SecretCopyMessage | null>(null);
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-6">
       <p className="text-sm">{t('apiClients.secret.storeSecurely')}</p>
@@ -35,16 +31,13 @@ export function ApiClientSecret({
         onClick={() => {
           void navigator.clipboard
             .writeText(credentials.client_secret)
-            .then(() => setMessage('apiClients.secret.copied'))
-            .catch(() => setMessage('apiClients.secret.copyFailed'));
+            .then(() => notify.success(t('apiClients.secret.copied')))
+            .catch(() => notify.danger(t('apiClients.secret.copyFailed')));
         }}
       >
         <Copy aria-hidden="true" />
         {t('apiClients.secret.copy')}
       </Button>
-      <p role="status" className="text-sm">
-        {message ? t(message) : null}
-      </p>
       <Button className="mt-auto" onClick={onDone}>
         <Check aria-hidden="true" />
         {t('apiClients.secret.done')}
