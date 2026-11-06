@@ -28,7 +28,9 @@ CI, with no deployed environment: the real API and a recording stand-in for Loki
 process, and Envoy runs in Docker with the configuration exactly as the chart renders it.
 
 ```bash
-npm run test:log-gateway   # needs Docker, helm, yq and openssl
+docker compose --profile test up -d db-test migrate-test seed-test
+npm run test:log-gateway   # also needs Docker, helm, yq and openssl
+docker compose --profile test down -v
 ```
 
 They prove the pieces this repository owns work together and that what reaches Loki is correct.
