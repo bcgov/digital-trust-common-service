@@ -3,7 +3,7 @@ import { OidcConfigModule } from '@app/oidc';
 import { Module } from '@nestjs/common';
 
 import { EncryptionModule } from '../common/crypto/encryption.module';
-import { ConnectorCredentialModule } from '../connector-credential/connector-credential.module';
+import { ConnectorModule } from '../connector/connector.module';
 import { RateLimitStorageModule } from '../rate-limit/rate-limit-storage.module';
 
 import { AgentLogPartitionCacheModule } from './agent-log-partition-cache.module';
@@ -21,7 +21,7 @@ import { LogAccessService } from './log-access.service';
     AuthModule,
     OidcConfigModule,
     EncryptionModule,
-    ConnectorCredentialModule,
+    ConnectorModule,
     AgentLogPartitionCacheModule,
     RateLimitStorageModule,
   ],

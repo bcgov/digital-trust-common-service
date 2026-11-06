@@ -2,8 +2,8 @@ import { ExecutionContext, UnauthorizedException } from '@nestjs/common';
 
 import { EncryptionService } from '../common/crypto/encryption.service';
 import { ConnectorType } from '../connection/connection.entity';
-import { ConnectorCredential } from '../connector-credential/connector-credential.entity';
-import { ConnectorCredentialService } from '../connector-credential/connector-credential.service';
+import { Connector } from '../connector/connector.entity';
+import { ConnectorService } from '../connector/connector.service';
 
 import {
   ConnectorWebhookGuard,
@@ -14,7 +14,7 @@ import {
 describe('ConnectorWebhookGuard', () => {
   let guard: ConnectorWebhookGuard;
   let connectorCredentialService: jest.Mocked<
-    Pick<ConnectorCredentialService, 'findActiveForWebhook'>
+    Pick<ConnectorService, 'findActiveForWebhook'>
   >;
   let encryptionService: jest.Mocked<Pick<EncryptionService, 'decrypt'>>;
 
@@ -26,7 +26,7 @@ describe('ConnectorWebhookGuard', () => {
     credentialsEncrypted: Buffer.from('ciphertext'),
     keyVersion: 1,
     active: true,
-  } as ConnectorCredential;
+  } as Connector;
 
   beforeEach(() => {
     connectorCredentialService = {
@@ -36,7 +36,7 @@ describe('ConnectorWebhookGuard', () => {
       decrypt: jest.fn(),
     };
     guard = new ConnectorWebhookGuard(
-      connectorCredentialService as unknown as ConnectorCredentialService,
+      connectorCredentialService as unknown as ConnectorService,
       encryptionService as unknown as EncryptionService,
     );
   });

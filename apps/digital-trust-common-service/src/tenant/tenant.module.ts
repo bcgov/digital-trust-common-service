@@ -3,7 +3,7 @@ import { forwardRef, Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { AuditLogModule } from '../audit-log/audit-log.module';
-import { ConnectorCredentialModule } from '../connector-credential/connector-credential.module';
+import { ConnectorModule } from '../connector/connector.module';
 import { TenantUserModule } from '../tenant-user/tenant-user.module';
 
 import { TenantStatusModule } from './tenant-status.module';
@@ -19,7 +19,7 @@ import { TenantService } from './tenant.service';
     AuthModule,
     forwardRef(() => TenantUserModule),
     TenantStatusModule,
-    forwardRef(() => ConnectorCredentialModule),
+    forwardRef(() => ConnectorModule),
   ],
   controllers: [TenantController],
   providers: [TenantService, TenantRepository],

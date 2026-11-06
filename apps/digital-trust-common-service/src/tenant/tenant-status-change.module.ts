@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 
 import { ConnectionModule } from '../connection/connection.module';
-import { ConnectorCredentialModule } from '../connector-credential/connector-credential.module';
+import { ConnectorModule } from '../connector/connector.module';
 import { OAuthClientModule } from '../oauth-client/oauth-client.module';
 
 import { TenantStatusChangeWorker } from './tenant-status-change.worker';
@@ -13,7 +13,7 @@ import { TenantStatusChangeWorker } from './tenant-status-change.worker';
  * registered directly in `AppModule` instead.
  */
 @Module({
-  imports: [ConnectionModule, ConnectorCredentialModule, OAuthClientModule],
+  imports: [ConnectionModule, ConnectorModule, OAuthClientModule],
   providers: [TenantStatusChangeWorker],
   exports: [TenantStatusChangeWorker],
 })

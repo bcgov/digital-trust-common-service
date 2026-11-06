@@ -1,7 +1,7 @@
 import { Connection } from '../connection/connection.entity';
 import { ConnectionRepository } from '../connection/connection.repository';
-import { ConnectorCredential } from '../connector-credential/connector-credential.entity';
-import { ConnectorCredentialRepository } from '../connector-credential/connector-credential.repository';
+import { Connector } from '../connector/connector.entity';
+import { ConnectorRepository } from '../connector/connector.repository';
 import { CredentialDefinition } from '../credential-definition/credential-definition.entity';
 import { CredentialDefinitionRepository } from '../credential-definition/credential-definition.repository';
 import { IssuanceProfile } from '../issuance-profile/issuance-profile.entity';
@@ -22,7 +22,7 @@ import { SeedTenantUserRepository } from './seed-tenant-user.repository';
 export const SEED_ENTITIES = [
   Tenant,
   TenantUser,
-  ConnectorCredential,
+  Connector,
   CredentialDefinition,
   IssuanceProfile,
   VerificationProfile,
@@ -35,7 +35,7 @@ export const SEED_REPOSITORY_PROVIDERS = [
   TenantRepository,
   TenantUserRepository,
   SeedTenantUserRepository,
-  ConnectorCredentialRepository,
+  ConnectorRepository,
   CredentialDefinitionRepository,
   IssuanceProfileRepository,
   VerificationProfileRepository,

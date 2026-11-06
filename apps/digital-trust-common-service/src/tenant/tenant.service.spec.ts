@@ -11,7 +11,7 @@ import { DataSource, EntityManager } from 'typeorm';
 import { AuditAction } from '../audit-log/audit-log.entity';
 import { DomainAuditService } from '../audit-log/domain-audit.service';
 import { encodeCursor } from '../common/cursor-pagination';
-import { ConnectorCredentialService } from '../connector-credential/connector-credential.service';
+import { ConnectorService } from '../connector/connector.service';
 import { JobsService } from '../jobs/jobs.service';
 import { TenantUserRole } from '../tenant-user/tenant-user.entity';
 import { TenantUserService } from '../tenant-user/tenant-user.service';
@@ -112,7 +112,7 @@ describe('TenantService', () => {
           },
         },
         {
-          provide: ConnectorCredentialService,
+          provide: ConnectorService,
           useValue: { findById: mockFindConnectorCredentialById },
         },
       ],

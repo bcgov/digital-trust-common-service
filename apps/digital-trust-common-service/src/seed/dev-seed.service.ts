@@ -14,8 +14,8 @@ import {
   ConnectorType,
 } from '../connection/connection.entity';
 import { ConnectionRepository } from '../connection/connection.repository';
-import { ConnectorCredential } from '../connector-credential/connector-credential.entity';
-import { ConnectorCredentialRepository } from '../connector-credential/connector-credential.repository';
+import { Connector } from '../connector/connector.entity';
+import { ConnectorRepository } from '../connector/connector.repository';
 import {
   CredentialDefinition,
   CredentialDefinitionStatus,
@@ -102,7 +102,7 @@ export class DevSeedService {
     private readonly tenants: TenantRepository,
     private readonly tenantUsers: TenantUserRepository,
     private readonly seedTenantUsers: SeedTenantUserRepository,
-    private readonly connectorCredentials: ConnectorCredentialRepository,
+    private readonly connectorCredentials: ConnectorRepository,
     private readonly credentialDefinitions: CredentialDefinitionRepository,
     private readonly issuanceProfiles: IssuanceProfileRepository,
     private readonly verificationProfiles: VerificationProfileRepository,
@@ -341,7 +341,7 @@ export class DevSeedService {
       endpointUrl: MOCK_TRACTION_ENDPOINT,
       active: true,
       keyVersion: encrypted.keyVersion,
-    } as ConnectorCredential);
+    } as Connector);
 
     return 1;
   }
