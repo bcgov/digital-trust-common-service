@@ -1,34 +1,37 @@
-import * as React from 'react';
+import {
+  Button,
+  Dialog,
+  Heading,
+  Modal,
+  SvgCloseIcon,
+} from '@bcgov/design-system-react-components';
 import { cva, type VariantProps } from 'class-variance-authority';
-import { XIcon } from 'lucide-react';
+import {
+  createContext,
+  useContext,
+  useId,
+  useLayoutEffect,
+  useState,
+  type ComponentProps,
+  type ReactNode,
+} from 'react';
 import { useTranslation } from 'react-i18next';
-import { Drawer as DrawerPrimitive } from 'vaul';
 
-import { Button } from '@/components/common/button';
 import { cn } from '@/lib/utils';
 
-// Vendored from shadcn/ui (radix-nova registry, vaul) and restyled onto the
-// BC Design System, because BCDS v5 ships no drawer/side-sheet (#467). The
-// slide-in interaction is vaul's as-shipped; only the surface is ours, so a
-// drawer reads as the same family as the react-aria `Modal` behind the
-// dialogs: `--overlay` scrim, white surface, hairline border, large shadow,
-// and a bordered header/footer with a top-right close button.
+// A right-hand side sheet built on the BCDS `Modal` and `Dialog`, because
+// BCDS ships no drawer. Building it on the same React Aria overlay stack as
+// the BCDS dialogs and popovers means a BCDS `Menu`, `Select` or `Tooltip`
+// opened inside a drawer stacks above it, takes focus and closes on Escape
+// without closing the drawer. The scrim and slide-in are in `index.css`.
 //
-// The stock file was changed in these ways — reapply them if you ever re-run
-// `npx shadcn add drawer`:
-//   - `bg-black/10` + backdrop blur -> the BCDS `--overlay` scrim (rgba(0,0,0,.45));
-//   - `rounded-*-xl` -> square against the viewport edge on side drawers, and
-//     BCDS medium radius on the one edge that floats for top/bottom;
-//   - `w-3/4 sm:max-w-sm` -> explicit `size` variants, sized for the admin shell;
-//   - header/footer padding and title type aligned to `tenant-user/TenantUserDialogs`;
-//   - animations opt out of `prefers-reduced-motion`, as BCDS modals do.
-
-const drawerContentVariants = cva(
-  'group/drawer-content fixed z-50 flex h-auto flex-col border-border bg-card text-card-foreground shadow-overlay motion-reduce:animate-none data-[vaul-drawer-direction=bottom]:inset-x-0 data-[vaul-drawer-direction=bottom]:bottom-0 data-[vaul-drawer-direction=bottom]:mt-24 data-[vaul-drawer-direction=bottom]:max-h-[85vh] data-[vaul-drawer-direction=bottom]:rounded-t-md data-[vaul-drawer-direction=bottom]:border-t data-[vaul-drawer-direction=left]:inset-y-0 data-[vaul-drawer-direction=left]:left-0 data-[vaul-drawer-direction=left]:w-full data-[vaul-drawer-direction=left]:max-w-[var(--drawer-width)] data-[vaul-drawer-direction=left]:border-r data-[vaul-drawer-direction=right]:inset-y-0 data-[vaul-drawer-direction=right]:right-0 data-[vaul-drawer-direction=right]:w-full data-[vaul-drawer-direction=right]:max-w-[var(--drawer-width)] data-[vaul-drawer-direction=right]:border-l data-[vaul-drawer-direction=top]:inset-x-0 data-[vaul-drawer-direction=top]:top-0 data-[vaul-drawer-direction=top]:mb-24 data-[vaul-drawer-direction=top]:max-h-[85vh] data-[vaul-drawer-direction=top]:rounded-b-md data-[vaul-drawer-direction=top]:border-b',
+// React Aria cannot open a modal from inside another modal's tree, so a
+// drawer that stacks over another is rendered inside the outer `Drawer` but
+// outside its `DrawerContent`.
+const drawerPanelVariants = cva(
+  'drawer-panel flex h-full w-full max-w-(--drawer-width) flex-col border-l border-border bg-card text-card-foreground shadow-overlay outline-none data-entering:animate-in data-entering:slide-in-from-right data-exiting:animate-out data-exiting:slide-out-to-right motion-reduce:animate-none',
   {
     variants: {
-      // Width of a left/right drawer. Top/bottom drawers span the viewport
-      // and are bounded by max-height instead, so the variant is inert there.
       size: {
         sm: '[--drawer-width:24rem]',
         md: '[--drawer-width:32rem]',
@@ -41,43 +44,42 @@ const drawerContentVariants = cva(
   },
 );
 
+type DrawerState = {
+  open: boolean;
+  onOpenChange?: (open: boolean) => void;
+  dismissible: boolean;
+};
+
+const DrawerContext = createContext<DrawerState | null>(null);
+const InsideDrawerContentContext = createContext(false);
+const DrawerDescriptionContext = createContext<{
+  id: string;
+  setPresent: (present: boolean) => void;
+} | null>(null);
+
+function useDrawer() {
+  const context = useContext(DrawerContext);
+  if (!context) throw new Error('Drawer parts must be used inside a Drawer');
+  return context;
+}
+
 function Drawer({
-  ...props
-}: React.ComponentProps<typeof DrawerPrimitive.Root>) {
-  return <DrawerPrimitive.Root data-slot="drawer" {...props} />;
-}
-
-function DrawerTrigger({
-  ...props
-}: React.ComponentProps<typeof DrawerPrimitive.Trigger>) {
-  return <DrawerPrimitive.Trigger data-slot="drawer-trigger" {...props} />;
-}
-
-function DrawerPortal({
-  ...props
-}: React.ComponentProps<typeof DrawerPrimitive.Portal>) {
-  return <DrawerPrimitive.Portal data-slot="drawer-portal" {...props} />;
-}
-
-function DrawerClose({
-  ...props
-}: React.ComponentProps<typeof DrawerPrimitive.Close>) {
-  return <DrawerPrimitive.Close data-slot="drawer-close" {...props} />;
-}
-
-function DrawerOverlay({
-  className,
-  ...props
-}: React.ComponentProps<typeof DrawerPrimitive.Overlay>) {
+  open,
+  onOpenChange,
+  dismissible = true,
+  children,
+}: {
+  open: boolean;
+  onOpenChange?: (open: boolean) => void;
+  // False while a request is in flight: Escape, the scrim and the close
+  // button no longer close the drawer.
+  dismissible?: boolean;
+  children: ReactNode;
+}) {
   return (
-    <DrawerPrimitive.Overlay
-      data-slot="drawer-overlay"
-      className={cn(
-        'fixed inset-0 z-50 bg-overlay data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0 motion-reduce:animate-none',
-        className,
-      )}
-      {...props}
-    />
+    <DrawerContext.Provider value={{ open, onOpenChange, dismissible }}>
+      {children}
+    </DrawerContext.Provider>
   );
 }
 
@@ -86,42 +88,59 @@ function DrawerContent({
   children,
   size,
   showCloseButton = true,
-  ...props
-}: React.ComponentProps<typeof DrawerPrimitive.Content> &
-  VariantProps<typeof drawerContentVariants> & {
-    showCloseButton?: boolean;
-  }) {
+}: VariantProps<typeof drawerPanelVariants> & {
+  className?: string;
+  children: ReactNode;
+  showCloseButton?: boolean;
+}) {
   const { t } = useTranslation();
+  const { open, onOpenChange, dismissible } = useDrawer();
+  if (useContext(InsideDrawerContentContext)) {
+    throw new Error(
+      'A DrawerContent cannot be nested in another; render it outside the outer DrawerContent',
+    );
+  }
+  const descriptionId = useId();
+  const [hasDescription, setHasDescription] = useState(false);
   return (
-    <DrawerPortal data-slot="drawer-portal">
-      <DrawerOverlay />
-      <DrawerPrimitive.Content
-        data-slot="drawer-content"
-        className={cn(drawerContentVariants({ size }), className)}
-        {...props}
+    <Modal
+      isOpen={open}
+      onOpenChange={onOpenChange}
+      isDismissable={dismissible}
+      isKeyboardDismissDisabled={!dismissible}
+      className={drawerPanelVariants({ size })}
+    >
+      <Dialog
+        isCloseable={false}
+        aria-describedby={hasDescription ? descriptionId : undefined}
+        className={cn('drawer-dialog', className)}
       >
-        {/* Drag affordance: vaul only makes bottom drawers swipeable by it. */}
-        <div className="mx-auto mt-4 hidden h-1 w-[100px] shrink-0 rounded-full bg-border group-data-[vaul-drawer-direction=bottom]/drawer-content:block" />
         {showCloseButton && (
-          <DrawerClose asChild>
+          <span className="absolute end-2 top-2">
             <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
+              slot="close"
+              variant="tertiary"
+              size="small"
+              isIconButton
               aria-label={t('common.close')}
-              className="absolute end-2 top-2"
             >
-              <XIcon />
+              <SvgCloseIcon />
             </Button>
-          </DrawerClose>
+          </span>
         )}
-        {children}
-      </DrawerPrimitive.Content>
-    </DrawerPortal>
+        <InsideDrawerContentContext.Provider value>
+          <DrawerDescriptionContext.Provider
+            value={{ id: descriptionId, setPresent: setHasDescription }}
+          >
+            {children}
+          </DrawerDescriptionContext.Provider>
+        </InsideDrawerContentContext.Provider>
+      </Dialog>
+    </Modal>
   );
 }
 
-function DrawerHeader({ className, ...props }: React.ComponentProps<'div'>) {
+function DrawerHeader({ className, ...props }: ComponentProps<'div'>) {
   return (
     <div
       data-slot="drawer-header"
@@ -131,7 +150,7 @@ function DrawerHeader({ className, ...props }: React.ComponentProps<'div'>) {
   );
 }
 
-function DrawerBody({ className, ...props }: React.ComponentProps<'div'>) {
+function DrawerBody({ className, ...props }: ComponentProps<'div'>) {
   return (
     <div
       data-slot="drawer-body"
@@ -144,7 +163,7 @@ function DrawerBody({ className, ...props }: React.ComponentProps<'div'>) {
   );
 }
 
-function DrawerFooter({ className, ...props }: React.ComponentProps<'div'>) {
+function DrawerFooter({ className, ...props }: ComponentProps<'div'>) {
   return (
     <div
       data-slot="drawer-footer"
@@ -159,23 +178,33 @@ function DrawerFooter({ className, ...props }: React.ComponentProps<'div'>) {
 
 function DrawerTitle({
   className,
-  ...props
-}: React.ComponentProps<typeof DrawerPrimitive.Title>) {
+  children,
+}: {
+  className?: string;
+  children: ReactNode;
+}) {
   return (
-    <DrawerPrimitive.Title
-      data-slot="drawer-title"
+    <Heading
+      slot="title"
+      level={2}
+      isUnstyled
       className={cn('text-xl font-bold text-foreground', className)}
-      {...props}
-    />
+    >
+      {children}
+    </Heading>
   );
 }
 
-function DrawerDescription({
-  className,
-  ...props
-}: React.ComponentProps<typeof DrawerPrimitive.Description>) {
+function DrawerDescription({ className, ...props }: ComponentProps<'p'>) {
+  const context = useContext(DrawerDescriptionContext);
+  const setPresent = context?.setPresent;
+  useLayoutEffect(() => {
+    setPresent?.(true);
+    return () => setPresent?.(false);
+  }, [setPresent]);
   return (
-    <DrawerPrimitive.Description
+    <p
+      id={context?.id}
       data-slot="drawer-description"
       className={cn('text-sm text-muted-foreground', className)}
       {...props}
@@ -185,10 +214,6 @@ function DrawerDescription({
 
 export {
   Drawer,
-  DrawerPortal,
-  DrawerOverlay,
-  DrawerTrigger,
-  DrawerClose,
   DrawerContent,
   DrawerHeader,
   DrawerBody,

@@ -24,13 +24,12 @@ export function ApiClientDetailsDrawer({
 
   return (
     <Drawer
-      direction="right"
       open
       onOpenChange={(open) => {
         if (!open) onClose();
       }}
     >
-      <DrawerContent aria-describedby={undefined}>
+      <DrawerContent>
         <DrawerHeader>
           <DrawerTitle>{t('apiClients.details.title')}</DrawerTitle>
         </DrawerHeader>
