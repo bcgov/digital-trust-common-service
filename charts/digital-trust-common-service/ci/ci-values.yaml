@@ -52,3 +52,24 @@ upstreamFederation:
 
 config:
   DB_HOST: postgres
+
+logAccess:
+  enabled: true
+
+logGateway:
+  enabled: true
+  autoscaling:
+    enabled: true
+  metrics:
+    podMonitor:
+      enabled: true
+    prometheusRule:
+      enabled: true
+  route:
+    enabled: true
+    host: logs.example.com
+  upstream:
+    host: loki-gateway.example.svc.cluster.local
+    auth:
+      existingSecret:
+        name: ci-log-gateway-loki

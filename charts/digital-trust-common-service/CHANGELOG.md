@@ -9,6 +9,41 @@ and this chart adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.h
 
 ### Added
 
+- `logGateway` values (`enabled` default `false`) and `networkPolicy.loki` for a
+  standalone Envoy in front of Loki, following the `frontend` and `worker`
+  layout: ConfigMap, Deployment, Service with a serving-certificate annotation,
+  re-encrypted Route, optional HPA, and NetworkPolicies limiting its egress to
+  the log-access endpoint, Loki and DNS. Every route, including the catch-all,
+  calls the log-access endpoint first; only the Loki read paths are routed (no
+  live tail); a failed or slow decision answers the same `403` as a denial; the
+  caller's `Authorization` is replaced with a Loki login read from
+  `logGateway.upstream.auth.existingSecret`. The probe listener has its own
+  port and is not on the Service or Route. `logAccess.gatewayPodSelector`
+  defaults to the gateway's labels when the gateway is enabled. CI validates the
+  rendered config with the Envoy tag from `logGateway.image.tag`. Off in every
+  overlay.
+- `logGateway.metrics` for monitoring the log gateway. A `metrics` listener on its own
+  port (`metrics.port`, default `9102`) serves only `/stats/prometheus`, so the
+  loopback admin interface stays unreachable. Optional `PodMonitor`
+  (`metrics.podMonitor.enabled`) and `PrometheusRule` (`metrics.prometheusRule.enabled`),
+  both default `false`, with alerts for a down gateway, unavailable replicas, decision
+  endpoint failures, 5xx responses, Loki connect failures, p99 latency, a high deny rate
+  and an expiring certificate. `networkPolicy.monitoring.namespaceSelector` and
+  `networkPolicy.monitoring.podSelector` (default `app.kubernetes.io/name: alloy`, the
+  in-namespace collector) admit the scraper to the metrics port when the `PodMonitor` is
+  enabled. The `PodMonitor` adds a `release` label from the pod's instance label, and the
+  alerts select and are labelled on `release`, so releases sharing a namespace stay apart.
+- `networkPolicy.logGateway.ingressPeers` (default `[]`): extra peers allowed to call the
+  log gateway besides the router, for example an in-cluster Grafana.
+- Rendering fails when `logGateway.enabled` is true and `networkPolicy.dnsEgress.enabled` is
+  false or `networkPolicy.dnsEgress.ports` is empty. Envoy finds the log-access endpoint and
+  Loki by name, so without DNS every query would be refused, and a DNS rule with no ports
+  would open the gateway's egress to everything.
+- The log gateway drops idle connections to the log-access endpoint after 4s (it closes
+  its own after about 5s, which refused some valid queries), and answers a Loki outage or
+  timeout as JSON `{"error":"unavailable"}` with the status unchanged.
+  `logGateway.upstream.timeout` now defaults to `65s` and `logGateway.route.annotations`
+  to `haproxy.router.openshift.io/timeout: 70s`, so long queries are not cut off.
 - `logAccess` values (`enabled` default `false`, `port`, `tls.mountPath`,
   `gatewayPodSelector`) and `config.LOG_GATEWAY_AUDIENCE` (default `""`) for the
   internal log-access decision endpoint that the log gateway's `ext_authz`

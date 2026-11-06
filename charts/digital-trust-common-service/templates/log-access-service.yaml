@@ -2,7 +2,11 @@
 {{- if not .Values.networkPolicy.enabled }}
 {{- fail "networkPolicy.enabled must be true when logAccess.enabled is true; the NetworkPolicy is the only thing limiting the internal endpoint to the log gateway" }}
 {{- end }}
-{{- if not .Values.logAccess.gatewayPodSelector }}
+{{- $gatewayPodSelector := .Values.logAccess.gatewayPodSelector }}
+{{- if and (not $gatewayPodSelector) .Values.logGateway.enabled }}
+{{- $gatewayPodSelector = include "digital-trust-common-service.logGateway.selectorLabels" . | fromYaml }}
+{{- end }}
+{{- if not $gatewayPodSelector }}
 {{- fail "logAccess.gatewayPodSelector is required when logAccess.enabled is true; an empty selector would admit every pod" }}
 {{- end }}
 # Internal decision endpoint for the log gateway's ext_authz filter. A separate
@@ -42,7 +46,7 @@ spec:
     - from:
         - podSelector:
             matchLabels:
-              {{- toYaml .Values.logAccess.gatewayPodSelector | nindent 14 }}
+              {{- toYaml $gatewayPodSelector | nindent 14 }}
       ports:
         - protocol: TCP
           port: log-access

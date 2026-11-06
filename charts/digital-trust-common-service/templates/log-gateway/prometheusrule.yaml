@@ -1,0 +1,130 @@
+{{- if and .Values.logGateway.enabled .Values.logGateway.metrics.prometheusRule.enabled }}
+{{- $m := .Values.logGateway.metrics.prometheusRule }}
+{{- $ns := .Release.Namespace }}
+{{- $deploy := include "digital-trust-common-service.logGateway.fullname" . }}
+{{- $sel := printf `release="%s",namespace="%s"` .Release.Name $ns }}
+{{- $gw := `envoy_http_conn_manager_prefix="gateway"` }}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ $deploy }}
+  labels:
+    {{- include "digital-trust-common-service.logGateway.labels" . | nindent 4 }}
+    {{- with $m.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  groups:
+    - name: {{ $deploy }}
+      rules:
+        - alert: LogGatewayDown
+          expr: (sum(up{ {{- $sel -}} }) or vector(0)) == 0
+          for: 5m
+          labels:
+            severity: critical
+            release: {{ $.Release.Name | quote }}
+            {{- with $m.alertLabels }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          annotations:
+            summary: Log gateway is not being scraped or has no running pods
+            description: No log gateway pod in {{ $ns }} has answered a scrape for 5 minutes, so tenants cannot read their logs.
+        - alert: LogGatewayReplicasUnavailable
+          expr: kube_deployment_status_replicas_unavailable{namespace="{{ $ns }}",deployment="{{ $deploy }}"} > 0
+          for: 15m
+          labels:
+            severity: warning
+            release: {{ $.Release.Name | quote }}
+            {{- with $m.alertLabels }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          annotations:
+            summary: Log gateway has unavailable replicas
+            description: '{{`{{ $value }}`}} replica(s) of {{ $deploy }} have been unavailable for 15 minutes.'
+        - alert: LogGatewayDecisionEndpointErrors
+          # The gateway fails closed, so every failed or slow check is a tenant
+          # who is refused access to their own logs.
+          expr: |
+            sum(rate(envoy_http_ext_authz_error{ {{- $sel -}},{{- $gw -}} }[10m]))
+              / sum(rate(envoy_http_downstream_rq_total{ {{- $sel -}},{{- $gw -}} }[10m])) > {{ $m.checkErrorRatio }}
+            and sum(increase(envoy_http_downstream_rq_total{ {{- $sel -}},{{- $gw -}} }[10m])) > 20
+          for: 10m
+          labels:
+            severity: critical
+            release: {{ $.Release.Name | quote }}
+            {{- with $m.alertLabels }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          annotations:
+            summary: Log access decision endpoint is failing for the log gateway
+            description: More than {{ mulf $m.checkErrorRatio 100 }}% of gateway requests could not get a decision for 10 minutes. Check the API pods and the log access Service.
+        - alert: LogGatewayUpstreamErrors
+          expr: |
+            sum(rate(envoy_http_downstream_rq_xx{ {{- $sel -}},{{- $gw -}},envoy_response_code_class="5"}[10m]))
+              / sum(rate(envoy_http_downstream_rq_total{ {{- $sel -}},{{- $gw -}} }[10m])) > {{ $m.errorRatio }}
+            and sum(increase(envoy_http_downstream_rq_total{ {{- $sel -}},{{- $gw -}} }[10m])) > 20
+          for: 10m
+          labels:
+            severity: warning
+            release: {{ $.Release.Name | quote }}
+            {{- with $m.alertLabels }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          annotations:
+            summary: Log gateway is returning 5xx
+            description: More than {{ mulf $m.errorRatio 100 }}% of gateway responses were 5xx for 10 minutes. Loki is erroring or unreachable.
+        - alert: LogGatewayLokiConnectFailures
+          expr: sum(rate(envoy_cluster_upstream_cx_connect_fail{ {{- $sel -}},envoy_cluster_name="loki"}[10m])) > 0
+          for: 10m
+          labels:
+            severity: warning
+            release: {{ $.Release.Name | quote }}
+            {{- with $m.alertLabels }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          annotations:
+            summary: Log gateway cannot connect to Loki
+            description: Connections from the gateway to Loki have been failing for 10 minutes. Check the egress NetworkPolicy and the Loki gateway pods.
+        - alert: LogGatewayHighLatency
+          expr: |
+            histogram_quantile(0.99, sum by (le) (rate(envoy_http_downstream_rq_time_bucket{ {{- $sel -}},{{- $gw -}} }[10m]))) > {{ $m.latencyP99Ms }}
+          for: 15m
+          labels:
+            severity: warning
+            release: {{ $.Release.Name | quote }}
+            {{- with $m.alertLabels }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          annotations:
+            summary: Log gateway p99 latency is high
+            description: p99 request latency has been above {{ $m.latencyP99Ms }} ms for 15 minutes.
+        - alert: LogGatewayHighDenyRate
+          # Mostly a signal, not an outage: a probing caller or a broken
+          # token issuer both look like this.
+          expr: |
+            sum(rate(envoy_http_ext_authz_denied{ {{- $sel -}},{{- $gw -}} }[15m]))
+              / sum(rate(envoy_http_downstream_rq_total{ {{- $sel -}},{{- $gw -}} }[15m])) > {{ $m.denyRatio }}
+            and sum(increase(envoy_http_downstream_rq_total{ {{- $sel -}},{{- $gw -}} }[15m])) > 20
+          for: 15m
+          labels:
+            severity: info
+            release: {{ $.Release.Name | quote }}
+            {{- with $m.alertLabels }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          annotations:
+            summary: Most log gateway requests are being denied
+            description: More than {{ mulf $m.denyRatio 100 }}% of gateway requests were denied for 15 minutes.
+        - alert: LogGatewayCertificateExpiring
+          expr: min(envoy_server_days_until_first_cert_expiring{ {{- $sel -}} }) < {{ $m.certExpiryDays }}
+          for: 1h
+          labels:
+            severity: warning
+            release: {{ $.Release.Name | quote }}
+            {{- with $m.alertLabels }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          annotations:
+            summary: Log gateway certificate is about to expire
+            description: A certificate the gateway loaded expires in under {{ $m.certExpiryDays }} days. The certificate is read once at start, so a rotated one needs a pod restart.
+{{- end }}

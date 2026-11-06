@@ -1,0 +1,19 @@
+{{- if .Values.logGateway.enabled -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "digital-trust-common-service.logGateway.fullname" . }}
+  labels:
+    {{- include "digital-trust-common-service.logGateway.labels" . | nindent 4 }}
+  annotations:
+    service.beta.openshift.io/serving-cert-secret-name: {{ include "digital-trust-common-service.logGateway.fullname" . }}-tls
+spec:
+  type: {{ .Values.logGateway.service.type }}
+  ports:
+    - port: {{ .Values.logGateway.service.port }}
+      targetPort: https
+      protocol: TCP
+      name: https
+  selector:
+    {{- include "digital-trust-common-service.logGateway.selectorLabels" . | nindent 4 }}
+{{- end }}

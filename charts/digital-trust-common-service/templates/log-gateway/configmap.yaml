@@ -1,0 +1,347 @@
+{{- if .Values.logGateway.enabled -}}
+{{- if not .Values.logAccess.enabled }}
+{{- fail "logAccess.enabled must be true when logGateway.enabled is true; the gateway has no decision endpoint to call without it" }}
+{{- end }}
+{{- if not .Values.networkPolicy.enabled }}
+{{- fail "networkPolicy.enabled must be true when logGateway.enabled is true; the NetworkPolicy is what limits the gateway's egress to the decision endpoint and Loki" }}
+{{- end }}
+{{- if not .Values.networkPolicy.dnsEgress.enabled }}
+{{- fail "networkPolicy.dnsEgress.enabled must be true when logGateway.enabled is true; Envoy finds the decision endpoint and Loki by name, and the gateway's egress policy blocks DNS without it" }}
+{{- end }}
+{{- if not .Values.networkPolicy.dnsEgress.ports }}
+{{- fail "networkPolicy.dnsEgress.ports must not be empty when logGateway.enabled is true; a DNS rule with no ports would open the gateway's egress to everything" }}
+{{- end }}
+{{- if not .Values.logGateway.upstream.host }}
+{{- fail "logGateway.upstream.host is required when logGateway.enabled is true" }}
+{{- end }}
+{{- if not .Values.logGateway.upstream.auth.existingSecret.name }}
+{{- fail "logGateway.upstream.auth.existingSecret.name is required when logGateway.enabled is true; the Loki gateway answers 401 without a login" }}
+{{- end }}
+{{- $checkHost := printf "%s-log-access.%s.svc" (include "digital-trust-common-service.fullname" .) .Release.Namespace -}}
+{{- $denial := `{"error":"forbidden"}` -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "digital-trust-common-service.logGateway.configMapName" . }}
+  labels:
+    {{- include "digital-trust-common-service.logGateway.labels" . | nindent 4 }}
+data:
+  envoy.yaml: |
+    # The admin interface stays on loopback. The probe listener below is the
+    # only thing the kubelet can reach, and it exposes nothing else.
+    admin:
+      address:
+        socket_address:
+          address: 127.0.0.1
+          port_value: 9901
+    static_resources:
+      listeners:
+        - name: gateway
+          address:
+            socket_address:
+              address: 0.0.0.0
+              port_value: {{ .Values.logGateway.service.targetPort }}
+          filter_chains:
+            - transport_socket:
+                name: envoy.transport_sockets.tls
+                typed_config:
+                  "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.DownstreamTlsContext
+                  common_tls_context:
+                    tls_certificates:
+                      - certificate_chain:
+                          filename: {{ .Values.logGateway.tls.mountPath }}/tls.crt
+                        private_key:
+                          filename: {{ .Values.logGateway.tls.mountPath }}/tls.key
+              filters:
+                - name: envoy.filters.network.http_connection_manager
+                  typed_config:
+                    "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+                    stat_prefix: gateway
+                    # Paths are matched exactly as sent: nothing is normalised,
+                    # so "..", "//" and encoded variants simply match no
+                    # allowed route. An encoded slash is refused outright and
+                    # answered like any other denial by the local reply below.
+                    normalize_path: false
+                    merge_slashes: false
+                    path_with_escaped_slashes_action: REJECT_REQUEST
+                    access_log:
+                      # Method, path without its query string, and outcome only.
+                      # Headers and tokens are never logged.
+                      - name: envoy.access_loggers.stdout
+                        typed_config:
+                          "@type": type.googleapis.com/envoy.extensions.access_loggers.stream.v3.StdoutAccessLog
+                          log_format:
+                            json_format:
+                              method: "%REQ(:METHOD)%"
+                              path: "%PATH(NQ)%"
+                              status: "%RESPONSE_CODE%"
+                              response_flags: "%RESPONSE_FLAGS%"
+                              details: "%RESPONSE_CODE_DETAILS%"
+                    # Envoy's own failures (decision endpoint down or slow; a
+                    # rejected path) must look exactly like the service's
+                    # denial, so a caller cannot tell them apart. The service's
+                    # own 403 body is the same, so mapping every 403 is safe.
+                    local_reply_config:
+                      mappers:
+                        # Loki down or slow: Envoy's own 503 or 504 would
+                        # otherwise be plain text naming the proxy. The status
+                        # is kept so clients and monitoring can still tell an
+                        # outage from a denial.
+                        - filter:
+                            status_code_filter:
+                              comparison:
+                                op: GE
+                                value:
+                                  default_value: 500
+                                  runtime_key: log_gateway.unavailable
+                          body:
+                            inline_string: '{"error":"unavailable"}'
+                          headers_to_add:
+                            - header:
+                                key: content-type
+                                value: application/json
+                              append_action: OVERWRITE_IF_EXISTS_OR_ADD
+                        - filter:
+                            or_filter:
+                              filters:
+                                - status_code_filter:
+                                    comparison:
+                                      op: EQ
+                                      value:
+                                        default_value: 400
+                                        runtime_key: log_gateway.rejected_path
+                                - status_code_filter:
+                                    comparison:
+                                      op: EQ
+                                      value:
+                                        default_value: 403
+                                        runtime_key: log_gateway.denied
+                          status_code: 403
+                          body:
+                            inline_string: {{ $denial | squote }}
+                          headers_to_add:
+                            - header:
+                                key: content-type
+                                value: application/json
+                              append_action: OVERWRITE_IF_EXISTS_OR_ADD
+                    http_filters:
+                      # On every route, the catch-all included, so a caller with
+                      # no token cannot tell a real route from an unknown one.
+                      - name: envoy.filters.http.ext_authz
+                        typed_config:
+                          "@type": type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthz
+                          failure_mode_allow: false
+                          allowed_headers:
+                            patterns:
+                              - exact: authorization
+                              - exact: x-scope-orgid
+                          status_on_error:
+                            code: Forbidden
+                          http_service:
+                            server_uri:
+                              uri: https://{{ $checkHost }}:{{ .Values.logAccess.port }}
+                              cluster: log_access
+                              timeout: {{ .Values.logGateway.extAuthz.timeout }}
+                            path_prefix: /internal/log-access/check
+                            authorization_response:
+                              # Overwrites whatever the caller sent. Nothing
+                              # else the decision endpoint returns is used.
+                              allowed_upstream_headers:
+                                patterns:
+                                  - exact: x-scope-orgid
+                              allowed_client_headers:
+                                patterns:
+                                  - exact: content-type
+                      - name: envoy.filters.http.router
+                        typed_config:
+                          "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+                    route_config:
+                      name: gateway
+                      # Both run after the decision, so the decision endpoint
+                      # still sees the caller's token while Loki only ever sees
+                      # its own login. They share a level because the removal
+                      # is applied before the addition only within one level.
+                      request_headers_to_remove:
+                        - authorization
+                      request_headers_to_add:
+                        - header:
+                            key: authorization
+                            value: "%ENVIRONMENT(LOKI_AUTHORIZATION)%"
+                          append_action: OVERWRITE_IF_EXISTS_OR_ADD
+                      virtual_hosts:
+                        - name: loki
+                          domains: ["*"]
+                          routes:
+{{- range $path := list "query" "query_range" "labels" "series" "index/stats" "index/volume" "index/volume_range" "format_query" "detected_fields" "detected_labels" "patterns" }}
+                            - match:
+                                path: /loki/api/v1/{{ $path }}
+                                headers:
+                                  - name: ":method"
+                                    string_match:
+                                      safe_regex:
+                                        regex: GET|POST
+                              route:
+                                cluster: loki
+                                timeout: {{ $.Values.logGateway.upstream.timeout }}
+{{- end }}
+{{- range $path := list "label" "detected_field" }}
+                            - match:
+                                safe_regex:
+                                  regex: /loki/api/v1/{{ $path }}/[A-Za-z0-9_][A-Za-z0-9_.-]*/values
+                                headers:
+                                  - name: ":method"
+                                    string_match:
+                                      safe_regex:
+                                        regex: GET|POST
+                              route:
+                                cluster: loki
+                                timeout: {{ $.Values.logGateway.upstream.timeout }}
+{{- end }}
+                            # Everything else, live tail included.
+                            - match:
+                                prefix: /
+                              direct_response:
+                                status: 403
+                                body:
+                                  inline_string: {{ $denial | squote }}
+                              response_headers_to_add:
+                                - header:
+                                    key: content-type
+                                    value: application/json
+        - name: probe
+          address:
+            socket_address:
+              address: 0.0.0.0
+              port_value: {{ .Values.logGateway.probePort }}
+          filter_chains:
+            - filters:
+                - name: envoy.filters.network.http_connection_manager
+                  typed_config:
+                    "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+                    stat_prefix: probe
+                    http_filters:
+                      - name: envoy.filters.http.router
+                        typed_config:
+                          "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+                    route_config:
+                      name: probe
+                      virtual_hosts:
+                        - name: probe
+                          domains: ["*"]
+                          routes:
+                            - match:
+                                path: /livez
+                              direct_response:
+                                status: 200
+                            - match:
+                                path: /ready
+                              route:
+                                cluster: admin
+                            - match:
+                                prefix: /
+                              direct_response:
+                                status: 404
+        # Serves only the Prometheus scrape path from the loopback admin
+        # interface, so nothing else on the admin listener becomes reachable.
+        - name: metrics
+          address:
+            socket_address:
+              address: 0.0.0.0
+              port_value: {{ .Values.logGateway.metrics.port }}
+          filter_chains:
+            - filters:
+                - name: envoy.filters.network.http_connection_manager
+                  typed_config:
+                    "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+                    stat_prefix: metrics
+                    http_filters:
+                      - name: envoy.filters.http.router
+                        typed_config:
+                          "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+                    route_config:
+                      name: metrics
+                      virtual_hosts:
+                        - name: metrics
+                          domains: ["*"]
+                          routes:
+                            - match:
+                                path: /stats/prometheus
+                              route:
+                                cluster: admin
+                            - match:
+                                prefix: /
+                              direct_response:
+                                status: 404
+      clusters:
+        - name: log_access
+          type: STRICT_DNS
+          connect_timeout: 2s
+          # The decision endpoint closes idle connections after about five
+          # seconds, while Envoy keeps pooled ones for an hour. A check sent on
+          # a connection that is closing fails and is not retried, which would
+          # refuse a valid query. Dropping idle connections sooner avoids it.
+          typed_extension_protocol_options:
+            envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+              "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+              common_http_protocol_options:
+                idle_timeout: 4s
+              explicit_http_config:
+                http_protocol_options: {}
+          load_assignment:
+            cluster_name: log_access
+            endpoints:
+              - lb_endpoints:
+                  - endpoint:
+                      address:
+                        socket_address:
+                          address: {{ $checkHost }}
+                          port_value: {{ .Values.logAccess.port }}
+          transport_socket:
+            name: envoy.transport_sockets.tls
+            typed_config:
+              "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
+              sni: {{ $checkHost }}
+              common_tls_context:
+                validation_context:
+                  trusted_ca:
+                    filename: /var/run/secrets/openshift-service-ca/service-ca.crt
+                  match_typed_subject_alt_names:
+                    - san_type: DNS
+                      matcher:
+                        exact: {{ $checkHost }}
+        - name: loki
+          type: STRICT_DNS
+          connect_timeout: 2s
+          load_assignment:
+            cluster_name: loki
+            endpoints:
+              - lb_endpoints:
+                  - endpoint:
+                      address:
+                        socket_address:
+                          address: {{ .Values.logGateway.upstream.host }}
+                          port_value: {{ .Values.logGateway.upstream.port }}
+        - name: admin
+          type: STATIC
+          connect_timeout: 1s
+          load_assignment:
+            cluster_name: admin
+            endpoints:
+              - lb_endpoints:
+                  - endpoint:
+                      address:
+                        socket_address:
+                          address: 127.0.0.1
+                          port_value: 9901
+---
+# OpenShift fills this with the service CA bundle, which signs the decision
+# endpoint's serving certificate.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "digital-trust-common-service.logGateway.caBundleConfigMapName" . }}
+  labels:
+    {{- include "digital-trust-common-service.logGateway.labels" . | nindent 4 }}
+  annotations:
+    service.beta.openshift.io/inject-cabundle: "true"
+{{- end }}

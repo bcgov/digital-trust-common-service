@@ -141,6 +141,54 @@ Frontend labels
 {{- end }}
 
 {{/*
+Log gateway fully-qualified name
+*/}}
+{{- define "digital-trust-common-service.logGateway.fullname" -}}
+{{- printf "%s-log-gateway" (include "digital-trust-common-service.fullname" .) | trunc 63 | trimSuffix "-" }}
+{{- end }}
+
+{{/*
+Log gateway Envoy config ConfigMap name
+*/}}
+{{- define "digital-trust-common-service.logGateway.configMapName" -}}
+{{- printf "%s-log-gateway-config" (include "digital-trust-common-service.fullname" . | trunc 44 | trimSuffix "-") }}
+{{- end }}
+
+{{/*
+Log gateway ConfigMap that OpenShift fills with the service CA bundle
+*/}}
+{{- define "digital-trust-common-service.logGateway.caBundleConfigMapName" -}}
+{{- printf "%s-log-gateway-ca" (include "digital-trust-common-service.fullname" . | trunc 44 | trimSuffix "-") }}
+{{- end }}
+
+{{/*
+Log gateway selector labels
+*/}}
+{{- define "digital-trust-common-service.logGateway.selectorLabels" -}}
+{{ include "digital-trust-common-service.selectorBaseLabels" . }}
+app.kubernetes.io/component: log-gateway
+{{- end }}
+
+{{/*
+Log gateway labels
+*/}}
+{{- define "digital-trust-common-service.logGateway.labels" -}}
+{{ include "digital-trust-common-service.commonLabels" . }}
+{{ include "digital-trust-common-service.logGateway.selectorLabels" . }}
+{{- end }}
+
+{{/*
+Fully-qualified log gateway (Envoy) image reference.
+*/}}
+{{- define "digital-trust-common-service.logGateway.image" -}}
+{{- if .Values.logGateway.image.registry -}}
+{{- printf "%s/%s:%s" .Values.logGateway.image.registry .Values.logGateway.image.repository .Values.logGateway.image.tag -}}
+{{- else -}}
+{{- printf "%s:%s" .Values.logGateway.image.repository .Values.logGateway.image.tag -}}
+{{- end -}}
+{{- end }}
+
+{{/*
 Create the name of the service account to use
 */}}
 {{- define "digital-trust-common-service.serviceAccountName" -}}
