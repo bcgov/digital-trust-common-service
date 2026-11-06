@@ -83,15 +83,20 @@ export function TenantLayout() {
   }
 
   return (
-    <div className={cn('flex flex-col', !isUsersPage && 'gap-4')}>
+    <div
+      className={cn(
+        'flex flex-col',
+        !isUsersPage && 'gap-(--layout-margin-large)',
+      )}
+    >
       {!isUsersPage && (
         <>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-(--layout-margin-medium)">
             {isLoading ? (
-              <Skeleton className="h-7 w-48" />
+              <Skeleton className="h-12 w-64" />
             ) : (
               <>
-                <h1 className="text-xl font-semibold">
+                <h1 className="text-h1 font-bold text-black">
                   {tenant?.name ?? t('tenant.title')}
                 </h1>
                 {tenant?.status && <TenantStatusTag status={tenant.status} />}
@@ -101,7 +106,7 @@ export function TenantLayout() {
 
           <nav
             aria-label={t('tenantTabs.label')}
-            className="flex gap-1 border-b border-(--surface-color-border-default)"
+            className="flex gap-(--layout-margin-xsmall) border-b border-(--surface-color-border-default)"
           >
             {tabs.map(({ to, label, end }) => (
               <NavLink
@@ -110,7 +115,7 @@ export function TenantLayout() {
                 end={end}
                 className={({ isActive }) =>
                   cn(
-                    '-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors',
+                    '-mb-px border-b-2 px-(--layout-padding-medium) py-(--layout-padding-small) text-small-body transition-colors',
                     isActive
                       ? 'border-(--surface-color-primary-button-default) text-(--typography-color-primary)'
                       : 'border-transparent text-(--typography-color-secondary) hover:text-(--typography-color-primary)',
