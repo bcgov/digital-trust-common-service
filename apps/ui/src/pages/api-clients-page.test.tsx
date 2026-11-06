@@ -95,10 +95,10 @@ describe('ApiClientsPage', () => {
     );
     const dialog = await screen.findByRole('dialog');
     await user.type(
-      within(dialog).getByLabelText('Client name'),
+      within(dialog).getByLabelText(/^Client name/),
       'My integration',
     );
-    const clientId = within(dialog).getByLabelText('Client ID');
+    const clientId = within(dialog).getByLabelText(/^Client ID/);
     expect(clientId).toHaveValue('dtcs_my-integration');
     await user.clear(clientId);
     await user.type(clientId, 'dtcs_custom-integration');
@@ -112,10 +112,10 @@ describe('ApiClientsPage', () => {
     );
     await user.keyboard('{Escape}');
     expect(
-      within(dialog).getByRole('button', {
-        name: 'Remove credentials:offer scope',
-      }).parentElement,
-    ).toHaveClass('border-blue-600', 'text-blue-700');
+      within(dialog)
+        .getByRole('button', { name: /^Remove credentials:offer/ })
+        .closest('.bcds-react-aria-Tag'),
+    ).toHaveClass('blue');
     await user.click(within(dialog).getByRole('button', { name: 'Add URI' }));
     await user.type(
       within(dialog).getByLabelText('Redirect URI 1'),
@@ -151,7 +151,7 @@ describe('ApiClientsPage', () => {
       (await screen.findAllByRole('button', { name: 'Create integration' }))[0],
     );
     const dialog = await screen.findByRole('dialog');
-    const clientId = within(dialog).getByLabelText('Client ID');
+    const clientId = within(dialog).getByLabelText(/^Client ID/);
     await user.clear(clientId);
     await user.type(clientId, 'custom-client');
 
@@ -177,10 +177,10 @@ describe('ApiClientsPage', () => {
     const table = await screen.findByRole('table', { name: 'API clients' });
     expect(within(table).getByText('dtcs_example')).toBeInTheDocument();
     const scopeBadge = within(table).getByText('credentials:offer');
-    expect(scopeBadge).toHaveClass('border-blue-600', 'text-blue-700');
+    expect(scopeBadge.closest('.bcds-react-aria-Tag')).toHaveClass('blue');
     expect(
       within(table).queryByRole('button', {
-        name: 'Remove credentials:offer scope',
+        name: /^Remove credentials:offer/,
       }),
     ).not.toBeInTheDocument();
     await user.click(
@@ -197,13 +197,14 @@ describe('ApiClientsPage', () => {
     await user.click(screen.getByRole('menuitem', { name: 'View details' }));
     const details = await screen.findByRole('dialog');
     expect(within(details).getByText('dtcs_example')).toBeInTheDocument();
-    expect(within(details).getByText('credentials:offer')).toHaveClass(
-      'border-blue-600',
-      'text-blue-700',
-    );
+    expect(
+      within(details)
+        .getByText('credentials:offer')
+        .closest('.bcds-react-aria-Tag'),
+    ).toHaveClass('blue');
     expect(
       within(details).queryByRole('button', {
-        name: 'Remove credentials:offer scope',
+        name: /^Remove credentials:offer/,
       }),
     ).not.toBeInTheDocument();
     expect(
@@ -244,7 +245,7 @@ describe('ApiClientsPage', () => {
     await user.keyboard('{Escape}');
     expect(
       within(dialog).queryByRole('button', {
-        name: 'Remove credentials:offer scope',
+        name: /^Remove credentials:offer/,
       }),
     ).not.toBeInTheDocument();
     await user.click(
@@ -258,10 +259,10 @@ describe('ApiClientsPage', () => {
     await user.keyboard('{Escape}');
     expect(
       within(dialog).getByRole('button', {
-        name: 'Remove credentials:offer scope',
+        name: /^Remove credentials:offer/,
       }),
     ).toBeInTheDocument();
-    const name = within(dialog).getByLabelText('Client name');
+    const name = within(dialog).getByLabelText(/^Client name/);
     await user.clear(name);
     await user.type(name, 'Updated service');
     await user.click(
@@ -389,15 +390,11 @@ describe('ApiClientsPage', () => {
       const toggle = await screen.findByRole('switch', {
         name: 'Active status for Issuance service',
       });
-      expect(toggle).toHaveAttribute(
-        'aria-checked',
-        String(action === 'disable'),
-      );
+      if (action === 'disable') expect(toggle).toBeChecked();
+      else expect(toggle).not.toBeChecked();
       await user.click(toggle);
-      expect(toggle).toHaveAttribute(
-        'aria-checked',
-        String(action === 'disable'),
-      );
+      if (action === 'disable') expect(toggle).toBeChecked();
+      else expect(toggle).not.toBeChecked();
       expect(changed).toBe(false);
       const dialog = await screen.findByRole('dialog');
       await user.click(
@@ -524,7 +521,7 @@ describe('ApiClientsPage', () => {
     );
     const dialog = await screen.findByRole('dialog');
     await user.type(
-      within(dialog).getByLabelText('Client name'),
+      within(dialog).getByLabelText(/^Client name/),
       'Retry service',
     );
     await user.click(
@@ -559,7 +556,7 @@ describe('ApiClientsPage', () => {
     );
     const dialog = await screen.findByRole('dialog');
     await user.type(
-      within(dialog).getByLabelText('Client name'),
+      within(dialog).getByLabelText(/^Client name/),
       'Pending service',
     );
     await user.click(
