@@ -1,16 +1,9 @@
+import { InlineAlert } from '@bcgov/design-system-react-components';
 import type { ParseKeys } from 'i18next';
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useParams } from 'react-router';
 
-import { Button } from '@/components/common/button';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/common/card';
 import { Skeleton } from '@/components/common/skeleton';
 import { ApiError } from '@/lib/api/errors';
 import type { Page } from '@/lib/api/pagination';
@@ -44,19 +37,33 @@ function StatCard({ title, query }: StatCardProps) {
   let hint: ReactNode = null;
 
   if (!query) {
-    hint = <CardDescription>{t('overview.comingSoon')}</CardDescription>;
+    hint = (
+      <p className="text-sm text-(--typography-color-secondary)">
+        {t('overview.comingSoon')}
+      </p>
+    );
   } else if (query.isLoading) {
     value = <Skeleton className="h-9 w-12" />;
   } else if (query.error instanceof ApiError && query.error.status === 403) {
     // A role without the read scope is the normal case, not a failure.
-    hint = <CardDescription>{t('overview.notForRole')}</CardDescription>;
+    hint = (
+      <p className="text-sm text-(--typography-color-secondary)">
+        {t('overview.notForRole')}
+      </p>
+    );
   } else if (query.error) {
     hint = (
-      <p role="alert" className="text-sm text-destructive">
-        {query.error instanceof ApiError
-          ? t('overview.loadFailedWithReason', { reason: query.error.message })
-          : t('overview.loadFailed')}
-      </p>
+      <InlineAlert
+        variant="danger"
+        role="alert"
+        description={
+          query.error instanceof ApiError
+            ? t('overview.loadFailedWithReason', {
+                reason: query.error.message,
+              })
+            : t('overview.loadFailed')
+        }
+      />
     );
   } else if (query.data) {
     // No endpoint reports a total, so a full page is a lower bound.
@@ -65,13 +72,11 @@ function StatCard({ title, query }: StatCardProps) {
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardDescription>{title}</CardDescription>
-        <CardTitle className="text-3xl tabular-nums">{value}</CardTitle>
-        {hint}
-      </CardHeader>
-    </Card>
+    <div className="flex flex-col gap-1 rounded-xl border border-(--surface-color-border-default) bg-(--surface-color-background-white) p-4">
+      <p className="text-sm text-(--typography-color-secondary)">{title}</p>
+      <div className="text-3xl font-medium tabular-nums">{value}</div>
+      {hint}
+    </div>
   );
 }
 
@@ -93,11 +98,15 @@ export function TenantOverviewPage() {
 
   if (error) {
     return (
-      <p role="alert" className="text-sm text-destructive">
-        {error instanceof ApiError
-          ? t('tenant.loadFailedWithReason', { reason: error.message })
-          : t('tenant.loadFailed')}
-      </p>
+      <InlineAlert
+        variant="danger"
+        role="alert"
+        description={
+          error instanceof ApiError
+            ? t('tenant.loadFailedWithReason', { reason: error.message })
+            : t('tenant.loadFailed')
+        }
+      />
     );
   }
 
@@ -113,34 +122,40 @@ export function TenantOverviewPage() {
         <h2 className="text-base font-medium">{t('overview.quickActions')}</h2>
         <div className="flex flex-wrap gap-2">
           {quickActions.map(({ label, to }) => (
-            <Button key={label} asChild variant="outline">
-              <Link to={to}>{t(label)}</Link>
-            </Button>
+            <Link
+              key={label}
+              to={to}
+              className="bcds-react-aria-Button medium secondary"
+            >
+              {t(label)}
+            </Link>
           ))}
         </div>
       </section>
 
-      <Card className="max-w-lg">
-        <CardHeader>
-          <CardTitle>{t('overview.details')}</CardTitle>
-        </CardHeader>
-        <CardContent>
+      <section className="flex max-w-lg flex-col gap-4 rounded-xl border border-(--surface-color-border-default) bg-(--surface-color-background-white) p-4">
+        <h2 className="text-base font-medium">{t('overview.details')}</h2>
+        <div>
           <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-sm">
-            <dt className="text-muted-foreground">
+            <dt className="text-(--typography-color-secondary)">
               {t('tenants.fields.slug')}
             </dt>
             <dd className="font-mono text-xs leading-5">
               {tenant?.slug ?? '—'}
             </dd>
-            <dt className="text-muted-foreground">{t('common.status')}</dt>
+            <dt className="text-(--typography-color-secondary)">
+              {t('common.status')}
+            </dt>
             <dd>
               {tenant?.status ? t(`tenants.status.${tenant.status}`) : '—'}
             </dd>
-            <dt className="text-muted-foreground">
+            <dt className="text-(--typography-color-secondary)">
               {t('tenants.fields.description')}
             </dt>
             <dd>{tenant?.description ?? '—'}</dd>
-            <dt className="text-muted-foreground">{t('common.created')}</dt>
+            <dt className="text-(--typography-color-secondary)">
+              {t('common.created')}
+            </dt>
             <dd>
               {tenant?.created_at
                 ? new Intl.DateTimeFormat(i18n.language, {
@@ -154,8 +169,8 @@ export function TenantOverviewPage() {
                 : '—'}
             </dd>
           </dl>
-        </CardContent>
-      </Card>
+        </div>
+      </section>
     </div>
   );
 }
