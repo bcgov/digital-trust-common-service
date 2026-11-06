@@ -26,7 +26,7 @@ import {
   ConnectionState,
   ConnectorType,
 } from '../connection/connection.entity';
-import { ConnectorCredential } from '../connector-credential/connector-credential.entity';
+import { Connector } from '../connector/connector.entity';
 import { Credential, CredentialState } from '../credential/credential.entity';
 import { CredentialDefinitionFormat } from '../credential-definition/credential-definition.entity';
 import { OPERATION_TYPE } from '../operation/operation-type.constants';
@@ -43,7 +43,7 @@ describe('credential exchanges (integration)', () => {
   let service: CredentialExchangeService;
   let operations: OperationService;
   let tenant: Tenant;
-  let connector: ConnectorCredential;
+  let connector: Connector;
   let connection: Connection;
   let exchange: CredentialExchange;
   let offer: Operation;
@@ -113,7 +113,7 @@ describe('credential exchanges (integration)', () => {
       slug: `exchange-${randomUUID()}`,
       config: {},
     });
-    connector = await db.getRepository(ConnectorCredential).save({
+    connector = await db.getRepository(Connector).save({
       tenantId: tenant.id,
       connectorType: ConnectorType.TRACTION,
       credentialsEncrypted: randomBytes(32),
@@ -183,7 +183,7 @@ describe('credential exchanges (integration)', () => {
     await db.getRepository(Operation).delete({ tenantId: tenant.id });
     await db.getRepository(CredentialExchange).delete({ tenantId: tenant.id });
     await db.getRepository(Connection).delete({ tenantId: tenant.id });
-    await db.getRepository(ConnectorCredential).delete({ tenantId: tenant.id });
+    await db.getRepository(Connector).delete({ tenantId: tenant.id });
     await db.getRepository(Tenant).delete(tenant.id);
   });
 
@@ -509,7 +509,7 @@ describe('credential exchanges (integration)', () => {
   });
 
   it('refuses a connection pinned to another connector', async () => {
-    const other = await db.getRepository(ConnectorCredential).save({
+    const other = await db.getRepository(Connector).save({
       tenantId: tenant.id,
       connectorType: ConnectorType.TRACTION,
       credentialsEncrypted: randomBytes(32),
