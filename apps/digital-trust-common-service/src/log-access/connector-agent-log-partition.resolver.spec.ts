@@ -312,6 +312,31 @@ describe('ConnectorAgentLogPartitionResolver', () => {
       );
     });
 
+    it('keeps the old wallet in scope until the cache expires after a rotation', async () => {
+      findByTenant.mockResolvedValue([connector('c1', 'wallet-1')]);
+      await service().resolveScope('Bearer x');
+
+      findByTenant.mockResolvedValue([connector('c1', 'wallet-2')]);
+      jest.advanceTimersByTime(AGENT_PARTITION_CACHE_TTL_MS - 1);
+
+      await expect(service().resolveScope('Bearer x')).resolves.toBe(
+        `t-${TENANT_ID}|a-traction-wallet-1`,
+      );
+    });
+
+    it('scopes to the new wallet and drops the old one once the cache expires', async () => {
+      findByTenant.mockResolvedValue([connector('c1', 'wallet-1')]);
+      await service().resolveScope('Bearer x');
+
+      findByTenant.mockResolvedValue([connector('c1', 'wallet-2')]);
+      // Five minutes is the longest staleness Rule M11 allows.
+      jest.advanceTimersByTime(5 * 60 * 1000);
+
+      await expect(service().resolveScope('Bearer x')).resolves.toBe(
+        `t-${TENANT_ID}|a-traction-wallet-2`,
+      );
+    });
+
     it('denies with resolution_failed on a malformed identifier', async () => {
       findByTenant.mockResolvedValue([connector('c1', 'A|b')]);
 
