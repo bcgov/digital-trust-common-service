@@ -887,9 +887,11 @@ sit: the query path is safe by construction, the write path is safe only by disc
 ### 7.2 Required tests
 
 These tests define what "the contract holds" means. They **MUST** exist as automated, gating
-tests owned by the component that implements the rule, and a component **MUST NOT** be accepted
-without them. They are specified by behaviour so the implementing repository writes them against
-the contract, not against its own implementation.
+tests owned by the component that implements the rule, except for the cases [9.2](#92-accepting-each-component)
+assigns to the [9.3](#93-the-end-to-end-check) check or to [L11](#55-preconditions-for-exposing-query-access)'s
+reference benchmark, and a component **MUST NOT** be accepted without them. They are specified by
+behaviour so the implementing repository writes them against the contract, not against its own
+implementation.
 
 **Positive — the intended path works.**
 
@@ -1102,7 +1104,7 @@ twice.
 | Component | Accepted when |
 |---|---|
 | **This service** | **P9, P11, N2, N23–N25, N39** pass, plus **P7, N3, N26, N27** jointly with the gateway: a token requested for the log gateway audience carries that audience alone and is rejected by the API; the log-read scope is grantable and expands consistently; an agent log identifier is captured only from a trusted agent, never accepted from a caller, bound to exactly one tenant under a write-time constraint, re-bindable by its own tenant, released on deletion, and never usable if it fails validation or encoding |
-| **Identity-aware gateway** | **P1–P3, P5, P6, N1, N4–N20, N30–N35, N41** pass, plus **P7, N3, N26, N27** jointly with this service, run hermetically on every change against the real gateway configuration and decision endpoint ([V2](#72-required-tests), [V3](#72-required-tests)); **P4** jointly with Grafana and the **N14** canary pass under [9.3](#93-the-end-to-end-check), and **N37** jointly with log storage wherever [L11](#55-preconditions-for-exposing-query-access) requires gateway-side rate control, measured by L11's reference benchmark, none of which a stand-in can prove; the read surface is an enumerated allowlist; failures are externally indistinguishable |
+| **Identity-aware gateway** | **P1–P3, P5, P6, N1, N4–N20, N30–N35, N41** pass, plus **P7, N3, N26, N27** jointly with this service, run hermetically on every change against the real gateway configuration and decision endpoint ([V2](#72-required-tests), [V3](#72-required-tests)); the read surface is an enumerated allowlist; failures are externally indistinguishable. **P4** jointly with Grafana and the **N14** canary pass under [9.3](#93-the-end-to-end-check), and **N37** passes jointly with log storage wherever [L11](#55-preconditions-for-exposing-query-access) requires gateway-side rate control, measured by L11's reference benchmark, none of which a stand-in can prove |
 | **Log storage** | **P8, N21, N22, N28, N29, N36–N38, N40** pass, plus **P10** jointly with agent deployment: native tenancy enabled with multi-partition reads, query and fairness limits in place; the backend unreachable from a tenant-reachable network position in **every** environment; unattributed or conflicting lines land in the platform partition, never a tenant one; no write path can place a line in a tenant partition it does not own; existing direct-push producers keep succeeding through the cutover; platform cross-tenant visibility retained |
 | **Agent deployment** | **P10** passes jointly with platform observability: log output is structured, carries the log identifier as a discrete field populated by the runtime and not from request data, the field name is confirmed against real output rather than assumed, and a line emitted for a tenant is demonstrably readable **by that tenant** — no routing depends on pattern matching unstructured text |
 | **Tenant Grafana** | **P4** passes jointly with the gateway: one instance, one org, one shared datasource, no tenant identity in any datasource field or URL; dashboards generic with no tenant variable; two tenants on the same dashboard each see only their own data |
