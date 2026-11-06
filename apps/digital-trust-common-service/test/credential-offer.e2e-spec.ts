@@ -15,6 +15,7 @@ import { App } from 'supertest/types';
 import { Repository } from 'typeorm';
 
 import { AdapterRegistry } from '../src/adapter-registry/adapter-registry.service';
+import { TractionAdapter } from '../src/adapter-registry/adapters/traction.adapter';
 import { configureApp } from '../src/app.config';
 import { AppModule } from '../src/app.module';
 import { API_BASE_PATH } from '../src/common/constants/api-version.constants';
@@ -26,7 +27,9 @@ import {
   ConnectorType,
 } from '../src/connection/connection.entity';
 import { ConnectionService } from '../src/connection/connection.service';
-import { ConnectorCredential } from '../src/connector-credential/connector-credential.entity';
+import { Connector } from '../src/connector/connector.entity';
+import { TractionHttpClient } from '../src/connector/connectors/traction/traction-http-client.service';
+import { TractionTokenManager } from '../src/connector/connectors/traction/traction-token-manager.service';
 import { Credential } from '../src/credential/credential.entity';
 import {
   CredentialDefinition,
@@ -34,14 +37,12 @@ import {
   CredentialDefinitionFormat,
   CredentialDefinitionStatus,
 } from '../src/credential-definition/credential-definition.entity';
+import { CredentialExchange } from '../src/credential-exchange/credential-exchange.entity';
 import { JobsService } from '../src/jobs/jobs.service';
 import { OPERATION_TYPE } from '../src/operation/operation-type.constants';
 import { Operation, OperationState } from '../src/operation/operation.entity';
 import { ProtocolStateChangeService } from '../src/protocol-state-change/protocol-state-change.service';
 import { Tenant } from '../src/tenant/tenant.entity';
-import { TractionHttpClient } from '../src/traction/traction-http-client.service';
-import { TractionTokenManager } from '../src/traction/traction-token-manager.service';
-import { TractionAdapter } from '../src/traction/traction.adapter';
 
 const mockBoss = {
   start: jest.fn().mockResolvedValue(undefined),
@@ -93,10 +94,11 @@ describe('Credential offer (e2e)', () => {
   let credentialDefinitionRepo: Repository<CredentialDefinition>;
   let operationRepo: Repository<Operation>;
   let credentialRepo: Repository<Credential>;
+  let exchangeRepo: Repository<CredentialExchange>;
   let registry: AdapterRegistry;
   let tenant: Tenant;
   let credentialDefinition: CredentialDefinition;
-  let connectorRepo: Repository<ConnectorCredential>;
+  let connectorRepo: Repository<Connector>;
   let connectionRepo: Repository<Connection>;
   let connection: Connection;
   let traction: TractionAdapter;
@@ -140,8 +142,9 @@ describe('Credential offer (e2e)', () => {
     );
     operationRepo = moduleFixture.get(getRepositoryToken(Operation));
     credentialRepo = moduleFixture.get(getRepositoryToken(Credential));
+    exchangeRepo = moduleFixture.get(getRepositoryToken(CredentialExchange));
     registry = moduleFixture.get(AdapterRegistry);
-    connectorRepo = moduleFixture.get(getRepositoryToken(ConnectorCredential));
+    connectorRepo = moduleFixture.get(getRepositoryToken(Connector));
     connectionRepo = moduleFixture.get(getRepositoryToken(Connection));
     traction = moduleFixture.get(TractionAdapter);
     encryption = moduleFixture.get(EncryptionService);
@@ -207,6 +210,7 @@ describe('Credential offer (e2e)', () => {
     await credentialRepo.query('DELETE FROM credential WHERE tenant_id = $1', [
       tenant.id,
     ]);
+    await exchangeRepo.delete({ tenantId: tenant.id });
     await operationRepo.query('DELETE FROM operation WHERE tenant_id = $1', [
       tenant.id,
     ]);
@@ -244,8 +248,10 @@ describe('Credential offer (e2e)', () => {
     const credentials = await credentialRepo.find({
       where: { tenantId: tenant.id },
     });
+    const exchanges = await exchangeRepo.countBy({ tenantId: tenant.id });
     expect(operations).toHaveLength(0);
     expect(credentials).toHaveLength(0);
+    expect(exchanges).toBe(0);
   });
 
   const offerBody = () => ({
@@ -303,8 +309,10 @@ describe('Credential offer (e2e)', () => {
       .send(offerBody())
       .expect(202);
     const operationId = (offered.body as { id: string }).id;
+    const exchangeId = (offered.body as { exchange_id: string }).exchange_id;
     expect(operationId).toEqual(expect.any(String));
-    expect(offered.body).not.toHaveProperty('exchange_id');
+    expect(exchangeId).toEqual(expect.any(String));
+    expect(exchangeId).not.toBe(`exchange-${tenant.id}`);
     const sent = backendRequest.mock.calls.find(
       ([config]) => config.method === 'POST',
     );
@@ -327,11 +335,25 @@ describe('Credential offer (e2e)', () => {
     });
     expect(savedCredential).toMatchObject({
       operationId,
+      exchangeId,
       connectionId: connection.id,
       connectorId: connection.connectorId,
       externalId: `exchange-${tenant.id}`,
       state: 'offered',
     });
+    const exchangeResponse = await request(app.getHttpServer())
+      .get(
+        `${API_BASE_PATH}/tenants/${tenant.id}/credential-exchanges/${exchangeId}`,
+      )
+      .expect(200);
+    expect(exchangeResponse.body).toMatchObject({
+      id: exchangeId,
+      role: 'issuer',
+      state: 'offer-sent',
+      issue_submission: 'not-submitted',
+    });
+    expect(exchangeResponse.body).not.toHaveProperty('external_id');
+    expect(exchangeResponse.body).not.toHaveProperty('connector_id');
     mockBoss.send.mockClear();
     for (let i = 0; i < 2; i++) {
       const reconciled = await request(app.getHttpServer())
@@ -345,9 +367,7 @@ describe('Credential offer (e2e)', () => {
       });
     }
     expect(
-      backendRequest.mock.calls.filter(
-        ([config]: [{ method: string }]) => config.method === 'POST',
-      ),
+      backendRequest.mock.calls.filter(([config]) => config.method === 'POST'),
     ).toHaveLength(1);
     expect(
       mockBoss.send.mock.calls.filter(
@@ -359,6 +379,14 @@ describe('Credential offer (e2e)', () => {
     });
     expect(issued.state).toBe('issued');
     expect(issued.issuedAt).toBeInstanceOf(Date);
+    const reconciledExchange = await request(app.getHttpServer())
+      .get(
+        `${API_BASE_PATH}/tenants/${tenant.id}/credential-exchanges/${exchangeId}`,
+      )
+      .expect(200);
+    expect(reconciledExchange.body).toMatchObject({
+      state: 'credential-issued',
+    });
   });
 
   it('rejects a connection outside the tenant before submitting an offer', async () => {
@@ -589,6 +617,40 @@ describe('Credential offer (e2e)', () => {
       ).toHaveLength(1);
     },
   );
+
+  it.each(['reconcile', 'issue'])(
+    'returns 409 for a missing backend exchange through the exchange %s endpoint',
+    async (action) => {
+      prepareBackend();
+      const offered = await request(app.getHttpServer())
+        .post(`${API_BASE_PATH}/tenants/${tenant.id}/credentials/offer`)
+        .send(offerBody())
+        .expect(202);
+      const exchangeId = (offered.body as { exchange_id: string }).exchange_id;
+      const original = backendRequest.getMockImplementation()!;
+      backendRequest.mockImplementation((config, retry) =>
+        config.url.includes('/records/')
+          ? Promise.reject(
+              Object.assign(new Error('record deleted'), {
+                isAxiosError: true,
+                response: { status: 404 },
+              }),
+            )
+          : original(config, retry),
+      );
+      await request(app.getHttpServer())
+        .post(
+          `${API_BASE_PATH}/tenants/${tenant.id}/credential-exchanges/${exchangeId}/${action}`,
+        )
+        .expect(409);
+      expect(
+        backendRequest.mock.calls.filter(
+          ([config]) => config.method === 'POST',
+        ),
+      ).toHaveLength(1);
+    },
+  );
+
   it.each([ConnectionState.INVITED, ConnectionState.ABANDONED])(
     'adopts an exactly matched legacy invitation without reviving %s connections',
     async (state) => {
@@ -625,7 +687,7 @@ describe('Credential offer (e2e)', () => {
       });
       expect(
         backendRequest.mock.calls.filter(
-          ([config]: [{ method: string }]) => config.method === 'POST',
+          ([config]) => config.method === 'POST',
         ),
       ).toHaveLength(state === ConnectionState.INVITED ? 1 : 0);
     },

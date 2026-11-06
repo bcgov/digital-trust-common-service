@@ -10,8 +10,8 @@ import type { Request } from 'express';
 
 import { EncryptionService } from '../common/crypto/encryption.service';
 import type { ConnectorType } from '../connection/connection.entity';
-import { ConnectorCredentialService } from '../connector-credential/connector-credential.service';
-import type { ConnectorCredentialsDto } from '../connector-credential/dto/create-connector-credential.dto';
+import { ConnectorService } from '../connector/connector.service';
+import type { ConnectorDto } from '../connector/dto/create-connector.dto';
 
 // ACA-Py sends the wallet_webhook_urls '#secret' fragment back on every
 // webhook call as this header.
@@ -37,7 +37,7 @@ export type ConnectorWebhookRequest = Request & {
 @Injectable()
 export class ConnectorWebhookGuard implements CanActivate {
   public constructor(
-    private readonly connectorCredentialService: ConnectorCredentialService,
+    private readonly connectorCredentialService: ConnectorService,
     private readonly encryptionService: EncryptionService,
   ) {}
 
@@ -64,7 +64,7 @@ export class ConnectorWebhookGuard implements CanActivate {
       throw new UnauthorizedException('Webhook authentication failed');
     }
 
-    const decrypted = this.encryptionService.decrypt<ConnectorCredentialsDto>(
+    const decrypted = this.encryptionService.decrypt<ConnectorDto>(
       credential.credentialsEncrypted,
       credential.keyVersion,
     );

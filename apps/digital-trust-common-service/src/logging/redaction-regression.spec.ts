@@ -15,9 +15,9 @@ import { instrumentAdapter } from '../adapter-registry/instrumented-adapter';
 import { assertSafeConnectorUrl } from '../common/assert-safe-connector-url';
 import { BusinessMetricsService } from '../common/telemetry/business-metrics.service';
 import { ConnectorType } from '../connection/connection.entity';
+import { TractionHttpClient } from '../connector/connectors/traction/traction-http-client.service';
+import { TractionTokenManager } from '../connector/connectors/traction/traction-token-manager.service';
 import { ProtocolStateChangeWorker } from '../protocol-state-change/protocol-state-change.worker';
-import { TractionHttpClient } from '../traction/traction-http-client.service';
-import { TractionTokenManager } from '../traction/traction-token-manager.service';
 import type { ConnectorWebhookRequest } from '../webhook-ingestion/connector-webhook.guard';
 import { TractionWebhookController } from '../webhook-ingestion/traction-webhook.controller';
 

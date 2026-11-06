@@ -223,6 +223,25 @@ header.bcds-header > .bcds-header--container {
   border-color: var(--theme-gold-100);
 }
 
+/* BCDS bundles its own react-aria, so its Link cannot route through
+   react-router and always reloads the page. Router links borrow the BCDS
+   button classes instead; these rules stand in for the hover, pressed and
+   focus states react-aria would set as data attributes. (0,3,1) vs (0,3,0). */
+a.bcds-react-aria-Button {
+  text-decoration: none;
+}
+a.bcds-react-aria-Button.secondary:hover {
+  background-color: var(--surface-color-secondary-button-hover);
+}
+a.bcds-react-aria-Button.secondary:active {
+  background-color: var(--surface-color-secondary-pressed);
+}
+a.bcds-react-aria-Button:focus-visible {
+  outline: solid var(--layout-border-width-medium)
+    var(--surface-color-border-active);
+  outline-offset: var(--layout-margin-hair);
+}
+
 /* Manage Users "You" and status tags, and `StaticTag`, are static labels.
    (0,2,1) vs (0,1,0). */
 span.bcds-react-aria-Tag.user-tag,

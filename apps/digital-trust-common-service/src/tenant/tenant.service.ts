@@ -13,7 +13,7 @@ import { DataSource } from 'typeorm';
 import { AuditAction } from '../audit-log/audit-log.entity';
 import { DomainAuditService } from '../audit-log/domain-audit.service';
 import { decodeCursor, encodeCursor } from '../common/cursor-pagination';
-import { ConnectorCredentialService } from '../connector-credential/connector-credential.service';
+import { ConnectorService } from '../connector/connector.service';
 import { JobsService } from '../jobs/jobs.service';
 import { TenantUserRole } from '../tenant-user/tenant-user.entity';
 import { TenantUserService } from '../tenant-user/tenant-user.service';
@@ -68,8 +68,8 @@ export class TenantService {
     private readonly tenantUserService: TenantUserService,
     private readonly dataSource: DataSource,
     private readonly jobsService: JobsService,
-    @Inject(forwardRef(() => ConnectorCredentialService))
-    private readonly connectorCredentialService: ConnectorCredentialService,
+    @Inject(forwardRef(() => ConnectorService))
+    private readonly connectorCredentialService: ConnectorService,
   ) {}
 
   public async create(

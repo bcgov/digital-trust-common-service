@@ -2,8 +2,8 @@ import { Logger } from '@nestjs/common';
 
 import { EncryptionService } from '../common/crypto/encryption.service';
 import { ConnectorType } from '../connection/connection.entity';
-import { ConnectorCredential } from '../connector-credential/connector-credential.entity';
-import { ConnectorCredentialRepository } from '../connector-credential/connector-credential.repository';
+import { Connector } from '../connector/connector.entity';
+import { ConnectorRepository } from '../connector/connector.repository';
 
 import {
   AGENT_PARTITION_CACHE_MAX_ENTRIES,
@@ -18,18 +18,14 @@ import { LogAccessService } from './log-access.service';
 
 const TENANT_ID = '3f2b8c1e-5d4a-4e7b-9a10-0c6d2f8e7b11';
 
-function connector(
-  id: string,
-  agentLogId: unknown,
-  active = true,
-): ConnectorCredential {
+function connector(id: string, agentLogId: unknown, active = true): Connector {
   return {
     id,
     active,
     connectorType: ConnectorType.TRACTION,
     keyVersion: 1,
     credentialsEncrypted: Buffer.from(JSON.stringify({ agentLogId })),
-  } as ConnectorCredential;
+  } as Connector;
 }
 
 describe('ConnectorAgentLogPartitionResolver', () => {
@@ -48,7 +44,7 @@ describe('ConnectorAgentLogPartitionResolver', () => {
     cache = new AgentLogPartitionCache();
     warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
     resolver = new ConnectorAgentLogPartitionResolver(
-      { findByTenant } as unknown as ConnectorCredentialRepository,
+      { findByTenant } as unknown as ConnectorRepository,
       { decrypt } as unknown as EncryptionService,
       cache,
     );
@@ -220,10 +216,10 @@ describe('ConnectorAgentLogPartitionResolver', () => {
     });
 
     it('does not cache a lookup invalidated while in flight', async () => {
-      let release!: (value: ConnectorCredential[]) => void;
+      let release!: (value: Connector[]) => void;
       findByTenant.mockReset();
       findByTenant.mockReturnValueOnce(
-        new Promise<ConnectorCredential[]>((resolve) => {
+        new Promise<Connector[]>((resolve) => {
           release = resolve;
         }),
       );
@@ -237,10 +233,10 @@ describe('ConnectorAgentLogPartitionResolver', () => {
     });
 
     it('anchors expiry to the lookup start', async () => {
-      let release!: (value: ConnectorCredential[]) => void;
+      let release!: (value: Connector[]) => void;
       findByTenant.mockReset();
       findByTenant.mockReturnValueOnce(
-        new Promise<ConnectorCredential[]>((resolve) => {
+        new Promise<Connector[]>((resolve) => {
           release = resolve;
         }),
       );
@@ -256,10 +252,10 @@ describe('ConnectorAgentLogPartitionResolver', () => {
     });
 
     it('rejects a lookup slower than the staleness window', async () => {
-      let release!: (value: ConnectorCredential[]) => void;
+      let release!: (value: Connector[]) => void;
       findByTenant.mockReset();
       findByTenant.mockReturnValueOnce(
-        new Promise<ConnectorCredential[]>((resolve) => {
+        new Promise<Connector[]>((resolve) => {
           release = resolve;
         }),
       );

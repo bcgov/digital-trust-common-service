@@ -40,6 +40,12 @@ describe('StubAdapter', () => {
     ).rejects.toBeInstanceOf(NotImplementedException);
   });
 
+  it('should reject issueCredential', async () => {
+    await expect(
+      stub.issueCredential(context, 'exchange-id'),
+    ).rejects.toBeInstanceOf(NotImplementedException);
+  });
+
   it('should reject getExchange', async () => {
     await expect(
       stub.getExchange(context, 'exchange-id'),

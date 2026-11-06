@@ -1,0 +1,1387 @@
+import { AuthContext } from '@app/auth';
+import { OidcConfigService } from '@app/oidc/config';
+import {
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+  UnprocessableEntityException,
+} from '@nestjs/common';
+import { Test, TestingModule } from '@nestjs/testing';
+
+import { EncryptionService } from '../common/crypto/encryption.service';
+import { ConnectorType } from '../connection/connection.entity';
+import { CredentialRepository } from '../credential/credential.repository';
+import { AgentLogPartitionCache } from '../log-access/agent-log-partition.cache';
+import { TenantService } from '../tenant/tenant.service';
+
+import { ConnectorHealthCheckService } from './connector-health-check.service';
+import { Connector } from './connector.entity';
+import {
+  ConnectorRepository,
+  ConnectorDeletionResult,
+} from './connector.repository';
+import { ConnectorService } from './connector.service';
+import { CONNECTOR_MANAGERS } from './connectors/abstract-connector.service';
+import { TractionConnector } from './connectors/traction/traction-connector.service';
+import { TractionTokenManager } from './connectors/traction/traction-token-manager.service';
+import { TractionWebhookRegistrar } from './connectors/traction/traction-webhook-registrar.service';
+import { CreateConnectorCredentialDto } from './dto/create-connector.dto';
+import { UpdateConnectorCredentialDto } from './dto/update-connector.dto';
+
+describe('ConnectorService', () => {
+  let service: ConnectorService;
+  let tractionManager: TractionConnector;
+  let partitionCache: { invalidate: jest.Mock };
+  let mockFindById: jest.Mock<Promise<Connector | null>, [string]>;
+  let mockFindByTenant: jest.Mock;
+  let mockFindByTenantAndConnectorType: jest.Mock;
+  let mockFindByTenantAndConnectorTypeAndActive: jest.Mock;
+  let mockCreate: jest.Mock;
+  let mockUpdate: jest.Mock;
+  let mockDelete: jest.Mock;
+  let mockDeleteUnlessDefault: jest.Mock;
+  let mockDeactivateAllForTenant: jest.Mock;
+  let mockTenantServiceFindById: jest.Mock;
+  let mockTenantServiceSetDefaultConnectorIfUnset: jest.Mock;
+  let mockEncrypt: jest.Mock;
+  let mockDecrypt: jest.Mock;
+  let mockRequiresRotation: jest.Mock;
+  let mockHealthCheck: jest.Mock;
+  let mockExistsByConnectorId: jest.Mock;
+  let mockEnsureWebhookRegistered: jest.Mock;
+  let mockEvict: jest.Mock;
+  let mockIsWebhookRegistered: jest.Mock;
+  let mockGetConfig: jest.Mock;
+  let mockDeriveBlindIndex: jest.Mock;
+  let mockExistsOtherActiveWithHash: jest.Mock;
+
+  const mockCredentials = { apiKey: 'sk_live_abc123' };
+
+  const mockCredential: Connector = {
+    id: '123e4567-e89b-12d3-a456-426614174000',
+    tenantId: '123e4567-e89b-12d3-a456-426614174001',
+    connectorType: ConnectorType.TRACTION,
+    credentialsEncrypted: Buffer.from('encrypted_data'),
+    endpointUrl: 'https://traction.example.com/api',
+    active: true,
+    keyVersion: 1,
+    agentLogIdHash: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    tenant: undefined as unknown as Connector['tenant'],
+  };
+
+  const auth: AuthContext = {
+    sub: 'user-1',
+    tokenType: 'user',
+    clientId: 'spa',
+    tenantId: mockCredential.tenantId,
+    roles: [],
+    scope: 'tenants:admin',
+    scopes: ['tenants:admin'],
+    iss: 'http://localhost/oidc',
+    aud: 'http://localhost/oidc',
+    exp: 9_999_999_999,
+    iat: 1,
+  };
+
+  beforeEach(async () => {
+    mockFindById = jest.fn<Promise<Connector | null>, [string]>();
+    mockFindByTenant = jest.fn();
+    mockFindByTenantAndConnectorType = jest.fn();
+    mockFindByTenantAndConnectorTypeAndActive = jest.fn();
+    mockCreate = jest.fn();
+    mockUpdate = jest.fn();
+    mockDelete = jest.fn();
+    mockDeleteUnlessDefault = jest
+      .fn()
+      .mockResolvedValue(ConnectorDeletionResult.DELETED);
+    mockDeactivateAllForTenant = jest.fn();
+    partitionCache = { invalidate: jest.fn() };
+    mockTenantServiceFindById = jest
+      .fn()
+      .mockResolvedValue({ id: mockCredential.tenantId });
+    mockTenantServiceSetDefaultConnectorIfUnset = jest
+      .fn()
+      .mockResolvedValue(true);
+    mockEncrypt = jest.fn().mockReturnValue({
+      ciphertext: Buffer.from('encrypted_data'),
+      keyVersion: 1,
+    });
+    mockDecrypt = jest.fn().mockReturnValue(mockCredentials);
+    mockRequiresRotation = jest.fn().mockReturnValue(false);
+    mockHealthCheck = jest
+      .fn()
+      .mockResolvedValue({ status: 'healthy', latencyMs: 10 });
+    mockExistsByConnectorId = jest.fn().mockResolvedValue(false);
+    mockEnsureWebhookRegistered = jest.fn().mockResolvedValue(undefined);
+    mockEvict = jest.fn();
+    // Verification defaults to "not registered", matching a registration
+    // call that genuinely never reached Traction.
+    mockIsWebhookRegistered = jest.fn().mockResolvedValue(false);
+    mockDeriveBlindIndex = jest
+      .fn()
+      .mockImplementation((_domain: string, value: string) => `hash(${value})`);
+    mockExistsOtherActiveWithHash = jest.fn().mockResolvedValue(false);
+    mockGetConfig = jest
+      .fn()
+      .mockReturnValue({ publicUrl: 'https://app.localhost' });
+
+    const mockRepository = {
+      findById: mockFindById,
+      findByTenant: mockFindByTenant,
+      findByTenantAndConnectorType: mockFindByTenantAndConnectorType,
+      findByTenantAndConnectorTypeAndActive:
+        mockFindByTenantAndConnectorTypeAndActive,
+      create: mockCreate,
+      existsOtherActiveWithAgentLogIdHash: mockExistsOtherActiveWithHash,
+      update: mockUpdate,
+      updateWithLock: jest.fn(
+        async (
+          _tenantId: string,
+          id: string,
+          buildUpdates: Parameters<ConnectorRepository['updateWithLock']>[2],
+        ): Promise<Connector | null> => {
+          const existing = await mockFindById(id);
+          if (!existing) return null;
+          const updates = await buildUpdates(existing);
+          if (Object.keys(updates).length === 0) return existing;
+          return mockUpdate(id, updates) as Promise<Connector | null>;
+        },
+      ),
+      delete: mockDelete,
+      deleteUnlessDefault: mockDeleteUnlessDefault,
+      deactivateAllForTenant: mockDeactivateAllForTenant,
+    };
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        ConnectorService,
+        TractionConnector,
+        {
+          provide: CONNECTOR_MANAGERS,
+          useFactory: (traction: TractionConnector) => ({
+            [traction.connectorType]: traction,
+          }),
+          inject: [TractionConnector],
+        },
+        {
+          provide: ConnectorRepository,
+          useValue: mockRepository,
+        },
+        {
+          provide: TenantService,
+          useValue: {
+            findById: mockTenantServiceFindById,
+            setDefaultConnectorIfUnset:
+              mockTenantServiceSetDefaultConnectorIfUnset,
+          },
+        },
+        {
+          provide: EncryptionService,
+          useValue: {
+            encrypt: mockEncrypt,
+            decrypt: mockDecrypt,
+            requiresRotation: mockRequiresRotation,
+            deriveBlindIndex: mockDeriveBlindIndex,
+          },
+        },
+        {
+          provide: ConnectorHealthCheckService,
+          useValue: {
+            check: mockHealthCheck,
+          },
+        },
+        {
+          provide: CredentialRepository,
+          useValue: {
+            existsByConnectorId: mockExistsByConnectorId,
+          },
+        },
+        { provide: TractionTokenManager, useValue: { evict: mockEvict } },
+        {
+          provide: TractionWebhookRegistrar,
+          useValue: {
+            ensureWebhookRegistered: mockEnsureWebhookRegistered,
+            isWebhookRegistered: mockIsWebhookRegistered,
+          },
+        },
+        { provide: AgentLogPartitionCache, useValue: partitionCache },
+        {
+          provide: OidcConfigService,
+          useValue: {
+            getConfig: mockGetConfig,
+          },
+        },
+      ],
+    }).compile();
+
+    service = module.get<ConnectorService>(ConnectorService);
+    tractionManager = module.get(TractionConnector);
+  });
+
+  it('should be defined', () => {
+    expect(service).toBeDefined();
+  });
+
+  describe('agent partition cache invalidation', () => {
+    it('invalidates the tenant entry on create', async () => {
+      mockCreate.mockResolvedValue(mockCredential);
+
+      await service.create(
+        mockCredential.tenantId,
+        {
+          connectorType: ConnectorType.TRACTION,
+          endpointUrl: 'https://traction.example.com/api',
+          credentials: { ...mockCredentials },
+        },
+        auth,
+      );
+
+      expect(partitionCache.invalidate).toHaveBeenCalledWith(
+        mockCredential.tenantId,
+      );
+    });
+
+    it('invalidates the tenant entry on update', async () => {
+      mockFindById.mockResolvedValue(mockCredential);
+      mockUpdate.mockResolvedValue(mockCredential);
+
+      await service.update(
+        mockCredential.tenantId,
+        mockCredential.id,
+        { endpointUrl: 'https://traction.example.com/new-endpoint' },
+        auth,
+      );
+
+      expect(partitionCache.invalidate).toHaveBeenCalledWith(
+        mockCredential.tenantId,
+      );
+    });
+
+    it('invalidates the tenant entry on delete', async () => {
+      mockFindById.mockResolvedValue(mockCredential);
+      mockDeleteUnlessDefault.mockResolvedValue(
+        ConnectorDeletionResult.DELETED,
+      );
+
+      await service.delete(mockCredential.tenantId, mockCredential.id, auth);
+
+      expect(partitionCache.invalidate).toHaveBeenCalledWith(
+        mockCredential.tenantId,
+      );
+    });
+
+    it('invalidates the tenant entry on deactivateAllForTenant', async () => {
+      mockDeactivateAllForTenant.mockResolvedValue(1);
+
+      await service.deactivateAllForTenant(mockCredential.tenantId);
+
+      expect(partitionCache.invalidate).toHaveBeenCalledWith(
+        mockCredential.tenantId,
+      );
+    });
+  });
+
+  describe('create', () => {
+    let dto: CreateConnectorCredentialDto;
+
+    beforeEach(() => {
+      dto = {
+        connectorType: ConnectorType.TRACTION,
+        endpointUrl: 'https://traction.example.com/api',
+        credentials: { ...mockCredentials },
+      };
+    });
+
+    it('should validate the tenant and run a health check before creating', async () => {
+      mockCreate.mockResolvedValue(mockCredential);
+
+      const result = await service.create(mockCredential.tenantId, dto, auth);
+
+      expect(mockTenantServiceFindById).toHaveBeenCalledWith(
+        mockCredential.tenantId,
+      );
+      expect(mockHealthCheck).toHaveBeenCalledWith(
+        dto.connectorType,
+        dto.endpointUrl,
+        dto.credentials,
+      );
+      expect(mockEncrypt).toHaveBeenCalledWith(dto.credentials);
+      expect(mockCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId: mockCredential.tenantId,
+          connectorType: dto.connectorType,
+          endpointUrl: dto.endpointUrl,
+          active: true,
+        }),
+      );
+      expect(result).toEqual(mockCredential);
+      expect(mockTenantServiceSetDefaultConnectorIfUnset).toHaveBeenCalledWith(
+        mockCredential.tenantId,
+        mockCredential.id,
+        auth,
+      );
+    });
+
+    it('should attempt the atomic default assignment after creation', async () => {
+      mockCreate.mockResolvedValue(mockCredential);
+
+      await service.create(mockCredential.tenantId, dto, auth);
+
+      expect(mockTenantServiceSetDefaultConnectorIfUnset).toHaveBeenCalledTimes(
+        1,
+      );
+    });
+
+    it('should auto-generate a webhook secret and register the webhook for a Traction connector', async () => {
+      mockCreate.mockResolvedValue(mockCredential);
+
+      await service.create(mockCredential.tenantId, dto, auth);
+
+      expect(dto.credentials.webhookSecret).toEqual(expect.any(String));
+      expect(mockEnsureWebhookRegistered).toHaveBeenCalledWith(
+        {
+          connectorId: mockCredential.id,
+          tenantId: mockCredential.tenantId,
+          endpointUrl: mockCredential.endpointUrl,
+          credentials: dto.credentials,
+        },
+        `https://app.localhost/api/v1/connectors/${mockCredential.id}/webhooks/traction`,
+        dto.credentials.webhookSecret,
+      );
+    });
+
+    it('should not register a webhook for a non-Traction connector', async () => {
+      mockCreate.mockResolvedValue({
+        ...mockCredential,
+        connectorType: ConnectorType.CREDO,
+      });
+
+      await service.create(
+        mockCredential.tenantId,
+        { ...dto, connectorType: ConnectorType.CREDO },
+        auth,
+      );
+
+      expect(mockEnsureWebhookRegistered).not.toHaveBeenCalled();
+    });
+
+    it('should delete the credential row when registration fails and Traction confirms it was never applied', async () => {
+      mockCreate.mockResolvedValue(mockCredential);
+      const registrationError = new Error('Traction unreachable');
+      mockEnsureWebhookRegistered.mockRejectedValue(registrationError);
+      mockIsWebhookRegistered.mockResolvedValue(false);
+
+      await expect(
+        service.create(mockCredential.tenantId, dto, auth),
+      ).rejects.toThrow(registrationError);
+
+      expect(mockDelete).toHaveBeenCalledWith(mockCredential.id);
+    });
+
+    it('should keep the credential row when a failed registration call is confirmed to have applied remotely', async () => {
+      mockCreate.mockResolvedValue(mockCredential);
+      mockEnsureWebhookRegistered.mockRejectedValue(new Error('ETIMEDOUT'));
+      mockIsWebhookRegistered.mockResolvedValue(true);
+
+      const result = await service.create(mockCredential.tenantId, dto, auth);
+
+      expect(mockDelete).not.toHaveBeenCalled();
+      expect(result).toEqual(mockCredential);
+    });
+
+    it('should leave the credential row in place when the registration state cannot be verified', async () => {
+      mockCreate.mockResolvedValue(mockCredential);
+      const registrationError = new Error('Traction unreachable');
+      mockEnsureWebhookRegistered.mockRejectedValue(registrationError);
+      mockIsWebhookRegistered.mockRejectedValue(
+        new Error('Traction unreachable'),
+      );
+
+      await expect(
+        service.create(mockCredential.tenantId, dto, auth),
+      ).rejects.toThrow(registrationError);
+
+      expect(mockDelete).not.toHaveBeenCalled();
+    });
+
+    it('should log rather than throw when the compensating delete also fails', async () => {
+      mockCreate.mockResolvedValue(mockCredential);
+      mockEnsureWebhookRegistered.mockRejectedValue(
+        new Error('Traction unreachable'),
+      );
+      mockIsWebhookRegistered.mockResolvedValue(false);
+      mockDelete.mockRejectedValue(new Error('DB unavailable'));
+
+      await expect(
+        service.create(mockCredential.tenantId, dto, auth),
+      ).rejects.toThrow('Traction unreachable');
+    });
+
+    it('should throw TenantAccessDeniedException when the caller tenant does not match', async () => {
+      const otherAuth: AuthContext = { ...auth, tenantId: 'other-tenant' };
+
+      await expect(
+        service.create(mockCredential.tenantId, dto, otherAuth),
+      ).rejects.toThrow();
+
+      expect(mockHealthCheck).not.toHaveBeenCalled();
+    });
+
+    it('should throw UnprocessableEntityException when the health check fails', async () => {
+      mockHealthCheck.mockResolvedValue({
+        status: 'unhealthy',
+        latencyMs: 10,
+        message: 'connection refused',
+      });
+
+      await expect(
+        service.create(mockCredential.tenantId, dto, auth),
+      ).rejects.toThrow(UnprocessableEntityException);
+
+      expect(mockEncrypt).not.toHaveBeenCalled();
+      expect(mockCreate).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('agent log identifier binding', () => {
+    const walletId = '3f2a9c1e-7b4d-4e08-9a15-c2d4e6f80b13';
+    const otherWalletId = '8a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d';
+    const uniqueViolation = {
+      driverError: {
+        code: '23505',
+        constraint: 'uq_connector_credential_agent_log_id_hash',
+      },
+    };
+
+    const createDto = (): CreateConnectorCredentialDto => ({
+      connectorType: ConnectorType.TRACTION,
+      endpointUrl: 'https://traction.example.com/api',
+      credentials: { ...mockCredentials },
+    });
+
+    it('stores the captured identifier in the encrypted credentials and its hash on the row', async () => {
+      mockHealthCheck.mockResolvedValue({
+        status: 'healthy',
+        latencyMs: 10,
+        agentLogId: walletId,
+      });
+      mockCreate.mockResolvedValue(mockCredential);
+
+      await service.create(mockCredential.tenantId, createDto(), auth);
+
+      expect(mockEncrypt).toHaveBeenCalledWith(
+        expect.objectContaining({ agentLogId: walletId }),
+      );
+      expect(mockCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          agentLogIdHash: `hash(${ConnectorType.TRACTION}:${walletId})`,
+        }),
+      );
+    });
+
+    it('never persists an identifier supplied by the caller', async () => {
+      const dto = createDto();
+      Object.assign(dto.credentials, { agentLogId: otherWalletId });
+      mockCreate.mockResolvedValue(mockCredential);
+
+      await service.create(mockCredential.tenantId, dto, auth);
+
+      expect(mockEncrypt).toHaveBeenCalledWith(
+        expect.not.objectContaining({ agentLogId: expect.anything() }),
+      );
+      expect(mockCreate).toHaveBeenCalledWith(
+        expect.objectContaining({ agentLogIdHash: null }),
+      );
+    });
+
+    it('maps a losing race on the unique index to a conflict', async () => {
+      mockHealthCheck.mockResolvedValue({
+        status: 'healthy',
+        latencyMs: 10,
+        agentLogId: walletId,
+      });
+      mockCreate.mockRejectedValue(uniqueViolation);
+
+      await expect(
+        service.create(mockCredential.tenantId, createDto(), auth),
+      ).rejects.toThrow(ConflictException);
+      expect(mockEnsureWebhookRegistered).not.toHaveBeenCalled();
+    });
+
+    it('rejects an update bound to another connector before touching the agent', async () => {
+      mockFindById.mockResolvedValue(mockCredential);
+      mockHealthCheck.mockResolvedValue({
+        status: 'healthy',
+        latencyMs: 10,
+        agentLogId: walletId,
+      });
+      mockExistsOtherActiveWithHash.mockResolvedValue(true);
+
+      await expect(
+        service.update(
+          mockCredential.tenantId,
+          mockCredential.id,
+          { credentials: { apiKey: 'new-key' } },
+          auth,
+        ),
+      ).rejects.toThrow(ConflictException);
+
+      expect(mockExistsOtherActiveWithHash).toHaveBeenCalledWith(
+        `hash(${ConnectorType.TRACTION}:${walletId})`,
+        mockCredential.id,
+      );
+      expect(mockEnsureWebhookRegistered).not.toHaveBeenCalled();
+      expect(mockUpdate).not.toHaveBeenCalled();
+    });
+
+    it('lets a connector re-save the sub-wallet it already holds', async () => {
+      mockFindById.mockResolvedValue(mockCredential);
+      mockDecrypt.mockReturnValue({
+        ...mockCredentials,
+        webhookSecret: 'secret',
+        agentLogId: walletId,
+      });
+      mockHealthCheck.mockResolvedValue({
+        status: 'healthy',
+        latencyMs: 10,
+        agentLogId: walletId,
+      });
+      mockUpdate.mockResolvedValue(mockCredential);
+
+      await service.update(
+        mockCredential.tenantId,
+        mockCredential.id,
+        { credentials: { apiKey: 'rotated-key' } },
+        auth,
+      );
+
+      expect(mockUpdate).toHaveBeenCalledWith(
+        mockCredential.id,
+        expect.objectContaining({
+          agentLogIdHash: `hash(${ConnectorType.TRACTION}:${walletId})`,
+        }),
+      );
+    });
+
+    it('refreshes the identifier when only the endpoint changes', async () => {
+      mockFindById.mockResolvedValue(mockCredential);
+      mockDecrypt.mockReturnValue({
+        ...mockCredentials,
+        agentLogId: walletId,
+      });
+      mockHealthCheck.mockResolvedValue({
+        status: 'healthy',
+        latencyMs: 10,
+        agentLogId: otherWalletId,
+      });
+      mockUpdate.mockResolvedValue(mockCredential);
+
+      await service.update(
+        mockCredential.tenantId,
+        mockCredential.id,
+        { endpointUrl: 'https://traction-two.example.com/api' },
+        auth,
+      );
+
+      expect(mockEncrypt).toHaveBeenCalledWith(
+        expect.objectContaining({ agentLogId: otherWalletId }),
+      );
+      expect(mockUpdate).toHaveBeenCalledWith(
+        mockCredential.id,
+        expect.objectContaining({
+          agentLogIdHash: `hash(${ConnectorType.TRACTION}:${otherWalletId})`,
+        }),
+      );
+    });
+
+    it.each([
+      ['credentials', { credentials: { apiKey: 'rotated-key' } }],
+      [
+        'endpoint-only',
+        { endpointUrl: 'https://traction-two.example.com/api' },
+      ],
+    ])(
+      'rejects a %s refresh that drops an established identifier',
+      async (_name, dto) => {
+        mockFindById.mockResolvedValue(mockCredential);
+        mockDecrypt.mockReturnValue({
+          ...mockCredentials,
+          agentLogId: walletId,
+        });
+        mockHealthCheck.mockResolvedValue({ status: 'healthy', latencyMs: 10 });
+
+        await expect(
+          service.update(mockCredential.tenantId, mockCredential.id, dto, auth),
+        ).rejects.toThrow(UnprocessableEntityException);
+
+        expect(mockUpdate).not.toHaveBeenCalled();
+        expect(mockEnsureWebhookRegistered).not.toHaveBeenCalled();
+      },
+    );
+
+    it('evicts the cached Traction token after a successful update', async () => {
+      mockFindById.mockResolvedValue(mockCredential);
+      mockHealthCheck.mockResolvedValue({ status: 'healthy', latencyMs: 10 });
+      mockUpdate.mockResolvedValue(mockCredential);
+
+      await service.update(
+        mockCredential.tenantId,
+        mockCredential.id,
+        { credentials: { apiKey: 'rotated-key' } },
+        auth,
+      );
+
+      expect(mockEvict).toHaveBeenCalledWith(mockCredential.id);
+    });
+
+    it('allows a never-bound connector to stay unbound on update', async () => {
+      mockFindById.mockResolvedValue(mockCredential);
+      mockHealthCheck.mockResolvedValue({ status: 'healthy', latencyMs: 10 });
+      mockUpdate.mockResolvedValue(mockCredential);
+
+      await service.update(
+        mockCredential.tenantId,
+        mockCredential.id,
+        { credentials: { apiKey: 'rotated-key' } },
+        auth,
+      );
+
+      expect(mockUpdate).toHaveBeenCalledWith(
+        mockCredential.id,
+        expect.objectContaining({ agentLogIdHash: null }),
+      );
+    });
+  });
+
+  describe('findById', () => {
+    it('should find a credential by ID', async () => {
+      mockFindById.mockResolvedValue(mockCredential);
+
+      const result = await service.findById(
+        mockCredential.tenantId,
+        mockCredential.id,
+        auth,
+      );
+
+      expect(mockFindById).toHaveBeenCalledWith(mockCredential.id);
+      expect(result).toEqual(mockCredential);
+    });
+
+    it('should throw NotFoundException if credential not found', async () => {
+      mockFindById.mockResolvedValue(null);
+
+      await expect(
+        service.findById(mockCredential.tenantId, 'nonexistent', auth),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('should throw NotFoundException when auth is omitted', async () => {
+      mockFindById.mockResolvedValue(mockCredential);
+
+      await expect(
+        service.findById(mockCredential.tenantId, mockCredential.id),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('should throw NotFoundException for a cross-tenant caller', async () => {
+      mockFindById.mockResolvedValue(mockCredential);
+      const otherAuth: AuthContext = { ...auth, tenantId: 'other-tenant' };
+
+      await expect(
+        service.findById(mockCredential.tenantId, mockCredential.id, otherAuth),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('should throw NotFoundException when the path tenantId does not match the credential', async () => {
+      mockFindById.mockResolvedValue(mockCredential);
+
+      await expect(
+        service.findById('other-tenant', mockCredential.id, auth),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('should lazily rotate the encryption key when required', async () => {
+      mockFindById.mockResolvedValue({ ...mockCredential });
+      mockRequiresRotation.mockReturnValue(true);
+
+      await service.findById(mockCredential.tenantId, mockCredential.id, auth);
+
+      expect(mockDecrypt).toHaveBeenCalledWith(
+        mockCredential.credentialsEncrypted,
+        mockCredential.keyVersion,
+      );
+      expect(mockUpdate).toHaveBeenCalledWith(
+        mockCredential.id,
+        expect.objectContaining({
+          credentialsEncrypted: expect.any(Buffer),
+          keyVersion: expect.any(Number),
+        }),
+      );
+    });
+  });
+
+  describe('findActiveForWebhook', () => {
+    it('should return the credential when it is active', async () => {
+      mockFindById.mockResolvedValue(mockCredential);
+
+      const result = await service.findActiveForWebhook(mockCredential.id);
+
+      expect(mockFindById).toHaveBeenCalledWith(mockCredential.id);
+      expect(result).toEqual(mockCredential);
+    });
+
+    it('should return null when no credential is found', async () => {
+      mockFindById.mockResolvedValue(null);
+
+      const result = await service.findActiveForWebhook('nonexistent');
+
+      expect(result).toBeNull();
+    });
+
+    it('should return null when the credential is inactive', async () => {
+      mockFindById.mockResolvedValue({ ...mockCredential, active: false });
+
+      const result = await service.findActiveForWebhook(mockCredential.id);
+
+      expect(result).toBeNull();
+    });
+
+    it('should lazily rotate the encryption key when required', async () => {
+      mockFindById.mockResolvedValue({ ...mockCredential });
+      mockRequiresRotation.mockReturnValue(true);
+
+      await service.findActiveForWebhook(mockCredential.id);
+
+      expect(mockDecrypt).toHaveBeenCalledWith(
+        mockCredential.credentialsEncrypted,
+        mockCredential.keyVersion,
+      );
+      expect(mockUpdate).toHaveBeenCalledWith(
+        mockCredential.id,
+        expect.objectContaining({
+          credentialsEncrypted: expect.any(Buffer),
+          keyVersion: expect.any(Number),
+        }),
+      );
+    });
+  });
+
+  describe('findByTenant', () => {
+    it('should find all credentials for a tenant', async () => {
+      mockFindByTenant.mockResolvedValue([mockCredential]);
+
+      const result = await service.findByTenant(mockCredential.tenantId);
+
+      expect(mockFindByTenant).toHaveBeenCalledWith(mockCredential.tenantId);
+      expect(result).toEqual([mockCredential]);
+    });
+
+    it('should return an empty array when there are no credentials', async () => {
+      mockFindByTenant.mockResolvedValue([]);
+
+      const result = await service.findByTenant(mockCredential.tenantId);
+
+      expect(result).toEqual([]);
+    });
+  });
+
+  describe('findByTenantAndConnectorType', () => {
+    it('should find credentials by tenant and connector type', async () => {
+      mockFindByTenantAndConnectorType.mockResolvedValue([mockCredential]);
+
+      const result = await service.findByTenantAndConnectorType(
+        mockCredential.tenantId,
+        mockCredential.connectorType,
+      );
+
+      expect(mockFindByTenantAndConnectorType).toHaveBeenCalledWith(
+        mockCredential.tenantId,
+        mockCredential.connectorType,
+      );
+      expect(result).toEqual([mockCredential]);
+    });
+  });
+
+  describe('findByTenantAndConnectorTypeAndActive', () => {
+    it('should find active credentials by tenant and connector type', async () => {
+      mockFindByTenantAndConnectorTypeAndActive.mockResolvedValue([
+        mockCredential,
+      ]);
+
+      const result = await service.findByTenantAndConnectorTypeAndActive(
+        mockCredential.tenantId,
+        mockCredential.connectorType,
+        true,
+      );
+
+      expect(mockFindByTenantAndConnectorTypeAndActive).toHaveBeenCalledWith(
+        mockCredential.tenantId,
+        mockCredential.connectorType,
+        true,
+      );
+      expect(result).toEqual([mockCredential]);
+    });
+  });
+
+  describe('update', () => {
+    it('revalidates a fresh snapshot instead of persisting stale updates', async () => {
+      const current = {
+        ...mockCredential,
+        credentialsEncrypted: Buffer.from('new-envelope'),
+      };
+      mockFindById
+        .mockResolvedValueOnce(mockCredential)
+        .mockResolvedValue(current);
+      mockUpdate.mockResolvedValue(current);
+
+      await service.update(
+        mockCredential.tenantId,
+        mockCredential.id,
+        { endpointUrl: 'https://traction.example.com/new-endpoint' },
+        auth,
+      );
+
+      expect(mockHealthCheck).toHaveBeenCalledTimes(2);
+      expect(mockDecrypt).toHaveBeenLastCalledWith(
+        current.credentialsEncrypted,
+        current.keyVersion,
+      );
+      expect(mockUpdate).toHaveBeenCalledTimes(1);
+    });
+
+    it('returns a conflict after three stale validation attempts without writing', async () => {
+      mockFindById.mockResolvedValueOnce(mockCredential);
+      for (let version = 1; version <= 3; version += 1) {
+        mockFindById.mockResolvedValueOnce({
+          ...mockCredential,
+          credentialsEncrypted: Buffer.from(`envelope-${version}`),
+        });
+      }
+
+      await expect(
+        service.update(
+          mockCredential.tenantId,
+          mockCredential.id,
+          { endpointUrl: 'https://traction.example.com/new-endpoint' },
+          auth,
+        ),
+      ).rejects.toThrow(ConflictException);
+
+      expect(mockHealthCheck).toHaveBeenCalledTimes(3);
+      expect(mockUpdate).not.toHaveBeenCalled();
+    });
+
+    it('should re-validate the endpoint against existing credentials when only the endpoint changes', async () => {
+      const dto: UpdateConnectorCredentialDto = {
+        endpointUrl: 'https://traction.example.com/api/v2',
+      };
+      const updatedCredential = {
+        ...mockCredential,
+        endpointUrl: dto.endpointUrl,
+      };
+
+      mockFindById.mockResolvedValue(mockCredential);
+      mockUpdate.mockResolvedValue(updatedCredential);
+
+      const result = await service.update(
+        mockCredential.tenantId,
+        mockCredential.id,
+        dto,
+        auth,
+      );
+
+      expect(mockDecrypt).toHaveBeenCalledWith(
+        mockCredential.credentialsEncrypted,
+        mockCredential.keyVersion,
+      );
+      expect(mockHealthCheck).toHaveBeenCalledWith(
+        mockCredential.connectorType,
+        dto.endpointUrl,
+        mockCredentials,
+      );
+      expect(mockEncrypt).not.toHaveBeenCalled();
+      expect(mockUpdate).toHaveBeenCalledWith(mockCredential.id, {
+        endpointUrl: dto.endpointUrl,
+      });
+      expect(result).toEqual(updatedCredential);
+    });
+
+    it('should throw UnprocessableEntityException when the new endpoint fails validation', async () => {
+      const dto: UpdateConnectorCredentialDto = {
+        endpointUrl: 'https://169.254.169.254/',
+      };
+
+      mockFindById.mockResolvedValue(mockCredential);
+      mockHealthCheck.mockResolvedValue({
+        status: 'unhealthy',
+        latencyMs: 0,
+        message: 'blocked host',
+      });
+
+      await expect(
+        service.update(mockCredential.tenantId, mockCredential.id, dto, auth),
+      ).rejects.toThrow(UnprocessableEntityException);
+
+      expect(mockUpdate).not.toHaveBeenCalled();
+    });
+
+    it('should re-run the health check and re-encrypt when rotating credentials', async () => {
+      const dto: UpdateConnectorCredentialDto = {
+        credentials: { apiKey: 'sk_live_new456' },
+      };
+
+      mockFindById.mockResolvedValue(mockCredential);
+      mockUpdate.mockResolvedValue(mockCredential);
+
+      await service.update(
+        mockCredential.tenantId,
+        mockCredential.id,
+        dto,
+        auth,
+      );
+
+      expect(mockHealthCheck).toHaveBeenCalledWith(
+        mockCredential.connectorType,
+        mockCredential.endpointUrl,
+        dto.credentials,
+      );
+      expect(mockEncrypt).toHaveBeenCalledWith(dto.credentials);
+      expect(mockUpdate).toHaveBeenCalledWith(
+        mockCredential.id,
+        expect.objectContaining({
+          credentialsEncrypted: expect.any(Buffer),
+          keyVersion: expect.any(Number),
+        }),
+      );
+    });
+
+    it('should preserve the existing webhook secret when rotating Traction credentials without one', async () => {
+      mockDecrypt.mockReturnValue({
+        ...mockCredentials,
+        webhookSecret: 'whsec_existing',
+      });
+      const dto: UpdateConnectorCredentialDto = {
+        credentials: { apiKey: 'sk_live_new456' },
+      };
+
+      mockFindById.mockResolvedValue(mockCredential);
+      mockUpdate.mockResolvedValue(mockCredential);
+
+      await service.update(
+        mockCredential.tenantId,
+        mockCredential.id,
+        dto,
+        auth,
+      );
+
+      expect(mockEncrypt).toHaveBeenCalledWith(
+        expect.objectContaining({
+          apiKey: 'sk_live_new456',
+          webhookSecret: 'whsec_existing',
+        }),
+      );
+      expect(mockEnsureWebhookRegistered).toHaveBeenCalledWith(
+        {
+          connectorId: mockCredential.id,
+          tenantId: mockCredential.tenantId,
+          endpointUrl: mockCredential.endpointUrl,
+          credentials: expect.objectContaining({
+            apiKey: 'sk_live_new456',
+            webhookSecret: 'whsec_existing',
+          }),
+        },
+        `https://app.localhost/api/v1/connectors/${mockCredential.id}/webhooks/traction`,
+        'whsec_existing',
+      );
+    });
+
+    it('rotates only the Traction webhook secret while preserving other credentials', async () => {
+      const mergeCredentials = jest.spyOn(tractionManager, 'mergeCredentials');
+      const existingCredentials = {
+        apiKey: 'sk_live_existing',
+        tractionTenantId: 'sub-tenant-existing',
+        webhookSecret: 'whsec_existing',
+      };
+      const updatedCredentials = {
+        ...existingCredentials,
+        webhookSecret: 'whsec_rotated',
+      };
+      const dto: UpdateConnectorCredentialDto = {
+        credentials: { webhookSecret: 'whsec_rotated' },
+      };
+      mockDecrypt.mockReturnValue(existingCredentials);
+      mockFindById.mockResolvedValue(mockCredential);
+      mockUpdate.mockResolvedValue(mockCredential);
+
+      await service.update(
+        mockCredential.tenantId,
+        mockCredential.id,
+        dto,
+        auth,
+      );
+
+      expect(mergeCredentials).toHaveBeenCalledWith(
+        existingCredentials,
+        dto.credentials,
+      );
+      expect(mockHealthCheck).toHaveBeenCalledWith(
+        mockCredential.connectorType,
+        mockCredential.endpointUrl,
+        updatedCredentials,
+      );
+      expect(mockEncrypt).toHaveBeenCalledWith(updatedCredentials);
+      expect(mockEnsureWebhookRegistered).toHaveBeenCalledWith(
+        {
+          connectorId: mockCredential.id,
+          tenantId: mockCredential.tenantId,
+          endpointUrl: mockCredential.endpointUrl,
+          credentials: updatedCredentials,
+        },
+        `https://app.localhost/api/v1/connectors/${mockCredential.id}/webhooks/traction`,
+        'whsec_rotated',
+      );
+    });
+
+    it('should re-register the webhook with a newly-rotated secret', async () => {
+      const dto: UpdateConnectorCredentialDto = {
+        credentials: {
+          apiKey: 'sk_live_new456',
+          webhookSecret: 'whsec_rotated',
+        },
+      };
+
+      mockFindById.mockResolvedValue(mockCredential);
+      mockUpdate.mockResolvedValue(mockCredential);
+
+      await service.update(
+        mockCredential.tenantId,
+        mockCredential.id,
+        dto,
+        auth,
+      );
+
+      expect(mockEnsureWebhookRegistered).toHaveBeenCalledWith(
+        {
+          connectorId: mockCredential.id,
+          tenantId: mockCredential.tenantId,
+          endpointUrl: mockCredential.endpointUrl,
+          credentials: dto.credentials,
+        },
+        `https://app.localhost/api/v1/connectors/${mockCredential.id}/webhooks/traction`,
+        'whsec_rotated',
+      );
+    });
+
+    it('should not persist the update when webhook re-registration fails and Traction confirms it was never applied', async () => {
+      const dto: UpdateConnectorCredentialDto = {
+        endpointUrl: 'https://traction.example.com/api/v2',
+        credentials: {
+          apiKey: 'sk_live_new456',
+          webhookSecret: 'whsec_rotated',
+        },
+      };
+      const registrationError = new Error('Traction unreachable');
+
+      mockFindById.mockResolvedValue(mockCredential);
+      mockUpdate.mockResolvedValue(mockCredential);
+      mockEnsureWebhookRegistered.mockRejectedValue(registrationError);
+      mockIsWebhookRegistered.mockResolvedValue(false);
+
+      await expect(
+        service.update(mockCredential.tenantId, mockCredential.id, dto, auth),
+      ).rejects.toThrow(registrationError);
+
+      expect(mockUpdate).not.toHaveBeenCalled();
+    });
+
+    it('should keep the persisted update when a failed re-registration call is confirmed to have applied remotely', async () => {
+      const dto: UpdateConnectorCredentialDto = {
+        credentials: {
+          apiKey: 'sk_live_new456',
+          webhookSecret: 'whsec_rotated',
+        },
+      };
+
+      mockFindById.mockResolvedValue(mockCredential);
+      mockUpdate.mockResolvedValue(mockCredential);
+      mockEnsureWebhookRegistered.mockRejectedValue(new Error('ETIMEDOUT'));
+      mockIsWebhookRegistered.mockResolvedValue(true);
+
+      const result = await service.update(
+        mockCredential.tenantId,
+        mockCredential.id,
+        dto,
+        auth,
+      );
+
+      expect(mockUpdate).toHaveBeenCalledTimes(1);
+      expect(result).toEqual(mockCredential);
+    });
+
+    it('should leave the persisted update in place when the registration state cannot be verified', async () => {
+      const dto: UpdateConnectorCredentialDto = {
+        credentials: {
+          apiKey: 'sk_live_new456',
+          webhookSecret: 'whsec_rotated',
+        },
+      };
+      const registrationError = new Error('Traction unreachable');
+
+      mockFindById.mockResolvedValue(mockCredential);
+      mockUpdate.mockResolvedValue(mockCredential);
+      mockEnsureWebhookRegistered.mockRejectedValue(registrationError);
+      mockIsWebhookRegistered.mockRejectedValue(
+        new Error('Traction unreachable'),
+      );
+
+      await expect(
+        service.update(mockCredential.tenantId, mockCredential.id, dto, auth),
+      ).rejects.toThrow(registrationError);
+
+      expect(mockUpdate).toHaveBeenCalledTimes(0);
+    });
+
+    it('should log rather than throw when the compensating revert also fails', async () => {
+      const dto: UpdateConnectorCredentialDto = {
+        credentials: { apiKey: 'sk_live_new456' },
+      };
+
+      mockFindById.mockResolvedValue(mockCredential);
+      mockUpdate
+        .mockResolvedValueOnce(mockCredential)
+        .mockRejectedValueOnce(new Error('DB unavailable'));
+      mockEnsureWebhookRegistered.mockRejectedValue(
+        new Error('Traction unreachable'),
+      );
+      mockIsWebhookRegistered.mockResolvedValue(false);
+
+      await expect(
+        service.update(mockCredential.tenantId, mockCredential.id, dto, auth),
+      ).rejects.toThrow('Traction unreachable');
+    });
+
+    it('should not re-register the webhook for a non-Traction connector', async () => {
+      const nonTractionCredential = {
+        ...mockCredential,
+        connectorType: ConnectorType.CREDO,
+      };
+      const dto: UpdateConnectorCredentialDto = {
+        credentials: { apiKey: 'sk_live_new456' },
+      };
+
+      mockFindById.mockResolvedValue(nonTractionCredential);
+      mockUpdate.mockResolvedValue(nonTractionCredential);
+
+      await service.update(
+        mockCredential.tenantId,
+        mockCredential.id,
+        dto,
+        auth,
+      );
+
+      expect(mockEnsureWebhookRegistered).not.toHaveBeenCalled();
+    });
+
+    it('should not re-register the webhook when only the endpoint changes', async () => {
+      const dto: UpdateConnectorCredentialDto = {
+        endpointUrl: 'https://traction.example.com/api/v2',
+      };
+
+      mockFindById.mockResolvedValue(mockCredential);
+      mockUpdate.mockResolvedValue({
+        ...mockCredential,
+        endpointUrl: dto.endpointUrl,
+      });
+
+      await service.update(
+        mockCredential.tenantId,
+        mockCredential.id,
+        dto,
+        auth,
+      );
+
+      expect(mockEnsureWebhookRegistered).not.toHaveBeenCalled();
+    });
+
+    it('should throw UnprocessableEntityException when rotation health check fails', async () => {
+      const dto: UpdateConnectorCredentialDto = {
+        credentials: { apiKey: 'sk_live_new456' },
+      };
+
+      mockFindById.mockResolvedValue(mockCredential);
+      mockHealthCheck.mockResolvedValue({
+        status: 'unhealthy',
+        latencyMs: 10,
+        message: 'unauthorized',
+      });
+
+      await expect(
+        service.update(mockCredential.tenantId, mockCredential.id, dto, auth),
+      ).rejects.toThrow(UnprocessableEntityException);
+
+      expect(mockUpdate).not.toHaveBeenCalled();
+    });
+
+    it('should throw NotFoundException if credential not found during update', async () => {
+      mockFindById.mockResolvedValue(null);
+
+      await expect(
+        service.update(
+          mockCredential.tenantId,
+          'nonexistent',
+          { endpointUrl: 'https://x.com' },
+          auth,
+        ),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('should throw BadRequestException when no fields are provided', async () => {
+      mockFindById.mockResolvedValue(mockCredential);
+
+      await expect(
+        service.update(mockCredential.tenantId, mockCredential.id, {}, auth),
+      ).rejects.toThrow(BadRequestException);
+
+      expect(mockHealthCheck).not.toHaveBeenCalled();
+      expect(mockUpdate).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('delete', () => {
+    it('should reject deletion of the tenant default connector', async () => {
+      mockFindById.mockResolvedValue(mockCredential);
+      mockDeleteUnlessDefault.mockResolvedValue(
+        ConnectorDeletionResult.DEFAULT,
+      );
+
+      await expect(
+        service.delete(mockCredential.tenantId, mockCredential.id, auth),
+      ).rejects.toThrow(
+        new ConflictException(
+          'Cannot delete the default connector. Select a different default connector in tenant settings first.',
+        ),
+      );
+
+      expect(mockDeleteUnlessDefault).toHaveBeenCalledWith(
+        mockCredential.tenantId,
+        mockCredential.id,
+      );
+      expect(mockDelete).not.toHaveBeenCalled();
+    });
+
+    it('should allow deletion when a different connector is the default', async () => {
+      mockFindById.mockResolvedValue(mockCredential);
+      mockTenantServiceFindById.mockResolvedValue({
+        id: mockCredential.tenantId,
+        config: { default_connector: 'another-connector' },
+      });
+
+      await service.delete(mockCredential.tenantId, mockCredential.id, auth);
+
+      expect(mockDeleteUnlessDefault).toHaveBeenCalledWith(
+        mockCredential.tenantId,
+        mockCredential.id,
+      );
+    });
+
+    it('should delete a connector credential with no dependents', async () => {
+      mockFindById.mockResolvedValue(mockCredential);
+      mockExistsByConnectorId.mockResolvedValue(false);
+      mockDelete.mockResolvedValue(undefined);
+
+      await service.delete(mockCredential.tenantId, mockCredential.id, auth);
+
+      expect(mockExistsByConnectorId).toHaveBeenCalledWith(mockCredential.id);
+      expect(mockDeleteUnlessDefault).toHaveBeenCalledWith(
+        mockCredential.tenantId,
+        mockCredential.id,
+      );
+    });
+
+    it('should throw ConflictException when credential records still reference it', async () => {
+      mockFindById.mockResolvedValue(mockCredential);
+      mockExistsByConnectorId.mockResolvedValue(true);
+
+      await expect(
+        service.delete(mockCredential.tenantId, mockCredential.id, auth),
+      ).rejects.toThrow(ConflictException);
+
+      expect(mockDelete).not.toHaveBeenCalled();
+    });
+
+    it('should throw NotFoundException if credential not found during delete', async () => {
+      mockFindById.mockResolvedValue(null);
+
+      await expect(
+        service.delete(mockCredential.tenantId, 'nonexistent', auth),
+      ).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('deactivateAllForTenant', () => {
+    it('should delegate to the repository', async () => {
+      mockDeactivateAllForTenant.mockResolvedValue(2);
+
+      const result = await service.deactivateAllForTenant(
+        mockCredential.tenantId,
+      );
+
+      expect(mockDeactivateAllForTenant).toHaveBeenCalledWith(
+        mockCredential.tenantId,
+      );
+      expect(result).toBe(2);
+    });
+  });
+
+  describe('testConnectivity', () => {
+    it('should decrypt the stored credentials and run a health check', async () => {
+      mockFindById.mockResolvedValue(mockCredential);
+      mockHealthCheck.mockResolvedValue({ status: 'healthy', latencyMs: 5 });
+
+      const result = await service.testConnectivity(
+        mockCredential.tenantId,
+        mockCredential.id,
+        auth,
+      );
+
+      expect(mockDecrypt).toHaveBeenCalledWith(
+        mockCredential.credentialsEncrypted,
+        mockCredential.keyVersion,
+      );
+      expect(mockHealthCheck).toHaveBeenCalledWith(
+        mockCredential.connectorType,
+        mockCredential.endpointUrl,
+        mockCredentials,
+      );
+      expect(result).toEqual({ status: 'healthy', latencyMs: 5 });
+    });
+
+    it('should omit the agent log identifier from the result', async () => {
+      mockFindById.mockResolvedValue(mockCredential);
+      mockHealthCheck.mockResolvedValue({
+        status: 'healthy',
+        latencyMs: 5,
+        agentLogId: '11111111-1111-4111-8111-111111111111',
+      });
+
+      const result = await service.testConnectivity(
+        mockCredential.tenantId,
+        mockCredential.id,
+        auth,
+      );
+
+      expect(result).toEqual({ status: 'healthy', latencyMs: 5 });
+      expect(result).not.toHaveProperty('agentLogId');
+    });
+
+    it('should throw NotFoundException if credential not found', async () => {
+      mockFindById.mockResolvedValue(null);
+
+      await expect(
+        service.testConnectivity(mockCredential.tenantId, 'nonexistent', auth),
+      ).rejects.toThrow(NotFoundException);
+    });
+  });
+});

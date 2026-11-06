@@ -60,7 +60,6 @@ interface SwitchVariables {
   /** Where the user was when the switch started. */
   pathname: string;
   destinationPath?: string;
-  notice?: string;
   /** Replace the history entry (a header switch) or push one (list to detail). */
   replace?: boolean;
 }
@@ -86,16 +85,13 @@ export function useSwitchTenant() {
     },
     onSuccess: async (
       _result,
-      { tenantId, from, pathname, destinationPath, notice, replace = true },
+      { tenantId, from, pathname, destinationPath, replace = true },
     ) => {
       const target =
         destinationPath ??
         (from ? replaceTenantInPath(pathname, from, tenantId) : pathname);
-      if (target !== pathname || notice) {
-        void navigate(target, {
-          replace,
-          state: notice ? { tenantUserNotice: notice } : undefined,
-        });
+      if (target !== pathname) {
+        void navigate(target, { replace });
       }
 
       // Reset rather than invalidate: an invalidated query keeps serving the
@@ -113,7 +109,6 @@ export function useSwitchTenant() {
       tenantId: string,
       options: {
         destinationPath?: string;
-        notice?: string;
         replace?: boolean;
       } = {},
     ) =>

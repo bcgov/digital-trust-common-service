@@ -11,7 +11,7 @@ import {
 } from 'typeorm';
 
 import { Connection } from '../connection/connection.entity';
-import { ConnectorCredential } from '../connector-credential/connector-credential.entity';
+import { Connector } from '../connector/connector.entity';
 import { CredentialDefinitionFormat } from '../credential-definition/credential-definition.entity';
 import { IssuanceProfile } from '../issuance-profile/issuance-profile.entity';
 import { Operation } from '../operation/operation.entity';
@@ -31,6 +31,10 @@ export enum CredentialState {
 @Index('idx_credential_connection_id', ['connectionId'])
 @Index('idx_credential_connector_id', ['connectorId'])
 export class Credential {
+  @ApiProperty({ description: 'Local credential exchange ID', nullable: true })
+  @Column({ name: 'exchange_id', type: 'uuid', nullable: true })
+  public exchangeId?: string | null;
+
   @ApiProperty({
     description: 'The unique identifier of the credential record',
     example: '123e4567-e89b-12d3-a456-426614174000',
@@ -91,11 +95,11 @@ export class Credential {
   @Column({ name: 'connector_id', type: 'uuid' })
   public connectorId!: string;
 
-  @ManyToOne(() => ConnectorCredential, {
+  @ManyToOne(() => Connector, {
     onDelete: 'RESTRICT',
   })
   @JoinColumn({ name: 'connector_id' })
-  public connector!: ConnectorCredential;
+  public connector!: Connector;
 
   @ApiProperty({
     description: 'Adapter-assigned exchange / credential id',

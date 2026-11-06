@@ -41,6 +41,9 @@ import { ConsolidateCredentialDefinitionConnector1793383965371 } from './migrati
 import { AddConnectorAgentLogIdHash1793385084139 } from './migrations/000038_add-connector-agent-log-id-hash';
 import { AddAuditReadAction1793733978162 } from './migrations/000039_add-audit-read-action';
 import { CreateAnoncredsPublicationIntent1793375200834 } from './migrations/000040_create-anoncreds-publication-intent';
+import { CreateCredentialExchanges1792506949095 } from './migrations/000041_create-credential-exchanges';
+import { IndexExchangeIssueOperation1792543244948 } from './migrations/000042_index-exchange-issue-operation';
+import { DropRedundantExchangeIssueIndex1793375254070 } from './migrations/000043_drop-redundant-exchange-issue-index';
 import { buildSslConfig } from './ssl.util';
 
 export const AppDataSource = new DataSource({
@@ -96,6 +99,9 @@ export const AppDataSource = new DataSource({
     AddConnectorAgentLogIdHash1793385084139,
     AddAuditReadAction1793733978162,
     BindConnectionsToConnectors1792502783893,
+    CreateCredentialExchanges1792506949095,
+    IndexExchangeIssueOperation1792543244948,
+    DropRedundantExchangeIssueIndex1793375254070,
   ],
   ssl: buildSslConfig(
     process.env.DB_SSL,

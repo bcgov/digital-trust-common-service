@@ -1,13 +1,11 @@
-import { Navigate, useLocation } from 'react-router';
+import {
+  Button,
+  Callout,
+  InlineAlert,
+} from '@bcgov/design-system-react-components';
+import { Navigate } from 'react-router';
 import { useTranslation } from 'react-i18next';
 
-import { Button } from '@/components/common/button';
-import {
-  Card,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/common/card';
 import { useActiveTenant } from '@/lib/tenant/active-tenant';
 
 /**
@@ -16,13 +14,7 @@ import { useActiveTenant } from '@/lib/tenant/active-tenant';
  */
 export function DashboardPage() {
   const { t } = useTranslation();
-  const location = useLocation();
   const { tenant, memberships, status, refetch } = useActiveTenant();
-  const state = location.state as { tenantUserNotice?: unknown } | null;
-  const notice =
-    typeof state?.tenantUserNotice === 'string'
-      ? state.tenantUserNotice
-      : undefined;
 
   if (status === 'loading') {
     return <p role="status">{t('dashboard.loading')}</p>;
@@ -30,21 +22,16 @@ export function DashboardPage() {
 
   if (status === 'error') {
     return (
-      <div role="alert" className="flex items-center gap-3">
-        <p>{t('dashboard.loadFailed')}</p>
-        <Button type="button" variant="outline" onClick={refetch}>
-          {t('common.retry')}
-        </Button>
-        {notice && (
-          <p
-            role="status"
-            aria-live="polite"
-            className="text-sm text-green-700"
-          >
-            {notice}
-          </p>
-        )}
-      </div>
+      <InlineAlert
+        variant="danger"
+        role="alert"
+        description={t('dashboard.loadFailed')}
+        buttons={
+          <Button variant="secondary" size="small" onPress={refetch}>
+            {t('common.retry')}
+          </Button>
+        }
+      />
     );
   }
 
@@ -57,28 +44,19 @@ export function DashboardPage() {
   );
 
   return (
-    <Card className="max-w-lg">
-      <CardHeader>
-        <CardTitle>
-          {hasActiveMembership
+    <div className="max-w-lg">
+      <Callout
+        title={
+          hasActiveMembership
             ? t('dashboard.chooseTitle')
-            : t('dashboard.noMembershipTitle')}
-        </CardTitle>
-        <CardDescription>
-          {hasActiveMembership
+            : t('dashboard.noMembershipTitle')
+        }
+        description={
+          hasActiveMembership
             ? t('dashboard.chooseBody')
-            : t('dashboard.noMembershipBody')}
-        </CardDescription>
-        {notice && (
-          <p
-            role="status"
-            aria-live="polite"
-            className="text-sm text-green-700"
-          >
-            {notice}
-          </p>
-        )}
-      </CardHeader>
-    </Card>
+            : t('dashboard.noMembershipBody')
+        }
+      />
+    </div>
   );
 }

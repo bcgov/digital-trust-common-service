@@ -1,3 +1,4 @@
+import { CredentialExchangeState } from '@app/credential-ports';
 import { Logger } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Test, TestingModule } from '@nestjs/testing';
@@ -9,6 +10,7 @@ import { Connection, ConnectionState } from '../connection/connection.entity';
 import { ConnectionService } from '../connection/connection.service';
 import { Credential, CredentialState } from '../credential/credential.entity';
 import { CredentialRepository } from '../credential/credential.repository';
+import { CredentialExchangeRepository } from '../credential-exchange/credential-exchange.repository';
 import { JobsService } from '../jobs/jobs.service';
 import { OPERATION_TYPE } from '../operation/operation-type.constants';
 import { Operation, OperationState } from '../operation/operation.entity';
@@ -86,6 +88,9 @@ describe('ProtocolStateChangeService', () => {
   let credentialRepository: jest.Mocked<
     Pick<CredentialRepository, 'findByExternalId' | 'updateStateIfForward'>
   >;
+  let exchangeRepository: jest.Mocked<
+    Pick<CredentialExchangeRepository, 'observe'>
+  >;
   let connectionService: jest.Mocked<
     Pick<
       ConnectionService,
@@ -120,6 +125,7 @@ describe('ProtocolStateChangeService', () => {
       findByExternalId: jest.fn().mockResolvedValue(null),
       updateStateIfForward: jest.fn().mockResolvedValue(true),
     };
+    exchangeRepository = { observe: jest.fn().mockResolvedValue(null) };
     connectionService = {
       findByExternalConnectionIdForTenant: jest.fn().mockResolvedValue(null),
       findByInvitationMsgIdForTenant: jest.fn().mockResolvedValue(null),
@@ -146,6 +152,10 @@ describe('ProtocolStateChangeService', () => {
         { provide: OperationRepository, useValue: operationRepository },
         { provide: OperationService, useValue: operationService },
         { provide: CredentialRepository, useValue: credentialRepository },
+        {
+          provide: CredentialExchangeRepository,
+          useValue: exchangeRepository,
+        },
         { provide: ConnectionService, useValue: connectionService },
         { provide: JobsService, useValue: jobsService },
         { provide: DomainAuditService, useValue: domainAudit },
@@ -167,9 +177,68 @@ describe('ProtocolStateChangeService', () => {
     expect(jobsService.sendInTransaction).not.toHaveBeenCalled();
   });
 
+  it('notifies a newly observed holder request even when its offer stays processing', async () => {
+    operationRepository.findByExternalIdForTenant.mockResolvedValue(
+      operation(),
+    );
+    operationService.transitionStateIfForward.mockResolvedValue(null);
+    exchangeRepository.observe.mockResolvedValueOnce({
+      exchangeId: 'local-exchange',
+      from: CredentialExchangeState.OfferSent,
+      to: CredentialExchangeState.RequestReceived,
+    });
+    const data = baseData({ protocolState: 'request_received' });
+    const correlation = { exchangeId: 'local-exchange', connectorId: 'wallet' };
+
+    await service.process(data, correlation);
+    await service.process(data, correlation);
+    await service.process(
+      baseData({ protocolState: 'offer_sent' }),
+      correlation,
+    );
+
+    expect(jobsService.sendInTransaction).toHaveBeenCalledTimes(1);
+    expect(jobsService.sendInTransaction).toHaveBeenCalledWith(
+      mockManager,
+      'webhook.dispatch',
+      {
+        tenantId: TENANT_ID,
+        event: 'credential-exchange.request-received',
+        resourceId: 'local-exchange',
+        occurredAt: expect.any(String),
+      },
+    );
+    expect(eventEmitter.emit).not.toHaveBeenCalled();
+    expect(operationService.transitionStateIfForward).toHaveBeenCalledWith(
+      'op-1',
+      OperationState.PROCESSING,
+      operationStatesBelow(OperationState.PROCESSING),
+      null,
+      mockManager,
+    );
+  });
+
+  it('propagates exchange-notification failure from the state transaction', async () => {
+    exchangeRepository.observe.mockResolvedValueOnce({
+      exchangeId: 'local-exchange',
+      from: CredentialExchangeState.OfferSent,
+      to: CredentialExchangeState.RequestReceived,
+    });
+    jobsService.sendInTransaction.mockRejectedValueOnce(
+      new Error('enqueue failed'),
+    );
+    await expect(
+      service.process(baseData({ protocolState: 'request_received' }), {
+        exchangeId: 'local-exchange',
+        connectorId: 'wallet',
+      }),
+    ).rejects.toThrow('enqueue failed');
+    expect(eventEmitter.emit).not.toHaveBeenCalled();
+  });
+
   it('advances a credential to issued and completes its operation on credential-issued', async () => {
     const op = operation();
-    const cred = credential();
+    const cred = credential({ connectorId: 'connector-1' });
     operationRepository.findByExternalIdForTenant.mockResolvedValue(op);
     credentialRepository.findByExternalId.mockResolvedValue(cred);
 
@@ -194,6 +263,14 @@ describe('ProtocolStateChangeService', () => {
       credentialStatesBelow(CredentialState.ISSUED),
       { issuedAt: expect.any(Date), revokedAt: undefined },
       mockManager,
+    );
+    expect(exchangeRepository.observe).toHaveBeenCalledWith(
+      TENANT_ID,
+      cred.connectorId,
+      'ext-1',
+      'credential-issued',
+      mockManager,
+      undefined,
     );
     expect(domainAudit.emit).toHaveBeenCalledWith(
       {

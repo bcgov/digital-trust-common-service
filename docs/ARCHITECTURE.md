@@ -563,18 +563,29 @@ invitation correlation, and a completed DIDComm v1 handshake. New connections pi
 their connector; legacy rows require exact discovery in the definition's wallet,
 never an automatic binding to the current tenant default.
 
-`POST /credentials/offer/:operationId/reconcile` reads the existing exchange from
-the credential's pinned connector and checks holder correlation. It reuses
+`POST /credentials/offer/:operationId/reconcile` delegates to the linked durable
+exchange's reconciliation path, reading its pinned connector and checking
+authenticated holder identity. It reuses
 `ProtocolStateChangeService` for monotonic transactional state updates and
 notifications without resending. This supports local development without an
 inbound webhook. Issuer-side `credential-issued` completion is distinct from
 holder acknowledgement (`done`).
 
 Offers accept optional `options.auto_issue` (boolean, default true), mapped to
-the issuer port's `autoIssue`. False waits for a future explicit issue action,
-which this API does not yet expose. It does not control wallet acceptance or
-transport delivery. Backend exchange retention is fixed on for reconciliation;
-auto-removal flags are not exposed.
+the issuer port's `autoIssue`. False waits for the explicit issue action
+available on the durable local credential-exchange resource after a
+holder request. It does not control wallet acceptance or transport delivery.
+Backend exchange retention is fixed on for reconciliation; auto-removal flags
+are not exposed. The local exchange UUID is independent of operation retention;
+its row-lock-protected issue-submission marker prevents concurrent or ambiguous
+issue requests from replaying the backend call.
+Only definitively rejected or unsent attempts release this marker for retry:
+their issue operation becomes failed, while the parent offer remains in flight.
+The exchange lock and latest issue-operation pointer serialize those retries;
+the pointer's FK index supports operation purge, but a second unique issue
+index is not needed. An observed `request-received` transition enqueues
+`credential-exchange.request-received` with the local exchange UUID in the same
+transaction, including when the offer operation is already processing.
 
 The MVP ships with **only the Traction adapter**. The adapter interfaces are designed and tested, but the Credo adapter is deferred to post-MVP.
 
@@ -756,18 +767,25 @@ CREATE INDEX idx_operations_batch_id ON operations (batch_id) WHERE batch_id IS 
 GET /api/v1/tenants/:tenantId/operations/:operationId
 ```
 
-Response uses a consistent envelope — every response has the same 6 top-level fields.
+Response uses a consistent envelope, with an additional `exchange_id` for
+exchange-linked operations.
 Result semantics determined by `(type, state)`:
+
+**Breaking compatibility change:** completed exchange-linked operations expose
+only `result: { exchange_id }`, not the stored backend payload, attributes, or
+backend identifiers. This also applies to historical offers linked by the
+exchange backfill migration. Consumers must read the local exchange resource for
+normalized progress. Failed results retain `{ code, message }`.
 
 ```json
 // Pending — result is null
 { "id": "uuid", "type": "credential.offer", "state": "pending",
   "created_at": "...", "updated_at": "...", "result": null }
 
-// Completed — result contains operation-type-specific data
+// Completed exchange-linked offer — result contains only a local reference
 { "id": "uuid", "type": "credential.offer", "state": "completed",
-  "created_at": "...", "updated_at": "...",
-  "result": { "credential_exchange_id": "...", "state": "credential_issued", "attributes": {...} } }
+  "exchange_id": "local-exchange-uuid", "created_at": "...", "updated_at": "...",
+  "result": { "exchange_id": "local-exchange-uuid" } }
 
 // Failed — result contains { code, message }
 { "id": "uuid", "type": "credential.offer", "state": "failed",
@@ -1296,6 +1314,63 @@ The endpoint is served by a second TLS listener on `LOG_ACCESS_INTERNAL_PORT`, m
 Service and a NetworkPolicy limited to the gateway pods. The route is excluded from the global prefix and
 the OpenAPI document, and `InternalListenerGuard` answers `404` for the same path on the public port.
 The certificate is read at start, so a rotation needs a pod restart.
+
+### Log gateway
+
+The caller of that endpoint is a standalone Envoy deployed by the chart (`logGateway.enabled`, off by
+default) in front of Loki. It holds no tenant logic: it asks the decision endpoint about every request and
+forwards only what that endpoint allows. The chart follows the `frontend` and `worker` layout (ConfigMap,
+Deployment, Service, optional HPA, re-encrypted Route, NetworkPolicies).
+
+- **Allow-list of read routes.** Only the Loki read paths (query, query_range, labels, series, the index
+  statistics and volume endpoints, format_query, detected fields and labels, patterns, and the label and
+  detected-field values paths) on `GET` or `POST` are routed. Live tail is not, and every other path,
+  method, `..`, `//` or escaped slash gets the same `403` as an unknown path. Paths are matched as sent
+  (no normalisation), so a trick cannot reach a route it does not literally name.
+- **`ext_authz` on every route**, the catch-all included, so a caller with no token cannot tell a real
+  route from an unknown one. There is no decision caching and no request body is forwarded to the check.
+  Failure never allows: an unreachable, slow or `5xx` decision endpoint is answered with the same
+  `{"error":"forbidden"}` body and headers as a real denial, and only the content type of a decision
+  response is passed back to the caller. The decision endpoint closes idle connections after about five
+  seconds, so the gateway drops its own idle connections to it after four; otherwise a check sent on a
+  closing connection would fail and a valid query would be refused. Retrying the check is deliberately
+  not used, because it would buffer the request body.
+- **Loki failures.** When Loki is down or slow, Envoy's own `503` or `504` is answered as
+  `{"error":"unavailable"}` (status unchanged, JSON) so the proxy's plain-text error does not expose
+  detail. This is separate from a denial, which stays `403` `{"error":"forbidden"}`.
+- **Timeouts.** `logGateway.upstream.timeout` (default `65s`) is held above Loki's own query timeout
+  (`60s`), and the Route's `haproxy.router.openshift.io/timeout` (default `70s`) above that, so a long
+  query is not cut off by the router's 30 second default.
+- **Scope header.** `X-Scope-OrgID` is taken from the decision response with `allowed_upstream_headers`,
+  which overwrites any value the caller sent. It is never appended.
+- **Loki credential.** The caller's `Authorization` header is replaced after the decision (the decision
+  endpoint still sees the caller's token) with the gateway's own Loki login, read from a Secret into an
+  environment variable. It is never in the ConfigMap. The hop to Loki's nginx gateway is plain HTTP because
+  that Service offers no TLS, and it carries no tenant token.
+- **Access log.** One JSON line per request on stdout with method, path without the query string, status
+  and response flags. No tokens and no query strings are logged. A tenant-selecting field in a `POST` body
+  is ignored, but not recorded, because the check endpoint never sees the body.
+- **Probes.** The admin listener stays on loopback. A separate probe listener on its own port answers the
+  kubelet and is on neither the Service nor the Route.
+- **Monitoring.** A `metrics` listener on its own port serves only `/stats/prometheus` from the loopback
+  admin interface, so no other admin path is reachable. An optional `PodMonitor` scrapes it with
+  `usedonly` to keep cardinality down. The in-namespace Alloy collector does the scraping, so the metrics
+  NetworkPolicy admits both the monitoring namespace and pods matching `networkPolicy.monitoring.podSelector`.
+  The `PodMonitor` copies the pod's `app.kubernetes.io/instance` label to a `release` label, because preview
+  environments share a namespace; the alert rules select on `release` and namespace, and every alert carries
+  a `release` label. An optional `PrometheusRule` alerts on a down gateway,
+  unavailable replicas, decision endpoint failures (the gateway fails closed, so each one refuses a tenant
+  their own logs), 5xx responses, Loki connect failures, p99 latency, a high deny rate and an expiring
+  certificate. Both are off by default because they need the Prometheus Operator CRDs; thresholds are
+  `logGateway.metrics.prometheusRule.*`.
+- **Network.** The gateway's pods may reach only the decision endpoint (port `logAccess.port`), Loki
+  (`networkPolicy.loki`, pod port 8080) and DNS. Envoy finds both upstreams by name, so the chart
+  refuses to render if `networkPolicy.dnsEgress` is off or has no ports. `logAccess.gatewayPodSelector`
+  defaults to the gateway's labels when the gateway is enabled. Ingress is the OpenShift router plus
+  any peers listed in `networkPolicy.logGateway.ingressPeers` (empty by default), for example an
+  in-cluster Grafana.
+
+`envoy --mode validate` runs against the rendered config in CI, using the tag in `logGateway.image.tag`.
 
 ### Key Libraries
 
