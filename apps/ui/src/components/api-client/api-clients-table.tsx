@@ -1,3 +1,11 @@
+import {
+  Button,
+  Menu,
+  MenuItem,
+  MenuTrigger,
+  Separator,
+  Switch,
+} from '@bcgov/design-system-react-components';
 import { LockKeyhole } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
@@ -7,15 +15,7 @@ import {
   EllipsisVerticalIcon,
   TrashIcon,
 } from '@/components/common/icons';
-import { Button } from '@/components/common/button';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/common/dropdown-menu';
-import { Separator } from '@/components/common/separator';
-import { ScopeBadge } from '@/components/common/scope-badge';
+import { StaticTag } from '@/components/common/static-tag';
 import {
   Table,
   TableBody,
@@ -45,58 +45,64 @@ export function ApiClientsTable({
   const { t } = useTranslation();
 
   return (
-    <div className="min-w-0 border-y border-border">
+    <div className="min-w-0">
       <Table
         aria-label={t('apiClients.table.label')}
+        variant="record"
         className="min-w-[48rem] table-fixed"
       >
-        <TableHeader className="bg-muted/50 [&_th]:px-5 [&_th]:font-bold">
+        <TableHeader>
           <TableRow>
-            <TableHead className="w-1/3">
+            <TableHead scope="col" className="w-1/3">
               {t('apiClients.table.client')}
             </TableHead>
-            <TableHead>{t('apiClients.fields.scopes')}</TableHead>
-            <TableHead className="w-44">{t('common.status')}</TableHead>
-            <TableHead className="w-36 text-right">
+            <TableHead scope="col">{t('apiClients.fields.scopes')}</TableHead>
+            <TableHead scope="col" className="w-44">
+              {t('common.status')}
+            </TableHead>
+            <TableHead scope="col" className="w-24 text-right">
               {t('common.actions')}
             </TableHead>
           </TableRow>
         </TableHeader>
-        <TableBody className="[&_td]:px-5 [&_td]:py-4">
+        <TableBody>
           {clients.map((client) => {
             const systemManaged = isReservedApiClientId(client.client_id);
 
             return (
-              <TableRow key={client.client_id}>
+              <TableRow
+                key={client.client_id}
+                className="border-(--surface-color-border-default)"
+              >
                 <TableCell className="whitespace-normal">
-                  <div className="font-semibold">{client.name}</div>
-                  <div className="mt-1 break-all font-mono text-xs text-muted-foreground">
+                  <div className="font-bold text-(--typography-color-primary)">
+                    {client.name}
+                  </div>
+                  <div className="mt-1 break-all font-mono text-label text-(--typography-color-secondary)">
                     {client.client_id}
                   </div>
                   {systemManaged && (
-                    <div className="text-xs text-muted-foreground">
+                    <div className="text-small-body text-(--typography-color-secondary)">
                       {t('apiClients.table.systemManaged')}
                     </div>
                   )}
                   {client.is_public && (
-                    <span className="text-xs text-muted-foreground">
+                    <span className="text-small-body text-(--typography-color-secondary)">
                       {t('apiClients.table.publicPkce')}
                     </span>
                   )}
                 </TableCell>
                 <TableCell className="whitespace-normal">
-                  <div className="flex flex-wrap gap-1">
+                  <div className="flex flex-wrap gap-xsmall">
                     {client.scopes?.map((scope) => (
-                      <ScopeBadge key={scope} scope={scope} />
+                      <StaticTag key={scope} color="blue" label={scope} />
                     ))}
                   </div>
                 </TableCell>
                 <TableCell>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      role="switch"
-                      aria-checked={!client.revoked_at}
+                  <div className="flex flex-wrap items-center gap-xsmall">
+                    <Switch
+                      isSelected={!client.revoked_at}
                       aria-label={
                         systemManaged
                           ? t('apiClients.table.activeStatusForSystemManaged', {
@@ -106,21 +112,15 @@ export function ApiClientsTable({
                               name: client.name,
                             })
                       }
-                      disabled={systemManaged}
-                      onClick={() =>
+                      isDisabled={systemManaged}
+                      onChange={() =>
                         onAction(
                           client,
                           client.revoked_at ? 'reactivate' : 'disable',
                         )
                       }
-                      className={`inline-flex h-6 w-11 shrink-0 items-center rounded-full border-2 border-transparent transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${client.revoked_at ? 'bg-muted-foreground' : 'bg-primary'}`}
-                    >
-                      <span
-                        aria-hidden="true"
-                        className={`pointer-events-none block size-5 rounded-full bg-background shadow-sm transition-transform ${client.revoked_at ? 'translate-x-0' : 'translate-x-5'}`}
-                      />
-                    </button>
-                    <span className="text-sm">
+                    />
+                    <span className="text-small-body text-(--typography-color-primary)">
                       {t(
                         client.revoked_at
                           ? 'apiClients.table.disabled'
@@ -128,7 +128,7 @@ export function ApiClientsTable({
                       )}
                     </span>
                     {systemManaged && (
-                      <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                      <span className="inline-flex items-center gap-hair text-small-body text-(--typography-color-secondary)">
                         <LockKeyhole
                           className="size-3 shrink-0"
                           aria-hidden="true"
@@ -139,41 +139,50 @@ export function ApiClientsTable({
                   </div>
                 </TableCell>
                 <TableCell className="text-right">
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        aria-label={t('apiClients.table.actionsFor', {
-                          name: client.name,
-                        })}
-                      >
-                        <EllipsisVerticalIcon aria-hidden="true" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem onSelect={() => onViewDetails(client)}>
-                        <CircleInfoIcon aria-hidden="true" />
+                  <MenuTrigger>
+                    <Button
+                      variant="tertiary"
+                      isIconButton
+                      aria-label={t('apiClients.table.actionsFor', {
+                        name: client.name,
+                      })}
+                    >
+                      <EllipsisVerticalIcon className="size-5" />
+                    </Button>
+                    <Menu
+                      placement="bottom end"
+                      className="bcds-react-aria-Menu medium record-menu"
+                      disabledKeys={
+                        systemManaged || client.revoked_at
+                          ? ['edit', 'revoke']
+                          : []
+                      }
+                      onAction={(key) => {
+                        if (key === 'view') onViewDetails(client);
+                        else if (key === 'edit') onEdit(client);
+                        else if (key === 'revoke') onRevoke(client);
+                      }}
+                    >
+                      <MenuItem id="view" textValue={t('common.viewDetails')}>
+                        <CircleInfoIcon className="size-5 shrink-0" />
                         {t('common.viewDetails')}
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        disabled={systemManaged || Boolean(client.revoked_at)}
-                        onSelect={() => onEdit(client)}
-                      >
-                        <EditIcon aria-hidden="true" />
+                      </MenuItem>
+                      <MenuItem id="edit" textValue={t('common.edit')}>
+                        <EditIcon className="size-5 shrink-0" />
                         {t('common.edit')}
-                      </DropdownMenuItem>
-                      <Separator />
-                      <DropdownMenuItem
-                        variant="destructive"
-                        disabled={systemManaged || Boolean(client.revoked_at)}
-                        onSelect={() => onRevoke(client)}
+                      </MenuItem>
+                      <Separator size="small" />
+                      <MenuItem
+                        id="revoke"
+                        textValue={t('apiClients.table.revoke')}
                       >
-                        <TrashIcon aria-hidden="true" />
-                        {t('apiClients.table.revoke')}
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                        <TrashIcon className="size-5 shrink-0 text-(--icons-color-danger)" />
+                        <span className="text-(--typography-color-danger)">
+                          {t('apiClients.table.revoke')}
+                        </span>
+                      </MenuItem>
+                    </Menu>
+                  </MenuTrigger>
                 </TableCell>
               </TableRow>
             );
