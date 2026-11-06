@@ -1,13 +1,11 @@
 # Log gateway verification
 
-Automated isolation tests, the manual checks, the fairness benchmark and the recorded two-tenant check for the
+Automated isolation tests, the manual checks, and the recorded two-tenant check for the
 identity-aware Loki gateway. The rules come from
 [tenant-log-access-contract.md](tenant-log-access-contract.md) (section 7.2, Rules V1–V3, and
 sections 9.2–9.3); the gateway itself is described in
-[ARCHITECTURE.md](ARCHITECTURE.md#log-gateway). The manual checks and the benchmark run against a
+[ARCHITECTURE.md](ARCHITECTURE.md#log-gateway). The manual checks run against a
 **deployed** gateway in front of a real Loki.
-
-Offline tests for the benchmark's shared client (no gateway needed): `npm run test:log-gateway:lib`.
 
 ## Prerequisites
 
@@ -65,55 +63,8 @@ Run these in **every** environment where tenants have access (V2, V3).
   S5 attempts appear in the gateway access log. Tenant-selecting fields in a **POST body** are
   ignored but not recorded; whether that satisfies S6 is an open question.
 
-Not covered by either: N2, N21–N25, N28, N29, N36, N38–N40 (other components), and P4, P8–P11
+Not covered by either: N2, N21–N25, N28, N29, N36–N40 (other components), and P4, P8–P11
 (Grafana or other components).
-
-## Fairness benchmark (N37)
-
-```bash
-LOG_GATEWAY_URL=https://<gateway-route> TOKEN_URL=https://<api>/oidc/token \
-LOG_GATEWAY_AUDIENCE=<LOG_GATEWAY_AUDIENCE> \
-TENANT_A_ID=<uuid> TENANT_A_CLIENT_ID=... TENANT_A_CLIENT_SECRET=... \
-TENANT_B_ID=<uuid> TENANT_B_CLIENT_ID=... TENANT_B_CLIENT_SECRET=... \
-BENCH_QUERY='{service_name=~".+"}' \
-BENCH_QUERIER_REPLICAS=<n> BENCH_QUERIER_CONCURRENCY=<n> \
-BENCH_SCOPE_PARTITIONS=2 \
-PROM_URL=... PROM_PEAK_QUERY='<noisy tenant in-flight sub-queries>' \
-npm run benchmark:log-gateway
-```
-
-Follows the reference load of Rule L11: a baseline with the victim alone, then the victim under a
-noisy tenant saturating its allowance, at least 20 successful runs over at least 10 minutes each, through the
-gateway. A phase is extended for more successes but stops at twice its window.
-
-- `BENCH_RANGE_HOURS` (default `168`) and `BENCH_ENTRY_LIMIT` (default `2000`) are the maximum
-  Loki permits in dev (`max_query_length`, `max_entries_limit_per_query`), which is what L11
-  wants. **Confirm both from the target environment's live config**; an entry limit above the
-  backend's is answered with a `400` on every request.
-- `BENCH_QUERIER_REPLICAS` and `BENCH_QUERIER_CONCURRENCY` are required. The tool prints
-  `cap = replicas × concurrency / 3` (dev: 1 read pod, `max_concurrent` 4).
-- `BENCH_SCOPE_PARTITIONS` is only a label in the output and is **not verified**. Confirm the
-  scope size yourself, and run at 2 and at 10 partitions with representative volume in every
-  partition.
-- `PROM_URL` and `PROM_PEAK_QUERY` supply the noisy tenant's peak concurrent sub-queries. If the
-  lookup fails or the value is missing, the run fails. The query must return **one series, already
-  aggregated for the noisy tenant**; zero or several series count as not recorded. Loki exposes no per-tenant in-flight
-  metric, so which query to use is **undecided**; settle it before relying on `capacityCapHeld`.
-
-The verdict passes only if all of these hold:
-
-| Field                                                  | Meaning                                                                                                                                                                                                                                                                                                 |
-| ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `baselineSamplesSufficient`, `loadedSamplesSufficient` | At least `BENCH_RUNS` (min 20) **successful** samples in each phase. p95 is computed from successes only, so a run with no working queries cannot pass                                                                                                                                                  |
-| `latencyUnder10s`, `withinTwiceBaseline`               | Loaded p95 ≤ 10 s and ≤ 2× the baseline p95                                                                                                                                                                                                                                                             |
-| `noErrorIncrease`                                      | Loaded error rate ≤ baseline error rate                                                                                                                                                                                                                                                                 |
-| `noCacheHits`                                          | `data.stats.cache.result` (`entriesFound`, `queryLengthServed`) is zero in every 200 of baseline, loaded **and** noisy queries, and the stats are present in every one                                                                                                                                  |
-| `noisyLoadSustained`                                   | At most 10% of the noisy tenant's queries were non-200. The threshold is a judgement call, not a contract value: the decision endpoint allows 120 requests a minute per tenant, so fast refused queries would collapse the load and make the victim's latency meaningless. Counts by status are printed |
-| `capacityCapHeld`                                      | Recorded peak ≤ cap                                                                                                                                                                                                                                                                                     |
-
-The tool does not enforce any capacity limit; it measures and reports. Confirm from Loki's own
-metrics too that no run was served from the results cache. Re-run when querier replicas or
-per-querier concurrency change. Post the JSON output on the tracking issue.
 
 ## Section 9.3 end-to-end record
 

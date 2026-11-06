@@ -2,7 +2,7 @@
   "moduleFileExtensions": ["js", "json", "ts"],
   "rootDir": ".",
   "testEnvironment": "node",
-  "setupFilesAfterEnv": ["<rootDir>/jest-log-gateway-setup.ts"],
+  "setupFilesAfterEnv": ["<rootDir>/jest-integration-setup.ts"],
   "testRegex": ".hermetic-spec.ts$",
   "maxWorkers": 1,
   "testTimeout": 30000,

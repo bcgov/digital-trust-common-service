@@ -115,6 +115,9 @@ jobs:
         with:
           node-version: 24
           cache: npm
+      - uses: azure/setup-helm@59b1c81c6280f5abebb1fb1bc585696daa7dfb42 # v5.0.1
+        with:
+          version: v3.16.2
       - run: npm ci
       - run: npm run test:cov
       - name: Build and apply migrations
@@ -128,61 +131,15 @@ jobs:
         run: npm run test:integration
       - name: Run e2e tests
         run: npm run test:e2e
+      - name: Run hermetic log gateway tests
+        # Envoy runs in Docker with the chart-rendered config; the app and a
+        # fake Loki run in the Jest process on the runner.
+        run: npm run test:log-gateway
       - name: Report coverage to Coveralls
         uses: coverallsapp/github-action@8d6379e14d29928660c4ba802d8e85393440b329 # v2.3.8
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           path-to-lcov: coverage/lcov.info
-
-  log-gateway:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    permissions:
-      contents: read
-    services:
-      postgres:
-        image: postgres:18.4
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: dc_common_service
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-    env:
-      DB_HOST: localhost
-      DB_PORT: 5432
-      DB_USERNAME: postgres
-      DB_PASSWORD: postgres
-      DB_NAME: dc_common_service
-      DB_LOGGING: 'false'
-      NODE_ENV: test
-      CONNECTOR_ENCRYPTION_KEYS_PATH: './config/encryption-keys.json'
-      UPSTREAM_IDENTITY_FEDERATION_CONFIG_PATH: './config/upstream-identity-federation.json'
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: 24
-          cache: npm
-      - uses: azure/setup-helm@59b1c81c6280f5abebb1fb1bc585696daa7dfb42 # v5.0.1
-        with:
-          version: v3.16.2
-      - run: npm ci
-      - name: Build and apply migrations
-        run: |
-          npm run build
-          npm run migrate:up
-      - name: Run log gateway tool tests
-        run: npm run test:log-gateway:lib
-      - name: Run hermetic log gateway tests
-        # Envoy runs in Docker with the chart-rendered config; the app and a
-        # fake Loki run in the Jest process on the runner.
-        run: npm run test:log-gateway
 
   helm:
     runs-on: ubuntu-latest
