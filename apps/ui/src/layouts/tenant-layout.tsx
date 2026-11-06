@@ -1,3 +1,4 @@
+import { InlineAlert } from '@bcgov/design-system-react-components';
 import type { ParseKeys } from 'i18next';
 import { useTranslation } from 'react-i18next';
 import {
@@ -10,7 +11,7 @@ import {
 } from 'react-router';
 
 import { AccessDenied } from '@/components/common/access-denied';
-import { TenantStatusBadge } from '@/components/tenant/tenant-status-badge';
+import { TenantStatusTag } from '@/components/tenant/tenant-status-badge';
 import { Skeleton } from '@/components/common/skeleton';
 import { ApiError } from '@/lib/api/errors';
 import { useTenant } from '@/lib/api/queries/tenants';
@@ -69,11 +70,15 @@ export function TenantLayout() {
     }
 
     return (
-      <p role="alert" className="text-sm text-destructive">
-        {error instanceof ApiError
-          ? t('tenant.loadFailedWithReason', { reason: error.message })
-          : t('tenant.loadFailed')}
-      </p>
+      <InlineAlert
+        variant="danger"
+        role="alert"
+        description={
+          error instanceof ApiError
+            ? t('tenant.loadFailedWithReason', { reason: error.message })
+            : t('tenant.loadFailed')
+        }
+      />
     );
   }
 
@@ -89,14 +94,14 @@ export function TenantLayout() {
                 <h1 className="text-xl font-semibold">
                   {tenant?.name ?? t('tenant.title')}
                 </h1>
-                {tenant?.status && <TenantStatusBadge status={tenant.status} />}
+                {tenant?.status && <TenantStatusTag status={tenant.status} />}
               </>
             )}
           </div>
 
           <nav
             aria-label={t('tenantTabs.label')}
-            className="flex gap-1 border-b"
+            className="flex gap-1 border-b border-(--surface-color-border-default)"
           >
             {tabs.map(({ to, label, end }) => (
               <NavLink
@@ -107,8 +112,8 @@ export function TenantLayout() {
                   cn(
                     '-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors',
                     isActive
-                      ? 'border-primary text-foreground'
-                      : 'border-transparent text-muted-foreground hover:text-foreground',
+                      ? 'border-(--surface-color-primary-button-default) text-(--typography-color-primary)'
+                      : 'border-transparent text-(--typography-color-secondary) hover:text-(--typography-color-primary)',
                   )
                 }
               >
