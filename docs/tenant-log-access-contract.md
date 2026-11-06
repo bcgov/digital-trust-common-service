@@ -25,7 +25,7 @@ meant to be entered at the part that concerns you rather than read end to end.
 | Implementing a component | That component's row in [8.1](#81-what-each-component-is-responsible-for), then the rules it names, via [Appendix A](#appendix-a-rule-index) |
 | Reviewing the boundary | [Section 2](#2-what-tenant-means-in-each-service), then [7.1](#71-threat-model) and [7.2](#72-required-tests) |
 | Looking up a single rule | [Appendix A: rule index](#appendix-a-rule-index) |
-| Tracing an attack to its control | [7.1](#71-threat-model) and [Appendix B](#appendix-b-remaining-threat-model-rows) |
+| Tracing an attack to its control | [7.2](#72-required-tests) |
 
 ### What is settled
 
@@ -299,8 +299,8 @@ all, rather than merely having it guarded.
 **Rule T13.** Every hop that carries a token **MUST** be TLS-protected — browser to Grafana,
 Grafana to gateway, and gateway to storage backend. A plaintext hop carrying a bearer token
 **MUST NOT** exist in any environment, and an external plaintext request **MUST** be refused or
-redirected rather than served. This is what makes the token-replay entry in the threat model a
-bounded risk rather than a passive-capture one.
+redirected rather than served. This is what makes token replay a bounded risk rather than a
+passive-capture one.
 
 ## 4. Mapping a service tenant to its agent log identifier
 
@@ -859,30 +859,16 @@ caller learns nothing; we learn that someone probed.
 
 ### 7.1 Threat model
 
-Each row is an attacker with a **valid token for tenant A** attempting to read tenant B, which
-is the realistic adversary: a legitimate tenant user, authenticated, with full control of
-their own HTTP client — and, importantly, able to configure their own connector.
+The realistic adversary is a legitimate tenant user holding a **valid token for tenant A**,
+with full control of their own HTTP client and able to configure their own connector, attempting
+to read or write tenant B's logs.
 
-Thirty-one attacks are enumerated. The six below are the ones specific to this design — the
-places where a caller influences *data* rather than the *query*. The other twenty-five are the
-standard token, header and route attacks, and they are in
-[Appendix B](#appendix-b-remaining-threat-model-rows). Numbering is continuous across both
-tables, so the `Threat` column in [7.2](#72-required-tests) resolves against either.
-
-| # | Attack | Control | Outcome |
-|---|---|---|---|
-| 13 | **Supply tenant B's agent identifier directly in A's own connector credentials** | The identifier is system-populated; a caller-supplied value is never persisted or used ([M18](#47-the-binding-is-system-owned-not-tenant-supplied)), and each identifier belongs to exactly one tenant, enforced at write ([M2](#41-provenance--the-identifier-must-be-trustworthy-before-it-is-useful)) | Value discarded |
-| 14 | **Point a connector at an attacker-run endpoint that asserts an arbitrary identifier** | Only identifiers from a trusted agent are usable for partitioning ([M1](#41-provenance--the-identifier-must-be-trustworthy-before-it-is-useful)) | Identifier unusable |
-| 15 | **Smuggle `\|` or a path character into an identifier to widen the scope** | Partition keys are derived, charset-constrained and length-bounded; raw values are never passed through ([L8](#54-partition-keys-must-be-derived-not-passed-through)) | Rejected |
-| 16 | **Get tenant B's routing value onto a line produced for A**, via user-controlled payload or a duplicated JSON key | Routing field is owned by trusted logging infrastructure and read only from there; conflicts route to the platform partition ([L6](#53-the-routing-field-must-be-trusted-not-merely-structured), [L7](#53-the-routing-field-must-be-trusted-not-merely-structured)) | Platform partition |
-| 30 | **Write** into a tenant's partition via a direct-push credential whose identity collides with a derived key | The write-path identity namespace is domain-separated from tenant and agent keys ([L8](#54-partition-keys-must-be-derived-not-passed-through)) | No collision |
-| 31 | Squat an unbound identifier to lock a tenant out of its own future logs | Caller-supplied identifiers are never persisted ([M18](#47-the-binding-is-system-owned-not-tenant-supplied)); bindings are released on connector deletion ([M20](#47-the-binding-is-system-owned-not-tenant-supplied)) | Squat impossible |
-
-Rows 1–5, 17 and 20 share one structural property, and it is the reason this design was chosen:
-the caller controls the query completely and controls the partition scope not at all. Rows
-13–16, 30 and 31 are the counterweight — the places where a caller influences *data* rather than
-the *query*. That is where this design is actually fragile, and it is where most of these rules
-sit: the query path is safe by construction, the write path is safe only by discipline.
+The query path and the write path have opposite properties, and that is the reason this design
+was chosen: on the query path, the caller controls the query completely and controls the
+partition scope not at all; on the write and binding paths, a caller can influence *data* rather
+than the *query*. That is where this design is actually fragile, and it is where most of these
+rules sit: the query path is safe by construction, the write path is safe only by discipline.
+Each attack and the rule that stops it are tested in [7.2](#72-required-tests).
 
 ### 7.2 Required tests
 
@@ -913,49 +899,49 @@ implementation.
 some are a correctly scoped success; both are passes. A case that "succeeds" here is not a
 weaker result — it is the demonstration that the attack changed nothing.
 
-| # | Given | Expect | Threat | Component |
-|---|---|---|---|---|
-| N1 | Token with the API audience | `401`; nothing forwarded | 6 | Gateway |
-| N2 | Log-audience token against the API | `401` | 7 | This service |
-| N3 | Signed token whose `aud` contains **both** audiences | `401` from both validators; issuance never produces one | 8 | This service + gateway |
-| N4 | Valid token without the log-read scope | `403`; nothing forwarded | 9 | Gateway |
-| N5 | Expired, unsigned, wrong-issuer, or wrong-key token | `401` | 10 | Gateway |
-| N6 | No token, or a cookie / basic-auth / upstream / agent token instead ([T2](#31-shape-and-validation)) | `401` | 10 | Gateway |
-| N7 | Token with absent, empty, or repeated `tenant_id` | `401` | 21 | Gateway |
-| N8 | Token carrying platform-admin | Scoped to its own tenant; no widening | 22 | Gateway |
-| N9 | Sequential requests with tenant A's then tenant B's token on one connection | Each scoped to its own tenant; no decision reuse ([T7](#33-authorization)) | — | Gateway |
-| N10 | Inbound `X-Scope-OrgID: B` | Scoped to A; that value never reaches the backend | 3 | Gateway |
-| N11 | Inbound `X-Scope-OrgID: A\|B` | Scoped to A only; no merge | 4 | Gateway |
-| N12 | Inbound partition header on a **rejected** request | Rejected, and nothing forwarded carrying it | 3 | Gateway |
-| N13 | Forwarded request inspected at the backend | The caller's `Authorization` header is not present; only the gateway's own backend login may be ([G4](#61-the-header-is-computed-never-conveyed)) | — | Gateway |
-| N14 | LogQL explicitly selecting tenant B's labels | Forwarded unchanged, scoped to A only ([G5](#62-the-gateway-does-not-read-the-query)). Against real storage with a **B-owned canary** line present, the canary is **not** returned; A-owned lines that happen to match may be ([V1](#72-required-tests)) | 1 | Gateway |
-| N15 | Query via Explore / the datasource API / curl, bypassing dashboards | Scoped to A identically | 2 | Gateway |
-| N16 | Tenant-selecting parameter or body field on an allowlisted route | Ignored; scoped to A; attempt recorded ([S4](#7-tenant-selection-is-never-an-input), [S6](#7-tenant-selection-is-never-an-input)) | 1 | Gateway |
-| N17 | Tenant-selecting **path**, or any unenumerated route | Generic denial, identical for every unknown path ([S5](#7-tenant-selection-is-never-an-input), [G8](#63-complete-coverage-of-the-read-surface)) | 20 | Gateway |
-| N18 | A backend read route that exists but is not enumerated | Denied ([G7](#63-complete-coverage-of-the-read-surface)) | 17 | Gateway |
-| N19 | Label-values request naming another tenant's partition | Scoped to A's label space | 17 | Gateway |
-| N20 | Live-tail request | Generic denial; or, under fan-in, per-partition streams with teardown and reconnect re-authorization ([G10](#64-live-tail-is-not-compatible-with-a-multi-partition-scope), [G11](#64-live-tail-is-not-compatible-with-a-multi-partition-scope)) | 18, 19 | Gateway |
-| N21 | Direct request to the storage backend with a chosen header | Not routable from a tenant-reachable network position, in every environment | 5 | Log storage |
-| N22 | Plaintext request to any token-bearing hop | Refused or redirected; no token accepted over plaintext | 12 | Log storage |
-| N23 | Tenant B attempts to bind an identifier already bound to tenant A | Binding **refused**; A's binding unchanged | 13 | This service |
-| N24 | Two tenants attempt to bind the same identifier concurrently | Exactly one succeeds | 13 | This service |
-| N25 | Connector pointed at an untrusted endpoint asserting an identifier | Identifier not usable for partitioning ([M1](#41-provenance--the-identifier-must-be-trustworthy-before-it-is-useful)) | 14 | This service |
-| N26 | Identifier containing `\|`, a path or control character, or over the length limit | Rejected; never reaches a header ([L8](#54-partition-keys-must-be-derived-not-passed-through)) | 15 | This service + gateway |
-| N27 | Two different source identifiers deriving to the same partition key | Collision detected, not silently shared | 15 | This service + gateway |
-| N28 | Log line carrying a foreign routing value via request data, user content, or a duplicate JSON key | Routed to the platform partition, never to the named tenant ([L6](#53-the-routing-field-must-be-trusted-not-merely-structured), [L7](#53-the-routing-field-must-be-trusted-not-merely-structured)) | 16 | Log storage |
-| N29 | Agent line with no extractable identifier | Platform partition; never a tenant partition ([L4](#52-partitioning-happens-at-ingestion)) | 16 | Log storage |
-| N30 | Connector inactive, or present with no identifier | That partition omitted; service lines still served ([M14](#45-failure-behaviour)) | 23 | Gateway |
-| N31 | Resolution fails with a backend error | Denied; **not** degraded to partial results | 23 | Gateway |
-| N32 | Responses compared across an unusable identifier and a backend error | Indistinguishable status and body. A tenant with no connector is a **success** and is correctly distinguishable ([M15](#45-failure-behaviour)) | 24 | Gateway |
-| N33 | Any failure response body inspected | No other tenant's identifier, no connector count, no tenant existence signal | 24 | Gateway |
-| N34 | Identifier rotated; queries issued at the staleness bound and just after | Old binding not honoured past the bound | 25 | Gateway |
-| N35 | Spoofed `Host` / forwarded headers matching the gateway audience | `401`; audience unaffected | 26 | Gateway |
-| N36 | Query exceeding the global limits | Rejected by limits; other tenants unaffected | 27 | Log storage |
-| N37 | Tenant A floods many individually compliant queries | Tenant B stays within the fairness target, measured by L11's reference benchmark ([L11](#55-preconditions-for-exposing-query-access)) | 28 | Log storage + gateway |
-| N38 | Read attempted through the write path | Not readable | 29 | Log storage |
-| N39 | Tenant supplies a log identifier directly in a connector create or update request | Not persisted, not used for partitioning, attempt recorded ([M18](#47-the-binding-is-system-owned-not-tenant-supplied)) | 13, 31 | This service |
-| N40 | Direct-push credential whose identity derives to a tenant's partition key | Refused; no write into a tenant partition ([L8](#54-partition-keys-must-be-derived-not-passed-through)) | 30 | Log storage |
-| N41 | Tenant's resolved partition count exceeds the bound | Denied, never silently truncated ([M17](#46-multiple-connectors-are-not-ambiguous)) | — | Gateway |
+| # | Given | Expect | Component |
+|---|---|---|---|
+| N1 | Token with the API audience | `401`; nothing forwarded ([T9](#34-audience-separation)) | Gateway |
+| N2 | Log-audience token against the API | `401` ([T8](#34-audience-separation), [T9](#34-audience-separation)) | This service |
+| N3 | Signed token whose `aud` contains **both** audiences | `401` from both validators; issuance never produces one ([T12](#34-audience-separation)) | This service + gateway |
+| N4 | Valid token without the log-read scope | `403`; nothing forwarded ([T5](#33-authorization)) | Gateway |
+| N5 | Expired, unsigned, wrong-issuer, or wrong-key token | `401` ([T1](#31-shape-and-validation)) | Gateway |
+| N6 | No token, or a cookie / basic-auth / upstream / agent token instead ([T2](#31-shape-and-validation)) | `401` | Gateway |
+| N7 | Token with absent, empty, or repeated `tenant_id` | `401` ([T3](#32-claims), [T4](#32-claims)) | Gateway |
+| N8 | Token carrying platform-admin | Scoped to its own tenant; no widening ([T11](#35-platform-admin-is-not-a-bypass)) | Gateway |
+| N9 | Sequential requests with tenant A's then tenant B's token on one connection | Each scoped to its own tenant; no decision reuse ([T7](#33-authorization)) | Gateway |
+| N10 | Inbound `X-Scope-OrgID: B` | Scoped to A; that value never reaches the backend ([G2](#61-the-header-is-computed-never-conveyed)) | Gateway |
+| N11 | Inbound `X-Scope-OrgID: A\|B` | Scoped to A only; no merge ([G2](#61-the-header-is-computed-never-conveyed)) | Gateway |
+| N12 | Inbound partition header on a **rejected** request | Rejected, and nothing forwarded carrying it ([G2](#61-the-header-is-computed-never-conveyed)) | Gateway |
+| N13 | Forwarded request inspected at the backend | The caller's `Authorization` header is not present; only the gateway's own backend login may be ([G4](#61-the-header-is-computed-never-conveyed)) | Gateway |
+| N14 | LogQL explicitly selecting tenant B's labels | Forwarded unchanged, scoped to A only ([G5](#62-the-gateway-does-not-read-the-query)). Against real storage with a **B-owned canary** line present, the canary is **not** returned; A-owned lines that happen to match may be ([V1](#72-required-tests)) | Gateway |
+| N15 | Query via Explore / the datasource API / curl, bypassing dashboards | Scoped to A identically ([L2](#51-isolation-lives-in-the-storage-layer), [G5](#62-the-gateway-does-not-read-the-query)) | Gateway |
+| N16 | Tenant-selecting parameter or body field on an allowlisted route | Ignored; scoped to A; attempt recorded ([S4](#7-tenant-selection-is-never-an-input), [S6](#7-tenant-selection-is-never-an-input)) | Gateway |
+| N17 | Tenant-selecting **path**, or any unenumerated route | Generic denial, identical for every unknown path ([S5](#7-tenant-selection-is-never-an-input), [G8](#63-complete-coverage-of-the-read-surface)) | Gateway |
+| N18 | A backend read route that exists but is not enumerated | Denied ([G7](#63-complete-coverage-of-the-read-surface)) | Gateway |
+| N19 | Label-values request naming another tenant's partition | Scoped to A's label space ([G6](#63-complete-coverage-of-the-read-surface), [G7](#63-complete-coverage-of-the-read-surface)) | Gateway |
+| N20 | Live-tail request | Generic denial; or, under fan-in, per-partition streams with teardown and reconnect re-authorization ([G10](#64-live-tail-is-not-compatible-with-a-multi-partition-scope), [G11](#64-live-tail-is-not-compatible-with-a-multi-partition-scope)) | Gateway |
+| N21 | Direct request to the storage backend with a chosen header | Not routable from a tenant-reachable network position, in every environment ([L12](#55-preconditions-for-exposing-query-access)) | Log storage |
+| N22 | Plaintext request to any token-bearing hop | Refused or redirected; no token accepted over plaintext ([T13](#36-transport)) | Log storage |
+| N23 | Tenant B attempts to bind an identifier already bound to tenant A | Binding **refused**; A's binding unchanged ([M2](#41-provenance--the-identifier-must-be-trustworthy-before-it-is-useful)) | This service |
+| N24 | Two tenants attempt to bind the same identifier concurrently | Exactly one succeeds ([M2](#41-provenance--the-identifier-must-be-trustworthy-before-it-is-useful)) | This service |
+| N25 | Connector pointed at an untrusted endpoint asserting an identifier | Identifier not usable for partitioning ([M1](#41-provenance--the-identifier-must-be-trustworthy-before-it-is-useful)) | This service |
+| N26 | Identifier containing `\|`, a path or control character, or over the length limit | Rejected; never reaches a header ([L8](#54-partition-keys-must-be-derived-not-passed-through)) | This service + gateway |
+| N27 | Two different source identifiers deriving to the same partition key | Collision detected, not silently shared ([L8](#54-partition-keys-must-be-derived-not-passed-through)) | This service + gateway |
+| N28 | Log line carrying a foreign routing value via request data, user content, or a duplicate JSON key | Routed to the platform partition, never to the named tenant ([L6](#53-the-routing-field-must-be-trusted-not-merely-structured), [L7](#53-the-routing-field-must-be-trusted-not-merely-structured)) | Log storage |
+| N29 | Agent line with no extractable identifier | Platform partition; never a tenant partition ([L4](#52-partitioning-happens-at-ingestion)) | Log storage |
+| N30 | Connector inactive, or present with no identifier | That partition omitted; service lines still served ([M14](#45-failure-behaviour)) | Gateway |
+| N31 | Resolution fails with a backend error | Denied; **not** degraded to partial results ([M14](#45-failure-behaviour)) | Gateway |
+| N32 | Responses compared across an unusable identifier and a backend error | Indistinguishable status and body. A tenant with no connector is a **success** and is correctly distinguishable ([M15](#45-failure-behaviour)) | Gateway |
+| N33 | Any failure response body inspected | No other tenant's identifier, no connector count, no tenant existence signal ([M15](#45-failure-behaviour)) | Gateway |
+| N34 | Identifier rotated; queries issued at the staleness bound and just after | Old binding not honoured past the bound ([M11](#44-freshness), [M13](#44-freshness)) | Gateway |
+| N35 | Spoofed `Host` / forwarded headers matching the gateway audience | `401`; audience unaffected ([T10](#34-audience-separation)) | Gateway |
+| N36 | Query exceeding the global limits | Rejected by limits; other tenants unaffected ([L10](#55-preconditions-for-exposing-query-access)) | Log storage |
+| N37 | Tenant A floods many individually compliant queries | Tenant B stays within the fairness target, measured by L11's reference benchmark ([L11](#55-preconditions-for-exposing-query-access)) | Log storage + gateway |
+| N38 | Read attempted through the write path | Not readable ([G9](#63-complete-coverage-of-the-read-surface)) | Log storage |
+| N39 | Tenant supplies a log identifier directly in a connector create or update request | Not persisted, not used for partitioning, attempt recorded ([M18](#47-the-binding-is-system-owned-not-tenant-supplied)) | This service |
+| N40 | Direct-push credential whose identity derives to a tenant's partition key | Refused; no write into a tenant partition ([L8](#54-partition-keys-must-be-derived-not-passed-through)) | Log storage |
+| N41 | Tenant's resolved partition count exceeds the bound | Denied, never silently truncated ([M17](#46-multiple-connectors-are-not-ambiguous)) | Gateway |
 
 **Rule V1.** N14 is the one to read carefully. A query naming another tenant **MUST** return no
 line belonging to that tenant, and **MUST NOT** return an error that depends on whether that
@@ -1252,39 +1238,3 @@ they do not restate it. Where an entry and the rule itself appear to differ, the
 | V2 | Gateway's adversarial tests are hermetic, against the real gateway configuration and a recording stand-in | [7.2](#72-required-tests) |
 | V3 | Gateway's isolation tests run on every change with no deployed dependency; each environment gets the [9.3](#93-the-end-to-end-check) check | [7.2](#72-required-tests) |
 
----
-
-## Appendix B: remaining threat model rows
-
-Continues [7.1](#71-threat-model), with the same adversary and the same numbering: an attacker
-holding a **valid token for tenant A**, attempting to read tenant B. These are the standard
-token, header and route attacks. The rows specific to this design — where a caller influences
-data rather than the query — are in [7.1](#71-threat-model).
-
-| # | Attack | Control | Outcome |
-|---|---|---|---|
-| 1 | Edit a dashboard query or variable to name tenant B | Scope comes from the token; the query is not consulted ([G5](#62-the-gateway-does-not-read-the-query)) | Tenant A's data |
-| 2 | Bypass the UI — Explore, the datasource query API, or curl | Same control; the UI was never the boundary ([2.2](#22-grafana-orgs-are-not-an-isolation-boundary-here)) | Tenant A's data |
-| 3 | Send `X-Scope-OrgID: B` | Unconditionally overwritten ([G2](#61-the-header-is-computed-never-conveyed)) | Tenant A's data |
-| 4 | Send `X-Scope-OrgID: A\|B` to append a partition | Overwritten, not merged ([G2](#61-the-header-is-computed-never-conveyed)) | Tenant A's data |
-| 5 | Reach the storage backend directly with a chosen header | Backend unreachable except via the gateway, in every environment ([L12](#55-preconditions-for-exposing-query-access)) | No route |
-| 6 | Reuse an API token for log queries | Audience rejected ([T9](#34-audience-separation)) | `401` |
-| 7 | Use a log token against the API | API guard accepts only the API audience | `401` |
-| 8 | Obtain a token bearing **both** audiences | Single-audience issuance is an invariant, enforced on both validators ([T12](#34-audience-separation)) | `401` |
-| 9 | Authenticate without the log-read scope | Authorization is required, not just authentication ([T5](#33-authorization)) | `403` |
-| 10 | Craft or alter a token | Signature, issuer and expiry validated against our JWKS ([T1](#31-shape-and-validation)) | `401` |
-| 11 | Replay another user's token | Bounded lifetime, TLS on every token-bearing hop ([T13](#36-transport)), single audience; the token still scopes to *its own* tenant | No cross-tenant gain |
-| 12 | Capture a token from a plaintext hop | No plaintext token-bearing hop exists ([T13](#36-transport)) | No capture |
-| 17 | Enumerate via label or series endpoints instead of queries | Whole read surface covered by allowlist ([G6](#63-complete-coverage-of-the-read-surface), [G7](#63-complete-coverage-of-the-read-surface)) | Tenant A's label space |
-| 18 | Open a live-tail stream to escape header injection | Tail is excluded from the allowlist, or fanned in per partition under explicit limits ([G10](#64-live-tail-is-not-compatible-with-a-multi-partition-scope), [G11](#64-live-tail-is-not-compatible-with-a-multi-partition-scope)) | Denied, or tenant A's data |
-| 19 | Hold a tail stream open past token expiry | Re-authorization required on any fan-in implementation ([G11](#64-live-tail-is-not-compatible-with-a-multi-partition-scope)) | Stream closed |
-| 20 | Guess a per-tenant datasource or gateway URL | No such URL exists; unenumerated routes get a generic denial ([S5](#7-tenant-selection-is-never-an-input), [G8](#63-complete-coverage-of-the-read-surface)) | Generic denial |
-| 21 | Present a token with no `tenant_id`, or two | Rejected, no unscoped mode ([T3](#32-claims), [T4](#32-claims)) | `401` |
-| 22 | Claim platform-admin for a cross-tenant read | No role bypass on this path ([T11](#35-platform-admin-is-not-a-bypass)) | Tenant A's data |
-| 23 | Trigger a resolution failure hoping for a permissive fallback | Fail closed; no widening, no stale fallback ([M14](#45-failure-behaviour)) | Generic denial |
-| 24 | Probe failure responses to learn about other tenants or connectors | All resolution failures are externally indistinguishable ([M15](#45-failure-behaviour)) | No signal |
-| 25 | Keep using a revoked binding after rotation | Bounded staleness holds even if invalidation is never delivered ([M11](#44-freshness), [M13](#44-freshness)) | Expires within the bound |
-| 26 | Spoof `Host` or forwarded headers to satisfy the audience check | Expected audience is configured, never derived from the request ([T10](#34-audience-separation)) | `401` |
-| 27 | Exhaust the backend with one unbounded query | Global query limits precede exposure ([L10](#55-preconditions-for-exposing-query-access)) | Limited |
-| 28 | Exhaust the backend with **many individually valid** queries | Per-partition concurrency, queue and timeout controls, with rate control where the fairness target requires it ([L11](#55-preconditions-for-exposing-query-access)) | Other tenants within target |
-| 29 | Read via the write path | Write path is separate and not readable ([G9](#63-complete-coverage-of-the-read-surface)) | No route |
