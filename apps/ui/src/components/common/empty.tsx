@@ -24,7 +24,7 @@ import { cn } from '@/lib/utils';
 // Tailwind step, so a token revision flows through.
 
 const emptyVariants = cva(
-  'mx-auto flex w-full min-w-0 flex-col items-center justify-center gap-(--layout-margin-xlarge) text-center text-balance text-foreground',
+  'mx-auto flex w-full min-w-0 flex-col items-center justify-center gap-xlarge text-center text-balance text-(--typography-color-primary)',
   {
     variants: {
       // Width of the box. The design is 380px wide; `lg` is for wider
@@ -64,17 +64,14 @@ function EmptyHeader({ className, ...props }: React.ComponentProps<'div'>) {
       data-slot="empty-header"
       // 2px between title and description, and the media adds another 2px
       // below itself to make the 4px the design leaves above the title.
-      className={cn(
-        'flex flex-col items-center gap-(--layout-margin-hair)',
-        className,
-      )}
+      className={cn('flex flex-col items-center gap-hair', className)}
       {...props}
     />
   );
 }
 
 const emptyMediaVariants = cva(
-  'mb-(--layout-margin-hair) flex shrink-0 items-center justify-center text-muted-icon [&_svg]:pointer-events-none [&_svg]:shrink-0',
+  'mb-hair flex shrink-0 items-center justify-center text-muted-icon [&_svg]:pointer-events-none [&_svg]:shrink-0',
   {
     variants: {
       variant: {
@@ -105,13 +102,19 @@ function EmptyMedia({
   );
 }
 
-function EmptyTitle({ className, ...props }: React.ComponentProps<'div'>) {
+function EmptyTitle({
+  className,
+  children,
+  ...props
+}: React.ComponentProps<'h2'>) {
   return (
-    <div
+    <h2
       data-slot="empty-title"
       className={cn('font-heading text-h5 font-bold', className)}
       {...props}
-    />
+    >
+      {children}
+    </h2>
   );
 }
 
@@ -120,7 +123,7 @@ function EmptyDescription({ className, ...props }: React.ComponentProps<'p'>) {
     <p
       data-slot="empty-description"
       className={cn(
-        'text-body text-muted-foreground [&>a]:underline [&>a]:underline-offset-4 [&>a:hover]:text-link-hover',
+        'text-body text-(--typography-color-secondary) [&>a]:underline [&>a]:underline-offset-4 [&>a:hover]:text-link-hover',
         className,
       )}
       {...props}
@@ -133,7 +136,7 @@ function EmptyContent({ className, ...props }: React.ComponentProps<'div'>) {
     <div
       data-slot="empty-content"
       className={cn(
-        'flex w-full min-w-0 flex-col items-center gap-(--layout-margin-small) text-sm text-balance',
+        'flex w-full min-w-0 flex-col items-center gap-small text-small-body text-balance',
         className,
       )}
       {...props}
@@ -141,8 +144,37 @@ function EmptyContent({ className, ...props }: React.ComponentProps<'div'>) {
   );
 }
 
+// Page-level empty state: centred in the space below the page heading and
+// lifted by the 80px bottom padding of the Figma "Empty State" frame.
+function EmptyState({
+  icon,
+  title,
+  description,
+  action,
+}: {
+  icon: React.ReactNode;
+  title: React.ReactNode;
+  description: React.ReactNode;
+  action?: React.ReactNode;
+}) {
+  return (
+    <div className="flex flex-1 flex-col items-center justify-center pb-20">
+      {/* The pages wrap the description normally rather than balanced. */}
+      <Empty className="text-wrap">
+        <EmptyHeader>
+          <EmptyMedia>{icon}</EmptyMedia>
+          <EmptyTitle>{title}</EmptyTitle>
+          <EmptyDescription>{description}</EmptyDescription>
+        </EmptyHeader>
+        {action}
+      </Empty>
+    </div>
+  );
+}
+
 export {
   Empty,
+  EmptyState,
   EmptyContent,
   EmptyDescription,
   EmptyHeader,

@@ -1,11 +1,12 @@
-import { ArrowLeft, ArrowRight } from 'lucide-react';
+import { Button } from '@bcgov/design-system-react-components';
 import { startTransition, useEffect, useId, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useNavigate, useSearchParams } from 'react-router';
 import valid from 'semver/functions/valid';
 
 import { AccessDenied } from '@/components/common/access-denied';
-import { Button } from '@/components/common/button';
+import { ArrowLeftIcon, ArrowRightIcon } from '@/components/common/icons';
+import { LoadingMessage } from '@/components/common/query-status';
 import { notify } from '@/components/common/sonner';
 import {
   AttributesStep,
@@ -289,7 +290,9 @@ export function CreateOrEditCredentialDefinitionPage() {
 
   if (draftId && (draftQuery.isLoading || loadedDraftId !== draftId)) {
     return (
-      <p role="status">{t('credentialDefinitions.wizard.loadingDraft')}</p>
+      <LoadingMessage>
+        {t('credentialDefinitions.wizard.loadingDraft')}
+      </LoadingMessage>
     );
   }
 
@@ -298,12 +301,12 @@ export function CreateOrEditCredentialDefinitionPage() {
       <div className="flex flex-col gap-2">
         <Link
           to="/credential-definitions"
-          className="inline-flex w-fit items-center gap-2 text-sm text-link hover:text-link-hover hover:underline"
+          className="inline-flex w-fit items-center gap-2 text-small-body text-(--typography-color-link) hover:underline"
         >
-          <ArrowLeft className="size-4" aria-hidden="true" />
+          <ArrowLeftIcon className="size-4" />
           {t('credentialDefinitions.wizard.backToList')}
         </Link>
-        <h1 className="text-xl font-semibold">
+        <h1 className="text-h1 font-bold text-black">
           {draftId
             ? t('credentialDefinitions.wizard.editTitle')
             : t('credentialDefinitions.wizard.newTitle')}
@@ -343,101 +346,99 @@ export function CreateOrEditCredentialDefinitionPage() {
         />
       )}
       {step === 0 && !isSetupValid && (
-        <p role="status" className="px-6 text-sm font-medium text-destructive">
+        <p
+          role="status"
+          className="px-6 text-small-body font-bold text-(--typography-color-danger)"
+        >
           {t('credentialDefinitions.wizard.draftRequirements')}
         </p>
       )}
       {step === 2 && !canPublish && (
-        <p role="status" className="px-6 text-sm font-medium text-destructive">
+        <p
+          role="status"
+          className="px-6 text-small-body font-bold text-(--typography-color-danger)"
+        >
           {t('credentialDefinitions.wizard.publishRequirements')}
         </p>
       )}
-      <div className="mt-auto flex items-center justify-between border-t border-border px-6 pt-5">
+      <div className="mt-auto flex items-center justify-between border-t border-(--surface-color-border-default) px-6 pt-5">
         {step === 0 ? (
-          <Button asChild variant="outline">
-            <Link to="/credential-definitions">
-              {t('credentialDefinitions.wizard.cancel')}
-            </Link>
+          <Button
+            variant="secondary"
+            onPress={() => void navigate('/credential-definitions')}
+          >
+            {t('credentialDefinitions.wizard.cancel')}
           </Button>
         ) : (
           <div className="flex gap-3">
             <Button
-              type="button"
-              variant="outline"
-              disabled={isSaving}
-              onClick={() => setStep(step - 1)}
+              variant="secondary"
+              isDisabled={isSaving}
+              onPress={() => setStep(step - 1)}
             >
-              <ArrowLeft aria-hidden="true" />
+              <ArrowLeftIcon className="size-5" />
               {t('credentialDefinitions.wizard.previous')}
             </Button>
-            <Button asChild variant="outline">
-              <Link to="/credential-definitions">
-                {t('credentialDefinitions.wizard.cancel')}
-              </Link>
+            <Button
+              variant="secondary"
+              onPress={() => void navigate('/credential-definitions')}
+            >
+              {t('credentialDefinitions.wizard.cancel')}
             </Button>
           </div>
         )}
         {step === 0 && (
           <div className="flex gap-3">
             <Button
-              type="button"
-              variant="outline"
-              disabled={!isSetupValid || isSaving}
-              onClick={saveDraft}
+              variant="secondary"
+              isDisabled={!isSetupValid || isSaving}
+              onPress={saveDraft}
             >
               {isSaving
                 ? t('credentialDefinitions.wizard.savingDraft')
                 : t('credentialDefinitions.wizard.saveDraft')}
             </Button>
             <Button
-              type="button"
-              disabled={!isSetupValid || isSaving}
-              onClick={() => setStep(1)}
+              isDisabled={!isSetupValid || isSaving}
+              onPress={() => setStep(1)}
             >
               {t('credentialDefinitions.wizard.nextAttributes')}
-              <ArrowRight aria-hidden="true" />
+              <ArrowRightIcon className="size-5" />
             </Button>
           </div>
         )}
         {step === 1 && (
           <div className="flex gap-3">
             <Button
-              type="button"
-              variant="outline"
-              disabled={!isSetupValid || isSaving}
-              onClick={saveDraft}
+              variant="secondary"
+              isDisabled={!isSetupValid || isSaving}
+              onPress={saveDraft}
             >
               {isSaving
                 ? t('credentialDefinitions.wizard.savingDraft')
                 : t('credentialDefinitions.wizard.saveDraft')}
             </Button>
             <Button
-              type="button"
-              disabled={!isSetupValid || isSaving}
-              onClick={() => setStep(2)}
+              isDisabled={!isSetupValid || isSaving}
+              onPress={() => setStep(2)}
             >
               {t('credentialDefinitions.wizard.nextReview')}
-              <ArrowRight aria-hidden="true" />
+              <ArrowRightIcon className="size-5" />
             </Button>
           </div>
         )}
         {step === 2 && (
           <div className="flex gap-3">
             <Button
-              type="button"
-              variant="outline"
-              disabled={!isSetupValid || isSaving}
-              onClick={() => createDefinition('draft', true)}
+              variant="secondary"
+              isDisabled={!isSetupValid || isSaving}
+              onPress={() => createDefinition('draft', true)}
             >
               {isSaving
                 ? t('credentialDefinitions.wizard.savingDraft')
                 : t('credentialDefinitions.wizard.saveAndExit')}
             </Button>
-            <Button
-              type="button"
-              disabled={!canPublish || isSaving}
-              onClick={publish}
-            >
+            <Button isDisabled={!canPublish || isSaving} onPress={publish}>
               {isSaving
                 ? t('credentialDefinitions.wizard.publishing')
                 : t('credentialDefinitions.wizard.publish')}

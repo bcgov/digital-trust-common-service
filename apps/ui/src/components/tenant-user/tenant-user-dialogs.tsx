@@ -129,7 +129,9 @@ export function InviteTenantUserDialog({
         value={role}
         onChange={setRole}
       />
-      <p className="text-sm text-muted-foreground">{t('users.invite.note')}</p>
+      <p className="text-small-body text-(--typography-color-secondary)">
+        {t('users.invite.note')}
+      </p>
     </FormDialog>
   );
 }
@@ -169,7 +171,7 @@ export function ChangeTenantUserRoleDialog({
         />
       }
     >
-      <p className="text-sm text-muted-foreground">
+      <p className="text-small-body text-(--typography-color-secondary)">
         {t('users.changeRole.intro', {
           email: user.email,
           from: roleLabel(current),
