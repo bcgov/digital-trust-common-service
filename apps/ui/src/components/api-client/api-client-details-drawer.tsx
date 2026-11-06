@@ -1,7 +1,6 @@
+import { Button } from '@bcgov/design-system-react-components';
 import { useTranslation } from 'react-i18next';
 
-import { Badge } from '@/components/common/badge';
-import { Button } from '@/components/common/button';
 import {
   Drawer,
   DrawerBody,
@@ -10,7 +9,7 @@ import {
   DrawerHeader,
   DrawerTitle,
 } from '@/components/common/drawer';
-import { ScopeBadge } from '@/components/common/scope-badge';
+import { StaticTag } from '@/components/common/static-tag';
 import type { ApiClient } from '@/lib/api/resources/api-clients';
 
 export function ApiClientDetailsDrawer({
@@ -34,7 +33,7 @@ export function ApiClientDetailsDrawer({
           <DrawerTitle>{t('apiClients.details.title')}</DrawerTitle>
         </DrawerHeader>
         <DrawerBody className="min-h-0">
-          <dl className="divide-y divide-border border-y border-border text-sm [&>div]:grid [&>div]:gap-x-6 [&>div]:gap-y-1.5 [&>div]:py-4 [&>div]:sm:grid-cols-[7rem_minmax(0,1fr)] [&_dd]:min-w-0 [&_dd]:text-muted-foreground [&_dt]:font-bold [&_dt]:text-foreground">
+          <dl className="divide-y divide-(--surface-color-border-default) border-y border-(--surface-color-border-default) text-small-body [&>div]:grid [&>div]:gap-x-6 [&>div]:gap-y-1.5 [&>div]:py-4 [&>div]:sm:grid-cols-[7rem_minmax(0,1fr)] [&_dd]:min-w-0 [&_dd]:text-(--typography-color-secondary) [&_dt]:font-bold [&_dt]:text-(--typography-color-primary)">
             <div>
               <dt>{t('apiClients.details.name')}</dt>
               <dd>{client.name}</dd>
@@ -46,13 +45,14 @@ export function ApiClientDetailsDrawer({
             <div>
               <dt>{t('apiClients.details.authentication')}</dt>
               <dd className="space-y-1.5">
-                <Badge variant="outline">
-                  {t(
+                <StaticTag
+                  color="grey"
+                  label={t(
                     client.is_public
                       ? 'apiClients.details.publicClient'
                       : 'apiClients.details.confidentialClient',
                   )}
-                </Badge>
+                />
                 <p>
                   {client.is_public
                     ? t('apiClients.details.publicDescription')
@@ -74,9 +74,9 @@ export function ApiClientDetailsDrawer({
               <dt>{t('apiClients.fields.scopes')}</dt>
               <dd>
                 {client.scopes?.length ? (
-                  <div className="flex flex-wrap gap-1.5">
+                  <div className="flex flex-wrap gap-xsmall">
                     {client.scopes.map((scope) => (
-                      <ScopeBadge key={scope} scope={scope} />
+                      <StaticTag key={scope} color="blue" label={scope} />
                     ))}
                   </div>
                 ) : (
@@ -116,7 +116,7 @@ export function ApiClientDetailsDrawer({
           </dl>
         </DrawerBody>
         <DrawerFooter className="shrink-0">
-          <Button variant="outline" onClick={onClose}>
+          <Button variant="secondary" onPress={onClose}>
             {t('common.close')}
           </Button>
         </DrawerFooter>
