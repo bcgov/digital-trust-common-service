@@ -201,6 +201,65 @@ describe('ProtocolStateChange worker (integration)', () => {
     }
   });
 
+  it.each([
+    ['true', OperationState.COMPLETED],
+    ['false', OperationState.FAILED],
+    [undefined, OperationState.FAILED],
+  ])(
+    'settles a done proof with verified %p only for its tenant',
+    async (verified, state) => {
+      const tenantA = await seedTenant('proof-a');
+      const tenantB = await seedTenant('proof-b');
+      const externalId = `proof-${Math.random().toString(36).slice(2)}`;
+      const operations = await Promise.all(
+        [tenantA, tenantB].map((tenant) =>
+          operationService.createOperation({
+            tenantId: tenant.id,
+            type: OPERATION_TYPE.PRESENTATION_REQUEST,
+            request: {
+              method: 'POST',
+              path: '/presentations/request',
+              body: {},
+            },
+            externalId,
+          }),
+        ),
+      );
+      try {
+        const data: ProtocolStateChangeJobData = {
+          tenantId: tenantA.id,
+          topic: 'present_proof',
+          externalId,
+          protocolState: 'done',
+          payload: { pres_ex_id: externalId, state: 'done', verified },
+        };
+        await worker.handle(jobFor(data));
+        // Redelivery must not change the settled result.
+        await worker.handle(jobFor(data));
+
+        const updatedA = await operationRepository.findByIdForTenant(
+          operations[0].id,
+          tenantA.id,
+        );
+        const untouchedB = await operationRepository.findByIdForTenant(
+          operations[1].id,
+          tenantB.id,
+        );
+        expect(updatedA?.state).toBe(state);
+        expect(updatedA?.result).toEqual(
+          state === OperationState.COMPLETED
+            ? { pres_ex_id: externalId, state: 'done', verified }
+            : { code: 'PRESENT_PROOF_FAILED', message: 'done' },
+        );
+        expect(untouchedB?.state).toBe(OperationState.PENDING);
+        expect(untouchedB?.result).toBeNull();
+      } finally {
+        await cleanupTenant(tenantA.id);
+        await cleanupTenant(tenantB.id);
+      }
+    },
+  );
+
   it('does not transition another tenant sharing the same externalId', async () => {
     const tenantA = await seedTenant('cross-a');
     const tenantB = await seedTenant('cross-b');

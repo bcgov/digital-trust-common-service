@@ -1531,6 +1531,167 @@ For local development without an inbound webhook, use the explicit offer
 reconciliation read below. OID4VCI and VC proof/envelope configuration remain
 out of scope.
 
+### Traction presentation verification
+
+The Traction verifier implements `VerifierPort` using ACA-Py present-proof v2:
+`POST /present-proof-2.0/send-request` and
+`GET /present-proof-2.0/records/{pres_ex_id}`. This follows the
+[ACA-Py 1.6.0 routes](https://github.com/openwallet-foundation/acapy/blob/1.6.0/acapy_agent/protocols/present_proof/v2_0/routes.py)
+and [record contract](https://github.com/openwallet-foundation/acapy/blob/1.6.0/acapy_agent/protocols/present_proof/v2_0/models/pres_exchange.py),
+the compatibility version documented above. This repository does not pin or
+deploy Traction itself; verify the target agent's version before deployment.
+The obsolete v1 `/present-proof/send-request` endpoint is not used.
+
+The existing presentation request service resolves the tenant's connection and
+profile/raw attribute selection before calling the adapter. Each service execution
+generates a fresh cryptographic nonce and persists the definition and compiled
+request snapshot before calling the adapter. The adapter sends
+`presentation_request.anoncreds` with unique attribute/predicate referents,
+preserves credential restrictions, and forwards that execution nonce. Direct port
+callers may omit the nonce, in which case ACA-Py generates it.
+Predicate operators are `<`, `<=`, `>=`, and `>` with signed 32-bit integer
+thresholds. Automatic verification is enabled, completed records are retained
+with `auto_remove: false`, and submission is not automatically retried after
+uncertain HTTP failures. Requests require an established DIDComm connection;
+this does not add connectionless or DIF proof support.
+
+Failed-record preservation is **best effort and agent-configured**, not a
+per-request guarantee. ACA-Py 1.6.0's connected `send-request` route accepts
+`auto_remove_on_failure` in its schema but does not pass it to the manager, so
+the adapter omits this ineffective option. The manager defaults failure removal
+to `bool(no_preserve_failed_exchange_records)`: an absent setting preserves
+failed records. Operators should leave
+`--no-preserve-failed-exchange-records` /
+`ACAPY_NO_PRESERVE_FAILED_EXCHANGE_RECORDS` disabled for the exchange's lifetime.
+`auto_remove: false` retains successfully completed records but does not override
+this separate failure setting.
+
+The adapter does not read or write `/settings` before submission. Stock ACA-Py
+1.6.0 filters the failure setting out of its wallet-scoped response, so absence
+there cannot establish the effective value and must not block requests. The
+service does not change agent configuration, request root admin credentials,
+call privileged `/status/config`, or substitute the connectionless route.
+
+The adapter warns when the submitted exchange's returned
+`auto_remove_on_failure` is true or absent. This post-submission diagnostic
+does not block or replay the request and is not a retention guarantee. If the
+agent removes a failed exchange, its later GET may return HTTP 404:
+`getPresentation` returns the existing backend-not-found error; the adapter
+does not fabricate a retained failure. Authenticated terminal webhooks can
+still settle the operation through the existing state-change worker.
+
+Port callers may supply optional `nonRevoked: { from?, to? }` Unix-second
+intervals on the whole request or individual requested attributes/predicates.
+Selection-level intervals override the request-level default in AnonCreds.
+Bounds must be non-negative safe integers with `from <= to` when both are set.
+No default revocation policy is imposed. These port options do not expand the
+public REST presentation/profile contract: its existing restrictions on DIF
+filters and submission requirements still apply.
+
+Submission returns the normalized `request-sent` exchange asynchronously.
+Existing `present_proof_v2_0` webhook ingestion correlates `pres_ex_id` to the
+tenant's presentation operation. ACA-Py v2 uses `done` for both successful and
+unsuccessful verification: only explicit `verified: "true"` (or boolean `true`)
+completes the operation and emits `credential.verified`; false or missing
+verification fails the operation. Abandoned exchanges also fail it.
+
+`getPresentation` reads an available record with the connector wallet's token,
+maps a successfully verified `done` record to port state `verified`, and exposes
+`revealedAttributes` (referent, name, raw value) and `predicates` (referent,
+name, operator, threshold, satisfied). Predicate satisfaction comes from
+ACA-Py's cryptographic verification, not from comparing revealed values.
+Self-attested values and unverified proof data are never exposed as verified
+attributes. Missing AnonCreds proof attachments or requested predicate proofs
+on a successfully verified record are rejected explicitly.
+Normal state-only webhooks do not contain these proof attachments; this layer
+does not add public storage or retrieval of those cryptographic proof attachments.
+
+### Reusable presentation definitions and execution
+
+Use `POST /api/v1/tenants/:tenantId/presentation-definitions` with
+`profiles:manage` to create a draft local template:
+
+```json
+{
+  "name": "identity-check",
+  "version": "1.0",
+  "query": {
+    "type": "dif-presentation-exchange",
+    "presentation_definition": {
+      "id": "identity-check",
+      "input_descriptors": [
+        {
+          "id": "person",
+          "constraints": {
+            "fields": [{ "path": ["$.credentialSubject.given_names"] }]
+          }
+        }
+      ]
+    },
+    "predicates": [{ "attribute": "age", "condition": ">=", "value": "19" }]
+  },
+  "options": { "format": "anoncreds" }
+}
+```
+
+The explicit query type currently supports the existing **attribute-selection
+subset**, not full DIF Presentation Exchange verification. Fields select a single
+`$.credentialSubject.attribute` path; they are flattened to AnonCreds attribute
+names, not credential-binding/descriptor-selection rules. Filters, groups,
+submission requirements, alternative paths and other unrepresentable constraints
+are rejected. Numeric predicates support `<`, `<=`, `>`, `>=` and signed 32-bit
+integer thresholds; equality is unsupported. Output is currently AnonCreds only.
+Native AnonCreds referent-keyed query input, DCQL and QueryByExample translators
+are not implemented; absent/unknown query types are rejected. This resource name
+does not imply a DIF-only storage model or support for arbitrary query languages.
+
+Definitions reuse `verification_profile` storage and its tenant/name/version
+uniqueness. `GET /presentation-definitions` lists with the existing cursor/status/
+public filters, and `GET /presentation-definitions/:id` reads a template.
+`PATCH /:id` updates drafts; `POST /:id/publish` freezes a draft for execution;
+`POST /:id/deprecate` prevents new requests using it. Published definitions cannot
+be edited: create a new version instead. There is no new deletion or ledger
+registration API. Migration adds nullable `presentation_format` without assigning
+a new default to legacy profiles.
+
+Execute a published definition with `credentials:verify`:
+
+```text
+POST /api/v1/tenants/:tenantId/presentation-requests
+```
+
+```json
+{
+  "presentation_definition_id": "<published-definition-uuid>",
+  "delivery": { "connection_id": "<established-local-connection-uuid>" }
+}
+```
+
+The connection and definition must belong to this tenant. Delivery uses that
+connection's connector type and its external connection ID, with the definition's
+output format. Each execution stores a deep snapshot of the definition, selected
+format and compiled port request (including its fresh nonce) in the existing
+Operation JSON request before submission. Subsequent template changes or even
+removal of the source row cannot change the outstanding proof request; completion
+still uses the existing exchange/webhook correlation, not a new template read.
+The existing DIF REST path has no non-revocation interval input, so this split
+does not introduce a rolling interval or other revocation-policy API. Fixed
+intervals remain supported at the port/Traction boundary unchanged.
+
+The response is the standard Operation envelope: `202` while in flight, or `200`
+for a synchronous terminal result. Its ID is the request ID.
+`GET /api/v1/tenants/:tenantId/presentation-requests/:id` returns tenant-scoped
+presentation-request status/result under the same view/expiry rules as operation
+polling; it does not expose internal snapshots or accept another operation type.
+
+Existing `/profiles/verification` lifecycle endpoints and
+`/presentations/request` profile/raw submission remain supported. Profile UUIDs
+are also definition UUIDs, including through the new execution endpoint. Legacy
+profiles show `options.format: null` until explicitly set on a draft, preserving
+connector-inferred format selection. Existing callers do not need to migrate
+their payloads. There are no existing presentation/profile UI screens or resource
+clients to change; the generated UI API types include the new contracts.
+
 ### Offering a credential
 
 `POST /api/v1/tenants/:tenantId/credentials/offer` requires `credentials:offer`:

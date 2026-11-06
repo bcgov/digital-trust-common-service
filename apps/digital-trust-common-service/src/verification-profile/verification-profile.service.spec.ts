@@ -9,6 +9,7 @@ import { QueryFailedError } from 'typeorm';
 
 import { AuditAction } from '../audit-log/audit-log.entity';
 import { DomainAuditService } from '../audit-log/domain-audit.service';
+import { CredentialDefinitionFormat } from '../credential-definition/credential-definition.entity';
 
 import { CreateVerificationProfileDto } from './dto/create-verification-profile.dto';
 import { UpdateVerificationProfileDto } from './dto/update-verification-profile.dto';
@@ -114,6 +115,81 @@ describe('VerificationProfileService', () => {
 
   it('should be defined', () => {
     expect(service).toBeDefined();
+  });
+
+  describe('presentation definitions', () => {
+    const dto = {
+      name: 'identity',
+      version: '1.0',
+      query: {
+        type: 'dif-presentation-exchange' as const,
+        presentationDefinition: mockProfile.presentationDefinition,
+      },
+      options: { format: CredentialDefinitionFormat.ANONCREDS as const },
+    };
+
+    it('reuses profile storage, including selected output format', async () => {
+      mockCreate.mockResolvedValue(mockProfile);
+      await service.createDefinition(tenantId, dto, auth);
+      expect(mockCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          presentationDefinition: mockProfile.presentationDefinition,
+          requestedAttributes: ['given_names'],
+          presentationFormat: CredentialDefinitionFormat.ANONCREDS,
+        }),
+      );
+    });
+
+    it('updates draft query/options and clears removed predicates atomically', async () => {
+      mockFindById.mockResolvedValue(mockProfile);
+      await service.updateDefinition(tenantId, mockProfile.id, dto, auth);
+      expect(mockUpdateIfDraft).toHaveBeenCalledWith(
+        tenantId,
+        mockProfile.id,
+        expect.objectContaining({
+          presentationDefinition: mockProfile.presentationDefinition,
+          presentationFormat: CredentialDefinitionFormat.ANONCREDS,
+          predicates: [],
+        }),
+      );
+    });
+
+    it('retains published immutability through the new resource', async () => {
+      mockFindById.mockResolvedValue({
+        ...mockProfile,
+        status: VerificationProfileStatus.PUBLISHED,
+      });
+      await expect(
+        service.updateDefinition(tenantId, mockProfile.id, dto, auth),
+      ).rejects.toThrow(ConflictException);
+      expect(mockUpdateIfDraft).not.toHaveBeenCalled();
+    });
+
+    it('rejects another tenant before creating/listing definitions', async () => {
+      await expect(
+        service.createDefinition('other-tenant', dto, auth),
+      ).rejects.toThrow();
+      await expect(
+        service.findDefinitions('other-tenant', {}, auth),
+      ).rejects.toThrow();
+      expect(mockCreate).not.toHaveBeenCalled();
+      expect(mockFindPage).not.toHaveBeenCalled();
+    });
+
+    it('scopes definition list pagination to the authenticated tenant', async () => {
+      mockFindPage.mockResolvedValue({
+        items: [mockProfile],
+        hasMore: false,
+        nextCursor: null,
+      });
+      const page = await service.findDefinitions(tenantId, {}, auth);
+      expect(page.data).toEqual([mockProfile]);
+      expect(mockFindPage).toHaveBeenCalledWith(
+        tenantId,
+        expect.anything(),
+        expect.anything(),
+      );
+    });
   });
 
   describe('create', () => {

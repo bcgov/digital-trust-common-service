@@ -14,8 +14,10 @@ import { CredentialActionModule } from '../credential/credential-action.module';
 import { CredentialDefinitionModule } from '../credential-definition/credential-definition.module';
 import { OAuthClientModule } from '../oauth-client/oauth-client.module';
 import { OperationModule } from '../operation/operation.module';
+import { PresentationRequestModule } from '../presentation-request/presentation-request.module';
 import { TenantModule } from '../tenant/tenant.module';
 import { TenantUserModule } from '../tenant-user/tenant-user.module';
+import { VerificationProfileModule } from '../verification-profile/verification-profile.module';
 import { WebhookIngestionModule } from '../webhook-ingestion/webhook-ingestion.module';
 
 const FULL_DOC_TITLE = 'Digital Credential Common Service API';
@@ -57,6 +59,8 @@ const swaggerApps = [
       CredentialActionModule,
       ConnectorCredentialModule,
       OperationModule,
+      PresentationRequestModule,
+      VerificationProfileModule,
       WebhookIngestionModule,
     ],
   },

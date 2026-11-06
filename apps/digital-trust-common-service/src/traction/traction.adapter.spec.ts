@@ -1,4 +1,5 @@
 import {
+  BackendNotFoundError,
   CredentialFormat,
   ConnectionState,
   ConnectorUnavailableError,
@@ -6,7 +7,7 @@ import {
   TimeoutError,
   ValidationError,
 } from '@app/credential-ports';
-import { NotImplementedException } from '@nestjs/common';
+import { Logger, NotImplementedException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 
 import { AdapterRegistry } from '../adapter-registry/adapter-registry.service';
@@ -440,16 +441,6 @@ describe('TractionAdapter', () => {
       credentials: {},
     };
 
-    await expect(
-      adapter.requestPresentation(context, {
-        requestedAttributes: [],
-        requestedPredicates: [],
-        name: '',
-      }),
-    ).rejects.toBeInstanceOf(NotImplementedException);
-    await expect(adapter.getPresentation(context, 'id')).rejects.toBeInstanceOf(
-      NotImplementedException,
-    );
     await expect(adapter.acceptOffer(context, 'id')).rejects.toBeInstanceOf(
       NotImplementedException,
     );
@@ -462,6 +453,215 @@ describe('TractionAdapter', () => {
     await expect(adapter.batchRevoke(context, ['id'])).rejects.toBeInstanceOf(
       NotImplementedException,
     );
+  });
+
+  describe('verifier', () => {
+    const context = {
+      tenantId: 'tenant-1',
+      connectorId: 'connector-1',
+      endpointUrl: 'https://traction.example.com',
+      credentials: {},
+    };
+    const request = {
+      name: 'Identity proof',
+      connectionId: 'connection-1',
+      requestedAttributes: [{ name: 'name' }],
+    };
+    const record = {
+      pres_ex_id: 'proof-1',
+      connection_id: 'connection-1',
+      state: 'request-sent',
+      created_at: 'created',
+      updated_at: 'updated',
+      auto_remove_on_failure: false,
+    };
+    it('sends a v2 AnonCreds request without settings access or write retries', async () => {
+      mockRequest.mockImplementation((config) => {
+        if (config.method === 'GET') {
+          return Promise.resolve({
+            data: { preserve_exchange_records: true },
+          });
+        }
+        return Promise.resolve({ data: record });
+      });
+      await expect(
+        adapter.requestPresentation(context, request),
+      ).resolves.toMatchObject({
+        id: 'proof-1',
+        externalId: 'proof-1',
+        connectionId: 'connection-1',
+        state: 'request-sent',
+        createdAt: 'created',
+        updatedAt: 'updated',
+      });
+      expect(mockGetToken).toHaveBeenCalledWith(context);
+      expect(mockRequest).toHaveBeenNthCalledWith(
+        1,
+        {
+          method: 'POST',
+          url: 'https://traction.example.com/present-proof-2.0/send-request',
+          headers: { Authorization: 'Bearer token-1' },
+          maxRedirects: 0,
+          data: {
+            connection_id: 'connection-1',
+            presentation_request: {
+              anoncreds: {
+                name: 'Identity proof',
+                version: '1.0',
+                requested_attributes: { attribute_0: { name: 'name' } },
+                requested_predicates: {},
+              },
+            },
+            auto_verify: true,
+            auto_remove: false,
+          },
+        },
+        false,
+      );
+      expect(mockRequest).toHaveBeenCalledTimes(1);
+    });
+
+    it('reads a retained problem-report failure after submission', async () => {
+      mockRequest
+        .mockResolvedValueOnce({ data: record })
+        .mockResolvedValueOnce({
+          data: {
+            ...record,
+            state: 'abandoned',
+            error_msg: 'abandoned: holder declined',
+          },
+        });
+      const exchange = await adapter.requestPresentation(context, request);
+      await expect(
+        adapter.getPresentation(context, exchange.id),
+      ).resolves.toMatchObject({
+        id: record.pres_ex_id,
+        state: 'abandoned',
+        error: 'abandoned: holder declined',
+      });
+      expect(mockRequest).toHaveBeenCalledTimes(2);
+      expect(mockRequest).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({
+          method: 'GET',
+          url: 'https://traction.example.com/present-proof-2.0/records/proof-1',
+        }),
+      );
+    });
+
+    it('reports backend not found when the agent removed a failed exchange', async () => {
+      mockRequest
+        .mockResolvedValueOnce({ data: record })
+        .mockRejectedValueOnce({
+          isAxiosError: true,
+          response: { status: 404 },
+        });
+      const exchange = await adapter.requestPresentation(context, request);
+      await expect(
+        adapter.getPresentation(context, exchange.id),
+      ).rejects.toBeInstanceOf(BackendNotFoundError);
+      expect(mockRequest).toHaveBeenCalledTimes(2);
+    });
+
+    it('reads the direct v2 record with encoded ID and wallet-scoped authorization', async () => {
+      mockRequest.mockResolvedValue({ data: record });
+      await adapter.getPresentation(context, 'proof/id');
+      expect(mockGetToken).toHaveBeenCalledWith(context);
+      expect(mockRequest).toHaveBeenCalledWith({
+        method: 'GET',
+        url: 'https://traction.example.com/present-proof-2.0/records/proof%2Fid',
+        headers: { Authorization: 'Bearer token-1' },
+        maxRedirects: 0,
+      });
+    });
+
+    it.each([true, undefined])(
+      'warns without replaying a sent request when failure retention is not confirmed: %p',
+      async (autoRemoveOnFailure) => {
+        const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+        try {
+          mockRequest.mockResolvedValueOnce({
+            data: { ...record, auto_remove_on_failure: autoRemoveOnFailure },
+          });
+          await expect(
+            adapter.requestPresentation(context, request),
+          ).resolves.toMatchObject({ id: 'proof-1', state: 'request-sent' });
+          expect(warn).toHaveBeenCalledWith(
+            { connector_id: 'connector-1', external_id: 'proof-1' },
+            'Traction proof failure retention is not confirmed; configure failed exchange preservation on the agent',
+          );
+          expect(mockRequest).toHaveBeenCalledTimes(1);
+          expect(mockRequest).toHaveBeenCalledWith(
+            expect.objectContaining({
+              data: expect.not.objectContaining({
+                auto_remove_on_failure: expect.anything(),
+              }),
+            }),
+            false,
+          );
+        } finally {
+          warn.mockRestore();
+        }
+      },
+    );
+
+    it('does not warn when the agent confirms failed record preservation', async () => {
+      const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+      try {
+        mockRequest.mockResolvedValueOnce({ data: record });
+        await adapter.requestPresentation(context, request);
+        expect(warn).not.toHaveBeenCalled();
+      } finally {
+        warn.mockRestore();
+      }
+    });
+
+    it('rejects invalid requests before authentication or HTTP', async () => {
+      await expect(
+        adapter.requestPresentation(context, {
+          ...request,
+          connectionId: undefined,
+        }),
+      ).rejects.toBeInstanceOf(ValidationError);
+      expect(mockGetToken).not.toHaveBeenCalled();
+      expect(mockRequest).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      [400, ValidationError],
+      [404, BackendNotFoundError],
+      [429, ConnectorUnavailableError],
+      [503, ConnectorUnavailableError],
+    ])('maps HTTP %s on both verifier methods', async (status, errorType) => {
+      mockRequest.mockRejectedValue({
+        isAxiosError: true,
+        message: 'Backend rejected request',
+        response: { status },
+      });
+      await expect(
+        adapter.requestPresentation(context, request),
+      ).rejects.toBeInstanceOf(errorType);
+      await expect(
+        adapter.getPresentation(context, 'proof-1'),
+      ).rejects.toBeInstanceOf(errorType);
+    });
+
+    it('does not replay an uncertain proof submission', async () => {
+      const error = new TimeoutError('Response unavailable');
+      mockRequest.mockRejectedValueOnce(error);
+      await expect(adapter.requestPresentation(context, request)).rejects.toBe(
+        error,
+      );
+      expect(mockRequest).toHaveBeenCalledTimes(1);
+      expect(mockRequest).toHaveBeenCalledWith(expect.anything(), false);
+    });
+
+    it('preserves invalid record errors rather than reporting backend outages', async () => {
+      mockRequest.mockResolvedValue({ data: {} });
+      await expect(
+        adapter.getPresentation(context, 'proof-1'),
+      ).rejects.toBeInstanceOf(ValidationError);
+    });
   });
 
   describe('createInvitation', () => {

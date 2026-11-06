@@ -44,6 +44,7 @@ import { CreateAnoncredsPublicationIntent1793375200834 } from './migrations/0000
 import { CreateCredentialExchanges1792506949095 } from './migrations/000041_create-credential-exchanges';
 import { IndexExchangeIssueOperation1792543244948 } from './migrations/000042_index-exchange-issue-operation';
 import { DropRedundantExchangeIssueIndex1793375254070 } from './migrations/000043_drop-redundant-exchange-issue-index';
+import { AddPresentationDefinitionFormat1793288034325 } from './migrations/000044_add-presentation-definition-format';
 import { buildSslConfig } from './ssl.util';
 
 export const AppDataSource = new DataSource({
@@ -102,6 +103,7 @@ export const AppDataSource = new DataSource({
     CreateCredentialExchanges1792506949095,
     IndexExchangeIssueOperation1792543244948,
     DropRedundantExchangeIssueIndex1793375254070,
+    AddPresentationDefinitionFormat1793288034325,
   ],
   ssl: buildSslConfig(
     process.env.DB_SSL,
