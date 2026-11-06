@@ -353,6 +353,13 @@ describe('ApiClientsPage', () => {
     expect(await screen.findByText(secret)).toBeInTheDocument();
     expect(requestClientId).toBe(existing.client_id);
     expect(await screen.findByText('Secret rotated.')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Copy secret' }));
+    expect(
+      (await screen.findByText('Secret copied.')).closest(
+        '[data-slot="toast"]',
+      ),
+    ).not.toBeNull();
+    await expect(navigator.clipboard.readText()).resolves.toBe(secret);
     await user.click(screen.getByRole('button', { name: 'Done' }));
     expect(
       await screen.findByText('Client ID cannot be changed once created'),

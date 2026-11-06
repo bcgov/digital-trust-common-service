@@ -137,17 +137,12 @@ export function TenantUsersPage() {
       notify.success(t('users.notice.roleUpdated'));
       return;
     }
-    void switchTo(tenantId, {
-      destinationPath: `/tenants/${tenantId}`,
-      notice: t('users.notice.ownRoleUpdated'),
-    }).catch(() => {
-      void navigate(`/tenants/${tenantId}`, {
-        replace: true,
-        state: {
-          tenantUserNotice: t('users.notice.ownRoleRefreshFailed'),
-        },
+    void switchTo(tenantId, { destinationPath: `/tenants/${tenantId}` })
+      .then(() => notify.success(t('users.notice.ownRoleUpdated')))
+      .catch(() => {
+        void navigate(`/tenants/${tenantId}`, { replace: true });
+        notify.warning(t('users.notice.ownRoleRefreshFailed'));
       });
-    });
   };
   const handleRemoveSuccess = () => {
     if (dialog?.kind !== 'remove') return;
@@ -174,24 +169,16 @@ export function TenantUsersPage() {
         try {
           await switchTo(nextTenant.id, {
             destinationPath: `/tenants/${nextTenant.id}`,
-            notice: t('users.notice.selfRemoved'),
           });
+          notify.success(t('users.notice.selfRemoved'));
         } catch {
-          void navigate('/dashboard', {
-            replace: true,
-            state: {
-              tenantUserNotice: t('users.notice.selfRemovedSwitchFailed'),
-            },
-          });
+          void navigate('/dashboard', { replace: true });
+          notify.warning(t('users.notice.selfRemovedSwitchFailed'));
         }
       })
       .catch(() => {
-        void navigate('/dashboard', {
-          replace: true,
-          state: {
-            tenantUserNotice: t('users.notice.selfRemovedLoadFailed'),
-          },
-        });
+        void navigate('/dashboard', { replace: true });
+        notify.warning(t('users.notice.selfRemovedLoadFailed'));
       });
   };
   return (
