@@ -22,14 +22,47 @@ import type {
 import { ApiClientSecret } from './api-client-secret';
 
 export function ApiClientSecretRotation({
+  client,
+  onRotate,
+}: {
+  client: ApiClient;
+  onRotate: () => void;
+}) {
+  const { t } = useTranslation();
+
+  if (client.is_public || isReservedApiClientId(client.client_id)) return null;
+
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 border-y border-border py-4">
+      <div className="flex flex-col gap-1">
+        <h3 className="text-sm font-semibold">
+          {t('apiClients.rotation.title')}
+        </h3>
+        <p className="text-xs text-muted-foreground">
+          {t('apiClients.rotation.hint')}
+        </p>
+      </div>
+      <Button type="button" variant="outline" onClick={onRotate}>
+        {t('apiClients.rotation.button')}
+      </Button>
+    </div>
+  );
+}
+
+// Rendered beside the edit drawer rather than inside it: React Aria cannot
+// open a modal from inside another modal's tree.
+export function ApiClientSecretRotationDrawer({
   tenantId,
   client,
+  open,
+  onClose,
 }: {
   tenantId: string;
   client: ApiClient;
+  open: boolean;
+  onClose: () => void;
 }) {
   const { t } = useTranslation();
-  const [isOpen, setIsOpen] = useState(false);
   const [credentials, setCredentials] = useState<ClientCredentials | null>(
     null,
   );
@@ -39,7 +72,7 @@ export function ApiClientSecretRotation({
     if (mutation.isPending) return;
     setCredentials(null);
     mutation.reset();
-    setIsOpen(false);
+    onClose();
   };
 
   const rotate = () => {
@@ -56,26 +89,10 @@ export function ApiClientSecretRotation({
     );
   };
 
-  if (client.is_public || isReservedApiClientId(client.client_id)) return null;
-
   return (
     <>
-      <div className="flex flex-wrap items-center justify-between gap-3 border-y border-border py-4">
-        <div className="flex flex-col gap-1">
-          <h3 className="text-sm font-semibold">
-            {t('apiClients.rotation.title')}
-          </h3>
-          <p className="text-xs text-muted-foreground">
-            {t('apiClients.rotation.hint')}
-          </p>
-        </div>
-        <Button type="button" variant="outline" onClick={() => setIsOpen(true)}>
-          {t('apiClients.rotation.button')}
-        </Button>
-      </div>
       <Drawer
-        direction="right"
-        open={isOpen}
+        open={open}
         onOpenChange={(open) => {
           if (!open) close();
         }}
