@@ -4,7 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import type { Job } from 'pg-boss';
 
 import { ConnectionService } from '../connection/connection.service';
-import { ConnectorCredentialService } from '../connector-credential/connector-credential.service';
+import { ConnectorService } from '../connector/connector.service';
 import { JobsService } from '../jobs/jobs.service';
 import { OAuthClientService } from '../oauth-client/oauth-client.service';
 
@@ -34,7 +34,7 @@ export class TenantStatusChangeWorker implements OnModuleInit {
     private readonly jobsService: JobsService,
     private readonly config: ConfigService,
     private readonly oauthClientService: OAuthClientService,
-    private readonly connectorCredentialService: ConnectorCredentialService,
+    private readonly connectorCredentialService: ConnectorService,
     private readonly connectionService: ConnectionService,
   ) {}
 

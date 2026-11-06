@@ -20,12 +20,12 @@ import { DataSource, Repository } from 'typeorm';
 import { AppModule } from '../app.module';
 import { EncryptionService } from '../common/crypto/encryption.service';
 import { ConnectorType } from '../connection/connection.entity';
-import { ConnectorCredential } from '../connector-credential/connector-credential.entity';
-import { ConnectorCredentialService } from '../connector-credential/connector-credential.service';
-import { ConnectorHealthCheckService } from '../connector-credential/connector-health-check.service';
+import { ConnectorHealthCheckService } from '../connector/connector-health-check.service';
+import { Connector } from '../connector/connector.entity';
+import { ConnectorService } from '../connector/connector.service';
+import { TractionWebhookRegistrar } from '../connector/connectors/traction/traction-webhook-registrar.service';
 import { Tenant } from '../tenant/tenant.entity';
 import { TenantService } from '../tenant/tenant.service';
-import { TractionWebhookRegistrar } from '../traction/traction-webhook-registrar.service';
 
 import { AdapterRegistry } from './adapter-registry.service';
 import { unwrapAdapter } from './instrumented-adapter';
@@ -49,7 +49,7 @@ describe('AdapterRegistry (integration)', () => {
   let app: INestApplication;
   let dataSource: DataSource;
   let registry: AdapterRegistry;
-  let connectors: ConnectorCredentialService;
+  let connectors: ConnectorService;
   let adapter: MockAdapter;
 
   const createdTenantIds: string[] = [];
@@ -85,7 +85,7 @@ describe('AdapterRegistry (integration)', () => {
 
     dataSource = moduleFixture.get(DataSource);
     registry = moduleFixture.get(AdapterRegistry);
-    connectors = moduleFixture.get(ConnectorCredentialService);
+    connectors = moduleFixture.get(ConnectorService);
   });
 
   beforeEach(() => {
@@ -151,7 +151,7 @@ describe('AdapterRegistry (integration)', () => {
       active?: boolean;
       endpointUrl?: string;
     } = {},
-  ): Promise<ConnectorCredential> {
+  ): Promise<Connector> {
     const connector = await connectors.create(
       tenantId,
       {
@@ -252,7 +252,7 @@ describe('AdapterRegistry (integration)', () => {
         return await setDefault(...args);
       });
 
-    let created: ConnectorCredential[];
+    let created: Connector[];
     try {
       created = await Promise.all([
         createConnector(tenantId, {
@@ -304,12 +304,12 @@ describe('AdapterRegistry (integration)', () => {
       const findOne = Object.getOwnPropertyDescriptor(
         Repository.prototype,
         'findOne',
-      )?.value as Repository<Tenant | ConnectorCredential>['findOne'];
+      )?.value as Repository<Tenant | Connector>['findOne'];
       let lockRequests = 0;
       const lockSpy = jest
         .spyOn(Repository.prototype, 'findOne')
         .mockImplementation(async function (
-          this: Repository<Tenant | ConnectorCredential>,
+          this: Repository<Tenant | Connector>,
           options,
         ) {
           if (
@@ -371,7 +371,7 @@ describe('AdapterRegistry (integration)', () => {
 
       const tenant = await tenantService.findById(tenantId);
       const persisted = await dataSource
-        .getRepository(ConnectorCredential)
+        .getRepository(Connector)
         .findOneBy({ tenantId, id: connector.id });
       if (selectionWins) {
         expect(tenant.config.default_connector).toBe(connector.id);
@@ -403,15 +403,15 @@ describe('AdapterRegistry (integration)', () => {
       const findOne = Object.getOwnPropertyDescriptor(
         Repository.prototype,
         'findOne',
-      )?.value as Repository<Tenant | ConnectorCredential>['findOne'];
+      )?.value as Repository<Tenant | Connector>['findOne'];
       const readSpy = jest
         .spyOn(Repository.prototype, 'findOne')
         .mockImplementation(async function (
-          this: Repository<Tenant | ConnectorCredential>,
+          this: Repository<Tenant | Connector>,
           options,
         ) {
           if (
-            this.metadata.target === ConnectorCredential &&
+            this.metadata.target === Connector &&
             (options.where as { id?: string }).id === connector.id
           ) {
             markReadRequested();
@@ -422,7 +422,7 @@ describe('AdapterRegistry (integration)', () => {
 
       try {
         await runner.manager
-          .getRepository(ConnectorCredential)
+          .getRepository(Connector)
           .update({ tenantId, active: true }, { active: false });
         const selecting =
           selection === 'general'
@@ -482,16 +482,16 @@ describe('AdapterRegistry (integration)', () => {
       const findOne = Object.getOwnPropertyDescriptor(
         Repository.prototype,
         'findOne',
-      )?.value as Repository<Tenant | ConnectorCredential>['findOne'];
+      )?.value as Repository<Tenant | Connector>['findOne'];
       const readSpy = jest
         .spyOn(Repository.prototype, 'findOne')
         .mockImplementation(async function (
-          this: Repository<Tenant | ConnectorCredential>,
+          this: Repository<Tenant | Connector>,
           options,
         ) {
           const row = await findOne.call(this, options);
           if (
-            this.metadata.target === ConnectorCredential &&
+            this.metadata.target === Connector &&
             (options.where as { id?: string }).id === connector.id
           ) {
             markReadComplete();
@@ -553,12 +553,10 @@ describe('AdapterRegistry (integration)', () => {
       try {
         await runner.connect();
         await runner.startTransaction();
-        const row = await runner.manager
-          .getRepository(ConnectorCredential)
-          .findOne({
-            where: { tenantId, id: connector.id },
-            lock: { mode: 'pessimistic_write', onLocked: 'nowait' },
-          });
+        const row = await runner.manager.getRepository(Connector).findOne({
+          where: { tenantId, id: connector.id },
+          lock: { mode: 'pessimistic_write', onLocked: 'nowait' },
+        });
         expect(row?.id).toBe(connector.id);
       } finally {
         if (runner.isTransactionActive) await runner.rollbackTransaction();
@@ -711,7 +709,7 @@ describe('AdapterRegistry (integration)', () => {
       await caller.connect();
       await owner.startTransaction();
       await caller.startTransaction();
-      await owner.manager.getRepository(ConnectorCredential).findOne({
+      await owner.manager.getRepository(Connector).findOne({
         where: { tenantId: ownerTenantId, id: connector.id },
         lock: { mode: 'pessimistic_write' },
       });

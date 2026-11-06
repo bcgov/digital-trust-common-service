@@ -11,7 +11,7 @@ import {
 } from 'typeorm';
 
 import { Connection } from '../connection/connection.entity';
-import { ConnectorCredential } from '../connector-credential/connector-credential.entity';
+import { Connector } from '../connector/connector.entity';
 import { CredentialDefinitionFormat } from '../credential-definition/credential-definition.entity';
 import { IssuanceProfile } from '../issuance-profile/issuance-profile.entity';
 import { Operation } from '../operation/operation.entity';
@@ -95,11 +95,11 @@ export class Credential {
   @Column({ name: 'connector_id', type: 'uuid' })
   public connectorId!: string;
 
-  @ManyToOne(() => ConnectorCredential, {
+  @ManyToOne(() => Connector, {
     onDelete: 'RESTRICT',
   })
   @JoinColumn({ name: 'connector_id' })
-  public connector!: ConnectorCredential;
+  public connector!: Connector;
 
   @ApiProperty({
     description: 'Adapter-assigned exchange / credential id',

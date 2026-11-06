@@ -12,7 +12,7 @@ import {
   Connection,
   ConnectorType,
 } from '../connection/connection.entity';
-import { ConnectorCredential } from '../connector-credential/connector-credential.entity';
+import { Connector } from '../connector/connector.entity';
 import {
   OAuthClient,
   OAuthClientRevokedReason,
@@ -48,7 +48,7 @@ describe('TenantStatusChange cascade (integration)', () => {
   let worker: TenantStatusChangeWorker;
   let tenantRepo: Repository<Tenant>;
   let oauthClientRepo: Repository<OAuthClient>;
-  let connectorCredentialRepo: Repository<ConnectorCredential>;
+  let connectorCredentialRepo: Repository<Connector>;
   let connectionRepo: Repository<Connection>;
   let tenantAId: string;
   let tenantBId: string;
@@ -72,9 +72,7 @@ describe('TenantStatusChange cascade (integration)', () => {
     worker = moduleFixture.get(TenantStatusChangeWorker);
     tenantRepo = moduleFixture.get(getRepositoryToken(Tenant));
     oauthClientRepo = moduleFixture.get(getRepositoryToken(OAuthClient));
-    connectorCredentialRepo = moduleFixture.get(
-      getRepositoryToken(ConnectorCredential),
-    );
+    connectorCredentialRepo = moduleFixture.get(getRepositoryToken(Connector));
     connectionRepo = moduleFixture.get(getRepositoryToken(Connection));
   }, 30000);
 
@@ -129,8 +127,8 @@ describe('TenantStatusChange cascade (integration)', () => {
 
   const seedConnectorCredential = (
     tenantId: string,
-    overrides: Partial<ConnectorCredential> = {},
-  ): Promise<ConnectorCredential> =>
+    overrides: Partial<Connector> = {},
+  ): Promise<Connector> =>
     connectorCredentialRepo.save(
       connectorCredentialRepo.create({
         tenantId,

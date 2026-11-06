@@ -65,12 +65,6 @@ export type {
   AgentAdapter,
   SupportedFormats,
 } from './ports/agent-adapter';
-export { CONNECTOR_PROBES } from './ports/connector-probe.port';
-export type {
-  ConnectorHealthCheckResult,
-  ConnectorHealthStatus,
-  ConnectorProbe,
-} from './ports/connector-probe.port';
 export type { ConnectorContext } from './ports/connector-context';
 export type {
   DefinitionOptions,

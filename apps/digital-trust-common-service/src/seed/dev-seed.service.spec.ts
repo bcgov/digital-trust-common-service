@@ -8,8 +8,8 @@ import { verify } from 'argon2';
 import { EncryptionService } from '../common/crypto/encryption.service';
 import { Connection } from '../connection/connection.entity';
 import { ConnectionRepository } from '../connection/connection.repository';
-import { ConnectorCredential } from '../connector-credential/connector-credential.entity';
-import { ConnectorCredentialRepository } from '../connector-credential/connector-credential.repository';
+import { Connector } from '../connector/connector.entity';
+import { ConnectorRepository } from '../connector/connector.repository';
 import {
   CredentialDefinition,
   CredentialDefinitionFormat,
@@ -136,7 +136,7 @@ describe('DevSeedService', () => {
         { provide: TenantUserRepository, useValue: tenantUserRepo },
         { provide: SeedTenantUserRepository, useValue: seedTenantUserRepo },
         {
-          provide: ConnectorCredentialRepository,
+          provide: ConnectorRepository,
           useValue: connectorCredentialRepo,
         },
         {
@@ -715,7 +715,7 @@ describe('DevSeedService', () => {
       endpointUrl: MOCK_TRACTION_ENDPOINT,
       credentialsEncrypted: Buffer.from('old'),
       keyVersion: 1,
-    } as ConnectorCredential;
+    } as Connector;
 
     connectorCredentialRepo.findByTenant.mockResolvedValue([existingConnector]);
 
@@ -741,7 +741,7 @@ describe('DevSeedService', () => {
         id: 'connector-seed',
         endpointUrl: MOCK_TRACTION_ENDPOINT,
       },
-    ] as ConnectorCredential[]);
+    ] as Connector[]);
 
     await service.run();
 

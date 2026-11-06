@@ -25,7 +25,7 @@ import { AuthApiModule } from './auth/auth-api.module';
 import { EncryptionModule } from './common/crypto/encryption.module';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
 import { ConnectionModule } from './connection/connection.module';
-import { ConnectorCredentialModule } from './connector-credential/connector-credential.module';
+import { ConnectorModule } from './connector/connector.module';
 import { CredentialActionModule } from './credential/credential-action.module';
 import { CredentialModule } from './credential/credential.module';
 import { CredentialDefinitionModule } from './credential-definition/credential-definition.module';
@@ -48,7 +48,6 @@ import { TenantStatusChangeModule } from './tenant/tenant-status-change.module';
 import { TenantModule } from './tenant/tenant.module';
 import { OidcTenantUserAdapter } from './tenant-user/oidc-tenant-user.adapter';
 import { TenantUserModule } from './tenant-user/tenant-user.module';
-import { TractionModule } from './traction/traction.module';
 import { OidcUpstreamFederationAdapter } from './upstream-oidc/oidc-upstream-federation.adapter';
 import { UpstreamOidcModule } from './upstream-oidc/oidc-upstream.module';
 import { VerificationProfileModule } from './verification-profile/verification-profile.module';
@@ -68,7 +67,7 @@ import { WebhookIngestionModule } from './webhook-ingestion/webhook-ingestion.mo
       useFactory: createLoggerModuleParams,
     }),
     ConnectionModule,
-    ConnectorCredentialModule,
+    ConnectorModule,
     CredentialActionModule,
     CredentialDefinitionModule,
     CredentialModule,
@@ -114,13 +113,12 @@ import { WebhookIngestionModule } from './webhook-ingestion/webhook-ingestion.mo
     TenantModule,
     TenantStatusChangeModule,
     TenantUserModule,
-    TractionModule,
     UpstreamOidcModule,
     VerificationProfileModule,
     WebhookDispatchModule,
     WebhookIngestionModule,
     ConnectionModule,
-    ConnectorCredentialModule,
+    ConnectorModule,
     CredentialModule,
     AdminModule,
     AuditLogModule,

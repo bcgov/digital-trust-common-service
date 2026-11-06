@@ -13,8 +13,8 @@ import { ConfigService } from '@nestjs/config';
 import { EncryptionService } from '../common/crypto/encryption.service';
 import { BusinessMetricsService } from '../common/telemetry/business-metrics.service';
 import { ConnectorType } from '../connection/connection.entity';
-import { ConnectorCredential } from '../connector-credential/connector-credential.entity';
-import { ConnectorCredentialService } from '../connector-credential/connector-credential.service';
+import { Connector } from '../connector/connector.entity';
+import { ConnectorService } from '../connector/connector.service';
 import { TenantService } from '../tenant/tenant.service';
 
 import { ResolveOptions, ResolvedAdapter } from './adapter-registry.types';
@@ -53,7 +53,7 @@ export class AdapterRegistry {
 
   public constructor(
     private readonly tenantService: TenantService,
-    private readonly connectorCredentialService: ConnectorCredentialService,
+    private readonly connectorCredentialService: ConnectorService,
     private readonly configService: ConfigService,
     private readonly encryptionService: EncryptionService,
     private readonly businessMetrics: BusinessMetricsService,
@@ -169,7 +169,7 @@ export class AdapterRegistry {
    * credentials themselves — every port method call is addressed through
    * this context instead, per `ConnectorContext`'s contract.
    */
-  private buildContext(connector: ConnectorCredential): ConnectorContext {
+  private buildContext(connector: Connector): ConnectorContext {
     const credentials = this.encryptionService.decrypt<Record<string, unknown>>(
       connector.credentialsEncrypted,
       connector.keyVersion,
@@ -225,7 +225,7 @@ export class AdapterRegistry {
     tenantId: string,
     connectorId?: string,
     connectorType?: PortConnectorType,
-  ): Promise<ConnectorCredential> {
+  ): Promise<Connector> {
     const explicitId =
       connectorId ?? (await this.readDefaultConnector(tenantId));
 
@@ -279,7 +279,7 @@ export class AdapterRegistry {
   private async findSoleActiveConnector(
     tenantId: string,
     connectorType?: PortConnectorType,
-  ): Promise<ConnectorCredential> {
+  ): Promise<Connector> {
     const connectors = (
       await this.connectorCredentialService.findByTenant(tenantId)
     ).filter(

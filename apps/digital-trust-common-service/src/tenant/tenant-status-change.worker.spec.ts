@@ -3,7 +3,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import type { Job } from 'pg-boss';
 
 import { ConnectionService } from '../connection/connection.service';
-import { ConnectorCredentialService } from '../connector-credential/connector-credential.service';
+import { ConnectorService } from '../connector/connector.service';
 import { JobsService } from '../jobs/jobs.service';
 import { OAuthClientService } from '../oauth-client/oauth-client.service';
 
@@ -49,7 +49,7 @@ describe('TenantStatusChangeWorker', () => {
           },
         },
         {
-          provide: ConnectorCredentialService,
+          provide: ConnectorService,
           useValue: { deactivateAllForTenant: mockDeactivateAllForTenant },
         },
         {

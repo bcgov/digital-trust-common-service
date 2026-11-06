@@ -12,8 +12,8 @@ import { AppModule } from '../app.module';
 import { API_BASE_PATH } from '../common/constants/api-version.constants';
 import { EncryptionService } from '../common/crypto/encryption.service';
 import { ConnectorType } from '../connection/connection.entity';
-import { ConnectorCredential } from '../connector-credential/connector-credential.entity';
-import type { ConnectorCredentialsDto } from '../connector-credential/dto/create-connector-credential.dto';
+import { Connector } from '../connector/connector.entity';
+import type { ConnectorDto } from '../connector/dto/create-connector.dto';
 import { Tenant } from '../tenant/tenant.entity';
 
 import { WEBHOOK_SECRET_HEADER } from './connector-webhook.guard';
@@ -37,9 +37,9 @@ describe('Connector webhook ingestion (integration)', () => {
   let app: INestApplication;
   let encryptionService: EncryptionService;
   let tenantRepo: Repository<Tenant>;
-  let connectorCredentialRepo: Repository<ConnectorCredential>;
+  let connectorCredentialRepo: Repository<Connector>;
   let tenant: Tenant;
-  let connector: ConnectorCredential;
+  let connector: Connector;
   const webhookSecret = 'test-webhook-secret';
 
   beforeAll(async () => {
@@ -61,9 +61,7 @@ describe('Connector webhook ingestion (integration)', () => {
 
     encryptionService = moduleFixture.get(EncryptionService);
     tenantRepo = moduleFixture.get(getRepositoryToken(Tenant));
-    connectorCredentialRepo = moduleFixture.get(
-      getRepositoryToken(ConnectorCredential),
-    );
+    connectorCredentialRepo = moduleFixture.get(getRepositoryToken(Connector));
 
     tenant = await tenantRepo.save(
       tenantRepo.create({
@@ -72,7 +70,7 @@ describe('Connector webhook ingestion (integration)', () => {
       }),
     );
 
-    const credentials: ConnectorCredentialsDto = {
+    const credentials: ConnectorDto = {
       apiKey: 'sk_test',
       webhookSecret,
     };

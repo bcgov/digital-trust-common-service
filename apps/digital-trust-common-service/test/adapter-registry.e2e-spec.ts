@@ -20,9 +20,9 @@ import { unwrapAdapter } from '../src/adapter-registry/instrumented-adapter';
 import { configureApp } from '../src/app.config';
 import { AppModule } from '../src/app.module';
 import { ConnectorType } from '../src/connection/connection.entity';
-import { ConnectorCredentialService } from '../src/connector-credential/connector-credential.service';
-import { ConnectorHealthCheckService } from '../src/connector-credential/connector-health-check.service';
-import { TractionWebhookRegistrar } from '../src/traction/traction-webhook-registrar.service';
+import { ConnectorHealthCheckService } from '../src/connector/connector-health-check.service';
+import { ConnectorService } from '../src/connector/connector.service';
+import { TractionWebhookRegistrar } from '../src/connector/connectors/traction/traction-webhook-registrar.service';
 
 const mockBoss = {
   start: jest.fn().mockResolvedValue(undefined),
@@ -78,7 +78,7 @@ describe('AdapterRegistry (e2e)', () => {
   let app: INestApplication<App>;
   let dataSource: DataSource;
   let registry: AdapterRegistry;
-  let connectors: ConnectorCredentialService;
+  let connectors: ConnectorService;
 
   const createdTenantIds: string[] = [];
 
@@ -94,7 +94,7 @@ describe('AdapterRegistry (e2e)', () => {
 
     dataSource = moduleFixture.get(DataSource);
     registry = moduleFixture.get(AdapterRegistry);
-    connectors = moduleFixture.get(ConnectorCredentialService);
+    connectors = moduleFixture.get(ConnectorService);
   });
 
   beforeEach(() => {
@@ -262,7 +262,7 @@ describe('AdapterRegistry (e2e)', () => {
       let enabledFixture: TestingModule;
       let enabledApp: INestApplication<App>;
       let enabledRegistry: AdapterRegistry;
-      let enabledConnectors: ConnectorCredentialService;
+      let enabledConnectors: ConnectorService;
       let enabledDataSource: DataSource;
 
       beforeAll(async () => {
@@ -274,7 +274,7 @@ describe('AdapterRegistry (e2e)', () => {
         await enabledApp.init();
 
         enabledRegistry = enabledFixture.get(AdapterRegistry);
-        enabledConnectors = enabledFixture.get(ConnectorCredentialService);
+        enabledConnectors = enabledFixture.get(ConnectorService);
         enabledDataSource = enabledFixture.get(DataSource);
       });
 
