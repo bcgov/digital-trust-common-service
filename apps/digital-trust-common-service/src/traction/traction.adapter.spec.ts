@@ -2,6 +2,7 @@ import {
   CredentialFormat,
   ConnectionState,
   ConnectorUnavailableError,
+  SubmissionRejectedError,
   TimeoutError,
   ValidationError,
 } from '@app/credential-ports';
@@ -166,6 +167,124 @@ describe('TractionAdapter', () => {
       }),
       false,
     );
+  });
+
+  it('issues the retained exchange once with redirects and HTTP retries disabled', async () => {
+    mockRequest.mockResolvedValue({
+      data: {
+        cred_ex_record: {
+          cred_ex_id: 'exchange',
+          connection_id: 'connection',
+          state: 'credential_issued',
+        },
+      },
+    });
+    const context = {
+      tenantId: 'tenant',
+      connectorId: 'connector',
+      endpointUrl: 'https://traction.example.com',
+      credentials: {},
+    };
+    const issued = await adapter.issueCredential(context, 'exchange');
+    expect(mockGetToken).toHaveBeenCalledWith(context);
+    expect(mockRequest).toHaveBeenCalledTimes(1);
+    expect(mockRequest).toHaveBeenCalledWith(
+      expect.objectContaining({
+        method: 'POST',
+        url: 'https://traction.example.com/issue-credential-2.0/records/exchange/issue',
+        data: {},
+        maxRedirects: 0,
+        headers: expect.objectContaining({ Authorization: 'Bearer token-1' }),
+      }),
+      false,
+    );
+    expect(issued).toMatchObject({
+      id: 'exchange',
+      connectionId: 'connection',
+      state: 'credential-issued',
+    });
+  });
+
+  it('propagates uncertain issue errors without replaying the request', async () => {
+    mockRequest.mockRejectedValue(new TimeoutError('Response unavailable'));
+    await expect(
+      adapter.issueCredential(
+        {
+          tenantId: 'tenant',
+          connectorId: 'connector',
+          endpointUrl: 'https://traction.example.com',
+          credentials: {},
+        },
+        'exchange',
+      ),
+    ).rejects.toBeInstanceOf(TimeoutError);
+    expect(mockRequest).toHaveBeenCalledTimes(1);
+  });
+
+  describe('definitive versus ambiguous issue failures', () => {
+    const context = {
+      tenantId: 'tenant',
+      connectorId: 'connector',
+      endpointUrl: 'https://traction.example.com',
+      credentials: {},
+    };
+
+    it('identifies token failure as non-submission without exposing the cause', async () => {
+      mockGetToken.mockRejectedValue(new Error('Authentication unavailable'));
+      await expect(
+        adapter.issueCredential(context, 'exchange'),
+      ).rejects.toEqual(new SubmissionRejectedError('authentication'));
+      expect(mockRequest).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      [400, 'validation'],
+      [401, 'validation'],
+      [404, 'not-found'],
+    ] as const)(
+      'identifies HTTP %s as a definitive rejection',
+      async (status, reason) => {
+        mockRequest.mockRejectedValue({
+          isAxiosError: true,
+          message: 'Rejected',
+          response: { status },
+        });
+        await expect(
+          adapter.issueCredential(context, 'exchange'),
+        ).rejects.toMatchObject({
+          code: 'SUBMISSION_REJECTED',
+          reason,
+        });
+        expect(mockRequest).toHaveBeenCalledTimes(1);
+      },
+    );
+
+    it.each([408, 429, 500])(
+      'does not release an HTTP %s write as definitely rejected',
+      async (status) => {
+        mockRequest.mockRejectedValue({
+          isAxiosError: true,
+          message: 'Response unavailable',
+          response: { status },
+        });
+        await expect(
+          adapter.issueCredential(context, 'exchange'),
+        ).rejects.toBeInstanceOf(
+          status === 408 ? TimeoutError : ConnectorUnavailableError,
+        );
+        expect(mockRequest).toHaveBeenCalledTimes(1);
+      },
+    );
+
+    it('does not classify a malformed successful write response as a rejection', async () => {
+      mockRequest.mockResolvedValue({
+        data: { cred_ex_record: { state: 'unknown' } },
+      });
+      await expect(
+        adapter.issueCredential(context, 'exchange'),
+      ).rejects.toBeInstanceOf(ValidationError);
+      expect(mockRequest).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe('offer and exchange validation', () => {

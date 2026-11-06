@@ -26,6 +26,8 @@ import { decodeCursor, encodeCursor } from '../common/cursor-pagination';
 import { BusinessMetricsService } from '../common/telemetry/business-metrics.service';
 import { ConnectionService } from '../connection/connection.service';
 import { CredentialRepository } from '../credential/credential.repository';
+import { CredentialExchange } from '../credential-exchange/credential-exchange.entity';
+import { CredentialExchangeRepository } from '../credential-exchange/credential-exchange.repository';
 import { JobsService } from '../jobs/jobs.service';
 import { ProtocolStateChangeService } from '../protocol-state-change/protocol-state-change.service';
 import { TenantTierRateLimitGuard } from '../rate-limit/tenant-tier-rate-limit.guard';
@@ -84,7 +86,7 @@ describe('operation tenant isolation integration', () => {
     // only passes when a sibling spec happens to have migrated further first.
     dataSource = new DataSource({
       ...AppDataSource.options,
-      entities: [...SEED_ENTITIES, AuditLog],
+      entities: [...SEED_ENTITIES, AuditLog, CredentialExchange],
       ssl: buildSslConfig(
         process.env.DB_SSL,
         process.env.DB_SSL_REJECT_UNAUTHORIZED,
@@ -108,6 +110,12 @@ describe('operation tenant isolation integration', () => {
         {
           provide: CredentialRepository,
           useValue: { findByExternalId: jest.fn().mockResolvedValue(null) },
+        },
+        {
+          provide: CredentialExchangeRepository,
+          useValue: new CredentialExchangeRepository(
+            dataSource.getRepository(CredentialExchange),
+          ),
         },
         { provide: ConnectionService, useValue: {} },
         {

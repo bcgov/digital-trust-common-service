@@ -10,6 +10,7 @@ import { AuthApiModule } from '../auth/auth-api.module';
 import { API_BASE_PATH } from '../common/constants/api-version.constants';
 import { ConnectionModule } from '../connection/connection.module';
 import { ConnectorCredentialModule } from '../connector-credential/connector-credential.module';
+import { CredentialActionModule } from '../credential/credential-action.module';
 import { CredentialDefinitionModule } from '../credential-definition/credential-definition.module';
 import { OAuthClientModule } from '../oauth-client/oauth-client.module';
 import { OperationModule } from '../operation/operation.module';
@@ -53,6 +54,7 @@ const swaggerApps = [
     version: '1.0',
     modules: [
       ConnectionModule,
+      CredentialActionModule,
       ConnectorCredentialModule,
       OperationModule,
       WebhookIngestionModule,

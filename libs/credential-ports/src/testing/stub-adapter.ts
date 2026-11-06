@@ -41,6 +41,17 @@ export class StubAdapter implements AgentAdapter {
     );
   }
 
+  public issueCredential(
+    _context: ConnectorContext,
+    _id: string,
+  ): Promise<CredentialExchange> {
+    return Promise.reject(
+      new NotImplementedException(
+        'StubAdapter.issueCredential not implemented',
+      ),
+    );
+  }
+
   public getExchange(
     _context: ConnectorContext,
     _id: string,

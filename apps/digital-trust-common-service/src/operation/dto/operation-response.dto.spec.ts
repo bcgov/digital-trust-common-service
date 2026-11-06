@@ -172,6 +172,7 @@ describe('registration operation response', () => {
     expect(Object.keys(response).sort()).toEqual([
       'batch_id',
       'created_at',
+      'exchange_id',
       'id',
       'problem_details',
       'result',
@@ -226,5 +227,27 @@ describe('registration operation response', () => {
     );
     expect(response).not.toHaveProperty('problem_details');
     expect(response.result).toEqual({ value: 'existing-result' });
+  });
+
+  it('returns only the local exchange reference for a completed linked action', () => {
+    const localExchangeId = '123e4567-e89b-42d3-a456-426614174010';
+    const linked = Object.assign(
+      operation(
+        {
+          credential_exchange_id: 'private-backend-id',
+          attributes: ['secret'],
+        },
+        false,
+      ),
+      {
+        exchangeId: localExchangeId,
+        state: OperationState.COMPLETED,
+      },
+    );
+    const response = instanceToPlain(OperationResponseDto.fromEntity(linked));
+    expect(response.exchange_id).toBe(localExchangeId);
+    expect(response.result).toEqual({ exchange_id: localExchangeId });
+    expect(JSON.stringify(response)).not.toContain('private-backend-id');
+    expect(JSON.stringify(response)).not.toContain('secret');
   });
 });

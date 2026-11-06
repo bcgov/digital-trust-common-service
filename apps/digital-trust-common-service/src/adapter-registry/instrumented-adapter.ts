@@ -31,7 +31,7 @@ const logger = new Logger('AdapterCall');
  * from whatever a caller asks for.
  */
 const PORT_METHODS_BY_PORT = {
-  issuer: ['offerCredential', 'getExchange'],
+  issuer: ['offerCredential', 'issueCredential', 'getExchange'],
   verifier: ['requestPresentation', 'getPresentation'],
   holder: ['acceptOffer', 'rejectOffer'],
   connection: [
