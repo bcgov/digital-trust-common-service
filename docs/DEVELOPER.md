@@ -1658,39 +1658,27 @@ with `auto_remove: false`, and submission is not automatically retried after
 uncertain HTTP failures. Requests require an established DIDComm connection;
 this does not add connectionless or DIF proof support.
 
-Failed-record preservation is a **verified agent prerequisite**, not a
-per-request guarantee. ACA-Py 1.6.0's `send-request` route accepts
+Failed-record preservation is **best effort and agent-configured**, not a
+per-request guarantee. ACA-Py 1.6.0's connected `send-request` route accepts
 `auto_remove_on_failure` in its schema but does not pass it to the manager, so
-the adapter does not send this ignored option. Before **every** submission,
-the adapter reads wallet-scoped `GET /settings` with the same bearer token and
-requires the top-level `no_preserve_failed_exchange_records` value to be the
-JSON boolean `false`. A true, absent, malformed, or unreadable setting fails
-closed with an actionable `ConnectorUnavailableError` before the proof POST.
-The request service records a failed Operation through its existing error path;
-no proof request is sent. Settings are not cached, redirects are disabled,
-and `getPresentation` can still read existing exchanges without this preflight.
+the adapter omits this ineffective option. The manager defaults failure removal
+to `bool(no_preserve_failed_exchange_records)`: an absent setting preserves
+failed records. Operators should leave
+`--no-preserve-failed-exchange-records` /
+`ACAPY_NO_PRESERVE_FAILED_EXCHANGE_RECORDS` disabled for the exchange's lifetime.
+`auto_remove: false` retains successfully completed records but does not override
+this separate failure setting.
 
-Operators must disable `--no-preserve-failed-exchange-records` /
-`ACAPY_NO_PRESERVE_FAILED_EXCHANGE_RECORDS` and provide an agent implementation
-whose wallet-scoped `GET /settings` exposes that **effective wallet setting**.
-`preserve_exchange_records: true` alone does not establish failure retention.
-Stock ACA-Py 1.6.0 filters this setting out, so its verifier submissions are
-intentionally blocked even when preservation is enabled internally. Supporting
-that deployment requires an agent-side capability change exposing only the
-effective setting to its authenticated wallet, or a separately validated route
-implementation that honors per-request failure retention. Merely upgrading to
-ACA-Py 1.6.1 or 1.7.0 does not fix the connected `send-request` forwarding bug.
-This service neither deploys that capability nor changes agent configuration.
-It does not request root admin credentials, call privileged `/status/config`,
-write `/settings`, or substitute the connectionless `create-request` route.
+The adapter does not read or write `/settings` before submission. Stock ACA-Py
+1.6.0 filters the failure setting out of its wallet-scoped response, so absence
+there cannot establish the effective value and must not block requests. The
+service does not change agent configuration, request root admin credentials,
+call privileged `/status/config`, or substitute the connectionless route.
 
 The adapter warns when the submitted exchange's returned
-`auto_remove_on_failure` is true or absent despite the verified preflight.
-This is post-submission evidence of an inconsistent agent or configuration
-change, not a reason to replay or report the already-sent request as unsent.
-Operators must keep preservation enabled for the exchange's lifetime; the
-preflight cannot make an external setting immutable. If the agent removes a
-failed exchange,
+`auto_remove_on_failure` is true or absent. This post-submission diagnostic
+does not block or replay the request and is not a retention guarantee. If the
+agent removes a failed exchange, its later GET may return HTTP 404:
 `getPresentation` returns the existing backend-not-found error; the adapter
 does not fabricate a retained failure. Authenticated terminal webhooks can
 still settle the operation through the existing state-change worker.
