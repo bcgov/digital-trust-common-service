@@ -442,8 +442,10 @@ describe('ConnectorsPage', () => {
       );
 
       expect(
-        await screen.findByRole('dialog', { name: 'Connector details' }),
-      ).toHaveAttribute('data-vaul-drawer-direction', 'right');
+        (
+          await screen.findByRole('dialog', { name: 'Connector details' })
+        ).closest('.drawer-panel'),
+      ).toBeInTheDocument();
       expect(
         await screen.findByText(
           new Date('2026-10-01T12:00:00.000Z').toLocaleString('en'),
@@ -522,8 +524,10 @@ describe('ConnectorsPage', () => {
     );
     await userEvent.click(screen.getByRole('menuitem', { name: 'Edit' }));
     expect(
-      screen.getByRole('dialog', { name: 'Edit Connector' }),
-    ).toHaveAttribute('data-vaul-drawer-direction', 'right');
+      screen
+        .getByRole('dialog', { name: 'Edit Connector' })
+        .closest('.drawer-panel'),
+    ).toBeInTheDocument();
     const endpointInput = screen.getByRole('textbox', {
       name: /^Endpoint URL/,
     });

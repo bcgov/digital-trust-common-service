@@ -1,5 +1,5 @@
 import { Button } from '@bcgov/design-system-react-components';
-import { useRef, useState, type FormEvent } from 'react';
+import { useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { z } from 'zod';
 
@@ -34,7 +34,6 @@ export function AddConnectorDrawer() {
   const { tenant } = useActiveTenant();
   const mutation = useCreateConnector(tenant?.id);
   const [open, setOpen] = useState(false);
-  const triggerRef = useRef<HTMLSpanElement>(null);
   const [errors, setErrors] = useState<Record<string, string[] | undefined>>(
     {},
   );
@@ -85,27 +84,16 @@ export function AddConnectorDrawer() {
 
   return (
     <>
-      {/* BCDS Button takes no ref, so the drawer finds it through this. */}
-      <span ref={triggerRef} className="contents">
-        <Button onPress={() => changeOpen(true)}>
-          <PlusIcon className="size-5" />
-          {t('connectors.add')}
-        </Button>
-      </span>
+      <Button onPress={() => changeOpen(true)}>
+        <PlusIcon className="size-5" />
+        {t('connectors.add')}
+      </Button>
       <Drawer
-        direction="right"
         open={open}
         onOpenChange={changeOpen}
         dismissible={!mutation.isPending}
       >
-        <DrawerContent
-          showCloseButton={!mutation.isPending}
-          // There is no DrawerTrigger, so vaul has nothing to refocus.
-          onCloseAutoFocus={(event) => {
-            event.preventDefault();
-            triggerRef.current?.querySelector('button')?.focus();
-          }}
-        >
+        <DrawerContent showCloseButton={!mutation.isPending}>
           <DrawerHeader>
             <DrawerTitle>{t('connectors.add')}</DrawerTitle>
           </DrawerHeader>

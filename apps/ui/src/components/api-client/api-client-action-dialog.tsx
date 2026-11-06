@@ -51,7 +51,6 @@ export function ApiClientActionDialog({
   if (credentials)
     return (
       <Drawer
-        direction="right"
         open
         onOpenChange={(open) => {
           if (!open) close();

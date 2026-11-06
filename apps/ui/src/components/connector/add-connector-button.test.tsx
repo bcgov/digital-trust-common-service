@@ -184,7 +184,7 @@ describe('AddConnectorButton', () => {
     expect(cancel).toHaveClass('secondary');
     await user.click(cancel);
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-    expect(trigger).toHaveFocus();
+    await waitFor(() => expect(trigger).toHaveFocus());
   });
 
   it('shows the connector registration fields with masked secrets', async () => {
@@ -236,20 +236,19 @@ describe('AddConnectorButton', () => {
     for (const button of buttons) {
       await user.click(button);
       const dialog = screen.getByRole('dialog', { name: 'Add Connector' });
-      expect(dialog).toHaveAttribute('data-slot', 'drawer-content');
-      expect(dialog).toHaveAttribute('data-vaul-drawer-direction', 'right');
+      expect(dialog.closest('.drawer-panel')).toBeInTheDocument();
       expect(
         within(dialog).getByRole('heading', { name: 'Add Connector' }),
       ).toBeInTheDocument();
 
       await user.keyboard('{Escape}');
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-      expect(button).toHaveFocus();
+      await waitFor(() => expect(button).toHaveFocus());
 
       await user.click(button);
       await user.click(screen.getByRole('button', { name: 'Close' }));
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-      expect(button).toHaveFocus();
+      await waitFor(() => expect(button).toHaveFocus());
     }
   });
 });
