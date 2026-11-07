@@ -149,106 +149,125 @@ service resolves which service tenant they act for and puts `tenant_id` in the t
 
 ### 3.1 Shape and validation
 
-**Rule T1.** The caller presents an access token **issued by this service**, signed RS256, and
-validated against this service's JWKS. The gateway **MUST** verify the signature, the issuer,
-the expiry, and the audience before anything else, and **MUST** fail closed on any failure.
-This is deliberately the same validation the API's own JWT guard performs, so neither validator
-is a weaker path to the other's data.
+<a id="t1"></a>
+**T1: Token signature, issuer, expiry, and audience validation**
+Owner: This service (issuance), Gateway (verification). Checked by: [N5](#72-required-tests).
+The caller presents an RS256 access token issued by this service and validated against this
+service's JWKS. The decision endpoint **MUST** verify the signature, issuer, expiry, and audience
+before anything else, and **MUST** fail closed on any failure.
+Why: Uses the same cryptographic check as the API so neither path is a weaker entry point.
 
-**Rule T2.** The gateway **MUST NOT** accept any other credential as a substitute: not an
-upstream token, not an agent token, not a shared secret, not a basic-auth identity, and not a
+<a id="t2"></a>
+**T2: No substitute credentials**
+Owner: Gateway. Checked by: [N6](#72-required-tests).
+The gateway and decision endpoint **MUST NOT** accept any credential other than a bearer token
+issued by this service: not an upstream token, an agent token, a shared secret, basic auth, or a
 session cookie.
+Why: Prevents alternative authentication mechanisms from bypassing token claim checks.
 
 ### 3.2 Claims
 
-The token carries the claims this service already mints. The ones this contract depends on:
-
 | Claim | Required | Role in this contract |
 |---|---|---|
-| `tenant_id` | Yes | The service tenant the caller acts for. **The sole source of tenant identity.** |
-| `scope` | Yes | Space-delimited granted scopes. Carries the log-read authorization. |
-| `aud` | Yes | The resource this token was minted for. See [3.4](#34-audience-separation). |
+| `tenant_id` | Yes | The service tenant the caller acts for; the sole source of tenant identity. |
+| `scope` | Yes | Space-delimited granted OAuth scopes carrying log-read authorization. |
+| `aud` | Yes | The resource audience this token was minted for. |
 | `iss` | Yes | This service's OIDC issuer. |
 | `exp`, `iat` | Yes | Validity window. |
-| `sub` | Yes | The authenticated subject. For attribution and support only. |
-| `client_id` | For machine clients | For attribution and support only. |
-| `roles` | No | Omitted entirely for machine clients with no roles. See [3.5](#35-platform-admin-is-not-a-bypass) — carries **no** tenant-scoping meaning here, and its absence **MUST NOT** be treated as an authentication failure. |
+| `sub` | Yes | Authenticated subject, used for attribution and support only. |
+| `client_id` | Machine clients | Client identifier, used for attribution and support only. |
+| `roles` | No | Omitted for machine clients with no roles; its absence **MUST NOT** fail authentication. |
 
-**Rule T3.** Tenant identity **MUST** be taken from the `tenant_id` claim of the validated
-token and from nowhere else. A token with no `tenant_id`, an empty `tenant_id`, or more than
-one `tenant_id` value **MUST** be rejected. There is no fallback, no default, and no
-"unscoped" mode.
+<a id="t3"></a>
+**T3: Tenant identity from `tenant_id` only**
+Owner: This service (issuance), Gateway (verification). Checked by: [P1](#72-required-tests), [P2](#72-required-tests), [N7](#72-required-tests).
+Service tenant identity **MUST** be taken from the `tenant_id` claim of the validated token and
+from nowhere else. A token with no `tenant_id`, an empty `tenant_id`, or more than one `tenant_id`
+value **MUST** be rejected with no fallback or unscoped mode.
+Why: Guarantees that every authorized request is tied to one verified service tenant.
 
-**Rule T4.** Same single-tenant requirement as [Rule T3](#32-claims); multi-tenant tokens are
-outside this contract and would require a new contract ([section 10](#10-amending-this-contract)).
+<a id="t4"></a>
+**T4: Single service tenant per token**
+Owner: This service, Gateway. Checked by: [N7](#72-required-tests).
+Same single-tenant requirement as T3; multi-tenant tokens are outside this contract and require a
+new contract ([section 10](#10-amending-this-contract)).
+Why: Preserves the `T4` rule identifier cited by token validation tests.
 
 ### 3.3 Authorization
 
-**Rule T5.** The gateway **MUST** require the tenant log-read scope (`logs:read`) and **MUST**
-fail closed when it is absent. Authenticating the caller is not sufficient — a valid token
-without this scope is a `403`, and no query is forwarded.
+<a id="t5"></a>
+**T5: Required `logs:read` OAuth scope**
+Owner: Gateway. Checked by: [P1](#72-required-tests), [N4](#72-required-tests).
+The decision endpoint **MUST** require the `logs:read` OAuth scope and **MUST** fail closed with
+`403` when it is absent.
+Why: Authentication alone does not authorize a caller to read operational logs.
 
-**Rule T6.** The scope check **MUST** apply the same expansion the API applies, not a literal
-string membership test. The tenant superuser scope (`tenants:admin`) implicitly grants every
-Level 2 and Level 3 scope, including log read. A gateway that tests for the literal string
-only would deny a tenant owner whose token legitimately carries the superuser scope alone.
-This is a correctness requirement, not a permissiveness one: the expansion rule is the one
-already implemented for the API, and the gateway must not invent a second, divergent
-interpretation of the same scope set.
+<a id="t6"></a>
+**T6: OAuth scope expansion matches the API**
+Owner: This service (definition), Gateway (enforcement). Checked by: [P3](#72-required-tests).
+The OAuth scope check **MUST** apply the same scope expansion as the API, where `tenants:admin`
+grants every Level 2 and Level 3 OAuth scope including `logs:read`.
+Why: Prevents the gateway and API from disagreeing on what `tenants:admin` authorizes.
 
-**Rule T7.** Authorization **MUST** be evaluated per request, from the presented token. The
-gateway **MUST NOT** cache an authorization decision across tokens or subjects.
+<a id="t7"></a>
+**T7: Per-request authorization**
+Owner: Gateway. Checked by: [N9](#72-required-tests).
+Authorization **MUST** be evaluated on every request from the presented token. The gateway **MUST
+NOT** cache an authorization decision across tokens or subjects.
+Why: Stops a shared connection from reusing a previous caller's partition set.
 
 ### 3.4 Audience separation
 
-**Rule T8.** A token used for log queries **MUST** carry the log gateway's resource audience,
-requested as an RFC 8707 resource indicator and configured as an accepted additional audience.
-It **MUST NOT** carry the API audience.
+<a id="t8"></a>
+**T8: Dedicated log gateway audience**
+Owner: This service. Checked by: [N2](#72-required-tests).
+A token used for log queries **MUST** carry the gateway's resource audience (requested via RFC 8707)
+and **MUST NOT** carry the API audience.
+Why: Separates log-reading tokens from API tokens so neither can be replayed against the other.
 
-**Rule T9.** The gateway **MUST** reject a token whose `aud` is the API audience, even when
-that token is otherwise valid and carries the log-read scope. The converse already holds: the
-API's guard accepts only the API audience, so a gateway-audience token cannot be replayed
-against the API.
+<a id="t9"></a>
+**T9: API-audience tokens rejected at the gateway**
+Owner: Gateway, This service. Checked by: [N1](#72-required-tests), [N2](#72-required-tests).
+The decision endpoint **MUST** reject a token whose `aud` is the API audience, even if the token is
+otherwise valid and carries `logs:read`; conversely, the API rejects gateway-audience tokens.
+Why: Ensures a widely distributed API token cannot be used to read logs.
 
-This gives a two-way, structural separation. A token minted for Grafana to forward is useless
-against the API, and an API token — which is far more widely distributed, including to machine
-clients — is useless for reading logs, provided the single-audience invariant in
-[Rule T12](#34-audience-separation) holds.
+<a id="t10"></a>
+**T10: Explicitly configured expected audience**
+Owner: Gateway. Checked by: [N35](#72-required-tests).
+The gateway's expected audience **MUST** be configured explicitly and **MUST NOT** be derived from
+the request URL, `Host` header, or forwarded headers.
+Why: Deriving the expected audience from request headers would let a caller satisfy the check
+itself.
 
-**Rule T10.** The gateway's audience value **MUST** be configured explicitly and **MUST NOT**
-be derived from the request — not from the `Host` header, not from a forwarded proto or host
-header, and not from the request URL. Deriving the expected audience from attacker-influenced
-input would make the audience check self-satisfying.
-
-**Rule T12.** A token **MUST** carry exactly one audience value, and both validators **MUST**
-enforce that. Ordinary JWT audience validation checks *membership*, so a token whose `aud` is
-an array containing both the API audience and the gateway audience would satisfy both
-validators and defeat the separation above. Single-audience issuance is therefore a **security
-invariant of this contract**, not an incidental property of how tokens happen to be minted
-today, and it **MUST** be asserted by a test on the issuing side and enforced by rejection on
-both validating sides.
+<a id="t12"></a>
+**T12: Single audience per token**
+Owner: This service, Gateway. Checked by: [N3](#72-required-tests).
+A token **MUST** carry exactly one audience value, and both this service and the decision endpoint
+**MUST** enforce single-audience tokens by rejecting any token whose `aud` contains multiple
+values.
+Why: Standard JWT audience checks test array membership, so a multi-audience token would satisfy
+both validators and defeat T8 and T9.
 
 ### 3.5 Platform admin is not a bypass
 
-**Rule T11.** The gateway **MUST NOT** implement a role-based bypass of tenant scoping. In
-particular, the platform-admin role — which does bypass scope and tenant guards on the API —
-confers **no** cross-tenant read through this path. A token carrying it is scoped to its own
-`tenant_id` exactly like any other.
-
-Operator access to all logs is a separate path with its own authentication, reached through
-the platform Grafana, and is never served by widening a tenant-facing component. Keeping the
-bypass out of the tenant gateway means the tenant path has no cross-tenant code to reach at
-all, rather than merely having it guarded.
-
----
+<a id="t11"></a>
+**T11: No role-based bypass on the tenant path**
+Owner: Gateway. Checked by: [N8](#72-required-tests).
+The decision endpoint **MUST NOT** implement a role-based bypass of tenant scoping; a token
+carrying the platform-admin role is scoped to its own `tenant_id` like any other token.
+Why: Platform operators read cross-tenant logs through the separate platform Grafana, keeping
+cross-tenant access code out of the tenant gateway.
 
 ### 3.6 Transport
 
-**Rule T13.** Every hop that carries a token **MUST** be TLS-protected — browser to Grafana,
-Grafana to gateway, and gateway to storage backend. A plaintext hop carrying a bearer token
-**MUST NOT** exist in any environment, and an external plaintext request **MUST** be refused or
-redirected rather than served. This is what makes token replay a bounded risk rather than a
-passive-capture one.
+<a id="t13"></a>
+**T13: TLS on every token-bearing hop**
+Owner: Log storage, Gateway. Checked by: [N22](#72-required-tests).
+Every hop that carries a bearer token — browser to Tenant Grafana, Tenant Grafana to gateway, and
+gateway to decision endpoint — **MUST** use TLS. A plaintext hop carrying a bearer token **MUST
+NOT** exist in any environment, and external plaintext requests **MUST** be refused or redirected.
+Why: Prevents passive capture of bearer tokens in transit.
 
 ## 4. Mapping a service tenant to its agent log identifier
 
