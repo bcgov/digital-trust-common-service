@@ -8,7 +8,7 @@ import { AuthContext } from '@app/auth';
 import { OidcMountService } from '@app/oidc';
 import { DEFAULT_JWT_AUDIENCE } from '@app/oidc/config';
 import { PgBossService } from '@app/pg-boss';
-import { ConflictException, INestApplication, Logger } from '@nestjs/common';
+import { ConflictException, INestApplication } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { argon2i, hash } from 'argon2';
@@ -720,7 +720,6 @@ describe('log gateway isolation (hermetic)', () => {
       'N10, N11, N12: overwrites an inbound X-Scope-OrgID naming %s',
       async (_name, spoof) => {
         const [a, b] = [await createTenant(), await createTenant()];
-        const warn = jest.spyOn(Logger.prototype, 'warn');
 
         const response = await get(QUERY, {
           ...bearer(await issueToken(a)),
@@ -729,7 +728,6 @@ describe('log gateway isolation (hermetic)', () => {
 
         expect(response.status).toBe(200);
         expect(forwardedScope()).toBe(partitionOf(a.id));
-        expect(warn).toHaveBeenCalledWith('Inbound scope header ignored');
       },
     );
 
@@ -832,10 +830,9 @@ describe('log gateway isolation (hermetic)', () => {
     );
 
     it.each(['tenant', 'orgId', 'org', 'scope'])(
-      'N16: ignores ?%s= and records it',
+      'N16: ignores ?%s=',
       async (name) => {
         const [a, b] = [await createTenant(), await createTenant()];
-        const warn = jest.spyOn(Logger.prototype, 'warn');
         const path = `/loki/api/v1/labels?${name}=${b.id}`;
 
         const response = await get(path, bearer(await issueToken(a)));
@@ -843,11 +840,6 @@ describe('log gateway isolation (hermetic)', () => {
         expect(response.status).toBe(200);
         expect(loki.onlyRequest().target).toBe(path);
         expect(forwardedScope()).toBe(partitionOf(a.id));
-        expect(warn).toHaveBeenCalledWith(
-          expect.stringContaining(
-            `Tenant-selecting query parameter ignored: ${name.toLowerCase()}`,
-          ),
-        );
       },
     );
 

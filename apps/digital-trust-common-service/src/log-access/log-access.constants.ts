@@ -17,16 +17,3 @@ export const LOG_ACCESS_RATE_LIMIT_MAX_REQUESTS = 120;
 export const LOG_ACCESS_RATE_LIMIT_WINDOW_MS = 60_000;
 /** Dedicated `rate_limit_hits` route key, separate from API budgets. */
 export const LOG_ACCESS_RATE_LIMIT_ROUTE_KEY = 'log-access';
-
-/** Lower-case names that would select a tenant if honoured. */
-export const TENANT_SELECTING_PARAMETERS: ReadonlySet<string> = new Set([
-  'tenant',
-  'org',
-  'scope',
-  'tenant_id',
-  'tenantid',
-  'org_id',
-  'orgid',
-  'x-scope-orgid',
-  'scope_orgid',
-]);

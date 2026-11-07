@@ -843,9 +843,6 @@ gives the caller no signal to probe against. A tenant-selecting **path** does no
 route and receives the generic denial of [Rule G7](#63-complete-coverage-of-the-read-surface)
 and [Rule G8](#63-complete-coverage-of-the-read-surface).
 
-**Rule S6.** Every attempt under Rule S4 **MUST** be recorded for the operator. The caller
-learns nothing; we learn that someone probed.
-
 ### 7.1 Threat model
 
 The realistic adversary is a legitimate tenant user holding a **valid token for tenant A**,
@@ -905,7 +902,7 @@ weaker result — it is the demonstration that the attack changed nothing.
 | N13 | Forwarded request inspected at the backend | The caller's `Authorization` header is not present; only the gateway's own backend login may be ([G4](#61-the-header-is-computed-never-conveyed)) | Gateway |
 | N14 | LogQL explicitly selecting tenant B's labels | Forwarded unchanged, scoped to A only ([G5](#62-the-gateway-does-not-read-the-query)). Against real storage with a **B-owned canary** line present, the canary is **not** returned; A-owned lines that happen to match may be ([V1](#72-required-tests)) | Gateway |
 | N15 | Query via Explore / the datasource API / curl, bypassing dashboards | Scoped to A identically ([L2](#51-isolation-lives-in-the-storage-layer), [G5](#62-the-gateway-does-not-read-the-query)) | Gateway |
-| N16 | Tenant-selecting parameter or body field on an allowlisted route | Ignored; scoped to A; attempt recorded ([S4](#7-tenant-selection-is-never-an-input), [S6](#7-tenant-selection-is-never-an-input)) | Gateway |
+| N16 | Tenant-selecting parameter or body field on an allowlisted route | Ignored; scoped to A ([S4](#7-tenant-selection-is-never-an-input)) | Gateway |
 | N17 | Tenant-selecting **path**, or any unenumerated route | Generic denial, identical for every unknown path ([G7](#63-complete-coverage-of-the-read-surface), [G8](#63-complete-coverage-of-the-read-surface)) | Gateway |
 | N18 | A backend read route that exists but is not enumerated | Denied ([G7](#63-complete-coverage-of-the-read-surface)) | Gateway |
 | N19 | Label-values request naming another tenant's partition | Scoped to A's label space ([G6](#63-complete-coverage-of-the-read-surface), [G7](#63-complete-coverage-of-the-read-surface)) | Gateway |
@@ -981,7 +978,7 @@ component that performs it.
 | Component | Artifacts land in | Responsibility | Rules it implements |
 |---|---|---|---|
 | **This service** | this repository | Minting the access token with the tenant claim, the log-read scope, and the log gateway resource audience, with exactly one audience per token; rejecting log-audience tokens on the API; establishing identifier provenance and binding each agent log identifier to exactly one tenant, system-owned and released on deletion; refreshing it on rotation; exposing the resolution the gateway consumes | T1 (issuance), T3–T4 (issuance), T6 (definition), T8, T12, M1, M2, M4, M5, M8, M10, M18–M20, L8–L9 (derivation definition) |
-| **Identity-aware gateway** | this repository | Token validation and authorization on every request, mapping consumption, partition scope composition and header construction, read-surface coverage, fail-closed and uniform failure behaviour, the aggregate per-tenant capacity cap, and per-partition request-rate control where [L11](#55-preconditions-for-exposing-query-access)'s target requires it | T1, T2, T3–T4 (enforcement), T5, T6 (enforcement), T7, T9–T11, M9, M11, M12, M14–M17, G1–G11, L8–L9 (read-side application), L11 (aggregate capacity cap; rate control where required), S1, S4, S6 |
+| **Identity-aware gateway** | this repository | Token validation and authorization on every request, mapping consumption, partition scope composition and header construction, read-surface coverage, fail-closed and uniform failure behaviour, the aggregate per-tenant capacity cap, and per-partition request-rate control where [L11](#55-preconditions-for-exposing-query-access)'s target requires it | T1, T2, T3–T4 (enforcement), T5, T6 (enforcement), T7, T9–T11, M9, M11, M12, M14–M17, G1–G11, L8–L9 (read-side application), L11 (aggregate capacity cap; rate control where required), S1, S4 |
 | **Log storage and collection** | platform gitops | Storage-layer multi-tenancy including the multi-partition read scope the gateway depends on, collector partition routing and routing-field trust, query and fairness limits, TLS on every token-bearing hop, network isolation of the backend in every environment, write-path partition assignment for existing direct-push consumers | L1–L4, L6, L7, L8–L9 (ingestion application), L10–L12, T13, backend half of G3, G9 |
 | **Agent deployment** | the agent's own chart, gitops | Structured log output carrying the agent's log identifier as a discrete field, populated by the agent runtime rather than from request data | L5, agent half of L6 |
 | **Tenant Grafana** | platform gitops | The dedicated tenant-facing instance, registered against this service as its identity provider; a single shared datasource forwarding the caller's token; generic dashboards | S2, S3 |
@@ -1217,7 +1214,7 @@ they do not restate it. Where an entry and the rule itself appear to differ, the
 | S3 | Generic dashboards, no tenant selector | [7](#7-tenant-selection-is-never-an-input) |
 | S4 | Tenant-selecting input on a real route neutralised silently | [7](#7-tenant-selection-is-never-an-input) |
 | S5 | *(Reserved — covered by [G7](#63-complete-coverage-of-the-read-surface) and [G8](#63-complete-coverage-of-the-read-surface))* | [7](#7-tenant-selection-is-never-an-input) |
-| S6 | Every such attempt recorded for the operator | [7](#7-tenant-selection-is-never-an-input) |
+| S6 | *(Reserved — retired)* | [7](#7-tenant-selection-is-never-an-input) |
 
 ### V — how the tests must be written ([7.2](#72-required-tests))
 
