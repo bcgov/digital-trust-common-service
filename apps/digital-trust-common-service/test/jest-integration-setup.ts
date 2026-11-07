@@ -29,6 +29,10 @@ const envDefaults: Record<string, string> = {
     __dirname,
     '../../../config/encryption-keys.json',
   ),
+  UPSTREAM_IDENTITY_FEDERATION_CONFIG_PATH: path.resolve(
+    __dirname,
+    '../../../config/upstream-identity-federation.json',
+  ),
 };
 
 for (const [key, value] of Object.entries(envDefaults)) {
