@@ -1,200 +1,149 @@
 # Tenant Log Access and Isolation Contract
 
-**Status**: Normative. This document defines the contract; it does not implement it.
+Status: Normative. This document defines the contract; it does not implement it.
 
-This is the authoritative specification for how a tenant reads its own logs through the
-dedicated tenant-facing Grafana. Every component in the chain — the identity-aware gateway,
-the tenant Grafana instance, Loki, Alloy, the agent log configuration, and the write-path
-nginx — implements against this document. Where this document and
-[tenant-observability-design.md](./tenant-observability-design.md) disagree, this document
-wins: that one is a dated research spike, this one is the contract.
+This is the specification for how a service tenant reads its own logs through the tenant-facing
+Grafana instance. Every component in the chain — the gateway, the tenant Grafana instance, Loki,
+Alloy, the agent log configuration, and the write-path nginx — implements against this document.
+Where this document and [tenant-observability-design.md](./tenant-observability-design.md)
+disagree, this document wins.
 
 The key words **MUST**, **MUST NOT**, **SHOULD**, **SHOULD NOT**, and **MAY** are used as
-defined in RFC 2119.
-
----
-
-## How to read this
-
-This document is long because it is a boundary several teams build against independently. It is
-meant to be entered at the part that concerns you rather than read end to end.
-
-| If you are | Start at |
-|---|---|
-| Deciding whether to approve it | [What is settled](#what-is-settled) below, then [9.1](#91-closing-this-contract) |
-| Implementing a component | That component's row in [8.1](#81-what-each-component-is-responsible-for), then the rules it names, via [Appendix A](#appendix-a-rule-index) |
-| Reviewing the boundary | [Section 2](#2-what-tenant-means-in-each-service), then [7.1](#71-threat-model) and [7.2](#72-required-tests) |
-| Looking up a single rule | [Appendix A: rule index](#appendix-a-rule-index) |
-| Tracing an attack to its control | [7.2](#72-required-tests) |
-
-### What is settled
-
-Each of these is argued where it is stated. The links are the argument, not a summary of it.
-
-- **Logs only.** Metrics and traces stay platform-admin-only, as a design consequence rather
-  than a phase ([1.3](#13-logs-only--metrics-and-traces-are-excluded)).
-- **The boundary is the storage partition** — not Grafana, not the query, not a label
-  ([5.1](#51-isolation-lives-in-the-storage-layer),
-  [2.2](#22-grafana-orgs-are-not-an-isolation-boundary-here)).
-- **Tenant identity comes from the token and nowhere else**, and tenant selection is never an
-  input ([T3](#32-claims), [section 7](#7-tenant-selection-is-never-an-input)).
-- **The agent log identifier is the wallet id**, not the API sub-tenant id. The two are not
-  interchangeable
-  ([2.1](#21-the-agent-sub-tenant-has-two-identifiers-and-they-are-not-interchangeable)).
-- **No queryable agent identifier enters the schema.** Uniqueness is enforced on a derived
-  value instead ([M2](#41-provenance--the-identifier-must-be-trustworthy-before-it-is-useful),
-  [M5](#42-provenance-at-query-time)).
-- **Live tail is excluded.** Near-real-time viewing is a refreshed range query, not a pushed
-  stream ([G10](#64-live-tail-is-not-compatible-with-a-multi-partition-scope)).
-- **The numbers are stated, not left to the implementation**: five minutes' maximum staleness,
-  ten partitions per scope, and a measurable fairness target between tenants
-  ([M11](#44-freshness), [M17](#46-multiple-connectors-are-not-ambiguous),
-  [L11](#55-preconditions-for-exposing-query-access)).
-- **Every rule names the component that implements it, and an acceptance test**
-  ([8.1](#81-what-each-component-is-responsible-for), [9.2](#92-accepting-each-component)).
-
----
+defined in RFC 2119. Rule numbers (`T1`–`T13`, `M1`–`M20`, `L1`–`L12`, `G1`–`G10`, `S1`–`S4`,
+`V1`–`V3`) are permanent IDs cited in code and tests; retired numbers are never reused, so numbers
+may appear out of order.
 
 ## 1. Purpose and scope
 
 ### 1.1 What this contract covers
 
-A tenant of this service must be able to read the log lines produced on its behalf — both by
-this service and by the credential agent acting for it — without being able to read any other
-tenant's lines, and without the platform team brokering the request.
+A service tenant must be able to read the log lines produced on its behalf by this service and by
+its credential agent. It must not be able to read any other service tenant's lines, and the
+platform team does not broker the request.
 
 This contract defines:
 
-- the token a caller presents, the claims it carries, and the authorization it must prove;
-- the resource audience that separates a log-reading token from an API token;
-- how this service's tenant identity is mapped to the identifier the agent stamps on its own
-  log lines, expressed as a constraint rather than a storage shape;
-- the storage-layer tenancy model and the header contract that drives it;
+- the token a caller presents, its claims, its OAuth scope, and its resource audience;
+- how a service tenant is mapped to its agent log identifier;
+- how Alloy routes log lines into Loki partitions and how the gateway builds the partition set header;
 - the rule that tenant selection is never an input;
-- the tests that demonstrate the boundary holds;
-- which work is owned outside this repository and what "done" means for each owner.
+- the required tests and the component ownership table.
 
-### 1.2 What this contract does not cover
+### 1.2 How it works
 
-It is not an implementation. It specifies no gateway internals, no Grafana configuration, no
-Loki or Alloy values, no agent deployment change, and no nginx configuration. Those live in
-the repositories identified in [section 8](#8-where-the-work-lands), and each is accepted
-against the criteria in [section 9](#9-acceptance-and-closure).
+```text
+Browser ──(Bearer token)──► Tenant Grafana ──(Bearer token)──► Gateway (Envoy)
+                                                                  │
+                                                  ext_authz check │ (Authorization header)
+                                                                  ▼
+                                                          Decision endpoint
+                                                       (validates token & OAuth scope,
+                                                        resolves active connectors)
+                                                                  │
+                                                                  ▼
+                                     Loki ◄──(X-Scope-OrgID)── Gateway
+```
 
-It also does not cover the write path beyond the requirements that make the read path safe.
-How a line is produced and shipped is an ingestion concern; this contract only requires that
-by the time a line is queryable it is already partitioned correctly.
+A worked request from browser to Loki:
 
-### 1.3 Logs only — metrics and traces are excluded
+1. A user or machine client for service tenant `3f2a9c1e-7b4d-4e08-9a15-c2d4e6f80b13` presents a
+   token carrying `tenant_id: "3f2a9c1e-7b4d-4e08-9a15-c2d4e6f80b13"`, OAuth scope `logs:read`,
+   and `aud: "https://logs.example.gov.bc.ca"`.
+2. Tenant Grafana forwards the request and the `Authorization: Bearer ...` header to the gateway on
+   an allowlisted Loki read path such as `GET /loki/api/v1/query_range`.
+3. The gateway calls the decision endpoint on this service's internal listener.
+4. The decision endpoint validates the token, finds one active `traction` connector with
+   `agentLogId` `8a11d0e4-12bc-4a91-b501-99e01d2c3f44`, and returns `200` with
+   `X-Scope-OrgID: t-3f2a9c1e-7b4d-4e08-9a15-c2d4e6f80b13|a-traction-8a11d0e4-12bc-4a91-b501-99e01d2c3f44`.
+5. The gateway overwrites any inbound `X-Scope-OrgID`, replaces the caller's `Authorization`
+   header with its own Loki credentials, and forwards the request to Loki.
+6. Loki reads only the two partitions in that partition set and returns the matching log lines.
 
-The tenant-facing observability surface is **logs, and only logs**. Metrics and traces remain
-platform-admin-only and are outside this contract. This is a deliberate design consequence,
-not an oversight or a phasing decision:
+### 1.3 What this contract does not cover
 
-- **Metrics carry no tenant label by construction.** Metric series must not carry `tenant_id`
-  or any other unbounded label, because per-tenant series would make cardinality grow with
-  tenant count. There is consequently nothing in the metric store to partition on, and adding
-  the label to enable tenant access would reintroduce the cardinality problem the current
-  design exists to avoid.
-- **Traces have no per-line routing equivalent.** Log lines can be routed to a storage tenant
-  individually at the collector. Trace ingestion has no equivalent per-span routing hook, so
-  per-tenant trace partitioning is materially harder than the logs case and buys little: the
-  agent is not trace-instrumented, so a tenant-visible trace would stop at our own boundary.
-- **Traces and metrics are diagnostic tooling for the operator**, carrying cross-tenant
-  aggregates and internal topology that a tenant has no basis to see.
+This contract specifies requirements, not internal component configuration. The implementing
+repositories are listed in [section 8](#8-where-the-work-lands), and each component is accepted
+under [section 9](#9-acceptance-and-closure). It covers the write path only where ingestion rules
+are needed to keep the read path safe.
 
-Tenant identity is still recorded on spans as a span attribute so an operator can filter to one
-tenant when assisting them. That is an operator affordance and confers no tenant access.
+### 1.4 Logs only — metrics and traces are excluded
 
-Any future proposal to expose metrics or traces to tenants is a new contract, not an extension
-of this one.
+The tenant-facing observability surface is logs only. Metrics and traces stay platform-admin-only:
 
-### 1.4 Relationship to the tenant audit log
+- Metric series do not carry `tenant_id` or any other high-cardinality tenant label, so the metric
+  store has no tenant partition to query.
+- Trace ingestion has no per-span routing equivalent to Alloy's per-line log routing, and the
+  credential agent is not trace-instrumented.
+- Traces and metrics carry cross-tenant aggregates and internal topology intended for platform
+  operators.
 
-The tenant audit log is a separate, already-specified API surface with its own scope. It
-answers "what did my organization do", is a durable record, and is served by this service.
-Tenant log access answers "what happened when my request ran", is operational telemetry, and
-is served by Loki. They are independent grants: neither scope implies the other, and nothing in
-this contract changes audit-log behaviour.
+Spans still carry `tenant_id` as an attribute for operator debugging, which confers no tenant
+access. Exposing metrics or traces to service tenants would require a new contract
+([section 10](#10-amending-this-contract)).
 
----
+### 1.5 Relationship to the tenant audit log
+
+The tenant audit log is a separate API surface served by this service with its own OAuth scope
+(`audit:read`). The audit log records durable organizational actions; Loki log access shows
+operational telemetry from request execution. Neither OAuth scope implies the other.
 
 ## 2. What "tenant" means in each service
 
-Four different systems in this chain each use the word "tenant" for a different thing, and
-two of them use more than one identifier for the same subject. Nearly every isolation mistake
-available in this design starts by treating two of the rows below as interchangeable.
+Four systems in this chain use the word "tenant" for different things. This contract uses the
+specific terms below instead of the bare word "tenant":
 
-This contract therefore does not use the bare word "tenant". It uses the terms defined here.
+- `service tenant`: A customer organization in this service, identified by `tenant_id` (a UUID we
+  generate and emit on our own log lines).
+- `agent log identifier`: The identifier the credential agent stamps on each log line it emits for
+  a sub-wallet (`wallet_id` in Traction/ACA-Py today).
+- `partition`: A single Loki storage tenant (`t-<tenant_id>`, `a-<type>-<agent_log_id>`, or the
+  platform partition `dt-services`).
+- `partition set`: The pipe-joined list of Loki partitions placed in `X-Scope-OrgID` for a
+  request.
+- `OAuth scope`: A permission string in the access token's `scope` claim (such as `logs:read` or
+  `tenants:admin`).
+- `gateway`: The identity-aware Envoy proxy in front of Loki.
+- `decision endpoint`: This service's internal `ext_authz` endpoint that validates the token and
+  computes the `X-Scope-OrgID` partition set.
 
-| Term | System | What it identifies | Identifier | Where it appears in logs | Authoritative for it |
-|---|---|---|---|---|---|
-| **Service tenant** | This service | A customer organization — the subject of our tenancy model and the unit of isolation everywhere in our own data | `tenant_id`, a UUID we generate | Emitted as a structured `tenant_id` field on our own log lines | Us. Authoritative. |
-| **Agent sub-tenant** | Credential agent (Traction/ACA-Py today) | One sub-wallet on a shared multi-tenant agent, acting for exactly one service tenant | **Two distinct identifiers — see below** | The agent stamps its own log records | The agent |
-| **Loki tenant** | Loki | A storage partition. An opaque key; Loki attaches no meaning to it and enforces isolation between partitions | Whatever string we put in the routing header | n/a — it is the partition, not a field | Us, by choice of value |
-| **Grafana org** | Grafana | A UI grouping of users, dashboards and datasources — a **single shared org for every tenant**, not a per-tenant unit ([2.2](#22-grafana-orgs-are-not-an-isolation-boundary-here)) | Numeric org id. One fixed value, configured on the instance — we neither store it nor provision one per tenant | n/a | Tenant Grafana config |
+| Term | System | Identifier | Role in log access |
+|---|---|---|---|
+| Service tenant | This service | `tenant_id` UUID | Sole source of tenant identity in the token; emitted on our log lines. |
+| Agent sub-tenant | Credential agent | Two distinct UUIDs (see [2.1](#21-the-agent-sub-tenant-has-two-identifiers-and-they-are-not-interchangeable)) | The agent stamps `wallet_id` on its log lines. |
+| Partition | Loki | String in `X-Scope-OrgID` | Storage isolation unit enforced by Loki. |
+| Grafana org | Tenant Grafana | Single shared numeric org ID | UI grouping only; shared by all service tenants ([2.2](#22-grafana-orgs-are-not-an-isolation-boundary-here)). |
 
 ### 2.1 The agent sub-tenant has two identifiers, and they are not interchangeable
 
-This is the single most important distinction in this contract, and the one that has already
-caused confusion.
-
-| Identifier | What it is for | Where we get it | Appears on agent log lines? |
+| Identifier | Purpose | Source | On agent log lines? |
 |---|---|---|---|
-| **Agent API sub-tenant id** | Addressing the agent's API — the identifier under which we request a bearer token for this sub-wallet | Supplied when the connector is configured, held with the connector's other credential material | **Sometimes** (the Traction plugin logs its sub-tenant id as `tenant_id`, a different UUID from `wallet_id`; never used for routing) |
-| **Agent log identifier** (the wallet id, for the current agent) | Correlating log lines to a sub-wallet — the value the agent stamps on each of its own log records | Present in the bearer token the connector already obtains from the agent | **Yes** (as `wallet_id`) |
+| Agent API sub-tenant ID | Addressing the agent's API when requesting a sub-wallet bearer token | Stored with the connector's credentials when configured | Sometimes logged as `tenant_id` by Traction; never used for routing |
+| Agent log identifier (`wallet_id` today) | Identifying which sub-wallet emitted an agent log line | Decoded from the bearer token returned by the agent's tenant-token endpoint | Yes, stamped as `wallet_id` on every record |
 
-Both identify the same sub-wallet, but their values are distinct UUIDs. Only the agent log
-identifier (`wallet_id`) is bound by this service and used to partition or query agent logs.
-Using the API sub-tenant id as a log partition key produces a partition that is either empty
-or, worse, populated by a coincidental match.
+Both identify the same sub-wallet, but their values are different UUIDs. Only the agent log
+identifier (`wallet_id`) is bound by this service and used to route or query agent logs:
 
-A future agent implementation will have its own pair of identifiers with its own names. The
-contract is written against the **roles** — "the identifier the agent's API is addressed by"
-and "the identifier the agent stamps on its log lines" — never against the names a particular
-agent happens to use today.
-
-Where a service tenant is reconciled to its agent log identifier, and what constrains that
-resolution, is [section 4](#4-mapping-a-service-tenant-to-its-agent-log-identifier). The rules
-that keep it independent of any one agent are [4.3](#43-agent-agnostic-by-construction).
-
-**For the agent deployed today**, three facts about those two identifiers are worth stating,
-because each one is a place an implementer would otherwise guess:
-
-- The **log identifier is a claim in the token** returned by the agent's tenant-token endpoint —
-  the same token the connector already obtains. Capturing it is reading one more claim where the
-  token is already decoded, not a new call.
-- That token also carries an expiry, and on the credential path the connector uses it carries
-  **no wallet key material**. The identifier is not a secret; the token around it still is.
-- The agent emits structured JSON log records where ACA-Py's log filter stamps `wallet_id`
-  (the agent log identifier) and the Traction multitenant plugin may also stamp `tenant_id`
-  (the API sub-tenant id, a different UUID). The collector routes exclusively on `wallet_id`
-  and ignores `tenant_id` on agent log lines.
+- The agent log identifier is a claim in the bearer token the connector already obtains from the
+  agent's tenant-token endpoint.
+- That token carries no wallet key material on the credential path. The agent log identifier is
+  not a secret, though the token carrying it is.
+- ACA-Py stamps `wallet_id` on structured JSON log lines while the Traction plugin may also stamp
+  its API sub-tenant ID as `tenant_id`. Alloy routes exclusively on `wallet_id` and ignores
+  `tenant_id` on agent log lines.
 
 ### 2.2 Grafana orgs are not an isolation boundary here
 
-All tenant users share a single org on the tenant-facing Grafana instance. This is
-intentional: per-tenant orgs, datasources and dashboard copies do not scale to the tenant
-counts this service is designed for, and they are not what enforces isolation.
-
-Consequently, any authenticated user of that instance can issue arbitrary queries against its
-datasource — through Explore, through the datasource query API, or with a plain HTTP client.
-Grafana's Viewer role, dashboard permissions, and Explore visibility restrict the **UI**, not
-the query path. They are usability features and **MUST NOT** be described or relied upon as
-security controls.
-
-The boundary is the token, the gateway, and the storage-layer partition — every element of
-which is outside the caller's control.
+All tenant users share one org on the tenant-facing Grafana instance. Any authenticated user can
+send arbitrary queries through Explore, the datasource API, or an HTTP client. Grafana roles and
+dashboard permissions restrict only the UI and **MUST NOT** be relied upon as security controls.
+Isolation is enforced by the token, the gateway, the decision endpoint, and the Loki partition.
 
 ### 2.3 Upstream identity is not tenant identity
 
-Users authenticate upstream, but the upstream identity provider has no concept of a service
-tenant and **MUST NOT** be given one for this purpose. No upstream group, role, or claim
-participates in tenant scoping. Upstream establishes *who the human is*; this service resolves
-*which service tenant they act for* and asserts it in the token it issues. That keeps a single
-authority over tenant identity and removes any need for upstream group or claim-mapping work.
-
----
+Users authenticate through an upstream identity provider, but the upstream provider has no concept
+of a service tenant and **MUST NOT** be given one for log access. No upstream group, role, or
+claim participates in tenant scoping. Upstream authentication establishes who the user is; this
+service resolves which service tenant they act for and puts `tenant_id` in the token it mints.
 
 ## 3. The token contract
 
