@@ -163,6 +163,7 @@ data:
                       # is applied before the addition only within one level.
                       request_headers_to_remove:
                         - authorization
+                        - cookie
                       request_headers_to_add:
                         - header:
                             key: authorization
