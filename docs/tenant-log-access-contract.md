@@ -448,165 +448,144 @@ again.
 
 ### 5.1 Isolation lives in the storage layer
 
-**Rule L1.** Log isolation **MUST** be enforced by Loki's native multi-tenancy
-(`auth_enabled: true`), which partitions data by the `X-Scope-OrgID` request header and makes
-a query against one partition structurally incapable of returning another partition's data.
+<a id="l1"></a>
+**L1: Loki native multi-tenancy is the boundary**
+Owner: Log storage. Checked by: [P1](#72-required-tests), [P8](#72-required-tests), [N14](#72-required-tests).
+Log isolation **MUST** be enforced by Loki's native multi-tenancy (`auth_enabled: true`), which
+partitions data by the `X-Scope-OrgID` header.
+Why: Enforces isolation below the query engine so arbitrary LogQL cannot cross a partition.
 
-The alternatives were considered and are **rejected as boundaries**:
-
-| Approach | Status | Why |
+| Approach | Status | Reason |
 |---|---|---|
-| Native multi-tenancy | **Required** | Enforced below the query layer. A caller with arbitrary query control still cannot cross a partition. |
-| Label-based filtering on a shared partition | **Rejected** | Open-source Loki has no query-level label enforcement. Any caller who can send a query can send one without the label. This is a display convention, not a control. |
-| A proxy that parses LogQL and injects a mandatory label matcher | **Rejected** | Puts a query parser in the security path. Every parser gap, every new LogQL feature, and every operator precedence subtlety becomes an isolation bug. Native tenancy already provides the guarantee without parsing anything. |
+| Loki native multi-tenancy (`X-Scope-OrgID`) | Required | Enforced below the query layer; a caller cannot cross a partition regardless of query syntax. |
+| Label filtering on a shared partition | Rejected | Open-source Loki does not enforce mandatory labels; any caller can omit the label filter. |
+| Proxy that parses and rewrites LogQL | Rejected | Puts a LogQL parser on the security boundary where any parser gap becomes a cross-tenant leak. |
 
-**Rule L2.** No component in this design may rely on the **shape of a query** for isolation.
-This is what makes it safe to give tenants arbitrary LogQL, Explore, and direct API access:
-correctness does not depend on what they send.
+<a id="l2"></a>
+**L2: Isolation never depends on query shape**
+Owner: Log storage, Gateway. Checked by: [N14](#72-required-tests), [N15](#72-required-tests).
+No component **MUST** rely on the shape or content of a LogQL query for tenant isolation.
+Why: Allows service tenants to use Explore, arbitrary LogQL, and the datasource API safely.
 
 ### 5.2 Partitioning happens at ingestion
 
-**Rule L3.** Each log line **MUST** be assigned its storage partition at ingestion by the
-collector, from an identifier **already present on the line**. Partition assignment is
-therefore a property of the data, fixed before any query exists, and not something the read
-path can influence.
+<a id="l3"></a>
+**L3: Partition assigned at ingestion from the log line**
+Owner: Log storage (Alloy). Checked by: [P10](#72-required-tests).
+Each log line **MUST** be assigned its Loki partition at ingestion by Alloy from an identifier
+already present on the structured log line.
+Why: Fixes partition ownership before any query runs so the read path cannot alter which partition
+a line belongs to.
 
-**Rule L4.** A line with no extractable identifier **MUST** be routed to the platform
-partition. It **MUST NOT** be routed to a tenant partition, and **MUST NOT** be routed to a
-shared partition that any tenant can read. Unattributed is not the same as public: the safe
-default is operator-only.
+<a id="l4"></a>
+**L4: Unattributed lines routed to the platform partition**
+Owner: Log storage (Alloy). Checked by: [N29](#72-required-tests).
+A log line with no extractable routing identifier **MUST** be routed to the platform partition
+(`dt-services`) and **MUST NOT** be routed to a service tenant partition or a shared tenant-readable
+partition.
+Why: Keeps unattributed operational logs visible only to platform operators.
 
-**Rule L5.** The agent **MUST** emit structured logs carrying its log identifier as a discrete
-field before its lines are routed to tenant partitions. Extracting the identifier by pattern
-matching against unstructured text is **prohibited**: it makes every upstream log-format
-change a potential mis-partitioning, which is to say a potential cross-tenant disclosure, with
-no signal that anything broke. Until the agent emits structured logs, its lines stay in the
-platform partition and tenants see only this service's lines.
+<a id="l5"></a>
+**L5: Structured agent logs required before tenant routing**
+Owner: Agent deployment, Log storage (Alloy). Checked by: [P10](#72-required-tests).
+The credential agent **MUST** emit structured JSON logs carrying its agent log identifier as a
+discrete field before Alloy routes agent lines to tenant partitions; Alloy **MUST NOT** extract
+routing identifiers by regex matching unstructured text.
+Why: Unstructured text matching can mis-route lines or match user-controlled text when log formats
+change.
 
 ### 5.3 The routing field must be trusted, not merely structured
 
-Structured is not the same as trustworthy. A JSON log line is still, in part, application data:
-it can carry a user-supplied value, a merged context object, or a duplicated key. If a line
-produced while serving tenant A can be made to carry tenant B's routing value, the collector
-will file A's content in a partition B can read — and it will do so silently, because from the
-collector's point of view nothing went wrong.
+<a id="l6"></a>
+**L6: Routing field populated only by trusted logging infrastructure**
+Owner: This service, Agent deployment, Log storage (Alloy). Checked by: [P10](#72-required-tests), [N28](#72-required-tests).
+The routing field (`tenant_id` on this service's lines, `wallet_id` on Traction/ACA-Py lines)
+**MUST** be populated by the service's logging middleware or the agent runtime and **MUST NOT** be
+populated from request payloads, user content, or caller-controlled log arguments. Alloy **MUST**
+read only that top-level trusted field.
+Why: Stops a caller from injecting another tenant's routing value into a log line emitted during
+their request.
 
-**Rule L6.** The routing field **MUST** be populated by trusted logging infrastructure — the
-service's own logging middleware or the agent's runtime — and **MUST NOT** be sourceable from
-application payload, request data, user-supplied content, or a caller-influenced log argument.
-The extraction **MUST** read only the field the trusted layer owns, never a same-named field
-appearing elsewhere in the line.
-
-**Rule L7.** Where a line carries conflicting, duplicated, or malformed routing values, the
-collector **MUST** route it to the platform partition rather than choosing among them. Precedence
-between duplicate keys **MUST** be defined explicitly rather than inherited from whatever a
-parser happens to do, because parsers disagree about which duplicate wins.
+<a id="l7"></a>
+**L7: Conflicting, duplicate, or malformed routing values go to the platform partition**
+Owner: Log storage (Alloy). Checked by: [N28](#72-required-tests).
+When a log line carries conflicting, duplicated, or malformed routing values, Alloy **MUST** route
+the line to the platform partition (`dt-services`) with explicit duplicate-key handling rather than
+relying on parser defaults.
+Why: Prevents duplicate JSON keys from smuggling a foreign partition identifier past ingestion.
 
 ### 5.4 Partition keys must be derived, not passed through
 
-Loki constrains partition identifiers, and the read path pipe-joins them. Both facts make a
-pass-through of a raw agent identifier unsafe.
+<a id="l8"></a>
+**L8: Derived, domain-separated, character-constrained partition keys**
+Owner: This service, Gateway, Log storage. Checked by: [N26](#72-required-tests), [N27](#72-required-tests), [N40](#72-required-tests).
+Every Loki partition key **MUST** be derived using the domain-separated prefixes below, constrained
+to lowercase ASCII alphanumeric characters and hyphens within Loki's 150-byte limit, and **MUST
+NOT** contain `|`, path characters, control characters, or raw unvalidated identifiers. The write
+path **MUST NOT** assign any direct-push producer an identity starting with `t-` or `a-`.
+Why: Prevents `|` from widening the `X-Scope-OrgID` partition set and prevents direct-push producer
+identities from colliding with tenant or agent partitions.
 
-**Rule L8.** The partition key **MUST** be a canonical, domain-separated value derived from the
-source identifier by a single definition shared by ingestion and query. It **MUST** be
-constrained to characters the backend accepts, **MUST** be within the backend's length limit,
-and **MUST NOT** be able to contain the multi-partition separator `|` or any path, control, or
-delimiter character. Raw identifiers **MUST NOT** be used as partition keys.
+<a id="l9"></a>
+**L9: Identical partition key derivation at ingestion and query**
+Owner: This service, Gateway, Log storage (Alloy). Checked by: [P1](#72-required-tests), [P10](#72-required-tests), [N26](#72-required-tests).
+Alloy and the decision endpoint **MUST** apply the exact same partition key derivation rules and
+**MUST** be tested against shared test vectors (including uppercase UUIDs, surrounding whitespace,
+and `|`).
+Why: Any mismatch between Alloy and the decision endpoint either drops logs silently or rejects
+valid queries.
 
-The reasons are concrete rather than theoretical:
-
-- Loki rejects partition identifiers outside a restricted character set, rejects values over
-  **150 bytes**, and reserves `|` as the multi-partition separator. An identifier containing `|`
-  does not fail — it **widens the read scope**.
-- Partition identifiers become object-storage path prefixes, so path characters are unsafe.
-- Without domain separation, a service tenant's identifier, an agent identifier, and the
-  identity the **write path** assigns to an existing direct-push producer all occupy one
-  namespace and can collide. The write path matters as much as the read path here: a push
-  credential whose derived identity collides with a tenant's partition key writes
-  attacker-chosen lines **into** that tenant's read scope.
-  [Rule G9](#63-complete-coverage-of-the-read-surface) covers reading *through* the write path;
-  it does not cover writing *into* a tenant partition.
-
-**Rule L9.** Ingestion and the gateway **MUST** apply the same derivation. A derivation applied
-on only one side produces a partition that is written to and never read, or read from and never
-written — and the failure mode is an empty result, which is easily mistaken for "no logs yet".
-
-**The service tenant key.** A service tenant's partition key is a fixed prefix plus its
-`tenant_id`, and nothing else:
+Service tenant partition key:
 
 ```text
 partition_key = "t-" + tenant_id          e.g.  t-3f2a9c1e-7b4d-4e08-9a15-c2d4e6f80b13
 valid         = ^t-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
 ```
 
-- **No stored mapping.** The key is a pure function of the `tenant_id`, so the collector and the
-  gateway each compute it independently and cannot disagree about which tenants exist.
-- **No collisions by construction.** A `tenant_id` is a UUID, so distinct tenants yield distinct
-  keys. The `t-` prefix is the domain separation (L8): it keeps tenant keys out of the namespace
-  of agent keys (`a-`, defined below)
-  and of the names the write path assigns to direct-push producers.
-- **Reserved prefixes.** The write path **MUST NOT** assign any producer an identity beginning
-  `t-` or `a-`, since that is what closes the write-into-a-tenant-partition case above.
-- **Safe by shape.** 38 bytes, lowercase hex and hyphen only: well inside the 150-byte limit and
-  unable to contain `|`, a path character, or a control character.
-- **One canonical form.** The `tenant_id` is taken as emitted, lowercase and hyphenated, with no
-  case-folding or trimming. A value that does not match the pattern is treated as malformed and
-  its line goes to the platform partition ([L7](#53-the-routing-field-must-be-trusted-not-merely-structured)).
-  Being strict here leaves one form to agree on, which is what [L9](#54-partition-keys-must-be-derived-not-passed-through)
-  needs.
-
-**The agent partition key.** An agent sub-wallet's partition key is the `a-` prefix, the
-connector type, and the agent log identifier:
+Agent partition key:
 
 ```text
 partition_key = "a-" + connector_type + "-" + agent_log_id
-                e.g.  a-traction-3f2a9c1e-7b4d-4e08-9a15-c2d4e6f80b13
+                e.g.  a-traction-8a11d0e4-12bc-4a91-b501-99e01d2c3f44
 valid         = ^a-(traction|credo)-[a-z0-9-]{1,100}$
 ```
 
-- **Domain-separated across connector types.** Including `connector_type` ensures that even if
-  two different agent implementations ever emit the same `agent_log_id`, their partition keys
-  cannot collide.
-- **Lowercase and strict.** `agent_log_id` must match `^[a-z0-9-]{1,100}$` (for Traction, a
-  canonical lowercase UUID matching `^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`),
-  with no case-folding or trimming. Any value outside that pattern is rejected.
-
-The collector and the gateway **MUST** each be tested against the same fixed vectors, including
-an uppercase UUID, one with surrounding whitespace, and one containing `|`, so that L9 is
-checked rather than assumed.
+Both patterns are strict lowercase with no trimming or case-folding; for `traction`, `agent_log_id`
+must also match a canonical lowercase UUID.
 
 ### 5.5 Preconditions for exposing query access
 
-**Rule L10.** A global query limits configuration (query length, series, entries, cardinality)
-**MUST** be in place before any tenant is granted query access. Arbitrary LogQL from external
-callers without limits is a denial-of-service surface against every other tenant sharing the
-backend. The limits are global and enforced per partition; per-partition overrides are for
-known exceptions only. This rule governs the **shape** of a single query; request volume and
-fairness between tenants are [L11](#55-preconditions-for-exposing-query-access)'s.
+<a id="l10"></a>
+**L10: Global query limits configured before tenant exposure**
+Owner: Log storage (Loki). Checked by: [N36](#72-required-tests).
+Global per-partition query limits (query time range, maximum series, maximum entries, and
+cardinality) **MUST** be configured in Loki before any service tenant is granted query access.
+Why: Prevents a single unbounded LogQL query from exhausting shared Loki queriers.
 
-**Rule L11.** Query-shape limits alone are **not** sufficient for availability isolation: a
-caller can stay inside every per-query limit and still exhaust shared scheduler and querier
-capacity by volume. Per-partition concurrency (`max_query_parallelism`), queue, and timeout
-controls **MUST** be configured in Loki before any tenant is granted query access.
+<a id="l11"></a>
+**L11: Fairness target and one-third aggregate capacity cap**
+Owner: Log storage (Loki). Checked by: [N37](#72-required-tests).
+Per-partition concurrency (`max_query_parallelism`), queue, and timeout controls **MUST** be
+configured in Loki before tenant exposure so that:
 
-- **Capacity cap.** No service tenant **MUST** hold more than **one third** of total query
-  capacity (querier replicas multiplied by per-querier concurrency) across its composed scope.
-  Because a tenant's scope may contain up to ten partitions
-  ([M17](#46-multiple-connectors-are-not-ambiguous)), Loki's per-partition query parallelism
-  **MUST** be set to no more than one third of total query capacity divided by ten, and
-  recalculated whenever querier replicas or per-querier concurrency change.
-- **Fairness target.** While a competing service tenant continuously saturates its allowance, a
-  tenant's reference query at the upper bound of [Rule L10](#55-preconditions-for-exposing-query-access)
-  across its composed scope **MUST** complete within **10 seconds at p95** and within **2× its
-  uncontended baseline**, with **no increase in error rate** over that baseline and with the
-  results cache bypassed. This benchmark **MUST** be run and recorded before tenant exposure and
-  whenever querier capacity changes.
+- no service tenant **MUST** hold more than one third of total query capacity (querier replicas
+  multiplied by per-querier concurrency) across its partition set, enforced by setting Loki's
+  per-partition query parallelism to at most one third of total query capacity divided by the
+  10-partition maximum ([M17](#m17)); and
+- while a competing service tenant saturates its allowance, a tenant's reference query at the upper
+  bound of L10 across its partition set **MUST** complete within 10 seconds at p95 and within 2×
+  its uncontended baseline, with no error rate increase and with the results cache bypassed.
 
-**Rule L12.** Loki **MUST NOT** be reachable except through a gateway that sets the partition
-header, in **every** environment — including development and test. An environment where the
-storage backend accepts a caller-supplied partition header from anywhere in the cluster has no
-boundary at all, and it is where the isolation tests would otherwise be validated against a
-configuration that does not match production.
+Why: Ensures a noisy service tenant with up to ten partitions cannot starve other tenants sharing
+Loki.
+
+<a id="l12"></a>
+**L12: Loki reachable on the read path only through the gateway**
+Owner: Log storage. Checked by: [N21](#72-required-tests).
+Loki's read path **MUST NOT** be reachable from any tenant-reachable network position except through
+the gateway in every environment, including development and test.
+Why: Loki trusts `X-Scope-OrgID` unconditionally, so direct network access to Loki would bypass
+all tenant isolation.
 
 ## 6. The gateway header contract
 
