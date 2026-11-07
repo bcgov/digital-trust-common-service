@@ -21,19 +21,19 @@ import { configureApp } from '../src/app.config';
 import { AppModule } from '../src/app.module';
 import { EncryptionService } from '../src/common/crypto/encryption.service';
 import { ConnectorType } from '../src/connection/connection.entity';
-import { ConnectorCredential } from '../src/connector-credential/connector-credential.entity';
-import { ConnectorCredentialService } from '../src/connector-credential/connector-credential.service';
-import { ConnectorHealthCheckService } from '../src/connector-credential/connector-health-check.service';
+import { ConnectorHealthCheckService } from '../src/connector/connector-health-check.service';
+import { Connector } from '../src/connector/connector.entity';
+import { ConnectorService } from '../src/connector/connector.service';
+import { TractionWebhookRegistrar } from '../src/connector/connectors/traction/traction-webhook-registrar.service';
 import {
-  ConnectorCredentialsDto,
+  ConnectorDto,
   CreateConnectorCredentialDto,
-} from '../src/connector-credential/dto/create-connector-credential.dto';
+} from '../src/connector/dto/create-connector.dto';
 import { InternalListener } from '../src/log-access/internal-listener';
 import { MAX_PARTITIONS_PER_SCOPE } from '../src/log-access/log-access.constants';
 import { LogAccessService } from '../src/log-access/log-access.service';
 import { OAuthClient } from '../src/oauth-client/oauth-client.entity';
 import { Tenant, TenantStatus } from '../src/tenant/tenant.entity';
-import { TractionWebhookRegistrar } from '../src/traction/traction-webhook-registrar.service';
 
 import {
   createTlsMaterial,
@@ -98,8 +98,8 @@ describe('log gateway isolation (hermetic)', () => {
 
   let tenantRepo: Repository<Tenant>;
   let clientRepo: Repository<OAuthClient>;
-  let connectorRepo: Repository<ConnectorCredential>;
-  let connectors: ConnectorCredentialService;
+  let connectorRepo: Repository<Connector>;
+  let connectors: ConnectorService;
   let encryption: EncryptionService;
 
   const createdTenantIds: string[] = [];
@@ -164,8 +164,8 @@ describe('log gateway isolation (hermetic)', () => {
 
     tenantRepo = moduleFixture.get(getRepositoryToken(Tenant));
     clientRepo = moduleFixture.get(getRepositoryToken(OAuthClient));
-    connectorRepo = moduleFixture.get(getRepositoryToken(ConnectorCredential));
-    connectors = moduleFixture.get(ConnectorCredentialService);
+    connectorRepo = moduleFixture.get(getRepositoryToken(Connector));
+    connectors = moduleFixture.get(ConnectorService);
     encryption = moduleFixture.get(EncryptionService);
 
     // The issuer wrote its signing key on first use; tokens it will not mint
@@ -320,7 +320,7 @@ describe('log gateway isolation (hermetic)', () => {
     Object.assign(new CreateConnectorCredentialDto(), {
       connectorType: ConnectorType.TRACTION,
       endpointUrl: 'https://traction.example.com',
-      credentials: Object.assign(new ConnectorCredentialsDto(), {
+      credentials: Object.assign(new ConnectorDto(), {
         apiKey: 'hermetic-test',
         webhookSecret: 'hermetic-test',
       }),
