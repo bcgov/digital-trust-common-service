@@ -887,9 +887,11 @@ sit: the query path is safe by construction, the write path is safe only by disc
 ### 7.2 Required tests
 
 These tests define what "the contract holds" means. They **MUST** exist as automated, gating
-tests owned by the component that implements the rule, and a component **MUST NOT** be accepted
-without them. They are specified by behaviour so the implementing repository writes them against
-the contract, not against its own implementation.
+tests owned by the component that implements the rule, except for the cases [9.2](#92-accepting-each-component)
+assigns to the [9.3](#93-the-end-to-end-check) check or to [L11](#55-preconditions-for-exposing-query-access)'s
+reference benchmark, and a component **MUST NOT** be accepted without them. They are specified by
+behaviour so the implementing repository writes them against the contract, not against its own
+implementation.
 
 **Positive — the intended path works.**
 
@@ -925,8 +927,8 @@ weaker result — it is the demonstration that the attack changed nothing.
 | N10 | Inbound `X-Scope-OrgID: B` | Scoped to A; that value never reaches the backend | 3 | Gateway |
 | N11 | Inbound `X-Scope-OrgID: A\|B` | Scoped to A only; no merge | 4 | Gateway |
 | N12 | Inbound partition header on a **rejected** request | Rejected, and nothing forwarded carrying it | 3 | Gateway |
-| N13 | Forwarded request inspected at the backend | No `Authorization` header present ([G4](#61-the-header-is-computed-never-conveyed)) | — | Gateway |
-| N14 | LogQL explicitly selecting tenant B's labels, with a **B-owned canary** line present | Succeeds; the canary is **not** returned. A-owned lines that happen to match may be | 1 | Gateway |
+| N13 | Forwarded request inspected at the backend | The caller's `Authorization` header is not present; only the gateway's own backend login may be ([G4](#61-the-header-is-computed-never-conveyed)) | — | Gateway |
+| N14 | LogQL explicitly selecting tenant B's labels | Forwarded unchanged, scoped to A only ([G5](#62-the-gateway-does-not-read-the-query)). Against real storage with a **B-owned canary** line present, the canary is **not** returned; A-owned lines that happen to match may be ([V1](#72-required-tests)) | 1 | Gateway |
 | N15 | Query via Explore / the datasource API / curl, bypassing dashboards | Scoped to A identically | 2 | Gateway |
 | N16 | Tenant-selecting parameter or body field on an allowlisted route | Ignored; scoped to A; attempt recorded ([S4](#7-tenant-selection-is-never-an-input), [S6](#7-tenant-selection-is-never-an-input)) | 1 | Gateway |
 | N17 | Tenant-selecting **path**, or any unenumerated route | Generic denial, identical for every unknown path ([S5](#7-tenant-selection-is-never-an-input), [G8](#63-complete-coverage-of-the-read-surface)) | 20 | Gateway |
@@ -956,21 +958,31 @@ weaker result — it is the demonstration that the attack changed nothing.
 | N41 | Tenant's resolved partition count exceeds the bound | Denied, never silently truncated ([M17](#46-multiple-connectors-are-not-ambiguous)) | — | Gateway |
 
 **Rule V1.** N14 is the one to read carefully. A query naming another tenant **MUST** return no
-line belonging to that tenant, and **MUST NOT** return an error. An error would confirm that the
-named tenant exists and turn the query interface into an oracle for enumerating tenants. The
-assertion is therefore "**no B-owned canary is returned**", not "zero rows" — the caller's own
-partition may legitimately contain a line whose label or text happens to match the string they
-supplied, and demanding zero rows would make a correct implementation fail the test.
+line belonging to that tenant, and **MUST NOT** return an error that depends on whether that
+tenant exists. Such an error would confirm the tenant and turn the query interface into an oracle
+for enumerating tenants. The assertion is therefore "**no B-owned canary is returned**", not "zero
+rows" — the caller's own partition may legitimately contain a line whose label or text happens to
+match the string they supplied, and demanding zero rows would make a correct implementation fail the test. An error that
+is identical whatever value was named confirms nothing and is not a failure: the backend rejects a
+selector made only of its partition label this way, even for the caller's own partition. The
+canary needs real storage, so this assertion is made by the recorded check in
+[9.3](#93-the-end-to-end-check).
 
-**Rule V2.** The adversarial tests **MUST** be written against the deployed boundary — a real
-request to the real gateway in front of a real backend — and not solely as unit tests over the
-header-building function. The interesting failures in this design are the ones where the
-deployment, not the function, lets a request past: an uncovered route, a protocol upgrade, a
-permissive network policy, or a direct path to the backend.
+**Rule V2.** The gateway's adversarial tests **MUST** be hermetic and **MUST NOT** be solely unit
+tests over the header-building function. They send real requests through the real gateway
+configuration and the real decision endpoint, with everything they need started inside the test
+run and the storage backend replaced by a stand-in that records what it receives. The assertion is
+what crossed the boundary, or that nothing did. The interesting failures in this design are the
+ones where the configuration, not the function, lets a request past: an uncovered route or a
+protocol upgrade. What only a deployment can show, such as a permissive network policy or a direct
+path to the backend, belongs to [9.3](#93-the-end-to-end-check) and to the component that owns it.
 
-**Rule V3.** The isolation tests **MUST** run in every environment where tenants have access,
-against that environment's own configuration. Isolation validated only in one environment is
-isolation validated only in one environment.
+**Rule V3.** The gateway's isolation tests **MUST** run on every change and **MUST NOT** depend on a
+deployed environment or on any service outside the test run. Each environment's own configuration
+is covered by the recorded check in [9.3](#93-the-end-to-end-check), which is a verification step
+rather than a test in this suite. The gateway is built to meet every rule within its control and
+relies on the other components for theirs ([8.4](#84-what-this-repository-depends-on)). If one of
+them turns out not to meet its side, that is fixed in the component that owns it.
 
 ## 8. Where the work lands
 
@@ -1092,7 +1104,7 @@ twice.
 | Component | Accepted when |
 |---|---|
 | **This service** | **P9, P11, N2, N23–N25, N39** pass, plus **P7, N3, N26, N27** jointly with the gateway: a token requested for the log gateway audience carries that audience alone and is rejected by the API; the log-read scope is grantable and expands consistently; an agent log identifier is captured only from a trusted agent, never accepted from a caller, bound to exactly one tenant under a write-time constraint, re-bindable by its own tenant, released on deletion, and never usable if it fails validation or encoding |
-| **Identity-aware gateway** | **P1–P3, P5, P6, N1, N4–N20, N30–N35, N41** pass, plus **P7, N3, N26, N27** jointly with this service, **P4** jointly with Grafana, and **N37** jointly with log storage wherever [L11](#55-preconditions-for-exposing-query-access) requires gateway-side rate control; run against a deployed gateway in front of a real backend ([V2](#72-required-tests)) in every environment with tenant access ([V3](#72-required-tests)); the read surface is an enumerated allowlist; failures are externally indistinguishable |
+| **Identity-aware gateway** | **P1–P3, P5, P6, N1, N4–N20, N30–N35, N41** pass, plus **P7, N3, N26, N27** jointly with this service, run hermetically on every change against the real gateway configuration and decision endpoint ([V2](#72-required-tests), [V3](#72-required-tests)); the read surface is an enumerated allowlist; failures are externally indistinguishable. **P4** jointly with Grafana and the **N14** canary pass under [9.3](#93-the-end-to-end-check), and **N37** passes jointly with log storage wherever [L11](#55-preconditions-for-exposing-query-access) requires gateway-side rate control, measured by L11's reference benchmark, none of which a stand-in can prove |
 | **Log storage** | **P8, N21, N22, N28, N29, N36–N38, N40** pass, plus **P10** jointly with agent deployment: native tenancy enabled with multi-partition reads, query and fairness limits in place; the backend unreachable from a tenant-reachable network position in **every** environment; unattributed or conflicting lines land in the platform partition, never a tenant one; no write path can place a line in a tenant partition it does not own; existing direct-push producers keep succeeding through the cutover; platform cross-tenant visibility retained |
 | **Agent deployment** | **P10** passes jointly with platform observability: log output is structured, carries the log identifier as a discrete field populated by the runtime and not from request data, the field name is confirmed against real output rather than assumed, and a line emitted for a tenant is demonstrably readable **by that tenant** — no routing depends on pattern matching unstructured text |
 | **Tenant Grafana** | **P4** passes jointly with the gateway: one instance, one org, one shared datasource, no tenant identity in any datasource field or URL; dashboards generic with no tenant variable; two tenants on the same dashboard each see only their own data |
@@ -1100,8 +1112,8 @@ twice.
 ### 9.3 The end-to-end check
 
 Component-level acceptance is necessary and not sufficient — each owner can pass their own
-criteria while the seam between two of them leaks. Before tenants are granted access, one
-cross-team verification **MUST** be performed and recorded:
+criteria while the seam between two of them leaks. Before tenants are granted access in an
+environment, one cross-team verification **MUST** be performed there and recorded:
 
 Two real service tenants, each with a configured connector, each generating both service and
 agent activity. For each tenant, using a real token through the real chain: they see both of
@@ -1236,9 +1248,9 @@ they do not restate it. Where an entry and the rule itself appear to differ, the
 
 | Rule | Subject | Where |
 |---|---|---|
-| V1 | N14 asserts no B-owned canary, not zero rows | [7.2](#72-required-tests) |
-| V2 | Adversarial tests run against the deployed boundary | [7.2](#72-required-tests) |
-| V3 | Isolation tests run in every environment with tenant access | [7.2](#72-required-tests) |
+| V1 | No B-owned canary returned, not zero rows; asserted under [9.3](#93-the-end-to-end-check) | [7.2](#72-required-tests) |
+| V2 | Gateway's adversarial tests are hermetic, against the real gateway configuration and a recording stand-in | [7.2](#72-required-tests) |
+| V3 | Gateway's isolation tests run on every change with no deployed dependency; each environment gets the [9.3](#93-the-end-to-end-check) check | [7.2](#72-required-tests) |
 
 ---
 
