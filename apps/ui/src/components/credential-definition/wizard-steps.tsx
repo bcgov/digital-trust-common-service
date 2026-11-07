@@ -1,6 +1,6 @@
-import { Check } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
+import { CheckIcon } from '@/components/common/icons';
 import { cn } from '@/lib/utils';
 
 interface WizardStepsProps {
@@ -31,29 +31,29 @@ export function WizardSteps({ steps, currentStep }: WizardStepsProps) {
                   aria-hidden="true"
                   className={cn(
                     'mx-3 h-0.5 min-w-4 flex-1',
-                    index <= currentStep ? 'bg-primary' : 'bg-border',
+                    index <= currentStep
+                      ? 'bg-(--surface-color-primary-default)'
+                      : 'bg-(--surface-color-border-default)',
                   )}
                 />
               )}
               <div className="flex items-center gap-3">
                 <span
                   className={cn(
-                    'flex size-9 items-center justify-center rounded-full border-2 text-sm font-semibold',
+                    'flex size-9 items-center justify-center rounded-full border-2 text-small-body font-bold',
                     complete || current
-                      ? 'border-primary bg-primary text-primary-foreground'
-                      : 'border-border bg-background text-muted-foreground',
+                      ? 'border-(--surface-color-primary-default) bg-(--surface-color-primary-default) text-(--typography-color-primary-invert)'
+                      : 'border-(--surface-color-border-default) bg-(--surface-color-background-white) text-(--typography-color-secondary)',
                   )}
                 >
-                  {complete ? (
-                    <Check className="size-4" aria-hidden="true" />
-                  ) : (
-                    index + 1
-                  )}
+                  {complete ? <CheckIcon className="size-4" /> : index + 1}
                 </span>
                 <span
                   className={cn(
-                    'whitespace-nowrap text-sm',
-                    current ? 'font-semibold' : 'text-muted-foreground',
+                    'whitespace-nowrap text-small-body',
+                    current
+                      ? 'font-bold text-(--typography-color-primary)'
+                      : 'text-(--typography-color-secondary)',
                   )}
                 >
                   {label}

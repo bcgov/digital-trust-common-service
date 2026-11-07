@@ -3,6 +3,9 @@ import { useState, type MouseEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useNavigate } from 'react-router';
 
+import { EmptyState } from '@/components/common/empty';
+import { PageHeader } from '@/components/common/page-header';
+import { LoadError } from '@/components/common/query-status';
 import { Skeleton } from '@/components/common/skeleton';
 import {
   Table,
@@ -26,14 +29,6 @@ import { useAuth } from '@/lib/auth/context';
 import { isPlatformAdmin } from '@/lib/auth/scopes';
 import { useSwitchTenant } from '@/lib/tenant/active-tenant';
 import { switchErrorMessage } from '@/lib/tenant/switch-error';
-
-// Spacing, type and colour follow the "Create Tenant" Figma frames, using
-// the BCDS variables they are drawn with (layout/margin/*, bold/H1,
-// regular/body, regular/smallBody, surface/color/*).
-const HEAD_CELL =
-  'h-15 px-(--layout-margin-medium) text-small-body font-normal text-black';
-const BODY_CELL =
-  'px-(--layout-margin-medium) py-(--layout-margin-medium) text-body';
 
 function isPlainClick(event: MouseEvent<HTMLElement>): boolean {
   return (
@@ -99,16 +94,12 @@ export function TenantsPage() {
   );
 
   return (
-    <div className="flex flex-1 flex-col gap-(--layout-margin-xlarge)">
-      <div className="flex flex-col gap-(--layout-margin-xsmall)">
-        <div className="flex items-center justify-between gap-(--layout-margin-medium)">
-          <h1 className="text-h1 font-bold text-black">{t('tenants.title')}</h1>
-          {canCreate && createButton(t('tenants.create.submit'))}
-        </div>
-        <p className="py-(--layout-margin-hair) text-body text-muted-foreground">
-          {t(canCreate ? 'tenants.subtitle' : 'tenants.subtitleMember')}
-        </p>
-      </div>
+    <div className="flex flex-1 flex-col gap-xlarge">
+      <PageHeader
+        title={t('tenants.title')}
+        subtitle={t(canCreate ? 'tenants.subtitle' : 'tenants.subtitleMember')}
+        actions={canCreate && createButton(t('tenants.create.submit'))}
+      />
       {canCreate && creating && (
         <CreateTenantDialog onClose={() => setCreating(false)} />
       )}
@@ -126,34 +117,22 @@ export function TenantsPage() {
       )}
 
       {error ? (
-        <p role="alert" className="text-body text-destructive">
-          {error instanceof ApiError
-            ? t('tenants.loadFailedWithReason', { reason: error.message })
-            : t('tenants.loadFailed')}
-        </p>
+        <LoadError
+          message={
+            error instanceof ApiError
+              ? t('tenants.loadFailedWithReason', { reason: error.message })
+              : t('tenants.loadFailed')
+          }
+        />
       ) : isEmpty ? (
-        // Figma "Empty State": centred in the remaining height, nudged up
-        // by its 80px bottom padding.
-        <div className="flex flex-1 flex-col items-center justify-center pb-20">
-          <div className="flex w-95 flex-col items-center gap-(--layout-margin-xlarge) text-center">
-            <div className="flex flex-col items-center gap-(--layout-margin-xsmall)">
-              <div className="flex size-25 items-center justify-center">
-                <BuildingIcon className="size-18 text-(--icons-color-disabled)" />
-              </div>
-              <div className="flex flex-col gap-(--layout-margin-hair)">
-                <h2 className="text-h5 font-bold text-(--typography-color-primary)">
-                  {t('tenants.emptyTitle')}
-                </h2>
-                <p className="text-body text-(--typography-color-secondary)">
-                  {t('tenants.emptyBody')}
-                </p>
-              </div>
-            </div>
-            {canCreate && createButton(t('tenants.create.title'))}
-          </div>
-        </div>
+        <EmptyState
+          icon={<BuildingIcon />}
+          title={t('tenants.emptyTitle')}
+          description={t('tenants.emptyBody')}
+          action={canCreate && createButton(t('tenants.create.title'))}
+        />
       ) : (
-        <div className="flex flex-col gap-(--layout-margin-large)">
+        <div className="flex flex-col gap-large">
           <TextField
             aria-label={t('tenants.search')}
             // Untyped in BCDS 0.8.1's TextFieldProps, but forwarded by
@@ -164,29 +143,27 @@ export function TenantsPage() {
             onChange={setSearch}
             iconLeft={<SearchIcon className="size-5 shrink-0" />}
           />
-          <Table aria-label={t('tenants.title')} className="table-fixed">
-            <TableHeader className="bg-(--surface-color-background-light-gray)">
-              <TableRow className="hover:bg-transparent">
-                <TableHead className={HEAD_CELL}>
-                  {t('tenants.fields.name')}
-                </TableHead>
-                <TableHead className={HEAD_CELL}>
-                  {t('tenants.fields.slug')}
-                </TableHead>
-                <TableHead className={`${HEAD_CELL} w-25`}>
-                  {t('common.status')}
-                </TableHead>
-                <TableHead className={`${HEAD_CELL} w-18`}>
+          <Table
+            aria-label={t('tenants.title')}
+            variant="record"
+            className="table-fixed"
+          >
+            <TableHeader>
+              <TableRow>
+                <TableHead>{t('tenants.fields.name')}</TableHead>
+                <TableHead>{t('tenants.fields.slug')}</TableHead>
+                <TableHead className="w-25">{t('common.status')}</TableHead>
+                <TableHead className="w-18">
                   <span className="sr-only">{t('common.actions')}</span>
                 </TableHead>
               </TableRow>
             </TableHeader>
-            <TableBody className="[&_tr:last-child]:border-b">
+            <TableBody>
               {isLoading &&
                 Array.from({ length: 3 }, (_, i) => (
                   <TableRow key={i}>
                     {Array.from({ length: 4 }, (_, j) => (
-                      <TableCell key={j} className={BODY_CELL}>
+                      <TableCell key={j}>
                         <Skeleton className="h-4 w-24" />
                       </TableCell>
                     ))}
@@ -194,10 +171,10 @@ export function TenantsPage() {
                 ))}
               {visible.map((tenant) => (
                 <TableRow key={tenant.id}>
-                  <TableCell className={`${BODY_CELL} truncate`}>
+                  <TableCell className="truncate">
                     <Link
                       to={`/tenants/${tenant.id}`}
-                      className="text-foreground underline-offset-4 hover:underline"
+                      className="text-(--typography-color-primary) underline-offset-4 hover:underline"
                       onClick={(event) => {
                         // A modified click keeps its browser meaning.
                         if (isPlainClick(event) && switchesInto(tenant)) {
@@ -209,15 +186,15 @@ export function TenantsPage() {
                       {tenant.name}
                     </Link>
                   </TableCell>
-                  <TableCell className={`${BODY_CELL} truncate text-black`}>
+                  <TableCell className="truncate text-black">
                     {tenant.slug}
                   </TableCell>
-                  <TableCell className={BODY_CELL}>
+                  <TableCell>
                     {tenant.status && (
                       <TenantStatusTag status={tenant.status} />
                     )}
                   </TableCell>
-                  <TableCell className={BODY_CELL}>
+                  <TableCell>
                     <TenantRowActions
                       tenant={tenant}
                       onViewDetails={() => openTenant(tenant)}
@@ -235,7 +212,7 @@ export function TenantsPage() {
                 <TableRow className="hover:bg-transparent">
                   <TableCell
                     colSpan={4}
-                    className={`${BODY_CELL} text-muted-foreground`}
+                    className="text-(--typography-color-secondary)"
                   >
                     {t('tenants.noMatch', { query: search.trim() })}
                   </TableCell>
@@ -244,9 +221,7 @@ export function TenantsPage() {
             </TableBody>
           </Table>
           {switchError ? (
-            <p role="alert" className="text-body text-destructive">
-              {switchErrorMessage(switchError)}
-            </p>
+            <LoadError message={switchErrorMessage(switchError)} />
           ) : null}
         </div>
       )}

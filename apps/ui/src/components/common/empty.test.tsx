@@ -93,10 +93,10 @@ describe('Empty', () => {
     renderEmpty();
 
     // `text-body` looks like a colour utility to tailwind-merge, so it is
-    // dropped next to `text-muted-foreground` unless `cn` knows better.
+    // dropped next to a text colour class unless `cn` knows better.
     expect(screen.getByText('No tenants yet')).toHaveClass('text-h5');
     expect(
       screen.getByText('Tenants you create will be listed here.'),
-    ).toHaveClass('text-body', 'text-muted-foreground');
+    ).toHaveClass('text-body', 'text-(--typography-color-secondary)');
   });
 });

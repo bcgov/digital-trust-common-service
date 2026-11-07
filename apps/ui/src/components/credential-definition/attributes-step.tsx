@@ -1,10 +1,12 @@
-import { GripVertical, Plus } from 'lucide-react';
+import { Button, TextField } from '@bcgov/design-system-react-components';
 import { useId, useState, type KeyboardEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { Button } from '@/components/common/button';
-import { TrashIcon } from '@/components/common/icons';
-import { Input } from '@/components/common/input';
+import {
+  GripVerticalIcon,
+  PlusIcon,
+  TrashIcon,
+} from '@/components/common/icons';
 import { cn } from '@/lib/utils';
 
 export interface Attribute {
@@ -55,19 +57,19 @@ export function AttributesStep({
   return (
     <section className="flex flex-col gap-4 px-6">
       <div className="flex items-center justify-between gap-4">
-        <h2 className="text-lg font-semibold">
+        <h2 className="text-h5 font-bold">
           {t('credentialDefinitions.attributes.title')}
         </h2>
-        <Button type="button" variant="outline" onClick={addAttribute}>
-          <Plus aria-hidden="true" />
+        <Button variant="secondary" onPress={addAttribute}>
+          <PlusIcon className="size-5" />
           {t('credentialDefinitions.attributes.add')}
         </Button>
       </div>
-      <p className="text-sm text-muted-foreground">
+      <p className="text-small-body text-(--typography-color-secondary)">
         {t('credentialDefinitions.attributes.subtitle')}
       </p>
       {attributes.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
+        <p className="text-small-body text-(--typography-color-secondary)">
           {t('credentialDefinitions.attributes.empty')}
         </p>
       ) : (
@@ -92,13 +94,13 @@ export function AttributesStep({
               className={cn(
                 'flex items-center gap-2 rounded-lg border p-3 transition-colors',
                 attribute.name.trim()
-                  ? 'border-primary bg-primary/20'
-                  : 'border-border bg-background',
+                  ? 'border-(--surface-color-border-active) bg-(--surface-color-background-light-blue)'
+                  : 'border-(--surface-color-border-default) bg-(--surface-color-background-white)',
                 dragIndex === index && 'opacity-50',
                 overIndex === index &&
                   dragIndex !== null &&
                   dragIndex !== index &&
-                  'border-primary',
+                  'border-(--surface-color-border-active)',
               )}
             >
               <button
@@ -107,46 +109,45 @@ export function AttributesStep({
                   index: index + 1,
                 })}
                 onKeyDown={(event) => handleKeyDown(event, index)}
-                className="cursor-grab rounded p-1 text-muted-foreground hover:text-foreground active:cursor-grabbing"
+                className="cursor-grab rounded p-1 text-(--typography-color-secondary) hover:text-(--typography-color-primary) active:cursor-grabbing"
               >
-                <GripVertical className="size-5" aria-hidden="true" />
+                <GripVerticalIcon className="size-5" />
               </button>
-              <Input
+              <TextField
+                className="min-w-0 flex-1"
                 aria-label={t('credentialDefinitions.attributes.name', {
                   index: index + 1,
                 })}
                 value={attribute.name}
-                placeholder={t(
-                  'credentialDefinitions.attributes.namePlaceholder',
-                )}
-                onChange={(event) =>
+                {...{
+                  placeholder: t(
+                    'credentialDefinitions.attributes.namePlaceholder',
+                  ),
+                }}
+                onChange={(value) =>
                   setAttributes(
                     attributes.map((item) =>
                       item.id === attribute.id
-                        ? { ...item, name: event.target.value }
+                        ? { ...item, name: value }
                         : item,
                     ),
                   )
                 }
               />
               <Button
-                type="button"
-                variant="ghost"
-                size="icon"
+                variant="tertiary"
+                isIconButton
+                danger
                 aria-label={t('credentialDefinitions.attributes.delete', {
                   index: index + 1,
                 })}
-                title={t('credentialDefinitions.attributes.delete', {
-                  index: index + 1,
-                })}
-                className="text-destructive hover:text-destructive"
-                onClick={() =>
+                onPress={() =>
                   setAttributes(
                     attributes.filter((item) => item.id !== attribute.id),
                   )
                 }
               >
-                <TrashIcon aria-hidden="true" />
+                <TrashIcon className="size-5" />
               </Button>
             </li>
           ))}

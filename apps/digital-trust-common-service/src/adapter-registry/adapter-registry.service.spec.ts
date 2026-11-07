@@ -13,8 +13,8 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { EncryptionService } from '../common/crypto/encryption.service';
 import { BusinessMetricsService } from '../common/telemetry/business-metrics.service';
 import { ConnectorType } from '../connection/connection.entity';
-import { ConnectorCredential } from '../connector-credential/connector-credential.entity';
-import { ConnectorCredentialService } from '../connector-credential/connector-credential.service';
+import { Connector } from '../connector/connector.entity';
+import { ConnectorService } from '../connector/connector.service';
 import { Tenant } from '../tenant/tenant.entity';
 import { TenantService } from '../tenant/tenant.service';
 
@@ -30,7 +30,7 @@ function buildTenant(config: Record<string, unknown> = {}): Tenant {
   return { id: TENANT_A, config } as Tenant;
 }
 
-function buildConnector(overrides: Partial<ConnectorCredential> = {}) {
+function buildConnector(overrides: Partial<Connector> = {}) {
   return {
     id: CONNECTOR_A,
     tenantId: TENANT_A,
@@ -40,7 +40,7 @@ function buildConnector(overrides: Partial<ConnectorCredential> = {}) {
     keyVersion: 1,
     active: true,
     ...overrides,
-  } as ConnectorCredential;
+  } as Connector;
 }
 
 describe('AdapterRegistry', () => {
@@ -69,7 +69,7 @@ describe('AdapterRegistry', () => {
       providers: [
         AdapterRegistry,
         { provide: TenantService, useValue: tenantService },
-        { provide: ConnectorCredentialService, useValue: connectorService },
+        { provide: ConnectorService, useValue: connectorService },
         { provide: ConfigService, useValue: configService },
         { provide: EncryptionService, useValue: encryptionService },
         { provide: BusinessMetricsService, useValue: businessMetrics },

@@ -10,7 +10,7 @@ import { AdapterRegistry } from '../adapter-registry/adapter-registry.service';
 import { AppModule } from '../app.module';
 import { RegistrationBackendError } from '../common/registration-backend-error';
 import { ConnectorType } from '../connection/connection.entity';
-import { ConnectorCredential } from '../connector-credential/connector-credential.entity';
+import { Connector } from '../connector/connector.entity';
 import { Operation, OperationState } from '../operation/operation.entity';
 import { Tenant } from '../tenant/tenant.entity';
 
@@ -30,7 +30,7 @@ describe('credential definition registration (integration)', () => {
   let service: CredentialDefinitionService;
   let worker: AnonCredsCredentialDefinitionRegistrationWorker;
   let tenant: Tenant;
-  let connector: ConnectorCredential;
+  let connector: Connector;
   let auth: AuthContext;
   const resolve = jest.fn();
   const send = jest.fn();
@@ -103,7 +103,7 @@ describe('credential definition registration (integration)', () => {
       slug: `registration-${randomUUID()}`,
       config: {},
     });
-    connector = await db.getRepository(ConnectorCredential).save({
+    connector = await db.getRepository(Connector).save({
       tenantId: tenant.id,
       connectorType: ConnectorType.TRACTION,
       credentialsEncrypted: randomBytes(32),
@@ -136,7 +136,7 @@ describe('credential definition registration (integration)', () => {
       .getRepository(CredentialDefinition)
       .delete({ tenantId: tenant.id });
     await db.getRepository(Operation).delete({ tenantId: tenant.id });
-    await db.getRepository(ConnectorCredential).delete({ tenantId: tenant.id });
+    await db.getRepository(Connector).delete({ tenantId: tenant.id });
     await db.getRepository(Tenant).delete({ id: tenant.id });
   });
 

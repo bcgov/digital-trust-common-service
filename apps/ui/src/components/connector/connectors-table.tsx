@@ -28,13 +28,14 @@ export function ConnectorsTable({
 }) {
   const { t } = useTranslation();
   return (
-    <div className="min-w-0 border-y border-(--surface-color-border-default)">
+    <div className="min-w-0">
       <Table
         aria-label={t('connectors.title')}
+        variant="record"
         className="min-w-[38rem] table-fixed"
       >
-        <TableHeader className="bg-(--surface-color-background-light-gray) [&_th]:h-12 [&_th]:px-5 [&_th]:font-bold">
-          <TableRow className="hover:bg-transparent">
+        <TableHeader>
+          <TableRow>
             <TableHead scope="col" className="w-32">
               {t('common.type')}
             </TableHead>
@@ -47,7 +48,7 @@ export function ConnectorsTable({
             </TableHead>
           </TableRow>
         </TableHeader>
-        <TableBody className="[&_td]:px-5 [&_td]:py-5">
+        <TableBody>
           {connectors.map((connector) => (
             <TableRow
               key={connector.id}
@@ -63,7 +64,7 @@ export function ConnectorsTable({
                   )}
                 </div>
               </TableCell>
-              <TableCell className="whitespace-normal break-all font-mono text-xs leading-6 text-(--typography-color-secondary)">
+              <TableCell className="whitespace-normal break-all font-mono text-label leading-6 text-(--typography-color-secondary)">
                 {connector.endpoint_url}
               </TableCell>
               <TableCell>

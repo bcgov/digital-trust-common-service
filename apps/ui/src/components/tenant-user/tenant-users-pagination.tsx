@@ -36,7 +36,7 @@ export function TenantUsersPagination({
       </Button>
       <span
         aria-live="polite"
-        className="text-sm text-(--typography-color-secondary)"
+        className="text-small-body text-(--typography-color-secondary)"
       >
         {t('users.pagination.page', { page: pageIndex + 1 })}
       </span>

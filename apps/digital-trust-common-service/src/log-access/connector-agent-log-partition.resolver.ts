@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 
 import { buildAgentPartitionKey } from '../common/agent-log-partition-key';
 import { EncryptionService } from '../common/crypto/encryption.service';
-import { ConnectorCredentialRepository } from '../connector-credential/connector-credential.repository';
+import { ConnectorRepository } from '../connector/connector.repository';
 
 import type { AgentLogPartitionResolverPort } from './agent-log-partition-resolver.port';
 import { AgentLogPartitionCache } from './agent-log-partition.cache';
@@ -18,7 +18,7 @@ export class ConnectorAgentLogPartitionResolver implements AgentLogPartitionReso
   private readonly logger = new Logger(ConnectorAgentLogPartitionResolver.name);
 
   public constructor(
-    private readonly connectors: ConnectorCredentialRepository,
+    private readonly connectors: ConnectorRepository,
     private readonly encryption: EncryptionService,
     private readonly cache: AgentLogPartitionCache,
   ) {}
