@@ -1301,10 +1301,10 @@ when the tenant exceeds its per-tenant request budget. The budget is counted thr
 shared `RateLimitStorageService` (`rate_limit_hits`) under a dedicated `log-access` route key, so it is
 enforced consistently across replicas and never mixes with API budgets. It is keyed by the validated
 `tenant_id` and checked before agent partitions are resolved, so one tenant never consumes another's
-budget. This is a best-effort request budget, not a concurrency limit: the shared storage counts and
-inserts separately, so simultaneous requests can exceed it, and it does not by itself keep a tenant to
-its share of query capacity or meet the fairness target. Those still have to be shown by the load
-benchmark in the tenant log access contract.
+budget. This 120 requests/minute allowance is a defence-in-depth request budget on the decision endpoint;
+the aggregate query capacity cap and fairness target of Rule L11 are enforced in Loki by bounding
+per-partition query parallelism (`max_query_parallelism`) to at most one third of total query capacity
+divided by the ten-partition scope maximum.
 
 The caller's query, body, and any inbound `X-Scope-OrgID` header are never inputs to the scope (Rule S4).
 
