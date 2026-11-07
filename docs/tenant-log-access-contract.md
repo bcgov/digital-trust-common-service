@@ -271,197 +271,178 @@ Why: Prevents passive capture of bearer tokens in transit.
 
 ## 4. Mapping a service tenant to its agent log identifier
 
-To show a service tenant the lines its agent produced on its behalf, the gateway must resolve
-the service tenant to that tenant's **agent log identifier**
-([2.1](#21-the-agent-sub-tenant-has-two-identifiers-and-they-are-not-interchangeable)).
-
-This section specifies that resolution as a **constraint on where the answer may come from and
-how it must behave**. It deliberately does not name a column, a table, a cache, or a service
-boundary. Those are implementation choices, and the contract is satisfied by any
-implementation that holds the constraints below.
+To show a service tenant the log lines its credential agent produced on its behalf, the decision
+endpoint resolves the service tenant to its agent log identifiers ([2.1](#21-the-agent-sub-tenant-has-two-identifiers-and-they-are-not-interchangeable)).
 
 ### 4.1 Provenance — the identifier must be trustworthy before it is useful
 
-The agent log identifier is the key that unlocks a set of log lines. Whoever controls its value
-for a tenant controls which lines that tenant can read. It therefore **MUST NOT** be a value the
-requesting tenant can choose.
+The agent log identifier unlocks a partition of log lines, so it **MUST NOT** be a value the
+requesting service tenant can choose. Because a service tenant configures its own connector URL, an
+identifier read from an unverified token returned by a tenant-nominated URL is tenant-asserted
+unless the endpoint itself is trusted.
 
-This needs stating explicitly because a tenant configures its own connector, including the
-endpoint URL the connector talks to. An identifier read from a token issued by a
-tenant-nominated endpoint is, without further constraint, a value that tenant asserted about
-itself.
+<a id="m1"></a>
+**M1: Identifier originates from a trusted agent**
+Owner: This service. Checked by: [N25](#72-required-tests).
+The agent log identifier **MUST** originate from an agent endpoint the platform trusts
+independently of the request (such as an allowlist of trusted agent endpoints). An identifier from
+an untrusted endpoint **MUST NOT** be used for log partitioning, and checking the `iss` string of
+an unverified agent token **MUST NOT** be treated as sufficient unless its signature is verified
+against a platform-held key.
+Why: Prevents a service tenant from pointing a connector at an attacker-run server that asserts
+another tenant's `wallet_id`.
 
-**Rule M1.** The identifier **MUST** originate from an agent the platform trusts, established
-independently of the request that supplies it — by an allowlist of acceptable agent endpoints,
-or by an equivalent out-of-band control. An identifier obtained from an agent endpoint that has
-not been established as trusted **MUST NOT** be used for log partitioning.
+<a id="m2"></a>
+**M2: One service tenant per agent log identifier**
+Owner: This service. Checked by: [P9](#72-required-tests), [P11](#72-required-tests), [N23](#72-required-tests), [N24](#72-required-tests).
+Each agent log identifier **MUST** belong to at most one service tenant, enforced atomically at
+write time so a second service tenant cannot bind it concurrently or later. Binding **MUST** fail
+rather than displace another service tenant's binding, while re-binding by the service tenant that
+already holds it **MUST** succeed.
+Why: Prevents two service tenants from sharing an agent partition while allowing the owning tenant
+to rotate or recreate its connector.
 
-Verifying the *issuer* of the token the identifier is read from is **not**, on its own, a
-sufficient control, and **MUST NOT** be treated as one unless the token's signature is
-verifiable against a key the platform holds independently of the connector record. Today it is
-not: the agent's token is decoded without signature verification, because we hold no key for
-the agent. An issuer string inside an unverified token fetched from a tenant-nominated endpoint
-is a value the tenant chose. An implementer who picks that option would believe Rule M1 were
-satisfied when it is not, which is why it is called out rather than left to judgement.
-
-**Rule M2.** Each agent log identifier **MUST** belong to **exactly one** service tenant. This
-**MUST** be enforced when the identifier is written, atomically, so that a second tenant cannot
-bind the same identifier — concurrently or later. Binding **MUST** fail rather than displace an
-existing binding held by **another** tenant.
-
-Re-binding an identifier to the tenant that **already holds it** is a different case and **MUST**
-succeed: it is idempotent, not a conflict. Without this, the ordinary lifecycle deadlocks — a
-tenant that deletes and re-creates a connector against the same sub-wallet, or rotates its
-credentials, presents the same identifier again and would be refused, losing access to its own
-agent logs permanently with no diagnosable response ([M15](#45-failure-behaviour)).
-
-Enforcing Rule M2 does not require storing the agent identifier as queryable plaintext. A
-non-reversible derived value — a keyed hash of the connector type and identifier, held under a
-uniqueness constraint — makes double-binding impossible to write while remaining useless for
-asking whose identifier something is ([M5](#42-provenance-at-query-time)).
-
-> **This is the one place the contract adds a write-time obligation that the connector design
-> does not already have.** It is deliberate. Uniqueness cannot be checked at read time without
-> the reverse lookup [Rule M5](#42-provenance-at-query-time) prohibits, and without uniqueness
-> a single mis-bound or maliciously bound identifier is a silent cross-tenant read rather than
-> an empty result.
+Enforcing M2 does not require storing the agent log identifier as queryable plaintext. A
+non-reversible keyed hash of the connector type and identifier, held under a uniqueness constraint,
+blocks double-binding without creating a reverse lookup from identifier to service tenant.
 
 ### 4.2 Provenance at query time
 
-**Rule M4.** The identifier **MUST** be resolved from the **requesting service tenant's own
-connector records**, reached by that tenant's `tenant_id`.
+<a id="m4"></a>
+**M4: Resolved from the requesting tenant's own connector records**
+Owner: This service. Checked by: [P1](#72-required-tests), [P5](#72-required-tests).
+The agent log identifier **MUST** be resolved from the requesting service tenant's own connector
+records, queried by that tenant's `tenant_id`.
+Why: Ensures resolution always starts from the authenticated `tenant_id` in the token.
 
-**Rule M5.** Resolution **MUST NOT** scan, join, or search across connector records belonging
-to other service tenants, **MUST NOT** consult any global index, registry, or reverse lookup
-keyed by the agent identifier, and **MUST NOT** store the identifier in a form that creates a
-reverse lookup from an identifier to a service tenant. The query is "what are this tenant's
-identifiers", never "whose identifier is this".
+<a id="m5"></a>
+**M5: No cross-tenant scan, join, or reverse lookup**
+Owner: This service. Checked by: [P1](#72-required-tests), [N23](#72-required-tests).
+Resolution **MUST NOT** scan, join, or search across other service tenants' connector records,
+**MUST NOT** consult any global index or lookup keyed by the agent log identifier, and **MUST NOT**
+store the identifier in a form that creates a reverse lookup to a service tenant.
+Why: Keeps every lookup strictly forward (`tenant_id` → identifiers) so a query can never ask
+whose identifier a value is.
 
-No dedicated schema is introduced for *lookup*: the connector's credential material is already
-a per-connector-type set of values held together, and the agent log identifier is another value
-in that set alongside the derived uniqueness guard of
-[Rule M2](#41-provenance--the-identifier-must-be-trustworthy-before-it-is-useful). Because the
-identifier is emitted in plaintext on every agent log line, it is not a secret — this contract
-places no at-rest confidentiality requirement on it and does not weaken the protection of
-anything stored alongside it, though it remains non-disclosable to another tenant
-([M15](#45-failure-behaviour)).
+No dedicated lookup schema is needed: the agent log identifier is stored inside the connector's
+encrypted credential payload alongside its other per-connector-type fields, paired with the derived
+uniqueness hash from M2. Because the identifier is emitted in plaintext on every agent log line,
+this contract adds no extra at-rest confidentiality requirement beyond keeping it non-disclosable
+to other service tenants (M15).
 
 ### 4.3 Agent-agnostic by construction
 
-**Rule M8.** Resolution **MUST** be expressed in terms of the connector's type, not hardcoded to
-the agent deployed today. Each connector type supplies its own log identifier under its own
-name. A future agent must be supportable by teaching its connector type where its identifier
-lives — not by a schema migration, and not by a change to this contract.
+<a id="m8"></a>
+**M8: Resolution expressed per connector type**
+Owner: This service. Checked by: [P5](#72-required-tests).
+Resolution **MUST** be keyed by connector type rather than hardcoded to a single agent
+implementation.
+Why: Allows future credential agent types to supply their own log identifier without a schema
+migration or contract change.
 
-**Rule M9.** The gateway **MUST NOT** interpret the identifier's meaning or assume its format —
-not that it is a UUID, and not that it resembles any other identifier we hold. It **MUST**
-nonetheless be validated and encoded before use as a partition key, per
-[Rule L8](#54-partition-keys-must-be-derived-not-passed-through). Treating it as opaque is about
-not ascribing meaning to it; it is not licence to pass an arbitrary byte string into a header.
+<a id="m9"></a>
+**M9: Identifier treated as opaque and validated before use**
+Owner: Gateway. Checked by: [N26](#72-required-tests).
+The decision endpoint **MUST NOT** assume the semantic meaning of an agent log identifier, but it
+**MUST** validate and encode the identifier as a partition key under [L8](#54-partition-keys-must-be-derived-not-passed-through)
+before placing it in `X-Scope-OrgID`.
+Why: Keeps the gateway independent of agent internals while preventing header or path injection.
 
 ### 4.4 Freshness
 
-**Rule M10.** The resolved identifier **MUST** be refreshed when the tenant's connector
-credentials are rotated or replaced. A connector may be re-provisioned against a new sub-wallet,
-in which case the old identifier is simply wrong.
+<a id="m10"></a>
+**M10: Refreshed on credential rotation**
+Owner: This service. Checked by: [P7](#72-required-tests), [P11](#72-required-tests).
+The resolved agent log identifier **MUST** be updated when a service tenant's connector credentials
+are rotated or replaced.
+Why: A re-provisioned connector may point to a new sub-wallet with a new identifier.
 
-**Rule M11.** Any cache **MUST** be bounded in size and **MUST** have a maximum staleness of
-**five minutes**, which is the outer bound within which a rotation must become visible even if
-no invalidation signal arrives. A shorter bound is acceptable; an unbounded one is not. The
-bound is stated here rather than left to the implementation because it is the interval during
-which a revoked or re-provisioned binding is still honoured, and the teams either side of the
-gateway need the same number. Invalidation is an optimisation, not a correctness mechanism: the
-five-minute bound holds whether or not an invalidation signal is delivered, so a dropped or
-failed signal across a repository boundary degrades latency rather than correctness.
+<a id="m11"></a>
+**M11: Bounded cache with five-minute maximum staleness**
+Owner: Gateway. Checked by: [P7](#72-required-tests), [N34](#72-required-tests).
+Any partition-resolution cache **MUST** be bounded in size and **MUST** have a maximum TTL of five
+minutes, which **MUST** hold even if no invalidation signal is delivered.
+Why: Bounds how long a rotated or revoked binding remains active if cache invalidation fails.
 
-**Rule M12.** Cache entries **MUST** be keyed by the service tenant and **MUST** be invalidated
-on connector credential change. A cache **MUST NOT** be keyed by, or allow retrieval by, the
-agent log identifier — that would be the reverse lookup [Rule M5](#42-provenance-at-query-time)
-prohibits, reintroduced at the cache layer.
+<a id="m12"></a>
+**M12: Cache keyed by service tenant and invalidated on change**
+Owner: Gateway. Checked by: [P1](#72-required-tests), [N34](#72-required-tests).
+Cache entries **MUST** be keyed by `tenant_id`, **MUST** be invalidated when a connector changes,
+and **MUST NOT** be keyed or retrievable by agent log identifier.
+Why: Prevents a reverse lookup at the cache layer and drops stale bindings immediately on
+in-process updates.
 
 ### 4.5 Failure behaviour
 
-**Rule M14.** Resolution **MUST** fail closed. No case widens the scope, falls back to a
-default, or omits the partition constraint.
+<a id="m14"></a>
+**M14: Resolution fails closed**
+Owner: Gateway. Checked by: [P2](#72-required-tests), [N30](#72-required-tests), [N31](#72-required-tests).
+Partition resolution **MUST** fail closed according to the table below and **MUST NOT** widen the
+partition set, fall back to a default, or degrade to service-only logs when a datastore,
+decryption, or validation error occurs.
+Why: Treating an infrastructure or validation failure as "no connectors" would silently hide agent
+logs or mask an isolation fault.
 
-| Case | Meaning | Behaviour |
+| Case | Meaning | Required behaviour |
 |---|---|---|
-| Tenant has no connector configured | The tenant has not been onboarded to an agent | Serve **this service's** lines for that tenant only. Not an error — a tenant with no agent legitimately has no agent logs. |
-| Connector exists but carries no log identifier | Configured before the identifier was captured, or the agent did not supply one | Serve this service's lines only, and omit that connector's partition. Surface as an operator-visible condition — it is a resolvable configuration gap, and silently degrading hides it. |
-| Connector is inactive | Deactivated, or the tenant is deactivated | Treat as absent. **MUST NOT** resolve an identifier from an inactive connector. |
-| Identifier fails validation or encoding | Unusable as a partition key ([L8](#54-partition-keys-must-be-derived-not-passed-through)) | **Deny the whole request.** |
-| Resolution errors | Datastore unavailable, decryption failure, unexpected shape | **Deny the whole request.** **MUST NOT** degrade to this service's lines only — a failure of the isolation machinery is not a partial-results condition. |
+| No connector configured | Service tenant has not onboarded an agent | Serve `t-<tenant_id>` only (not an error). |
+| Connector has no `agentLogId` | Configured before capture or omitted by agent | Omit that connector's partition, serve `t-<tenant_id>`, and log an operator warning. |
+| Connector is inactive | Deactivated connector or tenant | Treat as absent; **MUST NOT** resolve its identifier. |
+| Identifier fails validation | Unusable as a partition key ([L8](#54-partition-keys-must-be-derived-not-passed-through)) | Deny the entire request (`403`). |
+| Resolution error | Database error, decryption error, or bad payload shape | Deny the entire request (`403`); **MUST NOT** degrade to `t-<tenant_id>` only. |
 
-**Rule M15.** All externally visible **failures** of this resolution — the two rows above that
-deny — **MUST** be indistinguishable from one another: one status code and one generic body,
-whether the cause was an unusable identifier or a backend error. The distinctions in the table
-exist for the operator, through logs and metrics. A caller **MUST NOT** be able to learn from a
-response whether another service tenant exists, how many connectors **another** tenant has, or
-any identifier belonging to another tenant.
-
-The first three rows are **not** failures and are deliberately outside this rule. A tenant with
-no agent receives its own service lines and a successful response, which is correct and is not
-a disclosure: that a caller has no connector of its own is the caller's own data. Requiring
-those to be indistinguishable from a denial would force us to deny every tenant that has not
-yet onboarded an agent.
+<a id="m15"></a>
+**M15: Externally indistinguishable resolution failures**
+Owner: Gateway. Checked by: [N32](#72-required-tests), [N33](#72-required-tests).
+All resolution denials (validation failure or resolution error) **MUST** return the same HTTP
+status code (`403`) and generic body, and **MUST NOT** disclose whether another service tenant
+exists, how many connectors it has, or any agent log identifier.
+Why: Prevents callers from probing error responses as an oracle for other tenants' state.
 
 ### 4.6 Multiple connectors are not ambiguous
 
-A tenant may hold several active connectors, of the same type or of different types. Every one
-of them belongs to that tenant.
+<a id="m16"></a>
+**M16: Partition set includes all active connectors**
+Owner: Gateway. Checked by: [P5](#72-required-tests).
+The resolved partition set **MUST** include the agent partitions of all active connectors belonging
+to the requesting service tenant that carry an identifier, and **MUST NOT** apply an implicit
+tie-break.
+Why: Every active connector belongs to the service tenant, so picking one would hide part of the
+tenant's own logs.
 
-**Rule M16.** The resolved set **MUST** be the log identifiers of **all** the requesting
-tenant's active connectors that have one. This is not an ambiguity to be resolved — each
-identifier's lines are that tenant's lines — and an implicit tie-break (most recent, lowest id,
-first returned) **MUST NOT** be used, because it would silently hide part of the tenant's own
-data behind whichever connector happened to sort first.
-
-**Rule M17.** The number of partitions in a single scope **MUST** be bounded, and a tenant
-exceeding the bound **MUST** be denied rather than silently truncated. Truncation is the
-tie-break of Rule M16 wearing a different hat: it returns a confident, incomplete answer.
-
-The bound is **ten partitions**, enforced by the gateway when it composes the scope. Ten is
-well above any tenant's realistic connector count while keeping the fan-out of a single query
-bounded; the number matters less than having one, since the failure mode without it is a scope
-that widens until one tenant's query consumes the read path. A tenant that legitimately reaches
-the bound is a conversation about why, not a configuration increase.
-
-> Rule M16 is only safe because of [Rule M2](#41-provenance--the-identifier-must-be-trustworthy-before-it-is-useful).
-> Without single-tenant ownership of each identifier, widening the scope to every connector a
-> tenant holds would widen the blast radius of a mis-binding in exact proportion.
+<a id="m17"></a>
+**M17: Maximum of ten partitions per partition set**
+Owner: Gateway. Checked by: [N41](#72-required-tests).
+A single partition set **MUST** contain at most ten partitions (one service partition plus up to
+nine agent partitions), and a service tenant exceeding ten partitions **MUST** be denied (`403`)
+rather than silently truncated.
+Why: Bounds per-query fan-out in Loki and enables the per-partition concurrency cap in [L11](#55-preconditions-for-exposing-query-access).
 
 ### 4.7 The binding is system-owned, not tenant-supplied
 
-Holding the identifier alongside the connector's other per-connector-type credential values
-([4.2](#42-provenance-at-query-time)) keeps the agent out of the schema, but it places the
-identifier in a structure the tenant writes, and writes **wholesale**: a connector create or
-update carries the whole credential set from a tenant-authored request.
+<a id="m18"></a>
+**M18: Identifier is system-populated, never caller-supplied**
+Owner: This service. Checked by: [N39](#72-required-tests).
+The agent log identifier **MUST** be populated by this service from the trusted agent. Any
+caller-supplied identifier on a tenant-facing connector create or update request **MUST** be
+ignored or rejected and **MUST NOT** be persisted or used for partitioning.
+Why: Stops a service tenant from typing another tenant's `wallet_id` into its own connector to
+read their logs or lock them out under M2.
 
-Rule M1 constrains where an identifier may be *read from*. It does not, by itself, stop a tenant
-simply **typing another tenant's identifier into its own connector**, which is the shortest path
-to the same outcome and needs closing separately.
+<a id="m19"></a>
+**M19: Credential updates preserve existing bindings**
+Owner: This service. Checked by: [P11](#72-required-tests).
+Replacing, rotating, or partially updating a connector's credentials **MUST NOT** silently clear or
+orphan an established agent log identifier binding.
+Why: Prevents routine credential maintenance from silently dropping a tenant's agent log access.
 
-**Rule M18.** The agent log identifier **MUST** be system-populated. A value for it supplied by
-a caller on any tenant-facing write **MUST** be ignored or the request rejected, and **MUST NOT**
-be persisted or used for partitioning under any circumstances. Being stored in a tenant-writable
-structure **MUST NOT** make it a tenant-writable field.
-
-This is load-bearing in both directions. Without it, [Rule M2](#41-provenance--the-identifier-must-be-trustworthy-before-it-is-useful)
-turns into a weapon: because the first writer wins, a tenant that successfully squats on another
-tenant's identifier not only reads that tenant's logs but **permanently locks the rightful owner
-out of its own**, and does so through the ordinary connector API.
-
-**Rule M19.** Replacing, rotating, or partially updating a tenant's credential material **MUST
-NOT** silently clear or orphan an established binding. A routine credential rotation that drops
-the identifier degrades the tenant to service-lines-only
-([M14](#45-failure-behaviour)) with no error — a loss of function that looks exactly like never
-having onboarded.
-
-**Rule M20.** A binding **MUST** be released when the connector holding it is deleted or the
-tenant is deactivated, so the same tenant — or, after release, a different one — can bind that
-identifier again. A uniqueness record that outlives the connector it describes makes
-[Rule M2](#41-provenance--the-identifier-must-be-trustworthy-before-it-is-useful) permanent
-rather than current, and turns connector deletion into an irreversible loss of log access.
+<a id="m20"></a>
+**M20: Binding released on connector deletion or deactivation**
+Owner: This service. Checked by: [P11](#72-required-tests).
+An agent log identifier binding **MUST** be released when the connector holding it is deleted or
+the service tenant is deactivated.
+Why: Allows a deleted and re-created connector for the same sub-wallet to bind its identifier
+again.
 
 ## 5. Storage-layer tenancy
 
