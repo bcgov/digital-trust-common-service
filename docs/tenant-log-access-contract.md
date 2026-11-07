@@ -717,36 +717,14 @@ authentication, and it **MUST NOT** be usable to read.
 
 ### 6.4 Live tail is not compatible with a multi-partition scope
 
-This is a backend constraint, not a design preference, and it has to be decided rather than
-discovered during implementation.
+**Rule G10.** Live tail (`/loki/api/v1/tail`) **MUST** be excluded from the allowlist and **MUST**
+receive the same generic denial as any other unenumerated route
+([G8](#63-complete-coverage-of-the-read-surface)), for every tenant regardless of partition count;
+exposing live tail requires an amendment under [section 10](#10-amending-this-contract).
 
-Loki supports multi-partition scopes **only on query endpoints**. `GET /loki/api/v1/tail`
-returns `400` when more than one partition is named in the header. Since
-[Rule G3](#61-the-header-is-computed-never-conveyed) gives every tenant with an agent connector
-a scope of two or more partitions, live tail cannot simply be proxied like the other routes.
-
-**Rule G10.** Live tail **MUST** be handled by exactly one of:
-
-1. **Excluded** from the allowlist, so tail requests receive the same generic denial as any
-   other unenumerated route ([G8](#63-complete-coverage-of-the-read-surface)); or
-2. **Fanned in** by the gateway: one upstream tail stream per authorized partition, merged into
-   the single stream returned to the caller, with the partition scope still set by the gateway
-   on each upstream connection.
-
-**Rule G11.** Option 1 is the default. Option 2 **MUST NOT** be adopted without also specifying
-and testing its per-connection resource limits, cancellation and teardown on client disconnect,
-reconnect behaviour, and re-authorization on reconnect — a long-lived stream outlives the token
-that opened it, which no request-scoped check covers. Fan-in is a stateful proxy, and header
-injection alone does not make it safe.
-
-**Option 1 is adopted.** Live tail is excluded from the allowlist. Tenants retain near-real-time
-viewing through ordinary range queries on a refresh interval, which traverse the allowed query
-path; what is given up is the continuously pushed stream. Fan-in remains available as a later,
-contained change if a tenant need is established, under the obligations G11 states.
-
-The denial **MUST** be the same generic denial as any unenumerated route, for every tenant
-regardless of partition count. Allowing tail to succeed for single-partition tenants would make
-its success or failure a disclosure of how many partitions the caller has.
+Loki refuses tail requests that name more than one partition, and allowing tail to succeed only
+for single-partition tenants would disclose how many partitions the caller has. Tenants retain
+near-real-time viewing through ordinary range queries on a refresh interval.
 
 ## 7. Tenant selection is never an input
 
@@ -851,7 +829,7 @@ weaker result — it is the demonstration that the attack changed nothing.
 | N17 | Tenant-selecting **path**, or any unenumerated route | Generic denial, identical for every unknown path ([G7](#63-complete-coverage-of-the-read-surface), [G8](#63-complete-coverage-of-the-read-surface)) | Gateway |
 | N18 | A backend read route that exists but is not enumerated | Denied ([G7](#63-complete-coverage-of-the-read-surface)) | Gateway |
 | N19 | Label-values request naming another tenant's partition | Scoped to A's label space ([G6](#63-complete-coverage-of-the-read-surface), [G7](#63-complete-coverage-of-the-read-surface)) | Gateway |
-| N20 | Live-tail request | Generic denial; or, under fan-in, per-partition streams with teardown and reconnect re-authorization ([G10](#64-live-tail-is-not-compatible-with-a-multi-partition-scope), [G11](#64-live-tail-is-not-compatible-with-a-multi-partition-scope)) | Gateway |
+| N20 | Live-tail request | Generic denial, identical for every tenant regardless of partition count ([G10](#64-live-tail-is-not-compatible-with-a-multi-partition-scope)) | Gateway |
 | N21 | Direct request to the storage backend with a chosen header | Not routable from a tenant-reachable network position, in every environment ([L12](#55-preconditions-for-exposing-query-access)) | Log storage |
 | N22 | Plaintext request to any token-bearing hop | Refused or redirected; no token accepted over plaintext ([T13](#36-transport)) | Log storage |
 | N23 | Tenant B attempts to bind an identifier already bound to tenant A | Binding **refused**; A's binding unchanged ([M2](#41-provenance--the-identifier-must-be-trustworthy-before-it-is-useful)) | This service |
@@ -923,7 +901,7 @@ component that performs it.
 | Component | Artifacts land in | Responsibility | Rules it implements |
 |---|---|---|---|
 | **This service** | this repository | Minting the access token with the tenant claim, the log-read scope, and the log gateway resource audience, with exactly one audience per token; rejecting log-audience tokens on the API; establishing identifier provenance and binding each agent log identifier to exactly one tenant, system-owned and released on deletion; refreshing it on rotation; exposing the resolution the gateway consumes | T1 (issuance), T3–T4 (issuance), T6 (definition), T8, T12, M1, M2, M4, M5, M8, M10, M18–M20, L8–L9 (derivation definition) |
-| **Identity-aware gateway** | this repository | Token validation and authorization on every request, mapping consumption, partition scope composition and header construction, read-surface coverage, fail-closed and uniform failure behaviour | T1, T2, T3–T4 (enforcement), T5, T6 (enforcement), T7, T9–T11, M9, M11, M12, M14–M17, G1–G11, L8–L9 (read-side application), S1, S4 |
+| **Identity-aware gateway** | this repository | Token validation and authorization on every request, mapping consumption, partition scope composition and header construction, read-surface coverage, fail-closed and uniform failure behaviour | T1, T2, T3–T4 (enforcement), T5, T6 (enforcement), T7, T9–T11, M9, M11, M12, M14–M17, G1–G10, L8–L9 (read-side application), S1, S4 |
 | **Log storage and collection** | platform gitops | Storage-layer multi-tenancy including the multi-partition read scope the gateway depends on, collector partition routing and routing-field trust, query and fairness limits, TLS on every token-bearing hop, network isolation of the backend in every environment, write-path partition assignment for existing direct-push consumers | L1–L4, L6, L7, L8–L9 (ingestion application), L10–L12, T13, backend half of G3, G9 |
 | **Agent deployment** | the agent's own chart, gitops | Structured log output carrying the agent's log identifier as a discrete field, populated by the agent runtime rather than from request data | L5, agent half of L6 |
 | **Tenant Grafana** | platform gitops | The dedicated tenant-facing instance, registered against this service as its identity provider; a single shared datasource forwarding the caller's token; generic dashboards | S2, S3 |
@@ -1035,10 +1013,9 @@ environment, one cross-team verification **MUST** be performed there and recorde
 Two real service tenants, each with a configured connector, each generating both service and
 agent activity. For each tenant, using a real token through the real chain: they see both of
 their own log sources, and neither sees any line belonging to the other — through a dashboard,
-through ad-hoc query, and through label enumeration. Live tail is verified according to whichever
-branch of [Rule G10](#64-live-tail-is-not-compatible-with-a-multi-partition-scope) was adopted:
-under the default it must return the generic denial; where fan-in was implemented, each tenant
-sees its own sources and no other's. Then the adversarial set against the deployed chain:
+through ad-hoc query, and through label enumeration. Live tail returns the generic denial
+([Rule G10](#64-live-tail-is-not-compatible-with-a-multi-partition-scope)). Then the adversarial
+set against the deployed chain:
 spoofed partition header, wrong audience, missing scope, a LogQL query naming the other tenant
 with a canary line in place, and an attempt to bind the other tenant's agent identifier.
 
@@ -1147,8 +1124,8 @@ they do not restate it. Where an entry and the rule itself appear to differ, the
 | G7 | Route handling is an allowlist | [6.3](#63-complete-coverage-of-the-read-surface) |
 | G8 | Generic, identical denial for unknown routes | [6.3](#63-complete-coverage-of-the-read-surface) |
 | G9 | No read path to the backend that bypasses the gateway | [6.3](#63-complete-coverage-of-the-read-surface) |
-| G10 | Live tail excluded (option 1 adopted) | [6.4](#64-live-tail-is-not-compatible-with-a-multi-partition-scope) |
-| G11 | Exclusion is the default; fan-in carries stated obligations | [6.4](#64-live-tail-is-not-compatible-with-a-multi-partition-scope) |
+| G10 | Live tail excluded from the allowlist | [6.4](#64-live-tail-is-not-compatible-with-a-multi-partition-scope) |
+| G11 | *(Reserved — retired)* | [6.4](#64-live-tail-is-not-compatible-with-a-multi-partition-scope) |
 
 ### S — tenant selection is never an input ([section 7](#7-tenant-selection-is-never-an-input))
 
