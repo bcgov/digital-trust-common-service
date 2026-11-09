@@ -51,17 +51,6 @@ Run these in **every** environment where tenants have access (V2, V3).
   caller's token was replaced by the gateway's Loki login. The contract's wording, "no
   `Authorization` header present", does not match: the gateway sends its own login. The contract is
   unchanged; this is a mismatch to settle.
-- **N16 / S6.** Check **every** API pod for the decision endpoint's log lines:
-
-  ```bash
-  for pod in $(kubectl get pods -n <namespace> -l app.kubernetes.io/name=digital-trust-common-service -o name); do
-    kubectl logs -n <namespace> "$pod" --since=15m \
-      | grep -E 'Tenant-selecting query parameter ignored|Inbound scope header ignored'
-  done
-  ```
-
-  S5 attempts appear in the gateway access log. Tenant-selecting fields in a **POST body** are
-  ignored but not recorded; whether that satisfies S6 is an open question.
 
 Not covered by either: N2, N21–N25, N28, N29, N36–N40 (other components), and P4, P8–P11
 (Grafana or other components).

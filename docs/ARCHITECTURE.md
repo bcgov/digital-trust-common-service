@@ -1306,9 +1306,7 @@ inserts separately, so simultaneous requests can exceed it, and it does not by i
 its share of query capacity or meet the fairness target. Those still have to be shown by the load
 benchmark in the tenant log access contract.
 
-The caller's query is never an input to the scope. A tenant-selecting query parameter (such as `tenant`,
-`tenant_id` or `org_id`, including on the forwarded original path) and an inbound `X-Scope-OrgID` header
-are ignored and recorded as an operator warning naming the parameter only (Rules S4, S6).
+The caller's query, body, and any inbound `X-Scope-OrgID` header are never inputs to the scope (Rule S4).
 
 The endpoint is served by a second TLS listener on `LOG_ACCESS_INTERNAL_PORT`, mounted behind its own
 Service and a NetworkPolicy limited to the gateway pods. The route is excluded from the global prefix and
@@ -1348,8 +1346,7 @@ Deployment, Service, optional HPA, re-encrypted Route, NetworkPolicies).
   environment variable. It is never in the ConfigMap. The hop to Loki's nginx gateway is plain HTTP because
   that Service offers no TLS, and it carries no tenant token.
 - **Access log.** One JSON line per request on stdout with method, path without the query string, status
-  and response flags. No tokens and no query strings are logged. A tenant-selecting field in a `POST` body
-  is ignored, but not recorded, because the check endpoint never sees the body.
+  and response flags. No tokens and no query strings are logged.
 - **Probes.** The admin listener stays on loopback. A separate probe listener on its own port answers the
   kubelet and is on neither the Service nor the Route.
 - **Monitoring.** A `metrics` listener on its own port serves only `/stats/prometheus` from the loopback
