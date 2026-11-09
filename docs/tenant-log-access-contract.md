@@ -8,9 +8,11 @@ Alloy, the agent log configuration, and the write-path nginx — implements agai
 Where this document and [tenant-observability-design.md](./tenant-observability-design.md)
 disagree, this document wins.
 
-The key words **MUST**, **MUST NOT**, SHOULD, SHOULD NOT, and MAY are used as defined in RFC 2119. Rule numbers (`T1`–`T13`, `M1`–`M20`, `L1`–`L12`, `G1`–`G10`, `S1`–`S4`,
-`V1`–`V3`) are permanent IDs cited in code and tests; retired numbers are never reused, so numbers
-may appear out of order.
+The key words **MUST**, **MUST NOT**, SHOULD, SHOULD NOT, and MAY are used as defined in RFC 2119.
+Rule numbers (`T1`–`T13`, `M1`–`M20`, `L1`–`L12`, `G1`–`G10`, `S1`–`S4`, `V1`–`V3`) are permanent
+IDs cited in code and tests; retired numbers (`M3`, `M6`, `M7`, `M13`, `G11`, `S5`, `S6`) are never
+reused, so numbers may appear out of order. Test IDs (`P1`–`P11`, `N1`–`N41`) named on each rule's
+`Checked by:` line are defined in [section 7.2](#72-required-tests).
 
 ## 1. Purpose and scope
 
@@ -150,7 +152,7 @@ service resolves which service tenant they act for and puts `tenant_id` in the t
 
 <a id="t1"></a>
 **T1: Token signature, issuer, expiry, and audience validation**
-Owner: This service (issuance), Gateway (verification). Checked by: [N5](#72-required-tests).
+Owner: This service (issuance), Gateway (verification). Checked by: N5.
 The caller presents an RS256 access token issued by this service and validated against this
 service's JWKS. The decision endpoint **MUST** verify the signature, issuer, expiry, and audience
 before anything else, and **MUST** fail closed on any failure.
@@ -158,7 +160,7 @@ Why: Uses the same cryptographic check as the API so neither path is a weaker en
 
 <a id="t2"></a>
 **T2: No substitute credentials**
-Owner: Gateway. Checked by: [N6](#72-required-tests).
+Owner: Gateway. Checked by: N6.
 The gateway and decision endpoint **MUST NOT** accept any credential other than a bearer token
 issued by this service: not an upstream token, an agent token, a shared secret, basic auth, or a
 session cookie.
@@ -179,38 +181,35 @@ Why: Prevents alternative authentication mechanisms from bypassing token claim c
 
 <a id="t3"></a>
 **T3: Tenant identity from `tenant_id` only**
-Owner: This service (issuance), Gateway (verification). Checked by: [P1](#72-required-tests), [P2](#72-required-tests), [N7](#72-required-tests).
+Owner: This service (issuance), Gateway (verification). Checked by: P1, P2, N7.
 Service tenant identity **MUST** be taken from the `tenant_id` claim of the validated token and
 from nowhere else. A token with no `tenant_id`, an empty `tenant_id`, or more than one `tenant_id`
 value **MUST** be rejected with no fallback or unscoped mode.
 Why: Guarantees that every authorized request is tied to one verified service tenant.
 
 <a id="t4"></a>
-**T4: Single service tenant per token**
-Owner: This service, Gateway. Checked by: [N7](#72-required-tests).
-Same single-tenant requirement as T3; multi-tenant tokens are outside this contract and require a
-new contract ([section 10](#10-amending-this-contract)).
-Why: Preserves the `T4` rule identifier cited by token validation tests.
+**T4:** Same single-tenant requirement as [T3](#t3); multi-tenant tokens are outside this contract
+and require a new contract ([section 10](#10-amending-this-contract)).
 
 ### 3.3 Authorization
 
 <a id="t5"></a>
 **T5: Required `logs:read` OAuth scope**
-Owner: Gateway. Checked by: [P1](#72-required-tests), [N4](#72-required-tests).
+Owner: Gateway. Checked by: P1, N4.
 The decision endpoint **MUST** require the `logs:read` OAuth scope and **MUST** fail closed with
 `403` when it is absent.
 Why: Authentication alone does not authorize a caller to read operational logs.
 
 <a id="t6"></a>
 **T6: OAuth scope expansion matches the API**
-Owner: This service (definition), Gateway (enforcement). Checked by: [P3](#72-required-tests).
+Owner: This service (definition), Gateway (enforcement). Checked by: P3.
 The OAuth scope check **MUST** apply the same scope expansion as the API, where `tenants:admin`
 grants every Level 2 and Level 3 OAuth scope including `logs:read`.
 Why: Prevents the gateway and API from disagreeing on what `tenants:admin` authorizes.
 
 <a id="t7"></a>
 **T7: Per-request authorization**
-Owner: Gateway. Checked by: [N9](#72-required-tests).
+Owner: Gateway. Checked by: N9.
 Authorization **MUST** be evaluated on every request from the presented token. The gateway **MUST
 NOT** cache an authorization decision across tokens or subjects.
 Why: Stops a shared connection from reusing a previous caller's partition set.
@@ -219,21 +218,21 @@ Why: Stops a shared connection from reusing a previous caller's partition set.
 
 <a id="t8"></a>
 **T8: Dedicated log gateway audience**
-Owner: This service. Checked by: [N2](#72-required-tests).
+Owner: This service. Checked by: N2.
 A token used for log queries **MUST** carry the gateway's resource audience (requested via RFC 8707)
 and **MUST NOT** carry the API audience.
 Why: Separates log-reading tokens from API tokens so neither can be replayed against the other.
 
 <a id="t9"></a>
 **T9: API-audience tokens rejected at the gateway**
-Owner: Gateway, This service. Checked by: [N1](#72-required-tests), [N2](#72-required-tests).
+Owner: Gateway, This service. Checked by: N1, N2.
 The decision endpoint **MUST** reject a token whose `aud` is the API audience, even if the token is
 otherwise valid and carries `logs:read`; conversely, the API rejects gateway-audience tokens.
 Why: Ensures a widely distributed API token cannot be used to read logs.
 
 <a id="t10"></a>
 **T10: Explicitly configured expected audience**
-Owner: Gateway. Checked by: [N35](#72-required-tests).
+Owner: Gateway. Checked by: N35.
 The gateway's expected audience **MUST** be configured explicitly and **MUST NOT** be derived from
 the request URL, `Host` header, or forwarded headers.
 Why: Deriving the expected audience from request headers would let a caller satisfy the check
@@ -241,7 +240,7 @@ itself.
 
 <a id="t12"></a>
 **T12: Single audience per token**
-Owner: This service, Gateway. Checked by: [N3](#72-required-tests).
+Owner: This service, Gateway. Checked by: N3.
 A token **MUST** carry exactly one audience value, and both this service and the decision endpoint
 **MUST** enforce single-audience tokens by rejecting any token whose `aud` contains multiple
 values.
@@ -252,7 +251,7 @@ both validators and defeat T8 and T9.
 
 <a id="t11"></a>
 **T11: No role-based bypass on the tenant path**
-Owner: Gateway. Checked by: [N8](#72-required-tests).
+Owner: Gateway. Checked by: N8.
 The decision endpoint **MUST NOT** implement a role-based bypass of tenant scoping; a token
 carrying the platform-admin role is scoped to its own `tenant_id` like any other token.
 Why: Platform operators read cross-tenant logs through the separate platform Grafana, keeping
@@ -262,11 +261,12 @@ cross-tenant access code out of the tenant gateway.
 
 <a id="t13"></a>
 **T13: TLS on every token-bearing hop**
-Owner: Log storage, Gateway. Checked by: [N22](#72-required-tests).
-Every hop that carries a bearer token — browser to Tenant Grafana, Tenant Grafana to gateway, and
-gateway to decision endpoint — **MUST** use TLS. A plaintext hop carrying a bearer token **MUST
-NOT** exist in any environment, and external plaintext requests **MUST** be refused or redirected.
-Why: Prevents passive capture of bearer tokens in transit.
+Owner: Log storage, Gateway. Checked by: N22.
+Every hop that carries a bearer token or upstream gateway credential — browser to Tenant Grafana,
+Tenant Grafana to gateway, gateway to decision endpoint, and gateway to Loki — **MUST** use TLS. A
+plaintext hop **MUST NOT** exist in any environment, and external plaintext requests **MUST** be
+refused or redirected.
+Why: Prevents passive capture of bearer tokens or upstream credentials in transit.
 
 ## 4. Mapping a service tenant to its agent log identifier
 
@@ -282,7 +282,7 @@ unless the endpoint itself is trusted.
 
 <a id="m1"></a>
 **M1: Identifier originates from a trusted agent**
-Owner: This service. Checked by: [N25](#72-required-tests).
+Owner: This service. Checked by: N25.
 The agent log identifier **MUST** originate from an agent endpoint the platform trusts
 independently of the request (such as an allowlist of trusted agent endpoints). An identifier from
 an untrusted endpoint **MUST NOT** be used for log partitioning, and checking the `iss` string of
@@ -293,7 +293,7 @@ another tenant's `wallet_id`.
 
 <a id="m2"></a>
 **M2: One service tenant per agent log identifier**
-Owner: This service. Checked by: [P9](#72-required-tests), [P11](#72-required-tests), [N23](#72-required-tests), [N24](#72-required-tests).
+Owner: This service. Checked by: P9, P11, N23, N24.
 Each agent log identifier **MUST** belong to at most one service tenant, enforced atomically at
 write time so a second service tenant cannot bind it concurrently or later. Binding **MUST** fail
 rather than displace another service tenant's binding, while re-binding by the service tenant that
@@ -309,14 +309,14 @@ blocks double-binding without creating a reverse lookup from identifier to servi
 
 <a id="m4"></a>
 **M4: Resolved from the requesting tenant's own connector records**
-Owner: This service. Checked by: [P1](#72-required-tests), [P5](#72-required-tests).
+Owner: This service. Checked by: P1, P5.
 The agent log identifier **MUST** be resolved from the requesting service tenant's own connector
 records, queried by that tenant's `tenant_id`.
 Why: Ensures resolution always starts from the authenticated `tenant_id` in the token.
 
 <a id="m5"></a>
 **M5: No cross-tenant scan, join, or reverse lookup**
-Owner: This service. Checked by: [P1](#72-required-tests), [N23](#72-required-tests).
+Owner: This service. Checked by: P1, N23.
 Resolution **MUST NOT** scan, join, or search across other service tenants' connector records,
 **MUST NOT** consult any global index or lookup keyed by the agent log identifier, and **MUST NOT**
 store the identifier in a form that creates a reverse lookup to a service tenant.
@@ -333,7 +333,7 @@ to other service tenants (M15).
 
 <a id="m8"></a>
 **M8: Resolution expressed per connector type**
-Owner: This service. Checked by: [P5](#72-required-tests).
+Owner: This service. Checked by: P5.
 Resolution **MUST** be keyed by connector type rather than hardcoded to a single agent
 implementation.
 Why: Allows future credential agent types to supply their own log identifier without a schema
@@ -341,7 +341,7 @@ migration or contract change.
 
 <a id="m9"></a>
 **M9: Identifier treated as opaque and validated before use**
-Owner: Gateway. Checked by: [N26](#72-required-tests).
+Owner: Gateway. Checked by: N26.
 The decision endpoint **MUST NOT** assume the semantic meaning of an agent log identifier, but it
 **MUST** validate and encode the identifier as a partition key under [L8](#l8) before placing it in
 `X-Scope-OrgID`.
@@ -351,21 +351,21 @@ Why: Keeps the gateway independent of agent internals while preventing header or
 
 <a id="m10"></a>
 **M10: Refreshed on credential rotation**
-Owner: This service. Checked by: [P7](#72-required-tests), [P11](#72-required-tests).
+Owner: This service. Checked by: P7, P11.
 The resolved agent log identifier **MUST** be updated when a service tenant's connector credentials
 are rotated or replaced.
 Why: A re-provisioned connector may point to a new sub-wallet with a new identifier.
 
 <a id="m11"></a>
 **M11: Bounded cache with five-minute maximum staleness**
-Owner: Gateway. Checked by: [P7](#72-required-tests), [N34](#72-required-tests).
-Any partition-resolution cache **MUST** be bounded in size and **MUST** have a maximum TTL of five
-minutes, which **MUST** hold even if no invalidation signal is delivered.
+Owner: Gateway. Checked by: P7, N34.
+Any partition-resolution cache **MUST** be bounded in size and **MUST** have a maximum staleness of
+five minutes, which **MUST** hold even if no invalidation signal is delivered.
 Why: Bounds how long a rotated or revoked binding remains active if cache invalidation fails.
 
 <a id="m12"></a>
 **M12: Cache keyed by service tenant and invalidated on change**
-Owner: Gateway. Checked by: [P1](#72-required-tests), [N34](#72-required-tests).
+Owner: Gateway. Checked by: P1, N34.
 Cache entries **MUST** be keyed by `tenant_id`, **MUST** be invalidated when a connector changes,
 and **MUST NOT** be keyed or retrievable by agent log identifier.
 Why: Prevents a reverse lookup at the cache layer and drops stale bindings immediately on
@@ -375,7 +375,7 @@ in-process updates.
 
 <a id="m14"></a>
 **M14: Resolution fails closed**
-Owner: Gateway. Checked by: [P2](#72-required-tests), [N30](#72-required-tests), [N31](#72-required-tests).
+Owner: Gateway. Checked by: P2, N30, N31.
 Partition resolution **MUST** fail closed according to the table below and **MUST NOT** widen the
 partition set, fall back to a default, or degrade to service-only logs when a datastore,
 decryption, or validation error occurs.
@@ -392,7 +392,7 @@ logs or mask an isolation fault.
 
 <a id="m15"></a>
 **M15: Externally indistinguishable resolution failures**
-Owner: Gateway. Checked by: [N32](#72-required-tests), [N33](#72-required-tests).
+Owner: Gateway. Checked by: N32, N33.
 All resolution denials (validation failure or resolution error) **MUST** return the same HTTP
 status code (`403`) and generic body, and **MUST NOT** disclose whether another service tenant
 exists, how many connectors it has, or any agent log identifier.
@@ -402,7 +402,7 @@ Why: Prevents callers from probing error responses as an oracle for other tenant
 
 <a id="m16"></a>
 **M16: Partition set includes all active connectors**
-Owner: Gateway. Checked by: [P5](#72-required-tests).
+Owner: Gateway. Checked by: P5.
 The resolved partition set **MUST** include the agent partitions of all active connectors belonging
 to the requesting service tenant that carry an identifier, and **MUST NOT** apply an implicit
 tie-break.
@@ -411,7 +411,7 @@ tenant's own logs.
 
 <a id="m17"></a>
 **M17: Maximum of ten partitions per partition set**
-Owner: Gateway. Checked by: [N41](#72-required-tests).
+Owner: Gateway. Checked by: N41.
 A single partition set **MUST** contain at most ten partitions (one service partition plus up to
 nine agent partitions), and a service tenant exceeding ten partitions **MUST** be denied (`403`)
 rather than silently truncated.
@@ -421,7 +421,7 @@ Why: Bounds per-query fan-out in Loki and enables the per-partition concurrency 
 
 <a id="m18"></a>
 **M18: Identifier is system-populated, never caller-supplied**
-Owner: This service. Checked by: [N39](#72-required-tests).
+Owner: This service. Checked by: N39.
 The agent log identifier **MUST** be populated by this service from the trusted agent. Any
 caller-supplied identifier on a tenant-facing connector create or update request **MUST** be
 ignored or rejected and **MUST NOT** be persisted or used for partitioning.
@@ -430,14 +430,14 @@ read their logs or lock them out under M2.
 
 <a id="m19"></a>
 **M19: Credential updates preserve existing bindings**
-Owner: This service. Checked by: [P11](#72-required-tests).
+Owner: This service. Checked by: P11.
 Replacing, rotating, or partially updating a connector's credentials **MUST NOT** silently clear or
 orphan an established agent log identifier binding.
 Why: Prevents routine credential maintenance from silently dropping a tenant's agent log access.
 
 <a id="m20"></a>
 **M20: Binding released on connector deletion or deactivation**
-Owner: This service. Checked by: [P11](#72-required-tests).
+Owner: This service. Checked by: P11.
 An agent log identifier binding **MUST** be released when the connector holding it is deleted or
 the service tenant is deactivated.
 Why: Allows a deleted and re-created connector for the same sub-wallet to bind its identifier
@@ -449,7 +449,7 @@ again.
 
 <a id="l1"></a>
 **L1: Loki native multi-tenancy is the boundary**
-Owner: Log storage. Checked by: [P1](#72-required-tests), [P8](#72-required-tests), [N14](#72-required-tests).
+Owner: Log storage. Checked by: P1, P8, N14.
 Log isolation **MUST** be enforced by Loki's native multi-tenancy (`auth_enabled: true`), which
 partitions data by the `X-Scope-OrgID` header.
 Why: Enforces isolation below the query engine so arbitrary LogQL cannot cross a partition.
@@ -462,7 +462,7 @@ Why: Enforces isolation below the query engine so arbitrary LogQL cannot cross a
 
 <a id="l2"></a>
 **L2: Isolation never depends on query shape**
-Owner: Log storage, Gateway. Checked by: [N14](#72-required-tests), [N15](#72-required-tests).
+Owner: Log storage, Gateway. Checked by: N14, N15.
 No component **MUST** rely on the shape or content of a LogQL query for tenant isolation.
 Why: Allows service tenants to use Explore, arbitrary LogQL, and the datasource API safely.
 
@@ -470,7 +470,7 @@ Why: Allows service tenants to use Explore, arbitrary LogQL, and the datasource 
 
 <a id="l3"></a>
 **L3: Partition assigned at ingestion from the log line**
-Owner: Log storage (Alloy). Checked by: [P10](#72-required-tests).
+Owner: Log storage (Alloy). Checked by: P10.
 Each log line **MUST** be assigned its Loki partition at ingestion by Alloy from an identifier
 already present on the structured log line.
 Why: Fixes partition ownership before any query runs so the read path cannot alter which partition
@@ -478,7 +478,7 @@ a line belongs to.
 
 <a id="l4"></a>
 **L4: Unattributed lines routed to the platform partition**
-Owner: Log storage (Alloy). Checked by: [N29](#72-required-tests).
+Owner: Log storage (Alloy). Checked by: N29.
 A log line with no extractable routing identifier **MUST** be routed to the platform partition
 (`dt-services`) and **MUST NOT** be routed to a service tenant partition or a shared tenant-readable
 partition.
@@ -486,7 +486,7 @@ Why: Keeps unattributed operational logs visible only to platform operators.
 
 <a id="l5"></a>
 **L5: Structured agent logs required before tenant routing**
-Owner: Agent deployment, Log storage (Alloy). Checked by: [P10](#72-required-tests).
+Owner: Agent deployment, Log storage (Alloy). Checked by: P10.
 The credential agent **MUST** emit structured JSON logs carrying its agent log identifier as a
 discrete field before Alloy routes agent lines to tenant partitions; Alloy **MUST NOT** extract
 routing identifiers by regex matching unstructured text.
@@ -497,7 +497,7 @@ change.
 
 <a id="l6"></a>
 **L6: Routing field populated only by trusted logging infrastructure**
-Owner: This service, Agent deployment, Log storage (Alloy). Checked by: [P10](#72-required-tests), [N28](#72-required-tests).
+Owner: This service, Agent deployment, Log storage (Alloy). Checked by: P10, N28.
 The routing field (`tenant_id` on this service's lines, `wallet_id` on Traction/ACA-Py lines)
 **MUST** be populated by the service's logging middleware or the agent runtime and **MUST NOT** be
 populated from request payloads, user content, or caller-controlled log arguments. Alloy **MUST**
@@ -507,7 +507,7 @@ their request.
 
 <a id="l7"></a>
 **L7: Conflicting, duplicate, or malformed routing values go to the platform partition**
-Owner: Log storage (Alloy). Checked by: [N28](#72-required-tests).
+Owner: Log storage (Alloy). Checked by: N28.
 When a log line carries conflicting, duplicated, or malformed routing values, Alloy **MUST** route
 the line to the platform partition (`dt-services`) with explicit duplicate-key handling rather than
 relying on parser defaults.
@@ -517,7 +517,7 @@ Why: Prevents duplicate JSON keys from smuggling a foreign partition identifier 
 
 <a id="l8"></a>
 **L8: Derived, domain-separated, character-constrained partition keys**
-Owner: This service, Gateway, Log storage. Checked by: [N26](#72-required-tests), [N27](#72-required-tests), [N40](#72-required-tests).
+Owner: This service, Gateway, Log storage. Checked by: N26, N27, N40.
 Every Loki partition key **MUST** be derived using the domain-separated prefixes below, constrained
 to lowercase ASCII alphanumeric characters and hyphens within Loki's 150-byte limit, and **MUST
 NOT** contain `|`, path characters, control characters, or raw unvalidated identifiers. The write
@@ -527,7 +527,7 @@ identities from colliding with tenant or agent partitions.
 
 <a id="l9"></a>
 **L9: Identical partition key derivation at ingestion and query**
-Owner: This service, Gateway, Log storage (Alloy). Checked by: [P1](#72-required-tests), [P10](#72-required-tests), [N26](#72-required-tests).
+Owner: This service, Gateway, Log storage (Alloy). Checked by: P1, P10, N26.
 Alloy and the decision endpoint **MUST** apply the exact same partition key derivation rules and
 **MUST** be tested against shared test vectors (including uppercase UUIDs, surrounding whitespace,
 and `|`).
@@ -556,14 +556,14 @@ must also match a canonical lowercase UUID.
 
 <a id="l10"></a>
 **L10: Global query limits configured before tenant exposure**
-Owner: Log storage (Loki). Checked by: [N36](#72-required-tests).
+Owner: Log storage (Loki). Checked by: N36.
 Global per-partition query limits (query time range, maximum series, maximum entries, and
 cardinality) **MUST** be configured in Loki before any service tenant is granted query access.
 Why: Prevents a single unbounded LogQL query from exhausting shared Loki queriers.
 
 <a id="l11"></a>
 **L11: Fairness target and one-third aggregate capacity cap**
-Owner: Log storage (Loki), Gateway (where admission/rate control is required). Checked by: [N37](#72-required-tests).
+Owner: Log storage (Loki), Gateway (where admission/rate control is required). Checked by: N37.
 Per-partition concurrency (`max_query_parallelism`), outstanding-request queue
 (`max_outstanding_requests_per_tenant`), and timeout controls **MUST** be configured in Loki before
 tenant exposure, and per-tenant admission or rate control **MUST** additionally be enforced at the
@@ -587,7 +587,7 @@ Loki.
 
 <a id="l12"></a>
 **L12: Loki reachable on the read path only through the gateway**
-Owner: Log storage. Checked by: [N21](#72-required-tests).
+Owner: Log storage. Checked by: N21.
 Loki's read path **MUST NOT** be reachable from anywhere in the cluster except through the gateway
 in every environment, including development and test.
 Why: Loki trusts `X-Scope-OrgID` unconditionally, so direct network access to Loki would bypass
@@ -601,7 +601,7 @@ The gateway and decision endpoint turn a validated token into a Loki partition s
 
 <a id="g1"></a>
 **G1: `X-Scope-OrgID` computed from token and resolved connectors**
-Owner: Gateway. Checked by: [P1](#72-required-tests), [P2](#72-required-tests), [P5](#72-required-tests).
+Owner: Gateway. Checked by: P1, P2, P5.
 The gateway **MUST** set `X-Scope-OrgID` solely from the validated token's `tenant_id` ([T3](#t3))
 and the identifiers resolved under [section 4](#4-mapping-a-service-tenant-to-its-agent-log-identifier),
 each encoded under [L8](#l8). No other input **MUST** contribute.
@@ -609,15 +609,15 @@ Why: Guarantees that the partition set reflects only verified tenant ownership.
 
 <a id="g2"></a>
 **G2: Inbound `X-Scope-OrgID` unconditionally overwritten**
-Owner: Gateway. Checked by: [N10](#72-required-tests), [N11](#72-required-tests), [N12](#72-required-tests).
+Owner: Gateway. Checked by: N10, N11, N12.
 The gateway **MUST** overwrite any inbound `X-Scope-OrgID` header and **MUST NOT** append to,
 merge with, or forward any caller-supplied value, including on rejected requests.
 Why: Prevents a caller from injecting or appending another service tenant's partition key.
 
 <a id="g3"></a>
-**G3: Partition set contains only the tenant's own partitions**
-Owner: Gateway, Log storage (Loki). Checked by: [P1](#72-required-tests), [P2](#72-required-tests), [P5](#72-required-tests).
-The `X-Scope-OrgID` partition set **MUST** contain only `t-<tenant_id>` plus the `a-<type>-<id>`
+**G3: Partition set is exactly the tenant's own partitions**
+Owner: Gateway, Log storage (Loki). Checked by: P1, P2, P5.
+The `X-Scope-OrgID` partition set **MUST** be **exactly** `t-<tenant_id>` plus the `a-<type>-<id>`
 partitions of that service tenant's active connectors ([M16](#m16)). It **MUST NOT** include the
 platform partition (`dt-services`), a default partition, a wildcard, or another tenant's partition,
 and Loki **MUST** have multi-partition reads enabled.
@@ -625,7 +625,7 @@ Why: Restricts every Loki read to the exact partitions owned by the caller's ser
 
 <a id="g4"></a>
 **G4: Caller `Authorization` header stripped before Loki**
-Owner: Gateway. Checked by: [N13](#72-required-tests).
+Owner: Gateway. Checked by: N13.
 The gateway **MUST** strip the caller's `Authorization` header before forwarding the request to
 Loki, replacing it only with the gateway's own Loki basic-auth credentials if required.
 Why: Prevents tenant bearer tokens from reaching Loki or appearing in upstream logs.
@@ -634,8 +634,8 @@ Why: Prevents tenant bearer tokens from reaching Loki or appearing in upstream l
 
 <a id="g5"></a>
 **G5: No LogQL parsing, rewriting, or injection at the gateway**
-Owner: Gateway. Checked by: [N14](#72-required-tests), [N15](#72-required-tests).
-The gateway **MUST NOT** parse, rewrite, validate, or inject label matchers into the LogQL query.
+Owner: Gateway. Checked by: N14, N15.
+The gateway **MUST NOT** parse, rewrite, validate, or inject into the LogQL query.
 Why: Partition isolation in Loki (`X-Scope-OrgID`) already constrains results regardless of query
 content, without risking parser bugs.
 
@@ -643,7 +643,7 @@ content, without risking parser bugs.
 
 <a id="g6"></a>
 **G6: Every exposed read route enforces the contract**
-Owner: Gateway. Checked by: [P6](#72-required-tests), [N19](#72-required-tests).
+Owner: Gateway. Checked by: P6, N19.
 The gateway **MUST** apply token validation and `X-Scope-OrgID` scoping to every route it exposes,
 including label, series, label-values, index, and stats endpoints.
 Why: Metadata and label endpoints derive from log content and would leak cross-tenant data if left
@@ -651,21 +651,21 @@ unscoped.
 
 <a id="g7"></a>
 **G7: Allowlist of Loki read routes**
-Owner: Gateway. Checked by: [N17](#72-required-tests), [N18](#72-required-tests), [N19](#72-required-tests).
+Owner: Gateway. Checked by: N17, N18, N19.
 Gateway route handling **MUST** be an explicit allowlist of Loki read routes; any path or HTTP
 method not on the allowlist **MUST** be denied.
 Why: Ensures administrative, write, or newly added Loki endpoints are unreachable by default.
 
 <a id="g8"></a>
 **G8: Generic, identical denial for unenumerated routes**
-Owner: Gateway. Checked by: [N17](#72-required-tests), [N20](#72-required-tests).
+Owner: Gateway. Checked by: N17, N20.
 Denial of any unknown or unenumerated route **MUST** return the same generic status (`403`) and body
 regardless of why the path was rejected.
 Why: Prevents callers from probing which routes exist behind the gateway.
 
 <a id="g9"></a>
 **G9: No tenant read path bypasses the gateway**
-Owner: Log storage. Checked by: [N21](#72-required-tests), [N38](#72-required-tests).
+Owner: Log storage. Checked by: N21, N38.
 No read path to Loki that bypasses the gateway **MUST** be reachable by a tenant user in any
 environment, and the Alloy/nginx write path **MUST NOT** be usable to read logs.
 Why: Prevents callers from reading logs through an ingestion endpoint or an unprotected internal
@@ -675,7 +675,7 @@ service.
 
 <a id="g10"></a>
 **G10: Live tail excluded from the allowlist**
-Owner: Gateway. Checked by: [N20](#72-required-tests).
+Owner: Gateway. Checked by: N20.
 Live tail (`/loki/api/v1/tail`) **MUST** be excluded from the allowlist and **MUST** receive the
 same generic denial as any other unenumerated route (G8) for every service tenant regardless of
 partition count; exposing live tail requires an amendment under [section 10](#10-amending-this-contract).
@@ -686,7 +686,7 @@ allowing tail only for single-partition tenants would leak a tenant's connector 
 
 <a id="s1"></a>
 **S1: Partition set derived only from token and connector resolution**
-Owner: Gateway. Checked by: [N10](#72-required-tests), [N14](#72-required-tests), [N16](#72-required-tests).
+Owner: Gateway. Checked by: N10, N14, N16.
 The `X-Scope-OrgID` partition set **MUST** be derived solely from the validated token and the
 connector resolution in [section 4](#4-mapping-a-service-tenant-to-its-agent-log-identifier), and
 **MUST NOT** be influenced by any caller-controlled input:
@@ -705,7 +705,7 @@ cross-tenant read.
 
 <a id="s2"></a>
 **S2: Single shared Grafana datasource**
-Owner: Tenant Grafana. Checked by: [P4](#72-required-tests).
+Owner: Tenant Grafana. Checked by: P4.
 Tenant Grafana **MUST** use a single shared Loki datasource for all tenant users, with no tenant
 identity in its URL, headers, or configuration.
 Why: Per-tenant datasources duplicate access control in static configuration that can drift or be
@@ -713,7 +713,7 @@ misprovisioned.
 
 <a id="s3"></a>
 **S3: Generic dashboards with no tenant selector**
-Owner: Tenant Grafana. Checked by: [P4](#72-required-tests).
+Owner: Tenant Grafana. Checked by: P4.
 Tenant-facing dashboards **MUST** be generic and identical for all service tenants, and **MUST NOT**
 embed a tenant identifier or a tenant-selector template variable.
 Why: Each service tenant sees its own data because the gateway scopes the token, not because the
@@ -721,7 +721,7 @@ dashboard filters by tenant.
 
 <a id="s4"></a>
 **S4: Silent neutralisation of tenant-selecting inputs on allowlisted routes**
-Owner: Gateway. Checked by: [N16](#72-required-tests).
+Owner: Gateway. Checked by: N16.
 On an allowlisted route, any tenant-selecting query parameter, body field, or header **MUST** be
 ignored so the request is served for the caller's own service tenant rather than rejected with a
 parameter-specific error.
@@ -756,12 +756,12 @@ Positive — the intended path works:
 | P2 | Tenant A has no connector | Query succeeds; partition set is `t-<A>` only ([T3](#t3), [M14](#m14), [G1](#g1), [G3](#g3)) | Gateway |
 | P3 | Token carrying only `tenants:admin` OAuth scope | Allowed via scope expansion ([T6](#t6)) | Gateway |
 | P4 | Tenants A and B each open the same shared dashboard | Each sees only their own log lines ([S2](#s2), [S3](#s3)) | Grafana + gateway |
-| P5 | Tenant A has multiple active connectors | Partition set includes all of A's resolved partitions and none of B's ([M4](#m4), [M8](#m8), [M16](#m16), [G3](#g3)) | Gateway |
+| P5 | Tenant A has multiple active connectors, including of different types | Partition set includes all of A's resolved partitions and none of B's ([M4](#m4), [M8](#m8), [M16](#m16), [G3](#g3)) | Gateway |
 | P6 | Label, series, and label-values endpoints with a valid token | Succeed, constrained to A's partition set ([G6](#g6)) | Gateway |
 | P7 | Connector rotated to a new identifier, no invalidation signal delivered | New identifier takes effect within five minutes ([M10](#m10), [M11](#m11)) | This service + gateway |
 | P8 | Platform operator via the platform Grafana path | Full cross-tenant visibility retained ([L1](#l1)) | Log storage |
 | P9 | An identifier is bound to tenant A for the first time | Binding succeeds and is usable ([M2](#m2)) | This service |
-| P10 | An agent log line emitted for tenant A carrying A's `wallet_id` | Routed by Alloy to A's partition and returned to A's token only ([L3](#l3), [L5](#l5), [L6](#l6), [L9](#l9)) | Agent deployment + Log storage |
+| P10 | An agent log line emitted for tenant A carrying A's agent log identifier (`wallet_id` for the current agent) | Routed by Alloy to A's partition and returned to A's token only ([L3](#l3), [L5](#l5), [L6](#l6), [L9](#l9)) | Agent deployment + Log storage |
 | P11 | Tenant A deletes and re-creates a connector for the same sub-wallet, then rotates credentials | Binding succeeds both times and A's agent logs stay visible ([M2](#m2), [M10](#m10), [M19](#m19), [M20](#m20)) | This service |
 
 Adversarial — each must produce the stated safe outcome:
@@ -812,7 +812,7 @@ Adversarial — each must produce the stated safe outcome:
 
 <a id="v1"></a>
 **V1: N14 asserts no foreign canary line is returned**
-Owner: Gateway, Log storage. Checked by: [N14](#72-required-tests).
+Owner: Gateway, Log storage. Checked by: N14.
 A query naming another service tenant **MUST** return no log line belonging to that tenant and
 **MUST NOT** return an error that depends on whether that tenant exists. In real Loki ([9.3](#93-the-end-to-end-check)),
 N14 asserts that a canary line in tenant B's partition is not returned to tenant A, rather than
@@ -822,7 +822,7 @@ tenant's own logs contain the queried string.
 
 <a id="v2"></a>
 **V2: Hermetic gateway adversarial tests against real Envoy config**
-Owner: Gateway. Checked by: [P1](#72-required-tests)–[P3](#72-required-tests), [P5](#72-required-tests), [P6](#72-required-tests), [N1](#72-required-tests), [N3](#72-required-tests)–[N20](#72-required-tests), [N26](#72-required-tests), [N27](#72-required-tests), [N30](#72-required-tests)–[N35](#72-required-tests), [N41](#72-required-tests).
+Owner: Gateway. Checked by: P1–P3, P5, P6, N1, N3–N20, N26, N27, N30–N35, N41.
 The gateway's adversarial tests **MUST** be hermetic and **MUST NOT** be only unit tests over the
 header-building function: they run real requests through the rendered Envoy configuration and real
 decision endpoint against a recording Loki stand-in.
