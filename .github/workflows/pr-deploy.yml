@@ -3,7 +3,7 @@ name: PR Deploy
 on:
   pull_request:
     branches: [main]
-    types: [opened, synchronize, reopened, ready_for_review]
+    types: [opened, synchronize, reopened, ready_for_review, edited]
     paths-ignore:
       - 'docs/**'
       - '**/*.md'
@@ -15,11 +15,14 @@ permissions:
   deployments: write
 
 concurrency:
-  group: pr-env-${{ github.event.number }}
+  # Edits that aren't base changes get their own group so a title or body
+  # edit can't cancel an in-flight deploy.
+  group: pr-env-${{ github.event.number }}${{ github.event.action == 'edited' && !github.event.changes.base && format('-noop-{0}', github.run_id) || '' }}
   cancel-in-progress: true
 
 jobs:
   preflight:
+    if: github.event.action != 'edited' || github.event.changes.base
     runs-on: ubuntu-latest
     outputs:
       build: ${{ steps.gate.outputs.build }}
