@@ -42,7 +42,8 @@ Each of these is argued where it is stated. The links are the argument, not a su
   interchangeable
   ([2.1](#21-the-agent-sub-tenant-has-two-identifiers-and-they-are-not-interchangeable)).
 - **No queryable agent identifier enters the schema.** Uniqueness is enforced on a derived
-  value instead ([M3](#41-provenance--the-identifier-must-be-trustworthy-before-it-is-useful)).
+  value instead ([M2](#41-provenance--the-identifier-must-be-trustworthy-before-it-is-useful),
+  [M5](#42-provenance-at-query-time)).
 - **Live tail is excluded.** Near-real-time viewing is a refreshed range query, not a pushed
   stream ([G10](#64-live-tail-is-not-compatible-with-a-multi-partition-scope)).
 - **The numbers are stated, not left to the implementation**: five minutes' maximum staleness,
@@ -164,8 +165,7 @@ because each one is a place an implementer would otherwise guess:
   the same token the connector already obtains. Capturing it is reading one more claim where the
   token is already decoded, not a new call.
 - That token also carries an expiry, and on the credential path the connector uses it carries
-  **no wallet key material**. The identifier is not a secret
-  ([M7](#42-provenance-at-query-time)); the token around it still is.
+  **no wallet key material**. The identifier is not a secret; the token around it still is.
 - The agent emits structured JSON log records where ACA-Py's log filter stamps `wallet_id`
   (the agent log identifier) and the Traction multitenant plugin may also stamp `tenant_id`
   (the API sub-tenant id, a different UUID). The collector routes exclusively on `wallet_id`
@@ -230,9 +230,8 @@ token and from nowhere else. A token with no `tenant_id`, an empty `tenant_id`, 
 one `tenant_id` value **MUST** be rejected. There is no fallback, no default, and no
 "unscoped" mode.
 
-**Rule T4.** A token **MUST** authorize exactly one service tenant. Multi-tenant tokens are
-outside this contract; if a legitimate need for one appears, it is a new contract with its own
-threat model, not a change to this claim's cardinality.
+**Rule T4.** Same single-tenant requirement as [Rule T3](#32-claims); multi-tenant tokens are
+outside this contract and would require a new contract ([section 10](#10-amending-this-contract)).
 
 ### 3.3 Authorization
 
@@ -348,11 +347,10 @@ tenant that deletes and re-creates a connector against the same sub-wallet, or r
 credentials, presents the same identifier again and would be refused, losing access to its own
 agent logs permanently with no diagnosable response ([M15](#45-failure-behaviour)).
 
-**Rule M3.** Enforcing Rule M2 **MUST NOT** require storing the agent identifier as queryable
-plaintext, and **MUST NOT** create a reverse lookup from an identifier to a service tenant. A
+Enforcing Rule M2 does not require storing the agent identifier as queryable plaintext. A
 non-reversible derived value — a keyed hash of the connector type and identifier, held under a
-uniqueness constraint — satisfies both: it makes double-binding impossible to write while
-remaining useless for asking whose identifier something is.
+uniqueness constraint — makes double-binding impossible to write while remaining useless for
+asking whose identifier something is ([M5](#42-provenance-at-query-time)).
 
 > **This is the one place the contract adds a write-time obligation that the connector design
 > does not already have.** It is deliberate. Uniqueness cannot be checked at read time without
@@ -366,21 +364,19 @@ remaining useless for asking whose identifier something is.
 connector records**, reached by that tenant's `tenant_id`.
 
 **Rule M5.** Resolution **MUST NOT** scan, join, or search across connector records belonging
-to other service tenants, and **MUST NOT** consult any global index, registry, or reverse
-lookup keyed by the agent identifier. The query is "what are this tenant's identifiers", never
-"whose identifier is this".
+to other service tenants, **MUST NOT** consult any global index, registry, or reverse lookup
+keyed by the agent identifier, and **MUST NOT** store the identifier in a form that creates a
+reverse lookup from an identifier to a service tenant. The query is "what are this tenant's
+identifiers", never "whose identifier is this".
 
-**Rule M6.** No dedicated schema is introduced for *lookup*. The connector's credential material
-is already a per-connector-type set of values held together; the agent log identifier is another
-value in that set. The only addition this contract requires is the uniqueness guard of
-[Rule M3](#41-provenance--the-identifier-must-be-trustworthy-before-it-is-useful), which stores
-a derived value rather than the identifier.
-
-**Rule M7.** The identifier is **not** a secret — it is emitted in plaintext on every agent log
-line, so this contract places no at-rest confidentiality requirement on it and does not weaken
-the protection of anything stored alongside it. That is distinct from
-[Rule M15](#45-failure-behaviour): not being a secret does not make it disclosable to *another*
-tenant.
+No dedicated schema is introduced for *lookup*: the connector's credential material is already
+a per-connector-type set of values held together, and the agent log identifier is another value
+in that set alongside the derived uniqueness guard of
+[Rule M2](#41-provenance--the-identifier-must-be-trustworthy-before-it-is-useful). Because the
+identifier is emitted in plaintext on every agent log line, it is not a secret — this contract
+places no at-rest confidentiality requirement on it and does not weaken the protection of
+anything stored alongside it, though it remains non-disclosable to another tenant
+([M15](#45-failure-behaviour)).
 
 ### 4.3 Agent-agnostic by construction
 
@@ -406,17 +402,14 @@ in which case the old identifier is simply wrong.
 no invalidation signal arrives. A shorter bound is acceptable; an unbounded one is not. The
 bound is stated here rather than left to the implementation because it is the interval during
 which a revoked or re-provisioned binding is still honoured, and the teams either side of the
-gateway need the same number.
+gateway need the same number. Invalidation is an optimisation, not a correctness mechanism: the
+five-minute bound holds whether or not an invalidation signal is delivered, so a dropped or
+failed signal across a repository boundary degrades latency rather than correctness.
 
 **Rule M12.** Cache entries **MUST** be keyed by the service tenant and **MUST** be invalidated
 on connector credential change. A cache **MUST NOT** be keyed by, or allow retrieval by, the
 agent log identifier — that would be the reverse lookup [Rule M5](#42-provenance-at-query-time)
 prohibits, reintroduced at the cache layer.
-
-**Rule M13.** Invalidation is an **optimisation, not a correctness mechanism**. Rule M11's
-staleness bound **MUST** hold whether or not an invalidation signal is delivered, so a dropped
-or failed signal degrades latency rather than correctness. This matters because invalidation
-crosses a repository boundary, where delivery cannot be assumed.
 
 ### 4.5 Failure behaviour
 
@@ -471,10 +464,10 @@ the bound is a conversation about why, not a configuration increase.
 
 ### 4.7 The binding is system-owned, not tenant-supplied
 
-[Rule M6](#42-provenance-at-query-time) puts the identifier alongside the connector's other
-per-connector-type credential values. That is the right home — it keeps the agent out of the
-schema — but it places the identifier in a structure the tenant writes, and writes **wholesale**:
-a connector create or update carries the whole credential set from a tenant-authored request.
+Holding the identifier alongside the connector's other per-connector-type credential values
+([4.2](#42-provenance-at-query-time)) keeps the agent out of the schema, but it places the
+identifier in a structure the tenant writes, and writes **wholesale**: a connector create or
+update carries the whole credential set from a tenant-authored request.
 
 Rule M1 constrains where an identifier may be *read from*. It does not, by itself, stop a tenant
 simply **typing another tenant's identifier into its own connector**, which is the shortest path
@@ -845,17 +838,13 @@ differs.
 **Rule S4.** On an **allowlisted route**, a tenant-selecting parameter, body field, or header
 **MUST** be served as though the attempt were absent — scoped to the caller's own tenant —
 rather than rejected with an error that confirms the mechanism exists. Silent neutralisation
-gives the caller no signal to probe against.
+gives the caller no signal to probe against. A tenant-selecting **path** does not exist
+([S2](#7-tenant-selection-is-never-an-input)), so a request to one is simply an unenumerated
+route and receives the generic denial of [Rule G7](#63-complete-coverage-of-the-read-surface)
+and [Rule G8](#63-complete-coverage-of-the-read-surface).
 
-**Rule S5.** A tenant-selecting **path** is not covered by Rule S4. Because no such path exists
-([S2](#7-tenant-selection-is-never-an-input)), a request to one is simply an unenumerated route
-and **MUST** receive the same generic denial as any other
-([G7](#63-complete-coverage-of-the-read-surface), [G8](#63-complete-coverage-of-the-read-surface)).
-Rules S4 and G7 do not conflict: S4 governs *inputs to a route that exists*, G7 governs *whether
-the route exists at all*.
-
-**Rule S6.** Every attempt under Rules S4 and S5 **MUST** be recorded for the operator. The
-caller learns nothing; we learn that someone probed.
+**Rule S6.** Every attempt under Rule S4 **MUST** be recorded for the operator. The caller
+learns nothing; we learn that someone probed.
 
 ### 7.1 Threat model
 
@@ -889,7 +878,7 @@ implementation.
 | P4 | Tenants A and B each open the same generic dashboard | Each sees only their own lines | Grafana + gateway |
 | P5 | Tenant A has several active connectors, including of different types | Scope includes **all** of A's resolved partitions, none of B's ([M16](#46-multiple-connectors-are-not-ambiguous)) | Gateway |
 | P6 | Label, series and label-values endpoints, valid token | Succeed, constrained to the caller's partitions | Gateway |
-| P7 | Connector rotated to a new identifier, **no** invalidation signal delivered | New identifier in effect within the staleness bound ([M11](#44-freshness), [M13](#44-freshness)) | This service + gateway |
+| P7 | Connector rotated to a new identifier, **no** invalidation signal delivered | New identifier in effect within the staleness bound ([M11](#44-freshness)) | This service + gateway |
 | P8 | Platform operator via the platform path | Full cross-tenant visibility retained | Log storage |
 | P9 | An identifier is bound to a tenant for the first time | Binding succeeds and is usable | This service |
 | P10 | An agent line emitted for tenant A, carrying A's identifier field | Lands in A's partition and is returned to A's token, and to no other tenant's | Agent deployment + Log storage |
@@ -917,7 +906,7 @@ weaker result — it is the demonstration that the attack changed nothing.
 | N14 | LogQL explicitly selecting tenant B's labels | Forwarded unchanged, scoped to A only ([G5](#62-the-gateway-does-not-read-the-query)). Against real storage with a **B-owned canary** line present, the canary is **not** returned; A-owned lines that happen to match may be ([V1](#72-required-tests)) | Gateway |
 | N15 | Query via Explore / the datasource API / curl, bypassing dashboards | Scoped to A identically ([L2](#51-isolation-lives-in-the-storage-layer), [G5](#62-the-gateway-does-not-read-the-query)) | Gateway |
 | N16 | Tenant-selecting parameter or body field on an allowlisted route | Ignored; scoped to A; attempt recorded ([S4](#7-tenant-selection-is-never-an-input), [S6](#7-tenant-selection-is-never-an-input)) | Gateway |
-| N17 | Tenant-selecting **path**, or any unenumerated route | Generic denial, identical for every unknown path ([S5](#7-tenant-selection-is-never-an-input), [G8](#63-complete-coverage-of-the-read-surface)) | Gateway |
+| N17 | Tenant-selecting **path**, or any unenumerated route | Generic denial, identical for every unknown path ([G7](#63-complete-coverage-of-the-read-surface), [G8](#63-complete-coverage-of-the-read-surface)) | Gateway |
 | N18 | A backend read route that exists but is not enumerated | Denied ([G7](#63-complete-coverage-of-the-read-surface)) | Gateway |
 | N19 | Label-values request naming another tenant's partition | Scoped to A's label space ([G6](#63-complete-coverage-of-the-read-surface), [G7](#63-complete-coverage-of-the-read-surface)) | Gateway |
 | N20 | Live-tail request | Generic denial; or, under fan-in, per-partition streams with teardown and reconnect re-authorization ([G10](#64-live-tail-is-not-compatible-with-a-multi-partition-scope), [G11](#64-live-tail-is-not-compatible-with-a-multi-partition-scope)) | Gateway |
@@ -934,7 +923,7 @@ weaker result — it is the demonstration that the attack changed nothing.
 | N31 | Resolution fails with a backend error | Denied; **not** degraded to partial results ([M14](#45-failure-behaviour)) | Gateway |
 | N32 | Responses compared across an unusable identifier and a backend error | Indistinguishable status and body. A tenant with no connector is a **success** and is correctly distinguishable ([M15](#45-failure-behaviour)) | Gateway |
 | N33 | Any failure response body inspected | No other tenant's identifier, no connector count, no tenant existence signal ([M15](#45-failure-behaviour)) | Gateway |
-| N34 | Identifier rotated; queries issued at the staleness bound and just after | Old binding not honoured past the bound ([M11](#44-freshness), [M13](#44-freshness)) | Gateway |
+| N34 | Identifier rotated; queries issued at the staleness bound and just after | Old binding not honoured past the bound ([M11](#44-freshness)) | Gateway |
 | N35 | Spoofed `Host` / forwarded headers matching the gateway audience | `401`; audience unaffected ([T10](#34-audience-separation)) | Gateway |
 | N36 | Query exceeding the global limits | Rejected by limits; other tenants unaffected ([L10](#55-preconditions-for-exposing-query-access)) | Log storage |
 | N37 | Tenant A floods many individually compliant queries | Tenant B stays within the fairness target, measured by L11's reference benchmark ([L11](#55-preconditions-for-exposing-query-access)) | Log storage + gateway |
@@ -991,8 +980,8 @@ component that performs it.
 
 | Component | Artifacts land in | Responsibility | Rules it implements |
 |---|---|---|---|
-| **This service** | this repository | Minting the access token with the tenant claim, the log-read scope, and the log gateway resource audience, with exactly one audience per token; rejecting log-audience tokens on the API; establishing identifier provenance and binding each agent log identifier to exactly one tenant, system-owned and released on deletion; refreshing it on rotation; exposing the resolution the gateway consumes | T1 (issuance), T3–T4 (issuance), T6 (definition), T8, T12, M1–M8, M10, M18–M20, L8–L9 (derivation definition) |
-| **Identity-aware gateway** | this repository | Token validation and authorization on every request, mapping consumption, partition scope composition and header construction, read-surface coverage, fail-closed and uniform failure behaviour, the aggregate per-tenant capacity cap, and per-partition request-rate control where [L11](#55-preconditions-for-exposing-query-access)'s target requires it | T1, T2, T3–T4 (enforcement), T5, T6 (enforcement), T7, T9–T11, M9, M11–M17, G1–G11, L8–L9 (read-side application), L11 (aggregate capacity cap; rate control where required), S1, S4–S6 |
+| **This service** | this repository | Minting the access token with the tenant claim, the log-read scope, and the log gateway resource audience, with exactly one audience per token; rejecting log-audience tokens on the API; establishing identifier provenance and binding each agent log identifier to exactly one tenant, system-owned and released on deletion; refreshing it on rotation; exposing the resolution the gateway consumes | T1 (issuance), T3–T4 (issuance), T6 (definition), T8, T12, M1, M2, M4, M5, M8, M10, M18–M20, L8–L9 (derivation definition) |
+| **Identity-aware gateway** | this repository | Token validation and authorization on every request, mapping consumption, partition scope composition and header construction, read-surface coverage, fail-closed and uniform failure behaviour, the aggregate per-tenant capacity cap, and per-partition request-rate control where [L11](#55-preconditions-for-exposing-query-access)'s target requires it | T1, T2, T3–T4 (enforcement), T5, T6 (enforcement), T7, T9–T11, M9, M11, M12, M14–M17, G1–G11, L8–L9 (read-side application), L11 (aggregate capacity cap; rate control where required), S1, S4, S6 |
 | **Log storage and collection** | platform gitops | Storage-layer multi-tenancy including the multi-partition read scope the gateway depends on, collector partition routing and routing-field trust, query and fairness limits, TLS on every token-bearing hop, network isolation of the backend in every environment, write-path partition assignment for existing direct-push consumers | L1–L4, L6, L7, L8–L9 (ingestion application), L10–L12, T13, backend half of G3, G9 |
 | **Agent deployment** | the agent's own chart, gitops | Structured log output carrying the agent's log identifier as a discrete field, populated by the agent runtime rather than from request data | L5, agent half of L6 |
 | **Tenant Grafana** | platform gitops | The dedicated tenant-facing instance, registered against this service as its identity provider; a single shared datasource forwarding the caller's token; generic dashboards | S2, S3 |
@@ -1167,17 +1156,17 @@ they do not restate it. Where an entry and the rule itself appear to differ, the
 |---|---|---|
 | M1 | Identifier originates from a trusted agent | [4.1](#41-provenance--the-identifier-must-be-trustworthy-before-it-is-useful) |
 | M2 | One identifier belongs to exactly one tenant, enforced at write | [4.1](#41-provenance--the-identifier-must-be-trustworthy-before-it-is-useful) |
-| M3 | Uniqueness without plaintext storage or reverse lookup | [4.1](#41-provenance--the-identifier-must-be-trustworthy-before-it-is-useful) |
+| M3 | *(Reserved — folded into [M2](#41-provenance--the-identifier-must-be-trustworthy-before-it-is-useful) and [M5](#42-provenance-at-query-time))* | [4.1](#41-provenance--the-identifier-must-be-trustworthy-before-it-is-useful) |
 | M4 | Resolved from the requesting tenant's own connector records | [4.2](#42-provenance-at-query-time) |
 | M5 | No cross-tenant scan, join, or reverse lookup | [4.2](#42-provenance-at-query-time) |
-| M6 | No dedicated lookup schema | [4.2](#42-provenance-at-query-time) |
-| M7 | The identifier is not a secret | [4.2](#42-provenance-at-query-time) |
+| M6 | *(Reserved — explanatory prose under [4.2](#42-provenance-at-query-time))* | [4.2](#42-provenance-at-query-time) |
+| M7 | *(Reserved — explanatory prose under [4.2](#42-provenance-at-query-time))* | [4.2](#42-provenance-at-query-time) |
 | M8 | Resolution expressed per connector type | [4.3](#43-agent-agnostic-by-construction) |
 | M9 | Identifier treated as opaque, but still validated | [4.3](#43-agent-agnostic-by-construction) |
 | M10 | Refreshed on credential rotation | [4.4](#44-freshness) |
 | M11 | Bounded cache, maximum staleness | [4.4](#44-freshness) |
 | M12 | Cache keyed by service tenant, never by identifier | [4.4](#44-freshness) |
-| M13 | Invalidation is an optimisation, not a correctness mechanism | [4.4](#44-freshness) |
+| M13 | *(Reserved — folded into [M11](#44-freshness))* | [4.4](#44-freshness) |
 | M14 | Resolution fails closed | [4.5](#45-failure-behaviour) |
 | M15 | Failures externally indistinguishable from one another | [4.5](#45-failure-behaviour) |
 | M16 | Scope is all of the tenant's resolved identifiers, no tie-break | [4.6](#46-multiple-connectors-are-not-ambiguous) |
@@ -1227,7 +1216,7 @@ they do not restate it. Where an entry and the rule itself appear to differ, the
 | S2 | A single shared Grafana datasource | [7](#7-tenant-selection-is-never-an-input) |
 | S3 | Generic dashboards, no tenant selector | [7](#7-tenant-selection-is-never-an-input) |
 | S4 | Tenant-selecting input on a real route neutralised silently | [7](#7-tenant-selection-is-never-an-input) |
-| S5 | Tenant-selecting path gets the generic route denial | [7](#7-tenant-selection-is-never-an-input) |
+| S5 | *(Reserved — covered by [G7](#63-complete-coverage-of-the-read-surface) and [G8](#63-complete-coverage-of-the-read-surface))* | [7](#7-tenant-selection-is-never-an-input) |
 | S6 | Every such attempt recorded for the operator | [7](#7-tenant-selection-is-never-an-input) |
 
 ### V — how the tests must be written ([7.2](#72-required-tests))
