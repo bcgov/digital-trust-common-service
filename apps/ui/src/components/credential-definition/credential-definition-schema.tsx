@@ -67,7 +67,7 @@ function SchemaValue({ value }: { value: unknown }) {
             className="grid min-w-0 gap-2 py-4 first:pt-0 last:pb-0 sm:grid-cols-[minmax(0,10rem)_minmax(0,1fr)] sm:gap-6"
           >
             <dt className="text-small-body font-bold [overflow-wrap:anywhere]">
-              {key in SCHEMA_LABELS
+              {Object.hasOwn(SCHEMA_LABELS, key)
                 ? t(SCHEMA_LABELS[key as keyof typeof SCHEMA_LABELS])
                 : key}
             </dt>
