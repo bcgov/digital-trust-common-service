@@ -143,6 +143,31 @@ describe('Issuance profile lifecycle (integration)', () => {
     expect(await profiles.findById(profile.id)).toBeNull();
   });
 
+  it('does not recreate a deleted draft when a stale PATCH writes afterward', async () => {
+    const draft = await profiles.create({
+      tenantId,
+      name: 'Stale patch profile',
+      version: '1.0',
+      credentialDefinitionId: profile.credentialDefinitionId,
+      attributeSchema: {},
+      status: IssuanceProfileStatus.DRAFT,
+    });
+
+    expect(await profiles.findById(draft.id)).toMatchObject({
+      id: draft.id,
+      status: IssuanceProfileStatus.DRAFT,
+    });
+    expect(await profiles.deleteIfUnused(tenantId, draft.id)).toBe(
+      IssuanceProfileDeleteResult.DELETED,
+    );
+    expect(
+      await profiles.updateDraftIfCurrent(tenantId, draft.id, {
+        description: 'Late PATCH',
+      }),
+    ).toBe(false);
+    expect(await profiles.findById(draft.id)).toBeNull();
+  });
+
   it.each(Object.values(CredentialState))(
     'preserves profiles used by %s requests',
     async (state) => {

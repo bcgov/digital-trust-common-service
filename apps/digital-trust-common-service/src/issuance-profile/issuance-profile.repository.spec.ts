@@ -71,6 +71,38 @@ describe('IssuanceProfileRepository', () => {
     });
   });
 
+  describe('updateDraftIfCurrent', () => {
+    it('updates only the current tenant draft and reports zero affected rows', async () => {
+      const query = {
+        update: jest.fn().mockReturnThis(),
+        set: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        execute: jest.fn().mockResolvedValue({ affected: 0 }),
+      };
+      (
+        mockRepo as unknown as { createQueryBuilder: jest.Mock }
+      ).createQueryBuilder = jest.fn().mockReturnValue(query);
+
+      await expect(
+        repository.updateDraftIfCurrent('t1', 'ip-1', {
+          description: 'Updated',
+        }),
+      ).resolves.toBe(false);
+      expect(query.update).toHaveBeenCalledWith(IssuanceProfile);
+      expect(query.set).toHaveBeenCalledWith({
+        description: 'Updated',
+      });
+      expect(query.where).toHaveBeenCalledWith('id = :id', { id: 'ip-1' });
+      expect(query.andWhere).toHaveBeenCalledWith('tenant_id = :tenantId', {
+        tenantId: 't1',
+      });
+      expect(query.andWhere).toHaveBeenCalledWith('status = :status', {
+        status: IssuanceProfileStatus.DRAFT,
+      });
+    });
+  });
+
   describe('deleteIfUnused', () => {
     const manager = {
       findOne: jest.fn(),

@@ -310,36 +310,36 @@ export class IssuanceProfileService {
       );
     }
 
-    if (dto.description !== undefined) {
-      profile.description = dto.description;
+    const updated = await this.issuanceProfileRepository.updateDraftIfCurrent(
+      tenantId,
+      id,
+      {
+        ...(dto.description !== undefined && { description: dto.description }),
+        ...(dto.defaults !== undefined && { defaults: dto.defaults }),
+        ...(dto.display !== undefined && { display: dto.display }),
+        ...(dto.metadata !== undefined && { metadata: dto.metadata }),
+        ...(dto.protocolHint !== undefined && {
+          protocolHint: dto.protocolHint,
+        }),
+      },
+    );
+
+    if (!updated) {
+      throw new ConflictException(
+        `Issuance profile '${id}' cannot be updated because it is no longer in draft status.`,
+      );
     }
 
-    if (dto.defaults !== undefined) {
-      profile.defaults = dto.defaults;
-    }
-
-    if (dto.display !== undefined) {
-      profile.display = dto.display;
-    }
-
-    if (dto.metadata !== undefined) {
-      profile.metadata = dto.metadata;
-    }
-
-    if (dto.protocolHint !== undefined) {
-      profile.protocolHint = dto.protocolHint;
-    }
-
-    const updated = await this.issuanceProfileRepository.save(profile);
+    const updatedProfile = await this.findById(tenantId, id, auth);
 
     await this.domainAudit.emit({
-      tenantId: updated.tenantId,
+      tenantId: updatedProfile.tenantId,
       action: AuditAction.UPDATE,
       resourceType: 'issuance_profile',
-      resourceId: updated.id,
+      resourceId: updatedProfile.id,
     });
 
-    return updated;
+    return updatedProfile;
   }
 
   public async remove(

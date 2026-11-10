@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import type { QueryDeepPartialEntity } from 'typeorm/query-builder/QueryPartialEntity';
 
 import { Cursor } from '../common/cursor-pagination';
 import { Credential } from '../credential/credential.entity';
@@ -204,6 +205,28 @@ export class IssuanceProfileRepository {
 
   public async save(profile: IssuanceProfile): Promise<IssuanceProfile> {
     return await this.repository.save(profile);
+  }
+
+  public async updateDraftIfCurrent(
+    tenantId: string,
+    id: string,
+    updates: Partial<
+      Pick<
+        IssuanceProfile,
+        'description' | 'defaults' | 'display' | 'metadata' | 'protocolHint'
+      >
+    >,
+  ): Promise<boolean> {
+    const result = await this.repository
+      .createQueryBuilder()
+      .update(IssuanceProfile)
+      .set(updates as QueryDeepPartialEntity<IssuanceProfile>)
+      .where('id = :id', { id })
+      .andWhere('tenant_id = :tenantId', { tenantId })
+      .andWhere('status = :status', { status: IssuanceProfileStatus.DRAFT })
+      .execute();
+
+    return (result.affected ?? 0) > 0;
   }
 
   public async deleteIfUnused(

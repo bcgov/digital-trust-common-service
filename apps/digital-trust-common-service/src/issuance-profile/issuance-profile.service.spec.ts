@@ -53,6 +53,7 @@ describe('IssuanceProfileService', () => {
   let mockResolve: jest.Mock;
   let mockTransitionStatus: jest.Mock;
   let mockDeleteIfUnused: jest.Mock;
+  let mockUpdateDraftIfCurrent: jest.Mock;
 
   const tenantId = '123e4567-e89b-12d3-a456-426614174001';
 
@@ -191,6 +192,7 @@ describe('IssuanceProfileService', () => {
       .fn()
       .mockResolvedValue({ connector: { id: mockConnectorId } });
     mockTransitionStatus = jest.fn().mockResolvedValue(true);
+    mockUpdateDraftIfCurrent = jest.fn().mockResolvedValue(true);
     mockDeleteIfUnused = jest
       .fn()
       .mockResolvedValue(IssuanceProfileDeleteResult.DELETED);
@@ -207,6 +209,7 @@ describe('IssuanceProfileService', () => {
             findPage: mockFindPage,
             findUsedProfileIds: mockFindUsedProfileIds,
             save: mockSave,
+            updateDraftIfCurrent: mockUpdateDraftIfCurrent,
             transitionStatus: mockTransitionStatus,
             deleteIfUnused: mockDeleteIfUnused,
           },
@@ -659,13 +662,20 @@ describe('IssuanceProfileService', () => {
 
   describe('update', () => {
     it('updates a draft profile', async () => {
-      mockFindById.mockResolvedValue({ ...mockProfile });
-      mockSave.mockImplementation((profile) => Promise.resolve(profile));
+      mockFindById
+        .mockResolvedValueOnce({ ...mockProfile })
+        .mockResolvedValueOnce({ ...mockProfile, description: 'Updated' });
 
       const dto: UpdateIssuanceProfileDto = { description: 'Updated' };
       const result = await service.update(tenantId, mockProfile.id, dto, auth);
 
       expect(result.description).toBe('Updated');
+      expect(mockUpdateDraftIfCurrent).toHaveBeenCalledWith(
+        tenantId,
+        mockProfile.id,
+        { description: 'Updated' },
+      );
+      expect(mockSave).not.toHaveBeenCalled();
       expect(mockEmit).toHaveBeenCalledWith({
         tenantId: mockProfile.tenantId,
         action: AuditAction.UPDATE,
@@ -683,7 +693,23 @@ describe('IssuanceProfileService', () => {
       await expect(
         service.update(tenantId, mockProfile.id, { description: 'nope' }, auth),
       ).rejects.toThrow(ConflictException);
+      expect(mockUpdateDraftIfCurrent).not.toHaveBeenCalled();
+    });
+
+    it('rejects when deletion wins after the initial draft read', async () => {
+      mockFindById.mockResolvedValueOnce({ ...mockProfile });
+      mockUpdateDraftIfCurrent.mockResolvedValue(false);
+
+      await expect(
+        service.update(
+          tenantId,
+          mockProfile.id,
+          { description: 'Updated' },
+          auth,
+        ),
+      ).rejects.toThrow(ConflictException);
       expect(mockSave).not.toHaveBeenCalled();
+      expect(mockEmit).not.toHaveBeenCalled();
     });
   });
 
