@@ -98,7 +98,9 @@ export function IssuanceProfilesPage() {
             key={tenant.id}
             tenantId={tenant.id}
             profiles={profiles}
-            definitions={definitionsQuery.data?.data ?? []}
+            definitions={
+              canReadDefinitions ? (definitionsQuery.data?.data ?? []) : []
+            }
           />
           {profilesQuery.hasNextPage && (
             <div>
