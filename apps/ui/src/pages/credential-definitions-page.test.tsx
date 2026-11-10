@@ -189,9 +189,9 @@ describe('CredentialDefinitionsPage', () => {
     await user.click(screen.getByRole('button', { name: 'Publish' }));
 
     const publishedRow = await screen.findByRole('row', {
-      name: /Shared visitor pass.*pending/,
+      name: /Shared visitor pass.*Pending/,
     });
-    expect(within(publishedRow).getByText('pending')).toBeVisible();
+    expect(within(publishedRow).getByText('Pending')).toBeVisible();
     await user.click(
       screen.getByRole('button', { name: 'Delete Shared visitor pass' }),
     );
@@ -252,7 +252,7 @@ describe('CredentialDefinitionsPage', () => {
         });
         expect(failedRow).toBeVisible();
         expect(
-          within(failedRow).getByText('failed').closest('.bcds-react-aria-Tag'),
+          within(failedRow).getByText('Failed').closest('.bcds-react-aria-Tag'),
         ).toHaveClass('red');
       },
       { timeout: 8_000 },
@@ -879,11 +879,9 @@ describe('CredentialDefinitionsPage', () => {
       name: /Employee badge/,
     });
     expect(within(existingRow).getByText('1.0.0')).toBeInTheDocument();
-    expect(within(existingRow).getByText('published')).toBeInTheDocument();
+    expect(within(existingRow).getByText('Published')).toBeInTheDocument();
 
-    await user.click(
-      screen.getByRole('button', { name: 'Register configuration' }),
-    );
+    await user.click(screen.getByRole('button', { name: 'Create credential' }));
     expect(
       await screen.findByRole('heading', {
         level: 1,
@@ -981,7 +979,7 @@ describe('CredentialDefinitionsPage', () => {
       });
     });
     expect(
-      await screen.findByRole('heading', { name: 'Credential Configurations' }),
+      await screen.findByRole('heading', { name: 'Credential configurations' }),
     ).toBeInTheDocument();
   });
 });

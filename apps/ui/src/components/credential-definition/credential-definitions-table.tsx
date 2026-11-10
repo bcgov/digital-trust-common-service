@@ -45,9 +45,7 @@ function displayStatus(
 function statusColor(status: keyof typeof STATUS_KEYS): StaticTagColor {
   if (status === 'published') return 'green';
   if (status === 'failed') return 'red';
-  if (status === 'draft' || status === 'pending' || status === 'unverified') {
-    return 'yellow';
-  }
+  if (status === 'pending' || status === 'unverified') return 'yellow';
   return 'grey';
 }
 
@@ -69,26 +67,26 @@ export function CredentialDefinitionsTable({
       <Table
         aria-label={t('credentialDefinitions.table.label')}
         variant="record"
-        className="min-w-[56rem] table-fixed"
+        className="min-w-[67rem] table-fixed"
       >
         <TableHeader>
           <TableRow>
             <TableHead scope="col">
               {t('credentialDefinitions.table.name')}
             </TableHead>
-            <TableHead scope="col" className="w-28">
+            <TableHead scope="col" className="w-50">
               {t('credentialDefinitions.table.version')}
             </TableHead>
-            <TableHead scope="col" className="w-32">
+            <TableHead scope="col" className="w-50">
               {t('credentialDefinitions.table.format')}
             </TableHead>
-            <TableHead scope="col" className="w-32">
-              {t('credentialDefinitions.table.status')}
-            </TableHead>
-            <TableHead scope="col" className="w-64">
+            <TableHead scope="col" className="w-50">
               {t('credentialDefinitions.table.connector')}
             </TableHead>
-            <TableHead scope="col" className="w-24 text-right">
+            <TableHead scope="col" className="w-50">
+              {t('credentialDefinitions.table.status')}
+            </TableHead>
+            <TableHead scope="col" className="w-18 text-right">
               <span className="sr-only">
                 {t('credentialDefinitions.table.actions')}
               </span>
@@ -156,12 +154,6 @@ export function CredentialDefinitionsTable({
                     ? t(FORMAT_KEYS[definition.format])
                     : t('credentialDefinitions.formats.unknown')}
                 </TableCell>
-                <TableCell>
-                  <StaticTag
-                    color={statusColor(currentStatus)}
-                    label={t(STATUS_KEYS[currentStatus])}
-                  />
-                </TableCell>
                 <TableCell className="whitespace-normal">
                   <div className="capitalize">
                     {definition.connector_type ??
@@ -175,6 +167,13 @@ export function CredentialDefinitionsTable({
                       {connectorUrl}
                     </p>
                   )}
+                </TableCell>
+                <TableCell>
+                  <StaticTag
+                    color={statusColor(currentStatus)}
+                    tagStyle="circular"
+                    label={t(STATUS_KEYS[currentStatus])}
+                  />
                 </TableCell>
                 <TableCell className="text-right">
                   <Button

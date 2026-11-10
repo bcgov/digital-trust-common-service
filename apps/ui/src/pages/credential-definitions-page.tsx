@@ -58,6 +58,7 @@ export function CredentialDefinitionsPage() {
     <div className="flex flex-1 flex-col gap-xlarge">
       <PageHeader
         title={t('credentialDefinitions.title')}
+        subtitle={t('credentialDefinitions.subtitle')}
         actions={
           tenant &&
           connectorsQuery.isSuccess &&
