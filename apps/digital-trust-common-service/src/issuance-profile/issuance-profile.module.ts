@@ -5,6 +5,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { AdapterRegistryModule } from '../adapter-registry/adapter-registry.module';
 import { AuditLogModule } from '../audit-log/audit-log.module';
 import { CredentialDefinitionModule } from '../credential-definition/credential-definition.module';
+import { OperationModule } from '../operation/operation.module';
 import { RateLimitModule } from '../rate-limit/rate-limit.module';
 import { TenantStatusModule } from '../tenant/tenant-status.module';
 
@@ -20,6 +21,7 @@ import { IssuanceProfileService } from './issuance-profile.service';
     AuditLogModule,
     AuthModule,
     CredentialDefinitionModule,
+    OperationModule,
     TenantStatusModule,
     RateLimitModule,
   ],

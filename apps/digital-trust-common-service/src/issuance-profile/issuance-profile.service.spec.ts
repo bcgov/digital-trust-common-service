@@ -10,9 +10,9 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
-import { plainToInstance } from 'class-transformer';
+import { instanceToPlain, plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
-import { QueryFailedError } from 'typeorm';
+import { DataSource, EntityManager, QueryFailedError } from 'typeorm';
 
 import { AdapterRegistry } from '../adapter-registry/adapter-registry.service';
 import { AuditAction } from '../audit-log/audit-log.entity';
@@ -25,13 +25,16 @@ import {
   CredentialDefinitionStatus,
 } from '../credential-definition/credential-definition.entity';
 import { CredentialDefinitionService } from '../credential-definition/credential-definition.service';
+import { OPERATION_TYPE } from '../operation/operation-type.constants';
+import { OperationState } from '../operation/operation.entity';
+import { OperationService } from '../operation/operation.service';
 import { TenantStatus } from '../tenant/tenant.entity';
 
 import { CreateIssuanceProfileDto } from './dto/create-issuance-profile.dto';
+import { IssuanceProfileResponseDto } from './dto/issuance-profile-response.dto';
 import { UpdateIssuanceProfileDto } from './dto/update-issuance-profile.dto';
 import {
   IssuanceProfile,
-  IssuanceProfileProtocolHint,
   IssuanceProfileStatus,
 } from './issuance-profile.entity';
 import { IssuanceProfileRepository } from './issuance-profile.repository';
@@ -48,6 +51,9 @@ describe('IssuanceProfileService', () => {
   let mockCredentialDefinitionFindById: jest.Mock;
   let mockResolve: jest.Mock;
   let mockTransitionStatus: jest.Mock;
+  let mockCreateOperation: jest.Mock;
+  let mockCompleteOperation: jest.Mock;
+  const manager = {} as EntityManager;
 
   const tenantId = '123e4567-e89b-12d3-a456-426614174001';
 
@@ -94,11 +100,12 @@ describe('IssuanceProfileService', () => {
     description: undefined,
     credentialDefinitionId: mockCredentialDefinition.id,
     credentialDefinition: mockCredentialDefinition,
-    attributeSchema: { given_name: { type: 'string', required: true } },
-    defaults: undefined,
+    claimConstraints: {
+      '/given_name': { value_type: 'string', required: true },
+    },
     display: undefined,
     metadata: {},
-    protocolHint: IssuanceProfileProtocolHint.AUTO,
+    delivery: { protocol: 'didcomm-v1' },
     status: IssuanceProfileStatus.DRAFT,
     createdAt: new Date(),
     updatedAt: new Date(),
@@ -133,15 +140,41 @@ describe('IssuanceProfileService', () => {
       .fn()
       .mockResolvedValue({ connector: { id: mockConnectorId } });
     mockTransitionStatus = jest.fn().mockResolvedValue(true);
+    mockCreateOperation = jest
+      .fn()
+      .mockImplementation((input) =>
+        Promise.resolve({ id: 'operation-id', ...input }),
+      );
+    mockCompleteOperation = jest
+      .fn()
+      .mockImplementation((id, state, result) =>
+        Promise.resolve({ id, state, result }),
+      );
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         IssuanceProfileService,
         {
+          provide: DataSource,
+          useValue: {
+            transaction: (
+              work: (transactionManager: EntityManager) => Promise<unknown>,
+            ) => work(manager),
+          },
+        },
+        {
+          provide: OperationService,
+          useValue: {
+            createOperation: mockCreateOperation,
+            transitionState: mockCompleteOperation,
+          },
+        },
+        {
           provide: IssuanceProfileRepository,
           useValue: {
             create: mockCreate,
             findById: mockFindById,
+            findForUpdate: (): unknown => mockFindById(),
             findByNameAndVersion: mockFindByNameAndVersion,
             findPage: mockFindPage,
             save: mockSave,
@@ -175,7 +208,10 @@ describe('IssuanceProfileService', () => {
       name: 'drivers-license',
       version: '1.0',
       credentialDefinitionId: mockCredentialDefinition.id,
-      attributeSchema: { given_name: { type: 'string', required: true } },
+      claimConstraints: {
+        '/given_name': { value_type: 'string', required: true },
+      },
+      delivery: { protocol: 'didcomm-v1' },
     };
 
     it('creates a profile in draft status', async () => {
@@ -200,8 +236,10 @@ describe('IssuanceProfileService', () => {
           name: dto.name,
           version: dto.version,
           credentialDefinitionId: mockCredentialDefinition.id,
-          attributeSchema: dto.attributeSchema,
+          claimConstraints: dto.claimConstraints,
+          delivery: dto.delivery,
         }),
+        manager,
       );
       expect(mockEmit).toHaveBeenCalledWith({
         tenantId: mockProfile.tenantId,
@@ -209,9 +247,60 @@ describe('IssuanceProfileService', () => {
         resourceType: 'issuance_profile',
         resourceId: mockProfile.id,
       });
-      expect(result).toEqual(mockProfile);
+      expect(result.result).toEqual(
+        instanceToPlain(IssuanceProfileResponseDto.fromEntity(mockProfile)),
+      );
+      expect(mockCreateOperation).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId,
+          type: OPERATION_TYPE.ISSUANCE_PROFILE_CREATE,
+          request: {
+            method: 'POST',
+            path: `/api/v1/tenants/${tenantId}/profiles/issuance`,
+            body: instanceToPlain(dto),
+          },
+        }),
+        manager,
+      );
+      expect(mockCompleteOperation).toHaveBeenCalledWith(
+        'operation-id',
+        OperationState.COMPLETED,
+        result.result,
+        manager,
+        tenantId,
+      );
       expect(mockCreate.mock.calls[0][0]).not.toHaveProperty('format');
       expect(mockCreate.mock.calls[0][0]).not.toHaveProperty('connectorId');
+    });
+
+    it('stores an empty map when constraints are omitted', async () => {
+      mockCreate.mockResolvedValue(mockProfile);
+      await service.create(
+        tenantId,
+        { ...dto, claimConstraints: undefined },
+        auth,
+      );
+      expect(mockCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          claimConstraints: {},
+        }),
+        manager,
+      );
+    });
+
+    it('rejects an invalid default before persisting a profile', async () => {
+      await expect(
+        service.create(
+          tenantId,
+          {
+            ...dto,
+            claimConstraints: { '/given_name': { default: '', minLength: 1 } },
+          },
+          auth,
+        ),
+      ).rejects.toThrow(BadRequestException);
+      expect(mockCreate).not.toHaveBeenCalled();
+      expect(mockEmit).not.toHaveBeenCalled();
     });
 
     it('throws ConflictException when name/version already exists for tenant', async () => {
@@ -245,7 +334,8 @@ describe('IssuanceProfileService', () => {
           name: dto.name,
           version: dto.version,
           credential_definition_id: dto.credentialDefinitionId,
-          attribute_schema: dto.attributeSchema,
+          claim_constraints: dto.claimConstraints,
+          delivery: dto.delivery,
           connector_id: connectorId,
         });
 
@@ -287,6 +377,7 @@ describe('IssuanceProfileService', () => {
         expect.objectContaining({
           credentialDefinitionId: mockCredentialDefinition.id,
         }),
+        manager,
       );
       expect(mockCreate.mock.calls[0][0]).not.toHaveProperty('connectorId');
     });
@@ -338,10 +429,10 @@ describe('IssuanceProfileService', () => {
       expect(mockFindByNameAndVersion).not.toHaveBeenCalled();
     });
 
-    it('throws BadRequestException when attribute_schema is not a subset of attr_names', async () => {
+    it('throws BadRequestException for invalid claim constraints', async () => {
       const badDto: CreateIssuanceProfileDto = {
         ...dto,
-        attributeSchema: { unknown_attribute: { type: 'string' } },
+        claimConstraints: { '/given_name': { minLength: -1 } },
       };
       mockFindByNameAndVersion.mockResolvedValue(null);
 
@@ -384,12 +475,17 @@ describe('IssuanceProfileService', () => {
 
       const badDto: CreateIssuanceProfileDto = {
         ...dto,
-        attributeSchema: { anything: { type: 'string' } },
+        claimConstraints: { '/anything': { value_type: 'string' } },
       };
 
-      await expect(service.create(tenantId, badDto, auth)).resolves.toEqual(
-        mockProfile,
-      );
+      await expect(
+        service.create(tenantId, badDto, auth),
+      ).resolves.toMatchObject({
+        state: OperationState.COMPLETED,
+        result: instanceToPlain(
+          IssuanceProfileResponseDto.fromEntity(mockProfile),
+        ),
+      });
       expect(mockResolve).toHaveBeenCalledWith(tenantId, CredentialFormat.Mdl, {
         connectorId: mockConnectorId,
       });
@@ -581,6 +677,39 @@ describe('IssuanceProfileService', () => {
   });
 
   describe('update', () => {
+    it('updates delivery and claim constraints on a draft profile', async () => {
+      mockFindById.mockResolvedValue({ ...mockProfile });
+      mockSave.mockImplementation((profile) => Promise.resolve(profile));
+      const claimConstraints = { '/given_name': { minLength: 2 } };
+      const result = await service.update(
+        tenantId,
+        mockProfile.id,
+        {
+          claimConstraints,
+          delivery: { protocol: 'didcomm-v1' },
+        },
+        auth,
+      );
+      expect(result.result?.claim_constraints).toEqual(claimConstraints);
+      expect(result.result?.delivery).toEqual({ protocol: 'didcomm-v1' });
+    });
+
+    it('rejects invalid constraint edits before saving', async () => {
+      mockFindById.mockResolvedValue({ ...mockProfile });
+      await expect(
+        service.update(
+          tenantId,
+          mockProfile.id,
+          {
+            claimConstraints: { '/given_name': { minLength: 5, maxLength: 1 } },
+          },
+          auth,
+        ),
+      ).rejects.toThrow(BadRequestException);
+      expect(mockSave).not.toHaveBeenCalled();
+      expect(mockEmit).not.toHaveBeenCalled();
+    });
+
     it('updates a draft profile', async () => {
       mockFindById.mockResolvedValue({ ...mockProfile });
       mockSave.mockImplementation((profile) => Promise.resolve(profile));
@@ -588,7 +717,10 @@ describe('IssuanceProfileService', () => {
       const dto: UpdateIssuanceProfileDto = { description: 'Updated' };
       const result = await service.update(tenantId, mockProfile.id, dto, auth);
 
-      expect(result.description).toBe('Updated');
+      expect(result.result?.description).toBe('Updated');
+      expect(mockCreateOperation.mock.calls[0][0].type).toBe(
+        OPERATION_TYPE.ISSUANCE_PROFILE_UPDATE,
+      );
       expect(mockEmit).toHaveBeenCalledWith({
         tenantId: mockProfile.tenantId,
         action: AuditAction.UPDATE,
@@ -652,6 +784,7 @@ describe('IssuanceProfileService', () => {
           connectorId: mockConnectorId,
           format: mockCredentialDefinition.format,
         },
+        manager,
       );
       expect(mockEmit).toHaveBeenCalledWith({
         tenantId: mockProfile.tenantId,
@@ -659,7 +792,12 @@ describe('IssuanceProfileService', () => {
         resourceType: 'issuance_profile',
         resourceId: mockProfile.id,
       });
-      expect(result).toEqual(mockProfile);
+      expect(result.result).toEqual(
+        instanceToPlain(IssuanceProfileResponseDto.fromEntity(mockProfile)),
+      );
+      expect(mockCreateOperation.mock.calls[0][0].type).toBe(
+        OPERATION_TYPE.ISSUANCE_PROFILE_PUBLISH,
+      );
     });
 
     it('requires a ready definition on the selected connector before publishing', async () => {
@@ -738,6 +876,7 @@ describe('IssuanceProfileService', () => {
           connectorId: mockConnectorId,
           format: mockCredentialDefinition.format,
         },
+        manager,
       );
     });
   });
@@ -758,6 +897,8 @@ describe('IssuanceProfileService', () => {
         mockProfile.id,
         IssuanceProfileStatus.PUBLISHED,
         IssuanceProfileStatus.DEPRECATED,
+        undefined,
+        manager,
       );
       expect(mockEmit).toHaveBeenCalledWith({
         tenantId: publishedProfile.tenantId,
@@ -765,7 +906,14 @@ describe('IssuanceProfileService', () => {
         resourceType: 'issuance_profile',
         resourceId: publishedProfile.id,
       });
-      expect(result).toEqual(publishedProfile);
+      expect(result.result).toEqual(
+        instanceToPlain(
+          IssuanceProfileResponseDto.fromEntity(publishedProfile),
+        ),
+      );
+      expect(mockCreateOperation.mock.calls[0][0].type).toBe(
+        OPERATION_TYPE.ISSUANCE_PROFILE_DEPRECATE,
+      );
     });
 
     it('throws ConflictException when the profile is not in published status', async () => {

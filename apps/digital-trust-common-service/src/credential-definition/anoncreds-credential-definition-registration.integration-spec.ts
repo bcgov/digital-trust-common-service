@@ -11,6 +11,7 @@ import { AppModule } from '../app.module';
 import { RegistrationBackendError } from '../common/registration-backend-error';
 import { ConnectorType } from '../connection/connection.entity';
 import { Connector } from '../connector/connector.entity';
+import { OperationResponseDto } from '../operation/dto/operation-response.dto';
 import { Operation, OperationState } from '../operation/operation.entity';
 import { Tenant } from '../tenant/tenant.entity';
 
@@ -177,8 +178,67 @@ describe('credential definition registration (integration)', () => {
       tenantId: tenant.id,
     });
     expect(completed.state).toBe(OperationState.COMPLETED);
+    expect(OperationResponseDto.fromEntity(completed).steps).toEqual([
+      { type: 'schema.register', state: 'completed' },
+      { type: 'credential-definition.register', state: 'completed' },
+      { type: 'revocation.setup', state: 'completed' },
+    ]);
     expect(port.publishSchema).toHaveBeenCalledTimes(1);
     expect(port.publishDefinition).toHaveBeenCalledTimes(1);
+  });
+
+  it('exposes waiting schema endorsement without completing the parent', async () => {
+    port.publishSchema.mockResolvedValueOnce({
+      state: 'wait',
+      jobId: 'schema-job',
+    });
+    const operation = await service.create(tenant.id, dto, auth);
+    const row = await db.getRepository(CredentialDefinition).findOneByOrFail({
+      tenantId: tenant.id,
+      registrationOperationId: operation.id,
+    });
+    await worker.process(tenant.id, row.id);
+    const waiting = await db.getRepository(Operation).findOneByOrFail({
+      tenantId: tenant.id,
+      id: operation.id,
+    });
+    expect(waiting.state).toBe(OperationState.PROCESSING);
+    expect(OperationResponseDto.fromEntity(waiting).steps).toEqual([
+      { type: 'schema.register', state: 'waiting' },
+      { type: 'credential-definition.register', state: 'pending' },
+      { type: 'revocation.setup', state: 'pending' },
+    ]);
+    expect(port.publishDefinition).not.toHaveBeenCalled();
+  });
+
+  it('skips revocation setup when disabled on the registered definition', async () => {
+    const operation = await service.create(
+      tenant.id,
+      {
+        ...dto,
+        options: {
+          format: CredentialDefinitionFormat.ANONCREDS,
+          tag: 'default',
+          status: { revocation: { enabled: false } },
+        },
+      },
+      auth,
+    );
+    const row = await db.getRepository(CredentialDefinition).findOneByOrFail({
+      tenantId: tenant.id,
+      registrationOperationId: operation.id,
+    });
+    await worker.process(tenant.id, row.id);
+    const completed = await db.getRepository(Operation).findOneByOrFail({
+      tenantId: tenant.id,
+      id: operation.id,
+    });
+    expect(OperationResponseDto.fromEntity(completed).steps).toEqual([
+      { type: 'schema.register', state: 'completed' },
+      { type: 'credential-definition.register', state: 'completed' },
+      { type: 'revocation.setup', state: 'skipped' },
+    ]);
+    expect(port.verifyRevocation).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -329,6 +389,11 @@ describe('credential definition registration (integration)', () => {
       id: operation.id,
     });
     expect(failed.state).toBe(OperationState.FAILED);
+    expect(OperationResponseDto.fromEntity(failed).steps).toEqual([
+      { type: 'schema.register', state: 'failed' },
+      { type: 'credential-definition.register', state: 'pending' },
+      { type: 'revocation.setup', state: 'pending' },
+    ]);
     expect(failed.result).toMatchObject({
       credential_definition_id: row.id,
       code: 'REGISTRATION_FAILED',

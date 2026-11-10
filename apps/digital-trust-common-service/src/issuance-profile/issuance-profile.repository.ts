@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { EntityManager, Repository } from 'typeorm';
 
 import { Cursor } from '../common/cursor-pagination';
 import {
@@ -34,13 +34,32 @@ export class IssuanceProfileRepository {
 
   public async create(
     profile: Partial<IssuanceProfile>,
+    manager?: EntityManager,
   ): Promise<IssuanceProfile> {
-    const entity = this.repository.create(profile);
-    return await this.repository.save(entity);
+    const repository =
+      manager?.getRepository(IssuanceProfile) ?? this.repository;
+    const entity = repository.create(profile);
+    return await repository.save(entity);
   }
 
-  public async findById(id: string): Promise<IssuanceProfile | null> {
-    return await this.repository.findOne({ where: { id } });
+  public async findById(
+    id: string,
+    manager?: EntityManager,
+  ): Promise<IssuanceProfile | null> {
+    return await (
+      manager?.getRepository(IssuanceProfile) ?? this.repository
+    ).findOne({ where: { id } });
+  }
+
+  public async findForUpdate(
+    tenantId: string,
+    id: string,
+    manager: EntityManager,
+  ): Promise<IssuanceProfile | null> {
+    return manager.getRepository(IssuanceProfile).findOne({
+      where: { id, tenantId },
+      lock: { mode: 'pessimistic_write' },
+    });
   }
 
   public async findByTenant(tenantId: string): Promise<IssuanceProfile[]> {
@@ -152,8 +171,9 @@ export class IssuanceProfileRepository {
       connectorId: string;
       format: CredentialDefinitionFormat;
     },
+    manager?: EntityManager,
   ): Promise<boolean> {
-    const query = this.repository
+    const query = (manager?.getRepository(IssuanceProfile) ?? this.repository)
       .createQueryBuilder()
       .update(IssuanceProfile)
       .set({ status: toStatus })
@@ -195,7 +215,12 @@ export class IssuanceProfileRepository {
     return (result.affected ?? 0) > 0;
   }
 
-  public async save(profile: IssuanceProfile): Promise<IssuanceProfile> {
-    return await this.repository.save(profile);
+  public async save(
+    profile: IssuanceProfile,
+    manager?: EntityManager,
+  ): Promise<IssuanceProfile> {
+    return await (
+      manager?.getRepository(IssuanceProfile) ?? this.repository
+    ).save(profile);
   }
 }

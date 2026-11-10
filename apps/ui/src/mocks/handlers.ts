@@ -445,6 +445,20 @@ export const handlers = [
         batch_id: null,
         type: 'credential-definition.register',
         state: 'pending',
+        steps:
+          body.options.format === 'anoncreds'
+            ? [
+                { type: 'schema.register', state: 'pending' },
+                { type: 'credential-definition.register', state: 'pending' },
+                {
+                  type: 'revocation.setup',
+                  state:
+                    body.options.status?.revocation?.enabled === false
+                      ? 'skipped'
+                      : 'pending',
+                },
+              ]
+            : [{ type: 'credential-definition.register', state: 'pending' }],
         created_at: now,
         updated_at: now,
         result: { credential_definition_id: definition.id },

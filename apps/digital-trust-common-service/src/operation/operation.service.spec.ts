@@ -382,6 +382,26 @@ describe('OperationService', () => {
       expect(jest.getTimerCount()).toBe(0);
     });
 
+    it('returns on a step change while the parent remains processing', async () => {
+      const initial = buildOperation({
+        type: OPERATION_TYPE.CREDENTIAL_DEFINITION_REGISTER,
+        state: OperationState.PROCESSING,
+        request: { ...baseRequest, body: { options: { format: 'anoncreds' } } },
+        result: { registration: { stage: 'awaiting_schema_endorsement' } },
+      });
+      const progressed = {
+        ...initial,
+        result: { registration: { stage: 'awaiting_definition_endorsement' } },
+      };
+      mockFindByIdForTenant
+        .mockResolvedValueOnce(initial)
+        .mockResolvedValue(progressed);
+      const pending = service.waitForStatusForTenant('t1', 'op-1', 30);
+      await jest.advanceTimersByTimeAsync(1000);
+      await expect(pending).resolves.toEqual(progressed);
+      expect(jest.getTimerCount()).toBe(0);
+    });
+
     it('caps the status wait at 30 seconds and returns the unchanged operation on timeout', async () => {
       let returned = false;
       const pending = service

@@ -752,12 +752,13 @@ export interface paths {
         put?: never;
         /**
          * Offer/issue a credential
-         * @description Offer unsigned subject claims via a published issuance profile or a direct
-         *     credential definition reference. Both paths require an active, published
+         * @description Offer unsigned subject claims via a published issuance profile.
+         *     The profile requires an active, published
          *     credential definition with a connector binding. Format is inferred from the
          *     stored definition, not parsed from an identifier.
          *
-         *     Only explicit didcomm-v1 delivery is supported. Its connection_id is a
+         *     Delivery protocol is inherited from the profile; only didcomm-v1 is supported.
+         *     The offer supplies delivery.connection_id, a
          *     tenant-owned local connection UUID resolved in the definition's wallet.
          *     OID4VCI is not yet supported.
          */
@@ -1174,7 +1175,7 @@ export interface paths {
          *     counts retain the ordinary { code, message } parent-level failure shape.
          *     At most 100 retained child errors are included; use /items?state=failed for
          *     all retained failures. Failure details remain subject to child TTL.
-         *     Prefer: wait=30 checks this operation's state once per second until it
+         *     Prefer: wait=30 checks this operation's state and steps once per second until either
          *     changes or the timeout expires. The wait is capped at 30 seconds;
          *     terminal operations return immediately. Timeout returns HTTP 200 with
          *     the normal operation envelope, without additional fields. First-view
@@ -1241,8 +1242,8 @@ export interface paths {
          *     shared opaque cursor format. Terminal children returned on a page receive
          *     first-view TTL treatment.
          *
-         *     Prefer: wait=30 checks all tenant-scoped child states and the parent once per
-         *     second until a state change or timeout, including changes outside the requested
+         *     Prefer: wait=30 checks all tenant-scoped child states and exchange progress and the parent once per
+         *     second until a progress change or timeout, including changes outside the requested
          *     page or state filter. Terminal parents return immediately. Timeout returns
          *     HTTP 200 with the normal paginated response and no additional fields.
          *     Client disconnects cancel polling; no database connection is held between checks.
@@ -2249,10 +2250,7 @@ export interface components {
             description?: string | null;
             /** Format: uuid */
             credential_definition_id?: string;
-            /** @description Declares attributes the consumer must supply */
-            attribute_schema?: Record<string, never>;
-            /** @description Pre-filled attribute values */
-            defaults?: Record<string, never> | null;
+            claim_constraints?: components["schemas"]["ClaimConstraints"];
             /** @description UI/metadata for rendering */
             display?: {
                 name?: string;
@@ -2264,7 +2262,7 @@ export interface components {
             } | null;
             /** @description Extensible metadata (OCA bundles, trust framework tags, etc.) */
             metadata?: Record<string, never> | null;
-            protocol_hint?: components["schemas"]["ProtocolHint"];
+            delivery?: components["schemas"]["IssuanceDelivery"];
             status?: components["schemas"]["ProfileStatus"];
             /** Format: date-time */
             created_at?: string;
@@ -2278,26 +2276,69 @@ export interface components {
             description?: string;
             /** Format: uuid */
             credential_definition_id: string;
-            /** @description Attribute definitions (names, types, required flags) */
-            attribute_schema: Record<string, never>;
-            defaults?: Record<string, never>;
+            claim_constraints?: components["schemas"]["ClaimConstraints"];
             display?: Record<string, never>;
             metadata?: Record<string, never>;
-            protocol_hint?: components["schemas"]["ProtocolHint"];
+            delivery: components["schemas"]["IssuanceDelivery"];
         };
         UpdateIssuanceProfileRequest: {
             description?: string;
-            defaults?: Record<string, never>;
+            claim_constraints?: components["schemas"]["ClaimConstraints"];
             display?: Record<string, never>;
             metadata?: Record<string, never>;
-            protocol_hint?: components["schemas"]["ProtocolHint"];
+            delivery?: components["schemas"]["IssuanceDelivery"];
+        };
+        IssuanceDelivery: {
+            /**
+             * @description Delivery protocol inherited by offers using this profile.
+             * @enum {string}
+             */
+            protocol: "didcomm-v1";
+        };
+        /**
+         * @description Optional RFC 6901 JSON Pointer map using the same paths as offer claims.
+         *     The root pointer is not supported. Pointers are at most 1024 characters
+         *     and 32 segments; prototype-related segments are rejected.
+         *     Defaults fill missing claims only, never explicit null or caller values.
+         *     All defaults are applied before validation. Missing optional claims skip
+         *     validation. These rules supplement, never replace, definition validation.
+         */
+        ClaimConstraints: {
+            [key: string]: components["schemas"]["ClaimConstraint"];
+        };
+        ClaimConstraint: {
+            /**
+             * @description Expected JSON value type; no coercion.
+             * @enum {string}
+             */
+            value_type?: "string" | "number" | "integer" | "boolean" | "object" | "array" | "null";
+            /**
+             * @description Enforced string format, not an annotation.
+             * @enum {string}
+             */
+            format?: "date" | "date-time" | "email" | "uri";
+            /** @default false */
+            required: boolean;
+            /** @description JSON value inserted only when the pointed-to claim is missing. */
+            default?: unknown;
+            enum?: unknown[];
+            /** @description RE2 regular expression, substring matching unless anchored. */
+            pattern?: string;
+            /** @description Minimum string length in Unicode code points. */
+            minLength?: number;
+            /** @description Maximum string length in Unicode code points. */
+            maxLength?: number;
+            minimum?: number;
+            maximum?: number;
+            minItems?: number;
+            maxItems?: number;
         };
         /** @enum {string} */
         ProfileStatus: "draft" | "published" | "deprecated";
         /**
          * @description Protocol hint for delivery. Valid values depend on context:
-         *     - Issuance profiles: didcomm, oid4vci, auto
          *     - Verification profiles: didcomm, oid4vp, auto
+         *     Issuance profiles use explicit delivery.protocol instead.
          *     Server validates that the value is appropriate for the profile type.
          * @default auto
          * @enum {string}
@@ -2355,27 +2396,29 @@ export interface components {
             protocol_hint?: components["schemas"]["ProtocolHint"];
         };
         /**
-         * @description Exactly one source is required. Format is inferred from stored metadata.
-         *     credential contains unsigned proposed claims, not a protocol offer or
-         *     a signed W3C credential. AnonCreds maps flat scalars to preview attributes.
+         * @description A published profile is required. Format and delivery protocol are inherited.
+         *     claims maps RFC 6901 JSON Pointers to unsigned proposed values, using the
+         *     same paths as profile claim_constraints. Profile defaults fill absent
+         *     values before constraints and definition validation. This is not a
+         *     protocol offer or a signed W3C credential. AnonCreds maps flat scalars
+         *     to preview attributes.
          */
         OfferCredentialRequest: {
             /** @description UUID or "name/version" string (e.g., "drivers-license/1.0") */
-            profile_id?: string;
+            profile_id: string;
             /**
-             * Format: uuid
-             * @description Local definition reference (bypasses profile)
+             * @description RFC 6901 JSON Pointer to value map; empty maps may use profile defaults.
+             *     Pointers are at most 1024 characters and 32 segments. Root pointers,
+             *     prototype-related segments, and overlapping ancestor/descendant
+             *     pointers are rejected. Escapes ~0 and ~1 represent ~ and /.
+             *     Missing parents become objects, not inferred arrays; supply arrays
+             *     as a value at their parent pointer. AnonCreds supports flat scalar
+             *     claims only; resolved nested values are rejected.
              */
-            credential_definition_id?: string;
-            credential: {
-                /** @description Flat scalar claims for AnonCreds; nested values are rejected */
-                credentialSubject: {
-                    [key: string]: unknown;
-                };
+            claims: {
+                [key: string]: unknown;
             };
             delivery: {
-                /** @enum {string} */
-                protocol: "didcomm-v1";
                 /**
                  * Format: uuid
                  * @description Local tenant-owned holder connection in the definition's wallet
@@ -2394,7 +2437,7 @@ export interface components {
                  */
                 auto_issue: boolean;
             };
-        } & (unknown | unknown);
+        };
         OfferCredentialBatchRequest: {
             /** @description UUID or "name/version" — applied to all items */
             profile_id?: string;
@@ -2506,6 +2549,19 @@ export interface components {
             updated_at: string;
         };
         /**
+         * @description Identifies the action performed by an operation
+         * @enum {string}
+         */
+        OperationType: "credential-definition.register" | "credential.offer" | "credential.issue" | "credential.offer-batch" | "credential.accept" | "credential.reject" | "credential.revoke" | "credential.revoke-batch" | "presentation.request" | "connection.create" | "issuance-profile.create" | "issuance-profile.update" | "issuance-profile.publish" | "issuance-profile.deprecate";
+        /** @enum {string} */
+        OperationStepType: "schema.register" | "credential-definition.register" | "revocation.setup" | "issuance-profile.create" | "issuance-profile.update" | "issuance-profile.publish" | "issuance-profile.deprecate" | "credential-offer.send" | "credential-request.receive" | "credential.issue";
+        /** @enum {string} */
+        OperationStepState: "pending" | "processing" | "waiting" | "completed" | "failed" | "skipped";
+        OperationStep: {
+            type: components["schemas"]["OperationStepType"];
+            state: components["schemas"]["OperationStepState"];
+        };
+        /**
          * @description Uniform envelope for all async and sync operations. The `result` field
          *     semantics depend on `(type, state)`.
          */
@@ -2524,24 +2580,35 @@ export interface components {
              * @description Stable local credential exchange UUID, present when linked.
              */
             exchange_id?: string;
-            /**
-             * @description Operation type. Known values:
-             *     `credential-definition.register`, `credential.offer`, `credential.issue`, `credential.offer-batch`,
-             *     `credential.accept`, `credential.reject`,
-             *     `credential.revoke`, `credential.revoke-batch`,
-             *     `presentation.request`, `connection.create`
-             * @example credential.offer
-             * @example credential.issue
-             * @example credential.offer-batch
-             * @example credential.accept
-             * @example credential.reject
-             * @example credential.revoke
-             * @example credential.revoke-batch
-             * @example presentation.request
-             * @example connection.create
-             */
-            type: string;
+            type: components["schemas"]["OperationType"];
             state: components["schemas"]["OperationState"];
+            /**
+             * @description Ordered steps projected from durable workflow progress, not separately
+             *     addressable operations. Batch children remain under /items.
+             *     AnonCreds registration resolves or reuses the schema and definition,
+             *     then verifies backend revocation readiness (skipped when disabled).
+             *     Local profile mutations have one step. Credential offers keep the
+             *     same parent through offer send, holder request, and issuance.
+             *     waiting means external progress or explicit issuance is required.
+             *     Unsupported operation types have an empty array. Terminal exchange
+             *     failures without retained stage evidence leave steps pending rather
+             *     than inventing a failed step; consult the parent state and result.
+             * @example [
+             *       {
+             *         "type": "credential-offer.send",
+             *         "state": "completed"
+             *       },
+             *       {
+             *         "type": "credential-request.receive",
+             *         "state": "waiting"
+             *       },
+             *       {
+             *         "type": "credential.issue",
+             *         "state": "pending"
+             *       }
+             *     ]
+             */
+            steps: components["schemas"]["OperationStep"][];
             /** Format: date-time */
             created_at: string;
             /** Format: date-time */
@@ -2552,6 +2619,8 @@ export interface components {
              *       includes { credential_definition_id } immediately
              *     - completed: operation-type-specific data
              *       (exchange-linked actions return the local { exchange_id })
+             *     - completed issuance-profile.create/update/publish/deprecate:
+             *       the full IssuanceProfile snapshot directly in result
              *     - failed: { code, message }; credential registration additionally
              *       retains credential_definition_id, external_id, and registration
              *       progress/correlation identifiers.
@@ -4060,13 +4129,13 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Issuance profile created (draft status) */
+            /** @description Completed issuance-profile.create operation; result contains the draft profile */
             201: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["IssuanceProfile"];
+                    "application/json": components["schemas"]["Operation"];
                 };
             };
             /** @description Credential definition not found */
@@ -4124,13 +4193,13 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Profile updated */
+            /** @description Completed issuance-profile.update operation; result contains the updated profile */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["IssuanceProfile"];
+                    "application/json": components["schemas"]["Operation"];
                 };
             };
             /** @description Cannot update a published or deprecated profile */
@@ -4157,13 +4226,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Profile published */
+            /** @description Completed issuance-profile.publish operation; result contains the published profile */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["IssuanceProfile"];
+                    "application/json": components["schemas"]["Operation"];
                 };
             };
             /** @description The credential definition is not published, or its connector no longer exists, is inactive, or its adapter no longer resolves */
@@ -4199,13 +4268,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Profile deprecated */
+            /** @description Completed issuance-profile.deprecate operation; result contains the deprecated profile */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["IssuanceProfile"];
+                    "application/json": components["schemas"]["Operation"];
                 };
             };
             /** @description Profile is not in published status */

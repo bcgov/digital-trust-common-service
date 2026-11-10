@@ -14,11 +14,8 @@ import {
 import { CredentialDefinition } from '../credential-definition/credential-definition.entity';
 import { Tenant } from '../tenant/tenant.entity';
 
-export enum IssuanceProfileProtocolHint {
-  DIDCOMM = 'didcomm',
-  OID4VCI = 'oid4vci',
-  AUTO = 'auto',
-}
+import type { ClaimConstraints } from './claim-constraints';
+import { IssuanceDeliveryDto } from './dto/issuance-delivery.dto';
 
 export enum IssuanceProfileStatus {
   DRAFT = 'draft',
@@ -93,19 +90,11 @@ export class IssuanceProfile {
   public credentialDefinition!: CredentialDefinition;
 
   @ApiProperty({
-    description: 'Attributes/claims the consumer must supply',
-    example: { attributes: ['given_name', 'family_name'] },
+    description:
+      'JSON Pointer map of additional claim constraints and defaults',
   })
-  @Column({ name: 'attribute_schema', type: 'jsonb' })
-  public attributeSchema!: Record<string, unknown>;
-
-  @ApiProperty({
-    description: 'Pre-filled attribute values',
-    required: false,
-    nullable: true,
-  })
-  @Column({ type: 'jsonb', nullable: true })
-  public defaults?: Record<string, unknown> | null;
+  @Column({ name: 'claim_constraints', type: 'jsonb', default: () => "'{}'" })
+  public claimConstraints!: ClaimConstraints;
 
   @ApiProperty({
     description: 'UI/metadata display hints',
@@ -123,18 +112,11 @@ export class IssuanceProfile {
   public metadata!: Record<string, unknown>;
 
   @ApiProperty({
-    description: 'Preferred delivery protocol',
-    enum: IssuanceProfileProtocolHint,
-    example: IssuanceProfileProtocolHint.AUTO,
+    description: 'Delivery configuration inherited by offers',
+    type: IssuanceDeliveryDto,
   })
-  @Column({
-    name: 'protocol_hint',
-    type: 'enum',
-    enum: IssuanceProfileProtocolHint,
-    enumName: 'issuance_profile_protocol_hint',
-    default: IssuanceProfileProtocolHint.AUTO,
-  })
-  public protocolHint!: IssuanceProfileProtocolHint;
+  @Column({ type: 'jsonb' })
+  public delivery!: IssuanceDeliveryDto;
 
   @ApiProperty({
     description: 'Lifecycle status of the profile',

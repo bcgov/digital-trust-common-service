@@ -532,9 +532,9 @@ export class DevSeedService {
         version: def.version,
         description: def.description,
         credentialDefinitionId: credDef.id,
-        attributeSchema: def.attributeSchema,
+        claimConstraints: def.claimConstraints,
         metadata: { seed: true },
-        protocolHint: def.protocolHint,
+        delivery: def.delivery,
         status: def.status,
       };
 

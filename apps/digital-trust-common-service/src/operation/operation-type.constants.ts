@@ -2,11 +2,8 @@
  * The operation types this service creates, in one place so writers and readers
  * agree on the exact string rather than each repeating a literal.
  *
- * Deliberately a const object rather than a TypeScript enum or a database enum:
- * `openapi.yaml` declares `Operation.type` as an open string with these as known
- * values, and later slices add batch, presentation, and connection types. A
- * closed enum on the wire would break that contract and force a migration for
- * every new type; the column stays `varchar`.
+ * The API exposes these enum values; storage remains varchar so adding a
+ * supported operation does not require a database enum migration.
  */
 export const OPERATION_TYPE = {
   CREDENTIAL_DEFINITION_REGISTER: 'credential-definition.register',
@@ -19,6 +16,10 @@ export const OPERATION_TYPE = {
   CREDENTIAL_REVOKE_BATCH: 'credential.revoke-batch',
   PRESENTATION_REQUEST: 'presentation.request',
   CONNECTION_CREATE: 'connection.create',
+  ISSUANCE_PROFILE_CREATE: 'issuance-profile.create',
+  ISSUANCE_PROFILE_UPDATE: 'issuance-profile.update',
+  ISSUANCE_PROFILE_PUBLISH: 'issuance-profile.publish',
+  ISSUANCE_PROFILE_DEPRECATE: 'issuance-profile.deprecate',
 } as const;
 
 export type OperationType =
@@ -33,7 +34,7 @@ const KNOWN_OPERATION_TYPES = new Set<string>(Object.values(OPERATION_TYPE));
 
 /**
  * True when the type is one this service declares, rather than an arbitrary
- * string the open `varchar` column and open API contract both permit.
+ * string the `varchar` storage column permits.
  *
  * Exists for the business metrics in `common/telemetry/business-metrics.service.ts`:
  * `operation.type` is a metric dimension, and a dimension whose values are not

@@ -36,6 +36,12 @@ import { toPortCredentialFormat } from '../credential-definition/credential-defi
 import { CredentialExchangeRepository } from '../credential-exchange/credential-exchange.repository';
 import { CredentialExchangeService } from '../credential-exchange/credential-exchange.service';
 import {
+  applyClaimConstraints,
+  ClaimConstraints,
+  resolveClaimPointers,
+} from '../issuance-profile/claim-constraints';
+import { IssuanceDeliveryDto } from '../issuance-profile/dto/issuance-delivery.dto';
+import {
   IssuanceProfile,
   IssuanceProfileStatus,
 } from '../issuance-profile/issuance-profile.entity';
@@ -51,19 +57,13 @@ import {
   resolveProtocolOutcome,
 } from '../protocol-state-change/state-mapping';
 
-import {
-  mergeAttributeDefaults,
-  toCredentialAttributes,
-} from './attribute-mapping.util';
+import { toCredentialAttributes } from './attribute-mapping.util';
 import { Credential, CredentialState } from './credential.entity';
 import { CredentialRepository } from './credential.repository';
 import { OfferCredentialRequestDto } from './dto/offer-credential-request.dto';
 
 /**
- * Everything resolveCredentialSource() needs to build the port-layer
- * OfferCredentialRequest and the new Credential row, regardless of whether
- * the caller went through profile mode or legacy (credential_definition_id)
- * mode.
+ * Profile configuration needed to build the port request and credential.
  */
 interface ResolvedCredentialSource {
   /** Local DB UUID — only for internal profile/metadata relationships. */
@@ -76,14 +76,15 @@ interface ResolvedCredentialSource {
   readonly format: CredentialDefinitionFormat;
   readonly connectorId?: string;
   readonly schemaDefinition: Readonly<Record<string, unknown>>;
-  readonly defaults: Readonly<Record<string, unknown>>;
-  readonly issuanceProfileId: string | null;
+  readonly claimConstraints: ClaimConstraints;
+  readonly delivery: IssuanceDeliveryDto;
+  readonly issuanceProfileId: string;
 }
 
 /**
  * Backs POST /tenants/:tenantId/credentials/offer.
  *
- * Format comes from stored metadata; delivery is explicit and currently
+ * Format and delivery come from the published profile and are currently
  * limited to DIDComm v1. Subject claims are unsigned proposed content.
  *
  * The resulting Operation's `externalId` carries the back-end agent's
@@ -144,18 +145,23 @@ export class CredentialOfferService {
     tenantId: string,
     dto: OfferCredentialRequestDto,
   ): Promise<Operation> {
-    if (dto.delivery?.protocol !== 'didcomm-v1' || !dto.delivery.connectionId) {
+    if (!dto.delivery?.connectionId || !dto.profileId) {
       throw new BadRequestException(
-        'A didcomm-v1 delivery connection is required',
+        'A profile_id and delivery connection are required',
       );
     }
 
-    const source = await this.resolveCredentialSource(tenantId, dto);
+    const source = await this.resolveFromProfile(tenantId, dto.profileId);
+    if (source.delivery.protocol !== 'didcomm-v1') {
+      throw new BadRequestException(
+        'Profile delivery protocol is not supported',
+      );
+    }
     const portFormat = this.resolvePortFormat(source.format);
 
-    const attributes = mergeAttributeDefaults(
-      source.defaults,
-      dto.credential.credentialSubject,
+    const attributes = applyClaimConstraints(
+      resolveClaimPointers(dto.claims),
+      source.claimConstraints,
     );
     if (
       portFormat === PortCredentialFormat.AnonCreds &&
@@ -219,7 +225,7 @@ export class CredentialOfferService {
             connectorId: resolvedAdapter.connector.id,
             connectionId: connection.id,
             role: 'issuer',
-            protocol: dto.delivery.protocol,
+            protocol: source.delivery.protocol,
             format: source.format,
             state: 'pending',
           },
@@ -249,9 +255,7 @@ export class CredentialOfferService {
             state: CredentialState.OFFERED,
             operationId: createdOperation.id,
             exchangeId: exchange.id,
-            metadata: source.issuanceProfileId
-              ? {}
-              : { credentialDefinitionId: source.credentialDefinitionId },
+            metadata: {},
           },
           manager,
         );
@@ -264,27 +268,6 @@ export class CredentialOfferService {
       ...offerRequest,
       connectionId: connection.externalConnectionId!,
     });
-  }
-
-  private async resolveCredentialSource(
-    tenantId: string,
-    dto: OfferCredentialRequestDto,
-  ): Promise<ResolvedCredentialSource> {
-    const hasProfile = dto.profileId !== undefined;
-    const hasCredentialDefinition = dto.credentialDefinitionId !== undefined;
-
-    if (hasProfile === hasCredentialDefinition) {
-      throw new BadRequestException(
-        'Exactly one of profile_id or credential_definition_id must be provided',
-      );
-    }
-
-    return hasProfile
-      ? this.resolveFromProfile(tenantId, dto.profileId as string)
-      : this.resolveFromCredentialDefinition(
-          tenantId,
-          dto.credentialDefinitionId as string,
-        );
   }
 
   /**
@@ -350,11 +333,6 @@ export class CredentialOfferService {
       );
     }
 
-    // Attribute validation needs the credential definition's own
-    // schema_definition shape (attr_names/schema_name/schema_version), not
-    // the profile's attribute_schema — see FormatValidator.validateAttributes.
-    // A definition since deactivated (soft-delete) behind a still-published
-    // profile is a request-input problem, not a server error.
     const credentialDefinition =
       await this.credentialDefinitionRepository.findById(
         profile.credentialDefinitionId,
@@ -374,39 +352,9 @@ export class CredentialOfferService {
       format: credentialDefinition.format,
       connectorId: credentialDefinition.connectorId ?? undefined,
       schemaDefinition: credentialDefinition.schemaDefinition,
-      defaults: profile.defaults ?? {},
+      claimConstraints: profile.claimConstraints,
+      delivery: profile.delivery,
       issuanceProfileId: profile.id,
-    };
-  }
-
-  /**
-   * Direct mode uses the definition's stored format and connector binding,
-   * without profile defaults.
-   */
-  private async resolveFromCredentialDefinition(
-    tenantId: string,
-    credentialDefinitionId: string,
-  ): Promise<ResolvedCredentialSource> {
-    const credentialDefinition =
-      await this.credentialDefinitionRepository.findById(
-        credentialDefinitionId,
-      );
-
-    if (!credentialDefinition || credentialDefinition.tenantId !== tenantId) {
-      throw new NotFoundException(
-        `Credential definition '${credentialDefinitionId}' was not found`,
-      );
-    }
-
-    this.assertDefinitionReady(credentialDefinition);
-    return {
-      credentialDefinitionId: credentialDefinition.id,
-      externalCredentialDefinitionId: credentialDefinition.externalId!,
-      format: credentialDefinition.format,
-      connectorId: credentialDefinition.connectorId ?? undefined,
-      schemaDefinition: credentialDefinition.schemaDefinition,
-      defaults: {},
-      issuanceProfileId: null,
     };
   }
 
@@ -491,13 +439,9 @@ export class CredentialOfferService {
     dto: OfferCredentialRequestDto,
   ): Record<string, unknown> {
     return {
-      ...(dto.profileId !== undefined ? { profile_id: dto.profileId } : {}),
-      ...(dto.credentialDefinitionId !== undefined
-        ? { credential_definition_id: dto.credentialDefinitionId }
-        : {}),
-      credential: { credentialSubject: dto.credential.credentialSubject },
+      profile_id: dto.profileId,
+      claims: dto.claims,
       delivery: {
-        protocol: dto.delivery.protocol,
         connection_id: dto.delivery.connectionId,
       },
       ...(dto.options !== undefined

@@ -38,9 +38,14 @@ import {
   CredentialDefinitionStatus,
 } from '../src/credential-definition/credential-definition.entity';
 import { CredentialExchange } from '../src/credential-exchange/credential-exchange.entity';
+import {
+  IssuanceProfile,
+  IssuanceProfileStatus,
+} from '../src/issuance-profile/issuance-profile.entity';
 import { JobsService } from '../src/jobs/jobs.service';
 import { OPERATION_TYPE } from '../src/operation/operation-type.constants';
 import { Operation, OperationState } from '../src/operation/operation.entity';
+import { OperationService } from '../src/operation/operation.service';
 import { ProtocolStateChangeService } from '../src/protocol-state-change/protocol-state-change.service';
 import { Tenant } from '../src/tenant/tenant.entity';
 
@@ -92,6 +97,8 @@ describe('Credential offer (e2e)', () => {
   let app: INestApplication<App>;
   let tenantRepo: Repository<Tenant>;
   let credentialDefinitionRepo: Repository<CredentialDefinition>;
+  let profileRepo: Repository<IssuanceProfile>;
+  let profile: IssuanceProfile;
   let operationRepo: Repository<Operation>;
   let credentialRepo: Repository<Credential>;
   let exchangeRepo: Repository<CredentialExchange>;
@@ -103,6 +110,7 @@ describe('Credential offer (e2e)', () => {
   let connection: Connection;
   let traction: TractionAdapter;
   let encryption: EncryptionService;
+  let operationService: OperationService;
   const backendRequest = jest.fn<
     Promise<{ data: unknown }>,
     [
@@ -141,6 +149,7 @@ describe('Credential offer (e2e)', () => {
       getRepositoryToken(CredentialDefinition),
     );
     operationRepo = moduleFixture.get(getRepositoryToken(Operation));
+    profileRepo = moduleFixture.get(getRepositoryToken(IssuanceProfile));
     credentialRepo = moduleFixture.get(getRepositoryToken(Credential));
     exchangeRepo = moduleFixture.get(getRepositoryToken(CredentialExchange));
     registry = moduleFixture.get(AdapterRegistry);
@@ -148,6 +157,7 @@ describe('Credential offer (e2e)', () => {
     connectionRepo = moduleFixture.get(getRepositoryToken(Connection));
     traction = moduleFixture.get(TractionAdapter);
     encryption = moduleFixture.get(EncryptionService);
+    operationService = moduleFixture.get(OperationService);
   });
 
   beforeEach(async () => {
@@ -195,6 +205,15 @@ describe('Credential offer (e2e)', () => {
         isActive: true,
       }),
     );
+    profile = await profileRepo.save({
+      tenantId: tenant.id,
+      name: 'diploma',
+      version: '1.0',
+      credentialDefinitionId: credentialDefinition.id,
+      claimConstraints: { '/given_name': { required: true, minLength: 1 } },
+      delivery: { protocol: 'didcomm-v1' },
+      status: IssuanceProfileStatus.PUBLISHED,
+    });
     connection = await connectionRepo.save({
       tenantId: tenant.id,
       connectorId: connector.id,
@@ -228,12 +247,11 @@ describe('Credential offer (e2e)', () => {
     const response = await request(app.getHttpServer())
       .post(`${API_BASE_PATH}/tenants/${tenant.id}/credentials/offer`)
       .send({
-        credential_definition_id: credentialDefinition.id,
+        profile_id: profile.id,
         delivery: {
-          protocol: 'didcomm-v1',
           connection_id: '123e4567-e89b-12d3-a456-426614174099',
         },
-        credential: { credentialSubject: { given_name: 'Alice' } },
+        claims: { '/given_name': 'Alice' },
       })
       .expect(400);
 
@@ -255,12 +273,11 @@ describe('Credential offer (e2e)', () => {
   });
 
   const offerBody = () => ({
-    credential_definition_id: credentialDefinition.id,
+    profile_id: profile.id,
     delivery: {
-      protocol: 'didcomm-v1',
       connection_id: connection.id,
     },
-    credential: { credentialSubject: { given_name: 'Alice' } },
+    claims: { '/given_name': 'Alice' },
     options: { auto_issue: false },
   });
 
@@ -302,6 +319,306 @@ describe('Credential offer (e2e)', () => {
     });
   };
 
+  it('creates, publishes, and offers through a profile with claim defaults and inherited delivery', async () => {
+    prepareBackend();
+    const body = {
+      name: 'configured-diploma',
+      version: '1.0',
+      credential_definition_id: credentialDefinition.id,
+      delivery: { protocol: 'didcomm-v1' },
+      claim_constraints: {
+        '/given_name': {
+          value_type: 'string',
+          required: true,
+          default: 'Alice',
+          minLength: 1,
+        },
+      },
+      display: { name: 'Diploma' },
+    };
+    const created = await request(app.getHttpServer())
+      .post(`${API_BASE_PATH}/tenants/${tenant.id}/profiles/issuance`)
+      .send(body)
+      .expect(201);
+    expect(created.body).toMatchObject({
+      type: 'issuance-profile.create',
+      state: 'completed',
+      steps: [{ type: 'issuance-profile.create', state: 'completed' }],
+      result: {
+        status: 'draft',
+        delivery: body.delivery,
+        claim_constraints: body.claim_constraints,
+        display: body.display,
+      },
+    });
+    const creation = created.body as { id: string; result: { id: string } };
+    expect(creation.result).not.toHaveProperty('attribute_schema');
+    expect(creation.result).not.toHaveProperty('defaults');
+    expect(creation.result).not.toHaveProperty('protocol_hint');
+    const createdProfile = creation.result;
+    await request(app.getHttpServer())
+      .post(
+        `${API_BASE_PATH}/tenants/${tenant.id}/profiles/issuance/${createdProfile.id}/publish`,
+      )
+      .expect(200)
+      .expect(({ body: published }: { body: unknown }) => {
+        expect(published).toMatchObject({
+          type: 'issuance-profile.publish',
+          state: 'completed',
+          steps: [{ type: 'issuance-profile.publish', state: 'completed' }],
+          result: { id: createdProfile.id, status: 'published' },
+        });
+      });
+    await request(app.getHttpServer())
+      .post(`${API_BASE_PATH}/tenants/${tenant.id}/credentials/offer`)
+      .send({
+        profile_id: createdProfile.id,
+        delivery: { connection_id: connection.id },
+        claims: {},
+      })
+      .expect(202);
+    const exchanges = await exchangeRepo.findBy({ tenantId: tenant.id });
+    expect(exchanges).toHaveLength(1);
+    expect(exchanges[0].protocol).toBe('didcomm-v1');
+    expect(backendRequest).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: {
+          auto_issue: true,
+          auto_remove: false,
+          auto_remove_on_failure: false,
+          connection_id: connection.externalConnectionId,
+          filter: {
+            anoncreds: { cred_def_id: credentialDefinition.externalId },
+          },
+          credential_preview: {
+            '@type':
+              'https://didcomm.org/issue-credential/2.0/credential-preview',
+            attributes: [{ name: 'given_name', value: 'Alice' }],
+          },
+        },
+      }),
+      false,
+    );
+  });
+
+  it('rejects invalid constraints without persisting a profile', async () => {
+    await request(app.getHttpServer())
+      .post(`${API_BASE_PATH}/tenants/${tenant.id}/profiles/issuance`)
+      .send({
+        name: 'invalid',
+        version: '1.0',
+        credential_definition_id: credentialDefinition.id,
+        delivery: { protocol: 'didcomm-v1' },
+        claim_constraints: { '/given_name': { default: '', minLength: 1 } },
+      })
+      .expect(400);
+    expect(await profileRepo.countBy({ tenantId: tenant.id })).toBe(1);
+    expect(await operationRepo.countBy({ tenantId: tenant.id })).toBe(0);
+  });
+
+  it('records all profile mutations as completed, tenant-scoped operations with immutable result snapshots', async () => {
+    prepareBackend();
+    const root = `${API_BASE_PATH}/tenants/${tenant.id}/profiles/issuance`;
+    const created = await request(app.getHttpServer())
+      .post(root)
+      .send({
+        name: 'profile-operations',
+        version: '1.0',
+        credential_definition_id: credentialDefinition.id,
+        delivery: { protocol: 'didcomm-v1' },
+      })
+      .expect(201);
+    const creation = created.body as { id: string; result: { id: string } };
+    const id = creation.result.id;
+    const updated = await request(app.getHttpServer())
+      .patch(`${root}/${id}`)
+      .send({ description: 'Updated profile' })
+      .expect(200);
+    expect(updated.body).toMatchObject({
+      type: 'issuance-profile.update',
+      state: 'completed',
+      result: { id, description: 'Updated profile', status: 'draft' },
+    });
+    const published = await request(app.getHttpServer())
+      .post(`${root}/${id}/publish`)
+      .expect(200);
+    expect(published.body).toMatchObject({
+      type: 'issuance-profile.publish',
+      state: 'completed',
+      result: { id, status: 'published' },
+    });
+    const deprecated = await request(app.getHttpServer())
+      .post(`${root}/${id}/deprecate`)
+      .expect(200);
+    expect(deprecated.body).toMatchObject({
+      type: 'issuance-profile.deprecate',
+      state: 'completed',
+      result: { id, status: 'deprecated' },
+    });
+    await request(app.getHttpServer())
+      .get(`${API_BASE_PATH}/tenants/${tenant.id}/operations/${creation.id}`)
+      .expect(200)
+      .expect(({ body }: { body: unknown }) => {
+        expect(body).toMatchObject({
+          type: 'issuance-profile.create',
+          state: 'completed',
+          result: { id, status: 'draft' },
+        });
+      });
+    const otherTenant = await tenantRepo.save(
+      tenantRepo.create({
+        name: 'Other profile tenant',
+        slug: `other-profile-${tenant.id}`,
+        config: {},
+      }),
+    );
+    try {
+      await request(app.getHttpServer())
+        .get(
+          `${API_BASE_PATH}/tenants/${otherTenant.id}/operations/${creation.id}`,
+        )
+        .expect(404);
+      await request(app.getHttpServer())
+        .post(
+          `${API_BASE_PATH}/tenants/${otherTenant.id}/profiles/issuance/${id}/publish`,
+        )
+        .expect(404);
+      expect(await operationRepo.countBy({ tenantId: otherTenant.id })).toBe(0);
+    } finally {
+      await tenantRepo.delete(otherTenant.id);
+    }
+    await request(app.getHttpServer())
+      .patch(`${root}/${id}`)
+      .send({ description: 'cannot edit' })
+      .expect(409);
+    expect(await operationRepo.countBy({ tenantId: tenant.id })).toBe(4);
+    const stored = await operationRepo.findBy({ tenantId: tenant.id });
+    expect(
+      stored.every(
+        (operation) =>
+          operation.state === OperationState.COMPLETED && !operation.exchangeId,
+      ),
+    ).toBe(true);
+    expect(backendRequest).not.toHaveBeenCalled();
+  });
+
+  it.each(['create', 'update', 'publish', 'deprecate'])(
+    'rolls back profile %s if operation persistence fails',
+    async (action) => {
+      prepareBackend();
+      if (action === 'update' || action === 'publish') {
+        await profileRepo.update(profile.id, {
+          status: IssuanceProfileStatus.DRAFT,
+        });
+      }
+      const before = await profileRepo.findOneByOrFail({
+        id: profile.id,
+        tenantId: tenant.id,
+      });
+      const spy = jest
+        .spyOn(operationService, 'transitionState')
+        .mockRejectedValueOnce(new Error('Operation persistence failed'));
+      try {
+        const root = `${API_BASE_PATH}/tenants/${tenant.id}/profiles/issuance`;
+        if (action === 'create') {
+          await request(app.getHttpServer())
+            .post(root)
+            .send({
+              name: 'rollback-profile',
+              version: '1.0',
+              credential_definition_id: credentialDefinition.id,
+              delivery: { protocol: 'didcomm-v1' },
+            })
+            .expect(500);
+        } else if (action === 'update') {
+          await request(app.getHttpServer())
+            .patch(`${root}/${profile.id}`)
+            .send({ description: 'must roll back' })
+            .expect(500);
+        } else {
+          await request(app.getHttpServer())
+            .post(`${root}/${profile.id}/${action}`)
+            .expect(500);
+        }
+        expect(spy).toHaveBeenCalledTimes(1);
+        expect(await profileRepo.countBy({ tenantId: tenant.id })).toBe(1);
+        const after = await profileRepo.findOneByOrFail({
+          id: profile.id,
+          tenantId: tenant.id,
+        });
+        expect(after).toEqual(before);
+        expect(await operationRepo.countBy({ tenantId: tenant.id })).toBe(0);
+      } finally {
+        spy.mockRestore();
+      }
+    },
+  );
+
+  it('rejects constraint violations before creating operations or calling the backend', async () => {
+    prepareBackend();
+    await request(app.getHttpServer())
+      .post(`${API_BASE_PATH}/tenants/${tenant.id}/credentials/offer`)
+      .send({
+        ...offerBody(),
+        claims: { '/given_name': '' },
+      })
+      .expect(400);
+    expect(backendRequest).not.toHaveBeenCalled();
+    expect(await operationRepo.countBy({ tenantId: tenant.id })).toBe(0);
+    expect(await exchangeRepo.countBy({ tenantId: tenant.id })).toBe(0);
+  });
+
+  it('rejects direct-definition offers and caller-selected protocols', async () => {
+    await request(app.getHttpServer())
+      .post(`${API_BASE_PATH}/tenants/${tenant.id}/credentials/offer`)
+      .send({
+        ...offerBody(),
+        profile_id: undefined,
+        credential_definition_id: credentialDefinition.id,
+      })
+      .expect(400);
+    await request(app.getHttpServer())
+      .post(`${API_BASE_PATH}/tenants/${tenant.id}/credentials/offer`)
+      .send({
+        ...offerBody(),
+        delivery: { connection_id: connection.id, protocol: 'didcomm-v1' },
+      })
+      .expect(400);
+    expect(await operationRepo.countBy({ tenantId: tenant.id })).toBe(0);
+  });
+
+  it.each([
+    { given_name: 'Alice' },
+    { '/bad~2escape': 'Alice' },
+    { '/__proto__/polluted': true },
+    { '/given_name': {}, '/given_name/first': 'Alice' },
+    { '/given_name/first': 'Alice' },
+  ])(
+    'rejects invalid claim pointers and nested AnonCreds claims %p',
+    async (claims) => {
+      prepareBackend();
+      await request(app.getHttpServer())
+        .post(`${API_BASE_PATH}/tenants/${tenant.id}/credentials/offer`)
+        .send({ ...offerBody(), claims })
+        .expect(400);
+      expect(backendRequest).not.toHaveBeenCalled();
+      expect(await operationRepo.countBy({ tenantId: tenant.id })).toBe(0);
+      expect(await exchangeRepo.countBy({ tenantId: tenant.id })).toBe(0);
+    },
+  );
+
+  it('rejects the legacy credentialSubject wrapper', async () => {
+    await request(app.getHttpServer())
+      .post(`${API_BASE_PATH}/tenants/${tenant.id}/credentials/offer`)
+      .send({
+        ...offerBody(),
+        claims: undefined,
+        credential: { credentialSubject: { given_name: 'Alice' } },
+      })
+      .expect(400);
+    expect(await operationRepo.countBy({ tenantId: tenant.id })).toBe(0);
+  });
+
   it('sends once through the real adapter and reconciles monotonically without duplicate notifications', async () => {
     prepareBackend();
     const offered = await request(app.getHttpServer())
@@ -313,6 +630,31 @@ describe('Credential offer (e2e)', () => {
     expect(operationId).toEqual(expect.any(String));
     expect(exchangeId).toEqual(expect.any(String));
     expect(exchangeId).not.toBe(`exchange-${tenant.id}`);
+    const sentSteps = [
+      { type: 'credential-offer.send', state: 'completed' },
+      { type: 'credential-request.receive', state: 'waiting' },
+      { type: 'credential.issue', state: 'pending' },
+    ];
+    expect(offered.body).toMatchObject({
+      state: 'processing',
+      steps: sentSteps,
+    });
+    await request(app.getHttpServer())
+      .get(`${API_BASE_PATH}/tenants/${tenant.id}/operations/${operationId}`)
+      .expect(200)
+      .expect(({ body }: { body: unknown }) => {
+        expect(body).toMatchObject({ id: operationId, steps: sentSteps });
+      });
+    await request(app.getHttpServer())
+      .get(`${API_BASE_PATH}/tenants/${tenant.id}/operations`)
+      .expect(200)
+      .expect(({ body }: { body: { data: unknown[] } }) => {
+        expect(body.data).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({ id: operationId, steps: sentSteps }),
+          ]),
+        );
+      });
     const sent = backendRequest.mock.calls.find(
       ([config]) => config.method === 'POST',
     );
@@ -364,6 +706,11 @@ describe('Credential offer (e2e)', () => {
       expect(reconciled.body).toMatchObject({
         id: operationId,
         state: 'completed',
+        steps: [
+          { type: 'credential-offer.send', state: 'completed' },
+          { type: 'credential-request.receive', state: 'completed' },
+          { type: 'credential.issue', state: 'completed' },
+        ],
       });
     }
     expect(
@@ -387,6 +734,56 @@ describe('Credential offer (e2e)', () => {
     expect(reconciledExchange.body).toMatchObject({
       state: 'credential-issued',
     });
+  });
+
+  it('does not hydrate another tenant exchange into operation steps', async () => {
+    prepareBackend();
+    const offered = await request(app.getHttpServer())
+      .post(`${API_BASE_PATH}/tenants/${tenant.id}/credentials/offer`)
+      .send(offerBody())
+      .expect(202);
+    const otherTenant = await tenantRepo.save({
+      name: 'Other operation tenant',
+      slug: `other-steps-${tenant.id}`,
+      config: {},
+    });
+    try {
+      const operation = await operationRepo.save(
+        operationRepo.create({
+          tenantId: otherTenant.id,
+          type: OPERATION_TYPE.CREDENTIAL_OFFER,
+          state: OperationState.PROCESSING,
+          exchangeId: (offered.body as { exchange_id: string }).exchange_id,
+          request: { method: 'POST', path: '', body: {} },
+          expiresAt: new Date(Date.now() + 60_000),
+        }),
+      );
+      const expected = {
+        id: operation.id,
+        steps: [
+          { type: 'credential-offer.send', state: 'processing' },
+          { type: 'credential-request.receive', state: 'pending' },
+          { type: 'credential.issue', state: 'pending' },
+        ],
+      };
+      await request(app.getHttpServer())
+        .get(
+          `${API_BASE_PATH}/tenants/${otherTenant.id}/operations/${operation.id}`,
+        )
+        .expect(200)
+        .expect(({ body }: { body: unknown }) => {
+          expect(body).toMatchObject(expected);
+        });
+      await request(app.getHttpServer())
+        .get(`${API_BASE_PATH}/tenants/${otherTenant.id}/operations`)
+        .expect(200)
+        .expect(({ body }: { body: { data: unknown[] } }) => {
+          expect(body.data).toEqual([expect.objectContaining(expected)]);
+        });
+    } finally {
+      await operationRepo.delete({ tenantId: otherTenant.id });
+      await tenantRepo.delete(otherTenant.id);
+    }
   });
 
   it('rejects a connection outside the tenant before submitting an offer', async () => {

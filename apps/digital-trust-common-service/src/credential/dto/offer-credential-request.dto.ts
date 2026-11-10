@@ -1,7 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Expose, Type } from 'class-transformer';
 import {
-  Equals,
   IsBoolean,
   IsDefined,
   IsObject,
@@ -12,25 +11,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 
-export class OfferedCredentialDto {
-  @ApiProperty({
-    description:
-      'Unsigned subject claims. AnonCreds currently supports flat scalar values only; this input does not imply W3C credential output.',
-    type: 'object',
-    additionalProperties: true,
-  })
-  @IsDefined()
-  @IsObject()
-  public credentialSubject!: Record<string, unknown>;
-}
-
 export class OfferDeliveryDto {
-  @ApiProperty({ enum: ['didcomm-v1'] })
-  @Equals('didcomm-v1', {
-    message: 'Only didcomm-v1 delivery is currently supported',
-  })
-  public protocol!: 'didcomm-v1';
-
   @Expose({ name: 'connection_id' })
   @ApiProperty({
     name: 'connection_id',
@@ -57,32 +38,26 @@ export class OfferCredentialOptionsDto {
 
 export class OfferCredentialRequestDto {
   @Expose({ name: 'profile_id' })
-  @ApiPropertyOptional({
+  @ApiProperty({
     name: 'profile_id',
-    description:
-      'Profile UUID or name/version; excludes credential_definition_id',
+    description: 'Published issuance profile UUID or name/version',
   })
-  @ValidateIf((_object: unknown, value: unknown) => value !== undefined)
+  @IsDefined()
   @IsString()
   @MinLength(1)
-  public profileId?: string;
+  public profileId!: string;
 
-  @Expose({ name: 'credential_definition_id' })
-  @ApiPropertyOptional({
-    name: 'credential_definition_id',
-    format: 'uuid',
-    description: 'Local definition ID; format is inferred; excludes profile_id',
+  @ApiProperty({
+    description:
+      'RFC 6901 JSON Pointer map of unsigned claim values, using the same paths as profile claim_constraints. Missing values inherit profile defaults. AnonCreds supports flat scalar claims only.',
+    type: 'object',
+    additionalProperties: true,
+    maxProperties: 128,
+    example: { '/given_name': 'Alice' },
   })
-  @ValidateIf((_object: unknown, value: unknown) => value !== undefined)
-  @IsUUID()
-  public credentialDefinitionId?: string;
-
-  @ApiProperty({ type: OfferedCredentialDto })
   @IsDefined()
   @IsObject()
-  @ValidateNested()
-  @Type(() => OfferedCredentialDto)
-  public credential!: OfferedCredentialDto;
+  public claims!: Record<string, unknown>;
 
   @ApiProperty({ type: OfferDeliveryDto })
   @IsDefined()

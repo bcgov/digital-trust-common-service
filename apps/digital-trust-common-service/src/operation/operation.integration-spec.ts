@@ -605,6 +605,7 @@ describe('operation tenant isolation integration', () => {
       'id',
       'result',
       'state',
+      'steps',
       'type',
       'updated_at',
     ]);
@@ -984,6 +985,7 @@ describe('operation tenant isolation integration', () => {
         'id',
         'result',
         'state',
+        'steps',
         'type',
         'updated_at',
       ]);

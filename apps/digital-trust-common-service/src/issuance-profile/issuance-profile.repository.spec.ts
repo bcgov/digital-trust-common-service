@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { EntityManager, Repository } from 'typeorm';
 
 import { CredentialDefinitionFormat } from '../credential-definition/credential-definition.entity';
 
@@ -54,6 +54,26 @@ describe('IssuanceProfileRepository', () => {
   it('findById queries by id', async () => {
     await repository.findById('ip-1');
     expect(mockRepo.findOne).toHaveBeenCalledWith({ where: { id: 'ip-1' } });
+  });
+
+  it('uses the transaction repository for profile writes and locks tenant-scoped edits', async () => {
+    const transactional = {
+      create: jest.fn().mockReturnValue({ id: 'ip-1' }),
+      save: jest.fn().mockResolvedValue({ id: 'ip-1' }),
+      findOne: jest.fn().mockResolvedValue({ id: 'ip-1', tenantId: 't1' }),
+    };
+    const manager = {
+      getRepository: jest.fn().mockReturnValue(transactional),
+    } as Partial<EntityManager> as EntityManager;
+    await repository.create({ name: 'profile' }, manager);
+    await repository.findForUpdate('t1', 'ip-1', manager);
+    await repository.save({ id: 'ip-1' } as IssuanceProfile, manager);
+    expect(transactional.findOne).toHaveBeenCalledWith({
+      where: { id: 'ip-1', tenantId: 't1' },
+      lock: { mode: 'pessimistic_write' },
+    });
+    expect(transactional.save).toHaveBeenCalledTimes(2);
+    expect(mockRepo.save).not.toHaveBeenCalled();
   });
 
   it('findByTenant orders by createdAt', async () => {

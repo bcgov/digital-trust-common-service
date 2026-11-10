@@ -70,10 +70,9 @@ export class CredentialOfferController {
       anoncreds: {
         summary: 'Offer unsigned subject claims over DIDComm v1',
         value: {
-          credential_definition_id: '123e4567-e89b-12d3-a456-426614174001',
-          credential: { credentialSubject: { given_name: 'Alice' } },
+          profile_id: 'drivers-license/1.0',
+          claims: { '/given_name': 'Alice', '/family_name': 'Smith' },
           delivery: {
-            protocol: 'didcomm-v1',
             connection_id: '123e4567-e89b-12d3-a456-426614174002',
           },
           options: { auto_issue: true },
@@ -92,7 +91,7 @@ export class CredentialOfferController {
   @ApiBadRequestResponse({
     description:
       'delivery or subject claims are invalid, profile/' +
-      'credential_definition_id resolution failed, the credential definition is not published, or attribute validation failed',
+      'profile resolution failed, the credential definition is not published, or claim validation failed',
   })
   @ApiConflictResponse({
     description:

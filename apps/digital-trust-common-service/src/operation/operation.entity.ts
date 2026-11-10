@@ -1,4 +1,4 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiHideProperty, ApiProperty } from '@nestjs/swagger';
 import {
   IsEnum,
   IsObject,
@@ -18,6 +18,7 @@ import {
 } from 'typeorm';
 
 import { API_BASE_PATH } from '../common/constants/api-version.constants';
+import { CredentialExchange } from '../credential-exchange/credential-exchange.entity';
 import { Tenant } from '../tenant/tenant.entity';
 
 import type { RegistrationProblemDetailsDto } from './dto/registration-problem-details.dto';
@@ -55,6 +56,19 @@ export class Operation {
   @ApiProperty({ description: 'Local credential exchange ID', nullable: true })
   @Column({ name: 'exchange_id', type: 'uuid', nullable: true })
   public exchangeId?: string | null;
+
+  @ApiHideProperty()
+  @ManyToOne(() => CredentialExchange, {
+    eager: true,
+    persistence: false,
+    nullable: true,
+    createForeignKeyConstraints: false,
+  })
+  @JoinColumn([
+    { name: 'exchange_id', referencedColumnName: 'id' },
+    { name: 'tenant_id', referencedColumnName: 'tenantId' },
+  ])
+  public exchange?: CredentialExchange | null;
 
   @ApiProperty({
     description: 'The unique identifier of the operation',

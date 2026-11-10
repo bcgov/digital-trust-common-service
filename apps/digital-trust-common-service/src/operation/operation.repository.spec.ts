@@ -20,6 +20,8 @@ describe('OperationRepository', () => {
     groupBy: jest.Mock;
     orderBy: jest.Mock;
     addOrderBy: jest.Mock;
+    leftJoinAndSelect: jest.Mock;
+    leftJoin: jest.Mock;
     take: jest.Mock;
     setLock: jest.Mock;
     getMany: jest.Mock;
@@ -38,6 +40,8 @@ describe('OperationRepository', () => {
       groupBy: jest.fn().mockReturnThis(),
       orderBy: jest.fn().mockReturnThis(),
       addOrderBy: jest.fn().mockReturnThis(),
+      leftJoinAndSelect: jest.fn().mockReturnThis(),
+      leftJoin: jest.fn().mockReturnThis(),
       take: jest.fn().mockReturnThis(),
       setLock: jest.fn().mockReturnThis(),
       getMany: jest.fn(),
@@ -94,6 +98,14 @@ describe('OperationRepository', () => {
       'fingerprint',
     );
     expect(queryBuilder.take).not.toHaveBeenCalled();
+    expect(queryBuilder.leftJoin).toHaveBeenCalledWith(
+      'op.exchange',
+      'exchange',
+    );
+    expect(queryBuilder.select).toHaveBeenCalledWith(
+      expect.stringContaining('exchange.issue_submission'),
+      'fingerprint',
+    );
   });
 
   it('create delegates to repo.create', () => {
