@@ -62,6 +62,8 @@ config:
   # Failed statements and migrations, not every query: `true` made the
   # readiness probe's `SELECT 1` roughly 70% of this environment's log volume.
   DB_LOGGING: "error,warn,migration"
+  JWT_ADDITIONAL_AUDIENCES: https://digital-trust-common-service-log-gateway-dev.apps.silver.devops.gov.bc.ca
+  LOG_GATEWAY_AUDIENCE: https://digital-trust-common-service-log-gateway-dev.apps.silver.devops.gov.bc.ca
 
 secret:
   # DB_USERNAME / DB_PASSWORD (and any signing/HMAC secrets the app reads).
@@ -78,6 +80,13 @@ networkPolicy:
     # namespace and pod labels. Empty renders a rule with no `to:` block, which
     # permits egress to any destination on 4318 — the same shape as the database
     # and Keycloak rules, but it should be narrowed once those labels are known.
+  loki:
+    namespaceSelector:
+      kubernetes.io/metadata.name: ca7f8f-dev
+    podSelector:
+      app.kubernetes.io/component: gateway
+      app.kubernetes.io/instance: loki-dev
+      app.kubernetes.io/name: loki
 
 connectorEncryption:
   existingSecret: digital-trust-common-service-dev-connector-encryption
@@ -94,3 +103,16 @@ upstreamFederation:
   existingSecret:
     name: dtsc-dev-oidc-client
     key: upstream-identity-federation.json
+
+logAccess:
+  enabled: true
+logGateway:
+  enabled: true
+  route:
+    enabled: true
+    host: digital-trust-common-service-log-gateway-dev.apps.silver.devops.gov.bc.ca
+  upstream:
+    host: loki-dev-gateway.ca7f8f-dev.svc.cluster.local
+    auth:
+      existingSecret:
+        name: dtsc-dev-loki-auth
