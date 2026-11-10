@@ -1,8 +1,11 @@
-import { LoaderCircle } from 'lucide-react';
+import {
+  Button,
+  InlineAlert,
+  ProgressCircle,
+} from '@bcgov/design-system-react-components';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { Button } from '@/components/common/button';
 import {
   Drawer,
   DrawerBody,
@@ -22,14 +25,47 @@ import type {
 import { ApiClientSecret } from './api-client-secret';
 
 export function ApiClientSecretRotation({
+  client,
+  onRotate,
+}: {
+  client: ApiClient;
+  onRotate: () => void;
+}) {
+  const { t } = useTranslation();
+
+  if (client.is_public || isReservedApiClientId(client.client_id)) return null;
+
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 border-y border-(--surface-color-border-default) py-4">
+      <div className="flex flex-col gap-1">
+        <h3 className="text-small-body font-bold text-(--typography-color-primary)">
+          {t('apiClients.rotation.title')}
+        </h3>
+        <p className="text-small-body text-(--typography-color-secondary)">
+          {t('apiClients.rotation.hint')}
+        </p>
+      </div>
+      <Button variant="secondary" onPress={onRotate}>
+        {t('apiClients.rotation.button')}
+      </Button>
+    </div>
+  );
+}
+
+// Rendered beside the edit drawer rather than inside it: React Aria cannot
+// open a modal from inside another modal's tree.
+export function ApiClientSecretRotationDrawer({
   tenantId,
   client,
+  open,
+  onClose,
 }: {
   tenantId: string;
   client: ApiClient;
+  open: boolean;
+  onClose: () => void;
 }) {
   const { t } = useTranslation();
-  const [isOpen, setIsOpen] = useState(false);
   const [credentials, setCredentials] = useState<ClientCredentials | null>(
     null,
   );
@@ -39,7 +75,7 @@ export function ApiClientSecretRotation({
     if (mutation.isPending) return;
     setCredentials(null);
     mutation.reset();
-    setIsOpen(false);
+    onClose();
   };
 
   const rotate = () => {
@@ -56,75 +92,61 @@ export function ApiClientSecretRotation({
     );
   };
 
-  if (client.is_public || isReservedApiClientId(client.client_id)) return null;
-
   return (
-    <>
-      <div className="flex flex-wrap items-center justify-between gap-3 border-y border-border py-4">
-        <div className="flex flex-col gap-1">
-          <h3 className="text-sm font-semibold">
-            {t('apiClients.rotation.title')}
-          </h3>
-          <p className="text-xs text-muted-foreground">
-            {t('apiClients.rotation.hint')}
-          </p>
-        </div>
-        <Button type="button" variant="outline" onClick={() => setIsOpen(true)}>
-          {t('apiClients.rotation.button')}
-        </Button>
-      </div>
-      <Drawer
-        direction="right"
-        open={isOpen}
-        onOpenChange={(open) => {
-          if (!open) close();
-        }}
-        dismissible={!mutation.isPending}
-      >
-        <DrawerContent showCloseButton={!mutation.isPending}>
-          <DrawerHeader>
-            <DrawerTitle>
-              {credentials
-                ? t('apiClients.actionDialog.newSecretTitle')
-                : t('apiClients.actionDialog.rotateTitle')}
-            </DrawerTitle>
-          </DrawerHeader>
-          {credentials ? (
-            <ApiClientSecret credentials={credentials} onDone={close} />
-          ) : (
-            <>
-              <DrawerBody>
-                <p>{t('apiClients.actionDialog.rotateBody')}</p>
-                {mutation.error && (
-                  <p role="alert" className="text-sm text-destructive">
-                    {mutation.error.message}
-                  </p>
+    <Drawer
+      open={open}
+      onOpenChange={(open) => {
+        if (!open) close();
+      }}
+      dismissible={!mutation.isPending}
+    >
+      <DrawerContent showCloseButton={!mutation.isPending}>
+        <DrawerHeader>
+          <DrawerTitle>
+            {credentials
+              ? t('apiClients.actionDialog.newSecretTitle')
+              : t('apiClients.actionDialog.rotateTitle')}
+          </DrawerTitle>
+        </DrawerHeader>
+        {credentials ? (
+          <ApiClientSecret credentials={credentials} onDone={close} />
+        ) : (
+          <>
+            <DrawerBody>
+              <p className="text-body text-(--typography-color-primary)">
+                {t('apiClients.actionDialog.rotateBody')}
+              </p>
+              {mutation.error && (
+                <InlineAlert
+                  variant="danger"
+                  role="alert"
+                  description={mutation.error.message}
+                />
+              )}
+            </DrawerBody>
+            <DrawerFooter>
+              <Button
+                variant="secondary"
+                isDisabled={mutation.isPending}
+                onPress={close}
+              >
+                {t('common.cancel')}
+              </Button>
+              <Button
+                isDisabled={mutation.isPending || !client.client_id}
+                onPress={rotate}
+              >
+                {mutation.isPending && (
+                  <span aria-hidden="true" className="contents">
+                    <ProgressCircle isIndeterminate size="small" />
+                  </span>
                 )}
-              </DrawerBody>
-              <DrawerFooter>
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={mutation.isPending}
-                  onClick={close}
-                >
-                  {t('common.cancel')}
-                </Button>
-                <Button
-                  type="button"
-                  disabled={mutation.isPending || !client.client_id}
-                  onClick={rotate}
-                >
-                  {mutation.isPending && (
-                    <LoaderCircle className="animate-spin" aria-hidden="true" />
-                  )}
-                  {t('apiClients.rotation.button')}
-                </Button>
-              </DrawerFooter>
-            </>
-          )}
-        </DrawerContent>
-      </Drawer>
-    </>
+                {t('apiClients.rotation.button')}
+              </Button>
+            </DrawerFooter>
+          </>
+        )}
+      </DrawerContent>
+    </Drawer>
   );
 }

@@ -11,25 +11,8 @@ import { server } from '@/mocks/server';
 // The default 1s for findBy/waitFor is too short when workers compete for CPU.
 configure({ asyncUtilTimeout: 5_000 });
 
-// jsdom implements no media queries at all, and vaul reads `matchMedia` on
-// mount to decide whether to animate. Report "no match" so components render
-// their default, non-reduced-motion path.
-if (!window.matchMedia) {
-  window.matchMedia = (query: string): MediaQueryList =>
-    ({
-      matches: false,
-      media: query,
-      onchange: null,
-      addListener: () => {},
-      removeListener: () => {},
-      addEventListener: () => {},
-      removeEventListener: () => {},
-      dispatchEvent: () => false,
-    }) as MediaQueryList;
-}
-
-// jsdom ships no Pointer Events capture API. vaul claims the pointer on
-// pointerdown to track drag-to-dismiss, which otherwise throws out of the
+// jsdom ships no Pointer Events capture API. sonner claims the pointer on
+// pointerdown to track swipe-to-dismiss, which otherwise throws out of the
 // event handler and fails the run even when the assertions pass.
 if (!Element.prototype.setPointerCapture) {
   Element.prototype.setPointerCapture = () => {};

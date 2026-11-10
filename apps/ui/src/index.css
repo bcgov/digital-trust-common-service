@@ -341,3 +341,49 @@ span.bcds-react-aria-Tag.static-tag {
 .bcds-react-aria-TextArea--Input::placeholder {
   color: var(--theme-gray-80);
 }
+
+/* Side drawer (`common/drawer.tsx`): the React Aria overlay behind a
+   `drawer-panel` gets the same scrim and fade as the BCDS modal, and pins
+   the panel to the right edge. BCDS Dialog wraps its children in a
+   container, which has to pass the panel's column layout through. */
+.react-aria-ModalOverlay:has(> .drawer-panel) {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  justify-content: flex-end;
+  background: var(--overlay);
+}
+.react-aria-ModalOverlay:has(> .drawer-panel)[data-entering] {
+  animation: drawer-fade 200ms;
+}
+.react-aria-ModalOverlay:has(> .drawer-panel)[data-exiting] {
+  animation: drawer-fade 150ms reverse ease-in;
+}
+@media (prefers-reduced-motion) {
+  .react-aria-ModalOverlay:has(> .drawer-panel)[data-entering],
+  .react-aria-ModalOverlay:has(> .drawer-panel)[data-exiting] {
+    animation: unset;
+  }
+}
+@keyframes drawer-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.drawer-dialog {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  outline: none;
+}
+.drawer-dialog > .bcds-react-aria-Dialog--Container {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}

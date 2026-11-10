@@ -186,12 +186,7 @@ export function EditConnectorDrawer({
   }
 
   return (
-    <Drawer
-      direction="right"
-      open
-      onOpenChange={changeOpen}
-      dismissible={!isPending}
-    >
+    <Drawer open onOpenChange={changeOpen} dismissible={!isPending}>
       <DrawerContent showCloseButton={!isPending}>
         <DrawerHeader className="gap-3">
           <DrawerTitle>{t('connectors.edit.title')}</DrawerTitle>

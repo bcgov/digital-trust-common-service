@@ -29,13 +29,12 @@ export function ConnectorDetailsDialog({
 
   return (
     <Drawer
-      direction="right"
       open
       onOpenChange={(open) => {
         if (!open) onClose();
       }}
     >
-      <DrawerContent aria-describedby={undefined}>
+      <DrawerContent>
         <DrawerHeader>
           <DrawerTitle>{t('connectors.details.title')}</DrawerTitle>
         </DrawerHeader>

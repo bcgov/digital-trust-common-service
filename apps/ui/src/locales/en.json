@@ -15,7 +15,6 @@
     "notifications": "Notifications",
     "optional": "(optional)",
     "reload": "Reload",
-    "removeScope": "Remove {{scope}} scope",
     "retry": "Retry",
     "saving": "Saving. Please wait...",
     "search": "Search",
@@ -344,7 +343,6 @@
       "editDescription": "OAuth2 client configuration",
       "clientIdLocked": "Client ID cannot be changed once created",
       "clientIdHint": "Must be unique across all tenants and cannot be changed later.",
-      "clientIdPattern": "Use dtcs_ followed by lowercase letters, numbers, hyphens, or underscores.",
       "clientIdInvalid": "Client ID must start with dtcs_ and contain only lowercase letters, numbers, hyphens, or underscores.",
       "scopeNotRemovable": "You do not have permission to change this scope.",
       "loadingScopes": "Loading scopes...",
@@ -407,9 +405,10 @@
     }
   },
   "credentialDefinitions": {
-    "title": "Credential Configurations",
+    "title": "Credential configurations",
+    "subtitle": "Create and publish digital credential definitions your organization can issue.",
     "forbidden": "You need the tenants:admin scope to manage credential definitions in this tenant.",
-    "register": "Register configuration",
+    "register": "Create credential",
     "loading": "Loading credential definitions...",
     "membershipsLoadFailed": "Could not load tenant memberships.",
     "noActiveTenant": "No active tenant is available.",
@@ -423,12 +422,12 @@
       "draftUpdated": "Draft changes saved."
     },
     "statuses": {
-      "draft": "draft",
-      "published": "published",
-      "deprecated": "deprecated",
-      "pending": "pending",
-      "failed": "failed",
-      "unverified": "not registered"
+      "draft": "Draft",
+      "published": "Published",
+      "deprecated": "Deprecated",
+      "pending": "Pending",
+      "failed": "Failed",
+      "unverified": "Not registered"
     },
     "formats": {
       "sdJwt": "SD-JWT",

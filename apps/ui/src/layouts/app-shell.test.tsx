@@ -34,7 +34,7 @@ describe('AppShell', () => {
     ).toEqual([
       'Dashboard',
       'Connectors',
-      'Credential Configurations',
+      'Credential configurations',
       'API integrations',
       'Manage Users',
     ]);
@@ -55,7 +55,7 @@ describe('AppShell', () => {
       `/tenants/${MOCK_AUTH_TENANTS[0].id}/users`,
     );
     expect(
-      screen.getByRole('link', { name: 'Credential Configurations' }),
+      screen.getByRole('link', { name: 'Credential configurations' }),
     ).toHaveAttribute('href', '/credential-definitions');
     expect(screen.getByText('page content')).toBeInTheDocument();
   });
@@ -79,7 +79,7 @@ describe('AppShell', () => {
       screen.queryByRole('link', { name: 'Connectors' }),
     ).not.toBeInTheDocument();
     expect(
-      screen.queryByRole('link', { name: 'Credential Configurations' }),
+      screen.queryByRole('link', { name: 'Credential configurations' }),
     ).not.toBeInTheDocument();
     expect(
       screen.getByRole('link', { name: 'API integrations' }),
@@ -109,7 +109,7 @@ describe('AppShell', () => {
       screen.queryByRole('link', { name: 'Manage Users' }),
     ).not.toBeInTheDocument();
     expect(
-      screen.queryByRole('link', { name: 'Credential Configurations' }),
+      screen.queryByRole('link', { name: 'Credential configurations' }),
     ).not.toBeInTheDocument();
     expect(
       screen.queryByRole('link', { name: 'API integrations' }),
@@ -136,7 +136,7 @@ describe('AppShell', () => {
       screen.queryByRole('link', { name: 'Manage Users' }),
     ).not.toBeInTheDocument();
     expect(
-      screen.queryByRole('link', { name: 'Credential Configurations' }),
+      screen.queryByRole('link', { name: 'Credential configurations' }),
     ).toHaveAttribute('href', '/credential-definitions');
   });
 
@@ -214,7 +214,7 @@ describe('AppShell', () => {
     );
 
     await userEvent.click(
-      await screen.findByRole('link', { name: 'Credential Configurations' }),
+      await screen.findByRole('link', { name: 'Credential configurations' }),
     );
 
     expect(

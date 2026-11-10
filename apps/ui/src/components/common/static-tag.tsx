@@ -8,13 +8,15 @@ export type StaticTagColor = ComponentProps<typeof Tag>['color'];
 export function StaticTag({
   label,
   color,
+  tagStyle = 'rectangular',
 }: {
   label: string;
   color: StaticTagColor;
+  tagStyle?: 'rectangular' | 'circular';
 }) {
   return (
     <span
-      className={`bcds-react-aria-Tag ${color} rectangular small static-tag`}
+      className={`bcds-react-aria-Tag ${color} ${tagStyle} small static-tag`}
     >
       <span className="bcds-react-aria-Tag--Label">{label}</span>
     </span>
