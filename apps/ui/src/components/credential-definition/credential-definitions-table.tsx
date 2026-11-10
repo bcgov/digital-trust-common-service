@@ -67,7 +67,7 @@ export function CredentialDefinitionsTable({
       <Table
         aria-label={t('credentialDefinitions.table.label')}
         variant="record"
-        className="min-w-[60rem] table-fixed"
+        className="min-w-[67rem] table-fixed"
       >
         <TableHeader>
           <TableRow>
