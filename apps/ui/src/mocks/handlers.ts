@@ -15,6 +15,10 @@ import type {
   UpdateCredentialDefinitionRequest,
 } from '@/lib/api/resources/credential-definitions';
 import type { TenantRoleMapping } from '@/lib/api/resources/tenant-roles';
+import type {
+  CreateIssuanceProfileRequest,
+  IssuanceProfile,
+} from '@/lib/api/resources/issuance-profiles';
 import type { TenantUser } from '@/lib/api/resources/tenant-users';
 import type { Tenant } from '@/lib/api/resources/tenants';
 import { MOCK_AUTH_TENANTS } from '@/lib/auth/mock-auth';
@@ -122,6 +126,11 @@ export const mockConnectors: Connector[] = [
 ];
 
 let credentialDefinitions = structuredClone(mockCredentialDefinitions);
+let issuanceProfiles: IssuanceProfile[] = [];
+
+export function resetIssuanceProfileMocks() {
+  issuanceProfiles = [];
+}
 
 export function resetCredentialDefinitionMocks() {
   credentialDefinitions = structuredClone(mockCredentialDefinitions);
@@ -334,6 +343,146 @@ export const handlers = [
       ? HttpResponse.json(tenant)
       : new HttpResponse(null, { status: 404 });
   }),
+  http.get(`${API_BASE_PATH}/tenants/:id/profiles/issuance`, ({ params }) =>
+    HttpResponse.json({
+      data: issuanceProfiles.filter(
+        (profile) => profile.tenant_id === params.id,
+      ),
+      pagination: { next_cursor: null, has_more: false },
+    }),
+  ),
+  http.post(
+    `${API_BASE_PATH}/tenants/:id/profiles/issuance`,
+    async ({ params, request }) => {
+      const body = (await request.json()) as CreateIssuanceProfileRequest;
+      const definition = credentialDefinitions.find(
+        (item) =>
+          item.id === body.credential_definition_id &&
+          item.tenant_id === params.id &&
+          item.is_active,
+      );
+      if (
+        !definition ||
+        definition.status !== 'published' ||
+        definition.registration_state !== 'ready' ||
+        !definition.connector_id ||
+        !definition.external_id
+      ) {
+        return HttpResponse.json(
+          { message: 'Credential definition is not ready for issuance.' },
+          { status: 400 },
+        );
+      }
+      if (
+        issuanceProfiles.some(
+          (profile) =>
+            profile.tenant_id === params.id &&
+            profile.name === body.name &&
+            profile.version === body.version,
+        )
+      ) {
+        return HttpResponse.json(
+          { message: 'Issuance profile name and version already exist.' },
+          { status: 409 },
+        );
+      }
+      const profile: IssuanceProfile = {
+        ...body,
+        id: crypto.randomUUID(),
+        tenant_id: String(params.id),
+        status: 'draft',
+        can_delete: true,
+        created_at: new Date().toISOString(),
+      };
+      issuanceProfiles.push(profile);
+      return HttpResponse.json(profile, { status: 201 });
+    },
+  ),
+  http.post(
+    `${API_BASE_PATH}/tenants/:id/profiles/issuance/:profileId/publish`,
+    ({ params }) => {
+      const profile = issuanceProfiles.find(
+        (item) => item.tenant_id === params.id && item.id === params.profileId,
+      );
+      if (!profile) return new HttpResponse(null, { status: 404 });
+      if (profile.status !== 'draft') {
+        return HttpResponse.json(
+          {
+            statusCode: 409,
+            message: 'Issuance profile is not in draft status.',
+          },
+          { status: 409 },
+        );
+      }
+      const definition = credentialDefinitions.find(
+        (item) =>
+          item.tenant_id === params.id &&
+          item.id === profile.credential_definition_id &&
+          item.is_active,
+      );
+      const connector = mockConnectors.find(
+        (item) =>
+          item.tenant_id === params.id &&
+          item.id === definition?.connector_id &&
+          item.active,
+      );
+      if (
+        !definition ||
+        definition.status !== 'published' ||
+        definition.registration_state !== 'ready' ||
+        !definition.external_id ||
+        !connector
+      ) {
+        return HttpResponse.json(
+          {
+            statusCode: 400,
+            message:
+              'Credential definition or connector is not ready for issuance.',
+          },
+          { status: 400 },
+        );
+      }
+      profile.status = 'published';
+      profile.updated_at = new Date().toISOString();
+      return HttpResponse.json(profile);
+    },
+  ),
+  http.post(
+    `${API_BASE_PATH}/tenants/:id/profiles/issuance/:profileId/deprecate`,
+    ({ params }) => {
+      const profile = issuanceProfiles.find(
+        (item) => item.tenant_id === params.id && item.id === params.profileId,
+      );
+      if (!profile) return new HttpResponse(null, { status: 404 });
+      if (profile.status !== 'published')
+        return HttpResponse.json(
+          { statusCode: 409, message: 'Issuance profile is not published.' },
+          { status: 409 },
+        );
+      profile.status = 'deprecated';
+      profile.updated_at = new Date().toISOString();
+      return HttpResponse.json(profile);
+    },
+  ),
+  http.delete(
+    `${API_BASE_PATH}/tenants/:id/profiles/issuance/:profileId`,
+    ({ params }) => {
+      const profile = issuanceProfiles.find(
+        (item) => item.tenant_id === params.id && item.id === params.profileId,
+      );
+      if (!profile) return new HttpResponse(null, { status: 404 });
+      if (profile.can_delete !== true)
+        return HttpResponse.json(
+          {
+            statusCode: 409,
+            message: 'Profile has been used and must be archived instead.',
+          },
+          { status: 409 },
+        );
+      issuanceProfiles = issuanceProfiles.filter((item) => item !== profile);
+      return new HttpResponse(null, { status: 204 });
+    },
+  ),
   // Bare array: mirrors the implemented endpoint. Scoped by tenant like the
   // API, so another tenant's overview never shows Acme's figures.
   http.get(

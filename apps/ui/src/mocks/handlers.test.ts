@@ -10,6 +10,13 @@ import {
   updateCredentialDefinition,
   type CreateCredentialDefinitionRequest,
 } from '@/lib/api/resources/credential-definitions';
+import {
+  archiveIssuanceProfile,
+  createIssuanceProfile,
+  deleteIssuanceProfile,
+  listIssuanceProfiles,
+  publishIssuanceProfile,
+} from '@/lib/api/resources/issuance-profiles';
 
 import { mockCredentialDefinitions } from './handlers';
 
@@ -38,6 +45,75 @@ const draftRequest: CreateCredentialDefinitionRequest = {
   },
   metadata: { description: 'Conference visitor credential' },
 };
+
+describe('shared issuance-profile mock handlers', () => {
+  it('isolates archive and delete operations and retains archived name/version reservations', async () => {
+    const body = {
+      name: 'Lifecycle profile',
+      version: '1.0',
+      credential_definition_id: publishedId,
+      attribute_schema: {},
+    };
+    const created = await createIssuanceProfile(tenantId, body);
+    const profileId = created.id!;
+    expect((await listIssuanceProfiles(tenantId)).data[0]?.can_delete).toBe(
+      true,
+    );
+    await expect(
+      deleteIssuanceProfile(otherTenantId, profileId),
+    ).rejects.toMatchObject({ status: 404 });
+    await expect(
+      archiveIssuanceProfile(otherTenantId, profileId),
+    ).rejects.toMatchObject({ status: 404 });
+    await expect(
+      archiveIssuanceProfile(tenantId, profileId),
+    ).rejects.toMatchObject({ status: 409 });
+    await publishIssuanceProfile(tenantId, profileId);
+    expect(await archiveIssuanceProfile(tenantId, profileId)).toMatchObject({
+      status: 'deprecated',
+    });
+    await expect(createIssuanceProfile(tenantId, body)).rejects.toMatchObject({
+      status: 409,
+    });
+    expect((await listIssuanceProfiles(tenantId)).data).toHaveLength(1);
+    await deleteIssuanceProfile(tenantId, profileId);
+    expect((await listIssuanceProfiles(tenantId)).data).toEqual([]);
+  });
+
+  it('only publishes drafts in the owning tenant', async () => {
+    const created = await createIssuanceProfile(tenantId, {
+      name: 'Employee profile',
+      version: '1.0',
+      credential_definition_id: publishedId,
+      attribute_schema: {},
+      protocol_hint: 'auto',
+    });
+    const profileId = created.id!;
+    await expect(
+      publishIssuanceProfile(otherTenantId, profileId),
+    ).rejects.toMatchObject({ status: 404 });
+    expect(await publishIssuanceProfile(tenantId, profileId)).toMatchObject({
+      status: 'published',
+      tenant_id: tenantId,
+    });
+    await expect(
+      publishIssuanceProfile(tenantId, profileId),
+    ).rejects.toMatchObject({ status: 409 });
+  });
+
+  it('rechecks the credential definition before publication', async () => {
+    const created = await createIssuanceProfile(tenantId, {
+      name: 'Employee profile',
+      version: '1.0',
+      credential_definition_id: publishedId,
+      attribute_schema: {},
+    });
+    await deleteCredentialDefinition(tenantId, publishedId);
+    await expect(
+      publishIssuanceProfile(tenantId, created.id!),
+    ).rejects.toMatchObject({ status: 400 });
+  });
+});
 
 describe('shared credential-definition mock handlers', () => {
   it('provides reset published and draft fixtures with usable connector bindings', async () => {

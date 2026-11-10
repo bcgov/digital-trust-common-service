@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 
 import { Cursor } from '../common/cursor-pagination';
+import { Credential } from '../credential/credential.entity';
 import {
   CredentialDefinitionFormat,
   CredentialDefinitionStatus,
@@ -24,6 +25,12 @@ export type IssuanceProfilePage = {
   nextCursor: Cursor | null;
   hasMore: boolean;
 };
+
+export enum IssuanceProfileDeleteResult {
+  DELETED = 'deleted',
+  USED = 'used',
+  NOT_FOUND = 'not_found',
+}
 
 @Injectable()
 export class IssuanceProfileRepository {
@@ -197,5 +204,44 @@ export class IssuanceProfileRepository {
 
   public async save(profile: IssuanceProfile): Promise<IssuanceProfile> {
     return await this.repository.save(profile);
+  }
+
+  public async deleteIfUnused(
+    tenantId: string,
+    id: string,
+  ): Promise<IssuanceProfileDeleteResult> {
+    return this.repository.manager.transaction(async (manager) => {
+      const profile = await manager.findOne(IssuanceProfile, {
+        where: { id, tenantId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!profile) return IssuanceProfileDeleteResult.NOT_FOUND;
+
+      const used = await manager.exists(Credential, {
+        where: { tenantId, issuanceProfileId: id },
+      });
+      if (used) return IssuanceProfileDeleteResult.USED;
+
+      await manager.delete(IssuanceProfile, { id, tenantId });
+      return IssuanceProfileDeleteResult.DELETED;
+    });
+  }
+
+  public async findUsedProfileIds(
+    tenantId: string,
+    profileIds: string[],
+  ): Promise<Set<string>> {
+    if (profileIds.length === 0) return new Set();
+
+    const usedProfiles = await this.repository.manager
+      .createQueryBuilder(Credential, 'credential')
+      .select('credential.issuanceProfileId', 'profileId')
+      .distinct(true)
+      .where('credential.tenantId = :tenantId', { tenantId })
+      .andWhere('credential.issuanceProfileId IN (:...profileIds)', {
+        profileIds,
+      })
+      .getRawMany<{ profileId: string }>();
+    return new Set(usedProfiles.map((profile) => profile.profileId));
   }
 }

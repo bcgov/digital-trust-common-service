@@ -10,7 +10,10 @@ import {
 import {
   Body,
   Controller,
+  Delete,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
   ParseUUIDPipe,
   Patch,
@@ -25,6 +28,7 @@ import {
   ApiCreatedResponse,
   ApiForbiddenResponse,
   ApiNotFoundResponse,
+  ApiNoContentResponse,
   ApiOkResponse,
   ApiQuery,
   ApiUnauthorizedResponse,
@@ -158,7 +162,7 @@ export class IssuanceProfileController {
 
     return {
       data: page.data.map((profile) =>
-        IssuanceProfileResponseDto.fromEntity(profile),
+        IssuanceProfileResponseDto.fromEntity(profile, profile.canDelete),
       ),
       pagination: IssuanceProfilesPaginationDto.from(page.pagination),
     };
@@ -217,6 +221,21 @@ export class IssuanceProfileController {
     );
 
     return IssuanceProfileResponseDto.fromEntity(profile);
+  }
+
+  @Delete(':id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiNoContentResponse({ description: 'Unused issuance profile deleted' })
+  @ApiNotFoundResponse({ description: 'Issuance profile not found' })
+  @ApiConflictResponse({
+    description: 'Profile has been used and must be archived instead',
+  })
+  public async remove(
+    @Param('tenantId', ParseUUIDPipe) tenantId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentAuth() auth: AuthContext,
+  ): Promise<void> {
+    await this.issuanceProfileService.remove(tenantId, id, auth);
   }
 
   @Post(':id/publish')

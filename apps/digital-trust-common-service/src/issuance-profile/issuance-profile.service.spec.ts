@@ -34,7 +34,10 @@ import {
   IssuanceProfileProtocolHint,
   IssuanceProfileStatus,
 } from './issuance-profile.entity';
-import { IssuanceProfileRepository } from './issuance-profile.repository';
+import {
+  IssuanceProfileDeleteResult,
+  IssuanceProfileRepository,
+} from './issuance-profile.repository';
 import { IssuanceProfileService } from './issuance-profile.service';
 
 describe('IssuanceProfileService', () => {
@@ -43,11 +46,13 @@ describe('IssuanceProfileService', () => {
   let mockFindById: jest.Mock;
   let mockFindByNameAndVersion: jest.Mock;
   let mockFindPage: jest.Mock;
+  let mockFindUsedProfileIds: jest.Mock;
   let mockSave: jest.Mock;
   let mockEmit: jest.Mock;
   let mockCredentialDefinitionFindById: jest.Mock;
   let mockResolve: jest.Mock;
   let mockTransitionStatus: jest.Mock;
+  let mockDeleteIfUnused: jest.Mock;
 
   const tenantId = '123e4567-e89b-12d3-a456-426614174001';
 
@@ -119,11 +124,64 @@ describe('IssuanceProfileService', () => {
     iat: 1,
   };
 
+  describe('remove', () => {
+    it('deletes an unused profile and emits its audit event', async () => {
+      mockFindById.mockResolvedValue(mockProfile);
+      await service.remove(tenantId, mockProfile.id, auth);
+      expect(mockDeleteIfUnused).toHaveBeenCalledWith(tenantId, mockProfile.id);
+      expect(mockEmit).toHaveBeenCalledWith({
+        tenantId,
+        action: AuditAction.DELETE,
+        resourceType: 'issuance_profile',
+        resourceId: mockProfile.id,
+      });
+    });
+
+    it.each([
+      IssuanceProfileDeleteResult.USED,
+      IssuanceProfileDeleteResult.NOT_FOUND,
+    ])('rejects %s without emitting an audit event', async (result) => {
+      mockFindById.mockResolvedValue(mockProfile);
+      mockDeleteIfUnused.mockResolvedValue(result);
+      await expect(
+        service.remove(tenantId, mockProfile.id, auth),
+      ).rejects.toBeInstanceOf(
+        result === IssuanceProfileDeleteResult.USED
+          ? ConflictException
+          : NotFoundException,
+      );
+      expect(mockEmit).not.toHaveBeenCalled();
+    });
+
+    it('does not delete another tenant profile', async () => {
+      mockFindById.mockResolvedValue({
+        ...mockProfile,
+        tenantId: 'other-tenant',
+      });
+      await expect(
+        service.remove(tenantId, mockProfile.id, auth),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(mockDeleteIfUnused).not.toHaveBeenCalled();
+    });
+
+    it('does not delete when the auth tenant differs', async () => {
+      mockFindById.mockResolvedValue(mockProfile);
+      await expect(
+        service.remove(tenantId, mockProfile.id, {
+          ...auth,
+          tenantId: 'other-tenant',
+        }),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(mockDeleteIfUnused).not.toHaveBeenCalled();
+    });
+  });
+
   beforeEach(async () => {
     mockCreate = jest.fn();
     mockFindById = jest.fn();
     mockFindByNameAndVersion = jest.fn();
     mockFindPage = jest.fn();
+    mockFindUsedProfileIds = jest.fn().mockResolvedValue(new Set<string>());
     mockSave = jest.fn();
     mockEmit = jest.fn().mockResolvedValue(undefined);
     mockCredentialDefinitionFindById = jest
@@ -133,6 +191,9 @@ describe('IssuanceProfileService', () => {
       .fn()
       .mockResolvedValue({ connector: { id: mockConnectorId } });
     mockTransitionStatus = jest.fn().mockResolvedValue(true);
+    mockDeleteIfUnused = jest
+      .fn()
+      .mockResolvedValue(IssuanceProfileDeleteResult.DELETED);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -144,8 +205,10 @@ describe('IssuanceProfileService', () => {
             findById: mockFindById,
             findByNameAndVersion: mockFindByNameAndVersion,
             findPage: mockFindPage,
+            findUsedProfileIds: mockFindUsedProfileIds,
             save: mockSave,
             transitionStatus: mockTransitionStatus,
+            deleteIfUnused: mockDeleteIfUnused,
           },
         },
         {
@@ -486,6 +549,20 @@ describe('IssuanceProfileService', () => {
   });
 
   describe('findByTenantId', () => {
+    it('marks profiles referenced by any request as non-deletable', async () => {
+      mockFindPage.mockResolvedValue({
+        items: [mockProfile],
+        nextCursor: null,
+        hasMore: false,
+      });
+      mockFindUsedProfileIds.mockResolvedValue(new Set([mockProfile.id]));
+      const result = await service.findByTenantId(tenantId, {});
+      expect(mockFindUsedProfileIds).toHaveBeenCalledWith(tenantId, [
+        mockProfile.id,
+      ]);
+      expect(result.data[0]?.canDelete).toBe(false);
+    });
+
     it('delegates to the repository with the provided filters and default paging', async () => {
       mockFindPage.mockResolvedValue({
         items: [mockProfile],
@@ -503,7 +580,7 @@ describe('IssuanceProfileService', () => {
         { limit: 20, cursor: null },
       );
       expect(result).toEqual({
-        data: [mockProfile],
+        data: [{ ...mockProfile, canDelete: true }],
         pagination: { next_cursor: null, has_more: false },
       });
     });
