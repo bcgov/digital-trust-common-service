@@ -203,7 +203,7 @@ export function validateClaimConstraints(
   if (!isObject(value) || Object.keys(value).length > 128) {
     invalid('', 'Expected an object with at most 128 claim pointers');
   }
-  const defaultsOnly: ClaimConstraints = {};
+  const constraints: ClaimConstraints = {};
   for (const [pointer, rule] of Object.entries(value)) {
     segments(pointer);
     if (
@@ -287,16 +287,24 @@ export function validateClaimConstraints(
       }
     }
     const constraint = rule as ClaimConstraint;
-    if (Object.hasOwn(rule, 'default')) {
-      validateValue(pointer, rule.default, constraint);
-    }
     if (constraint.enum) {
       for (const item of constraint.enum)
         validateValue(pointer, item, { ...constraint, enum: undefined });
     }
-    defaultsOnly[pointer] = { ...constraint, required: false };
+    constraints[pointer] = { ...constraint, required: false };
   }
-  applyValidatedConstraints({}, defaultsOnly);
+  const entries = Object.entries(constraints);
+  for (const [pointer, rule] of entries) {
+    if (!Object.hasOwn(rule, 'default')) continue;
+    // Validate each explicit default independently, including masked defaults,
+    // after composing its descendants. Ancestors may depend on caller input.
+    const subtree = Object.fromEntries(
+      entries.filter(
+        ([path]) => path === pointer || path.startsWith(`${pointer}/`),
+      ),
+    );
+    applyValidatedConstraints({}, subtree);
+  }
 }
 
 function lookup(

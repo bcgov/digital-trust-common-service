@@ -1592,6 +1592,10 @@ Patterns use the linear-time RE2 engine (no lookaround or backreferences),
 with substring matching unless anchored. String lengths count Unicode code points;
 numeric and length bounds are inclusive. Unknown keywords, incompatible rules,
 and invalid defaults are rejected when creating or editing a draft profile.
+Each explicit default is checked after composing its descendant defaults,
+including defaults masked by an ancestor value. Constraints on parent containers
+that depend on caller-provided claims are checked when resolving an offer,
+not against inferred empty-document containers during profile configuration.
 
 Defaults fill missing values, never explicit null or caller-supplied values.
 All defaults are applied before constraints and definition validation.

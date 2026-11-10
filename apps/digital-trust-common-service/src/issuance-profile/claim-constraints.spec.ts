@@ -274,6 +274,65 @@ describe('claim constraints', () => {
     ).toThrow(BadRequestException);
   });
 
+  it('validates array defaults after composing descendant defaults', () => {
+    const constraints: ClaimConstraints = {
+      '/items': { default: [], value_type: 'array', minItems: 1 },
+      '/items/0': { default: 'first', value_type: 'string' },
+    };
+    expect(() => validateClaimConstraints(constraints)).not.toThrow();
+    expect(applyClaimConstraints({}, constraints)).toEqual({
+      items: ['first'],
+    });
+    expect(constraints['/items'].default).toEqual([]);
+  });
+
+  it('defers caller-dependent container validation until offer resolution', () => {
+    const constraints: ClaimConstraints = {
+      '/items': { required: true, value_type: 'array' },
+      '/items/0': { default: 'fallback', value_type: 'string' },
+    };
+    expect(() => validateClaimConstraints(constraints)).not.toThrow();
+    expect(applyClaimConstraints({ items: [] }, constraints)).toEqual({
+      items: ['fallback'],
+    });
+    expect(() => applyClaimConstraints({}, constraints)).toThrow(
+      BadRequestException,
+    );
+    expect(() => applyClaimConstraints({ items: {} }, constraints)).toThrow(
+      BadRequestException,
+    );
+  });
+
+  it('checks invalid descendant defaults even when an ancestor masks them', () => {
+    expect(() =>
+      validateClaimConstraints({
+        '/address': { default: { country: 'CA' } },
+        '/address/country': { default: 42, value_type: 'string' },
+      }),
+    ).toThrow(BadRequestException);
+  });
+
+  it('composes masked container defaults before validating them', () => {
+    const constraints: ClaimConstraints = {
+      '/record': { default: { items: ['existing'] } },
+      '/record/items': { default: [], minItems: 1 },
+      '/record/items/0': { default: 'fallback' },
+    };
+    expect(() => validateClaimConstraints(constraints)).not.toThrow();
+    expect(applyClaimConstraints({}, constraints)).toEqual({
+      record: { items: ['existing'] },
+    });
+  });
+
+  it('validates constraints on values supplied by explicit ancestor defaults', () => {
+    expect(() =>
+      validateClaimConstraints({
+        '/record': { default: { name: 42 } },
+        '/record/name': { value_type: 'string' },
+      }),
+    ).toThrow(BadRequestException);
+  });
+
   it('uses a non-backtracking engine for nested quantifiers', () => {
     expect(() =>
       applyClaimConstraints(
