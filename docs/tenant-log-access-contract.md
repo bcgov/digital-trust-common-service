@@ -635,78 +635,30 @@ backend. The limits are global and enforced per partition; per-partition overrid
 known exceptions only. This rule governs the **shape** of a single query; request volume and
 fairness between tenants are [L11](#55-preconditions-for-exposing-query-access)'s.
 
-**Rule L11.** Query-shape limits alone are **not** sufficient for availability isolation. A
+**Rule L11.** Query-shape limits alone are **not** sufficient for availability isolation: a
 caller can stay inside every per-query limit and still exhaust shared scheduler and querier
-capacity by volume. Per-partition **concurrent/outstanding query and timeout** controls
-**MUST** be configured, and the fairness expectation between tenants **MUST** be stated as a
-measurable target rather than left implicit. Per-partition **request-rate** control **MUST**
-additionally be in place wherever the stated target is not met by concurrency and queue
-controls alone. The target is the obligation; rate limiting is one means to it, required when
-the others prove insufficient rather than in every case.
+capacity by volume. Per-partition concurrency (`max_query_parallelism`), outstanding-request
+queue (`max_outstanding_requests_per_tenant`), and timeout controls **MUST** be configured in
+Loki before any tenant is granted query access, and per-tenant admission or rate control
+**MUST** additionally be enforced at the gateway wherever Loki's per-partition bounds alone do
+not hold the cap or the fairness target below.
 
-**The capacity cap.** No **service tenant** may hold more than a third of total query capacity,
-where capacity is querier replicas multiplied by per-querier concurrency. The cap is
-**aggregate per service tenant** — summed across every partition in its composed scope and
-every request it has in flight at once — and **MUST NOT** be read as a per-partition
-allowance. A scope may hold ten partitions
-([M17](#46-multiple-connectors-are-not-ambiguous)), so granting each partition a third of
-capacity would permit a single tenant more than three times the whole backend.
-
-Two things follow, and the second is the one that is easy to miss:
-
-- Per-partition concurrency **MUST** be set so that the worst case a tenant can reach — the
-  maximum permitted partitions, at the per-partition allowance, across its permitted in-flight
-  requests — stays within the aggregate cap. The per-partition value is therefore derived from
-  the cap, the partition bound and querier capacity together, and **MUST** be recalculated
-  whenever any of the three changes.
-- The storage backend sees **partitions, not service tenants**, so it cannot enforce an
-  aggregate per-tenant cap by itself. Where the per-partition derivation above cannot hold the
-  cap on its own, the gateway **MUST** enforce it, since the gateway is the only component in
-  the chain that knows which service tenant a request belongs to
-  ([8.1](#81-what-each-component-is-responsible-for)).
-
-**The fairness target.** Under the reference load below, a tenant's reference query **MUST**
-complete within **ten seconds at p95**, and within **twice its uncontended baseline**, with no
-increase in error rate over that baseline.
-
-The load is specified here rather than left to the measurer, because "typical query" and
-"heaviest load" are otherwise chosen by whoever wants the result to pass. It is specified in
-terms of **service tenants and their composed scopes**, not single partitions: a tenant with a
-resolving connector already holds at least two partitions
-([G3](#61-the-header-is-computed-never-conveyed)) and may hold up to ten
-([M17](#46-multiple-connectors-are-not-ambiguous)), so a single-partition measurement omits the
-fan-out that determines the real cost of a query.
-
-| Term | Definition |
-|---|---|
-| Reference query | A query at the upper bound of what [L10](#55-preconditions-for-exposing-query-access) permits — the maximum permitted range length, returning up to the entry limit — issued **through the deployed gateway** against a service tenant's full composed scope, never against a hand-picked single partition. |
-| Scope under test | Measured at both the ordinary case of **two** partitions and the permitted maximum of **ten** ([M17](#46-multiple-connectors-are-not-ambiguous)), with representative production volume in **every** partition of the scope. The ten-partition case is the one that decides whether rate control is required. |
-| Competing load | A **different service tenant**, over its own full composed scope, continuously saturating its concurrency allowance with reference queries for the whole measurement window. |
-| Baseline | The p95 of the reference query at the same scope size, measured with no competing load. |
-| Window | At least 20 runs over at least 10 minutes. |
-| Cache state | The results cache **MUST** be bypassed or disabled for the baseline, measured and competing-load queries alike, and evidence recorded that no run was served from it. |
-
-Varying the time range is **not** sufficient to defeat the cache and **MUST NOT** be relied on.
-The backend splits a query into interval-aligned sub-queries and reuses overlapping cached
-intervals — including empty log-filter results — so shifting the outer range leaves much of the
-work cached. A benchmark measuring cache hits demonstrates nothing about contention, and would
-pass on a deployment with no fairness controls at all.
-
-This benchmark **MUST** be run and its result recorded before any tenant is granted query
-access, on the same schedule as the rest of [L10](#55-preconditions-for-exposing-query-access)'s
-preconditions, and re-run whenever querier replicas or per-querier concurrency change.
-
-Latency and error rate do **not** demonstrate the capacity cap — a tenant can exceed its share
-and still be fast when the backend is otherwise idle. The run **MUST** therefore also record
-the **peak number of concurrent sub-queries attributable to a single service tenant**, across
-all partitions of its scope, and show that it stayed within the cap. Both the latency target
-and the capacity cap must hold; neither is evidence for the other.
-
-Note that the storage backend provides concurrency, queue-depth and timeout controls but **no
-per-partition query rate limit**. Where rate control is required under this rule, it is
-therefore the gateway's to enforce
-([8.1](#81-what-each-component-is-responsible-for)); concurrency and queue bounds alone are the
-starting position, and the benchmark is what decides whether they suffice.
+- **Capacity cap.** A service tenant **MUST NOT** hold more than **one third** of total query
+  capacity (querier replicas multiplied by per-querier concurrency) across all partitions in its
+  composed scope ([M17](#46-multiple-connectors-are-not-ambiguous)) and all requests it has in
+  flight at once. Per-partition concurrency and queue bounds **MUST** be derived from the cap,
+  the ten-partition bound, and permitted in-flight requests together (with the gateway enforcing
+  per-tenant admission where per-partition bounds cannot hold the aggregate cap on their own),
+  and recalculated whenever querier replicas or per-querier concurrency change.
+- **Fairness target.** While a competing service tenant continuously saturates its allowance
+  over its composed scope, a tenant's reference query at the upper bound of
+  [Rule L10](#55-preconditions-for-exposing-query-access) across its composed scope (measured at
+  both **2** and **10** partitions over at least **20 runs across 10 minutes** with the results
+  cache bypassed) **MUST** complete within **10 seconds at p95** and within **2× its
+  uncontended baseline**, with **no increase in error rate** over that baseline, while the
+  flooding tenant's peak concurrent sub-queries across all its partitions and in-flight requests
+  stay within the one-third capacity cap. This benchmark **MUST** be run and recorded before
+  tenant exposure and whenever querier capacity changes.
 
 **Rule L12.** Loki **MUST NOT** be reachable except through a gateway that sets the partition
 header, in **every** environment — including development and test. An environment where the
@@ -923,7 +875,7 @@ weaker result — it is the demonstration that the attack changed nothing.
 | N34 | Identifier rotated; queries issued at the staleness bound and just after | Old binding not honoured past the bound ([M11](#44-freshness)) | Gateway |
 | N35 | Spoofed `Host` / forwarded headers matching the gateway audience | `401`; audience unaffected ([T10](#34-audience-separation)) | Gateway |
 | N36 | Query exceeding the global limits | Rejected by limits; other tenants unaffected ([L10](#55-preconditions-for-exposing-query-access)) | Log storage |
-| N37 | Tenant A floods many individually compliant queries | Tenant B stays within the fairness target, measured by L11's reference benchmark ([L11](#55-preconditions-for-exposing-query-access)) | Log storage + gateway |
+| N37 | Tenant A floods many individually compliant queries | Tenant A's peak concurrent sub-queries stay within the one-third capacity cap and Tenant B stays within the fairness target, measured by L11's benchmark ([L11](#55-preconditions-for-exposing-query-access)) | Log storage + gateway |
 | N38 | Read attempted through the write path | Not readable ([G9](#63-complete-coverage-of-the-read-surface)) | Log storage |
 | N39 | Tenant supplies a log identifier directly in a connector create or update request | Not persisted, not used for partitioning, attempt recorded ([M18](#47-the-binding-is-system-owned-not-tenant-supplied)) | This service |
 | N40 | Direct-push credential whose identity derives to a tenant's partition key | Refused; no write into a tenant partition ([L8](#54-partition-keys-must-be-derived-not-passed-through)) | Log storage |
@@ -978,7 +930,7 @@ component that performs it.
 | Component | Artifacts land in | Responsibility | Rules it implements |
 |---|---|---|---|
 | **This service** | this repository | Minting the access token with the tenant claim, the log-read scope, and the log gateway resource audience, with exactly one audience per token; rejecting log-audience tokens on the API; establishing identifier provenance and binding each agent log identifier to exactly one tenant, system-owned and released on deletion; refreshing it on rotation; exposing the resolution the gateway consumes | T1 (issuance), T3–T4 (issuance), T6 (definition), T8, T12, M1, M2, M4, M5, M8, M10, M18–M20, L8–L9 (derivation definition) |
-| **Identity-aware gateway** | this repository | Token validation and authorization on every request, mapping consumption, partition scope composition and header construction, read-surface coverage, fail-closed and uniform failure behaviour, the aggregate per-tenant capacity cap, and per-partition request-rate control where [L11](#55-preconditions-for-exposing-query-access)'s target requires it | T1, T2, T3–T4 (enforcement), T5, T6 (enforcement), T7, T9–T11, M9, M11, M12, M14–M17, G1–G11, L8–L9 (read-side application), L11 (aggregate capacity cap; rate control where required), S1, S4 |
+| **Identity-aware gateway** | this repository | Token validation and authorization on every request, mapping consumption, partition scope composition and header construction, read-surface coverage, fail-closed and uniform failure behaviour, and per-tenant admission or rate control where [L11](#55-preconditions-for-exposing-query-access) requires it | T1, T2, T3–T4 (enforcement), T5, T6 (enforcement), T7, T9–T11, M9, M11, M12, M14–M17, G1–G11, L8–L9 (read-side application), L11 (where gateway admission/rate control is required), S1, S4 |
 | **Log storage and collection** | platform gitops | Storage-layer multi-tenancy including the multi-partition read scope the gateway depends on, collector partition routing and routing-field trust, query and fairness limits, TLS on every token-bearing hop, network isolation of the backend in every environment, write-path partition assignment for existing direct-push consumers | L1–L4, L6, L7, L8–L9 (ingestion application), L10–L12, T13, backend half of G3, G9 |
 | **Agent deployment** | the agent's own chart, gitops | Structured log output carrying the agent's log identifier as a discrete field, populated by the agent runtime rather than from request data | L5, agent half of L6 |
 | **Tenant Grafana** | platform gitops | The dedicated tenant-facing instance, registered against this service as its identity provider; a single shared datasource forwarding the caller's token; generic dashboards | S2, S3 |
@@ -1076,7 +1028,7 @@ twice.
 | Component | Accepted when |
 |---|---|
 | **This service** | **P9, P11, N2, N23–N25, N39** pass, plus **P7, N3, N26, N27** jointly with the gateway: a token requested for the log gateway audience carries that audience alone and is rejected by the API; the log-read scope is grantable and expands consistently; an agent log identifier is captured only from a trusted agent, never accepted from a caller, bound to exactly one tenant under a write-time constraint, re-bindable by its own tenant, released on deletion, and never usable if it fails validation or encoding |
-| **Identity-aware gateway** | **P1–P3, P5, P6, N1, N4–N20, N30–N35, N41** pass, plus **P7, N3, N26, N27** jointly with this service, run hermetically on every change against the real gateway configuration and decision endpoint ([V2](#72-required-tests), [V3](#72-required-tests)); the read surface is an enumerated allowlist; failures are externally indistinguishable. **P4** jointly with Grafana and the **N14** canary pass under [9.3](#93-the-end-to-end-check), and **N37** passes jointly with log storage wherever [L11](#55-preconditions-for-exposing-query-access) requires gateway-side rate control, measured by L11's reference benchmark, none of which a stand-in can prove |
+| **Identity-aware gateway** | **P1–P3, P5, P6, N1, N4–N20, N30–N35, N41** pass, plus **P7, N3, N26, N27** jointly with this service, run hermetically on every change against the real gateway configuration and decision endpoint ([V2](#72-required-tests), [V3](#72-required-tests)); the read surface is an enumerated allowlist; failures are externally indistinguishable. **P4** jointly with Grafana and the **N14** canary pass under [9.3](#93-the-end-to-end-check), and **N37** passes jointly with log storage wherever [L11](#55-preconditions-for-exposing-query-access) requires gateway-side rate control, measured by L11's benchmark, none of which a stand-in can prove |
 | **Log storage** | **P8, N21, N22, N28, N29, N36–N38, N40** pass, plus **P10** jointly with agent deployment: native tenancy enabled with multi-partition reads, query and fairness limits in place; the backend unreachable from a tenant-reachable network position in **every** environment; unattributed or conflicting lines land in the platform partition, never a tenant one; no write path can place a line in a tenant partition it does not own; existing direct-push producers keep succeeding through the cutover; platform cross-tenant visibility retained |
 | **Agent deployment** | **P10** passes jointly with platform observability: log output is structured, carries the log identifier as a discrete field populated by the runtime and not from request data, the field name is confirmed against real output rather than assumed, and a line emitted for a tenant is demonstrably readable **by that tenant** — no routing depends on pattern matching unstructured text |
 | **Tenant Grafana** | **P4** passes jointly with the gateway: one instance, one org, one shared datasource, no tenant identity in any datasource field or URL; dashboards generic with no tenant variable; two tenants on the same dashboard each see only their own data |
@@ -1186,7 +1138,7 @@ they do not restate it. Where an entry and the rule itself appear to differ, the
 | L8 | Partition keys derived, charset-constrained, domain-separated | [5.4](#54-partition-keys-must-be-derived-not-passed-through) |
 | L9 | Same derivation applied by ingestion and the gateway | [5.4](#54-partition-keys-must-be-derived-not-passed-through) |
 | L10 | Global query limits in place before exposure | [5.5](#55-preconditions-for-exposing-query-access) |
-| L11 | Concurrency, queue and timeout controls; aggregate per-tenant capacity cap; rate control where required; fairness target with a reference benchmark | [5.5](#55-preconditions-for-exposing-query-access) |
+| L11 | Per-partition concurrency, queue and timeout controls; 1/3 aggregate capacity cap; p95 ≤ 10 s and ≤ 2× baseline fairness target | [5.5](#55-preconditions-for-exposing-query-access) |
 | L12 | Backend reachable only through the gateway, in every environment | [5.5](#55-preconditions-for-exposing-query-access) |
 
 ### G — the gateway header contract ([section 6](#6-the-gateway-header-contract))
