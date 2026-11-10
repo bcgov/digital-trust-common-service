@@ -1,4 +1,4 @@
-import { KeyRound } from 'lucide-react';
+import { Button } from '@bcgov/design-system-react-components';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -7,8 +7,10 @@ import { ApiClientDetailsDrawer } from '@/components/api-client/api-client-detai
 import { ApiClientDrawer } from '@/components/api-client/api-client-drawer';
 import { ApiClientsTable } from '@/components/api-client/api-clients-table';
 import { AccessDenied } from '@/components/common/access-denied';
-import { AddActionButton } from '@/components/common/add-action-button';
-import { Button } from '@/components/common/button';
+import { EmptyState } from '@/components/common/empty';
+import { GearApiIcon, PlusIcon } from '@/components/common/icons';
+import { PageHeader } from '@/components/common/page-header';
+import { LoadError, LoadingMessage } from '@/components/common/query-status';
 import { notify } from '@/components/common/sonner';
 import { ApiError } from '@/lib/api/errors';
 import { useApiClients } from '@/lib/api/queries/api-clients';
@@ -51,35 +53,31 @@ export function ApiClientsPage() {
     if (tenant) setDialog({ kind: 'create', tenantId: tenant.id });
   };
   const addButton = (
-    <AddActionButton disabled={!tenant} onClick={create}>
+    <Button isDisabled={!tenant} onPress={create}>
+      <PlusIcon className="size-5" />
       {t('apiClients.createIntegration')}
-    </AddActionButton>
+    </Button>
   );
   return (
-    <div className="flex flex-1 flex-col gap-5">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <h1 className="text-xl font-semibold">{t('apiClients.title')}</h1>
-        {addButton}
-      </div>
+    <div className="flex flex-1 flex-col gap-xlarge">
+      <PageHeader title={t('apiClients.title')} actions={addButton} />
       {(status === 'loading' || (tenant && query.isLoading)) && (
-        <p role="status">{t('apiClients.loading')}</p>
+        <LoadingMessage>{t('apiClients.loading')}</LoadingMessage>
       )}
       {status === 'error' && (
-        <div role="alert">
-          {t('apiClients.membershipsLoadFailed')}{' '}
-          <Button variant="outline" onClick={refetch}>
-            {t('common.retry')}
-          </Button>
-        </div>
+        <LoadError
+          message={t('apiClients.membershipsLoadFailed')}
+          onRetry={refetch}
+        />
       )}
-      {status === 'ready' && !tenant && <p>{t('apiClients.noActiveTenant')}</p>}
+      {status === 'ready' && !tenant && (
+        <LoadingMessage>{t('apiClients.noActiveTenant')}</LoadingMessage>
+      )}
       {tenant && query.isError && (
-        <div role="alert" className="flex items-center gap-3">
-          <p>{t('apiClients.loadFailed', { reason: query.error.message })}</p>
-          <Button variant="outline" onClick={() => void query.refetch()}>
-            {t('common.retry')}
-          </Button>
-        </div>
+        <LoadError
+          message={t('apiClients.loadFailed', { reason: query.error.message })}
+          onRetry={() => void query.refetch()}
+        />
       )}
       {tenant &&
         query.isSuccess &&
@@ -103,19 +101,12 @@ export function ApiClientsPage() {
             }
           />
         ) : (
-          <div className="flex flex-1 flex-col items-center justify-center gap-4 text-center">
-            <KeyRound
-              className="size-16 text-muted-foreground"
-              aria-hidden="true"
-            />
-            <h2 className="text-lg font-semibold">
-              {t('apiClients.emptyTitle')}
-            </h2>
-            <p className="text-sm text-muted-foreground">
-              {t('apiClients.emptyBody')}
-            </p>
-            {addButton}
-          </div>
+          <EmptyState
+            icon={<GearApiIcon />}
+            title={t('apiClients.emptyTitle')}
+            description={t('apiClients.emptyBody')}
+            action={addButton}
+          />
         ))}
       {clientToView && tenant?.id === clientToView.tenant_id && (
         <ApiClientDetailsDrawer
