@@ -407,9 +407,10 @@
     }
   },
   "credentialDefinitions": {
-    "title": "Credential Configurations",
+    "title": "Credential configurations",
+    "subtitle": "Create and publish digital credential definitions your organization can issue.",
     "forbidden": "You need the tenants:admin scope to manage credential definitions in this tenant.",
-    "register": "Register configuration",
+    "register": "Create credential",
     "loading": "Loading credential definitions...",
     "membershipsLoadFailed": "Could not load tenant memberships.",
     "noActiveTenant": "No active tenant is available.",
@@ -423,12 +424,12 @@
       "draftUpdated": "Draft changes saved."
     },
     "statuses": {
-      "draft": "draft",
-      "published": "published",
-      "deprecated": "deprecated",
-      "pending": "pending",
-      "failed": "failed",
-      "unverified": "not registered"
+      "draft": "Draft",
+      "published": "Published",
+      "deprecated": "Deprecated",
+      "pending": "Pending",
+      "failed": "Failed",
+      "unverified": "Not registered"
     },
     "formats": {
       "sdJwt": "SD-JWT",

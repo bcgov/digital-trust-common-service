@@ -1,8 +1,9 @@
 {
   "credentialDefinitions": {
     "title": "Configurations de justificatifs",
+    "subtitle": "Créez et publiez les définitions de justificatifs numériques que votre organisation peut émettre.",
     "forbidden": "Vous devez disposer de la portée tenants:admin pour gérer les définitions de justificatifs dans ce locataire.",
-    "register": "Enregistrer une configuration",
+    "register": "Créer un justificatif",
     "loading": "Chargement des définitions de justificatifs...",
     "membershipsLoadFailed": "Impossible de charger les appartenances aux locataires.",
     "noActiveTenant": "Aucun locataire actif n'est disponible.",
@@ -16,12 +17,12 @@
       "draftUpdated": "Les modifications du brouillon ont été enregistrées."
     },
     "statuses": {
-      "draft": "brouillon",
-      "published": "publié",
-      "deprecated": "obsolète",
-      "pending": "en attente",
-      "failed": "échec",
-      "unverified": "non enregistré"
+      "draft": "Brouillon",
+      "published": "Publié",
+      "deprecated": "Obsolète",
+      "pending": "En attente",
+      "failed": "Échec",
+      "unverified": "Non enregistré"
     },
     "formats": {
       "sdJwt": "SD-JWT",
