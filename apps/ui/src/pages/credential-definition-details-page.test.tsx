@@ -71,10 +71,18 @@ describe('CredentialDefinitionDetailsPage', () => {
     expect(
       screen.queryByRole('heading', { name: 'Attributes' }),
     ).not.toBeInTheDocument();
+    const attributesLabel = screen.getByText('Attributes');
+    expect(attributesLabel.tagName).toBe('DT');
     expect(screen.getAllByText('Attributes')).toHaveLength(1);
+    expect(attributesLabel.parentElement).toContainElement(
+      screen.getByText('employee_id'),
+    );
+    expect(attributesLabel.parentElement).toContainElement(
+      screen.getByText('department'),
+    );
     expect(screen.getByText('Employee identity and department')).toBeVisible();
-    expect(screen.getByText('published')).toBeVisible();
-    expect(screen.getByText('published').closest('.static-tag')).toHaveClass(
+    expect(screen.getByText('Published')).toBeVisible();
+    expect(screen.getByText('Published').closest('.static-tag')).toHaveClass(
       'green',
     );
     expect(screen.getAllByText('1.0')).toHaveLength(1);
