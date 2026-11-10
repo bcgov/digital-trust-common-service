@@ -1,4 +1,13 @@
-import { ChevronDown, LoaderCircle } from 'lucide-react';
+import {
+  Button as BcdsButton,
+  Menu,
+  MenuItem,
+  MenuSection,
+  MenuSectionHeader,
+  MenuTrigger,
+  SvgChevronDownIcon,
+} from '@bcgov/design-system-react-components';
+import { LoaderCircle } from 'lucide-react';
 import { useId, useState, type SubmitEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -13,13 +22,6 @@ import {
   DrawerFooter,
   DrawerDescription,
 } from '@/components/common/drawer';
-import {
-  DropdownMenu,
-  DropdownMenuCheckboxItem,
-  DropdownMenuContent,
-  DropdownMenuLabel,
-  DropdownMenuTrigger,
-} from '@/components/common/dropdown-menu';
 import { Input } from '@/components/common/input';
 import { Label } from '@/components/common/label';
 import { ScopeBadge } from '@/components/common/scope-badge';
@@ -37,7 +39,10 @@ import { hasScope } from '@/lib/auth/scopes';
 import { slugify } from '@/lib/tenant/slug';
 
 import { ApiClientSecret } from './api-client-secret';
-import { ApiClientSecretRotation } from './api-client-secret-rotation';
+import {
+  ApiClientSecretRotation,
+  ApiClientSecretRotationDrawer,
+} from './api-client-secret-rotation';
 
 type ClientFormError =
   | 'apiClients.drawer.validation.requiredFields'
@@ -75,11 +80,15 @@ export function ApiClientDrawer({
     })),
   );
   const [error, setError] = useState<ClientFormError | null>(null);
+  const [rotating, setRotating] = useState(false);
   const [credentials, setCredentials] = useState<ClientCredentials | null>(
     null,
   );
   const availableScopes = (scopes.data ?? []).filter(
     (scope) => scope.name && hasScope(user, scope.name),
+  );
+  const lockedScopes = selectedScopes.filter(
+    (scope) => !availableScopes.some(({ name }) => name === scope),
   );
   const suggestedClientId = `dtcs_${(slugify(name) || 'client').slice(0, 250)}`;
   const currentClientId = (
@@ -160,7 +169,6 @@ export function ApiClientDrawer({
 
   return (
     <Drawer
-      direction="right"
       open
       onOpenChange={(open) => {
         if (!open) close();
@@ -220,8 +228,8 @@ export function ApiClientDrawer({
                       </p>
                     </div>
                     <ApiClientSecretRotation
-                      tenantId={tenantId}
                       client={client}
+                      onRotate={() => setRotating(true)}
                     />
                   </>
                 ) : (
@@ -280,71 +288,61 @@ export function ApiClientDrawer({
                     </div>
                   )}
                   {scopes.isSuccess && (
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          type="button"
-                          variant="outline"
+                    <div className="flex flex-col [&>.bcds-react-aria-Button]:justify-between">
+                      <MenuTrigger>
+                        <BcdsButton
+                          variant="secondary"
                           aria-label={t('apiClients.drawer.selectScopes')}
-                          disabled={mutation.isPending}
-                          className="w-full justify-between font-normal"
+                          isDisabled={mutation.isPending}
                         >
                           {t('apiClients.drawer.selectScopesPlaceholder')}
-                          <ChevronDown aria-hidden="true" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent
-                        align="start"
-                        className="max-h-72 overflow-y-auto"
-                      >
-                        <DropdownMenuLabel>
-                          {t('apiClients.drawer.availableScopes')}
-                        </DropdownMenuLabel>
-                        {availableScopes.map((scope) => (
-                          <DropdownMenuCheckboxItem
-                            key={scope.name}
-                            checked={selectedScopes.includes(scope.name!)}
-                            onSelect={(event) => event.preventDefault()}
-                            onCheckedChange={(checked) =>
-                              setSelectedScopes(
-                                checked
-                                  ? [...selectedScopes, scope.name!]
-                                  : selectedScopes.filter(
-                                      (value) => value !== scope.name,
-                                    ),
-                              )
-                            }
-                          >
-                            <span className="flex min-w-0 flex-col">
-                              <span className="font-medium">{scope.name}</span>
-                              {scope.description && (
-                                <span className="text-xs text-muted-foreground">
-                                  {scope.description}
-                                </span>
-                              )}
-                            </span>
-                          </DropdownMenuCheckboxItem>
-                        ))}
-                        {selectedScopes
-                          .filter(
-                            (scope) =>
-                              !availableScopes.some(
-                                ({ name: scopeName }) => scopeName === scope,
+                          <SvgChevronDownIcon />
+                        </BcdsButton>
+                        <Menu
+                          placement="bottom start"
+                          className="bcds-react-aria-Menu medium max-h-72 overflow-y-auto"
+                          selectionMode="multiple"
+                          selectedKeys={selectedScopes}
+                          disabledKeys={lockedScopes}
+                          onSelectionChange={(keys) => {
+                            if (keys === 'all') return;
+                            const next = [...keys].map(String);
+                            setSelectedScopes([
+                              ...selectedScopes.filter((scope) =>
+                                next.includes(scope),
                               ),
-                          )
-                          .map((scope) => (
-                            <DropdownMenuCheckboxItem
+                              ...next.filter(
+                                (scope) => !selectedScopes.includes(scope),
+                              ),
+                            ]);
+                          }}
+                        >
+                          <MenuSection>
+                            <MenuSectionHeader>
+                              {t('apiClients.drawer.availableScopes')}
+                            </MenuSectionHeader>
+                            {availableScopes.map((scope) => (
+                              <MenuItem
+                                key={scope.name}
+                                id={scope.name}
+                                textValue={scope.name}
+                                label={scope.name}
+                                description={scope.description}
+                              />
+                            ))}
+                          </MenuSection>
+                          {lockedScopes.map((scope) => (
+                            <MenuItem
                               key={scope}
-                              checked
-                              disabled
-                            >
-                              {t('apiClients.drawer.scopeNotChangeable', {
+                              id={scope}
+                              label={t('apiClients.drawer.scopeNotChangeable', {
                                 scope,
                               })}
-                            </DropdownMenuCheckboxItem>
+                            />
                           ))}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                        </Menu>
+                      </MenuTrigger>
+                    </div>
                   )}
                   {selectedScopes.length > 0 && (
                     <div className="flex flex-wrap gap-2">
@@ -497,6 +495,14 @@ export function ApiClientDrawer({
           </form>
         )}
       </DrawerContent>
+      {client && (
+        <ApiClientSecretRotationDrawer
+          tenantId={tenantId}
+          client={client}
+          open={rotating}
+          onClose={() => setRotating(false)}
+        />
+      )}
     </Drawer>
   );
 }
