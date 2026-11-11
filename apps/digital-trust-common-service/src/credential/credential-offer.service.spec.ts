@@ -575,6 +575,19 @@ describe('CredentialOfferService', () => {
   });
 
   describe('profile mode', () => {
+    it('rejects unsupported persisted delivery before writes or backend submission', async () => {
+      mockProfileFindById.mockResolvedValue(
+        Object.assign(buildProfile(), {
+          delivery: { protocol: 'oid4vci' },
+        }),
+      );
+      await expect(service.offer(tenantId, buildDto())).rejects.toThrow(
+        'Profile delivery protocol is not supported',
+      );
+      expect(mockCreateOperation).not.toHaveBeenCalled();
+      expect(mockCredentialCreate).not.toHaveBeenCalled();
+      expect(mockOfferCredential).not.toHaveBeenCalled();
+    });
     it('inherits delivery protocol from the profile', async () => {
       await service.offer(tenantId, buildDto());
       expect(mockExchangeCreate).toHaveBeenCalledWith(

@@ -145,6 +145,9 @@ describe('claim constraints', () => {
     ['/name', { pattern: 'x', minimum: 1 }],
     ['/name', { pattern: '(' }],
     ['/name', { pattern: '(?=x)' }],
+    ['/name', { pattern: 'a'.repeat(1025) }],
+    ['/name', { minimum: '18' }],
+    ['/name', { maximum: Number.POSITIVE_INFINITY }],
     ['/name', { default: 'short', minLength: 20 }],
     ['/name', { enum: [1], value_type: 'string' }],
     ['/name', null],
@@ -186,6 +189,7 @@ describe('claim constraints', () => {
     [{ minimum: 18 }, '21'],
     [{ minItems: 2 }, ['one']],
     [{ maxItems: 1 }, ['one', 'two']],
+    [{ minItems: 1 }, {}],
     [{ pattern: '^CA$' }, 'US'],
     [{ format: 'date' }, '2025-02-29'],
     [{ format: 'date' }, '2024-01-01T00:00:00Z'],
@@ -241,6 +245,33 @@ describe('claim constraints', () => {
         },
       ),
     ).toEqual({ name: { a: 1, b: 2 } });
+  });
+
+  it('compares nested enum arrays by value and rejects different elements', () => {
+    const constraints: ClaimConstraints = {
+      '/items': { enum: [[{ name: 'Alice' }, ['CA', 'US']]] },
+    };
+    expect(
+      applyClaimConstraints(
+        { items: [{ name: 'Alice' }, ['CA', 'US']] },
+        constraints,
+      ),
+    ).toEqual({ items: [{ name: 'Alice' }, ['CA', 'US']] });
+    expect(() =>
+      applyClaimConstraints(
+        { items: [{ name: 'Alice' }, ['CA', 'GB']] },
+        constraints,
+      ),
+    ).toThrow(BadRequestException);
+  });
+
+  it('rejects a nested default that would create a sparse intermediate array', () => {
+    expect(() =>
+      applyClaimConstraints(
+        { items: [] },
+        { '/items/2/name': { default: 'Alice' } },
+      ),
+    ).toThrow(BadRequestException);
   });
 
   it('rejects defaults traversing scalar parents or sparse array indices', () => {

@@ -677,6 +677,37 @@ describe('IssuanceProfileService', () => {
   });
 
   describe('update', () => {
+    it('rejects a profile removed before the draft lock is acquired', async () => {
+      mockFindById
+        .mockResolvedValueOnce({ ...mockProfile })
+        .mockResolvedValueOnce(null);
+      await expect(
+        service.update(
+          tenantId,
+          mockProfile.id,
+          { description: 'Updated' },
+          auth,
+        ),
+      ).rejects.toThrow(NotFoundException);
+      expect(mockSave).not.toHaveBeenCalled();
+      expect(mockCreateOperation).not.toHaveBeenCalled();
+      expect(mockEmit).not.toHaveBeenCalled();
+    });
+
+    it('stores display and metadata edits in the completed operation snapshot', async () => {
+      mockFindById.mockResolvedValue({ ...mockProfile });
+      mockSave.mockImplementation((profile) => Promise.resolve(profile));
+      const dto = {
+        display: { name: 'Driver licence' },
+        metadata: { category: 'licence' },
+      };
+      const result = await service.update(tenantId, mockProfile.id, dto, auth);
+      expect(result.result).toMatchObject(dto);
+      expect(mockSave).toHaveBeenCalledWith(
+        expect.objectContaining(dto),
+        manager,
+      );
+    });
     it('updates delivery and claim constraints on a draft profile', async () => {
       mockFindById.mockResolvedValue({ ...mockProfile });
       mockSave.mockImplementation((profile) => Promise.resolve(profile));
@@ -743,6 +774,19 @@ describe('IssuanceProfileService', () => {
   });
 
   describe('publish', () => {
+    it.each([null, { tenantId: 'other-tenant' }])(
+      'does not record publication when the transaction reload returns %p',
+      async (reloaded) => {
+        mockFindById
+          .mockResolvedValueOnce({ ...mockProfile })
+          .mockResolvedValueOnce(reloaded);
+        await expect(
+          service.publish(tenantId, mockProfile.id, auth),
+        ).rejects.toThrow(NotFoundException);
+        expect(mockCreateOperation).not.toHaveBeenCalled();
+        expect(mockEmit).not.toHaveBeenCalled();
+      },
+    );
     it.each([
       CredentialDefinitionStatus.DRAFT,
       CredentialDefinitionStatus.DEPRECATED,
@@ -882,6 +926,22 @@ describe('IssuanceProfileService', () => {
   });
 
   describe('deprecate', () => {
+    it.each([null, { tenantId: 'other-tenant' }])(
+      'does not record deprecation when the transaction reload returns %p',
+      async (reloaded) => {
+        mockFindById
+          .mockResolvedValueOnce({
+            ...mockProfile,
+            status: IssuanceProfileStatus.PUBLISHED,
+          })
+          .mockResolvedValueOnce(reloaded);
+        await expect(
+          service.deprecate(tenantId, mockProfile.id, auth),
+        ).rejects.toThrow(NotFoundException);
+        expect(mockCreateOperation).not.toHaveBeenCalled();
+        expect(mockEmit).not.toHaveBeenCalled();
+      },
+    );
     const publishedProfile = {
       ...mockProfile,
       status: IssuanceProfileStatus.PUBLISHED,
