@@ -35,6 +35,7 @@ describe('AppShell', () => {
       'Dashboard',
       'Connectors',
       'Credential configurations',
+      'Issuance profiles',
       'API integrations',
       'Manage Users',
     ]);
@@ -84,6 +85,9 @@ describe('AppShell', () => {
     expect(
       screen.getByRole('link', { name: 'API integrations' }),
     ).toHaveAttribute('href', '/api-clients');
+    expect(
+      screen.getByRole('link', { name: 'Issuance profiles' }),
+    ).toHaveAttribute('href', '/issuance-profiles');
   });
 
   it('hides Manage Users from users without the management scope', async () => {
@@ -113,6 +117,9 @@ describe('AppShell', () => {
     ).not.toBeInTheDocument();
     expect(
       screen.queryByRole('link', { name: 'API integrations' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('link', { name: 'Issuance profiles' }),
     ).not.toBeInTheDocument();
   });
 

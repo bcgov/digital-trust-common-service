@@ -1,6 +1,7 @@
 import type { ParseKeys } from 'i18next';
 import {
   Certificate,
+  FileStack,
   KeyRound,
   LayoutDashboard,
   LogOut,
@@ -53,6 +54,12 @@ const NAV_ITEMS: {
     label: 'credentialDefinitions.title',
     icon: Certificate,
     scope: TENANT_ADMIN_SCOPE,
+  },
+  {
+    to: '/issuance-profiles',
+    label: 'issuanceProfiles.title',
+    icon: FileStack,
+    scope: 'profiles:manage',
   },
   {
     to: '/api-clients',

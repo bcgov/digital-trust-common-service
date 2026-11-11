@@ -2,13 +2,17 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 
+import { Credential } from '../credential/credential.entity';
 import { CredentialDefinitionFormat } from '../credential-definition/credential-definition.entity';
 
 import {
   IssuanceProfile,
   IssuanceProfileStatus,
 } from './issuance-profile.entity';
-import { IssuanceProfileRepository } from './issuance-profile.repository';
+import {
+  IssuanceProfileDeleteResult,
+  IssuanceProfileRepository,
+} from './issuance-profile.repository';
 
 describe('IssuanceProfileRepository', () => {
   let repository: IssuanceProfileRepository;
@@ -34,6 +38,128 @@ describe('IssuanceProfileRepository', () => {
     }).compile();
 
     repository = module.get(IssuanceProfileRepository);
+  });
+
+  describe('findUsedProfileIds', () => {
+    it('checks only the current tenant and page without filtering request state', async () => {
+      const query = {
+        select: jest.fn().mockReturnThis(),
+        distinct: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        getRawMany: jest.fn().mockResolvedValue([{ profileId: 'ip-1' }]),
+      };
+      Object.assign(mockRepo, {
+        manager: { createQueryBuilder: jest.fn().mockReturnValue(query) },
+      });
+      expect(
+        await repository.findUsedProfileIds('t1', ['ip-1', 'ip-2']),
+      ).toEqual(new Set(['ip-1']));
+      expect(query.distinct).toHaveBeenCalledWith(true);
+      expect(query.where).toHaveBeenCalledWith(
+        'credential.tenantId = :tenantId',
+        { tenantId: 't1' },
+      );
+      expect(query.andWhere).toHaveBeenCalledWith(
+        'credential.issuanceProfileId IN (:...profileIds)',
+        { profileIds: ['ip-1', 'ip-2'] },
+      );
+    });
+
+    it('does not query credentials for an empty page', async () => {
+      expect(await repository.findUsedProfileIds('t1', [])).toEqual(new Set());
+    });
+  });
+
+  describe('updateDraftIfCurrent', () => {
+    it('updates only the current tenant draft and reports zero affected rows', async () => {
+      const query = {
+        update: jest.fn().mockReturnThis(),
+        set: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        execute: jest.fn().mockResolvedValue({ affected: 0 }),
+      };
+      (
+        mockRepo as unknown as { createQueryBuilder: jest.Mock }
+      ).createQueryBuilder = jest.fn().mockReturnValue(query);
+
+      await expect(
+        repository.updateDraftIfCurrent('t1', 'ip-1', {
+          description: 'Updated',
+        }),
+      ).resolves.toBe(false);
+      expect(query.update).toHaveBeenCalledWith(IssuanceProfile);
+      expect(query.set).toHaveBeenCalledWith({
+        description: 'Updated',
+      });
+      expect(query.where).toHaveBeenCalledWith('id = :id', { id: 'ip-1' });
+      expect(query.andWhere).toHaveBeenCalledWith('tenant_id = :tenantId', {
+        tenantId: 't1',
+      });
+      expect(query.andWhere).toHaveBeenCalledWith('status = :status', {
+        status: IssuanceProfileStatus.DRAFT,
+      });
+    });
+  });
+
+  describe('deleteIfUnused', () => {
+    const manager = {
+      findOne: jest.fn(),
+      exists: jest.fn(),
+      delete: jest.fn(),
+    };
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+      manager.findOne.mockResolvedValue({ id: 'ip-1', tenantId: 't1' });
+      manager.exists.mockResolvedValue(false);
+      Object.assign(mockRepo, {
+        manager: {
+          transaction: jest.fn(
+            (callback: (value: typeof manager) => Promise<unknown>) =>
+              callback(manager),
+          ),
+        },
+      });
+    });
+
+    it('locks the tenant profile before checking usage and deleting', async () => {
+      await expect(repository.deleteIfUnused('t1', 'ip-1')).resolves.toBe(
+        IssuanceProfileDeleteResult.DELETED,
+      );
+      expect(manager.findOne).toHaveBeenCalledWith(IssuanceProfile, {
+        where: { id: 'ip-1', tenantId: 't1' },
+        lock: { mode: 'pessimistic_write' },
+      });
+      expect(manager.exists).toHaveBeenCalledWith(Credential, {
+        where: { tenantId: 't1', issuanceProfileId: 'ip-1' },
+      });
+      expect(manager.findOne.mock.invocationCallOrder[0]).toBeLessThan(
+        manager.exists.mock.invocationCallOrder[0],
+      );
+      expect(manager.delete).toHaveBeenCalledWith(IssuanceProfile, {
+        id: 'ip-1',
+        tenantId: 't1',
+      });
+    });
+
+    it('preserves any used profile without filtering credential state', async () => {
+      manager.exists.mockResolvedValue(true);
+      await expect(repository.deleteIfUnused('t1', 'ip-1')).resolves.toBe(
+        IssuanceProfileDeleteResult.USED,
+      );
+      expect(manager.delete).not.toHaveBeenCalled();
+    });
+
+    it('does not inspect usage or delete a missing or cross-tenant profile', async () => {
+      manager.findOne.mockResolvedValue(null);
+      await expect(
+        repository.deleteIfUnused('other-tenant', 'ip-1'),
+      ).resolves.toBe(IssuanceProfileDeleteResult.NOT_FOUND);
+      expect(manager.exists).not.toHaveBeenCalled();
+      expect(manager.delete).not.toHaveBeenCalled();
+    });
   });
 
   it('create persists a new profile', async () => {

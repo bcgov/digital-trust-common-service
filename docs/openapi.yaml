@@ -1335,6 +1335,21 @@ paths:
                 $ref: "#/components/schemas/IssuanceProfile"
         "404":
           $ref: "#/components/responses/NotFound"
+    delete:
+      operationId: deleteIssuanceProfile
+      summary: Delete an issuance profile that has never been used
+      tags: [Issuance Profiles]
+      responses:
+        "204":
+          description: Unused issuance profile deleted
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Profile has been used and must be archived instead
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
     patch:
       operationId: updateIssuanceProfile
       summary: Update issuance profile (draft only)
@@ -4176,6 +4191,9 @@ components:
     IssuanceProfile:
       type: object
       properties:
+        can_delete:
+          type: boolean
+          description: Included in list responses. True if no persisted issuance request references this profile; deletion always rechecks usage.
         id:
           type: string
           format: uuid

@@ -33,12 +33,13 @@ import {
   IssuanceProfileStatus,
 } from './issuance-profile.entity';
 import {
+  IssuanceProfileDeleteResult,
   IssuanceProfileFilters,
   IssuanceProfileRepository,
 } from './issuance-profile.repository';
 
 export type PaginatedIssuanceProfiles = {
-  data: IssuanceProfile[];
+  data: (IssuanceProfile & { canDelete: boolean })[];
   pagination: {
     next_cursor: string | null;
     has_more: boolean;
@@ -277,9 +278,17 @@ export class IssuanceProfileService {
       filters,
       { limit, cursor },
     );
+    const usedProfileIds =
+      await this.issuanceProfileRepository.findUsedProfileIds(
+        tenantId,
+        page.items.map((profile) => profile.id),
+      );
 
     return {
-      data: page.items,
+      data: page.items.map((profile) => ({
+        ...profile,
+        canDelete: !usedProfileIds.has(profile.id),
+      })),
       pagination: {
         next_cursor: page.nextCursor ? encodeCursor(page.nextCursor) : null,
         has_more: page.hasMore,
@@ -301,36 +310,62 @@ export class IssuanceProfileService {
       );
     }
 
-    if (dto.description !== undefined) {
-      profile.description = dto.description;
+    const updated = await this.issuanceProfileRepository.updateDraftIfCurrent(
+      tenantId,
+      id,
+      {
+        ...(dto.description !== undefined && { description: dto.description }),
+        ...(dto.defaults !== undefined && { defaults: dto.defaults }),
+        ...(dto.display !== undefined && { display: dto.display }),
+        ...(dto.metadata !== undefined && { metadata: dto.metadata }),
+        ...(dto.protocolHint !== undefined && {
+          protocolHint: dto.protocolHint,
+        }),
+      },
+    );
+
+    if (!updated) {
+      throw new ConflictException(
+        `Issuance profile '${id}' cannot be updated because it is no longer in draft status.`,
+      );
     }
 
-    if (dto.defaults !== undefined) {
-      profile.defaults = dto.defaults;
-    }
-
-    if (dto.display !== undefined) {
-      profile.display = dto.display;
-    }
-
-    if (dto.metadata !== undefined) {
-      profile.metadata = dto.metadata;
-    }
-
-    if (dto.protocolHint !== undefined) {
-      profile.protocolHint = dto.protocolHint;
-    }
-
-    const updated = await this.issuanceProfileRepository.save(profile);
+    const updatedProfile = await this.findById(tenantId, id, auth);
 
     await this.domainAudit.emit({
-      tenantId: updated.tenantId,
+      tenantId: updatedProfile.tenantId,
       action: AuditAction.UPDATE,
       resourceType: 'issuance_profile',
-      resourceId: updated.id,
+      resourceId: updatedProfile.id,
     });
 
-    return updated;
+    return updatedProfile;
+  }
+
+  public async remove(
+    tenantId: string,
+    id: string,
+    auth: AuthContext,
+  ): Promise<void> {
+    await this.findById(tenantId, id, auth);
+    const result = await this.issuanceProfileRepository.deleteIfUnused(
+      tenantId,
+      id,
+    );
+    if (result === IssuanceProfileDeleteResult.NOT_FOUND) {
+      throw new NotFoundException(`Issuance profile '${id}' was not found.`);
+    }
+    if (result === IssuanceProfileDeleteResult.USED) {
+      throw new ConflictException(
+        'Issuance profile has been used and must be archived instead of deleted.',
+      );
+    }
+    await this.domainAudit.emit({
+      tenantId,
+      action: AuditAction.DELETE,
+      resourceType: 'issuance_profile',
+      resourceId: id,
+    });
   }
 
   /**
@@ -378,11 +413,6 @@ export class IssuanceProfileService {
     return published;
   }
 
-  /**
-   * Deprecates a published profile. Blocking new issuance from a deprecated
-   * profile, and any effect on already-issued credentials, is out of scope
-   * here: neither concern is enforced by anything in this codebase yet.
-   */
   public async deprecate(
     tenantId: string,
     id: string,
