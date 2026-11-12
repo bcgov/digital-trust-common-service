@@ -122,7 +122,7 @@ describe('ApiClientsPage', () => {
       'https://example.test/callback',
     );
     await user.click(
-      within(dialog).getByRole('button', { name: 'Create client' }),
+      within(dialog).getByRole('button', { name: 'Create integration' }),
     );
     expect(await screen.findByText(secret)).toBeInTheDocument();
     expect(await screen.findByText('Client created.')).toBeInTheDocument();
@@ -231,7 +231,7 @@ describe('ApiClientsPage', () => {
     ).toBeInTheDocument();
     expect(
       within(dialog).getByText(
-        'Enter the URL where requests are sent after they authorize access.',
+        'Enter the URL where users are sent after they authorize access.',
       ),
     ).toBeInTheDocument();
     await user.click(
@@ -541,11 +541,11 @@ describe('ApiClientsPage', () => {
     );
     await user.keyboard('{Escape}');
     await user.click(
-      within(dialog).getByRole('button', { name: 'Create client' }),
+      within(dialog).getByRole('button', { name: 'Create integration' }),
     );
     expect(await within(dialog).findByRole('alert')).toBeInTheDocument();
     expect(
-      within(dialog).getByRole('button', { name: 'Create client' }),
+      within(dialog).getByRole('button', { name: 'Create integration' }),
     ).toBeEnabled();
   });
 
@@ -576,7 +576,7 @@ describe('ApiClientsPage', () => {
     );
     await user.keyboard('{Escape}');
     await user.click(
-      within(dialog).getByRole('button', { name: 'Create client' }),
+      within(dialog).getByRole('button', { name: 'Create integration' }),
     );
     expect(
       await within(dialog).findByRole('button', { name: 'Saving...' }),
