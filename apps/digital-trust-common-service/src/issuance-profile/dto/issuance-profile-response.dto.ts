@@ -85,6 +85,16 @@ export class IssuanceProfileResponseDto {
   })
   public status!: IssuanceProfileStatus;
 
+  @Expose({ name: 'can_delete' })
+  @ApiProperty({
+    name: 'can_delete',
+    description:
+      'List-only deletion eligibility. The delete endpoint rechecks usage.',
+    required: false,
+    type: Boolean,
+  })
+  public canDelete?: boolean;
+
   @Expose({ name: 'created_at' })
   @ApiProperty({
     name: 'created_at',
@@ -103,6 +113,7 @@ export class IssuanceProfileResponseDto {
 
   public static fromEntity(
     profile: IssuanceProfile,
+    canDelete?: boolean,
   ): IssuanceProfileResponseDto {
     const dto = new IssuanceProfileResponseDto();
     dto.id = profile.id;
@@ -116,6 +127,7 @@ export class IssuanceProfileResponseDto {
     dto.metadata = profile.metadata;
     dto.delivery = profile.delivery;
     dto.status = profile.status;
+    dto.canDelete = canDelete;
     dto.createdAt = profile.createdAt;
     dto.updatedAt = profile.updatedAt;
     return dto;

@@ -128,6 +128,28 @@ The credential-configuration wizard currently supports only Anoncreds. Drafts us
 formats return to the configurations table with a notification; they cannot be edited or
 published through this wizard. This UI restriction does not change the API's format model.
 
+The issuance profiles page (`/issuance-profiles`) requires
+`profiles:manage`. It lists profiles across cursor pages, displaying `deprecated` profiles
+as Archived. Credential definition names and formats require `tenants:admin`, matching
+the definition API; other profile managers see definition IDs instead. Mock mode returns
+an initially empty profile list and supports draft creation, publication, archival, and deletion in memory. Readable definition names link to the read-only
+`/credential-definitions/:definitionId` view, which shows identity, format, status,
+and schema details with a return link to issuance profiles. Administrators can create
+draft profiles with a name, version, protocol, and published, issuance-ready definition.
+Attributes remain on the definition; creation sends `delivery.protocol: "didcomm-v1"`,
+not legacy `protocol_hint` or `attribute_schema` fields. Optional `claim_constraints`
+can be configured through the API. Create, publish, and archive return completed
+Operations with the profile snapshot in `result`; delete remains a `204` response.
+Name/version conflicts include archived records. Draft rows offer a separate Publish
+profile action with confirmation. Publication rechecks the definition and connector
+on the server before making the profile available for issuance. List responses include
+`can_delete`, computed from persisted issuance requests in any state, including pending
+and failed requests. Unused profiles offer Delete; used published profiles offer
+Archive. Archived profiles remain in the list and retain their name/version reservation.
+Delete always rechecks usage on the server. A stale deletion conflict refreshes
+eligibility and offers archival when applicable. Missing eligibility hides these
+actions rather than assuming a profile is unused.
+
 In `oidc` mode the app **must** be reached at `https://app.localhost`, not
 `http://localhost:5173` — the issuer in the discovery document points at the
 Caddy origin, so the raw Vite origin would put authorize/token cross-origin

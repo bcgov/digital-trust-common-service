@@ -5,7 +5,10 @@ import { afterAll, afterEach, beforeAll } from 'vitest';
 import { setAuthHandlers } from '@/lib/api/client';
 import i18n from '@/lib/i18n';
 
-import { resetCredentialDefinitionMocks } from '@/mocks/handlers';
+import {
+  resetCredentialDefinitionMocks,
+  resetIssuanceProfileMocks,
+} from '@/mocks/handlers';
 import { server } from '@/mocks/server';
 
 // The default 1s for findBy/waitFor is too short when workers compete for CPU.
@@ -40,6 +43,7 @@ afterEach(() => {
   cleanup();
   server.resetHandlers();
   resetCredentialDefinitionMocks();
+  resetIssuanceProfileMocks();
   sessionStorage.clear();
   setAuthHandlers(null);
 });

@@ -76,7 +76,10 @@ describe('CredentialOfferService', () => {
   let mockExchangeObserve: jest.Mock;
   let mockExchangeCreate: jest.Mock;
   const mockMarkFailed = jest.fn();
-  const mockManager = {} as EntityManager;
+  const mockLockedProfile = jest.fn();
+  const mockManager = {
+    findOne: mockLockedProfile,
+  } as unknown as EntityManager;
 
   const tenantId = '123e4567-e89b-12d3-a456-426614174001';
   const profileId = '123e4567-e89b-12d3-a456-426614174010';
@@ -174,7 +177,30 @@ describe('CredentialOfferService', () => {
       ...overrides,
     }) as Credential;
 
+  it('rejects a profile archived or deleted after preflight before persisting issuance', async () => {
+    mockLockedProfile.mockResolvedValue(null);
+    mockResolveAdapter.mockResolvedValue({
+      adapter: { offerCredential: mockOfferCredential },
+      connector: { id: connectorId },
+    });
+    await expect(service.offer(tenantId, buildDto())).rejects.toBeInstanceOf(
+      ConflictException,
+    );
+    expect(mockLockedProfile).toHaveBeenCalledWith(IssuanceProfile, {
+      where: {
+        id: profileId,
+        tenantId,
+        status: IssuanceProfileStatus.PUBLISHED,
+      },
+      lock: { mode: 'pessimistic_read' },
+    });
+    expect(mockCreateOperation).not.toHaveBeenCalled();
+    expect(mockCredentialCreate).not.toHaveBeenCalled();
+    expect(mockOfferCredential).not.toHaveBeenCalled();
+  });
+
   beforeEach(async () => {
+    mockLockedProfile.mockReset().mockResolvedValue(buildProfile());
     mockCredentialCreate = jest.fn();
     mockResolveConnection = jest.fn().mockResolvedValue({
       id: connectionId,

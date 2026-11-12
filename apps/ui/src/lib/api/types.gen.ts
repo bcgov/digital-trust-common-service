@@ -604,7 +604,8 @@ export interface paths {
         get: operations["getIssuanceProfile"];
         put?: never;
         post?: never;
-        delete?: never;
+        /** Delete an issuance profile that has never been used */
+        delete: operations["deleteIssuanceProfile"];
         options?: never;
         head?: never;
         /** Update issuance profile (draft only) */
@@ -2241,6 +2242,8 @@ export interface components {
             };
         };
         IssuanceProfile: {
+            /** @description Included in list responses. True if no persisted issuance request references this profile; deletion always rechecks usage. */
+            can_delete?: boolean;
             /** Format: uuid */
             id?: string;
             /** Format: uuid */
@@ -4174,6 +4177,38 @@ export interface operations {
                 };
             };
             404: components["responses"]["NotFound"];
+        };
+    };
+    deleteIssuanceProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                profileId: components["parameters"]["ProfileId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Unused issuance profile deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["NotFound"];
+            /** @description Profile has been used and must be archived instead */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     updateIssuanceProfile: {

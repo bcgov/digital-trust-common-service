@@ -47,12 +47,13 @@ import {
   IssuanceProfileStatus,
 } from './issuance-profile.entity';
 import {
+  IssuanceProfileDeleteResult,
   IssuanceProfileFilters,
   IssuanceProfileRepository,
 } from './issuance-profile.repository';
 
 export type PaginatedIssuanceProfiles = {
-  data: IssuanceProfile[];
+  data: (IssuanceProfile & { canDelete: boolean })[];
   pagination: {
     next_cursor: string | null;
     has_more: boolean;
@@ -272,9 +273,17 @@ export class IssuanceProfileService {
       filters,
       { limit, cursor },
     );
+    const usedProfileIds =
+      await this.issuanceProfileRepository.findUsedProfileIds(
+        tenantId,
+        page.items.map((profile) => profile.id),
+      );
 
     return {
-      data: page.items,
+      data: page.items.map((profile) => ({
+        ...profile,
+        canDelete: !usedProfileIds.has(profile.id),
+      })),
       pagination: {
         next_cursor: page.nextCursor ? encodeCursor(page.nextCursor) : null,
         has_more: page.hasMore,
@@ -354,6 +363,32 @@ export class IssuanceProfileService {
     });
 
     return operation;
+  }
+
+  public async remove(
+    tenantId: string,
+    id: string,
+    auth: AuthContext,
+  ): Promise<void> {
+    await this.findById(tenantId, id, auth);
+    const result = await this.issuanceProfileRepository.deleteIfUnused(
+      tenantId,
+      id,
+    );
+    if (result === IssuanceProfileDeleteResult.NOT_FOUND) {
+      throw new NotFoundException(`Issuance profile '${id}' was not found.`);
+    }
+    if (result === IssuanceProfileDeleteResult.USED) {
+      throw new ConflictException(
+        'Issuance profile has been used and must be archived instead of deleted.',
+      );
+    }
+    await this.domainAudit.emit({
+      tenantId,
+      action: AuditAction.DELETE,
+      resourceType: 'issuance_profile',
+      resourceId: id,
+    });
   }
 
   /**

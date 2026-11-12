@@ -1,4 +1,15 @@
 {
+  "credentialDefinitionDetails": {
+    "title": "Credential definition details",
+    "id": "Credential definition ID",
+    "backToProfiles": "Back to issuance profiles",
+    "notFound": "This credential definition was not found in the active tenant.",
+    "schema": "Attributes",
+    "attributes": "Attributes",
+    "schemaName": "Schema name",
+    "schemaVersion": "Schema version",
+    "emptySchema": "No schema details available."
+  },
   "common": {
     "actions": "Actions",
     "backToDashboard": "Back to dashboard",
@@ -402,6 +413,59 @@
       "title": "Client secret",
       "hint": "Rotate the secret if it may have been exposed. The new secret is shown once.",
       "button": "Rotate secret"
+    }
+  },
+  "issuanceProfiles": {
+    "title": "Issuance profiles",
+    "archive": {
+      "title": "Archive profile",
+      "body": "Archive {{name}} ({{version}})? New issuance requests will be blocked. Existing requests and credentials will be retained.",
+      "pending": "Archiving...",
+      "saved": "Issuance profile archived.",
+      "conflict": "This profile is no longer published. Its current status has been refreshed."
+    },
+    "delete": {
+      "title": "Delete profile",
+      "body": "Permanently delete {{name}} ({{version}})? Only profiles that have never been used can be deleted. This cannot be undone.",
+      "pending": "Deleting...",
+      "saved": "Issuance profile deleted.",
+      "conflict": "This profile has been used and cannot be deleted. Archive it instead if it is still published."
+    },
+    "actionsFor": "Actions for {{name}} ({{version}})",
+    "publish": {
+      "title": "Publish profile",
+      "body": "Publish {{name}} ({{version}}) and make it available for issuance? Published profiles cannot be edited.",
+      "pending": "Publishing...",
+      "saved": "Issuance profile published.",
+      "conflict": "This profile is no longer a draft. Refresh the list to see its current status."
+    },
+    "create": {
+      "title": "Create profile",
+      "save": "Save draft",
+      "saved": "Issuance profile saved as a draft.",
+      "chooseDefinition": "Choose a credential definition",
+      "noDefinitions": "A published, issuance-ready credential definition is required to create a profile.",
+      "duplicate": "This name and version already exist, including archived profiles.",
+      "nameInvalid": "Enter a name of 1 to 100 characters.",
+      "versionInvalid": "Enter a version such as 1, 1.0, 1.0.0 or 1.0.0-beta (maximum 20 characters)."
+    },
+    "forbidden": "You need the profiles:manage scope to view issuance profiles in this tenant.",
+    "loading": "Loading issuance profiles...",
+    "loadFailed": "Could not load issuance profiles.",
+    "loadMore": "Load more",
+    "emptyTitle": "No issuance profiles",
+    "emptyBody": "This organization has no issuance profiles.",
+    "definition": "Credential definition",
+    "protocol": "Protocol",
+    "unavailable": "Unavailable",
+    "definitionsRestricted": "Credential definition names and formats require tenants:admin access.",
+    "protocols": {
+      "didcomm-v1": "DIDComm v1"
+    },
+    "statuses": {
+      "draft": "Draft",
+      "published": "Published",
+      "deprecated": "Archived"
     }
   },
   "credentialDefinitions": {

@@ -37,7 +37,10 @@ import {
   IssuanceProfile,
   IssuanceProfileStatus,
 } from './issuance-profile.entity';
-import { IssuanceProfileRepository } from './issuance-profile.repository';
+import {
+  IssuanceProfileDeleteResult,
+  IssuanceProfileRepository,
+} from './issuance-profile.repository';
 import { IssuanceProfileService } from './issuance-profile.service';
 
 describe('IssuanceProfileService', () => {
@@ -46,6 +49,7 @@ describe('IssuanceProfileService', () => {
   let mockFindById: jest.Mock;
   let mockFindByNameAndVersion: jest.Mock;
   let mockFindPage: jest.Mock;
+  let mockFindUsedProfileIds: jest.Mock;
   let mockSave: jest.Mock;
   let mockEmit: jest.Mock;
   let mockCredentialDefinitionFindById: jest.Mock;
@@ -54,6 +58,7 @@ describe('IssuanceProfileService', () => {
   let mockCreateOperation: jest.Mock;
   let mockCompleteOperation: jest.Mock;
   const manager = {} as EntityManager;
+  let mockDeleteIfUnused: jest.Mock;
 
   const tenantId = '123e4567-e89b-12d3-a456-426614174001';
 
@@ -126,11 +131,64 @@ describe('IssuanceProfileService', () => {
     iat: 1,
   };
 
+  describe('remove', () => {
+    it('deletes an unused profile and emits its audit event', async () => {
+      mockFindById.mockResolvedValue(mockProfile);
+      await service.remove(tenantId, mockProfile.id, auth);
+      expect(mockDeleteIfUnused).toHaveBeenCalledWith(tenantId, mockProfile.id);
+      expect(mockEmit).toHaveBeenCalledWith({
+        tenantId,
+        action: AuditAction.DELETE,
+        resourceType: 'issuance_profile',
+        resourceId: mockProfile.id,
+      });
+    });
+
+    it.each([
+      IssuanceProfileDeleteResult.USED,
+      IssuanceProfileDeleteResult.NOT_FOUND,
+    ])('rejects %s without emitting an audit event', async (result) => {
+      mockFindById.mockResolvedValue(mockProfile);
+      mockDeleteIfUnused.mockResolvedValue(result);
+      await expect(
+        service.remove(tenantId, mockProfile.id, auth),
+      ).rejects.toBeInstanceOf(
+        result === IssuanceProfileDeleteResult.USED
+          ? ConflictException
+          : NotFoundException,
+      );
+      expect(mockEmit).not.toHaveBeenCalled();
+    });
+
+    it('does not delete another tenant profile', async () => {
+      mockFindById.mockResolvedValue({
+        ...mockProfile,
+        tenantId: 'other-tenant',
+      });
+      await expect(
+        service.remove(tenantId, mockProfile.id, auth),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(mockDeleteIfUnused).not.toHaveBeenCalled();
+    });
+
+    it('does not delete when the auth tenant differs', async () => {
+      mockFindById.mockResolvedValue(mockProfile);
+      await expect(
+        service.remove(tenantId, mockProfile.id, {
+          ...auth,
+          tenantId: 'other-tenant',
+        }),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(mockDeleteIfUnused).not.toHaveBeenCalled();
+    });
+  });
+
   beforeEach(async () => {
     mockCreate = jest.fn();
     mockFindById = jest.fn();
     mockFindByNameAndVersion = jest.fn();
     mockFindPage = jest.fn();
+    mockFindUsedProfileIds = jest.fn().mockResolvedValue(new Set<string>());
     mockSave = jest.fn();
     mockEmit = jest.fn().mockResolvedValue(undefined);
     mockCredentialDefinitionFindById = jest
@@ -150,6 +208,9 @@ describe('IssuanceProfileService', () => {
       .mockImplementation((id, state, result) =>
         Promise.resolve({ id, state, result }),
       );
+    mockDeleteIfUnused = jest
+      .fn()
+      .mockResolvedValue(IssuanceProfileDeleteResult.DELETED);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -177,8 +238,10 @@ describe('IssuanceProfileService', () => {
             findForUpdate: (): unknown => mockFindById(),
             findByNameAndVersion: mockFindByNameAndVersion,
             findPage: mockFindPage,
+            findUsedProfileIds: mockFindUsedProfileIds,
             save: mockSave,
             transitionStatus: mockTransitionStatus,
+            deleteIfUnused: mockDeleteIfUnused,
           },
         },
         {
@@ -582,6 +645,20 @@ describe('IssuanceProfileService', () => {
   });
 
   describe('findByTenantId', () => {
+    it('marks profiles referenced by any request as non-deletable', async () => {
+      mockFindPage.mockResolvedValue({
+        items: [mockProfile],
+        nextCursor: null,
+        hasMore: false,
+      });
+      mockFindUsedProfileIds.mockResolvedValue(new Set([mockProfile.id]));
+      const result = await service.findByTenantId(tenantId, {});
+      expect(mockFindUsedProfileIds).toHaveBeenCalledWith(tenantId, [
+        mockProfile.id,
+      ]);
+      expect(result.data[0]?.canDelete).toBe(false);
+    });
+
     it('delegates to the repository with the provided filters and default paging', async () => {
       mockFindPage.mockResolvedValue({
         items: [mockProfile],
@@ -599,7 +676,7 @@ describe('IssuanceProfileService', () => {
         { limit: 20, cursor: null },
       );
       expect(result).toEqual({
-        data: [mockProfile],
+        data: [{ ...mockProfile, canDelete: true }],
         pagination: { next_cursor: null, has_more: false },
       });
     });
@@ -742,10 +819,12 @@ describe('IssuanceProfileService', () => {
     });
 
     it('updates a draft profile', async () => {
-      mockFindById.mockResolvedValue({ ...mockProfile });
-      mockSave.mockImplementation((profile) => Promise.resolve(profile));
+      mockFindById
+        .mockResolvedValueOnce({ ...mockProfile })
+        .mockResolvedValueOnce({ ...mockProfile, description: 'Updated' });
 
       const dto: UpdateIssuanceProfileDto = { description: 'Updated' };
+      mockSave.mockImplementation((profile) => Promise.resolve(profile));
       const result = await service.update(tenantId, mockProfile.id, dto, auth);
 
       expect(result.result?.description).toBe('Updated');
@@ -770,6 +849,26 @@ describe('IssuanceProfileService', () => {
         service.update(tenantId, mockProfile.id, { description: 'nope' }, auth),
       ).rejects.toThrow(ConflictException);
       expect(mockSave).not.toHaveBeenCalled();
+    });
+
+    it('rejects when publication wins after the initial draft read', async () => {
+      mockFindById
+        .mockResolvedValueOnce({ ...mockProfile })
+        .mockResolvedValueOnce({
+          ...mockProfile,
+          status: IssuanceProfileStatus.PUBLISHED,
+        });
+
+      await expect(
+        service.update(
+          tenantId,
+          mockProfile.id,
+          { description: 'Updated' },
+          auth,
+        ),
+      ).rejects.toThrow(ConflictException);
+      expect(mockSave).not.toHaveBeenCalled();
+      expect(mockEmit).not.toHaveBeenCalled();
     });
   });
 

@@ -219,6 +219,21 @@ export class CredentialOfferService {
 
     const { operation, credential } = await this.dataSource.transaction(
       async (manager) => {
+        if (source.issuanceProfileId) {
+          const profile = await manager.findOne(IssuanceProfile, {
+            where: {
+              id: source.issuanceProfileId,
+              tenantId,
+              status: IssuanceProfileStatus.PUBLISHED,
+            },
+            lock: { mode: 'pessimistic_read' },
+          });
+          if (!profile) {
+            throw new ConflictException(
+              'Issuance profile is no longer available for issuance',
+            );
+          }
+        }
         const exchange = await this.exchanges.create(
           {
             tenantId,

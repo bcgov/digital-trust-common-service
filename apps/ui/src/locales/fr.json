@@ -1,4 +1,68 @@
 {
+  "credentialDefinitionDetails": {
+    "title": "Détails de la définition de justificatif",
+    "id": "Identifiant de la définition de justificatif",
+    "backToProfiles": "Retour aux profils de délivrance",
+    "notFound": "Cette définition de justificatif est introuvable dans le locataire actif.",
+    "schema": "Attributs",
+    "attributes": "Attributs",
+    "schemaName": "Nom du schéma",
+    "schemaVersion": "Version du schéma",
+    "emptySchema": "Aucun détail de schéma disponible."
+  },
+  "issuanceProfiles": {
+    "title": "Profils de délivrance",
+    "archive": {
+      "title": "Archiver le profil",
+      "body": "Archiver {{name}} ({{version}}) ? Les nouvelles demandes de délivrance seront bloquées. Les demandes et justificatifs existants seront conservés.",
+      "pending": "Archivage...",
+      "saved": "Le profil de délivrance a été archivé.",
+      "conflict": "Ce profil n'est plus publié. Son état actuel a été actualisé."
+    },
+    "delete": {
+      "title": "Supprimer le profil",
+      "body": "Supprimer définitivement {{name}} ({{version}}) ? Seuls les profils jamais utilisés peuvent être supprimés. Cette action est irréversible.",
+      "pending": "Suppression...",
+      "saved": "Le profil de délivrance a été supprimé.",
+      "conflict": "Ce profil a été utilisé et ne peut pas être supprimé. Archivez-le plutôt s'il est encore publié."
+    },
+    "actionsFor": "Actions pour {{name}} ({{version}})",
+    "publish": {
+      "title": "Publier le profil",
+      "body": "Publier {{name}} ({{version}}) et le rendre disponible pour la délivrance ? Les profils publiés ne peuvent pas être modifiés.",
+      "pending": "Publication...",
+      "saved": "Le profil de délivrance a été publié.",
+      "conflict": "Ce profil n'est plus un brouillon. Actualisez la liste pour voir son état actuel."
+    },
+    "create": {
+      "title": "Créer un profil",
+      "save": "Enregistrer le brouillon",
+      "saved": "Le profil de délivrance a été enregistré comme brouillon.",
+      "chooseDefinition": "Choisir une définition de justificatif",
+      "noDefinitions": "Une définition de justificatif publiée et prête pour la délivrance est nécessaire pour créer un profil.",
+      "duplicate": "Ce nom et cette version existent déjà, y compris parmi les profils archivés.",
+      "nameInvalid": "Saisissez un nom de 1 à 100 caractères.",
+      "versionInvalid": "Saisissez une version comme 1, 1.0, 1.0.0 ou 1.0.0-beta (20 caractères maximum)."
+    },
+    "forbidden": "Vous devez disposer de la portée profiles:manage pour consulter les profils de délivrance de ce locataire.",
+    "loading": "Chargement des profils de délivrance...",
+    "loadFailed": "Impossible de charger les profils de délivrance.",
+    "loadMore": "Afficher plus",
+    "emptyTitle": "Aucun profil de délivrance",
+    "emptyBody": "Cette organisation ne possède aucun profil de délivrance.",
+    "definition": "Définition de justificatif",
+    "protocol": "Protocole",
+    "unavailable": "Indisponible",
+    "definitionsRestricted": "Les noms et formats des définitions de justificatifs nécessitent la portée tenants:admin.",
+    "protocols": {
+      "didcomm-v1": "DIDComm v1"
+    },
+    "statuses": {
+      "draft": "Brouillon",
+      "published": "Publié",
+      "deprecated": "Archivé"
+    }
+  },
   "credentialDefinitions": {
     "title": "Configurations de justificatifs",
     "subtitle": "Créez et publiez les définitions de justificatifs numériques que votre organisation peut émettre.",

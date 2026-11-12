@@ -38,6 +38,7 @@ describe('IssuanceProfileController', () => {
   let mockUpdate: jest.Mock;
   let mockPublish: jest.Mock;
   let mockDeprecate: jest.Mock;
+  let mockRemove: jest.Mock;
 
   const auth: AuthContext = {
     sub: 'user-1',
@@ -102,6 +103,7 @@ describe('IssuanceProfileController', () => {
     mockUpdate = jest.fn();
     mockPublish = jest.fn();
     mockDeprecate = jest.fn();
+    mockRemove = jest.fn().mockResolvedValue(undefined);
 
     const mockService = {
       create: mockCreate,
@@ -110,6 +112,7 @@ describe('IssuanceProfileController', () => {
       update: mockUpdate,
       publish: mockPublish,
       deprecate: mockDeprecate,
+      remove: mockRemove,
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -142,6 +145,17 @@ describe('IssuanceProfileController', () => {
     expect(controller).toBeDefined();
   });
 
+  it('delegates profile deletion with tenant and auth context', async () => {
+    await expect(
+      controller.remove(mockProfile.tenantId, mockProfile.id, auth),
+    ).resolves.toBeUndefined();
+    expect(mockRemove).toHaveBeenCalledWith(
+      mockProfile.tenantId,
+      mockProfile.id,
+      auth,
+    );
+  });
+
   describe('POST /tenants/:tenantId/profiles/issuance', () => {
     it('creates a new issuance profile', async () => {
       const tenantId = mockProfile.tenantId;
@@ -164,6 +178,15 @@ describe('IssuanceProfileController', () => {
   });
 
   describe('GET /tenants/:tenantId/profiles/issuance', () => {
+    it('includes server-computed deletion eligibility in list responses', async () => {
+      mockFindByTenantId.mockResolvedValue({
+        data: [{ ...mockProfile, canDelete: false }],
+        pagination: { next_cursor: null, has_more: false },
+      });
+      const result = await controller.findByTenantId(mockProfile.tenantId, {});
+      expect(result.data[0]?.canDelete).toBe(false);
+    });
+
     it('lists profiles with the provided filters', async () => {
       const tenantId = mockProfile.tenantId;
       mockFindByTenantId.mockResolvedValue({
