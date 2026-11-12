@@ -53,6 +53,10 @@ export type OperationResult = Record<string, unknown> | OperationFailure | null;
 @Index('idx_operation_expires_at', ['expiresAt'])
 @Index('idx_operation_batch_id', ['batchId'])
 export class Operation {
+  @ApiHideProperty()
+  @Column({ name: 'presentation_stage', type: 'smallint', nullable: true })
+  public presentationStage?: number | null;
+
   @ApiProperty({ description: 'Local credential exchange ID', nullable: true })
   @Column({ name: 'exchange_id', type: 'uuid', nullable: true })
   public exchangeId?: string | null;

@@ -13,6 +13,7 @@ import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { DataSource, LessThan } from 'typeorm';
 
+import { AdapterRegistry } from '../adapter-registry/adapter-registry.service';
 import { configureApp } from '../app.config';
 import {
   AuditAction,
@@ -106,6 +107,7 @@ describe('operation tenant isolation integration', () => {
         ScopeAuthorizationService,
         OperationService,
         ProtocolStateChangeService,
+        { provide: AdapterRegistry, useValue: { resolve: jest.fn() } },
         { provide: DataSource, useValue: dataSource },
         {
           provide: CredentialRepository,

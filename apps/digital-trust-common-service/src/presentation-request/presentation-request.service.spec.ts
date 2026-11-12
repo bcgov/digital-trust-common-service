@@ -20,13 +20,13 @@ import {
   ConnectorType,
 } from '../connection/connection.entity';
 import { ConnectionRepository } from '../connection/connection.repository';
+import { buildTractionPresentationRequest } from '../connector/connectors/traction/traction-presentation';
 import { CredentialDefinitionFormat } from '../credential-definition/credential-definition.entity';
 import { JobsService } from '../jobs/jobs.service';
 import { OPERATION_TYPE } from '../operation/operation-type.constants';
 import { Operation, OperationState } from '../operation/operation.entity';
 import { OperationRepository } from '../operation/operation.repository';
 import { OperationService } from '../operation/operation.service';
-import { buildTractionPresentationRequest } from '../traction/traction-presentation';
 import {
   VerificationProfile,
   VerificationProfileStatus,
@@ -118,7 +118,17 @@ describe('PresentationRequestService', () => {
     }) as Operation;
 
   const mockResolvedAdapter = () => ({
-    adapter: { requestPresentation: mockRequestPresentation },
+    adapter: {
+      requestPresentation: mockRequestPresentation,
+      getPresentation: jest.fn().mockResolvedValue({
+        id: 'agent-exch-1',
+        connectionId: externalConnectionId,
+        state: PresentationExchangeState.Verified,
+        verified: true,
+        revealedAttributes: [],
+        predicates: [],
+      }),
+    },
     connector: { id: 'connector-1' },
     context: { connectorId: 'connector-1' },
     format: CredentialDefinitionFormat.ANONCREDS,
@@ -158,7 +168,10 @@ describe('PresentationRequestService', () => {
         },
         {
           provide: OperationRepository,
-          useValue: { findById: mockFindOperationById },
+          useValue: {
+            findById: mockFindOperationById,
+            advancePresentationStage: jest.fn().mockResolvedValue(true),
+          },
         },
         {
           provide: OperationService,
@@ -240,6 +253,42 @@ describe('PresentationRequestService', () => {
       );
     });
 
+    it.each([
+      new ConnectorUnavailableError('agent unreachable'),
+      new Error('unexpected adapter failure'),
+    ])(
+      'returns the durable failed Operation when submission throws %p',
+      async (error) => {
+        mockRequestPresentation.mockRejectedValue(error);
+        mockTransitionStateIfForward.mockResolvedValue(
+          buildOperation({
+            state: OperationState.FAILED,
+            result: { code: 'ADAPTER_ERROR', message: error.message },
+          }),
+        );
+        const failed = await service.create(tenantId, dto, auth);
+        expect(failed.id).toBe('presentation-op-1');
+        expect(failed.state).toBe(OperationState.FAILED);
+        expect(mockTransitionStateIfForward).toHaveBeenCalledWith(
+          failed.id,
+          OperationState.FAILED,
+          expect.any(Array),
+          expect.objectContaining({ message: error.message }),
+          mockManager,
+          undefined,
+        );
+        expect(mockSendInTransaction).toHaveBeenCalledWith(
+          mockManager,
+          JOB_QUEUES.WEBHOOK_DISPATCH,
+          expect.objectContaining({
+            resourceId: failed.id,
+            event: 'presentation.request.failed',
+          }),
+        );
+        expect(mockRequestPresentation).toHaveBeenCalledTimes(1);
+      },
+    );
+
     it('persists fresh execution nonce and exact request before the Traction mapping', async () => {
       await service.create(tenantId, dto, auth);
       await service.create(tenantId, dto, auth);
@@ -261,6 +310,7 @@ describe('PresentationRequestService', () => {
           presentation_definition_id: profileId,
           delivery: { connection_id: connectionId },
           snapshot: {
+            connector_id: 'connector-1',
             definition: expect.objectContaining({
               id: profileId,
               version: '1.0',
@@ -665,7 +715,7 @@ describe('PresentationRequestService', () => {
       'presentation-op-1',
       OperationState.COMPLETED,
       expect.any(Array),
-      expect.objectContaining({ id: 'exch-1', verified: true }),
+      { verified: true, revealed_attributes: [], predicates: [] },
       mockManager,
       'agent-exch-1',
     );
@@ -747,7 +797,7 @@ describe('PresentationRequestService', () => {
     expect(mockCreateOperation).not.toHaveBeenCalled();
   });
 
-  it('marks the operation FAILED (not thrown) when the adapter rejects with an AdapterError', async () => {
+  it('preserves legacy HTTP errors after durably marking the operation failed', async () => {
     mockRequestPresentation.mockRejectedValue(
       new ConnectorUnavailableError('agent unreachable'),
     );
@@ -773,6 +823,7 @@ describe('PresentationRequestService', () => {
       expect.any(Array),
       { code: 'CONNECTOR_UNAVAILABLE', message: 'agent unreachable' },
       mockManager,
+      undefined,
     );
     expect(mockSendInTransaction).toHaveBeenCalledWith(
       mockManager,
@@ -808,6 +859,7 @@ describe('PresentationRequestService', () => {
       expect.any(Array),
       { code: 'ADAPTER_ERROR', message: 'boom' },
       mockManager,
+      undefined,
     );
   });
 

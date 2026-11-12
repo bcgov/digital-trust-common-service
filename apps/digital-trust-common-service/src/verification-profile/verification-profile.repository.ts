@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { EntityManager, Repository } from 'typeorm';
 import { QueryDeepPartialEntity } from 'typeorm/query-builder/QueryPartialEntity';
 
 import { Cursor } from '../common/cursor-pagination';
@@ -30,13 +30,20 @@ export class VerificationProfileRepository {
 
   public async create(
     profile: Partial<VerificationProfile>,
+    manager?: EntityManager,
   ): Promise<VerificationProfile> {
-    const entity = this.repository.create(profile);
-    return await this.repository.save(entity);
+    const repository =
+      manager?.getRepository(VerificationProfile) ?? this.repository;
+    return await repository.save(repository.create(profile));
   }
 
-  public async findById(id: string): Promise<VerificationProfile | null> {
-    return await this.repository.findOne({ where: { id } });
+  public async findById(
+    id: string,
+    manager?: EntityManager,
+  ): Promise<VerificationProfile | null> {
+    return await (
+      manager?.getRepository(VerificationProfile) ?? this.repository
+    ).findOne({ where: { id } });
   }
 
   public async findByTenant(tenantId: string): Promise<VerificationProfile[]> {
@@ -136,8 +143,11 @@ export class VerificationProfileRepository {
     id: string,
     fromStatus: VerificationProfileStatus,
     toStatus: VerificationProfileStatus,
+    manager?: EntityManager,
   ): Promise<boolean> {
-    const result = await this.repository
+    const result = await (
+      manager?.getRepository(VerificationProfile) ?? this.repository
+    )
       .createQueryBuilder()
       .update(VerificationProfile)
       .set({ status: toStatus })
@@ -160,8 +170,11 @@ export class VerificationProfileRepository {
     tenantId: string,
     id: string,
     patch: QueryDeepPartialEntity<VerificationProfile>,
+    manager?: EntityManager,
   ): Promise<boolean> {
-    const result = await this.repository
+    const result = await (
+      manager?.getRepository(VerificationProfile) ?? this.repository
+    )
       .createQueryBuilder()
       .update(VerificationProfile)
       .set(patch)

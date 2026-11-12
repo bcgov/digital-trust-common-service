@@ -103,6 +103,10 @@ describe('operation steps', () => {
   });
 
   it.each([
+    OPERATION_TYPE.PRESENTATION_DEFINITION_CREATE,
+    OPERATION_TYPE.PRESENTATION_DEFINITION_UPDATE,
+    OPERATION_TYPE.PRESENTATION_DEFINITION_PUBLISH,
+    OPERATION_TYPE.PRESENTATION_DEFINITION_DEPRECATE,
     OPERATION_TYPE.ISSUANCE_PROFILE_CREATE,
     OPERATION_TYPE.ISSUANCE_PROFILE_UPDATE,
     OPERATION_TYPE.ISSUANCE_PROFILE_PUBLISH,
@@ -112,6 +116,49 @@ describe('operation steps', () => {
       operationSteps(operation({ type, state: OperationState.COMPLETED })),
     ).toEqual([{ type, state: State.COMPLETED }]);
   });
+
+  it.each([
+    [OperationState.PENDING, 0, [State.PENDING, State.PENDING, State.PENDING]],
+    [
+      OperationState.PROCESSING,
+      1,
+      [State.COMPLETED, State.WAITING, State.PENDING],
+    ],
+    [
+      OperationState.PROCESSING,
+      2,
+      [State.COMPLETED, State.COMPLETED, State.PROCESSING],
+    ],
+    [OperationState.FAILED, 0, [State.FAILED, State.PENDING, State.PENDING]],
+    [OperationState.FAILED, 1, [State.COMPLETED, State.FAILED, State.PENDING]],
+    [
+      OperationState.FAILED,
+      2,
+      [State.COMPLETED, State.COMPLETED, State.FAILED],
+    ],
+    [
+      OperationState.COMPLETED,
+      2,
+      [State.COMPLETED, State.COMPLETED, State.COMPLETED],
+    ],
+  ])(
+    'projects presentation %s from persisted stage %s',
+    (state, presentationStage, states) => {
+      const steps = operationSteps(
+        operation({
+          type: OPERATION_TYPE.PRESENTATION_REQUEST,
+          state,
+          presentationStage,
+        }),
+      );
+      expect(steps.map((step) => step.type)).toEqual([
+        Type.PRESENTATION_REQUEST_SEND,
+        Type.PRESENTATION_RECEIVE,
+        Type.PRESENTATION_VERIFY,
+      ]);
+      expect(steps.map((step) => step.state)).toEqual(states);
+    },
+  );
 
   it.each([
     ['pending', [State.PROCESSING, State.PENDING, State.PENDING]],

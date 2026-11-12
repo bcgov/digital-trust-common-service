@@ -1706,8 +1706,19 @@ ACA-Py's cryptographic verification, not from comparing revealed values.
 Self-attested values and unverified proof data are never exposed as verified
 attributes. Missing AnonCreds proof attachments or requested predicate proofs
 on a successfully verified record are rejected explicitly.
-Normal state-only webhooks do not contain these proof attachments; this layer
-does not add public storage or retrieval of those cryptographic proof attachments.
+Normal state-only webhooks do not contain these proof attachments. Before
+settling a claimed successful presentation, the worker reads `getPresentation`
+using the snapshotted connector, verifies the exact exchange and external
+connection IDs, and requires explicit backend verification. It persists only
+normalized revealed attributes/predicate outcomes, never raw webhook payloads
+or cryptographic proof attachments. A missing, unverified, malformed, or
+miscorrelated record fails with a diagnostic result; transient lookup outages
+leave the operation unsettled and retry through the existing worker policy.
+Authenticated proof events must identify their originating connector. Requests
+created before connector pinning are not automatically settled by these events:
+their wallet cannot be safely inferred from the tenant's current default.
+Drain existing in-flight legacy requests before upgrading; an unpinned request
+left outstanding requires operator reconciliation rather than an invented result.
 
 ### Reusable presentation definitions and execution
 
@@ -1757,6 +1768,14 @@ be edited: create a new version instead. There is no new deletion or ledger
 registration API. Migration adds nullable `presentation_format` without assigning
 a new default to legacy profiles.
 
+Definition mutations now return completed typed Operations, with one local step:
+`presentation-definition.create`, `.update`, `.publish`, or `.deprecate`. The
+resource mutation and Operation commit atomically; failures roll both back.
+`result` is the full API-shaped definition snapshot at that mutation, and
+`result.id` is the definition ID (the envelope `id` is the Operation ID).
+Creation returns HTTP 201 and the other mutations HTTP 200. Reads/lists remain
+definition resources. These local operations do not send protocol messages.
+
 Execute a published definition with `credentials:verify`:
 
 ```text
@@ -1771,8 +1790,9 @@ POST /api/v1/tenants/:tenantId/presentation-requests
 ```
 
 The connection and definition must belong to this tenant. Delivery uses that
-connection's connector type and its external connection ID, with the definition's
-output format. Each execution stores a deep snapshot of the definition, selected
+connection's pinned connector when available (otherwise its connector type)
+and its external connection ID, with the definition's output format.
+Each execution stores a deep snapshot of the selected connector ID, definition, selected
 format and compiled port request (including its fresh nonce) in the existing
 Operation JSON request before submission. Subsequent template changes or even
 removal of the source row cannot change the outstanding proof request; completion
@@ -1783,16 +1803,33 @@ intervals remain supported at the port/Traction boundary unchanged.
 
 The response is the standard Operation envelope: `202` while in flight, or `200`
 for a synchronous terminal result. Its ID is the request ID.
+Submission exceptions after Operation creation return a failed HTTP 200 Operation
+with its ID and diagnostic `code`/`message`. Validation, tenant/authentication,
+and connector-selection preflight errors remain normal HTTP errors.
+The same parent projects `presentation-request.send`, `presentation.receive`,
+and `presentation.verify` steps from a monotonic persisted current stage.
+After sending, receipt is `waiting`; receipt advances verification to
+`processing`; only a verified correlated backend result completes it. No child
+Operations or synthetic stage history are created.
 `GET /api/v1/tenants/:tenantId/presentation-requests/:id` returns tenant-scoped
 presentation-request status/result under the same view/expiry rules as operation
 polling; it does not expose internal snapshots or accept another operation type.
+Completed `result` has `{ verified: true, revealed_attributes, predicates }`.
+Revealed attributes contain `{ referent, name, value }`; predicates contain
+`{ referent, name, operator, threshold, satisfied: true }`. Values come only from
+cryptographically verified proof attachments, never self-attestation. A terminal
+webhook is not sufficient proof by itself. Pending/processing results stay null.
 
 Existing `/profiles/verification` lifecycle endpoints and
 `/presentations/request` profile/raw submission remain supported. Profile UUIDs
 are also definition UUIDs, including through the new execution endpoint. Legacy
 profiles show `options.format: null` until explicitly set on a draft, preserving
 connector-inferred format selection. Existing callers do not need to migrate
-their payloads. There are no existing presentation/profile UI screens or resource
+their payloads. Legacy profile mutations retain raw profile responses; the new
+definition routes return configuration Operations. Legacy presentation submission
+preserves HTTP exceptions after durably recording failures; the new execution
+route returns failed envelopes instead. Both routes use normalized terminal
+presentation results. There are no existing presentation/profile UI screens or resource
 clients to change; the generated UI API types include the new contracts.
 
 ### Offering a credential

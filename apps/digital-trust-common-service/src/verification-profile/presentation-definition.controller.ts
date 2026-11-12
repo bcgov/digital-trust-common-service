@@ -33,6 +33,7 @@ import {
 
 import { SkipAutoAudit } from '../audit-log/skip-auto-audit.decorator';
 import { API_VERSION } from '../common/constants/api-version.constants';
+import { OperationResponseDto } from '../operation/dto/operation-response.dto';
 import { TenantTierRateLimitGuard } from '../rate-limit/tenant-tier-rate-limit.guard';
 import { TenantStatusGuard } from '../tenant/tenant-status.guard';
 
@@ -76,7 +77,11 @@ export class PresentationDefinitionController {
   public constructor(private readonly profiles: VerificationProfileService) {}
 
   @Post()
-  @ApiCreatedResponse({ type: PresentationDefinitionResponseDto })
+  @ApiCreatedResponse({
+    type: OperationResponseDto,
+    description:
+      'Completed configuration Operation; result is the definition snapshot',
+  })
   @ApiBody({
     type: CreatePresentationDefinitionDto,
     examples: {
@@ -107,8 +112,8 @@ export class PresentationDefinitionController {
     @Param('tenantId', ParseUUIDPipe) tenantId: string,
     @Body() dto: CreatePresentationDefinitionDto,
     @CurrentAuth() auth: AuthContext,
-  ): Promise<PresentationDefinitionResponseDto> {
-    return PresentationDefinitionResponseDto.fromEntity(
+  ): Promise<OperationResponseDto> {
+    return OperationResponseDto.fromEntity(
       await this.profiles.createDefinition(tenantId, dto, auth),
     );
   }
@@ -147,41 +152,41 @@ export class PresentationDefinitionController {
 
   @Patch(':id')
   @ApiBody({ type: UpdatePresentationDefinitionDto })
-  @ApiOkResponse({ type: PresentationDefinitionResponseDto })
+  @ApiOkResponse({ type: OperationResponseDto })
   public async update(
     @Param('tenantId', ParseUUIDPipe) tenantId: string,
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdatePresentationDefinitionDto,
     @CurrentAuth() auth: AuthContext,
-  ): Promise<PresentationDefinitionResponseDto> {
-    return PresentationDefinitionResponseDto.fromEntity(
+  ): Promise<OperationResponseDto> {
+    return OperationResponseDto.fromEntity(
       await this.profiles.updateDefinition(tenantId, id, dto, auth),
     );
   }
 
   @Post(':id/publish')
   @HttpCode(200)
-  @ApiOkResponse({ type: PresentationDefinitionResponseDto })
+  @ApiOkResponse({ type: OperationResponseDto })
   public async publish(
     @Param('tenantId', ParseUUIDPipe) tenantId: string,
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentAuth() auth: AuthContext,
-  ): Promise<PresentationDefinitionResponseDto> {
-    return PresentationDefinitionResponseDto.fromEntity(
-      await this.profiles.publish(tenantId, id, auth),
+  ): Promise<OperationResponseDto> {
+    return OperationResponseDto.fromEntity(
+      await this.profiles.publishDefinition(tenantId, id, auth),
     );
   }
 
   @Post(':id/deprecate')
   @HttpCode(200)
-  @ApiOkResponse({ type: PresentationDefinitionResponseDto })
+  @ApiOkResponse({ type: OperationResponseDto })
   public async deprecate(
     @Param('tenantId', ParseUUIDPipe) tenantId: string,
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentAuth() auth: AuthContext,
-  ): Promise<PresentationDefinitionResponseDto> {
-    return PresentationDefinitionResponseDto.fromEntity(
-      await this.profiles.deprecate(tenantId, id, auth),
+  ): Promise<OperationResponseDto> {
+    return OperationResponseDto.fromEntity(
+      await this.profiles.deprecateDefinition(tenantId, id, auth),
     );
   }
 }

@@ -2002,6 +2002,9 @@ paths:
         explicit: only the documented DIF attribute-selection subset and numeric
         predicates are supported. Native AnonCreds, QueryByExample and DCQL input
         are not supported. No new revocation policy is introduced.
+        Mutation and completed Operation commit atomically. The operation type is
+        presentation-definition.create with one local step; result is the full
+        immutable PresentationDefinition snapshot. Use result.id as the definition ID.
       tags: [Presentations]
       requestBody:
         required: true
@@ -2011,11 +2014,11 @@ paths:
               $ref: "#/components/schemas/CreatePresentationDefinition"
       responses:
         "201":
-          description: Draft definition created
+          description: Completed configuration Operation with the draft snapshot in result
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/PresentationDefinition"
+                $ref: "#/components/schemas/Operation"
         "400":
           description: Invalid or unsupported query/options
         "403":
@@ -2088,11 +2091,11 @@ paths:
               $ref: "#/components/schemas/UpdatePresentationDefinition"
       responses:
         "200":
-          description: Draft updated
+          description: Completed presentation-definition.update Operation with definition snapshot in result
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/PresentationDefinition"
+                $ref: "#/components/schemas/Operation"
         "400":
           description: Invalid or unsupported query/options
         "404":
@@ -2115,11 +2118,11 @@ paths:
       tags: [Presentations]
       responses:
         "200":
-          description: Published
+          description: Completed presentation-definition.publish Operation with definition snapshot in result
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/PresentationDefinition"
+                $ref: "#/components/schemas/Operation"
         "404":
           description: Definition not found in this tenant
         "409":
@@ -2140,11 +2143,11 @@ paths:
       tags: [Presentations]
       responses:
         "200":
-          description: Deprecated
+          description: Completed presentation-definition.deprecate Operation with definition snapshot in result
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/PresentationDefinition"
+                $ref: "#/components/schemas/Operation"
         "404":
           description: Definition not found in this tenant
         "409":
@@ -2162,6 +2165,10 @@ paths:
         cannot express non-revocation intervals. Later definition changes cannot
         alter this request. Delivery requires an established tenant DIDComm connection.
         Returns an Operation; its id is also the presentation request id.
+        Steps project durable request-send, presentation-receive, and verification progress.
+        After operation creation, submission exceptions return HTTP 200 with a failed
+        Operation and diagnostic code/message, not an HTTP exception hiding its ID.
+        Validation, authentication, and connector-selection preflight errors remain HTTP errors.
       tags: [Presentations]
       requestBody:
         required: true
@@ -2202,6 +2209,10 @@ paths:
         Requires credentials:verify. Returns only presentation-request Operations
         belonging to this tenant, under the existing operation view/expiry rules.
         Internal request snapshots are not exposed in the public operation envelope.
+        Completed results use VerifiedPresentationResult, fetched from the pinned
+        connector wallet and checked against the exact exchange and connection.
+        Raw webhook payloads never become verified results. Unverified or missing
+        backend records fail the Operation; transient lookup failures retry the worker.
       tags: [Presentations]
       responses:
         "200":
@@ -2225,8 +2236,9 @@ paths:
 
         **Delivery mode** determined by `connection_id`:
         - **Present** → DIDComm (send proof request to connected agent). Returns 202 while
-          the exchange is in flight, or 200 if it resolves synchronously (e.g. submission
-          failure).
+          the exchange is in flight, or 200 if it resolves synchronously.
+          Unlike presentation-requests, this legacy route preserves submission HTTP errors
+          after durably recording its failed Operation.
         - **Absent** → OID4VP (connectionless). Not yet implemented for this MVP — returns 400.
       tags: [Presentations]
       parameters:
@@ -2257,7 +2269,7 @@ paths:
                   connection_id: "c3d4e5f6-7890-1234-abcd-ef0123456789"
       responses:
         "200":
-          description: Presentation request resolved synchronously (e.g. failed submission)
+          description: Presentation exchange resolved synchronously
           content:
             application/json:
               schema:
@@ -5017,6 +5029,35 @@ components:
         updated_at: { type: string, format: date-time }
 
     # ─── Operation ───────────────────────────────────────────────────
+    VerifiedPresentationResult:
+      type: object
+      additionalProperties: false
+      required: [verified, revealed_attributes, predicates]
+      properties:
+        verified:
+          type: boolean
+          enum: [true]
+        revealed_attributes:
+          type: array
+          items:
+            type: object
+            required: [referent, name, value]
+            properties:
+              referent: { type: string }
+              name: { type: string }
+              value: { type: string }
+        predicates:
+          type: array
+          items:
+            type: object
+            required: [referent, name, operator, threshold, satisfied]
+            properties:
+              referent: { type: string }
+              name: { type: string }
+              operator: { type: string, enum: ['<', '<=', '>=', '>'] }
+              threshold: { type: integer }
+              satisfied: { type: boolean, enum: [true] }
+
     OperationType:
       type: string
       description: Identifies the action performed by an operation
@@ -5030,6 +5071,10 @@ components:
         - credential.revoke
         - credential.revoke-batch
         - presentation.request
+        - presentation-definition.create
+        - presentation-definition.update
+        - presentation-definition.publish
+        - presentation-definition.deprecate
         - connection.create
         - issuance-profile.create
         - issuance-profile.update
@@ -5049,6 +5094,13 @@ components:
         - credential-offer.send
         - credential-request.receive
         - credential.issue
+        - presentation-definition.create
+        - presentation-definition.update
+        - presentation-definition.publish
+        - presentation-definition.deprecate
+        - presentation-request.send
+        - presentation.receive
+        - presentation.verify
 
     OperationStepState:
       type: string
@@ -5105,6 +5157,9 @@ components:
             then verifies backend revocation readiness (skipped when disabled).
             Local profile mutations have one step. Credential offers keep the
             same parent through offer send, holder request, and issuance.
+            Presentation requests keep one parent through request send, presentation
+            receive, and verification. A stored current stage advances monotonically;
+            it is not a fabricated stage history.
             waiting means external progress or explicit issuance is required.
             Unsupported operation types have an empty array. Terminal exchange
             failures without retained stage evidence leave steps pending rather
@@ -5140,6 +5195,9 @@ components:
               (exchange-linked actions return the local { exchange_id })
             - completed issuance-profile.create/update/publish/deprecate:
               the full IssuanceProfile snapshot directly in result
+            - completed presentation-definition.create/update/publish/deprecate:
+              the full PresentationDefinition snapshot directly in result
+            - completed presentation.request: VerifiedPresentationResult
             - failed: { code, message }; credential registration additionally
               retains credential_definition_id, external_id, and registration
               progress/correlation identifiers.

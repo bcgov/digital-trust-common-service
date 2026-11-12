@@ -69,28 +69,45 @@ describe('Presentation resource HTTP contract', () => {
   };
   const operation = {
     id,
-    type: 'presentation_request',
+    type: 'presentation.request',
     state: OperationState.PROCESSING,
     request: { body: { snapshot: {} } },
     createdAt: new Date(),
     updatedAt: new Date(),
   };
+  const configuration = (
+    action: string,
+    status = VerificationProfileStatus.DRAFT,
+  ) => ({
+    ...operation,
+    state: OperationState.COMPLETED,
+    type: `presentation-definition.${action}`,
+    result: {
+      id,
+      tenant_id: tenantId,
+      query: body.query,
+      options: body.options,
+      status,
+    },
+  });
   const profiles = {
-    createDefinition: jest.fn().mockResolvedValue(profile),
+    createDefinition: jest.fn().mockResolvedValue(configuration('create')),
     findDefinitions: jest.fn().mockResolvedValue({
       data: [profile],
       pagination: { has_more: false, next_cursor: null },
     }),
     findById: jest.fn().mockResolvedValue(profile),
-    updateDefinition: jest.fn().mockResolvedValue(profile),
-    publish: jest.fn().mockResolvedValue({
-      ...profile,
-      status: VerificationProfileStatus.PUBLISHED,
-    }),
-    deprecate: jest.fn().mockResolvedValue({
-      ...profile,
-      status: VerificationProfileStatus.DEPRECATED,
-    }),
+    updateDefinition: jest.fn().mockResolvedValue(configuration('update')),
+    publishDefinition: jest
+      .fn()
+      .mockResolvedValue(
+        configuration('publish', VerificationProfileStatus.PUBLISHED),
+      ),
+    deprecateDefinition: jest
+      .fn()
+      .mockResolvedValue(
+        configuration('deprecate', VerificationProfileStatus.DEPRECATED),
+      ),
   };
   const executions = {
     create: jest.fn().mockResolvedValue(operation),
@@ -140,11 +157,16 @@ describe('Presentation resource HTTP contract', () => {
       .post(`/api/v1/tenants/${tenantId}/presentation-definitions`)
       .send(body)
       .expect(201);
-    expect(response.body.query.presentation_definition).toEqual(
+    expect(response.body.result.query.presentation_definition).toEqual(
       body.query.presentation_definition,
     );
-    expect(response.body.query).not.toHaveProperty('presentationDefinition');
-    expect(response.body.tenant_id).toBe(tenantId);
+    expect(response.body.result.query).not.toHaveProperty(
+      'presentationDefinition',
+    );
+    expect(response.body.result.tenant_id).toBe(tenantId);
+    expect(response.body.steps).toEqual([
+      { type: 'presentation-definition.create', state: 'completed' },
+    ]);
     await request(server)
       .get(`/api/v1/tenants/${tenantId}/presentation-definitions/${id}`)
       .expect(200);
@@ -184,8 +206,12 @@ describe('Presentation resource HTTP contract', () => {
         `/api/v1/tenants/${tenantId}/presentation-definitions/${id}/deprecate`,
       )
       .expect(200);
-    expect(profiles.publish).toHaveBeenCalledWith(tenantId, id, auth);
-    expect(profiles.deprecate).toHaveBeenCalledWith(tenantId, id, auth);
+    expect(profiles.publishDefinition).toHaveBeenCalledWith(tenantId, id, auth);
+    expect(profiles.deprecateDefinition).toHaveBeenCalledWith(
+      tenantId,
+      id,
+      auth,
+    );
   });
 
   it('creates/reads executions without exposing internal snapshots', async () => {
@@ -221,6 +247,31 @@ describe('Presentation resource HTTP contract', () => {
       tenantId,
       expect.objectContaining({ verificationProfileId: id, connectionId }),
     );
+  });
+
+  it('returns a failed submission envelope with its operation ID and failed send step', async () => {
+    executions.create.mockResolvedValueOnce({
+      ...operation,
+      state: OperationState.FAILED,
+      result: { code: 'TIMEOUT', message: 'Backend timed out' },
+    });
+    const response = await request(server)
+      .post(`/api/v1/tenants/${tenantId}/presentation-requests`)
+      .send({
+        presentation_definition_id: id,
+        delivery: { connection_id: connectionId },
+      })
+      .expect(200);
+    expect(response.body).toMatchObject({
+      id,
+      state: 'failed',
+      result: { code: 'TIMEOUT', message: 'Backend timed out' },
+      steps: [
+        { type: 'presentation-request.send', state: 'failed' },
+        { type: 'presentation.receive', state: 'pending' },
+        { type: 'presentation.verify', state: 'pending' },
+      ],
+    });
   });
 
   it('returns synchronous submission failures as a terminal operation envelope', async () => {

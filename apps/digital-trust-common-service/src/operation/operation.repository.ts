@@ -1,9 +1,16 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { EntityManager, In, Repository, SelectQueryBuilder } from 'typeorm';
+import {
+  EntityManager,
+  In,
+  Raw,
+  Repository,
+  SelectQueryBuilder,
+} from 'typeorm';
 
 import type { Cursor } from '../common/cursor-pagination';
 
+import { OPERATION_TYPE } from './operation-type.constants';
 import { Operation, OperationResult, OperationState } from './operation.entity';
 
 export interface FindByTenantFilters {
@@ -102,6 +109,7 @@ export class OperationRepository {
     tenantId: string,
     externalId: string,
     types: readonly string[],
+    connectorId?: string,
   ): Promise<Operation | null> {
     return this.repo.findOne({
       where: {
@@ -109,9 +117,39 @@ export class OperationRepository {
         externalId,
         type: In(types),
         state: In([OperationState.PENDING, OperationState.PROCESSING]),
+        ...(connectorId
+          ? {
+              request: Raw(
+                (alias) =>
+                  `${alias} -> 'body' -> 'snapshot' ->> 'connector_id' = :connectorId`,
+                { connectorId },
+              ),
+            }
+          : {}),
       },
       order: { createdAt: 'DESC' },
     });
+  }
+
+  public async advancePresentationStage(
+    tenantId: string,
+    id: string,
+    stage: number,
+    manager: EntityManager,
+  ): Promise<boolean> {
+    const result = await manager
+      .getRepository(Operation)
+      .createQueryBuilder()
+      .update(Operation)
+      .set({ presentationStage: stage })
+      .where('id = :id AND tenant_id = :tenantId', { id, tenantId })
+      .andWhere('type = :type', { type: OPERATION_TYPE.PRESENTATION_REQUEST })
+      .andWhere('state IN (:...states)', {
+        states: [OperationState.PENDING, OperationState.PROCESSING],
+      })
+      .andWhere('COALESCE(presentation_stage, 0) < :stage', { stage })
+      .execute();
+    return (result.affected ?? 0) > 0;
   }
 
   /**
