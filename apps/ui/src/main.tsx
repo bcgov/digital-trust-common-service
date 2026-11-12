@@ -1,9 +1,9 @@
+import { Button } from '@bcgov/design-system-react-components';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { createBrowserRouter, RouterProvider } from 'react-router';
 
 import { FullPageError } from '@/components/common/full-page-status';
-import { Button } from '@/components/common/button';
 import { loadAppConfig } from '@/lib/config';
 import i18n from '@/lib/i18n';
 import { routes } from '@/routes/routes';
@@ -22,7 +22,7 @@ function renderFatal(message: string) {
   root.render(
     <StrictMode>
       <FullPageError message={message}>
-        <Button variant="outline" onClick={() => window.location.reload()}>
+        <Button variant="secondary" onPress={() => window.location.reload()}>
           {i18n.t('common.reload')}
         </Button>
       </FullPageError>
