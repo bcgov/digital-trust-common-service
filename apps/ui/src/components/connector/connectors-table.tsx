@@ -44,7 +44,7 @@ export function ConnectorsTable({
               {t('common.status')}
             </TableHead>
             <TableHead scope="col" className="w-24 text-right">
-              {t('common.actions')}
+              <span className="sr-only">{t('common.actions')}</span>
             </TableHead>
           </TableRow>
         </TableHeader>

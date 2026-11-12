@@ -2,9 +2,10 @@ import {
   Button,
   InlineAlert,
   ProgressCircle,
+  Select,
   TextField,
 } from '@bcgov/design-system-react-components';
-import { useId, type FormEvent } from 'react';
+import { type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import {
@@ -13,7 +14,6 @@ import {
   DrawerFooter,
 } from '@/components/common/drawer';
 import { CircleInfoIcon } from '@/components/common/icons';
-import { Label } from '@/components/common/label';
 import { ApiError } from '@/lib/api/errors';
 import type { useCreateConnector } from '@/lib/api/queries/connectors';
 
@@ -33,7 +33,6 @@ export function AddConnectorForm({
   canCreate,
 }: AddConnectorFormProps) {
   const { t } = useTranslation();
-  const fieldId = useId();
 
   return (
     <form
@@ -48,28 +47,38 @@ export function AddConnectorForm({
         <DrawerDescription className="px-6 text-small-body leading-6 text-(--typography-color-secondary)">
           {t('connectors.form.description')}
         </DrawerDescription>
+        {mutation.isError && (
+          <div className="mt-4 px-6">
+            <InlineAlert
+              variant="danger"
+              role="alert"
+              title={t('connectors.form.createFailedTitle')}
+              description={
+                mutation.error instanceof ApiError
+                  ? mutation.error.message
+                  : t('connectors.form.createFailed')
+              }
+            />
+          </div>
+        )}
         <fieldset
           disabled={mutation.isPending}
           className="mt-4 flex flex-col gap-4 px-6"
         >
-          <div className="flex flex-col gap-2">
-            <Label htmlFor={`${fieldId}-type`}>
-              {t('connectors.form.type')}
-            </Label>
-            <select
-              id={`${fieldId}-type`}
-              name="connector_type"
-              required
-              defaultValue="traction"
-              className="h-10 w-full rounded-lg border border-(--surface-color-border-default) bg-(--surface-color-background-white) px-2.5 text-small-body"
-            >
-              <option value="traction">{t('connectors.form.traction')}</option>
-            </select>
-          </div>
+          <Select
+            label={t('connectors.form.type')}
+            name="connector_type"
+            isRequired
+            isDisabled={mutation.isPending}
+            defaultSelectedKey="traction"
+            items={[{ id: 'traction', label: t('connectors.form.traction') }]}
+          />
           <TextField
             label={t('connectors.form.endpointUrl')}
             name="endpoint_url"
             type="url"
+            // BCDS forwards placeholder to the input but omits it from TextFieldProps.
+            {...{ placeholder: t('connectors.form.endpointUrlPlaceholder') }}
             isRequired
             validationBehavior="aria"
             isInvalid={Boolean(errors.endpoint_url)}
@@ -80,6 +89,8 @@ export function AddConnectorForm({
             name="credentials.api_key"
             type="password"
             autoComplete="off"
+            // BCDS forwards placeholder to the input but omits it from TextFieldProps.
+            {...{ placeholder: t('connectors.form.apiKeyPlaceholder') }}
             isRequired
             validationBehavior="aria"
             isInvalid={Boolean(errors.api_key)}
@@ -96,19 +107,6 @@ export function AddConnectorForm({
             autoComplete="off"
           />
         </fieldset>
-        {mutation.isError && (
-          <div className="mt-4 px-6">
-            <InlineAlert
-              variant="danger"
-              role="alert"
-              description={
-                mutation.error instanceof ApiError
-                  ? mutation.error.message
-                  : t('connectors.form.createFailed')
-              }
-            />
-          </div>
-        )}
         {mutation.isPending && (
           <div
             role="status"
@@ -140,7 +138,9 @@ export function AddConnectorForm({
           <Button type="submit" isDisabled={!canCreate || mutation.isPending}>
             {mutation.isPending
               ? t('connectors.form.creating')
-              : t('connectors.form.create')}
+              : mutation.isError
+                ? t('connectors.form.tryAgain')
+                : t('connectors.form.create')}
           </Button>
         </div>
       </DrawerFooter>
