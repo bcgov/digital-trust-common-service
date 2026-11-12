@@ -1,9 +1,15 @@
-import { CredentialExchangeState } from '@app/credential-ports';
+import {
+  BackendNotFoundError,
+  ConnectorUnavailableError,
+  CredentialExchangeState,
+  PresentationExchangeState,
+} from '@app/credential-ports';
 import { Logger } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Test, TestingModule } from '@nestjs/testing';
 import { DataSource, EntityManager } from 'typeorm';
 
+import { AdapterRegistry } from '../adapter-registry/adapter-registry.service';
 import { AuditAction } from '../audit-log/audit-log.entity';
 import { DomainAuditService } from '../audit-log/domain-audit.service';
 import { Connection, ConnectionState } from '../connection/connection.entity';
@@ -31,12 +37,14 @@ import {
 } from './state-mapping';
 
 const TENANT_ID = '123e4567-e89b-12d3-a456-426614174001';
+const CONNECTOR_ID = '123e4567-e89b-12d3-a456-426614174002';
 
 function baseData(
   overrides: Partial<ProtocolStateChangeJobData> = {},
 ): ProtocolStateChangeJobData {
   return {
     tenantId: TENANT_ID,
+    connectorId: CONNECTOR_ID,
     topic: 'issue_credential',
     externalId: 'ext-1',
     protocolState: 'credential-issued',
@@ -51,6 +59,17 @@ function operation(overrides: Partial<Operation> = {}): Operation {
     tenantId: TENANT_ID,
     state: OperationState.PROCESSING,
     batchId: null,
+    type: OPERATION_TYPE.PRESENTATION_REQUEST,
+    request: {
+      method: 'POST',
+      path: '/x',
+      body: {
+        snapshot: {
+          connector_id: CONNECTOR_ID,
+          proof_request: { connectionId: 'connection-1' },
+        },
+      },
+    },
     ...overrides,
   } as Operation;
 }
@@ -84,6 +103,7 @@ describe('ProtocolStateChangeService', () => {
       | 'lockBatchParent'
       | 'countByBatchGroupedByState'
       | 'claimBatchSettlement'
+      | 'mergePresentationSteps'
     >
   >;
   let operationService: jest.Mocked<
@@ -112,9 +132,24 @@ describe('ProtocolStateChangeService', () => {
   let eventEmitter: jest.Mocked<Pick<EventEmitter2, 'emit'>>;
   let mockTransaction: jest.Mock;
   const mockManager = {} as EntityManager;
+  const getPresentation = jest.fn();
+  const resolveAdapter = jest.fn();
+  const normalizedResult = {
+    verified: true,
+    revealed_attributes: [
+      { referent: 'attribute_0', name: 'name', value: 'Alice' },
+    ],
+    predicates: [],
+  };
 
   beforeEach(async () => {
     operationRepository = {
+      mergePresentationSteps: jest
+        .fn()
+        .mockImplementation(
+          (_tenantId: string, _id: string, steps: Operation['steps']) =>
+            Promise.resolve({ steps, changed: true }),
+        ),
       findByExternalIdForTenant: jest.fn().mockResolvedValue(null),
       existsByExternalIdForTenant: jest.fn().mockResolvedValue(false),
       findByIdForTenant: jest
@@ -153,10 +188,25 @@ describe('ProtocolStateChangeService', () => {
       async (callback: (manager: EntityManager) => Promise<unknown>) =>
         callback(mockManager),
     );
+    getPresentation.mockReset().mockResolvedValue({
+      id: 'ext-1',
+      connectionId: 'connection-1',
+      verified: true,
+      state: PresentationExchangeState.Verified,
+      revealedAttributes: [
+        { referent: 'attribute_0', name: 'name', value: 'Alice' },
+      ],
+      predicates: [],
+    });
+    resolveAdapter.mockReset().mockResolvedValue({
+      adapter: { getPresentation },
+      context: { tenantId: TENANT_ID, connectorId: CONNECTOR_ID },
+    });
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ProtocolStateChangeService,
+        { provide: AdapterRegistry, useValue: { resolve: resolveAdapter } },
         { provide: OperationRepository, useValue: operationRepository },
         { provide: OperationService, useValue: operationService },
         { provide: CredentialRepository, useValue: credentialRepository },
@@ -634,14 +684,140 @@ describe('ProtocolStateChangeService', () => {
       'op-1',
       OperationState.COMPLETED,
       operationStatesBelow(OperationState.COMPLETED),
-      { raw: true },
+      normalizedResult,
       mockManager,
+      undefined,
+      expect.arrayContaining([
+        { type: 'presentation.verify', state: OperationStepState.COMPLETED },
+      ]),
     );
     expect(credentialRepository.findByExternalId).not.toHaveBeenCalled();
     expect(eventEmitter.emit).toHaveBeenCalledWith(
       'credential.verified',
       expect.anything(),
     );
+    expect(resolveAdapter).toHaveBeenCalledWith(TENANT_ID, undefined, {
+      connectorId: CONNECTOR_ID,
+    });
+    expect(getPresentation).toHaveBeenCalledWith(
+      { tenantId: TENANT_ID, connectorId: CONNECTOR_ID },
+      'ext-1',
+    );
+  });
+
+  it.each([
+    new BackendNotFoundError('Proof no longer available'),
+    {
+      id: 'ext-1',
+      connectionId: 'wrong-holder',
+      state: PresentationExchangeState.Verified,
+      verified: true,
+      revealedAttributes: [],
+      predicates: [],
+    },
+    {
+      id: 'ext-1',
+      connectionId: 'connection-1',
+      state: PresentationExchangeState.Done,
+      verified: false,
+    },
+  ])(
+    'never completes from a claimed verified webhook without a verified correlated backend result',
+    async (value) => {
+      operationRepository.findByExternalIdForTenant.mockResolvedValue(
+        operation(),
+      );
+      if (value instanceof Error) getPresentation.mockRejectedValue(value);
+      else getPresentation.mockResolvedValue(value);
+      await service.process(
+        baseData({
+          topic: 'present_proof',
+          protocolState: 'done',
+          payload: { verified: 'true' },
+        }),
+      );
+      expect(operationService.transitionStateIfForward).toHaveBeenCalledWith(
+        'op-1',
+        OperationState.FAILED,
+        expect.any(Array),
+        expect.objectContaining({ code: 'PRESENTATION_RESULT_UNAVAILABLE' }),
+        mockManager,
+        undefined,
+        expect.arrayContaining([
+          { type: 'presentation.verify', state: OperationStepState.FAILED },
+        ]),
+      );
+      expect(eventEmitter.emit).not.toHaveBeenCalled();
+    },
+  );
+
+  it('retries transient backend lookup failures without settling success or failure', async () => {
+    operationRepository.findByExternalIdForTenant.mockResolvedValue(
+      operation(),
+    );
+    getPresentation.mockRejectedValue(
+      new ConnectorUnavailableError('Agent unavailable'),
+    );
+    await expect(
+      service.process(
+        baseData({
+          topic: 'present_proof',
+          protocolState: 'done',
+          payload: { verified: true },
+        }),
+      ),
+    ).rejects.toThrow('Agent unavailable');
+    expect(operationService.transitionStateIfForward).not.toHaveBeenCalled();
+    expect(jobsService.sendInTransaction).not.toHaveBeenCalled();
+  });
+
+  it('ignores proof events without authenticated connector identity', async () => {
+    await service.process(
+      baseData({
+        topic: 'present_proof',
+        protocolState: 'done',
+        connectorId: undefined,
+        payload: { verified: true },
+      }),
+    );
+    expect(operationService.transitionStateIfForward).not.toHaveBeenCalled();
+    expect(getPresentation).not.toHaveBeenCalled();
+  });
+
+  it('persists presentation-received progress even while the parent remains processing', async () => {
+    operationRepository.findByExternalIdForTenant.mockResolvedValue(
+      operation(),
+    );
+    operationService.transitionStateIfForward.mockResolvedValue(null);
+    await service.process(
+      baseData({
+        topic: 'present_proof',
+        protocolState: 'presentation-received',
+      }),
+    );
+    expect(operationRepository.mergePresentationSteps).toHaveBeenCalledWith(
+      TENANT_ID,
+      'op-1',
+      expect.arrayContaining([
+        {
+          type: 'presentation-request.send',
+          state: OperationStepState.COMPLETED,
+        },
+        { type: 'presentation.receive', state: OperationStepState.COMPLETED },
+        { type: 'presentation.verify', state: OperationStepState.PROCESSING },
+      ]),
+      mockManager,
+    );
+    expect(operationService.updateStepsIfActive).toHaveBeenCalledWith(
+      'op-1',
+      TENANT_ID,
+      expect.arrayContaining([
+        { type: 'presentation.verify', state: OperationStepState.PROCESSING },
+      ]),
+      mockManager,
+    );
+    expect(jobsService.sendInTransaction).toHaveBeenCalledTimes(1);
+    expect(getPresentation).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -663,17 +839,30 @@ describe('ProtocolStateChangeService', () => {
       );
       expect(
         operationRepository.findByExternalIdForTenant,
-      ).toHaveBeenCalledWith(TENANT_ID, 'ext-1', [
-        OPERATION_TYPE.PRESENTATION_REQUEST,
-      ]);
+      ).toHaveBeenCalledWith(
+        TENANT_ID,
+        'ext-1',
+        [OPERATION_TYPE.PRESENTATION_REQUEST],
+        CONNECTOR_ID,
+      );
       expect(operationService.transitionStateIfForward).toHaveBeenCalledWith(
         'op-1',
         state,
         operationStatesBelow(state),
         state === OperationState.COMPLETED
-          ? { verified }
+          ? normalizedResult
           : { code: 'PRESENT_PROOF_FAILED', message: 'done' },
         mockManager,
+        undefined,
+        expect.arrayContaining([
+          {
+            type: 'presentation.verify',
+            state:
+              state === OperationState.COMPLETED
+                ? OperationStepState.COMPLETED
+                : OperationStepState.FAILED,
+          },
+        ]),
       );
       if (state === OperationState.COMPLETED) {
         expect(eventEmitter.emit).toHaveBeenCalledWith(
@@ -710,6 +899,10 @@ describe('ProtocolStateChangeService', () => {
       operationStatesBelow(OperationState.PROCESSING),
       null,
       mockManager,
+      undefined,
+      expect.arrayContaining([
+        { type: 'presentation.receive', state: OperationStepState.WAITING },
+      ]),
     );
     expect(eventEmitter.emit).not.toHaveBeenCalled();
     expect(jobsService.sendInTransaction).toHaveBeenCalledWith(

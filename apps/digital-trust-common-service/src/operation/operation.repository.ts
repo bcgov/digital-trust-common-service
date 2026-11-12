@@ -1,12 +1,23 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { EntityManager, In, Repository, SelectQueryBuilder } from 'typeorm';
+import {
+  EntityManager,
+  In,
+  Raw,
+  Repository,
+  SelectQueryBuilder,
+} from 'typeorm';
 
 import type { Cursor } from '../common/cursor-pagination';
 
+import { mergePresentationSteps } from './operation-steps';
 import { OPERATION_TYPE } from './operation-type.constants';
-import type { OperationStep } from './operation.entity';
-import { Operation, OperationResult, OperationState } from './operation.entity';
+import {
+  Operation,
+  OperationResult,
+  OperationState,
+  type OperationStep,
+} from './operation.entity';
 
 export interface FindByTenantFilters {
   tenantId: string;
@@ -104,6 +115,7 @@ export class OperationRepository {
     tenantId: string,
     externalId: string,
     types: readonly string[],
+    connectorId?: string,
   ): Promise<Operation | null> {
     return this.repo.findOne({
       where: {
@@ -111,9 +123,43 @@ export class OperationRepository {
         externalId,
         type: In(types),
         state: In([OperationState.PENDING, OperationState.PROCESSING]),
+        ...(connectorId
+          ? {
+              request: Raw(
+                (alias) =>
+                  `${alias} -> 'body' -> 'snapshot' ->> 'connector_id' = :connectorId`,
+                { connectorId },
+              ),
+            }
+          : {}),
       },
       order: { createdAt: 'DESC' },
     });
+  }
+
+  public async mergePresentationSteps(
+    tenantId: string,
+    id: string,
+    steps: OperationStep[],
+    manager: EntityManager,
+  ): Promise<{ steps: OperationStep[]; changed: boolean } | null> {
+    const repository = manager.getRepository(Operation);
+    const operation = await repository.findOne({
+      where: {
+        id,
+        tenantId,
+        type: OPERATION_TYPE.PRESENTATION_REQUEST,
+        state: In([OperationState.PENDING, OperationState.PROCESSING]),
+      },
+      lock: { mode: 'pessimistic_write' },
+    });
+    if (!operation) return null;
+
+    const merged = mergePresentationSteps(operation.steps, steps);
+    return {
+      steps: merged,
+      changed: JSON.stringify(operation.steps) !== JSON.stringify(merged),
+    };
   }
 
   /**

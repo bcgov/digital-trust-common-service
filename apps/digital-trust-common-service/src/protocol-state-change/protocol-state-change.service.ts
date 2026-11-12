@@ -1,9 +1,14 @@
-import { CredentialExchangeState } from '@app/credential-ports';
+import {
+  BackendNotFoundError,
+  CredentialExchangeState,
+  ValidationError,
+} from '@app/credential-ports';
 import { JOB_QUEUES } from '@app/pg-boss';
 import { Injectable, Logger } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { DataSource, EntityManager } from 'typeorm';
 
+import { AdapterRegistry } from '../adapter-registry/adapter-registry.service';
 import { AuditAction } from '../audit-log/audit-log.entity';
 import { DomainAuditService } from '../audit-log/domain-audit.service';
 import { transitionConnectionState } from '../connection/connection-state-transition';
@@ -16,14 +21,21 @@ import {
   ExchangeTransition,
 } from '../credential-exchange/credential-exchange.repository';
 import { JobsService } from '../jobs/jobs.service';
+import { presentationSteps } from '../operation/operation-steps';
 import { OPERATION_TYPE } from '../operation/operation-type.constants';
 import {
+  Operation,
   OperationResult,
   OperationState,
   OperationStepState,
+  type OperationStep,
 } from '../operation/operation.entity';
 import { OperationRepository } from '../operation/operation.repository';
 import { OperationService } from '../operation/operation.service';
+import {
+  presentationStage,
+  verifiedPresentationResult,
+} from '../presentation-request/presentation-result';
 
 import type { ProtocolStateChangeJobData } from './protocol-state-change.worker';
 import {
@@ -40,6 +52,7 @@ interface OperationOutcomeResult {
   readonly transitioned: boolean;
   /** Null when no in-flight Operation is linked to this externalId. */
   readonly operationType: string | null;
+  readonly outcome?: ProtocolOutcome;
 }
 
 /**
@@ -80,6 +93,7 @@ export class ProtocolStateChangeService {
     private readonly eventEmitter: EventEmitter2,
     private readonly dataSource: DataSource,
     private readonly exchanges: CredentialExchangeRepository,
+    private readonly adapters: AdapterRegistry,
   ) {}
 
   public async process(
@@ -161,6 +175,7 @@ export class ProtocolStateChangeService {
         manager,
         exchangeTransition,
       );
+      const appliedOutcome = operationOutcome.outcome ?? outcome;
       let transitioned = operationOutcome.transitioned;
       const operationType = operationOutcome.operationType;
       // Finding no in-flight Operation is not itself a miss: one is
@@ -181,7 +196,12 @@ export class ProtocolStateChangeService {
         // Connection notifications belong to the winning connection write,
         // not an independently completing invitation operation.
         if (!connectionOutcome.transitioned) {
-          return { matched, transitioned, event: null };
+          return {
+            matched,
+            transitioned,
+            event: null,
+            operationState: appliedOutcome.operationState,
+          };
         }
         established = connectionOutcome.established ?? false;
       } else if (operationType === null || transitioned) {
@@ -200,6 +220,7 @@ export class ProtocolStateChangeService {
           matched: matched || exchangeTransition !== null,
           transitioned: exchangeTransition !== null,
           event: null,
+          operationState: appliedOutcome.operationState,
         };
       }
 
@@ -216,10 +237,10 @@ export class ProtocolStateChangeService {
       // Operation is never left in-flight for a later webhook to confirm.
       const event = established
         ? 'connection.established'
-        : outcome.event === 'credential.issued' &&
+        : appliedOutcome.event === 'credential.issued' &&
             operationType === OPERATION_TYPE.CREDENTIAL_ACCEPT
           ? 'credential.accepted'
-          : outcome.event;
+          : appliedOutcome.event;
 
       // Only the six named domain events are meaningful to in-process
       // listeners (they're keyed on those exact strings), but every actual
@@ -236,7 +257,12 @@ export class ProtocolStateChangeService {
         },
       );
 
-      return { matched, transitioned, event };
+      return {
+        matched,
+        transitioned,
+        event,
+        operationState: appliedOutcome.operationState,
+      };
     });
 
     // In-process only, and only once the transition + durable enqueue above
@@ -264,7 +290,7 @@ export class ProtocolStateChangeService {
       ...(result.event ? { domain_event: result.event } : {}),
       duration_ms: Date.now() - startedAt,
       external_id: data.externalId,
-      operation_state: outcome.operationState,
+      operation_state: result.operationState,
       outcome: settledOutcome,
       protocol_state: data.protocolState,
       topic: data.topic,
@@ -291,10 +317,18 @@ export class ProtocolStateChangeService {
     manager: EntityManager,
     exchangeTransition: ExchangeTransition | null,
   ): Promise<OperationOutcomeResult> {
+    if (data.topic === 'present_proof' && !data.connectorId) {
+      this.logger.warn(
+        { external_id: data.externalId },
+        'Presentation webhook has no authenticated connector correlation',
+      );
+      return { matched: false, transitioned: false, operationType: null };
+    }
     const operation = await this.operationRepository.findByExternalIdForTenant(
       data.tenantId,
       data.externalId,
       TOPIC_OPERATION_TYPES[data.topic],
+      ...(data.topic === 'present_proof' ? [data.connectorId] : []),
     );
 
     if (!operation) {
@@ -313,9 +347,12 @@ export class ProtocolStateChangeService {
       return { matched: existed, transitioned: false, operationType: null };
     }
 
-    const steps =
-      data.topic === 'issue_credential' && exchangeTransition
-        ? operation.type === OPERATION_TYPE.CREDENTIAL_OFFER
+    let result = this.resolveOperationResult(data, outcome);
+    let steps: OperationStep[] | undefined;
+    let presentationProgressed = false;
+    if (data.topic === 'issue_credential' && exchangeTransition) {
+      steps =
+        operation.type === OPERATION_TYPE.CREDENTIAL_OFFER
           ? credentialOfferSteps(exchangeTransition.to, exchangeTransition.from)
           : operation.type === OPERATION_TYPE.CREDENTIAL_ISSUE
             ? [
@@ -329,14 +366,54 @@ export class ProtocolStateChangeService {
                         : OperationStepState.PROCESSING,
                 },
               ]
-            : undefined
-        : undefined;
+            : undefined;
+    } else if (data.topic === 'present_proof') {
+      if (outcome.operationState === OperationState.COMPLETED) {
+        try {
+          result = await this.resolveVerifiedPresentation(operation, data);
+        } catch (error) {
+          if (
+            !(error instanceof BackendNotFoundError) &&
+            !(error instanceof ValidationError)
+          )
+            throw error;
+          outcome = { operationState: OperationState.FAILED };
+          result = {
+            code: 'PRESENTATION_RESULT_UNAVAILABLE',
+            message: error.message,
+          };
+          this.logger.warn(
+            { operation_id: operation.id, external_id: data.externalId },
+            'Presentation verification result could not be established',
+          );
+        }
+      }
+      const progress = await this.operationRepository.mergePresentationSteps(
+        data.tenantId,
+        operation.id,
+        presentationSteps(
+          presentationStage(data.protocolState),
+          outcome.operationState,
+        ),
+        manager,
+      );
+      if (!progress) {
+        return {
+          matched: true,
+          transitioned: false,
+          operationType: operation.type,
+          outcome,
+        };
+      }
+      steps = progress.steps;
+      presentationProgressed = progress.changed;
+    }
     const updated = steps
       ? await this.operationService.transitionStateIfForward(
           operation.id,
           outcome.operationState,
           operationStatesBelow(outcome.operationState),
-          this.resolveOperationResult(data, outcome),
+          result,
           manager,
           undefined,
           steps,
@@ -345,13 +422,14 @@ export class ProtocolStateChangeService {
           operation.id,
           outcome.operationState,
           operationStatesBelow(outcome.operationState),
-          this.resolveOperationResult(data, outcome),
+          result,
           manager,
         );
 
     if (!updated) {
-      if (steps) {
-        await this.operationService.updateStepsIfActive(
+      let stepsUpdated = false;
+      if (steps && (presentationProgressed || data.topic !== 'present_proof')) {
+        stepsUpdated = await this.operationService.updateStepsIfActive(
           operation.id,
           data.tenantId,
           steps,
@@ -360,8 +438,9 @@ export class ProtocolStateChangeService {
       }
       return {
         matched: true,
-        transitioned: false,
+        transitioned: data.topic === 'present_proof' && stepsUpdated,
         operationType: operation.type,
+        outcome,
       };
     }
 
@@ -399,7 +478,45 @@ export class ProtocolStateChangeService {
       matched: true,
       transitioned: true,
       operationType: operation.type,
+      outcome,
     };
+  }
+
+  private async resolveVerifiedPresentation(
+    operation: Operation,
+    data: ProtocolStateChangeJobData,
+  ): Promise<Record<string, unknown>> {
+    const snapshot = operation.request?.body.snapshot;
+    if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) {
+      throw new ValidationError([
+        'Presentation request has no pinned connector snapshot',
+      ]);
+    }
+    const pinned = snapshot as Record<string, unknown>;
+    const proof = pinned.proof_request;
+    if (
+      pinned.connector_id !== data.connectorId ||
+      !proof ||
+      typeof proof !== 'object' ||
+      Array.isArray(proof) ||
+      typeof (proof as Record<string, unknown>).connectionId !== 'string'
+    ) {
+      throw new ValidationError([
+        'Presentation request correlation is unavailable',
+      ]);
+    }
+    const resolved = await this.adapters.resolve(data.tenantId, undefined, {
+      connectorId: data.connectorId,
+    });
+    const exchange = await resolved.adapter.getPresentation(
+      resolved.context,
+      data.externalId,
+    );
+    return verifiedPresentationResult(
+      exchange,
+      data.externalId,
+      (proof as { connectionId: string }).connectionId,
+    );
   }
 
   /**

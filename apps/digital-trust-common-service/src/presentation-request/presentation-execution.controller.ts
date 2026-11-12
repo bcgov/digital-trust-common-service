@@ -22,6 +22,7 @@ import {
   ApiAcceptedResponse,
   ApiBadRequestResponse,
   ApiBody,
+  ApiExtraModels,
   ApiForbiddenResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
@@ -38,10 +39,12 @@ import { TenantTierRateLimitGuard } from '../rate-limit/tenant-tier-rate-limit.g
 import { TenantStatusGuard } from '../tenant/tenant-status.guard';
 
 import { CreatePresentationRequestDto } from './dto/create-presentation-request.dto';
+import { VerifiedPresentationResultDto } from './dto/verified-presentation-result.dto';
 import { PresentationRequestService } from './presentation-request.service';
 
 @SkipAutoAudit()
 @ApiTags('Presentations')
+@ApiExtraModels(VerifiedPresentationResultDto)
 @ApiJwtAuth()
 @UseGuards(
   JwtGuard,
@@ -79,7 +82,8 @@ export class PresentationExecutionController {
     type: OperationResponseDto,
   })
   @ApiOkResponse({
-    description: 'Request resolved synchronously',
+    description:
+      'Terminal Operation, including adapter submission failures. Completed result is VerifiedPresentationResultDto; failures contain code/message. Preflight validation still returns an HTTP error.',
     type: OperationResponseDto,
   })
   @ApiBadRequestResponse({
@@ -107,7 +111,7 @@ export class PresentationExecutionController {
   @ApiOkResponse({
     type: OperationResponseDto,
     description:
-      'Request status/result. Snapshot remains in the operation request payload under the existing audit/TTL rules.',
+      'Request status and ordered send/receive/verify steps. Completed result is VerifiedPresentationResultDto from the pinned connector and correlated exchange/connection; failed results contain code/message. Internal snapshots remain under existing audit/TTL rules.',
   })
   @ApiNotFoundResponse({ description: 'Presentation request not found' })
   public async get(

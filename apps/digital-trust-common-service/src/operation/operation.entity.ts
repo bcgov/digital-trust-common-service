@@ -130,7 +130,7 @@ export class Operation {
 
   @ApiProperty({
     description:
-      'Persisted workflow progress. Known phase types include register, offer, request, and issue; new phase types remain open strings.',
+      'Persisted workflow progress. Known phase types include register, offer, request, issue, presentation-definition mutations, and presentation request/receive/verify; new phase types remain open strings.',
     type: 'array',
     items: {
       type: 'object',

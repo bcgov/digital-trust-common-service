@@ -176,6 +176,49 @@ describe('OperationRepository', () => {
     );
   });
 
+  it('merges presentation progress under a tenant-scoped row lock without regressing it', async () => {
+    const currentSteps = [
+      {
+        type: 'presentation-request.send',
+        state: OperationStepState.COMPLETED,
+      },
+      { type: 'presentation.receive', state: OperationStepState.COMPLETED },
+      { type: 'presentation.verify', state: OperationStepState.PROCESSING },
+    ];
+    (mockRepo.findOne as jest.Mock).mockResolvedValue({
+      steps: currentSteps,
+    });
+    const getRepository = jest.fn().mockReturnValue(mockRepo);
+    const manager = { getRepository } as unknown as EntityManager;
+
+    await expect(
+      repository.mergePresentationSteps(
+        'tenant-1',
+        'operation-1',
+        [
+          {
+            type: 'presentation-request.send',
+            state: OperationStepState.COMPLETED,
+          },
+          { type: 'presentation.receive', state: OperationStepState.WAITING },
+          { type: 'presentation.verify', state: OperationStepState.PENDING },
+        ],
+        manager,
+      ),
+    ).resolves.toEqual({ steps: currentSteps, changed: false });
+
+    expect(getRepository).toHaveBeenCalledWith(Operation);
+    expect(mockRepo.findOne).toHaveBeenCalledWith({
+      where: {
+        id: 'operation-1',
+        tenantId: 'tenant-1',
+        type: 'presentation.request',
+        state: In([OperationState.PENDING, OperationState.PROCESSING]),
+      },
+      lock: { mode: 'pessimistic_write' },
+    });
+  });
+
   it('findByExternalIdForTenant queries by tenantId/externalId, scoped to in-flight states, newest first, and to the given operation types', async () => {
     await repository.findByExternalIdForTenant('t1', 'ext-1', [
       'credential.offer',

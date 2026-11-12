@@ -1066,6 +1066,9 @@ export interface paths {
          *     explicit: only the documented DIF attribute-selection subset and numeric
          *     predicates are supported. Native AnonCreds, QueryByExample and DCQL input
          *     are not supported. No new revocation policy is introduced.
+         *     Mutation and completed Operation commit atomically. The operation type is
+         *     presentation-definition.create with one local step; result is the full
+         *     immutable PresentationDefinition snapshot. Use result.id as the definition ID.
          */
         post: operations["createPresentationDefinition"];
         delete?: never;
@@ -1170,6 +1173,10 @@ export interface paths {
          *     cannot express non-revocation intervals. Later definition changes cannot
          *     alter this request. Delivery requires an established tenant DIDComm connection.
          *     Returns an Operation; its id is also the presentation request id.
+         *     Steps project durable request-send, presentation-receive, and verification progress.
+         *     After operation creation, submission exceptions return HTTP 200 with a failed
+         *     Operation and diagnostic code/message, not an HTTP exception hiding its ID.
+         *     Validation, authentication, and connector-selection preflight errors remain HTTP errors.
          */
         post: operations["createPresentationRequest"];
         delete?: never;
@@ -1194,6 +1201,10 @@ export interface paths {
          * @description Requires credentials:verify. Returns only presentation-request Operations
          *     belonging to this tenant, under the existing operation view/expiry rules.
          *     Internal request snapshots are not exposed in the public operation envelope.
+         *     Completed results use VerifiedPresentationResult, fetched from the pinned
+         *     connector wallet and checked against the exact exchange and connection.
+         *     Raw webhook payloads never become verified results. Unverified or missing
+         *     backend records fail the Operation; transient lookup failures retry the worker.
          */
         get: operations["getPresentationRequest"];
         put?: never;
@@ -1224,8 +1235,9 @@ export interface paths {
          *
          *     **Delivery mode** determined by `connection_id`:
          *     - **Present** → DIDComm (send proof request to connected agent). Returns 202 while
-         *       the exchange is in flight, or 200 if it resolves synchronously (e.g. submission
-         *       failure).
+         *       the exchange is in flight, or 200 if it resolves synchronously.
+         *       Unlike presentation-requests, this legacy route preserves submission HTTP errors
+         *       after durably recording its failed Operation.
          *     - **Absent** → OID4VP (connectionless). Not yet implemented for this MVP — returns 400.
          */
         post: operations["requestPresentation"];
@@ -2766,6 +2778,24 @@ export interface components {
             /** Format: date-time */
             updated_at: string;
         };
+        VerifiedPresentationResult: {
+            /** @enum {boolean} */
+            verified: true;
+            revealed_attributes: {
+                referent: string;
+                name: string;
+                value: string;
+            }[];
+            predicates: {
+                referent: string;
+                name: string;
+                /** @enum {string} */
+                operator: "<" | "<=" | ">=" | ">";
+                threshold: number;
+                /** @enum {boolean} */
+                satisfied: true;
+            }[];
+        };
         /**
          * @description Uniform envelope for all async and sync operations. The `result` field
          *     semantics depend on `(type, state)`.
@@ -2810,9 +2840,20 @@ export interface components {
             type: string;
             state: components["schemas"]["OperationState"];
             /**
-             * @description Persisted workflow progress written by the service or worker that
-             *     observes each transition. Known phase types include `register`,
-             *     `offer`, `request`, and `issue`; the type remains an open string.
+             * @description Ordered steps projected from durable workflow progress, not separately
+             *     addressable operations. Batch children remain under /items.
+             *     AnonCreds registration resolves or reuses the schema and definition,
+             *     then verifies backend revocation readiness (skipped when disabled).
+             *     Local profile and presentation-definition mutations have one
+             *     completed step. Credential offers keep the same parent through
+             *     offer send, holder request, and issuance.
+             *     Presentation requests keep one parent through request send, presentation
+             *     receive, and verification. A stored current stage advances monotonically;
+             *     it is not a fabricated stage history.
+             *     waiting means external progress or explicit issuance is required.
+             *     Unsupported operation types have an empty array. Failed steps
+             *     identify the mapped failure phase; consult the parent state and
+             *     result for its diagnostic.
              */
             steps: components["schemas"]["OperationStep"][];
             /** Format: date-time */
@@ -2826,6 +2867,11 @@ export interface components {
              *     - completed: operation-type-specific data
              *       (profile mutations return { profile } with the completed profile
              *       snapshot; exchange-linked actions return the local { exchange_id })
+             *     - completed issuance-profile.create/update/publish/deprecate:
+             *       the full IssuanceProfile snapshot directly in result
+             *     - completed presentation-definition.create/update/publish/deprecate:
+             *       the full PresentationDefinition snapshot directly in result
+             *     - completed presentation.request: VerifiedPresentationResult
              *     - failed: { code, message }; credential registration additionally
              *       retains credential_definition_id, external_id, and registration
              *       progress/correlation identifiers.
@@ -2849,6 +2895,9 @@ export interface components {
                 message?: string;
                 profile?: components["schemas"]["IssuanceProfile"];
                 registration?: components["schemas"]["CredentialDefinitionRegistrationProgress"];
+                verified?: components["schemas"]["VerifiedPresentationResult"]["verified"];
+                revealed_attributes?: components["schemas"]["VerifiedPresentationResult"]["revealed_attributes"];
+                predicates?: components["schemas"]["VerifiedPresentationResult"]["predicates"];
             } & {
                 [key: string]: unknown;
             }) | null;
@@ -2868,10 +2917,13 @@ export interface components {
         OperationStep: {
             /**
              * @description Open phase name. Known values include `register`, `offer`,
-             *     `request`, and `issue`. Format-specific detail stays in `result`.
+             *     `request`, `issue`, `presentation-definition.create`,
+             *     `presentation-request.send`, `presentation.receive`, and
+             *     `presentation.verify`. Format-specific detail stays in `result`.
              * @example offer
              * @example request
              * @example issue
+             * @example presentation.verify
              */
             type: string;
             state: components["schemas"]["OperationStepState"];
@@ -5183,13 +5235,13 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Draft definition created */
+            /** @description Completed configuration Operation with the draft snapshot in result */
             201: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PresentationDefinition"];
+                    "application/json": components["schemas"]["Operation"];
                 };
             };
             /** @description Invalid or unsupported query/options */
@@ -5263,13 +5315,13 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Draft updated */
+            /** @description Completed presentation-definition.update Operation with definition snapshot in result */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PresentationDefinition"];
+                    "application/json": components["schemas"]["Operation"];
                 };
             };
             /** @description Invalid or unsupported query/options */
@@ -5308,13 +5360,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Published */
+            /** @description Completed presentation-definition.publish Operation with definition snapshot in result */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PresentationDefinition"];
+                    "application/json": components["schemas"]["Operation"];
                 };
             };
             /** @description Definition not found in this tenant */
@@ -5346,13 +5398,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Deprecated */
+            /** @description Completed presentation-definition.deprecate Operation with definition snapshot in result */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PresentationDefinition"];
+                    "application/json": components["schemas"]["Operation"];
                 };
             };
             /** @description Definition not found in this tenant */
@@ -5471,7 +5523,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Presentation request resolved synchronously (e.g. failed submission) */
+            /** @description Presentation exchange resolved synchronously */
             200: {
                 headers: {
                     [name: string]: unknown;

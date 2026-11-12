@@ -21,10 +21,13 @@ import {
   ConnectionState,
   ConnectorType,
 } from '../connection/connection.entity';
+import { buildTractionPresentationRequest } from '../connector/connectors/traction/traction-presentation';
 import { CredentialDefinitionFormat } from '../credential-definition/credential-definition.entity';
+import { OperationResponseDto } from '../operation/dto/operation-response.dto';
 import { Operation, OperationState } from '../operation/operation.entity';
+import { OperationService } from '../operation/operation.service';
+import { ProtocolStateChangeService } from '../protocol-state-change/protocol-state-change.service';
 import { Tenant } from '../tenant/tenant.entity';
-import { buildTractionPresentationRequest } from '../traction/traction-presentation';
 import { VerificationPredicateCondition } from '../verification-profile/dto/verification-predicate.dto';
 import { VerificationProfile } from '../verification-profile/verification-profile.entity';
 import { VerificationProfileService } from '../verification-profile/verification-profile.service';
@@ -39,6 +42,10 @@ describe('Presentation definition execution (integration)', () => {
   let profiles: Repository<VerificationProfile>;
   let connections: Repository<Connection>;
   let operations: Repository<Operation>;
+  let operationService: OperationService;
+  let protocol: ProtocolStateChangeService;
+  const connectorId = randomUUID();
+  const getPresentation = jest.fn();
   const wireRequests: ReturnType<typeof buildTractionPresentationRequest>[] =
     [];
   const boss = {
@@ -76,9 +83,9 @@ describe('Presentation definition execution (integration)', () => {
       .useValue({
         register: jest.fn(),
         resolve: jest.fn().mockResolvedValue({
-          adapter: { requestPresentation: submit },
+          adapter: { requestPresentation: submit, getPresentation },
           context: {},
-          connector: { id: randomUUID() },
+          connector: { id: connectorId },
           format: CredentialDefinitionFormat.ANONCREDS,
         }),
       })
@@ -92,6 +99,8 @@ describe('Presentation definition execution (integration)', () => {
     profiles = module.get(getRepositoryToken(VerificationProfile));
     connections = module.get(getRepositoryToken(Connection));
     operations = module.get(getRepositoryToken(Operation));
+    operationService = module.get(OperationService);
+    protocol = module.get(ProtocolStateChangeService);
   }, 30000);
 
   afterAll(async () => app?.close());
@@ -123,7 +132,7 @@ describe('Presentation definition execution (integration)', () => {
       iat: 1,
     } satisfies AuthContext;
     try {
-      const definition = await definitions.createDefinition(
+      const creation = await definitions.createDefinition(
         tenant.id,
         {
           name: 'identity',
@@ -153,10 +162,33 @@ describe('Presentation definition execution (integration)', () => {
         },
         auth,
       );
+      const definition = await profiles.findOneByOrFail({
+        id: String(creation.result?.id),
+        tenantId: tenant.id,
+      });
       expect(definition.presentationFormat).toBe(
         CredentialDefinitionFormat.ANONCREDS,
       );
-      await definitions.publish(tenant.id, definition.id, auth);
+      expect(creation.result?.query).toMatchObject({
+        presentation_definition: definition.presentationDefinition,
+      });
+      const update = await definitions.updateDefinition(
+        tenant.id,
+        definition.id,
+        { description: 'updated' },
+        auth,
+      );
+      expect(update.result?.description).toBe('updated');
+      expect(
+        (await operations.findOneByOrFail({ id: creation.id })).result
+          ?.description,
+      ).not.toBe('updated');
+      const publish = await definitions.publishDefinition(
+        tenant.id,
+        definition.id,
+        auth,
+      );
+      expect(publish.type).toBe('presentation-definition.publish');
       const connection = await connections.save(
         connections.create({
           tenantId: tenant.id,
@@ -193,6 +225,24 @@ describe('Presentation definition execution (integration)', () => {
       ).toEqual({
         predicate_0: { name: 'age', p_type: '>=', p_value: 19 },
       });
+      submit.mockRejectedValueOnce(new Error('backend unavailable'));
+      const failed = await requests.create(tenant.id, dto, auth);
+      expect(failed.state).toBe(OperationState.FAILED);
+      expect(
+        (
+          await operations.findOneByOrFail({
+            id: failed.id,
+            tenantId: tenant.id,
+          })
+        ).result,
+      ).toEqual({ code: 'ADAPTER_ERROR', message: 'backend unavailable' });
+      submit.mockRejectedValueOnce(new Error('legacy submission failed'));
+      await expect(
+        requests.requestPresentation(tenant.id, {
+          verificationProfileId: definition.id,
+          connectionId: connection.id,
+        }),
+      ).rejects.toThrow('legacy submission failed');
       await expect(
         definitions.updateDefinition(
           tenant.id,
@@ -201,7 +251,7 @@ describe('Presentation definition execution (integration)', () => {
           auth,
         ),
       ).rejects.toThrow('not in draft');
-      await definitions.deprecate(tenant.id, definition.id, auth);
+      await definitions.deprecateDefinition(tenant.id, definition.id, auth);
       await profiles.update(
         { id: definition.id, tenantId: tenant.id },
         { presentationDefinition: {}, predicates: [] },
@@ -215,6 +265,84 @@ describe('Presentation definition execution (integration)', () => {
           })
         ).request,
       ).toEqual(stored.request);
+      getPresentation.mockResolvedValue({
+        id: first.externalId,
+        connectionId: connection.externalConnectionId,
+        state: PresentationExchangeState.Verified,
+        verified: true,
+        revealedAttributes: [
+          { referent: 'attribute_0', name: 'name', value: 'Alice' },
+        ],
+        predicates: [
+          {
+            referent: 'predicate_0',
+            name: 'age',
+            pType: '>=',
+            pValue: 19,
+            satisfied: true,
+          },
+        ],
+      });
+      await protocol.process({
+        tenantId: tenant.id,
+        connectorId,
+        topic: 'present_proof',
+        externalId: first.externalId!,
+        protocolState: 'done',
+        payload: { verified: 'true' },
+      });
+      const completed = OperationResponseDto.fromEntity(
+        await requests.get(tenant.id, first.id, auth),
+      );
+      expect(completed.state).toBe('completed');
+      expect(completed.result).toEqual({
+        verified: true,
+        revealed_attributes: [
+          { referent: 'attribute_0', name: 'name', value: 'Alice' },
+        ],
+        predicates: [
+          {
+            referent: 'predicate_0',
+            name: 'age',
+            operator: '>=',
+            threshold: 19,
+            satisfied: true,
+          },
+        ],
+      });
+      expect(completed.steps.map((step) => step.state)).toEqual([
+        'completed',
+        'completed',
+        'completed',
+      ]);
+
+      const count = await operations.countBy({ tenantId: tenant.id });
+      const fail = jest
+        .spyOn(operationService, 'transitionState')
+        .mockRejectedValueOnce(new Error('operation persistence failed'));
+      try {
+        await expect(
+          definitions.createDefinition(
+            tenant.id,
+            {
+              name: 'rollback',
+              version: '1.0',
+              query: {
+                type: 'dif-presentation-exchange',
+                presentationDefinition: definition.presentationDefinition,
+              },
+              options: { format: CredentialDefinitionFormat.ANONCREDS },
+            },
+            auth,
+          ),
+        ).rejects.toThrow('operation persistence failed');
+      } finally {
+        fail.mockRestore();
+      }
+      expect(
+        await profiles.findOneBy({ tenantId: tenant.id, name: 'rollback' }),
+      ).toBeNull();
+      expect(await operations.countBy({ tenantId: tenant.id })).toBe(count);
       expect((await requests.get(tenant.id, first.id, auth)).id).toBe(first.id);
       expect((await requests.get(tenant.id, second.id, auth)).id).toBe(
         second.id,

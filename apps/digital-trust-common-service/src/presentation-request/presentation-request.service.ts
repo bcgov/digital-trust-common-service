@@ -34,8 +34,13 @@ import { ConnectionRepository } from '../connection/connection.repository';
 import { CredentialDefinitionFormat } from '../credential-definition/credential-definition.entity';
 import { toPortCredentialFormat } from '../credential-definition/credential-definition.service';
 import { JobsService } from '../jobs/jobs.service';
+import { presentationSteps } from '../operation/operation-steps';
 import { OPERATION_TYPE } from '../operation/operation-type.constants';
-import { Operation, OperationState } from '../operation/operation.entity';
+import {
+  Operation,
+  OperationResult,
+  OperationState,
+} from '../operation/operation.entity';
 import { OperationRepository } from '../operation/operation.repository';
 import { OperationService } from '../operation/operation.service';
 import {
@@ -51,6 +56,10 @@ import { VerificationProfileRepository } from '../verification-profile/verificat
 
 import { CreatePresentationRequestDto } from './dto/create-presentation-request.dto';
 import { RequestPresentationDto } from './dto/request-presentation.dto';
+import {
+  presentationStage,
+  verifiedPresentationResult,
+} from './presentation-result';
 
 /** UUIDv1-v5, case-insensitive — matches how other services (e.g. ParseUUIDPipe) recognize an id vs. a name-like string. */
 const UUID_REGEX =
@@ -191,15 +200,18 @@ export class PresentationRequestService {
         `Connection '${connection.id}' has no external connection id yet.`,
       );
     }
-    const proofRequest: PresentationRequest = structuredClone({
-      connectionId: connection.externalConnectionId,
-      name: resolved.name,
-      nonce: (BigInt(`0x${randomBytes(10).toString('hex')}`) || 1n).toString(),
-      requestedAttributes: resolved.requestedAttributes,
-      ...(resolved.requestedPredicates
-        ? { requestedPredicates: resolved.requestedPredicates }
-        : {}),
-    });
+    const proofRequest: PresentationRequest & { connectionId: string } =
+      structuredClone({
+        connectionId: connection.externalConnectionId,
+        name: resolved.name,
+        nonce: (
+          BigInt(`0x${randomBytes(10).toString('hex')}`) || 1n
+        ).toString(),
+        requestedAttributes: resolved.requestedAttributes,
+        ...(resolved.requestedPredicates
+          ? { requestedPredicates: resolved.requestedPredicates }
+          : {}),
+      });
 
     const operation = await this.operationService.createOperation({
       tenantId,
@@ -215,12 +227,14 @@ export class PresentationRequestService {
               }
             : { ...dto }),
           snapshot: structuredClone({
+            connector_id: resolvedAdapter.connector.id,
             definition: resolved.definitionSnapshot,
             proof_request: proofRequest,
             options: { format: resolvedAdapter.format },
           }),
         },
       },
+      steps: presentationSteps(0, OperationState.PROCESSING),
     });
 
     return this.executeRequest(
@@ -228,6 +242,7 @@ export class PresentationRequestService {
       operation,
       proofRequest,
       resolvedAdapter,
+      resource === 'presentations/request',
     );
   }
 
@@ -476,7 +491,9 @@ export class PresentationRequestService {
 
     try {
       return await this.adapterRegistry.resolve(tenantId, portFormat, {
-        connectorType,
+        ...(connection.connectorId
+          ? { connectorId: connection.connectorId }
+          : { connectorType }),
       });
     } catch (error) {
       if (error instanceof AdapterError) {
@@ -512,8 +529,9 @@ export class PresentationRequestService {
   private async executeRequest(
     tenantId: string,
     operation: Operation,
-    proofRequest: PresentationRequest,
+    proofRequest: PresentationRequest & { connectionId: string },
     resolvedAdapter: ResolvedAdapter,
+    rethrowFailure: boolean,
   ): Promise<Operation> {
     let exchange;
 
@@ -523,7 +541,7 @@ export class PresentationRequestService {
         proofRequest,
       );
     } catch (error) {
-      return this.failOperation(tenantId, operation, error);
+      return this.failOperation(tenantId, operation, error, rethrowFailure);
     }
 
     const outcome = resolveProtocolOutcome(
@@ -539,18 +557,55 @@ export class PresentationRequestService {
     // pending/processing (OperationResponseDto, ProtocolStateChangeService.
     // resolveOperationResult follows the same contract) — only a terminal
     // outcome gets a result payload here.
-    const result =
+    let result: OperationResult | undefined =
       outcome.operationState === OperationState.FAILED
         ? {
             code: 'PRESENTATION_REQUEST_FAILED',
             message: exchange.error ?? 'Presentation request failed',
           }
-        : outcome.operationState === OperationState.COMPLETED
-          ? { ...exchange }
-          : undefined;
+        : undefined;
+    if (outcome.operationState === OperationState.COMPLETED) {
+      try {
+        const verified = await resolvedAdapter.adapter.getPresentation(
+          resolvedAdapter.context,
+          externalId,
+        );
+        result = verifiedPresentationResult(
+          verified,
+          externalId,
+          proofRequest.connectionId,
+        );
+      } catch (error) {
+        return this.failOperation(
+          tenantId,
+          operation,
+          error,
+          rethrowFailure,
+          externalId,
+          presentationStage(exchange.state),
+        );
+      }
+    }
 
     const { current, won } = await this.dataSource.transaction(
       async (manager) => {
+        const progress = await this.operationRepository.mergePresentationSteps(
+          tenantId,
+          operation.id,
+          presentationSteps(
+            presentationStage(exchange.state),
+            outcome.operationState,
+          ),
+          manager,
+        );
+        if (!progress) {
+          const existing = await this.operationRepository.findById(
+            operation.id,
+            manager,
+          );
+          if (!existing) throw new NotFoundException('Operation not found');
+          return { current: existing, won: false };
+        }
         const updated = await this.operationService.transitionStateIfForward(
           operation.id,
           outcome.operationState,
@@ -558,9 +613,18 @@ export class PresentationRequestService {
           result,
           manager,
           externalId,
+          progress.steps,
         );
 
         if (!updated) {
+          if (progress.changed) {
+            await this.operationService.updateStepsIfActive(
+              operation.id,
+              tenantId,
+              progress.steps,
+              manager,
+            );
+          }
           const existing = await this.operationRepository.findById(
             operation.id,
             manager,
@@ -609,14 +673,17 @@ export class PresentationRequestService {
    * Guard-transitions `operation` to FAILED for any error the adapter call
    * raises — not only `AdapterError` — since an unexpected error leaves the
    * operation stuck PENDING forever while the caller still sees an HTTP
-   * error. The original error is always rethrown afterwards so its own HTTP
-   * status reaches the caller unchanged.
+   * error. The legacy route retains its original HTTP error behavior; the new
+   * execution API returns the durably failed Operation, including its ID.
    */
   private async failOperation(
     tenantId: string,
     operation: Operation,
     error: unknown,
-  ): Promise<never> {
+    rethrowFailure: boolean,
+    externalId?: string,
+    stage = 0,
+  ): Promise<Operation> {
     const message = error instanceof Error ? error.message : String(error);
     const code = error instanceof AdapterError ? error.code : 'ADAPTER_ERROR';
 
@@ -626,12 +693,28 @@ export class PresentationRequestService {
 
     const { current, won } = await this.dataSource.transaction(
       async (manager) => {
+        const progress = await this.operationRepository.mergePresentationSteps(
+          tenantId,
+          operation.id,
+          presentationSteps(stage, OperationState.FAILED),
+          manager,
+        );
+        if (!progress) {
+          const existing = await this.operationRepository.findById(
+            operation.id,
+            manager,
+          );
+          if (!existing) throw new NotFoundException('Operation not found');
+          return { current: existing, won: false };
+        }
         const updated = await this.operationService.transitionStateIfForward(
           operation.id,
           OperationState.FAILED,
           operationStatesBelow(OperationState.FAILED),
           { code, message },
           manager,
+          externalId,
+          progress.steps,
         );
 
         if (!updated) {
@@ -666,7 +749,8 @@ export class PresentationRequestService {
       await this.emitAudit(tenantId, operation.id, current.state);
     }
 
-    throw error;
+    if (rethrowFailure) throw error;
+    return current;
   }
 
   private async emitAudit(
