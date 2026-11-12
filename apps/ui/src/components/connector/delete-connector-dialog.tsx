@@ -31,7 +31,8 @@ export function DeleteConnectorDialog({
       }}
     >
       <AlertDialog
-        variant="destructive"
+        variant="warning"
+        data-destructive
         role="alertdialog"
         aria-label={title}
         title={title}
@@ -54,7 +55,9 @@ export function DeleteConnectorDialog({
               }
             }}
           >
-            {remove.isPending ? t('connectors.delete.deleting') : title}
+            {remove.isPending
+              ? t('connectors.delete.deleting')
+              : t('connectors.delete.submit')}
           </Button>,
         ]}
       >

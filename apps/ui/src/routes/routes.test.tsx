@@ -84,10 +84,10 @@ describe('routing', () => {
         screen.getByRole('heading', { name: 'Connectors', level: 1 }),
       ).toBeInTheDocument();
       expect(
-        screen.getByText('Connect your tenant to external providers'),
+        screen.getByText('Connect your tenant to external providers.'),
       ).toBeInTheDocument();
       expect(
-        screen.getByRole('button', { name: 'Add Connector' }),
+        screen.getByRole('button', { name: 'Add connector' }),
       ).toBeInTheDocument();
     });
     expect(screen.getByRole('link', { name: 'Connectors' })).toHaveAttribute(

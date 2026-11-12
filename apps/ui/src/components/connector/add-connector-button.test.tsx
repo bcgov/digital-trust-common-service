@@ -45,7 +45,7 @@ describe('AddConnectorButton', () => {
     );
     const queryClient = render(<AddConnectorButton />);
     queryClient.setQueryData(connectorKeys.list('active-tenant'), { data: [] });
-    await user.click(screen.getByRole('button', { name: 'Add Connector' }));
+    await user.click(screen.getByRole('button', { name: 'Add connector' }));
     await user.type(screen.getByLabelText(/^Endpoint URL/), 'not-a-url');
     await user.click(screen.getByRole('button', { name: 'Create' }));
     expect(
@@ -86,7 +86,7 @@ describe('AddConnectorButton', () => {
       ),
     );
     render(<AddConnectorButton />);
-    await user.click(screen.getByRole('button', { name: 'Add Connector' }));
+    await user.click(screen.getByRole('button', { name: 'Add connector' }));
     await user.type(
       screen.getByLabelText(/^Endpoint URL/),
       'https://agent.example.com',
@@ -101,7 +101,7 @@ describe('AddConnectorButton', () => {
       'Connectivity could not be verified',
     );
     expect(screen.getByRole('dialog')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Create' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeEnabled();
   });
 
   it('sends optional credentials and prevents duplicate submissions while pending', async () => {
@@ -122,7 +122,7 @@ describe('AddConnectorButton', () => {
       ),
     );
     render(<AddConnectorButton />);
-    await user.click(screen.getByRole('button', { name: 'Add Connector' }));
+    await user.click(screen.getByRole('button', { name: 'Add connector' }));
     await user.type(
       screen.getByLabelText(/^Endpoint URL/),
       'https://agent.example.com',
@@ -174,7 +174,7 @@ describe('AddConnectorButton', () => {
   it('shows the footer actions and closes the drawer with Cancel', async () => {
     const user = userEvent.setup();
     render(<AddConnectorButton />);
-    const trigger = screen.getByRole('button', { name: 'Add Connector' });
+    const trigger = screen.getByRole('button', { name: 'Add connector' });
     await user.click(trigger);
 
     expect(screen.getByRole('button', { name: 'Create' })).toHaveClass(
@@ -190,17 +190,15 @@ describe('AddConnectorButton', () => {
   it('shows the connector registration fields with masked secrets', async () => {
     const user = userEvent.setup();
     render(<AddConnectorButton />);
-    await user.click(screen.getByRole('button', { name: 'Add Connector' }));
+    await user.click(screen.getByRole('button', { name: 'Add connector' }));
 
-    const connectorType = screen.getByRole('combobox', {
-      name: 'Connector type',
+    const connectorType = screen.getByRole('button', {
+      name: /Connector type/,
     });
-    expect(connectorType).toBeRequired();
-    expect(connectorType).toHaveValue('traction');
-    expect(within(connectorType).getAllByRole('option')).toHaveLength(1);
-    expect(
-      within(connectorType).getByRole('option', { name: 'Traction' }),
-    ).toHaveValue('traction');
+    expect(connectorType).toHaveTextContent('Traction');
+    expect(document.querySelector('select[name="connector_type"]')).toHaveValue(
+      'traction',
+    );
     expect(screen.getByLabelText(/^Endpoint URL/)).toBeRequired();
     expect(screen.getByLabelText(/^Endpoint URL/)).toHaveAttribute(
       'type',
@@ -231,14 +229,14 @@ describe('AddConnectorButton', () => {
         <AddConnectorButton />
       </>,
     );
-    const buttons = screen.getAllByRole('button', { name: 'Add Connector' });
+    const buttons = screen.getAllByRole('button', { name: 'Add connector' });
 
     for (const button of buttons) {
       await user.click(button);
-      const dialog = screen.getByRole('dialog', { name: 'Add Connector' });
+      const dialog = screen.getByRole('dialog', { name: 'Create connector' });
       expect(dialog.closest('.drawer-panel')).toBeInTheDocument();
       expect(
-        within(dialog).getByRole('heading', { name: 'Add Connector' }),
+        within(dialog).getByRole('heading', { name: 'Create connector' }),
       ).toBeInTheDocument();
 
       await user.keyboard('{Escape}');

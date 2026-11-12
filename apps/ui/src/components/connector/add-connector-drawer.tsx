@@ -95,7 +95,7 @@ export function AddConnectorDrawer() {
       >
         <DrawerContent showCloseButton={!mutation.isPending}>
           <DrawerHeader>
-            <DrawerTitle>{t('connectors.add')}</DrawerTitle>
+            <DrawerTitle>{t('connectors.form.title')}</DrawerTitle>
           </DrawerHeader>
           <AddConnectorForm
             onSubmit={submit}
