@@ -1,0 +1,103 @@
+suite: tenant grafana
+templates:
+  - templates/grafana/configmap.yaml
+  - templates/grafana/deployment.yaml
+  - templates/grafana/service.yaml
+  - templates/grafana/route.yaml
+  - templates/networkpolicy.yaml
+tests:
+  - it: renders nothing by default
+    asserts:
+      - hasDocuments:
+          count: 0
+        template: templates/grafana/deployment.yaml
+      - hasDocuments:
+          count: 0
+        template: templates/grafana/route.yaml
+
+  - it: points one shared datasource at the gateway with no tenant identity
+    values:
+      - ../ci/ci-values.yaml
+    asserts:
+      - matchRegex:
+          path: data["datasource.yaml"]
+          pattern: "url: https://RELEASE-NAME-digital-trust-common-service-log-gateway\\.NAMESPACE\\.svc:8443"
+        template: templates/grafana/configmap.yaml
+        documentIndex: 0
+      - matchRegex:
+          path: data["datasource.yaml"]
+          pattern: "oauthPassThru: true"
+        template: templates/grafana/configmap.yaml
+        documentIndex: 0
+      - notMatchRegex:
+          path: data["datasource.yaml"]
+          pattern: "(?i)X-Scope-OrgID|httpHeader|tenant|org"
+        template: templates/grafana/configmap.yaml
+        documentIndex: 0
+
+  - it: signs in through the OIDC provider for the gateway audience as a Viewer
+    values:
+      - ../ci/ci-values.yaml
+    asserts:
+      - matchRegex:
+          path: data["grafana.ini"]
+          pattern: "auth_url = https://digital-trust-common-service.example.com/oidc/auth\\?resource=https%3A%2F%2Flogs.example.com&prompt=consent"
+        template: templates/grafana/configmap.yaml
+        documentIndex: 0
+      - matchRegex:
+          path: data["grafana.ini"]
+          pattern: "use_pkce = true"
+        template: templates/grafana/configmap.yaml
+        documentIndex: 0
+      - matchRegex:
+          path: data["grafana.ini"]
+          pattern: "role_attribute_strict = true"
+        template: templates/grafana/configmap.yaml
+        documentIndex: 0
+      - matchRegex:
+          path: data["grafana.ini"]
+          pattern: "disable_login_form = true"
+        template: templates/grafana/configmap.yaml
+        documentIndex: 0
+
+  - it: limits Grafana egress to the gateway, OIDC over https and DNS
+    values:
+      - ../ci/ci-values.yaml
+    asserts:
+      - equal:
+          path: spec.egress[0].to[0].podSelector.matchLabels["app.kubernetes.io/component"]
+          value: log-gateway
+        template: templates/networkpolicy.yaml
+        documentSelector:
+          path: metadata.name
+          value: RELEASE-NAME-digital-trust-common-service-grafana-egress
+
+  - it: lets only Grafana reach the gateway and skips the Route when disabled
+    values:
+      - ../ci/ci-values.yaml
+    set:
+      grafana:
+        route:
+          enabled: false
+    asserts:
+      - equal:
+          path: spec.ingress[0].from[0].podSelector.matchLabels["app.kubernetes.io/component"]
+          value: grafana
+        template: templates/networkpolicy.yaml
+        documentSelector:
+          path: metadata.name
+          value: RELEASE-NAME-digital-trust-common-service-log-gateway-allow-grafana
+      - hasDocuments:
+          count: 0
+        template: templates/grafana/route.yaml
+
+  - it: requires the log gateway
+    values:
+      - ../ci/ci-values.yaml
+    set:
+      logGateway:
+        enabled: false
+    asserts:
+      - failedTemplate:
+          errorPattern: logGateway.enabled must be true
+        template: templates/grafana/deployment.yaml

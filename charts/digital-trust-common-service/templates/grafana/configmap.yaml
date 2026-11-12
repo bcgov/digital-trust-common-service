@@ -1,0 +1,167 @@
+{{- if .Values.grafana.enabled -}}
+{{- if not .Values.logGateway.enabled }}
+{{- fail "logGateway.enabled must be true when grafana.enabled is true; the tenant Grafana reads logs only through the gateway" }}
+{{- end }}
+{{- if not .Values.networkPolicy.enabled }}
+{{- fail "networkPolicy.enabled must be true when grafana.enabled is true; the NetworkPolicy is what keeps Grafana off Loki" }}
+{{- end }}
+{{- if not .Values.grafana.route.host }}
+{{- fail "grafana.route.host is required when grafana.enabled is true; it is Grafana's root_url and the OIDC redirect URI" }}
+{{- end }}
+{{- if not .Values.config.APP_PUBLIC_URL }}
+{{- fail "config.APP_PUBLIC_URL is required when grafana.enabled is true; it is the OIDC issuer origin" }}
+{{- end }}
+{{- if not .Values.config.LOG_GATEWAY_AUDIENCE }}
+{{- fail "config.LOG_GATEWAY_AUDIENCE is required when grafana.enabled is true; it is the resource indicator requested at sign-in" }}
+{{- end }}
+{{- $issuer := printf "%s/oidc" (trimSuffix "/" .Values.config.APP_PUBLIC_URL) -}}
+{{- $gateway := printf "https://%s.%s.svc:%v" (include "digital-trust-common-service.logGateway.fullname" .) .Release.Namespace .Values.logGateway.service.port -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "digital-trust-common-service.grafana.configMapName" . }}
+  labels:
+    {{- include "digital-trust-common-service.grafana.labels" . | nindent 4 }}
+data:
+  # Everything below that hides or disables UI is usability only. A signed-in
+  # user can still send arbitrary queries with their own token, and the gateway
+  # scopes each one to that token's tenant.
+  grafana.ini: |
+    [server]
+    root_url = https://{{ .Values.grafana.route.host }}
+
+    [security]
+    # No local admin: the only way in is OIDC, and every user is a Viewer.
+    disable_initial_admin_creation = true
+    cookie_secure = true
+    cookie_samesite = lax
+
+    [analytics]
+    reporting_enabled = false
+    check_for_updates = false
+    check_for_plugin_updates = false
+    feedback_links_enabled = false
+
+    [news]
+    news_feed_enabled = false
+
+    [help]
+    enabled = false
+
+    [profile]
+    enabled = false
+
+    [plugins]
+    plugin_admin_enabled = false
+
+    [explore]
+    enabled = false
+
+    [alerting]
+    enabled = false
+
+    [unified_alerting]
+    enabled = false
+
+    [snapshots]
+    external_enabled = false
+
+    [public_dashboards]
+    enabled = false
+
+    # Live tail is not an allowed gateway route.
+    [live]
+    max_connections = 0
+
+    [users]
+    allow_sign_up = false
+    auto_assign_org = true
+    auto_assign_org_role = Viewer
+    viewers_can_edit = false
+
+    [dashboards]
+    default_home_dashboard_path = /etc/grafana/dashboards/tenant-logs.json
+
+    [auth]
+    disable_login_form = true
+    disable_signout_menu = true
+
+    [auth.anonymous]
+    enabled = false
+
+    [auth.basic]
+    enabled = false
+
+    [auth.generic_oauth]
+    enabled = true
+    name = Digital Trust
+    auto_login = true
+    client_id = {{ .Values.grafana.oidc.clientId }}
+    scopes = {{ .Values.grafana.oidc.scopes }}
+    # The resource indicator makes the access token carry the log gateway
+    # audience only. It goes on the authorize URL, as the provider takes it.
+    # prompt=consent is what makes the provider issue a refresh token for
+    # offline_access; without it panels stop loading after the access token
+    # expires. The provider approves it silently, with no consent screen.
+    auth_url = {{ $issuer }}/auth?resource={{ .Values.config.LOG_GATEWAY_AUDIENCE | urlquery }}&prompt=consent
+    token_url = {{ $issuer }}/token
+    api_url = {{ $issuer }}/me
+    use_pkce = true
+    use_refresh_token = true
+    # Creates the Grafana user on first sign-in; [users] allow_sign_up is
+    # separate and stays off.
+    allow_sign_up = true
+    login_attribute_path = sub
+    email_attribute_path = email || sub
+    name_attribute_path = name || sub
+    role_attribute_path = "'Viewer'"
+    role_attribute_strict = true
+    allow_assign_grafana_admin = false
+  datasource.yaml: |
+    apiVersion: 1
+    datasources:
+      # The one shared datasource. It carries no per-user identity: the gateway
+      # derives it from the forwarded bearer token (Rule S2).
+      - name: Logs
+        uid: logs
+        type: loki
+        access: proxy
+        url: {{ $gateway }}
+        isDefault: true
+        editable: false
+        jsonData:
+          oauthPassThru: true
+          tlsAuthWithCACert: true
+        secureJsonData:
+          tlsCACert: $__file{/var/run/secrets/openshift-service-ca/service-ca.crt}
+  dashboards.yaml: |
+    apiVersion: 1
+    providers:
+      - name: tenant-logs
+        type: file
+        disableDeletion: true
+        allowUiUpdates: false
+        options:
+          path: /etc/grafana/dashboards
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "digital-trust-common-service.grafana.dashboardsConfigMapName" . }}
+  labels:
+    {{- include "digital-trust-common-service.grafana.labels" . | nindent 4 }}
+data:
+  tenant-logs.json: |
+    {{- .Files.Get "files/grafana/tenant-logs.json" | nindent 4 }}
+---
+# OpenShift fills this with the service CA bundle, which signs the log
+# gateway's serving certificate.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "digital-trust-common-service.grafana.caBundleConfigMapName" . }}
+  labels:
+    {{- include "digital-trust-common-service.grafana.labels" . | nindent 4 }}
+  annotations:
+    service.beta.openshift.io/inject-cabundle: "true"
+{{- end }}

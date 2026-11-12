@@ -206,6 +206,27 @@ Generate the JWKS payload with `npm run oidc:generate-keys > oidc-keys.json`, th
 | frontend.tolerations | list | `[]` | Tolerations for frontend pods |
 | frontend.trustedProxies | list | `["private_ranges"]` | Peers whose `X-Forwarded-*` headers Caddy trusts. An empty list omits the block entirely. |
 | fullnameOverride | string | `""` | Override the fully qualified release name |
+| grafana.affinity | object | `{}` | Affinity for Grafana pods |
+| grafana.enabled | bool | `false` | Deploy the tenant Grafana. Needs `logGateway.enabled`, `config.APP_PUBLIC_URL`, `config.LOG_GATEWAY_AUDIENCE` and `route.host`. |
+| grafana.image.pullPolicy | string | `"IfNotPresent"` | Grafana image pull policy |
+| grafana.image.registry | string | `"docker.io"` | Grafana image registry |
+| grafana.image.repository | string | `"grafana/grafana"` | Grafana image repository |
+| grafana.image.tag | string | `"13.3.1"` | Grafana image tag |
+| grafana.livenessProbe | object | `{"failureThreshold":3,"httpGet":{"path":"/api/health","port":"http"},"initialDelaySeconds":30,"periodSeconds":15,"timeoutSeconds":3}` | Liveness probe for the Grafana container |
+| grafana.nodeSelector | object | `{}` | Node selector for Grafana pods |
+| grafana.oidc.clientId | string | `"dtsc-grafana"` | client_id Grafana presents to the OIDC provider. Register a public (PKCE) client under this id with redirect URI `https://<grafana.route.host>/login/generic_oauth`. |
+| grafana.oidc.scopes | string | `"openid profile email tenant logs:read offline_access"` | Scopes requested at sign-in. `logs:read` is held only by roles that carry it; the provider rejects the sign-in of any other role. |
+| grafana.podAnnotations | object | `{}` | Annotations added to Grafana pods |
+| grafana.podLabels | object | `{}` | Labels added to Grafana pods |
+| grafana.readinessProbe | object | `{"failureThreshold":3,"httpGet":{"path":"/api/health","port":"http"},"initialDelaySeconds":10,"periodSeconds":10,"timeoutSeconds":3}` | Readiness probe for the Grafana container |
+| grafana.resources | object | `{"limits":{"cpu":"500m","memory":"256Mi"},"requests":{"cpu":"50m","memory":"128Mi"}}` | Resource requests and limits for the Grafana container |
+| grafana.route.annotations | object | `{}` | Additional annotations for the Route |
+| grafana.route.enabled | bool | `true` | Expose Grafana through an OpenShift Route (always TLS, HTTP redirected) |
+| grafana.route.host | string | `""` | Tenant Grafana hostname; becomes Grafana's `root_url`. Required. |
+| grafana.service.port | int | `3000` | Grafana Service port exposed to the cluster |
+| grafana.service.targetPort | int | `3000` | Grafana container port |
+| grafana.service.type | string | `"ClusterIP"` | Grafana Service type |
+| grafana.tolerations | list | `[]` | Tolerations for Grafana pods |
 | image.pullPolicy | string | `"IfNotPresent"` | Image pull policy |
 | image.registry | string | `"ghcr.io"` | Container image registry (optional; omitted from the ref when empty) |
 | image.repository | string | `"bcgov/digital-trust-common-service"` | Container image repository. API, Worker and migrations share this image. |

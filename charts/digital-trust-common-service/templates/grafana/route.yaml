@@ -1,0 +1,25 @@
+{{- if and .Values.grafana.enabled .Values.grafana.route.enabled -}}
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: {{ include "digital-trust-common-service.grafana.fullname" . }}
+  labels:
+    {{- include "digital-trust-common-service.grafana.labels" . | nindent 4 }}
+  {{- with .Values.grafana.route.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  host: {{ .Values.grafana.route.host | quote }}
+  to:
+    kind: Service
+    name: {{ include "digital-trust-common-service.grafana.fullname" . }}
+    weight: 100
+  port:
+    targetPort: http
+  # Tokens cross this hop, so it is always TLS and plain HTTP is redirected.
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+  wildcardPolicy: None
+{{- end }}

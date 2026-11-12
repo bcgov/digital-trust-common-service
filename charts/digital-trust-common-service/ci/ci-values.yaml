@@ -52,6 +52,9 @@ upstreamFederation:
 
 config:
   DB_HOST: postgres
+  APP_PUBLIC_URL: https://digital-trust-common-service.example.com
+  JWT_ADDITIONAL_AUDIENCES: https://logs.example.com
+  LOG_GATEWAY_AUDIENCE: https://logs.example.com
 
 logAccess:
   enabled: true
@@ -73,3 +76,8 @@ logGateway:
     auth:
       existingSecret:
         name: ci-log-gateway-loki
+
+grafana:
+  enabled: true
+  route:
+    host: tenant-logs.example.com

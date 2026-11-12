@@ -189,6 +189,61 @@ Fully-qualified log gateway (Envoy) image reference.
 {{- end }}
 
 {{/*
+Tenant Grafana fully-qualified name
+*/}}
+{{- define "digital-trust-common-service.grafana.fullname" -}}
+{{- printf "%s-grafana" (include "digital-trust-common-service.fullname" .) | trunc 63 | trimSuffix "-" }}
+{{- end }}
+
+{{/*
+Tenant Grafana config ConfigMap name
+*/}}
+{{- define "digital-trust-common-service.grafana.configMapName" -}}
+{{- printf "%s-grafana-config" (include "digital-trust-common-service.fullname" . | trunc 48 | trimSuffix "-") }}
+{{- end }}
+
+{{/*
+Tenant Grafana dashboards ConfigMap name
+*/}}
+{{- define "digital-trust-common-service.grafana.dashboardsConfigMapName" -}}
+{{- printf "%s-grafana-dashboards" (include "digital-trust-common-service.fullname" . | trunc 44 | trimSuffix "-") }}
+{{- end }}
+
+{{/*
+Tenant Grafana ConfigMap that OpenShift fills with the service CA bundle
+*/}}
+{{- define "digital-trust-common-service.grafana.caBundleConfigMapName" -}}
+{{- printf "%s-grafana-ca" (include "digital-trust-common-service.fullname" . | trunc 52 | trimSuffix "-") }}
+{{- end }}
+
+{{/*
+Tenant Grafana selector labels
+*/}}
+{{- define "digital-trust-common-service.grafana.selectorLabels" -}}
+{{ include "digital-trust-common-service.selectorBaseLabels" . }}
+app.kubernetes.io/component: grafana
+{{- end }}
+
+{{/*
+Tenant Grafana labels
+*/}}
+{{- define "digital-trust-common-service.grafana.labels" -}}
+{{ include "digital-trust-common-service.commonLabels" . }}
+{{ include "digital-trust-common-service.grafana.selectorLabels" . }}
+{{- end }}
+
+{{/*
+Fully-qualified tenant Grafana image reference.
+*/}}
+{{- define "digital-trust-common-service.grafana.image" -}}
+{{- if .Values.grafana.image.registry -}}
+{{- printf "%s/%s:%s" .Values.grafana.image.registry .Values.grafana.image.repository .Values.grafana.image.tag -}}
+{{- else -}}
+{{- printf "%s:%s" .Values.grafana.image.repository .Values.grafana.image.tag -}}
+{{- end -}}
+{{- end }}
+
+{{/*
 Create the name of the service account to use
 */}}
 {{- define "digital-trust-common-service.serviceAccountName" -}}
