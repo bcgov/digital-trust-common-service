@@ -1990,6 +1990,239 @@ paths:
                 $ref: "#/components/schemas/Operation"
 
   # ─── Presentations ──────────────────────────────────────────────────
+  /api/v1/tenants/{tenantId}/presentation-definitions:
+    parameters:
+      - $ref: "#/components/parameters/TenantId"
+    post:
+      operationId: createPresentationDefinition
+      summary: Create a reusable local presentation definition
+      description: |
+        Requires profiles:manage. Shares storage and draft/published/deprecated lifecycle
+        with verification profiles; no ledger registration occurs. The query type is
+        explicit: only the documented DIF attribute-selection subset and numeric
+        predicates are supported. Native AnonCreds, QueryByExample and DCQL input
+        are not supported. No new revocation policy is introduced.
+        Mutation and completed Operation commit atomically. The operation type is
+        presentation-definition.create with one local step; result is the full
+        immutable PresentationDefinition snapshot. Use result.id as the definition ID.
+      tags: [Presentations]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePresentationDefinition"
+      responses:
+        "201":
+          description: Completed configuration Operation with the draft snapshot in result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Operation"
+        "400":
+          description: Invalid or unsupported query/options
+        "403":
+          description: Missing scope or tenant access
+        "409":
+          description: Duplicate name/version
+    get:
+      operationId: listPresentationDefinitions
+      summary: List tenant presentation definitions
+      description: Requires profiles:manage. Includes existing verification profiles.
+      tags: [Presentations]
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/ProfileStatus"
+        - name: public
+          in: query
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: Cursor-paginated definitions
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/PaginatedResponse"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/PresentationDefinition"
+  /api/v1/tenants/{tenantId}/presentation-definitions/{definitionId}:
+    parameters:
+      - $ref: "#/components/parameters/TenantId"
+      - name: definitionId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: getPresentationDefinition
+      summary: Read a reusable presentation definition
+      description: Requires profiles:manage.
+      tags: [Presentations]
+      responses:
+        "200":
+          description: Definition found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PresentationDefinition"
+        "404":
+          description: Definition not found in this tenant
+    patch:
+      operationId: updatePresentationDefinition
+      summary: Update a draft presentation definition
+      description: Requires profiles:manage. Name/version and published definitions are immutable.
+      tags: [Presentations]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdatePresentationDefinition"
+      responses:
+        "200":
+          description: Completed presentation-definition.update Operation with definition snapshot in result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Operation"
+        "400":
+          description: Invalid or unsupported query/options
+        "404":
+          description: Definition not found in this tenant
+        "409":
+          description: Definition is not a draft
+  /api/v1/tenants/{tenantId}/presentation-definitions/{definitionId}/publish:
+    parameters:
+      - $ref: "#/components/parameters/TenantId"
+      - name: definitionId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: publishPresentationDefinition
+      summary: Publish and freeze a draft definition
+      description: Requires profiles:manage.
+      tags: [Presentations]
+      responses:
+        "200":
+          description: Completed presentation-definition.publish Operation with definition snapshot in result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Operation"
+        "404":
+          description: Definition not found in this tenant
+        "409":
+          description: Definition is not a draft
+  /api/v1/tenants/{tenantId}/presentation-definitions/{definitionId}/deprecate:
+    parameters:
+      - $ref: "#/components/parameters/TenantId"
+      - name: definitionId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: deprecatePresentationDefinition
+      summary: Deprecate a published definition
+      description: Requires profiles:manage. Existing requests keep their snapshots.
+      tags: [Presentations]
+      responses:
+        "200":
+          description: Completed presentation-definition.deprecate Operation with definition snapshot in result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Operation"
+        "404":
+          description: Definition not found in this tenant
+        "409":
+          description: Definition is not published
+  /api/v1/tenants/{tenantId}/presentation-requests:
+    parameters:
+      - $ref: "#/components/parameters/TenantId"
+    post:
+      operationId: createPresentationRequest
+      summary: Execute a published definition for one holder
+      description: |
+        Requires credentials:verify. Snapshots the published definition and compiled
+        proof request, with a server-generated fresh nonce, before submission.
+        No rolling revocation interval is invented: the existing DIF query path
+        cannot express non-revocation intervals. Later definition changes cannot
+        alter this request. Delivery requires an established tenant DIDComm connection.
+        Returns an Operation; its id is also the presentation request id.
+        Steps project durable request-send, presentation-receive, and verification progress.
+        After operation creation, submission exceptions return HTTP 200 with a failed
+        Operation and diagnostic code/message, not an HTTP exception hiding its ID.
+        Validation, authentication, and connector-selection preflight errors remain HTTP errors.
+      tags: [Presentations]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePresentationRequest"
+      responses:
+        "200":
+          description: Request resolved synchronously, including submission failure
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Operation"
+        "202":
+          description: Request sent; awaiting holder response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Operation"
+        "400":
+          description: Unpublished/unsupported definition or unusable delivery connection
+        "403":
+          description: Missing scope or tenant access
+  /api/v1/tenants/{tenantId}/presentation-requests/{requestId}:
+    parameters:
+      - $ref: "#/components/parameters/TenantId"
+      - name: requestId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: getPresentationRequest
+      summary: Read request status and result
+      description: |
+        Requires credentials:verify. Returns only presentation-request Operations
+        belonging to this tenant, under the existing operation view/expiry rules.
+        Internal request snapshots are not exposed in the public operation envelope.
+        Completed results use VerifiedPresentationResult, fetched from the pinned
+        connector wallet and checked against the exact exchange and connection.
+        Raw webhook payloads never become verified results. Unverified or missing
+        backend records fail the Operation; transient lookup failures retry the worker.
+      tags: [Presentations]
+      responses:
+        "200":
+          description: Request found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Operation"
+        "404":
+          description: Presentation request not found in this tenant
   /api/v1/tenants/{tenantId}/presentations/request:
     parameters:
       - $ref: "#/components/parameters/TenantId"
@@ -1997,12 +2230,15 @@ paths:
       operationId: requestPresentation
       summary: Request a presentation/proof
       description: |
-        Request a verifiable presentation. Supports profile-based or raw presentation definition.
+        Compatibility endpoint for profile-based or raw presentation definitions.
+        New callers can use presentation-definitions and presentation-requests.
+        Requests also persist an immutable execution snapshot and fresh nonce.
 
         **Delivery mode** determined by `connection_id`:
         - **Present** → DIDComm (send proof request to connected agent). Returns 202 while
-          the exchange is in flight, or 200 if it resolves synchronously (e.g. submission
-          failure).
+          the exchange is in flight, or 200 if it resolves synchronously.
+          Unlike presentation-requests, this legacy route preserves submission HTTP errors
+          after durably recording its failed Operation.
         - **Absent** → OID4VP (connectionless). Not yet implemented for this MVP — returns 400.
       tags: [Presentations]
       parameters:
@@ -2033,7 +2269,7 @@ paths:
                   connection_id: "c3d4e5f6-7890-1234-abcd-ef0123456789"
       responses:
         "200":
-          description: Presentation request resolved synchronously (e.g. failed submission)
+          description: Presentation exchange resolved synchronously
           content:
             application/json:
               schema:
@@ -4357,6 +4593,134 @@ components:
       default: auto
 
     # ─── Verification Profile ────────────────────────────────────────
+    PresentationDefinitionQuery:
+      type: object
+      additionalProperties: false
+      required: [type, presentation_definition]
+      properties:
+        type:
+          type: string
+          enum: [dif-presentation-exchange]
+          description: Explicit supported query type; native AnonCreds, DCQL and QueryByExample input are not supported.
+        presentation_definition:
+          type: object
+          additionalProperties: true
+          description: |
+            DIF subset with non-empty input_descriptors. Only id/name/purpose and
+            descriptor id/name/purpose/constraints.fields are accepted. Each field
+            must contain exactly one path of the form $.credentialSubject.attribute.
+            Filters, groups, submission requirements, alternative paths and other
+            constraints are rejected, not silently discarded.
+        predicates:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [attribute, condition, value]
+            properties:
+              attribute:
+                type: string
+                minLength: 1
+                maxLength: 100
+              condition:
+                type: string
+                enum: ["<", "<=", ">", ">="]
+              value:
+                type: string
+                description: Signed 32-bit integer threshold represented as a string.
+    PresentationDefinitionOptions:
+      type: object
+      additionalProperties: false
+      required: [format]
+      properties:
+        format:
+          type: string
+          enum: [anoncreds]
+    CreatePresentationDefinition:
+      type: object
+      additionalProperties: false
+      required: [name, version, query, options]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        version:
+          type: string
+          minLength: 1
+          maxLength: 20
+        description:
+          type: string
+          maxLength: 500
+        query:
+          $ref: "#/components/schemas/PresentationDefinitionQuery"
+        options:
+          $ref: "#/components/schemas/PresentationDefinitionOptions"
+    UpdatePresentationDefinition:
+      type: object
+      additionalProperties: false
+      properties:
+        description:
+          type: string
+          maxLength: 500
+        query:
+          $ref: "#/components/schemas/PresentationDefinitionQuery"
+        options:
+          $ref: "#/components/schemas/PresentationDefinitionOptions"
+    PresentationDefinition:
+      type: object
+      required: [id, tenant_id, name, version, query, options, status, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        version:
+          type: string
+        description:
+          type: string
+          nullable: true
+        query:
+          $ref: "#/components/schemas/PresentationDefinitionQuery"
+        options:
+          type: object
+          required: [format]
+          properties:
+            format:
+              type: string
+              nullable: true
+              description: Null for legacy profiles that infer output format from the connector.
+        status:
+          $ref: "#/components/schemas/ProfileStatus"
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    CreatePresentationRequest:
+      type: object
+      additionalProperties: false
+      required: [presentation_definition_id, delivery]
+      properties:
+        presentation_definition_id:
+          type: string
+          format: uuid
+          description: Published definition UUID; legacy verification profile UUIDs are accepted.
+        delivery:
+          type: object
+          additionalProperties: false
+          required: [connection_id]
+          properties:
+            connection_id:
+              type: string
+              format: uuid
+              description: Established DIDComm connection belonging to this tenant.
+
     VerificationProfile:
       type: object
       properties:
@@ -4665,6 +5029,35 @@ components:
         updated_at: { type: string, format: date-time }
 
     # ─── Operation ───────────────────────────────────────────────────
+    VerifiedPresentationResult:
+      type: object
+      additionalProperties: false
+      required: [verified, revealed_attributes, predicates]
+      properties:
+        verified:
+          type: boolean
+          enum: [true]
+        revealed_attributes:
+          type: array
+          items:
+            type: object
+            required: [referent, name, value]
+            properties:
+              referent: { type: string }
+              name: { type: string }
+              value: { type: string }
+        predicates:
+          type: array
+          items:
+            type: object
+            required: [referent, name, operator, threshold, satisfied]
+            properties:
+              referent: { type: string }
+              name: { type: string }
+              operator: { type: string, enum: ['<', '<=', '>=', '>'] }
+              threshold: { type: integer }
+              satisfied: { type: boolean, enum: [true] }
+
     OperationType:
       type: string
       description: Identifies the action performed by an operation
@@ -4678,6 +5071,10 @@ components:
         - credential.revoke
         - credential.revoke-batch
         - presentation.request
+        - presentation-definition.create
+        - presentation-definition.update
+        - presentation-definition.publish
+        - presentation-definition.deprecate
         - connection.create
         - issuance-profile.create
         - issuance-profile.update
@@ -4697,6 +5094,13 @@ components:
         - credential-offer.send
         - credential-request.receive
         - credential.issue
+        - presentation-definition.create
+        - presentation-definition.update
+        - presentation-definition.publish
+        - presentation-definition.deprecate
+        - presentation-request.send
+        - presentation.receive
+        - presentation.verify
 
     OperationStepState:
       type: string
@@ -4753,6 +5157,9 @@ components:
             then verifies backend revocation readiness (skipped when disabled).
             Local profile mutations have one step. Credential offers keep the
             same parent through offer send, holder request, and issuance.
+            Presentation requests keep one parent through request send, presentation
+            receive, and verification. A stored current stage advances monotonically;
+            it is not a fabricated stage history.
             waiting means external progress or explicit issuance is required.
             Unsupported operation types have an empty array. Terminal exchange
             failures without retained stage evidence leave steps pending rather
@@ -4788,6 +5195,9 @@ components:
               (exchange-linked actions return the local { exchange_id })
             - completed issuance-profile.create/update/publish/deprecate:
               the full IssuanceProfile snapshot directly in result
+            - completed presentation-definition.create/update/publish/deprecate:
+              the full PresentationDefinition snapshot directly in result
+            - completed presentation.request: VerifiedPresentationResult
             - failed: { code, message }; credential registration additionally
               retains credential_definition_id, external_id, and registration
               progress/correlation identifiers.

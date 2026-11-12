@@ -14,6 +14,13 @@ export enum OperationStepType {
   OFFER_SEND = 'credential-offer.send',
   HOLDER_REQUEST = 'credential-request.receive',
   CREDENTIAL_ISSUE = 'credential.issue',
+  PRESENTATION_DEFINITION_CREATE = 'presentation-definition.create',
+  PRESENTATION_DEFINITION_UPDATE = 'presentation-definition.update',
+  PRESENTATION_DEFINITION_PUBLISH = 'presentation-definition.publish',
+  PRESENTATION_DEFINITION_DEPRECATE = 'presentation-definition.deprecate',
+  PRESENTATION_REQUEST_SEND = 'presentation-request.send',
+  PRESENTATION_RECEIVE = 'presentation.receive',
+  PRESENTATION_VERIFY = 'presentation.verify',
 }
 
 export enum OperationStepState {
@@ -31,6 +38,22 @@ export interface OperationStep {
 }
 
 const PROFILE_STEPS = new Map<string, OperationStepType>([
+  [
+    OPERATION_TYPE.PRESENTATION_DEFINITION_CREATE,
+    OperationStepType.PRESENTATION_DEFINITION_CREATE,
+  ],
+  [
+    OPERATION_TYPE.PRESENTATION_DEFINITION_UPDATE,
+    OperationStepType.PRESENTATION_DEFINITION_UPDATE,
+  ],
+  [
+    OPERATION_TYPE.PRESENTATION_DEFINITION_PUBLISH,
+    OperationStepType.PRESENTATION_DEFINITION_PUBLISH,
+  ],
+  [
+    OPERATION_TYPE.PRESENTATION_DEFINITION_DEPRECATE,
+    OperationStepType.PRESENTATION_DEFINITION_DEPRECATE,
+  ],
   [
     OPERATION_TYPE.ISSUANCE_PROFILE_CREATE,
     OperationStepType.ISSUANCE_PROFILE_CREATE,
@@ -73,6 +96,24 @@ function sequence(
 
 /** Project existing durable registration/exchange progress, not a second workflow. */
 export function operationSteps(operation: Operation): OperationStep[] {
+  if (operation.type === OPERATION_TYPE.PRESENTATION_REQUEST) {
+    const stage = operation.presentationStage ?? 0;
+    return sequence(
+      [
+        OperationStepType.PRESENTATION_REQUEST_SEND,
+        OperationStepType.PRESENTATION_RECEIVE,
+        OperationStepType.PRESENTATION_VERIFY,
+      ],
+      operation.state === OperationState.COMPLETED ? 3 : stage,
+      operation.state === OperationState.FAILED
+        ? OperationStepState.FAILED
+        : operation.state === OperationState.PENDING
+          ? OperationStepState.PENDING
+          : stage === 1
+            ? OperationStepState.WAITING
+            : OperationStepState.PROCESSING,
+    );
+  }
   const profileType = PROFILE_STEPS.get(operation.type);
   if (profileType) {
     const states = {

@@ -45,6 +45,8 @@ import { CreateCredentialExchanges1792506949095 } from './migrations/000041_crea
 import { IndexExchangeIssueOperation1792543244948 } from './migrations/000042_index-exchange-issue-operation';
 import { DropRedundantExchangeIssueIndex1793375254070 } from './migrations/000043_drop-redundant-exchange-issue-index';
 import { ConfigureIssuanceProfileClaims1794328787660 } from './migrations/000044_configure-issuance-profile-claims';
+import { AddPresentationDefinitionFormat1793288034325 } from './migrations/000045_add-presentation-definition-format';
+import { AddPresentationOperationStage1794497941889 } from './migrations/000046_add-presentation-operation-stage';
 import { buildSslConfig } from './ssl.util';
 
 export const AppDataSource = new DataSource({
@@ -104,6 +106,8 @@ export const AppDataSource = new DataSource({
     IndexExchangeIssueOperation1792543244948,
     DropRedundantExchangeIssueIndex1793375254070,
     ConfigureIssuanceProfileClaims1794328787660,
+    AddPresentationDefinitionFormat1793288034325,
+    AddPresentationOperationStage1794497941889,
   ],
   ssl: buildSslConfig(
     process.env.DB_SSL,

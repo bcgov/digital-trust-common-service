@@ -50,6 +50,7 @@ describe('TractionWebhookController', () => {
 
     expect(worker.enqueue).toHaveBeenCalledWith({
       tenantId: 'tenant-1',
+      connectorId: 'connector-1',
       topic: 'issue_credential',
       externalId: 'cred-exch-1',
       protocolState: 'credential_issued',

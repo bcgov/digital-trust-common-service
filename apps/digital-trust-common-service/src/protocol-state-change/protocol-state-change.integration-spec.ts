@@ -1,3 +1,4 @@
+import { PresentationExchangeState } from '@app/credential-ports';
 import { PgBossService } from '@app/pg-boss';
 import { INestApplication } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
@@ -5,11 +6,13 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import type { Job } from 'pg-boss';
 import { Repository } from 'typeorm';
 
+import { AdapterRegistry } from '../adapter-registry/adapter-registry.service';
 import { AppModule } from '../app.module';
 import { ConnectorType } from '../connection/connection.entity';
 import { Connector } from '../connector/connector.entity';
 import { Credential, CredentialState } from '../credential/credential.entity';
 import { CredentialDefinitionFormat } from '../credential-definition/credential-definition.entity';
+import { operationSteps } from '../operation/operation-steps';
 import { OPERATION_TYPE } from '../operation/operation-type.constants';
 import { Operation, OperationState } from '../operation/operation.entity';
 import { OperationRepository } from '../operation/operation.repository';
@@ -45,11 +48,15 @@ describe('ProtocolStateChange worker (integration)', () => {
   let connectorCredentialRepo: Repository<Connector>;
   let credentialRepo: Repository<Credential>;
   let operationRepo: Repository<Operation>;
+  const getPresentation = jest.fn();
+  const resolveAdapter = jest.fn();
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     })
+      .overrideProvider(AdapterRegistry)
+      .useValue({ register: jest.fn(), resolve: resolveAdapter })
       .overrideProvider(PgBossService)
       .useValue({
         boss: mockBoss,
@@ -198,6 +205,146 @@ describe('ProtocolStateChange worker (integration)', () => {
       await cleanupTenant(tenant.id);
     }
   });
+
+  it.each([
+    ['true', OperationState.COMPLETED],
+    ['false', OperationState.FAILED],
+    [undefined, OperationState.FAILED],
+  ])(
+    'settles a done proof with verified %p only for its tenant',
+    async (verified, state) => {
+      const tenantA = await seedTenant('proof-a');
+      const tenantB = await seedTenant('proof-b');
+      const connectorA = await seedConnector(tenantA.id);
+      const connectorB = await seedConnector(tenantB.id);
+      const otherConnectorA = await seedConnector(tenantA.id);
+      const externalId = `proof-${Math.random().toString(36).slice(2)}`;
+      const operations = await Promise.all(
+        [tenantA, tenantB].map((tenant) =>
+          operationService.createOperation({
+            tenantId: tenant.id,
+            type: OPERATION_TYPE.PRESENTATION_REQUEST,
+            request: {
+              method: 'POST',
+              path: '/presentations/request',
+              body: {
+                snapshot: {
+                  connector_id:
+                    tenant.id === tenantA.id ? connectorA.id : connectorB.id,
+                  proof_request: { connectionId: 'holder-1' },
+                },
+              },
+            },
+            externalId,
+          }),
+        ),
+      );
+      const differentWalletOperation = await operationService.createOperation({
+        tenantId: tenantA.id,
+        type: OPERATION_TYPE.PRESENTATION_REQUEST,
+        request: {
+          method: 'POST',
+          path: '/x',
+          body: {
+            snapshot: {
+              connector_id: otherConnectorA.id,
+              proof_request: { connectionId: 'holder-1' },
+            },
+          },
+        },
+        externalId,
+      });
+      resolveAdapter.mockResolvedValue({
+        adapter: { getPresentation },
+        context: { tenantId: tenantA.id, connectorId: connectorA.id },
+      });
+      getPresentation.mockResolvedValue({
+        id: externalId,
+        connectionId: 'holder-1',
+        state: PresentationExchangeState.Verified,
+        verified: true,
+        revealedAttributes: [
+          { referent: 'attribute_0', name: 'name', value: 'Alice' },
+        ],
+        predicates: [],
+      });
+      try {
+        const data: ProtocolStateChangeJobData = {
+          tenantId: tenantA.id,
+          connectorId: connectorA.id,
+          topic: 'present_proof',
+          externalId,
+          protocolState: 'done',
+          payload: { pres_ex_id: externalId, state: 'done', verified },
+        };
+        await worker.handle(
+          jobFor({ ...data, protocolState: 'request-sent', payload: {} }),
+        );
+        expect(
+          operationSteps(
+            await operationRepo.findOneByOrFail({ id: operations[0].id }),
+          ).map((step) => step.state),
+        ).toEqual(['completed', 'waiting', 'pending']);
+        await worker.handle(
+          jobFor({
+            ...data,
+            protocolState: 'presentation-received',
+            payload: {},
+          }),
+        );
+        await worker.handle(
+          jobFor({ ...data, protocolState: 'request-sent', payload: {} }),
+        );
+        expect(
+          operationSteps(
+            await operationRepo.findOneByOrFail({ id: operations[0].id }),
+          ).map((step) => step.state),
+        ).toEqual(['completed', 'completed', 'processing']);
+        await worker.handle(jobFor(data));
+        // Redelivery must not change the settled result.
+        await worker.handle(jobFor(data));
+
+        const updatedA = await operationRepository.findByIdForTenant(
+          operations[0].id,
+          tenantA.id,
+        );
+        const untouchedB = await operationRepository.findByIdForTenant(
+          operations[1].id,
+          tenantB.id,
+        );
+        expect(updatedA?.state).toBe(state);
+        expect(updatedA?.result).toEqual(
+          state === OperationState.COMPLETED
+            ? {
+                verified: true,
+                revealed_attributes: [
+                  { referent: 'attribute_0', name: 'name', value: 'Alice' },
+                ],
+                predicates: [],
+              }
+            : { code: 'PRESENT_PROOF_FAILED', message: 'done' },
+        );
+        expect(untouchedB?.state).toBe(OperationState.PENDING);
+        expect(untouchedB?.result).toBeNull();
+        expect(
+          (
+            await operationRepo.findOneByOrFail({
+              id: differentWalletOperation.id,
+            })
+          ).state,
+        ).toBe(OperationState.PENDING);
+        if (state === OperationState.COMPLETED)
+          expect(resolveAdapter).toHaveBeenLastCalledWith(
+            tenantA.id,
+            undefined,
+            { connectorId: connectorA.id },
+          );
+      } finally {
+        await cleanupTenant(tenantA.id);
+        await cleanupTenant(tenantB.id);
+      }
+    },
+  );
 
   it('does not transition another tenant sharing the same externalId', async () => {
     const tenantA = await seedTenant('cross-a');

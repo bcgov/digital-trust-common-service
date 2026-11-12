@@ -5,10 +5,14 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
-import { QueryFailedError } from 'typeorm';
+import { DataSource, EntityManager, QueryFailedError } from 'typeorm';
 
 import { AuditAction } from '../audit-log/audit-log.entity';
 import { DomainAuditService } from '../audit-log/domain-audit.service';
+import { CredentialDefinitionFormat } from '../credential-definition/credential-definition.entity';
+import { OPERATION_TYPE } from '../operation/operation-type.constants';
+import { OperationState } from '../operation/operation.entity';
+import { OperationService } from '../operation/operation.service';
 
 import { CreateVerificationProfileDto } from './dto/create-verification-profile.dto';
 import { UpdateVerificationProfileDto } from './dto/update-verification-profile.dto';
@@ -31,6 +35,9 @@ describe('VerificationProfileService', () => {
   let mockUpdateIfDraft: jest.Mock;
   let mockTransitionStatus: jest.Mock;
   let mockEmit: jest.Mock;
+  const manager = {} as EntityManager;
+  const createOperation = jest.fn();
+  const transitionState = jest.fn();
 
   const tenantId = '123e4567-e89b-12d3-a456-426614174001';
 
@@ -84,10 +91,28 @@ describe('VerificationProfileService', () => {
     mockUpdateIfDraft = jest.fn().mockResolvedValue(true);
     mockTransitionStatus = jest.fn().mockResolvedValue(true);
     mockEmit = jest.fn().mockResolvedValue(undefined);
+    createOperation.mockReset().mockResolvedValue({ id: 'configuration-op' });
+    transitionState
+      .mockReset()
+      .mockImplementation((_id, state, result) =>
+        Promise.resolve({ id: 'configuration-op', state, result }),
+      );
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         VerificationProfileService,
+        {
+          provide: DataSource,
+          useValue: {
+            transaction: (
+              callback: (manager: EntityManager) => Promise<unknown>,
+            ) => callback(manager),
+          },
+        },
+        {
+          provide: OperationService,
+          useValue: { createOperation, transitionState },
+        },
         {
           provide: VerificationProfileRepository,
           useValue: {
@@ -116,6 +141,149 @@ describe('VerificationProfileService', () => {
     expect(service).toBeDefined();
   });
 
+  describe('presentation definitions', () => {
+    const dto = {
+      name: 'identity',
+      version: '1.0',
+      query: {
+        type: 'dif-presentation-exchange' as const,
+        presentationDefinition: mockProfile.presentationDefinition,
+      },
+      options: { format: CredentialDefinitionFormat.ANONCREDS as const },
+    };
+
+    it('reuses profile storage, including selected output format', async () => {
+      mockCreate.mockResolvedValue(mockProfile);
+      await service.createDefinition(tenantId, dto, auth);
+      expect(mockCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          presentationDefinition: mockProfile.presentationDefinition,
+          requestedAttributes: ['given_names'],
+          presentationFormat: CredentialDefinitionFormat.ANONCREDS,
+        }),
+        manager,
+      );
+    });
+
+    it('persists the mutation and completed immutable snapshot with one transaction manager', async () => {
+      mockCreate.mockResolvedValue(mockProfile);
+      const result = await service.createDefinition(tenantId, dto, auth);
+      expect(createOperation).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId,
+          type: OPERATION_TYPE.PRESENTATION_DEFINITION_CREATE,
+        }),
+        manager,
+      );
+      expect(transitionState).toHaveBeenCalledWith(
+        'configuration-op',
+        OperationState.COMPLETED,
+        expect.objectContaining({
+          id: mockProfile.id,
+          tenant_id: tenantId,
+          query: expect.objectContaining({
+            presentation_definition: mockProfile.presentationDefinition,
+          }),
+        }),
+        manager,
+        tenantId,
+      );
+      expect(result.id).toBe('configuration-op');
+      expect(result.result?.id).toBe(mockProfile.id);
+    });
+
+    it('does not report success or emit audit if operation persistence fails', async () => {
+      mockCreate.mockResolvedValue(mockProfile);
+      createOperation.mockRejectedValue(new Error('database unavailable'));
+      await expect(
+        service.createDefinition(tenantId, dto, auth),
+      ).rejects.toThrow('database unavailable');
+      expect(mockEmit).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      [
+        'publishDefinition',
+        VerificationProfileStatus.DRAFT,
+        OPERATION_TYPE.PRESENTATION_DEFINITION_PUBLISH,
+      ],
+      [
+        'deprecateDefinition',
+        VerificationProfileStatus.PUBLISHED,
+        OPERATION_TYPE.PRESENTATION_DEFINITION_DEPRECATE,
+      ],
+    ] as const)(
+      'creates a typed Operation for %s',
+      async (method, status, type) => {
+        mockFindById.mockResolvedValue({ ...mockProfile, status });
+        await service[method](tenantId, mockProfile.id, auth);
+        expect(mockTransitionStatus).toHaveBeenCalledWith(
+          tenantId,
+          mockProfile.id,
+          status,
+          expect.any(String),
+          manager,
+        );
+        expect(createOperation).toHaveBeenCalledWith(
+          expect.objectContaining({ type }),
+          manager,
+        );
+      },
+    );
+
+    it('updates draft query/options and clears removed predicates atomically', async () => {
+      mockFindById.mockResolvedValue(mockProfile);
+      await service.updateDefinition(tenantId, mockProfile.id, dto, auth);
+      expect(mockUpdateIfDraft).toHaveBeenCalledWith(
+        tenantId,
+        mockProfile.id,
+        expect.objectContaining({
+          presentationDefinition: mockProfile.presentationDefinition,
+          presentationFormat: CredentialDefinitionFormat.ANONCREDS,
+          predicates: [],
+        }),
+        manager,
+      );
+    });
+
+    it('retains published immutability through the new resource', async () => {
+      mockFindById.mockResolvedValue({
+        ...mockProfile,
+        status: VerificationProfileStatus.PUBLISHED,
+      });
+      await expect(
+        service.updateDefinition(tenantId, mockProfile.id, dto, auth),
+      ).rejects.toThrow(ConflictException);
+      expect(mockUpdateIfDraft).not.toHaveBeenCalled();
+    });
+
+    it('rejects another tenant before creating/listing definitions', async () => {
+      await expect(
+        service.createDefinition('other-tenant', dto, auth),
+      ).rejects.toThrow();
+      await expect(
+        service.findDefinitions('other-tenant', {}, auth),
+      ).rejects.toThrow();
+      expect(mockCreate).not.toHaveBeenCalled();
+      expect(mockFindPage).not.toHaveBeenCalled();
+    });
+
+    it('scopes definition list pagination to the authenticated tenant', async () => {
+      mockFindPage.mockResolvedValue({
+        items: [mockProfile],
+        hasMore: false,
+        nextCursor: null,
+      });
+      const page = await service.findDefinitions(tenantId, {}, auth);
+      expect(page.data).toEqual([mockProfile]);
+      expect(mockFindPage).toHaveBeenCalledWith(
+        tenantId,
+        expect.anything(),
+        expect.anything(),
+      );
+    });
+  });
+
   describe('create', () => {
     const dto: CreateVerificationProfileDto = {
       name: 'age-verification',
@@ -138,6 +306,7 @@ describe('VerificationProfileService', () => {
           requestedAttributes: ['given_names'],
           isPublic: false,
         }),
+        undefined,
       );
       expect(mockEmit).toHaveBeenCalledWith({
         tenantId: mockProfile.tenantId,
@@ -264,6 +433,7 @@ describe('VerificationProfileService', () => {
 
       expect(mockCreate).toHaveBeenCalledWith(
         expect.objectContaining({ requestedAttributes: [] }),
+        undefined,
       );
     });
 
@@ -290,6 +460,7 @@ describe('VerificationProfileService', () => {
 
       expect(mockCreate).toHaveBeenCalledWith(
         expect.objectContaining({ requestedAttributes: [] }),
+        undefined,
       );
     });
 
@@ -316,6 +487,7 @@ describe('VerificationProfileService', () => {
 
       expect(mockCreate).toHaveBeenCalledWith(
         expect.objectContaining({ requestedAttributes: [] }),
+        undefined,
       );
     });
 
@@ -351,6 +523,7 @@ describe('VerificationProfileService', () => {
 
       expect(mockCreate).toHaveBeenCalledWith(
         expect.objectContaining({ requestedAttributes: ['given_names'] }),
+        undefined,
       );
     });
   });
@@ -455,9 +628,14 @@ describe('VerificationProfileService', () => {
       const dto: UpdateVerificationProfileDto = { description: 'Updated' };
       const result = await service.update(tenantId, mockProfile.id, dto, auth);
 
-      expect(mockUpdateIfDraft).toHaveBeenCalledWith(tenantId, mockProfile.id, {
-        description: 'Updated',
-      });
+      expect(mockUpdateIfDraft).toHaveBeenCalledWith(
+        tenantId,
+        mockProfile.id,
+        {
+          description: 'Updated',
+        },
+        undefined,
+      );
       expect(result.description).toBe('Updated');
       expect(mockEmit).toHaveBeenCalledWith(
         expect.objectContaining({ action: AuditAction.UPDATE }),
@@ -548,11 +726,16 @@ describe('VerificationProfileService', () => {
 
       const result = await service.update(tenantId, mockProfile.id, dto, auth);
 
-      expect(mockUpdateIfDraft).toHaveBeenCalledWith(tenantId, mockProfile.id, {
-        metadata: { note: 'reviewed' },
-        isPublic: true,
-        protocolHint: VerificationProfileProtocolHint.OID4VP,
-      });
+      expect(mockUpdateIfDraft).toHaveBeenCalledWith(
+        tenantId,
+        mockProfile.id,
+        {
+          metadata: { note: 'reviewed' },
+          isPublic: true,
+          protocolHint: VerificationProfileProtocolHint.OID4VP,
+        },
+        undefined,
+      );
       expect(result.metadata).toEqual({ note: 'reviewed' });
       expect(result.isPublic).toBe(true);
       expect(result.protocolHint).toBe(VerificationProfileProtocolHint.OID4VP);
@@ -575,6 +758,7 @@ describe('VerificationProfileService', () => {
         mockProfile.id,
         VerificationProfileStatus.DRAFT,
         VerificationProfileStatus.PUBLISHED,
+        undefined,
       );
       expect(result.status).toBe(VerificationProfileStatus.PUBLISHED);
     });
@@ -618,6 +802,7 @@ describe('VerificationProfileService', () => {
         mockProfile.id,
         VerificationProfileStatus.PUBLISHED,
         VerificationProfileStatus.DEPRECATED,
+        undefined,
       );
       expect(result.status).toBe(VerificationProfileStatus.DEPRECATED);
     });

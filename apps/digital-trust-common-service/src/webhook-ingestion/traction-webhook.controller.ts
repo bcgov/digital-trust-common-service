@@ -228,6 +228,7 @@ export class TractionWebhookController {
     await this.worker.enqueue({
       // Guard sets tenantId from the resolved ConnectorCredential.
       tenantId: request.tenantId as string,
+      connectorId,
       topic,
       externalId,
       protocolState,

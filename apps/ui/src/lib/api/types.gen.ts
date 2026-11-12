@@ -1043,6 +1043,178 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/tenants/{tenantId}/presentation-definitions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List tenant presentation definitions
+         * @description Requires profiles:manage. Includes existing verification profiles.
+         */
+        get: operations["listPresentationDefinitions"];
+        put?: never;
+        /**
+         * Create a reusable local presentation definition
+         * @description Requires profiles:manage. Shares storage and draft/published/deprecated lifecycle
+         *     with verification profiles; no ledger registration occurs. The query type is
+         *     explicit: only the documented DIF attribute-selection subset and numeric
+         *     predicates are supported. Native AnonCreds, QueryByExample and DCQL input
+         *     are not supported. No new revocation policy is introduced.
+         *     Mutation and completed Operation commit atomically. The operation type is
+         *     presentation-definition.create with one local step; result is the full
+         *     immutable PresentationDefinition snapshot. Use result.id as the definition ID.
+         */
+        post: operations["createPresentationDefinition"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tenants/{tenantId}/presentation-definitions/{definitionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                definitionId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Read a reusable presentation definition
+         * @description Requires profiles:manage.
+         */
+        get: operations["getPresentationDefinition"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update a draft presentation definition
+         * @description Requires profiles:manage. Name/version and published definitions are immutable.
+         */
+        patch: operations["updatePresentationDefinition"];
+        trace?: never;
+    };
+    "/api/v1/tenants/{tenantId}/presentation-definitions/{definitionId}/publish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                definitionId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Publish and freeze a draft definition
+         * @description Requires profiles:manage.
+         */
+        post: operations["publishPresentationDefinition"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tenants/{tenantId}/presentation-definitions/{definitionId}/deprecate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                definitionId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Deprecate a published definition
+         * @description Requires profiles:manage. Existing requests keep their snapshots.
+         */
+        post: operations["deprecatePresentationDefinition"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tenants/{tenantId}/presentation-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Execute a published definition for one holder
+         * @description Requires credentials:verify. Snapshots the published definition and compiled
+         *     proof request, with a server-generated fresh nonce, before submission.
+         *     No rolling revocation interval is invented: the existing DIF query path
+         *     cannot express non-revocation intervals. Later definition changes cannot
+         *     alter this request. Delivery requires an established tenant DIDComm connection.
+         *     Returns an Operation; its id is also the presentation request id.
+         *     Steps project durable request-send, presentation-receive, and verification progress.
+         *     After operation creation, submission exceptions return HTTP 200 with a failed
+         *     Operation and diagnostic code/message, not an HTTP exception hiding its ID.
+         *     Validation, authentication, and connector-selection preflight errors remain HTTP errors.
+         */
+        post: operations["createPresentationRequest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tenants/{tenantId}/presentation-requests/{requestId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                requestId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Read request status and result
+         * @description Requires credentials:verify. Returns only presentation-request Operations
+         *     belonging to this tenant, under the existing operation view/expiry rules.
+         *     Internal request snapshots are not exposed in the public operation envelope.
+         *     Completed results use VerifiedPresentationResult, fetched from the pinned
+         *     connector wallet and checked against the exact exchange and connection.
+         *     Raw webhook payloads never become verified results. Unverified or missing
+         *     backend records fail the Operation; transient lookup failures retry the worker.
+         */
+        get: operations["getPresentationRequest"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/tenants/{tenantId}/presentations/request": {
         parameters: {
             query?: never;
@@ -1057,12 +1229,15 @@ export interface paths {
         put?: never;
         /**
          * Request a presentation/proof
-         * @description Request a verifiable presentation. Supports profile-based or raw presentation definition.
+         * @description Compatibility endpoint for profile-based or raw presentation definitions.
+         *     New callers can use presentation-definitions and presentation-requests.
+         *     Requests also persist an immutable execution snapshot and fresh nonce.
          *
          *     **Delivery mode** determined by `connection_id`:
          *     - **Present** → DIDComm (send proof request to connected agent). Returns 202 while
-         *       the exchange is in flight, or 200 if it resolves synchronously (e.g. submission
-         *       failure).
+         *       the exchange is in flight, or 200 if it resolves synchronously.
+         *       Unlike presentation-requests, this legacy route preserves submission HTTP errors
+         *       after durably recording its failed Operation.
          *     - **Absent** → OID4VP (connectionless). Not yet implemented for this MVP — returns 400.
          */
         post: operations["requestPresentation"];
@@ -2347,6 +2522,79 @@ export interface components {
          * @enum {string}
          */
         ProtocolHint: "didcomm" | "oid4vci" | "oid4vp" | "auto";
+        PresentationDefinitionQuery: {
+            /**
+             * @description Explicit supported query type; native AnonCreds, DCQL and QueryByExample input are not supported.
+             * @enum {string}
+             */
+            type: "dif-presentation-exchange";
+            /**
+             * @description DIF subset with non-empty input_descriptors. Only id/name/purpose and
+             *     descriptor id/name/purpose/constraints.fields are accepted. Each field
+             *     must contain exactly one path of the form $.credentialSubject.attribute.
+             *     Filters, groups, submission requirements, alternative paths and other
+             *     constraints are rejected, not silently discarded.
+             */
+            presentation_definition: {
+                [key: string]: unknown;
+            };
+            predicates?: {
+                attribute: string;
+                /** @enum {string} */
+                condition: "<" | "<=" | ">" | ">=";
+                /** @description Signed 32-bit integer threshold represented as a string. */
+                value: string;
+            }[];
+        };
+        PresentationDefinitionOptions: {
+            /** @enum {string} */
+            format: "anoncreds";
+        };
+        CreatePresentationDefinition: {
+            name: string;
+            version: string;
+            description?: string;
+            query: components["schemas"]["PresentationDefinitionQuery"];
+            options: components["schemas"]["PresentationDefinitionOptions"];
+        };
+        UpdatePresentationDefinition: {
+            description?: string;
+            query?: components["schemas"]["PresentationDefinitionQuery"];
+            options?: components["schemas"]["PresentationDefinitionOptions"];
+        };
+        PresentationDefinition: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            tenant_id: string;
+            name: string;
+            version: string;
+            description?: string | null;
+            query: components["schemas"]["PresentationDefinitionQuery"];
+            options: {
+                /** @description Null for legacy profiles that infer output format from the connector. */
+                format: string | null;
+            };
+            status: components["schemas"]["ProfileStatus"];
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        CreatePresentationRequest: {
+            /**
+             * Format: uuid
+             * @description Published definition UUID; legacy verification profile UUIDs are accepted.
+             */
+            presentation_definition_id: string;
+            delivery: {
+                /**
+                 * Format: uuid
+                 * @description Established DIDComm connection belonging to this tenant.
+                 */
+                connection_id: string;
+            };
+        };
         VerificationProfile: {
             /** Format: uuid */
             id?: string;
@@ -2551,13 +2799,31 @@ export interface components {
             /** Format: date-time */
             updated_at: string;
         };
+        VerifiedPresentationResult: {
+            /** @enum {boolean} */
+            verified: true;
+            revealed_attributes: {
+                referent: string;
+                name: string;
+                value: string;
+            }[];
+            predicates: {
+                referent: string;
+                name: string;
+                /** @enum {string} */
+                operator: "<" | "<=" | ">=" | ">";
+                threshold: number;
+                /** @enum {boolean} */
+                satisfied: true;
+            }[];
+        };
         /**
          * @description Identifies the action performed by an operation
          * @enum {string}
          */
-        OperationType: "credential-definition.register" | "credential.offer" | "credential.issue" | "credential.offer-batch" | "credential.accept" | "credential.reject" | "credential.revoke" | "credential.revoke-batch" | "presentation.request" | "connection.create" | "issuance-profile.create" | "issuance-profile.update" | "issuance-profile.publish" | "issuance-profile.deprecate";
+        OperationType: "credential-definition.register" | "credential.offer" | "credential.issue" | "credential.offer-batch" | "credential.accept" | "credential.reject" | "credential.revoke" | "credential.revoke-batch" | "presentation.request" | "presentation-definition.create" | "presentation-definition.update" | "presentation-definition.publish" | "presentation-definition.deprecate" | "connection.create" | "issuance-profile.create" | "issuance-profile.update" | "issuance-profile.publish" | "issuance-profile.deprecate";
         /** @enum {string} */
-        OperationStepType: "schema.register" | "credential-definition.register" | "revocation.setup" | "issuance-profile.create" | "issuance-profile.update" | "issuance-profile.publish" | "issuance-profile.deprecate" | "credential-offer.send" | "credential-request.receive" | "credential.issue";
+        OperationStepType: "schema.register" | "credential-definition.register" | "revocation.setup" | "issuance-profile.create" | "issuance-profile.update" | "issuance-profile.publish" | "issuance-profile.deprecate" | "credential-offer.send" | "credential-request.receive" | "credential.issue" | "presentation-definition.create" | "presentation-definition.update" | "presentation-definition.publish" | "presentation-definition.deprecate" | "presentation-request.send" | "presentation.receive" | "presentation.verify";
         /** @enum {string} */
         OperationStepState: "pending" | "processing" | "waiting" | "completed" | "failed" | "skipped";
         OperationStep: {
@@ -2592,6 +2858,9 @@ export interface components {
              *     then verifies backend revocation readiness (skipped when disabled).
              *     Local profile mutations have one step. Credential offers keep the
              *     same parent through offer send, holder request, and issuance.
+             *     Presentation requests keep one parent through request send, presentation
+             *     receive, and verification. A stored current stage advances monotonically;
+             *     it is not a fabricated stage history.
              *     waiting means external progress or explicit issuance is required.
              *     Unsupported operation types have an empty array. Terminal exchange
              *     failures without retained stage evidence leave steps pending rather
@@ -2624,6 +2893,9 @@ export interface components {
              *       (exchange-linked actions return the local { exchange_id })
              *     - completed issuance-profile.create/update/publish/deprecate:
              *       the full IssuanceProfile snapshot directly in result
+             *     - completed presentation-definition.create/update/publish/deprecate:
+             *       the full PresentationDefinition snapshot directly in result
+             *     - completed presentation.request: VerifiedPresentationResult
              *     - failed: { code, message }; credential registration additionally
              *       retains credential_definition_id, external_id, and registration
              *       progress/correlation identifiers.
@@ -4913,6 +5185,323 @@ export interface operations {
             };
         };
     };
+    listPresentationDefinitions: {
+        parameters: {
+            query?: {
+                /** @description Opaque pagination cursor from a previous response */
+                cursor?: components["parameters"]["Cursor"];
+                /** @description Number of items per page */
+                limit?: components["parameters"]["Limit"];
+                status?: components["schemas"]["ProfileStatus"];
+                public?: boolean;
+            };
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Cursor-paginated definitions */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedResponse"] & {
+                        data?: components["schemas"]["PresentationDefinition"][];
+                    };
+                };
+            };
+        };
+    };
+    createPresentationDefinition: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreatePresentationDefinition"];
+            };
+        };
+        responses: {
+            /** @description Completed configuration Operation with the draft snapshot in result */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Operation"];
+                };
+            };
+            /** @description Invalid or unsupported query/options */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing scope or tenant access */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Duplicate name/version */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getPresentationDefinition: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                definitionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Definition found */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PresentationDefinition"];
+                };
+            };
+            /** @description Definition not found in this tenant */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    updatePresentationDefinition: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                definitionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdatePresentationDefinition"];
+            };
+        };
+        responses: {
+            /** @description Completed presentation-definition.update Operation with definition snapshot in result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Operation"];
+                };
+            };
+            /** @description Invalid or unsupported query/options */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Definition not found in this tenant */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Definition is not a draft */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    publishPresentationDefinition: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                definitionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Completed presentation-definition.publish Operation with definition snapshot in result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Operation"];
+                };
+            };
+            /** @description Definition not found in this tenant */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Definition is not a draft */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    deprecatePresentationDefinition: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                definitionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Completed presentation-definition.deprecate Operation with definition snapshot in result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Operation"];
+                };
+            };
+            /** @description Definition not found in this tenant */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Definition is not published */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    createPresentationRequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreatePresentationRequest"];
+            };
+        };
+        responses: {
+            /** @description Request resolved synchronously, including submission failure */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Operation"];
+                };
+            };
+            /** @description Request sent; awaiting holder response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Operation"];
+                };
+            };
+            /** @description Unpublished/unsupported definition or unusable delivery connection */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing scope or tenant access */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getPresentationRequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                requestId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Request found */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Operation"];
+                };
+            };
+            /** @description Presentation request not found in this tenant */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     requestPresentation: {
         parameters: {
             query?: never;
@@ -4932,7 +5521,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Presentation request resolved synchronously (e.g. failed submission) */
+            /** @description Presentation exchange resolved synchronously */
             200: {
                 headers: {
                     [name: string]: unknown;
