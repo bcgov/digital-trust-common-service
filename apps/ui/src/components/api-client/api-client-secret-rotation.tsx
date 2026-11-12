@@ -45,7 +45,7 @@ export function ApiClientSecretRotation({
           {t('apiClients.rotation.hint')}
         </p>
       </div>
-      <Button variant="secondary" onPress={onRotate}>
+      <Button variant="secondary" size="small" onPress={onRotate}>
         {t('apiClients.rotation.button')}
       </Button>
     </div>

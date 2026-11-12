@@ -206,7 +206,7 @@ export function AppShell() {
           tabIndex={-1}
           className="flex min-w-0 flex-1 flex-col overflow-y-auto p-8"
         >
-          <div className="mx-auto w-full max-w-7xl">
+          <div className="mx-auto flex w-full max-w-7xl flex-1 flex-col">
             <Outlet />
           </div>
         </main>
