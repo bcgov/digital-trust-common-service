@@ -375,14 +375,14 @@ describe('ConnectorsPage', () => {
     );
     await userEvent.click(screen.getByRole('menuitem', { name: 'Delete' }));
     expect(
-      screen.getByRole('alertdialog', { name: 'Delete connector' }),
+      screen.getByRole('alertdialog', { name: 'Delete connector?' }),
     ).toHaveTextContent(
       'Delete the traction connector at https://traction.example.test/api?',
     );
 
     await userEvent.click(
       within(screen.getByRole('alertdialog')).getByRole('button', {
-        name: 'Delete connector',
+        name: 'Delete',
       }),
     );
 
@@ -525,7 +525,7 @@ describe('ConnectorsPage', () => {
     await userEvent.click(screen.getByRole('menuitem', { name: 'Edit' }));
     expect(
       screen
-        .getByRole('dialog', { name: 'Edit Connector' })
+        .getByRole('dialog', { name: 'Edit connector' })
         .closest('.drawer-panel'),
     ).toBeInTheDocument();
     const endpointInput = screen.getByRole('textbox', {
@@ -561,13 +561,13 @@ describe('ConnectorsPage', () => {
     expect(endpointInput).toBeDisabled();
     await userEvent.keyboard('{Escape}');
     expect(
-      screen.getByRole('dialog', { name: 'Edit Connector' }),
+      screen.getByRole('dialog', { name: 'Edit connector' }),
     ).toBeInTheDocument();
 
     finishTest();
     await waitFor(() =>
       expect(
-        screen.queryByRole('dialog', { name: 'Edit Connector' }),
+        screen.queryByRole('dialog', { name: 'Edit connector' }),
       ).not.toBeInTheDocument(),
     );
     await waitFor(() =>

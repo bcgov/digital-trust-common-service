@@ -242,9 +242,12 @@ export function ApiClientDrawer({
                   </div>
                 )}
                 <fieldset className="flex flex-col gap-2">
-                  <legend className="mb-2 text-small-body font-bold text-(--typography-color-primary)">
+                  <legend className="mb-2 text-body font-bold text-(--typography-color-primary)">
                     {t('apiClients.fields.scopes')}
                   </legend>
+                  <p className="text-body text-(--typography-color-primary)">
+                    {t('apiClients.drawer.scopesHelp')}
+                  </p>
                   {scopes.isLoading && (
                     <LoadingMessage>
                       {t('apiClients.drawer.loadingScopes')}
@@ -258,7 +261,7 @@ export function ApiClientDrawer({
                     />
                   )}
                   {scopes.isSuccess && (
-                    <div className="flex flex-col [&>.bcds-react-aria-Button]:justify-between">
+                    <div className="flex flex-col [&>.bcds-react-aria-Button]:justify-between!">
                       <MenuTrigger>
                         <Button
                           variant="secondary"
@@ -348,10 +351,10 @@ export function ApiClientDrawer({
                   ))}
                 </CheckboxGroup>
                 <div className="flex flex-col gap-2">
-                  <h3 className="text-small-body font-bold text-(--typography-color-primary)">
+                  <h3 className="text-body font-bold text-(--typography-color-primary)">
                     {t('apiClients.fields.redirectUris')}
                   </h3>
-                  <p className="text-small-body text-(--typography-color-secondary)">
+                  <p className="text-body text-(--typography-color-primary)">
                     {t('apiClients.drawer.redirectUriHelp')}
                   </p>
                   {uris.map((uri, index) => (
@@ -395,6 +398,7 @@ export function ApiClientDrawer({
                   <div>
                     <Button
                       variant="secondary"
+                      size="small"
                       onPress={() =>
                         setUris([
                           ...uris,

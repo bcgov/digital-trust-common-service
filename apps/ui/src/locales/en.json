@@ -303,6 +303,7 @@
   },
   "apiClients": {
     "title": "API integrations",
+    "subtitle": "Manage your API integrations here to connect and automate your services seamlessly.",
     "forbidden": "You need permission to manage API clients in this tenant.",
     "createIntegration": "Create integration",
     "loading": "Loading API clients...",
@@ -347,8 +348,8 @@
       "revoke": "Revoke"
     },
     "drawer": {
-      "createTitle": "Create API client",
-      "editTitle": "Edit API client",
+      "createTitle": "Create API integration",
+      "editTitle": "Edit API integration",
       "credentialsTitle": "Client credentials",
       "createDescription": "Client ID is suggested from the name. You can customize the suffix, but it must start with dtcs_.",
       "editDescription": "OAuth2 client configuration",
@@ -361,16 +362,17 @@
       "retryScopes": "Retry scopes",
       "selectScopes": "Select scopes",
       "selectScopesPlaceholder": "Select scopes...",
+      "scopesHelp": "Choose which actions and data this API can access.",
       "availableScopes": "Available scopes",
       "scopeNotChangeable": "{{scope}} (cannot be changed)",
-      "redirectUriHelp": "Enter the URL where requests are sent after they authorize access.",
+      "redirectUriHelp": "Enter the URL where users are sent after they authorize access.",
       "redirectUriPlaceholder": "https://",
       "redirectUriFor": "Redirect URI {{index}}",
       "removeRedirectUriFor": "Remove redirect URI {{index}}",
       "addUri": "Add URI",
       "saving": "Saving...",
       "saveChanges": "Save changes",
-      "createClient": "Create client",
+      "createClient": "Create integration",
       "validation": {
         "requiredFields": "Enter a name and select at least one scope and grant type.",
         "redirectUris": "Enter a valid HTTP or HTTPS redirect URI without a fragment. Authorization Code requires at least one URI."
@@ -603,7 +605,7 @@
   "connectors": {
     "actionsFor": "Actions for {{type}} connector at {{endpoint}}",
     "activeTenantFailed": "Could not load the active tenant.",
-    "add": "Add Connector",
+    "add": "Add connector",
     "connected": "Connected",
     "emptyBody": "Connectors will appear here once they have been created.",
     "emptyTitle": "No connectors yet",
@@ -616,14 +618,15 @@
     "loadingTenantDetails": "Loading tenant details...",
     "noActiveTenant": "No active tenant is available.",
     "retryTenantDetails": "Retry tenant details",
-    "subtitle": "Connect your tenant to external providers",
+    "subtitle": "Connect your tenant to external providers.",
     "tenantDetailsFailed": "Could not load tenant details.",
     "title": "Connectors",
     "delete": {
       "confirm": "Delete the {{type}} connector at {{endpoint}}? This action cannot be undone.",
       "deleting": "Deleting...",
       "failed": "Could not delete the connector. Try again.",
-      "title": "Delete connector"
+      "submit": "Delete",
+      "title": "Delete connector?"
     },
     "details": {
       "loadFailed": "Could not load connector details.",
@@ -646,23 +649,28 @@
       "savingChanges": "Saving changes...",
       "testFailed": "Connector test failed: {{message}}",
       "testing": "Testing...",
-      "title": "Edit Connector",
+      "title": "Edit connector",
       "tractionTenantId": "Traction tenant ID",
       "tryAgain": "Try again.",
       "unhealthy": "The connector reported an unhealthy status."
     },
     "form": {
       "apiKey": "API key",
+      "apiKeyPlaceholder": "Paste API key",
       "create": "Create",
       "createFailed": "Could not create the connector. Try again.",
+      "createFailedTitle": "Could not create connector.",
       "creating": "Creating...",
       "description": "This information will be used to configure your connector. The options are what is required to connect to an external digital credential agent.",
       "endpointUrl": "Endpoint URL",
+      "endpointUrlPlaceholder": "http://",
       "invalidUrl": "Enter a valid HTTP or HTTPS URL.",
       "missingApiKey": "Enter an API key.",
       "testNotice": "We test the connection before saving",
       "testing": "Testing connection...",
+      "title": "Create connector",
       "traction": "Traction",
+      "tryAgain": "Try again",
       "tractionTenantId": "Traction tenant ID (optional)",
       "type": "Connector type",
       "webhookSecret": "Webhook secret (optional)"
