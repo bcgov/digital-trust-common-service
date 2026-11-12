@@ -317,6 +317,44 @@ describe('claim constraints', () => {
     expect(constraints['/items'].default).toEqual([]);
   });
 
+  it.each([
+    {
+      '/items': { default: [], value_type: 'array', minItems: 2 },
+      '/items/0/name': { default: 'first' },
+      '/items/1': { default: 'second' },
+    },
+    {
+      '/items/1': { default: 'second' },
+      '/items/0/name': { default: 'first' },
+      '/items': { default: [], value_type: 'array', minItems: 2 },
+    },
+  ] satisfies ClaimConstraints[])(
+    'composes dense array defaults across path depths regardless of map order (%#)',
+    (constraints) => {
+      expect(() => validateClaimConstraints(constraints)).not.toThrow();
+      expect(applyClaimConstraints({}, constraints)).toEqual({
+        items: [{ name: 'first' }, 'second'],
+      });
+      expect(constraints['/items'].default).toEqual([]);
+    },
+  );
+
+  it('orders reversed sibling array defaults numerically, not lexically', () => {
+    const items = Array.from({ length: 12 }, (_, index) => `item-${index}`);
+    const defaults: ClaimConstraints = Object.fromEntries(
+      items
+        .map((item, index) => [`/items/${index}`, { default: item }])
+        .reverse(),
+    );
+    const constraints: ClaimConstraints = {
+      ...defaults,
+      '/items': { default: [], value_type: 'array' },
+    };
+    expect(() => validateClaimConstraints(constraints)).not.toThrow();
+    expect(applyClaimConstraints({}, constraints)).toEqual({ items });
+    expect(applyClaimConstraints({ items: [] }, defaults)).toEqual({ items });
+  });
+
   it('defers caller-dependent container validation until offer resolution', () => {
     const constraints: ClaimConstraints = {
       '/items': { required: true, value_type: 'array' },

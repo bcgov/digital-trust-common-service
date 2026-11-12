@@ -293,15 +293,13 @@ export function validateClaimConstraints(
     }
     constraints[pointer] = { ...constraint, required: false };
   }
-  const entries = Object.entries(constraints);
+  const entries = orderedDefaultEntries(constraints);
   for (const [pointer, rule] of entries) {
     if (!Object.hasOwn(rule, 'default')) continue;
     // Validate each explicit default independently, including masked defaults,
     // after composing its descendants. Ancestors may depend on caller input.
-    const subtree = Object.fromEntries(
-      entries.filter(
-        ([path]) => path === pointer || path.startsWith(`${pointer}/`),
-      ),
+    const subtree = entries.filter(
+      ([path]) => path === pointer || path.startsWith(`${pointer}/`),
     );
     applyValidatedConstraints({}, subtree);
   }
@@ -329,7 +327,7 @@ export function applyClaimConstraints(
   constraints: ClaimConstraints,
 ): Record<string, unknown> {
   validateClaimConstraints(constraints);
-  return applyValidatedConstraints(claims, constraints);
+  return applyValidatedConstraints(claims, orderedDefaultEntries(constraints));
 }
 
 export function resolveClaimPointers(
@@ -354,17 +352,44 @@ export function resolveClaimPointers(
     paths.push(parts);
     values[pointer] = { default: value };
   }
-  return applyValidatedConstraints({}, values);
+  const entries = Object.entries(values).sort(
+    ([left], [right]) => segments(left).length - segments(right).length,
+  );
+  return applyValidatedConstraints({}, entries);
+}
+
+function orderedDefaultEntries(
+  constraints: ClaimConstraints,
+): [string, ClaimConstraint][] {
+  // Traverse each lower array index's descendants before its next sibling.
+  return Object.entries(constraints).sort(([left], [right]) => {
+    const leftParts = segments(left);
+    const rightParts = segments(right);
+    for (
+      let index = 0;
+      index < Math.min(leftParts.length, rightParts.length);
+      index++
+    ) {
+      const leftPart = leftParts[index];
+      const rightPart = rightParts[index];
+      if (leftPart === rightPart) continue;
+      const leftIsIndex = /^(0|[1-9]\d*)$/.test(leftPart);
+      const rightIsIndex = /^(0|[1-9]\d*)$/.test(rightPart);
+      if (leftIsIndex !== rightIsIndex) return leftIsIndex ? -1 : 1;
+      if (leftIsIndex && leftPart.length !== rightPart.length) {
+        return leftPart.length - rightPart.length;
+      }
+      return leftPart < rightPart ? -1 : 1;
+    }
+    return leftParts.length - rightParts.length;
+  });
 }
 
 function applyValidatedConstraints(
   claims: Record<string, unknown>,
-  constraints: ClaimConstraints,
+  entries: [string, ClaimConstraint][],
 ): Record<string, unknown> {
   const result = structuredClone(claims);
-  const entries = Object.entries(constraints).sort(
-    ([left], [right]) => segments(left).length - segments(right).length,
-  );
   for (const [pointer, rule] of entries) {
     const parts = segments(pointer);
     if (!Object.hasOwn(rule, 'default') || lookup(result, parts).found)

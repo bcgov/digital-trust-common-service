@@ -1599,6 +1599,8 @@ not against inferred empty-document containers during profile configuration.
 
 Defaults fill missing values, never explicit null or caller-supplied values.
 All defaults are applied before constraints and definition validation.
+Defaults are composed ancestor-first with numeric sibling array indices,
+independently of pointer-map order.
 Missing optional claims skip validation. Pointers support `~0` for `~`, `~1`
 for `/`, and existing array indices. Root pointers and prototype-related path
 segments are rejected. Default insertion creates missing object parents, not
