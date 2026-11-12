@@ -9,6 +9,7 @@ import { BootstrapModule } from './bootstrap.module';
 import {
   ADMIN_CLIENT_ID,
   EnvironmentBootstrapService,
+  GRAFANA_CLIENT_ID,
   UI_CLIENT_ID,
 } from './bootstrap.service';
 
@@ -79,8 +80,8 @@ describe('EnvironmentBootstrapService integration', () => {
   // created, and the first-run assertions below would not hold.
   async function removeBootstrapRows(): Promise<void> {
     await dataSource.query(
-      `DELETE FROM oauth_client WHERE client_id IN ($1, $2)`,
-      [UI_CLIENT_ID, ADMIN_CLIENT_ID],
+      `DELETE FROM oauth_client WHERE client_id IN ($1, $2, $3)`,
+      [UI_CLIENT_ID, ADMIN_CLIENT_ID, GRAFANA_CLIENT_ID],
     );
     await dataSource.query(`DELETE FROM tenant WHERE slug = $1`, [TENANT_SLUG]);
   }
@@ -171,5 +172,29 @@ describe('EnvironmentBootstrapService integration', () => {
     expect(await verify(rotatedHash, first.adminClientSecret ?? '')).toBe(
       false,
     );
+  });
+
+  it('registers the Grafana client only when given its URL', async () => {
+    await bootstrap.run(TENANT_SLUG, TENANT_NAME);
+    expect(await findClient(GRAFANA_CLIENT_ID)).toBeUndefined();
+
+    const result = await bootstrap.run(
+      TENANT_SLUG,
+      TENANT_NAME,
+      false,
+      'https://logs.example.test/some/path',
+    );
+
+    expect(result.grafanaRedirectUris).toEqual([
+      'https://logs.example.test/login/generic_oauth',
+    ]);
+    expect(await findClient(GRAFANA_CLIENT_ID)).toMatchObject({
+      tenant_id: result.tenantId,
+      is_public: true,
+      client_secret_hash: null,
+      redirect_uris: ['https://logs.example.test/login/generic_oauth'],
+      grant_types: ['authorization_code', 'refresh_token'],
+      revoked_at: null,
+    });
   });
 });
