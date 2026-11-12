@@ -60,7 +60,11 @@ export function ApiClientsPage() {
   );
   return (
     <div className="flex flex-1 flex-col gap-xlarge">
-      <PageHeader title={t('apiClients.title')} actions={addButton} />
+      <PageHeader
+        title={t('apiClients.title')}
+        subtitle={t('apiClients.subtitle')}
+        actions={addButton}
+      />
       {(status === 'loading' || (tenant && query.isLoading)) && (
         <LoadingMessage>{t('apiClients.loading')}</LoadingMessage>
       )}
