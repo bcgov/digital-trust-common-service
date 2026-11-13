@@ -3,7 +3,8 @@ import { useTranslation } from 'react-i18next';
 import { StaticTag } from '@/components/common/static-tag';
 
 const SCHEMA_LABELS = {
-  attr_names: 'credentialDefinitionDetails.attributes',
+  properties: 'credentialDefinitionDetails.attributes',
+  attributes: 'credentialDefinitionDetails.attributes',
   schema_name: 'credentialDefinitionDetails.schemaName',
   schema_version: 'credentialDefinitionDetails.schemaVersion',
 } as const;

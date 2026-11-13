@@ -89,6 +89,39 @@ export class CredentialDefinitionService {
     private readonly formatHandlers: CredentialDefinitionFormatHandler[],
   ) {}
 
+  public getClaimsValidationSchema(definition: CredentialDefinition): {
+    schema: Record<string, unknown>;
+    mandatoryClaims: readonly string[];
+    prepareClaimsForValidation?: (
+      claims: Readonly<Record<string, unknown>>,
+    ) => { claims: Record<string, unknown>; omittedClaims: string[] };
+  } {
+    const handler = this.formatHandlers.find(
+      (candidate) => candidate.format === definition.format,
+    );
+    if (!handler) {
+      throw new BadRequestException(
+        `Credential format '${definition.format}' does not support claim validation`,
+      );
+    }
+
+    return {
+      schema: handler.getClaimsSchema(definition.schemaDefinition),
+      mandatoryClaims: handler.getMandatoryClaims(definition.schemaDefinition),
+      ...(handler.prepareClaimsForValidation
+        ? {
+            prepareClaimsForValidation: (
+              claims: Readonly<Record<string, unknown>>,
+            ) =>
+              handler.prepareClaimsForValidation!(
+                definition.schemaDefinition,
+                claims,
+              ),
+          }
+        : {}),
+    };
+  }
+
   public async create(
     tenantId: string,
     dto: CreateCredentialDefinitionDto,
@@ -180,6 +213,10 @@ export class CredentialDefinitionService {
         'Drafts require schema.definition and connector_id.',
       );
     }
+    const schema = handler.normalizeSchema(dto.schema);
+    if (!schema.definition) {
+      throw new BadRequestException('Drafts require schema.definition.');
+    }
     const existing =
       await this.credentialDefinitionRepository.findByTenantAndNameAndFormat(
         tenantId,
@@ -201,13 +238,13 @@ export class CredentialDefinitionService {
         'Selected connector is not active for this tenant or has an unsupported type.',
       );
     const schemaVersion =
-      dto.schema.definition.version ?? dto.schema.definition.schema_version;
+      schema.definition.version ?? schema.definition.schema_version;
     const created = await this.credentialDefinitionRepository
       .create({
         tenantId,
         name: dto.name,
         format: dto.options.format,
-        schemaDefinition: dto.schema.definition,
+        schemaDefinition: schema.definition,
         externalId: null,
         connectorId: connector.id,
         connectorType,

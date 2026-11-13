@@ -88,7 +88,7 @@ describe('CredentialDefinitionsPage', () => {
               connector_id: connector.id,
               options: { format } as CredentialDefinition['options'],
               external_id: 'unsupported-draft',
-              schema_definition: { attr_names: ['name'] },
+              schema_definition: { properties: { name: { type: 'string' } } },
             } satisfies CredentialDefinition),
         ),
         http.post(`${API_BASE_PATH}/tenants/:id/credential-definitions`, () => {
@@ -384,7 +384,7 @@ describe('CredentialDefinitionsPage', () => {
         status: 'draft',
         schema: {
           definition: {
-            attr_names: [],
+            attributes: {},
             schema_name: 'Visitor pass',
             schema_version: '2.1.0',
             version: '2.1.0',
@@ -445,7 +445,7 @@ describe('CredentialDefinitionsPage', () => {
               connector_id: connector.id,
               is_active: true,
               schema_definition: {
-                attr_names: ['employee_id'],
+                properties: { employee_id: { type: 'string' } },
                 schema_name: 'Employee badge',
                 schema_version: '2.0.0',
                 version: '2.0.0',
@@ -501,6 +501,10 @@ describe('CredentialDefinitionsPage', () => {
         'bg-(--surface-color-background-white)',
       );
       await user.type(firstAttribute, 'employee_id');
+      await user.click(
+        screen.getByRole('button', { name: /Attribute 1 type/ }),
+      );
+      await user.click(screen.getByRole('option', { name: 'Integer' }));
       expect(firstAttributeRow).toHaveClass(
         'bg-(--surface-color-background-light-blue)',
         'border-(--surface-color-border-active)',
@@ -533,7 +537,7 @@ describe('CredentialDefinitionsPage', () => {
             status: 'draft',
             schema: {
               definition: expect.objectContaining({
-                attr_names: ['employee_id'],
+                attributes: { employee_id: 'integer' },
               }),
             },
           }),
@@ -564,7 +568,7 @@ describe('CredentialDefinitionsPage', () => {
       options: anonCredsOptions,
       is_active: true,
       schema_definition: {
-        attr_names: ['legal_name'],
+        properties: { legal_name: { type: 'string' } },
         schema_name: 'Employee badge',
         schema_version: '1.0.0',
         version: '1.0.0',
@@ -663,7 +667,7 @@ describe('CredentialDefinitionsPage', () => {
           status: 'draft',
           connector_id: connector.id,
           schema_definition: expect.objectContaining({
-            attr_names: ['legal_name'],
+            attributes: { legal_name: 'string' },
             schema_name: 'Updated employee badge',
             schema_version: '2.0.0',
             version: '2.0.0',
@@ -968,7 +972,7 @@ describe('CredentialDefinitionsPage', () => {
         status: 'published',
         schema: {
           definition: {
-            attr_names: ['first'],
+            attributes: { first: 'string' },
             schema_name: 'Visitor pass',
             schema_version: '2.1.0',
             version: '2.1.0',

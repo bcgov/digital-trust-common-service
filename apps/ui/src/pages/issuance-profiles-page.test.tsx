@@ -17,10 +17,14 @@ const profile: IssuanceProfile = {
   tenant_id: tenantId,
   name: 'Employee onboarding',
   version: '1.0',
-  protocol_hint: 'auto',
+  delivery: { protocol: 'didcomm-v1' },
   credential_definition_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
   status: 'published',
 };
+
+function profileResponse(result: IssuanceProfile, status = 200) {
+  return HttpResponse.json(result, { status });
+}
 
 async function renderPage() {
   const client = createMockAuthClient();
@@ -33,7 +37,7 @@ async function renderPage() {
 }
 
 describe('IssuanceProfilesPage', () => {
-  it('only offers Auto and DIDComm when creating a profile', async () => {
+  it('only offers DIDComm v1 when creating a profile', async () => {
     const user = userEvent.setup();
     await renderPage();
     await user.click(
@@ -41,9 +45,10 @@ describe('IssuanceProfilesPage', () => {
     );
     const dialog = screen.getByRole('dialog', { name: 'Create profile' });
     await user.click(within(dialog).getByRole('button', { name: /Protocol/ }));
-    expect(await screen.findByRole('option', { name: 'Auto' })).toBeVisible();
-    expect(screen.getByRole('option', { name: 'DIDComm' })).toBeVisible();
-    expect(screen.getAllByRole('option')).toHaveLength(2);
+    expect(
+      await screen.findByRole('option', { name: 'DIDComm v1' }),
+    ).toBeVisible();
+    expect(screen.getAllByRole('option')).toHaveLength(1);
     expect(
       screen.queryByRole('option', { name: 'OID4VCI' }),
     ).not.toBeInTheDocument();
@@ -97,9 +102,8 @@ describe('IssuanceProfilesPage', () => {
     expect(body).toEqual({
       name: 'Staff badge',
       version: '1.0',
-      protocol_hint: 'auto',
+      delivery: { protocol: 'didcomm-v1' },
       credential_definition_id: profile.credential_definition_id,
-      attribute_schema: {},
     });
     server.events.removeAllListeners('request:start');
     await user.click(
@@ -212,7 +216,7 @@ describe('IssuanceProfilesPage', () => {
         ({ params }) => {
           requested('archive', params.id, params.profileId);
           currentProfile = { ...currentProfile, status: 'deprecated' };
-          return HttpResponse.json(currentProfile);
+          return profileResponse(currentProfile);
         },
       ),
     );
@@ -255,7 +259,7 @@ describe('IssuanceProfilesPage', () => {
         await pending;
         return title === 'Delete profile'
           ? new HttpResponse(null, { status: 204 })
-          : HttpResponse.json({ ...profile, status: 'deprecated' });
+          : profileResponse({ ...profile, status: 'deprecated' });
       };
       server.use(
         http.get(`${API_BASE_PATH}/tenants/${tenantId}/profiles/issuance`, () =>
@@ -314,7 +318,7 @@ describe('IssuanceProfilesPage', () => {
           `${API_BASE_PATH}/tenants/:id/profiles/issuance/:profileId/deprecate`,
           () => {
             requested();
-            return HttpResponse.json(profile);
+            return profileResponse({ ...profile, status: 'deprecated' });
           },
         ),
       );
@@ -348,7 +352,7 @@ describe('IssuanceProfilesPage', () => {
             )
           : title === 'Delete profile'
             ? new HttpResponse(null, { status: 204 })
-            : HttpResponse.json({ ...profile, status: 'deprecated' });
+            : profileResponse({ ...profile, status: 'deprecated' });
       server.use(
         http.get(`${API_BASE_PATH}/tenants/${tenantId}/profiles/issuance`, () =>
           HttpResponse.json({
@@ -449,7 +453,7 @@ describe('IssuanceProfilesPage', () => {
         `${API_BASE_PATH}/tenants/:id/profiles/issuance/:profileId/publish`,
         () => {
           requested();
-          return HttpResponse.json(profile);
+          return profileResponse(profile);
         },
       ),
     );
@@ -478,7 +482,7 @@ describe('IssuanceProfilesPage', () => {
             requested(params.id, params.profileId);
             return failed
               ? HttpResponse.json({ statusCode: status, message }, { status })
-              : HttpResponse.json(profile);
+              : profileResponse(profile);
           },
         ),
       );
@@ -515,7 +519,7 @@ describe('IssuanceProfilesPage', () => {
         async () => {
           requested();
           await pending;
-          return HttpResponse.json(profile);
+          return profileResponse(profile);
         },
       ),
     );
@@ -559,13 +563,13 @@ describe('IssuanceProfilesPage', () => {
         async ({ request }) => {
           if (conflict)
             return HttpResponse.json({ message: 'Duplicate' }, { status: 409 });
-          return HttpResponse.json(
+          return profileResponse(
             {
               ...((await request.json()) as object),
               id: 'new-profile',
               status: 'draft',
             },
-            { status: 201 },
+            201,
           );
         },
       ),
@@ -634,7 +638,7 @@ describe('IssuanceProfilesPage', () => {
     server.use(
       http.post(`${API_BASE_PATH}/tenants/:id/profiles/issuance`, () => {
         requested();
-        return HttpResponse.json({}, { status: 201 });
+        return profileResponse({ ...profile, status: 'draft' }, 201);
       }),
     );
     await renderPage();
@@ -669,10 +673,7 @@ describe('IssuanceProfilesPage', () => {
       http.post(`${API_BASE_PATH}/tenants/:id/profiles/issuance`, async () => {
         requested();
         await pending;
-        return HttpResponse.json(
-          { ...profile, status: 'draft' },
-          { status: 201 },
-        );
+        return profileResponse({ ...profile, status: 'draft' }, 201);
       }),
     );
     await renderPage();
@@ -713,7 +714,7 @@ describe('IssuanceProfilesPage', () => {
                     id: 'ffffffff-ffff-4fff-8fff-ffffffffffff',
                     name: 'Previous onboarding',
                     status: 'deprecated',
-                    protocol_hint: 'didcomm',
+                    delivery: { protocol: 'didcomm-v1' },
                   }
                 : profile,
             ],
@@ -733,7 +734,7 @@ describe('IssuanceProfilesPage', () => {
     expect(
       within(row).getByRole('link', { name: 'Employee badge (1.0)' }),
     ).toBeVisible();
-    expect(within(row).getByText('Auto')).toBeVisible();
+    expect(within(row).getByText('DIDComm v1')).toBeVisible();
     expect(within(row).getByText('Published')).toBeVisible();
     expect(
       within(row).queryByRole('button', { name: /Actions for/ }),
@@ -746,7 +747,7 @@ describe('IssuanceProfilesPage', () => {
         name: 'Actions for Previous onboarding (1.0)',
       }),
     ).not.toBeInTheDocument();
-    expect(screen.getByText('DIDComm')).toBeVisible();
+    expect(screen.getAllByText('DIDComm v1')).toHaveLength(2);
     expect(screen.getByText('Employee onboarding')).toBeVisible();
     expect(cursors).toEqual([null, 'next-page']);
     expect(

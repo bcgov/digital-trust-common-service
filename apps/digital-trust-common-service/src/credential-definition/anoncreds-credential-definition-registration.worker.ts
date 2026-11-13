@@ -377,10 +377,44 @@ export class AnonCredsCredentialDefinitionRegistrationWorker implements OnModule
     let submitted: RegistrationSubmission;
     try {
       if (artifact === 'schema') {
+        const schemaName = work.definition.schemaDefinition.schema_name;
+        const schemaVersion = work.definition.schemaDefinition.schema_version;
+        if (
+          typeof schemaName !== 'string' ||
+          typeof schemaVersion !== 'string'
+        ) {
+          throw new ValidationError([
+            'AnonCreds schema name and version are unavailable',
+          ]);
+        }
+        const legacyNames = work.definition.schemaDefinition.attr_names;
+        const attrNames = Array.isArray(legacyNames)
+          ? legacyNames.filter(
+              (name): name is string => typeof name === 'string',
+            )
+          : undefined;
+        const properties =
+          work.definition.schemaDefinition.properties ??
+          (attrNames
+            ? Object.fromEntries(attrNames.map((name) => [name, {}]))
+            : undefined);
+        if (
+          properties === null ||
+          typeof properties !== 'object' ||
+          Array.isArray(properties)
+        ) {
+          throw new ValidationError([
+            'AnonCreds schema properties are unavailable',
+          ]);
+        }
         submitted = await backend.port.publishSchema(
           backend.context,
           work.registration.issuerId,
-          work.definition.schemaDefinition,
+          {
+            schema_name: schemaName,
+            schema_version: schemaVersion,
+            attr_names: Object.keys(properties),
+          },
         );
       } else {
         if (!schemaId) {

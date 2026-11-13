@@ -92,6 +92,47 @@ interface TractionCredentialExchange {
   readonly error_msg?: string;
 }
 
+function anonCredsAttributes(
+  claims: Readonly<Record<string, unknown>>,
+  schemaDefinition: Readonly<Record<string, unknown>>,
+): { name: string; value: string }[] {
+  const properties = schemaDefinition.properties;
+  const attributes = schemaDefinition.attributes;
+  const legacyNames = schemaDefinition.attr_names;
+  const attributeNames =
+    properties !== null &&
+    typeof properties === 'object' &&
+    !Array.isArray(properties)
+      ? Object.keys(properties)
+      : attributes !== null &&
+          typeof attributes === 'object' &&
+          !Array.isArray(attributes)
+        ? Object.keys(attributes)
+        : Array.isArray(legacyNames)
+          ? legacyNames.filter(
+              (name): name is string => typeof name === 'string',
+            )
+          : undefined;
+  if (!attributeNames) {
+    throw new ValidationError(['AnonCreds schema properties are unavailable']);
+  }
+
+  return attributeNames.map((name) => {
+    const value = claims[name];
+    if (value === undefined) return { name, value: '' };
+    if (
+      typeof value !== 'string' &&
+      typeof value !== 'number' &&
+      typeof value !== 'boolean'
+    ) {
+      throw new ValidationError([
+        `AnonCreds claim '${name}' must be a scalar value`,
+      ]);
+    }
+    return { name, value: String(value) };
+  });
+}
+
 /**
  * AgentAdapter implementation for the Traction (ACA-Py multitenant) backend.
  * Registers itself with the AdapterRegistry at module init so tenants whose
@@ -150,7 +191,10 @@ export class TractionAdapter implements AgentAdapter, OnModuleInit {
               credential_preview: {
                 '@type':
                   'https://didcomm.org/issue-credential/2.0/credential-preview',
-                attributes: req.attributes,
+                attributes: anonCredsAttributes(
+                  req.claims,
+                  req.schemaDefinition,
+                ),
               },
               auto_issue: req.autoIssue ?? true,
               auto_remove: false,

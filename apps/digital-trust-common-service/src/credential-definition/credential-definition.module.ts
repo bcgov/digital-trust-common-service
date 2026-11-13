@@ -11,7 +11,11 @@ import { OperationModule } from '../operation/operation.module';
 import { RateLimitModule } from '../rate-limit/rate-limit.module';
 import { TenantStatusModule } from '../tenant/tenant-status.module';
 
-import { AnonCredsCredentialDefinitionFormatHandler } from './anoncreds-credential-definition-format.handler';
+import {
+  AnonCredsCredentialDefinitionFormatHandler,
+  NO_REGISTRATION_FORMATS,
+  NoRegistrationCredentialDefinitionFormatHandler,
+} from './anoncreds-credential-definition-format.handler';
 import { AnonCredsCredentialDefinitionRegistrationWorker } from './anoncreds-credential-definition-registration.worker';
 import { CREDENTIAL_DEFINITION_FORMAT_HANDLERS } from './credential-definition-format-handler';
 import { CredentialDefinitionController } from './credential-definition.controller';
@@ -42,6 +46,13 @@ import { CredentialDefinitionService } from './credential-definition.service';
       provide: CREDENTIAL_DEFINITION_FORMAT_HANDLERS,
       useFactory: (anonCreds: AnonCredsCredentialDefinitionFormatHandler) => [
         anonCreds,
+        ...NO_REGISTRATION_FORMATS.map(
+          ({ format, optionsDto }) =>
+            new NoRegistrationCredentialDefinitionFormatHandler(
+              format,
+              optionsDto,
+            ),
+        ),
       ],
       inject: [AnonCredsCredentialDefinitionFormatHandler],
     },

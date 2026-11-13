@@ -55,10 +55,7 @@
     "unavailable": "Indisponible",
     "definitionsRestricted": "Les noms et formats des définitions de justificatifs nécessitent la portée tenants:admin.",
     "protocols": {
-      "auto": "Auto",
-      "didcomm": "DIDComm",
-      "oid4vci": "OID4VCI",
-      "oid4vp": "OID4VP"
+      "didcomm-v1": "DIDComm v1"
     },
     "statuses": {
       "draft": "Brouillon",
@@ -155,6 +152,13 @@
       "reorder": "Réorganiser l'attribut {{index}}",
       "name": "Nom de l'attribut {{index}}",
       "namePlaceholder": "Saisir le nom de l'attribut",
+      "type": "Type de l'attribut {{index}}",
+      "types": {
+        "string": "Texte",
+        "integer": "Entier",
+        "number": "Nombre",
+        "boolean": "Booléen"
+      },
       "delete": "Supprimer l'attribut {{index}}",
       "deleteButton": "Supprimer"
     },

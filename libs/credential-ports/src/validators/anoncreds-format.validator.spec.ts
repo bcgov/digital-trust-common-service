@@ -8,12 +8,9 @@ import {
   ATTRIBUTES_WITH_NON_STRING_VALUE,
   ATTRIBUTES_WITH_UNSERIALIZABLE_VALUE,
   ATTRIBUTES_WITH_UNSTRINGIFIABLE_VALUE,
-  SCHEMA_MISSING_ATTR_NAMES,
-  SCHEMA_MISSING_ATTR_NAMES_WITH_OPTIONAL,
+  SCHEMA_MISSING_PROPERTIES,
   SCHEMA_MISSING_NAME_AND_VERSION,
-  SCHEMA_WITH_DUPLICATE_ATTR_NAMES,
-  SCHEMA_WITH_INVALID_OPTIONAL_ATTRIBUTE,
-  SCHEMA_WITH_NON_ARRAY_OPTIONAL_ATTRIBUTES,
+  SCHEMA_WITH_INVALID_PROPERTY_TYPE,
   VALID_ATTRIBUTES,
   VALID_SCHEMA,
   VALID_SCHEMA_WITH_OPTIONAL,
@@ -35,22 +32,24 @@ describe('AnonCredsFormatValidator', () => {
       expect(validator.validateSchema(VALID_SCHEMA)).toEqual([]);
     });
 
-    it('accepts a schema whose optional_attributes are declared attributes', () => {
+    it('accepts a schema with all attributes in the wire representation', () => {
       expect(validator.validateSchema(VALID_SCHEMA_WITH_OPTIONAL)).toEqual([]);
     });
 
-    it('flags a missing attr_names', () => {
-      const issues = validator.validateSchema(SCHEMA_MISSING_ATTR_NAMES);
+    it('flags missing claim properties', () => {
+      const issues = validator.validateSchema(SCHEMA_MISSING_PROPERTIES);
 
       expect(issues).toHaveLength(1);
-      expect(issues[0].field).toBe('attr_names');
+      expect(issues[0].field).toBe('properties');
     });
 
-    it('flags duplicate attr_names', () => {
-      const issues = validator.validateSchema(SCHEMA_WITH_DUPLICATE_ATTR_NAMES);
+    it('flags an invalid semantic claim type', () => {
+      const issues = validator.validateSchema(
+        SCHEMA_WITH_INVALID_PROPERTY_TYPE,
+      );
 
       expect(issues).toContainEqual(
-        expect.objectContaining({ field: 'attr_names' }),
+        expect.objectContaining({ field: 'properties.given_names' }),
       );
     });
 
@@ -60,39 +59,6 @@ describe('AnonCredsFormatValidator', () => {
       expect(issues.map((issue) => issue.field).sort()).toEqual([
         'schema_name',
         'schema_version',
-      ]);
-    });
-
-    it('flags an optional_attributes entry not present in attr_names', () => {
-      const issues = validator.validateSchema(
-        SCHEMA_WITH_INVALID_OPTIONAL_ATTRIBUTE,
-      );
-
-      expect(issues).toContainEqual(
-        expect.objectContaining({ field: 'optional_attributes' }),
-      );
-    });
-
-    it('flags optional_attributes when it is not an array of strings', () => {
-      const issues = validator.validateSchema(
-        SCHEMA_WITH_NON_ARRAY_OPTIONAL_ATTRIBUTES,
-      );
-
-      expect(issues).toContainEqual(
-        expect.objectContaining({
-          field: 'optional_attributes',
-          expected: 'an array of attribute name strings',
-        }),
-      );
-    });
-
-    it('skips cross-checking optional_attributes when attr_names is itself invalid', () => {
-      const issues = validator.validateSchema(
-        SCHEMA_MISSING_ATTR_NAMES_WITH_OPTIONAL,
-      );
-
-      expect(issues).toEqual([
-        expect.objectContaining({ field: 'attr_names' }),
       ]);
     });
   });
@@ -116,16 +82,17 @@ describe('AnonCredsFormatValidator', () => {
       ]);
     });
 
-    it('does not require attributes listed in optional_attributes', () => {
-      const withoutOptional = [
+    it('accepts an empty string for an optional AnonCreds wire attribute', () => {
+      const withEmptyOptional = [
         { name: 'given_names', value: 'Avery' },
         { name: 'family_name', value: 'Smith' },
+        { name: 'middle_name', value: '' },
       ];
 
       expect(
         validator.validateAttributes(
           VALID_SCHEMA_WITH_OPTIONAL,
-          withoutOptional,
+          withEmptyOptional,
         ),
       ).toEqual([]);
     });
@@ -196,12 +163,12 @@ describe('AnonCredsFormatValidator', () => {
 
     it('short-circuits with a single issue when the schema itself is invalid', () => {
       const issues = validator.validateAttributes(
-        SCHEMA_MISSING_ATTR_NAMES,
+        SCHEMA_MISSING_PROPERTIES,
         VALID_ATTRIBUTES,
       );
 
       expect(issues).toHaveLength(1);
-      expect(issues[0].field).toBe('attr_names');
+      expect(issues[0].field).toBe('properties');
     });
   });
 });

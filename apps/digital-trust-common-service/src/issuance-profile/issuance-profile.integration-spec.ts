@@ -89,7 +89,7 @@ describe('Issuance profile lifecycle (integration)', () => {
       name: 'Lifecycle profile',
       version: '1.0',
       credentialDefinitionId: definition.id,
-      attributeSchema: {},
+      delivery: { protocol: 'didcomm-v1' },
       status: IssuanceProfileStatus.PUBLISHED,
     });
   });
@@ -149,7 +149,7 @@ describe('Issuance profile lifecycle (integration)', () => {
       name: 'Stale patch profile',
       version: '1.0',
       credentialDefinitionId: profile.credentialDefinitionId,
-      attributeSchema: {},
+      delivery: { protocol: 'didcomm-v1' },
       status: IssuanceProfileStatus.DRAFT,
     });
 
@@ -161,10 +161,10 @@ describe('Issuance profile lifecycle (integration)', () => {
       IssuanceProfileDeleteResult.DELETED,
     );
     expect(
-      await profiles.updateDraftIfCurrent(tenantId, draft.id, {
-        description: 'Late PATCH',
-      }),
-    ).toBe(false);
+      await dataSource.transaction((manager) =>
+        profiles.findForUpdate(tenantId, draft.id, manager),
+      ),
+    ).toBeNull();
     expect(await profiles.findById(draft.id)).toBeNull();
   });
 
@@ -216,7 +216,7 @@ describe('Issuance profile lifecycle (integration)', () => {
         name: profile.name,
         version: profile.version,
         credentialDefinitionId: profile.credentialDefinitionId,
-        attributeSchema: {},
+        delivery: { protocol: 'didcomm-v1' },
       }),
     ).rejects.toMatchObject({ driverError: { code: '23505' } });
     expect(await profiles.deleteIfUnused(tenantId, profile.id)).toBe(

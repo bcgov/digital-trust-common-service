@@ -1269,12 +1269,12 @@ paths:
               $ref: "#/components/schemas/CreateIssuanceProfileRequest"
       responses:
         "201":
-          description: Issuance profile created (draft status)
+          description: Draft issuance profile created
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/IssuanceProfile"
-        "404":
+        '404':
           description: Credential definition not found
           content:
             application/json:
@@ -1362,12 +1362,12 @@ paths:
               $ref: "#/components/schemas/UpdateIssuanceProfileRequest"
       responses:
         "200":
-          description: Profile updated
+          description: Issuance profile updated
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/IssuanceProfile"
-        "409":
+        '409':
           description: Cannot update a published or deprecated profile
           content:
             application/json:
@@ -1384,12 +1384,12 @@ paths:
       tags: [Issuance Profiles]
       responses:
         "200":
-          description: Profile published
+          description: Issuance profile published
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/IssuanceProfile"
-        "400":
+        '400':
           description: >-
             The credential definition is not published, or its connector no longer exists, is inactive, or its
             adapter no longer resolves
@@ -1414,12 +1414,12 @@ paths:
       tags: [Issuance Profiles]
       responses:
         "200":
-          description: Profile deprecated
+          description: Issuance profile deprecated
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/IssuanceProfile"
-        "409":
+        '409':
           description: Profile is not in published status
           content:
             application/json:
@@ -1562,12 +1562,13 @@ paths:
       operationId: offerCredential
       summary: Offer/issue a credential
       description: |
-        Offer unsigned subject claims via a published issuance profile or a direct
-        credential definition reference. Both paths require an active, published
+        Offer unsigned subject claims via a published issuance profile.
+        The profile requires an active, published
         credential definition with a connector binding. Format is inferred from the
         stored definition, not parsed from an identifier.
 
-        Only explicit didcomm-v1 delivery is supported. Its connection_id is a
+        Delivery protocol is inherited from the profile; only didcomm-v1 is supported.
+        The offer supplies delivery.connection_id, a
         tenant-owned local connection UUID resolved in the definition's wallet.
         OID4VCI is not yet supported.
       tags: [Credentials]
@@ -1583,26 +1584,13 @@ paths:
                 value:
                   profile_id: "drivers-license/1.0"
                   delivery:
-                    protocol: didcomm-v1
                     connection_id: "c3d4e5f6-7890-1234-abcd-ef0123456789"
                   options:
                     auto_issue: true
-                  credential:
-                    credentialSubject:
-                      given_name: Alice
-                      family_name: Smith
-                      birth_date: "1995-03-15"
-              direct_definition:
-                summary: Direct definition (format inferred)
-                value:
-                  credential_definition_id: "a1b2c3d4-5678-9012-abcd-ef0123456789"
-                  delivery:
-                    protocol: didcomm-v1
-                    connection_id: "c3d4e5f6-7890-1234-abcd-ef0123456789"
-                  credential:
-                    credentialSubject:
-                      given_name: Alice
-                      birth_date: "1995-03-15"
+                  claims:
+                    given_name: Alice
+                    family_name: Smith
+                    birth_date: "1995-03-15"
       responses:
         "200":
           description: Offer operation already completed or failed synchronously
@@ -4109,9 +4097,17 @@ components:
                   additionalProperties: true
                   description: |
                     Free-form schema definition interpreted according to options.format.
-                    AnonCreds requires schema_name, schema_version, and attr_names.
+                    AnonCreds requires schema_name, schema_version, and a flat
+                    attributes map from names to semantic types (string, integer,
+                    number, or boolean). Attribute values on the wire remain strings.
                     W3C VC definitions may use JSON Schema. Formats without a
                     schema validator may accept the object as-is.
+                  example:
+                    schema_name: employee
+                    schema_version: "1.0"
+                    attributes:
+                      given_name: string
+                      age: integer
         issuer:
           type: object
           additionalProperties: false
@@ -4210,13 +4206,8 @@ components:
         credential_definition_id:
           type: string
           format: uuid
-        attribute_schema:
-          type: object
-          description: Declares attributes the consumer must supply
-        defaults:
-          type: object
-          nullable: true
-          description: Pre-filled attribute values
+        claims:
+          $ref: '#/components/schemas/ProfileClaims'
         display:
           type: object
           nullable: true
@@ -4237,8 +4228,8 @@ components:
           type: object
           nullable: true
           description: Extensible metadata (OCA bundles, trust framework tags, etc.)
-        protocol_hint:
-          $ref: "#/components/schemas/ProtocolHint"
+        delivery:
+          $ref: '#/components/schemas/IssuanceDelivery'
         status:
           $ref: "#/components/schemas/ProfileStatus"
         created_at:
@@ -4251,7 +4242,8 @@ components:
     CreateIssuanceProfileRequest:
       type: object
       description: The connector is inherited from the credential definition, which must have an active connector binding.
-      required: [name, version, credential_definition_id, attribute_schema]
+      additionalProperties: false
+      required: [name, version, credential_definition_id]
       properties:
         name:
           type: string
@@ -4267,31 +4259,62 @@ components:
         credential_definition_id:
           type: string
           format: uuid
-        attribute_schema:
-          type: object
-          description: Attribute definitions (names, types, required flags)
-        defaults:
-          type: object
+        claims:
+          $ref: '#/components/schemas/ProfileClaims'
         display:
           type: object
         metadata:
           type: object
-        protocol_hint:
-          $ref: "#/components/schemas/ProtocolHint"
+        delivery:
+          $ref: '#/components/schemas/IssuanceDelivery'
 
     UpdateIssuanceProfileRequest:
       type: object
+      additionalProperties: false
       properties:
         description:
           type: string
-        defaults:
-          type: object
+        claims:
+          $ref: '#/components/schemas/ProfileClaims'
         display:
           type: object
         metadata:
           type: object
-        protocol_hint:
-          $ref: "#/components/schemas/ProtocolHint"
+        delivery:
+          $ref: '#/components/schemas/IssuanceDelivery'
+
+    IssuanceDelivery:
+      type: object
+      additionalProperties: false
+      required: [protocol]
+      properties:
+        protocol:
+          type: string
+          enum: [didcomm-v1]
+          description: Delivery protocol inherited by offers using this profile.
+
+    ProfileClaims:
+      type: object
+      additionalProperties: false
+      description: Optional required-claim and allowed-value overlays.
+      properties:
+        required:
+          type: array
+          uniqueItems: true
+          items:
+            type: string
+          description: Claim names required in offers using this profile.
+        properties:
+          type: object
+          additionalProperties:
+            type: object
+            additionalProperties: false
+            properties:
+              enum:
+                type: array
+                minItems: 1
+                items: {}
+              const: {}
 
     ProfileStatus:
       type: string
@@ -4301,8 +4324,8 @@ components:
       type: string
       description: |
         Protocol hint for delivery. Valid values depend on context:
-        - Issuance profiles: didcomm, oid4vci, auto
         - Verification profiles: didcomm, oid4vp, auto
+        Issuance profiles use explicit delivery.protocol instead.
         Server validates that the value is appropriate for the profile type.
       enum: [didcomm, oid4vci, oid4vp, auto]
       default: auto
@@ -4420,43 +4443,28 @@ components:
     OfferCredentialRequest:
       type: object
       additionalProperties: false
-      required: [credential, delivery]
-      oneOf:
-        - required: [profile_id]
-          not:
-            required: [credential_definition_id]
-        - required: [credential_definition_id]
-          not:
-            required: [profile_id]
+      required: [profile_id, claims, delivery]
       description: |
-        Exactly one source is required. Format is inferred from stored metadata.
-        credential contains unsigned proposed claims, not a protocol offer or
-        a signed W3C credential. AnonCreds maps flat scalars to preview attributes.
+        A published profile is required. Format and delivery protocol are inherited.
+        Claims are an unsigned JSON object validated against the definition and
+        profile. This is not a protocol offer or a signed W3C credential.
+        AnonCreds supports flat scalar attributes and encodes semantic values as
+        strings for its wire representation; it does not support nested claims.
       properties:
         profile_id:
           type: string
           description: UUID or "name/version" string (e.g., "drivers-license/1.0")
-        credential_definition_id:
-          type: string
-          format: uuid
-          description: Local definition reference (bypasses profile)
-        credential:
+        claims:
           type: object
-          additionalProperties: false
-          required: [credentialSubject]
-          properties:
-            credentialSubject:
-              type: object
-              additionalProperties: true
-              description: Flat scalar claims for AnonCreds; nested values are rejected
+          additionalProperties: true
+          description: |
+            JSON object with property names and nested values as declared by the
+            credential definition. No defaults are applied.
         delivery:
           type: object
           additionalProperties: false
-          required: [protocol, connection_id]
+          required: [connection_id]
           properties:
-            protocol:
-              type: string
-              enum: [didcomm-v1]
             connection_id:
               type: string
               format: uuid
