@@ -249,9 +249,6 @@ grafana:
     # (PKCE) client under this id with redirect URI
     # `https://<grafana.route.host>/login/generic_oauth`.
     clientId: dtsc-grafana
-    # -- Scopes requested at sign-in. `logs:read` is held only by roles that
-    # carry it; the provider rejects the sign-in of any other role.
-    scopes: openid profile email tenant logs:read offline_access
   route:
     # -- Expose Grafana through an OpenShift Route (always TLS, HTTP redirected)
     enabled: true

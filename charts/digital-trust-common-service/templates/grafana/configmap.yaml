@@ -97,7 +97,12 @@ data:
     name = Digital Trust
     auto_login = true
     client_id = {{ .Values.grafana.oidc.clientId }}
-    scopes = {{ .Values.grafana.oidc.scopes }}
+    # No profile or email: every tenant shares one Grafana org and any Viewer
+    # can list its users, so Grafana keeps only the opaque sub. No logs:read:
+    # the gateway checks it on every query, expanding tenants:admin as the API
+    # does, which the sign-in check does not. The access token carries the
+    # role's scopes either way.
+    scopes = openid tenant offline_access
     # The resource indicator makes the access token carry the log gateway
     # audience only. It goes on the authorize URL, as the provider takes it.
     # prompt=consent is what makes the provider issue a refresh token for
@@ -105,15 +110,16 @@ data:
     # expires. The provider approves it silently, with no consent screen.
     auth_url = {{ $issuer }}/auth?resource={{ .Values.config.LOG_GATEWAY_AUDIENCE | urlquery }}&prompt=consent
     token_url = {{ $issuer }}/token
-    api_url = {{ $issuer }}/me
     use_pkce = true
     use_refresh_token = true
     # Creates the Grafana user on first sign-in; [users] allow_sign_up is
     # separate and stays off.
     allow_sign_up = true
+    # Each tenant membership is its own sub, so one person in two tenants is
+    # two Grafana users; a shared email would make Grafana refuse the second.
     login_attribute_path = sub
-    email_attribute_path = email || sub
-    name_attribute_path = name || sub
+    email_attribute_path = sub
+    name_attribute_path = sub
     role_attribute_path = "'Viewer'"
     role_attribute_strict = true
     allow_assign_grafana_admin = false

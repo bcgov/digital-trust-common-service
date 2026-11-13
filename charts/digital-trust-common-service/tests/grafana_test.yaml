@@ -60,6 +60,35 @@ tests:
         template: templates/grafana/configmap.yaml
         documentIndex: 0
 
+  - it: keeps no names or emails in Grafana's shared org
+    values:
+      - ../ci/ci-values.yaml
+    asserts:
+      # No profile or email: every tenant shares one org, and any Viewer can
+      # list its users. No logs:read: the gateway checks it, and expands
+      # tenants:admin to include it, which the sign-in check does not.
+      - matchRegex:
+          path: data["grafana.ini"]
+          pattern: '(?m)^\s*scopes = openid tenant offline_access$'
+        template: templates/grafana/configmap.yaml
+        documentIndex: 0
+      - matchRegex:
+          path: data["grafana.ini"]
+          pattern: '(?m)^\s*email_attribute_path = sub$'
+        template: templates/grafana/configmap.yaml
+        documentIndex: 0
+      - matchRegex:
+          path: data["grafana.ini"]
+          pattern: '(?m)^\s*name_attribute_path = sub$'
+        template: templates/grafana/configmap.yaml
+        documentIndex: 0
+      # The userinfo endpoint refuses tokens bound to the gateway audience.
+      - notMatchRegex:
+          path: data["grafana.ini"]
+          pattern: '(?m)^\s*api_url ='
+        template: templates/grafana/configmap.yaml
+        documentIndex: 0
+
   - it: limits Grafana egress to the gateway, OIDC over https and DNS
     values:
       - ../ci/ci-values.yaml

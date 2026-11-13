@@ -12,7 +12,9 @@ and this chart adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.h
 - `grafana` values (`enabled` default `false`) for a tenant-facing Grafana that
   shows a tenant its own service and agent logs. It signs users in through this
   service's OIDC provider (Authorization Code with PKCE, a public client, the
-  log gateway as the resource indicator) and maps everyone to `Viewer`. One
+  log gateway as the resource indicator) and maps everyone to `Viewer`. It asks
+  only for `openid tenant offline_access`, so Grafana keeps no names or emails
+  and leaves the `logs:read` check to the gateway. One
   datasource, with no tenant identity, forwards the user's bearer token to the
   log gateway over TLS (`oauthPassThru`). One generic dashboard has no tenant
   selector and no live tail; Explore, alerting, snapshots, public dashboards and

@@ -215,7 +215,6 @@ Generate the JWKS payload with `npm run oidc:generate-keys > oidc-keys.json`, th
 | grafana.livenessProbe | object | `{"failureThreshold":3,"httpGet":{"path":"/api/health","port":"http"},"initialDelaySeconds":30,"periodSeconds":15,"timeoutSeconds":3}` | Liveness probe for the Grafana container |
 | grafana.nodeSelector | object | `{}` | Node selector for Grafana pods |
 | grafana.oidc.clientId | string | `"dtsc-grafana"` | client_id Grafana presents to the OIDC provider. Register a public (PKCE) client under this id with redirect URI `https://<grafana.route.host>/login/generic_oauth`. |
-| grafana.oidc.scopes | string | `"openid profile email tenant logs:read offline_access"` | Scopes requested at sign-in. `logs:read` is held only by roles that carry it; the provider rejects the sign-in of any other role. |
 | grafana.podAnnotations | object | `{}` | Annotations added to Grafana pods |
 | grafana.podLabels | object | `{}` | Labels added to Grafana pods |
 | grafana.readinessProbe | object | `{"failureThreshold":3,"httpGet":{"path":"/api/health","port":"http"},"initialDelaySeconds":10,"periodSeconds":10,"timeoutSeconds":3}` | Readiness probe for the Grafana container |
