@@ -188,6 +188,22 @@ tests:
           value: 512Mi
         template: templates/grafana/deployment.yaml
 
+  - it: waits for queries as long as the gateway does
+    values:
+      - ../ci/ci-values.yaml
+    asserts:
+      # Loki 60s < gateway 65s < Grafana's datasource 70s < its Route 75s. A
+      # bare number: the plugin ignores a quoted timeout.
+      - matchRegex:
+          path: data["datasource.yaml"]
+          pattern: '(?m)^\s*timeout: 70$'
+        template: templates/grafana/configmap.yaml
+        documentIndex: 0
+      - equal:
+          path: metadata.annotations["haproxy.router.openshift.io/timeout"]
+          value: 75s
+        template: templates/grafana/route.yaml
+
   - it: limits Grafana egress to the gateway, OIDC over https and DNS
     values:
       - ../ci/ci-values.yaml

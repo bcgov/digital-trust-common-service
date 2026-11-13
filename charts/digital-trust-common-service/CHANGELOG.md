@@ -16,7 +16,9 @@ and this chart adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.h
   only for `openid tenant offline_access`, so Grafana keeps no names or emails
   and leaves the `logs:read` check to the gateway. One
   datasource, with no tenant identity, forwards the user's bearer token to the
-  log gateway over TLS (`oauthPassThru`). One generic dashboard has no tenant
+  log gateway over TLS (`oauthPassThru`), and waits 70s for it; the Route's
+  `haproxy.router.openshift.io/timeout` defaults to `75s`, both above the
+  gateway's `65s`. One generic dashboard has no tenant
   selector and no live tail; Explore, alerting, snapshots, public dashboards,
   `/metrics` and the login form are off, and Grafana makes no outbound calls of
   its own (no plugin installs or updates, no Gravatar). A re-encrypted Route

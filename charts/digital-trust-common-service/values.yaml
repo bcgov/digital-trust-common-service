@@ -255,8 +255,11 @@ grafana:
     enabled: true
     # -- Tenant Grafana hostname; becomes Grafana's `root_url`. Required.
     host: ""
-    # -- Additional annotations for the Route
-    annotations: {}
+    # -- Annotations for the Route. The router's default timeout is 30s, which
+    # would cut off a query the gateway still allows; keep this above the
+    # datasource's 70s.
+    annotations:
+      haproxy.router.openshift.io/timeout: 75s
   # -- Resource requests and limits for the Grafana container. It idles near
   # 170Mi with only the Loki plugin running; 512Mi is Grafana's documented
   # minimum and leaves room for logs panels of up to 1000 lines each.

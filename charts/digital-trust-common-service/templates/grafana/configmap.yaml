@@ -159,6 +159,10 @@ data:
         jsonData:
           oauthPassThru: true
           tlsAuthWithCACert: true
+          # Seconds, above the gateway's upstream timeout so a slow query gets
+          # Loki's answer rather than a 30s default. A bare number: the plugin
+          # ignores a quoted one.
+          timeout: 70
         secureJsonData:
           tlsCACert: $__file{/var/run/secrets/openshift-service-ca/service-ca.crt}
   dashboards.yaml: |
