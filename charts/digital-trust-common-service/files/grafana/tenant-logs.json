@@ -42,7 +42,7 @@
           "refId": "A",
           "queryType": "range",
           "legendFormat": "{{app}}",
-          "expr": "sum by (app) (count_over_time({app=~\"$source\"} |~ \"(?i)$search\" | json | level=~\"(?i)(error|warn.*)\" [$__auto]))"
+          "expr": "sum by (app) (count_over_time({app=~\"$source\"} |~ `(?i)${search:regex}` | json | level=~\"(?i)(error|fatal|warn.*)\" or levelname=~\"(?i)(error|critical|warn.*)\" [$__auto]))"
         }
       ],
       "fieldConfig": { "defaults": { "custom": { "drawStyle": "bars", "stacking": { "mode": "normal" } } }, "overrides": [] }
@@ -57,7 +57,7 @@
         {
           "refId": "A",
           "queryType": "range",
-          "expr": "{app=~\"$source\"} |~ \"(?i)$search\" | json | level=~\"(?i)error\""
+          "expr": "{app=~\"$source\"} |~ `(?i)${search:regex}` | json | level=~\"(?i)(error|fatal)\" or levelname=~\"(?i)(error|critical)\""
         }
       ],
       "options": { "showTime": true, "prettifyLogMessage": false, "wrapLogMessage": true,
@@ -73,7 +73,7 @@
         {
           "refId": "A",
           "queryType": "range",
-          "expr": "{app=~\"$source\"} |~ \"(?i)$search\""
+          "expr": "{app=~\"$source\"} |~ `(?i)${search:regex}`"
         }
       ],
       "options": { "showTime": true, "prettifyLogMessage": false, "wrapLogMessage": true,
@@ -89,7 +89,7 @@
         {
           "refId": "A",
           "queryType": "range",
-          "expr": "{app=~\"$source\"} | json | trace_id != \"\" |~ \"(?i)$search\""
+          "expr": "{app=~\"$source\"} |~ `(?i)${search:regex}` | json | trace_id != \"\""
         }
       ],
       "options": { "showTime": true, "prettifyLogMessage": false, "wrapLogMessage": true,

@@ -204,6 +204,35 @@ tests:
           value: 75s
         template: templates/grafana/route.yaml
 
+  - it: searches for the typed text and finds errors from both sources
+    values:
+      - ../ci/ci-values.yaml
+    asserts:
+      # Inserted raw into a quoted regex, a quote, a backslash or a bracket in
+      # the search box broke every panel or matched the wrong lines.
+      - notMatchRegex:
+          path: data["tenant-logs.json"]
+          pattern: '\(\?i\)\$search'
+        template: templates/grafana/configmap.yaml
+        documentIndex: 1
+      - matchRegex:
+          path: data["tenant-logs.json"]
+          pattern: '\|~ `\(\?i\)\$\{search:regex\}`'
+        template: templates/grafana/configmap.yaml
+        documentIndex: 1
+      # The service logs level error and fatal; ACA-Py's JSON logs levelname
+      # ERROR and CRITICAL.
+      - matchRegex:
+          path: data["tenant-logs.json"]
+          pattern: 'level=~\\"\(\?i\)\(error\|fatal\)\\" or levelname=~\\"\(\?i\)\(error\|critical\)\\"'
+        template: templates/grafana/configmap.yaml
+        documentIndex: 1
+      - matchRegex:
+          path: data["tenant-logs.json"]
+          pattern: 'level=~\\"\(\?i\)\(error\|fatal\|warn\.\*\)\\" or levelname=~\\"\(\?i\)\(error\|critical\|warn\.\*\)\\"'
+        template: templates/grafana/configmap.yaml
+        documentIndex: 1
+
   - it: limits Grafana egress to the gateway, OIDC over https and DNS
     values:
       - ../ci/ci-values.yaml
