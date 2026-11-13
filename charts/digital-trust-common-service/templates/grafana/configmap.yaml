@@ -41,6 +41,8 @@ data:
     disable_initial_admin_creation = true
     cookie_secure = true
     cookie_samesite = lax
+    # The avatar proxy would send a hash of each user's email to Gravatar.
+    disable_gravatar = true
 
     [analytics]
     reporting_enabled = false
@@ -59,6 +61,10 @@ data:
 
     [plugins]
     plugin_admin_enabled = false
+    # Otherwise every start installs plugins from grafana.com and updates the
+    # bundled ones, the Loki plugin that forwards users' tokens included, to
+    # versions this chart never pinned.
+    preinstall_disabled = true
 
     [explore]
     enabled = false
@@ -69,8 +75,9 @@ data:
     [unified_alerting]
     enabled = false
 
+    # A snapshot is served by its key with no sign-in and no token check.
     [snapshots]
-    external_enabled = false
+    enabled = false
 
     [public_dashboards]
     enabled = false
@@ -93,6 +100,12 @@ data:
     disable_signout_menu = true
 
     [auth.anonymous]
+    enabled = false
+    hide_version = true
+
+    # On by default with no sign-in, on the port the Route exposes, and its
+    # counts span every tenant. Nothing scrapes it.
+    [metrics]
     enabled = false
 
     [auth.basic]

@@ -137,6 +137,41 @@ tests:
           path: metadata.name
           value: RELEASE-NAME-digital-trust-common-service-grafana-allow-router
 
+  - it: makes no outbound calls of its own and serves no metrics or snapshots
+    values:
+      - ../ci/ci-values.yaml
+    asserts:
+      # Otherwise every start installs and updates plugins from grafana.com,
+      # including the Loki plugin that forwards users' tokens.
+      - matchRegex:
+          path: data["grafana.ini"]
+          pattern: '(?m)^\s*preinstall_disabled = true$'
+        template: templates/grafana/configmap.yaml
+        documentIndex: 0
+      # Otherwise the avatar proxy sends a hash of each user's email out.
+      - matchRegex:
+          path: data["grafana.ini"]
+          pattern: '(?m)^\s*disable_gravatar = true$'
+        template: templates/grafana/configmap.yaml
+        documentIndex: 0
+      # /metrics is on and unauthenticated by default, on the routed port.
+      - matchRegex:
+          path: data["grafana.ini"]
+          pattern: '\[metrics\]\s+enabled = false'
+        template: templates/grafana/configmap.yaml
+        documentIndex: 0
+      - matchRegex:
+          path: data["grafana.ini"]
+          pattern: '\[auth\.anonymous\]\s+enabled = false\s+hide_version = true'
+        template: templates/grafana/configmap.yaml
+        documentIndex: 0
+      # A snapshot is served by key with no sign-in and no token check.
+      - matchRegex:
+          path: data["grafana.ini"]
+          pattern: '\[snapshots\]\s+enabled = false'
+        template: templates/grafana/configmap.yaml
+        documentIndex: 0
+
   - it: limits Grafana egress to the gateway, OIDC over https and DNS
     values:
       - ../ci/ci-values.yaml

@@ -17,11 +17,13 @@ and this chart adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.h
   and leaves the `logs:read` check to the gateway. One
   datasource, with no tenant identity, forwards the user's bearer token to the
   log gateway over TLS (`oauthPassThru`). One generic dashboard has no tenant
-  selector and no live tail; Explore, alerting, snapshots, public dashboards and
-  the login form are off. A re-encrypted Route (Grafana serves the certificate
-  OpenShift issues for its Service), and NetworkPolicies that limit Grafana's egress
-  to the log gateway, OIDC over https and DNS, and let only Grafana call the
-  gateway in-cluster. Needs `logGateway.enabled`, `config.APP_PUBLIC_URL`,
+  selector and no live tail; Explore, alerting, snapshots, public dashboards,
+  `/metrics` and the login form are off, and Grafana makes no outbound calls of
+  its own (no plugin installs or updates, no Gravatar). A re-encrypted Route
+  (Grafana serves the certificate OpenShift issues for its Service), and
+  NetworkPolicies that limit Grafana's egress to the log gateway, port 443 for
+  the OIDC provider's public URL, and DNS, and let Grafana call the gateway
+  in-cluster. Needs `logGateway.enabled`, `config.APP_PUBLIC_URL`,
   `config.LOG_GATEWAY_AUDIENCE` and `grafana.route.host`. Off in every overlay.
   Its sign-in client is registered with `run-bootstrap --grafana-url`.
 - `logGateway` values (`enabled` default `false`) and `networkPolicy.loki` for a

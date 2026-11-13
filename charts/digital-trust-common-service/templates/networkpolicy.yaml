@@ -430,8 +430,11 @@ spec:
       ports:
         - protocol: TCP
           port: {{ .Values.logGateway.service.targetPort }}
-    # The OIDC provider, reached on its public https URL: the issuer is derived
-    # from the request origin, so Grafana cannot call the Service over http.
+    # The OIDC provider's token endpoint, on its public https URL: the API's own
+    # Service is plain HTTP, and the hop that returns tokens must be TLS (T13).
+    # Its address is the shared router's, which fronts every Route, so naming
+    # it would barely narrow this. Grafana's own outbound calls are turned off
+    # in grafana.ini instead.
     - to: []
       ports:
         - protocol: TCP
