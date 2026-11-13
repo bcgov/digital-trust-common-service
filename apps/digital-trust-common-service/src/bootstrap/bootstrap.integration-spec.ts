@@ -22,6 +22,7 @@ interface ClientRow {
   client_secret_hash: string | null;
   redirect_uris: string[];
   post_logout_redirect_uris: string[];
+  scopes: string[];
   grant_types: string[];
   roles: string[];
   revoked_at: string | null;
@@ -74,7 +75,7 @@ describe('EnvironmentBootstrapService integration', () => {
     }
   });
 
-  // Both client ids are fixed, so they are removed by id as well as by the
+  // The client ids are fixed, so they are removed by id as well as by the
   // tenant cascade: a client left under another tenant (the dev seed also
   // registers the UI client) would otherwise be re-registered rather than
   // created, and the first-run assertions below would not hold.
@@ -89,7 +90,7 @@ describe('EnvironmentBootstrapService integration', () => {
   async function findClient(clientId: string): Promise<ClientRow | undefined> {
     const rows = await dataSource.query<ClientRow[]>(
       `SELECT tenant_id, is_public, client_secret_hash, redirect_uris,
-              post_logout_redirect_uris, grant_types, roles, revoked_at
+              post_logout_redirect_uris, scopes, grant_types, roles, revoked_at
          FROM oauth_client WHERE client_id = $1`,
       [clientId],
     );
@@ -193,6 +194,9 @@ describe('EnvironmentBootstrapService integration', () => {
       is_public: true,
       client_secret_hash: null,
       redirect_uris: ['https://logs.example.test/login/generic_oauth'],
+      // Identity scopes only, matching what the chart's Grafana requests, so
+      // the provider refuses a Grafana that asks for names or emails.
+      scopes: ['openid', 'tenant', 'offline_access'],
       grant_types: ['authorization_code', 'refresh_token'],
       revoked_at: null,
     });

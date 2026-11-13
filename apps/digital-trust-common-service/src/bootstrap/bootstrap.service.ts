@@ -95,15 +95,10 @@ export class EnvironmentBootstrapService {
         name: 'Tenant log viewer (Grafana)',
         isPublic: true,
         clientSecretHash: null,
-        // logs:read makes the provider refuse sign-in for roles without it.
-        scopes: [
-          'openid',
-          'profile',
-          'email',
-          'tenant',
-          'logs:read',
-          'offline_access',
-        ],
+        // Identity scopes only: Grafana puts every tenant in one org, so it
+        // must not hold names or emails, and the provider refuses a request
+        // for anything else. The gateway checks logs:read on every query.
+        scopes: ['openid', 'tenant', 'offline_access'],
         grantTypes: ['authorization_code', 'refresh_token'],
         redirectUris: grafanaRedirectUris,
         postLogoutRedirectUris: [],
