@@ -317,3 +317,48 @@ tests:
       - failedTemplate:
           errorPattern: logGateway.enabled must be true
         template: templates/grafana/deployment.yaml
+
+  - it: requires NetworkPolicies, which keep Grafana off Loki
+    values:
+      - ../ci/ci-values.yaml
+    set:
+      networkPolicy:
+        enabled: false
+    asserts:
+      - failedTemplate:
+          errorPattern: networkPolicy.enabled must be true when grafana.enabled is true
+        template: templates/grafana/deployment.yaml
+
+  - it: requires the Route host, which is the root_url and redirect URI
+    values:
+      - ../ci/ci-values.yaml
+    set:
+      grafana:
+        route:
+          host: ""
+    asserts:
+      - failedTemplate:
+          errorPattern: grafana.route.host is required when grafana.enabled is true
+        template: templates/grafana/deployment.yaml
+
+  - it: requires the public URL the issuer is built from
+    values:
+      - ../ci/ci-values.yaml
+    set:
+      config:
+        APP_PUBLIC_URL: ""
+    asserts:
+      - failedTemplate:
+          errorPattern: config.APP_PUBLIC_URL is required when grafana.enabled is true
+        template: templates/grafana/deployment.yaml
+
+  - it: requires the gateway audience requested at sign-in
+    values:
+      - ../ci/ci-values.yaml
+    set:
+      config:
+        LOG_GATEWAY_AUDIENCE: ""
+    asserts:
+      - failedTemplate:
+          errorPattern: config.LOG_GATEWAY_AUDIENCE is required when grafana.enabled is true
+        template: templates/grafana/deployment.yaml
