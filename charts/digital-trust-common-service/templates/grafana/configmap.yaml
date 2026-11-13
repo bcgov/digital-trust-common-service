@@ -23,25 +23,27 @@ metadata:
   labels:
     {{- include "digital-trust-common-service.grafana.labels" . | nindent 4 }}
 data:
-  # Everything below that hides or disables UI is usability only. A signed-in
-  # user can still send arbitrary queries with their own token, and the gateway
-  # scopes each one to that token's tenant.
+  {{- /*
+  The reasons for these settings are under "Grafana Hardening" in
+  docs/tenant-observability-design.md. Explain new ones there, or in template
+  comments like these: a # comment inside the blocks below is copied into
+  Grafana's own config.
+  */}}
   grafana.ini: |
     [server]
     root_url = https://{{ .Values.grafana.route.host }}
-    # The Route re-encrypts, so Grafana itself serves TLS with the certificate
-    # OpenShift issues for its Service, and reloads it when it rotates.
+    {{/* See docs: TLS. */ -}}
     protocol = https
     cert_file = /var/run/secrets/grafana-tls/tls.crt
     cert_key = /var/run/secrets/grafana-tls/tls.key
     certs_watch_interval = 1h
 
     [security]
-    # No local admin: the only way in is OIDC, and every user is a Viewer.
+    {{/* See docs: users and identity. */ -}}
     disable_initial_admin_creation = true
     cookie_secure = true
     cookie_samesite = lax
-    # The avatar proxy would send a hash of each user's email to Gravatar.
+    {{/* See docs: features turned off. */ -}}
     disable_gravatar = true
 
     [analytics]
@@ -60,12 +62,9 @@ data:
     enabled = false
 
     [plugins]
+    {{/* See docs: features turned off. */ -}}
     plugin_admin_enabled = false
-    # Otherwise every start installs plugins from grafana.com and updates the
-    # bundled ones, the Loki plugin that forwards users' tokens included, to
-    # versions this chart never pinned.
     preinstall_disabled = true
-    # Every bundled datasource but Loki: each would run its own process.
     disable_plugins = cloudwatch,elasticsearch,grafana-postgresql-datasource,grafana-pyroscope-datasource,influxdb,jaeger,mssql,mysql,opentsdb,prometheus,stackdriver,tempo,zipkin
 
     [explore]
@@ -77,14 +76,14 @@ data:
     [unified_alerting]
     enabled = false
 
-    # A snapshot is served by its key with no sign-in and no token check.
+    {{/* See docs: features turned off. */ -}}
     [snapshots]
     enabled = false
 
     [public_dashboards]
     enabled = false
 
-    # Live tail is not an allowed gateway route.
+    {{/* See docs: features turned off. */ -}}
     [live]
     max_connections = 0
 
@@ -96,12 +95,10 @@ data:
 
     [dashboards]
     default_home_dashboard_path = /etc/grafana/dashboards/tenant-logs.json
-    # Every query is charged to the tenant's gateway budget of 120 a minute.
+    {{/* See docs: refresh and splitting limits. */ -}}
     min_refresh_interval = 1m
 
-    # Splitting a range into a request per day, refreshed by every open tab,
-    # lets one viewer spend the whole tenant's budget. Loki still splits each
-    # query itself, behind the gateway.
+    {{/* See docs: refresh and splitting limits. */ -}}
     [feature_toggles]
     lokiQuerySplitting = false
 
@@ -112,8 +109,7 @@ data:
     enabled = false
     hide_version = true
 
-    # On by default with no sign-in, on the port the Route exposes, and its
-    # counts span every tenant. Nothing scrapes it.
+    {{/* See docs: features turned off. */ -}}
     [metrics]
     enabled = false
 
@@ -125,30 +121,16 @@ data:
     name = Digital Trust
     auto_login = true
     client_id = {{ .Values.grafana.oidc.clientId }}
-    # No profile or email: every tenant shares one Grafana org and any Viewer
-    # can list its users, so Grafana keeps only the opaque sub. No logs:read:
-    # the gateway checks it on every query, expanding tenants:admin as the API
-    # does, which the sign-in check does not. The access token carries the
-    # role's scopes either way.
+    {{/* See docs: sign-in scopes. */ -}}
     scopes = openid tenant offline_access
-    # The resource indicator makes the access token carry the log gateway
-    # audience only. It goes on the authorize URL, as the provider takes it.
-    # prompt=consent is what makes the provider issue a refresh token for
-    # offline_access; without it panels stop loading after the access token
-    # expires. The provider approves it silently, with no consent screen.
     auth_url = {{ $issuer }}/auth?resource={{ .Values.config.LOG_GATEWAY_AUDIENCE | urlquery }}&prompt=consent
     token_url = {{ $issuer }}/token
-    # Signing out ends the provider session, which also revokes this Grafana's
-    # grant. The provider's page confirms it and stays there, rather than
-    # returning to a sign-in that an upstream session could pass silently.
+    {{/* See docs: sign-out. */ -}}
     signout_redirect_url = {{ $issuer }}/session/end
     use_pkce = true
     use_refresh_token = true
-    # Creates the Grafana user on first sign-in; [users] allow_sign_up is
-    # separate and stays off.
+    {{/* See docs: users and identity. */ -}}
     allow_sign_up = true
-    # Each tenant membership is its own sub, so one person in two tenants is
-    # two Grafana users; a shared email would make Grafana refuse the second.
     login_attribute_path = sub
     email_attribute_path = sub
     name_attribute_path = sub
@@ -158,8 +140,7 @@ data:
   datasource.yaml: |
     apiVersion: 1
     datasources:
-      # The one shared datasource. It carries no per-user identity: the gateway
-      # derives it from the forwarded bearer token (Rule S2).
+      {{/* See docs: datasource. */ -}}
       - name: Logs
         uid: logs
         type: loki
@@ -170,9 +151,7 @@ data:
         jsonData:
           oauthPassThru: true
           tlsAuthWithCACert: true
-          # Seconds, above the gateway's upstream timeout so a slow query gets
-          # Loki's answer rather than a 30s default. A bare number: the plugin
-          # ignores a quoted one.
+          {{/* Seconds, as a bare number. See docs: datasource. */ -}}
           timeout: 70
         secureJsonData:
           tlsCACert: $__file{/var/run/secrets/openshift-service-ca/service-ca.crt}

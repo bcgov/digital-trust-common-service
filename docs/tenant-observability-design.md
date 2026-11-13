@@ -360,6 +360,61 @@ These are prerequisites the Phase-2 gateway depends on — tracked as blockers, 
 
 ---
 
+## Grafana Hardening
+
+The tenant Grafana is deployed by this repo's chart, with its settings in `charts/digital-trust-common-service/templates/grafana/configmap.yaml`. This section gives the reasons for them. The template points here instead of explaining in place, because a comment inside `grafana.ini` would be copied into Grafana's own config.
+
+None of these settings is a security boundary. Hiding or turning off parts of the UI is usability only: a signed-in user can still send any query with their own token, and the gateway scopes each one to that token's tenant ([Grafana roles are UX](#the-security-principle-grafana-roles-are-ux-the-identity-scoped-backend-is-the-boundary)). What the settings do is stop Grafana from keeping who people are, calling out to the internet, serving anything without a sign-in, or letting one viewer spend the tenant's query budget.
+
+### Sign-in scopes
+
+Grafana asks for `openid tenant offline_access` and nothing else.
+
+- **No `profile` or `email`.** Every tenant shares one Grafana org and any Viewer can list its users, so Grafana keeps only the opaque `sub`.
+- **No `logs:read`.** The gateway checks it on every query and treats `tenants:admin` as including it, the way the API does. The sign-in check doesn't, so asking for `logs:read` at sign-in would turn owners away with a 403. The access token carries the role's scopes either way.
+- **`prompt=consent` on the authorize URL.** The provider only issues a refresh token for `offline_access` when the request says `prompt=consent`, as OIDC requires. Without a refresh token, panels stop loading once the 5-minute access token expires. The provider approves the consent itself, so no consent screen appears.
+- **`resource=` on the authorize URL**, where the provider reads it, so the access token's only audience is the log gateway.
+
+### Users and identity
+
+- Login, email and name all come from `sub`, so Grafana stores no names or emails. Each tenant membership has its own `sub`, so a person in two tenants is two Grafana users. With a shared email, Grafana would refuse the second one.
+- Everyone is a Viewer (`role_attribute_path = 'Viewer'`, strict) and never a Grafana admin.
+- OIDC is the only way in: there is no initial admin, login form, basic auth or anonymous access.
+- `allow_sign_up` under `[auth.generic_oauth]` creates the Grafana user on first sign-in. The one under `[users]` is a separate setting and stays off.
+
+### Sign-out
+
+Signing out ends the provider session, which also revokes this Grafana's grant. The provider's page confirms it and stays there, instead of returning to a sign-in that an upstream session could pass silently.
+
+### Refresh and splitting limits
+
+Every query Grafana sends is charged to the tenant's gateway budget of 120 a minute, which all of the tenant's users share.
+
+- `min_refresh_interval = 1m`, and the dashboard offers only 1, 5 and 15 minutes.
+- `lokiQuerySplitting = false`. Otherwise Grafana splits a time range into one request per day, and every open tab repeats them on each refresh, so one viewer could spend the whole tenant's budget. Loki still splits each query itself, behind the gateway.
+
+### Features turned off
+
+- **Snapshots.** A snapshot is served by its key, with no sign-in and no token check.
+- **`/metrics`.** It is on by default, needs no sign-in, sits on the port the Route exposes, and its counts span every tenant. Nothing scrapes it.
+- **Plugin installs and updates** (`preinstall_disabled`, and no plugin admin page). Otherwise every start installs plugins from grafana.com and updates the bundled ones, including the Loki plugin that forwards users' tokens, to versions this chart never pinned.
+- **Every bundled datasource except Loki**, since each would run its own process.
+- **Gravatar.** The avatar proxy would send a hash of each user's email field to Gravatar.
+- **Live** (`max_connections = 0`). Live tail isn't an allowed gateway route.
+- Also off: Explore, alerting, public dashboards, the news feed, the help and profile pages, usage reporting, update checks and feedback links.
+
+### TLS
+
+The Route re-encrypts and never terminates at the edge ([T13](./tenant-log-access-contract.md#t13)), so Grafana serves TLS itself, with the certificate OpenShift issues for its Service. `certs_watch_interval = 1h` reloads that certificate when it rotates. Session cookies are `Secure` and `SameSite=Lax`.
+
+### Datasource
+
+- There is one shared Loki datasource, with nothing about the user in it ([S2](./tenant-log-access-contract.md#s2)). `oauthPassThru` forwards each user's token, and the gateway works out the tenant from it.
+- It reaches the gateway over TLS, trusting OpenShift's service CA.
+- `timeout: 70` is in seconds, above the gateway's upstream timeout, so a slow query gets Loki's answer rather than Grafana's 30-second default. It has to stay a bare number: the plugin ignores a quoted one.
+
+---
+
 ## Tracing & Metrics (platform-internal)
 
 Traces and metrics are **platform-internal for MVP** — tenants get logs and dashboards; traces are for us when assisting them. Tenant-facing scope is logs, deliberately.

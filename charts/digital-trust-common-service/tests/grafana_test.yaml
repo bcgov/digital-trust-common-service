@@ -276,6 +276,26 @@ tests:
         template: templates/grafana/configmap.yaml
         documentIndex: 0
 
+  - it: keeps comments out of the files Grafana reads
+    values:
+      - ../ci/ci-values.yaml
+    asserts:
+      - notMatchRegex:
+          path: data["grafana.ini"]
+          pattern: '(?m)^\s*[#;]'
+        template: templates/grafana/configmap.yaml
+        documentIndex: 0
+      - notMatchRegex:
+          path: data["datasource.yaml"]
+          pattern: '(?m)^\s*#'
+        template: templates/grafana/configmap.yaml
+        documentIndex: 0
+      - notMatchRegex:
+          path: data["dashboards.yaml"]
+          pattern: '(?m)^\s*#'
+        template: templates/grafana/configmap.yaml
+        documentIndex: 0
+
   - it: limits Grafana egress to the gateway, OIDC over https and DNS
     values:
       - ../ci/ci-values.yaml
