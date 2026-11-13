@@ -771,6 +771,29 @@ describe('log gateway isolation (hermetic)', () => {
       expect(received.headers.cookie).toBeUndefined();
       expect(JSON.stringify(received)).not.toContain(token);
     });
+
+    // Grafana's oauthPassThru sends the user's ID token beside Authorization,
+    // and Grafana signs its own identity token for every datasource call. Both
+    // carry who the user is and must stay out of Loki and its logs.
+    it("does not forward Grafana's identity tokens to Loki", async () => {
+      const tenant = await createTenant();
+      const token = await issueToken(tenant);
+
+      const response = await get(QUERY, {
+        ...bearer(token),
+        'x-id-token': 'grafana-forwarded-id-token',
+        'x-grafana-id': 'grafana-signed-id-token',
+      });
+
+      expect(response.status).toBe(200);
+
+      const received = loki.onlyRequest();
+
+      expect(received.headers['x-id-token']).toBeUndefined();
+      expect(received.headers['x-grafana-id']).toBeUndefined();
+      expect(JSON.stringify(received)).not.toContain('grafana-forwarded');
+      expect(JSON.stringify(received)).not.toContain('grafana-signed');
+    });
   });
 
   describe('queries naming other tenants', () => {

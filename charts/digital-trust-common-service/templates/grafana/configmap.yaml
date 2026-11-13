@@ -1,0 +1,188 @@
+{{- if .Values.grafana.enabled -}}
+{{- if not .Values.logGateway.enabled }}
+{{- fail "logGateway.enabled must be true when grafana.enabled is true; the tenant Grafana reads logs only through the gateway" }}
+{{- end }}
+{{- if not .Values.networkPolicy.enabled }}
+{{- fail "networkPolicy.enabled must be true when grafana.enabled is true; the NetworkPolicy is what keeps Grafana off Loki" }}
+{{- end }}
+{{- if not .Values.grafana.route.host }}
+{{- fail "grafana.route.host is required when grafana.enabled is true; it is Grafana's root_url and the OIDC redirect URI" }}
+{{- end }}
+{{- if not .Values.config.APP_PUBLIC_URL }}
+{{- fail "config.APP_PUBLIC_URL is required when grafana.enabled is true; it is the OIDC issuer origin" }}
+{{- end }}
+{{- if not .Values.config.LOG_GATEWAY_AUDIENCE }}
+{{- fail "config.LOG_GATEWAY_AUDIENCE is required when grafana.enabled is true; it is the resource indicator requested at sign-in" }}
+{{- end }}
+{{- $issuer := printf "%s/oidc" (trimSuffix "/" .Values.config.APP_PUBLIC_URL) -}}
+{{- $gateway := printf "https://%s.%s.svc:%v" (include "digital-trust-common-service.logGateway.fullname" .) .Release.Namespace .Values.logGateway.service.port -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "digital-trust-common-service.grafana.configMapName" . }}
+  labels:
+    {{- include "digital-trust-common-service.grafana.labels" . | nindent 4 }}
+data:
+  {{- /*
+  The reasons for these settings are under "Grafana Hardening" in
+  docs/tenant-observability-design.md. Explain new ones there, or in template
+  comments like these: a # comment inside the blocks below is copied into
+  Grafana's own config.
+  */}}
+  grafana.ini: |
+    [server]
+    root_url = https://{{ .Values.grafana.route.host }}
+    {{/* See docs: TLS. */ -}}
+    protocol = https
+    cert_file = /var/run/secrets/grafana-tls/tls.crt
+    cert_key = /var/run/secrets/grafana-tls/tls.key
+    certs_watch_interval = 1h
+
+    [security]
+    {{/* See docs: users and identity. */ -}}
+    disable_initial_admin_creation = true
+    cookie_secure = true
+    cookie_samesite = lax
+    {{/* See docs: features turned off. */ -}}
+    disable_gravatar = true
+
+    [analytics]
+    reporting_enabled = false
+    check_for_updates = false
+    check_for_plugin_updates = false
+    feedback_links_enabled = false
+
+    [news]
+    news_feed_enabled = false
+
+    [help]
+    enabled = false
+
+    [profile]
+    enabled = false
+
+    [plugins]
+    {{/* See docs: features turned off. */ -}}
+    plugin_admin_enabled = false
+    preinstall_disabled = true
+    disable_plugins = cloudwatch,elasticsearch,grafana-postgresql-datasource,grafana-pyroscope-datasource,influxdb,jaeger,mssql,mysql,opentsdb,prometheus,stackdriver,tempo,zipkin
+
+    [explore]
+    enabled = false
+
+    [alerting]
+    enabled = false
+
+    [unified_alerting]
+    enabled = false
+
+    {{/* See docs: features turned off. */ -}}
+    [snapshots]
+    enabled = false
+
+    [public_dashboards]
+    enabled = false
+
+    {{/* See docs: features turned off. */ -}}
+    [live]
+    max_connections = 0
+
+    [users]
+    allow_sign_up = false
+    auto_assign_org = true
+    auto_assign_org_role = Viewer
+    viewers_can_edit = false
+
+    [dashboards]
+    default_home_dashboard_path = /etc/grafana/dashboards/tenant-logs.json
+    {{/* See docs: refresh and splitting limits. */ -}}
+    min_refresh_interval = 1m
+
+    {{/* See docs: refresh and splitting limits. */ -}}
+    [feature_toggles]
+    lokiQuerySplitting = false
+
+    [auth]
+    disable_login_form = true
+
+    [auth.anonymous]
+    enabled = false
+    hide_version = true
+
+    {{/* See docs: features turned off. */ -}}
+    [metrics]
+    enabled = false
+
+    [auth.basic]
+    enabled = false
+
+    [auth.generic_oauth]
+    enabled = true
+    name = Digital Trust
+    auto_login = true
+    client_id = {{ .Values.grafana.oidc.clientId }}
+    {{/* See docs: sign-in scopes. */ -}}
+    scopes = openid tenant offline_access
+    auth_url = {{ $issuer }}/auth?resource={{ .Values.config.LOG_GATEWAY_AUDIENCE | urlquery }}&prompt=consent
+    token_url = {{ $issuer }}/token
+    {{/* See docs: sign-out. */ -}}
+    signout_redirect_url = {{ $issuer }}/session/end
+    use_pkce = true
+    use_refresh_token = true
+    {{/* See docs: users and identity. */ -}}
+    allow_sign_up = true
+    login_attribute_path = sub
+    email_attribute_path = sub
+    name_attribute_path = sub
+    role_attribute_path = "'Viewer'"
+    role_attribute_strict = true
+    allow_assign_grafana_admin = false
+  datasource.yaml: |
+    apiVersion: 1
+    datasources:
+      {{/* See docs: datasource. */ -}}
+      - name: Logs
+        uid: logs
+        type: loki
+        access: proxy
+        url: {{ $gateway }}
+        isDefault: true
+        editable: false
+        jsonData:
+          oauthPassThru: true
+          tlsAuthWithCACert: true
+          {{/* Seconds, as a bare number. See docs: datasource. */ -}}
+          timeout: 70
+        secureJsonData:
+          tlsCACert: $__file{/var/run/secrets/openshift-service-ca/service-ca.crt}
+  dashboards.yaml: |
+    apiVersion: 1
+    providers:
+      - name: tenant-logs
+        type: file
+        disableDeletion: true
+        allowUiUpdates: false
+        options:
+          path: /etc/grafana/dashboards
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "digital-trust-common-service.grafana.dashboardsConfigMapName" . }}
+  labels:
+    {{- include "digital-trust-common-service.grafana.labels" . | nindent 4 }}
+data:
+  tenant-logs.json: |
+    {{- .Files.Get "files/grafana/tenant-logs.json" | nindent 4 }}
+---
+# OpenShift fills this with the service CA bundle, which signs the log
+# gateway's serving certificate.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "digital-trust-common-service.grafana.caBundleConfigMapName" . }}
+  labels:
+    {{- include "digital-trust-common-service.grafana.labels" . | nindent 4 }}
+  annotations:
+    service.beta.openshift.io/inject-cabundle: "true"
+{{- end }}

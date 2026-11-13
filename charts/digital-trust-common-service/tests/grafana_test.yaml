@@ -1,0 +1,384 @@
+suite: tenant grafana
+templates:
+  - templates/grafana/configmap.yaml
+  - templates/grafana/deployment.yaml
+  - templates/grafana/service.yaml
+  - templates/grafana/route.yaml
+  - templates/networkpolicy.yaml
+tests:
+  - it: renders nothing by default
+    asserts:
+      - hasDocuments:
+          count: 0
+        template: templates/grafana/deployment.yaml
+      - hasDocuments:
+          count: 0
+        template: templates/grafana/route.yaml
+
+  - it: points one shared datasource at the gateway with no tenant identity
+    values:
+      - ../ci/ci-values.yaml
+    asserts:
+      - matchRegex:
+          path: data["datasource.yaml"]
+          pattern: "url: https://RELEASE-NAME-digital-trust-common-service-log-gateway\\.NAMESPACE\\.svc:8443"
+        template: templates/grafana/configmap.yaml
+        documentIndex: 0
+      - matchRegex:
+          path: data["datasource.yaml"]
+          pattern: "oauthPassThru: true"
+        template: templates/grafana/configmap.yaml
+        documentIndex: 0
+      - notMatchRegex:
+          path: data["datasource.yaml"]
+          pattern: "(?i)X-Scope-OrgID|httpHeader|tenant|org"
+        template: templates/grafana/configmap.yaml
+        documentIndex: 0
+
+  - it: signs in through the OIDC provider for the gateway audience as a Viewer
+    values:
+      - ../ci/ci-values.yaml
+    asserts:
+      - matchRegex:
+          path: data["grafana.ini"]
+          pattern: "auth_url = https://digital-trust-common-service.example.com/oidc/auth\\?resource=https%3A%2F%2Flogs.example.com&prompt=consent"
+        template: templates/grafana/configmap.yaml
+        documentIndex: 0
+      - matchRegex:
+          path: data["grafana.ini"]
+          pattern: "use_pkce = true"
+        template: templates/grafana/configmap.yaml
+        documentIndex: 0
+      - matchRegex:
+          path: data["grafana.ini"]
+          pattern: "role_attribute_strict = true"
+        template: templates/grafana/configmap.yaml
+        documentIndex: 0
+      - matchRegex:
+          path: data["grafana.ini"]
+          pattern: "disable_login_form = true"
+        template: templates/grafana/configmap.yaml
+        documentIndex: 0
+
+  - it: keeps no names or emails in Grafana's shared org
+    values:
+      - ../ci/ci-values.yaml
+    asserts:
+      # No profile or email: every tenant shares one org, and any Viewer can
+      # list its users. No logs:read: the gateway checks it, and expands
+      # tenants:admin to include it, which the sign-in check does not.
+      - matchRegex:
+          path: data["grafana.ini"]
+          pattern: '(?m)^\s*scopes = openid tenant offline_access$'
+        template: templates/grafana/configmap.yaml
+        documentIndex: 0
+      - matchRegex:
+          path: data["grafana.ini"]
+          pattern: '(?m)^\s*email_attribute_path = sub$'
+        template: templates/grafana/configmap.yaml
+        documentIndex: 0
+      - matchRegex:
+          path: data["grafana.ini"]
+          pattern: '(?m)^\s*name_attribute_path = sub$'
+        template: templates/grafana/configmap.yaml
+        documentIndex: 0
+      # The userinfo endpoint refuses tokens bound to the gateway audience.
+      - notMatchRegex:
+          path: data["grafana.ini"]
+          pattern: '(?m)^\s*api_url ='
+        template: templates/grafana/configmap.yaml
+        documentIndex: 0
+
+  - it: keeps TLS on the hop from the router to Grafana (T13)
+    values:
+      - ../ci/ci-values.yaml
+    asserts:
+      - equal:
+          path: spec.tls.termination
+          value: reencrypt
+        template: templates/grafana/route.yaml
+      - equal:
+          path: spec.port.targetPort
+          value: https
+        template: templates/grafana/route.yaml
+      - equal:
+          path: metadata.annotations["service.beta.openshift.io/serving-cert-secret-name"]
+          value: RELEASE-NAME-digital-trust-common-service-grafana-tls
+        template: templates/grafana/service.yaml
+      - equal:
+          path: spec.ports[0].targetPort
+          value: https
+        template: templates/grafana/service.yaml
+      - matchRegex:
+          path: data["grafana.ini"]
+          pattern: '(?m)^\s*protocol = https\s+cert_file = /var/run/secrets/grafana-tls/tls\.crt\s+cert_key = /var/run/secrets/grafana-tls/tls\.key\s+certs_watch_interval = 1h$'
+        template: templates/grafana/configmap.yaml
+        documentIndex: 0
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: grafana-tls
+            secret:
+              secretName: RELEASE-NAME-digital-trust-common-service-grafana-tls
+        template: templates/grafana/deployment.yaml
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.httpGet.scheme
+          value: HTTPS
+        template: templates/grafana/deployment.yaml
+      - equal:
+          path: spec.template.spec.containers[0].livenessProbe.httpGet.scheme
+          value: HTTPS
+        template: templates/grafana/deployment.yaml
+      - equal:
+          path: spec.ingress[0].ports[0].port
+          value: https
+        template: templates/networkpolicy.yaml
+        documentSelector:
+          path: metadata.name
+          value: RELEASE-NAME-digital-trust-common-service-grafana-allow-router
+
+  - it: makes no outbound calls of its own and serves no metrics or snapshots
+    values:
+      - ../ci/ci-values.yaml
+    asserts:
+      # Otherwise every start installs and updates plugins from grafana.com,
+      # including the Loki plugin that forwards users' tokens.
+      - matchRegex:
+          path: data["grafana.ini"]
+          pattern: '(?m)^\s*preinstall_disabled = true$'
+        template: templates/grafana/configmap.yaml
+        documentIndex: 0
+      # Otherwise the avatar proxy sends a hash of each user's email out.
+      - matchRegex:
+          path: data["grafana.ini"]
+          pattern: '(?m)^\s*disable_gravatar = true$'
+        template: templates/grafana/configmap.yaml
+        documentIndex: 0
+      # /metrics is on and unauthenticated by default, on the routed port.
+      - matchRegex:
+          path: data["grafana.ini"]
+          pattern: '\[metrics\]\s+enabled = false'
+        template: templates/grafana/configmap.yaml
+        documentIndex: 0
+      - matchRegex:
+          path: data["grafana.ini"]
+          pattern: '\[auth\.anonymous\]\s+enabled = false\s+hide_version = true'
+        template: templates/grafana/configmap.yaml
+        documentIndex: 0
+      # A snapshot is served by key with no sign-in and no token check.
+      - matchRegex:
+          path: data["grafana.ini"]
+          pattern: '\[snapshots\]\s+enabled = false'
+        template: templates/grafana/configmap.yaml
+        documentIndex: 0
+
+  - it: starts only the Loki plugin and leaves Grafana memory headroom
+    values:
+      - ../ci/ci-values.yaml
+    asserts:
+      # Each bundled datasource otherwise runs its own process, which kept
+      # Grafana at about 90% of a 256Mi limit while idle.
+      - matchRegex:
+          path: data["grafana.ini"]
+          pattern: '(?m)^\s*disable_plugins = cloudwatch,elasticsearch,grafana-postgresql-datasource,grafana-pyroscope-datasource,influxdb,jaeger,mssql,mysql,opentsdb,prometheus,stackdriver,tempo,zipkin$'
+        template: templates/grafana/configmap.yaml
+        documentIndex: 0
+      - equal:
+          path: spec.template.spec.containers[0].resources.limits.memory
+          value: 512Mi
+        template: templates/grafana/deployment.yaml
+
+  - it: waits for queries as long as the gateway does
+    values:
+      - ../ci/ci-values.yaml
+    asserts:
+      # Loki 60s < gateway 65s < Grafana's datasource 70s < its Route 75s. A
+      # bare number: the plugin ignores a quoted timeout.
+      - matchRegex:
+          path: data["datasource.yaml"]
+          pattern: '(?m)^\s*timeout: 70$'
+        template: templates/grafana/configmap.yaml
+        documentIndex: 0
+      - equal:
+          path: metadata.annotations["haproxy.router.openshift.io/timeout"]
+          value: 75s
+        template: templates/grafana/route.yaml
+
+  - it: searches for the typed text and finds errors from both sources
+    values:
+      - ../ci/ci-values.yaml
+    asserts:
+      # Inserted raw into a quoted regex, a quote, a backslash or a bracket in
+      # the search box broke every panel or matched the wrong lines.
+      - notMatchRegex:
+          path: data["tenant-logs.json"]
+          pattern: '\(\?i\)\$search'
+        template: templates/grafana/configmap.yaml
+        documentIndex: 1
+      - matchRegex:
+          path: data["tenant-logs.json"]
+          pattern: '\|~ `\(\?i\)\$\{search:regex\}`'
+        template: templates/grafana/configmap.yaml
+        documentIndex: 1
+      # The service logs level error and fatal; ACA-Py's JSON logs levelname
+      # ERROR and CRITICAL.
+      - matchRegex:
+          path: data["tenant-logs.json"]
+          pattern: 'level=~\\"\(\?i\)\(error\|fatal\)\\" or levelname=~\\"\(\?i\)\(error\|critical\)\\"'
+        template: templates/grafana/configmap.yaml
+        documentIndex: 1
+      - matchRegex:
+          path: data["tenant-logs.json"]
+          pattern: 'level=~\\"\(\?i\)\(error\|fatal\|warn\.\*\)\\" or levelname=~\\"\(\?i\)\(error\|critical\|warn\.\*\)\\"'
+        template: templates/grafana/configmap.yaml
+        documentIndex: 1
+
+  - it: keeps an open dashboard well inside the tenant's request budget
+    values:
+      - ../ci/ci-values.yaml
+    asserts:
+      # The gateway allows 120 requests a minute per tenant. Splitting a
+      # 30-day range into a request per day, refreshed every 30s, let one
+      # viewer spend all of it.
+      - matchRegex:
+          path: data["grafana.ini"]
+          pattern: '\[feature_toggles\]\s+lokiQuerySplitting = false'
+        template: templates/grafana/configmap.yaml
+        documentIndex: 0
+      - matchRegex:
+          path: data["grafana.ini"]
+          pattern: '(?m)^\s*min_refresh_interval = 1m$'
+        template: templates/grafana/configmap.yaml
+        documentIndex: 0
+      - matchRegex:
+          path: data["tenant-logs.json"]
+          pattern: '"refresh": "1m"'
+        template: templates/grafana/configmap.yaml
+        documentIndex: 1
+      - matchRegex:
+          path: data["tenant-logs.json"]
+          pattern: '"refresh_intervals": \["1m", "5m", "15m"\]'
+        template: templates/grafana/configmap.yaml
+        documentIndex: 1
+
+  - it: signs out at the provider, which ends Grafana's grant too
+    values:
+      - ../ci/ci-values.yaml
+    asserts:
+      - notMatchRegex:
+          path: data["grafana.ini"]
+          pattern: 'disable_signout_menu = true'
+        template: templates/grafana/configmap.yaml
+        documentIndex: 0
+      - matchRegex:
+          path: data["grafana.ini"]
+          pattern: '(?m)^\s*signout_redirect_url = https://digital-trust-common-service\.example\.com/oidc/session/end$'
+        template: templates/grafana/configmap.yaml
+        documentIndex: 0
+
+  - it: keeps comments out of the files Grafana reads
+    values:
+      - ../ci/ci-values.yaml
+    asserts:
+      - notMatchRegex:
+          path: data["grafana.ini"]
+          pattern: '(?m)^\s*[#;]'
+        template: templates/grafana/configmap.yaml
+        documentIndex: 0
+      - notMatchRegex:
+          path: data["datasource.yaml"]
+          pattern: '(?m)^\s*#'
+        template: templates/grafana/configmap.yaml
+        documentIndex: 0
+      - notMatchRegex:
+          path: data["dashboards.yaml"]
+          pattern: '(?m)^\s*#'
+        template: templates/grafana/configmap.yaml
+        documentIndex: 0
+
+  - it: limits Grafana egress to the gateway, OIDC over https and DNS
+    values:
+      - ../ci/ci-values.yaml
+    asserts:
+      - equal:
+          path: spec.egress[0].to[0].podSelector.matchLabels["app.kubernetes.io/component"]
+          value: log-gateway
+        template: templates/networkpolicy.yaml
+        documentSelector:
+          path: metadata.name
+          value: RELEASE-NAME-digital-trust-common-service-grafana-egress
+
+  - it: lets only Grafana reach the gateway and skips the Route when disabled
+    values:
+      - ../ci/ci-values.yaml
+    set:
+      grafana:
+        route:
+          enabled: false
+    asserts:
+      - equal:
+          path: spec.ingress[0].from[0].podSelector.matchLabels["app.kubernetes.io/component"]
+          value: grafana
+        template: templates/networkpolicy.yaml
+        documentSelector:
+          path: metadata.name
+          value: RELEASE-NAME-digital-trust-common-service-log-gateway-allow-grafana
+      - hasDocuments:
+          count: 0
+        template: templates/grafana/route.yaml
+
+  - it: requires the log gateway
+    values:
+      - ../ci/ci-values.yaml
+    set:
+      logGateway:
+        enabled: false
+    asserts:
+      - failedTemplate:
+          errorPattern: logGateway.enabled must be true
+        template: templates/grafana/deployment.yaml
+
+  - it: requires NetworkPolicies, which keep Grafana off Loki
+    values:
+      - ../ci/ci-values.yaml
+    set:
+      networkPolicy:
+        enabled: false
+    asserts:
+      - failedTemplate:
+          errorPattern: networkPolicy.enabled must be true when grafana.enabled is true
+        template: templates/grafana/deployment.yaml
+
+  - it: requires the Route host, which is the root_url and redirect URI
+    values:
+      - ../ci/ci-values.yaml
+    set:
+      grafana:
+        route:
+          host: ""
+    asserts:
+      - failedTemplate:
+          errorPattern: grafana.route.host is required when grafana.enabled is true
+        template: templates/grafana/deployment.yaml
+
+  - it: requires the public URL the issuer is built from
+    values:
+      - ../ci/ci-values.yaml
+    set:
+      config:
+        APP_PUBLIC_URL: ""
+    asserts:
+      - failedTemplate:
+          errorPattern: config.APP_PUBLIC_URL is required when grafana.enabled is true
+        template: templates/grafana/deployment.yaml
+
+  - it: requires the gateway audience requested at sign-in
+    values:
+      - ../ci/ci-values.yaml
+    set:
+      config:
+        LOG_GATEWAY_AUDIENCE: ""
+    asserts:
+      - failedTemplate:
+          errorPattern: config.LOG_GATEWAY_AUDIENCE is required when grafana.enabled is true
+        template: templates/grafana/deployment.yaml

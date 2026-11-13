@@ -6,7 +6,11 @@ export {
   parseResourceIndicator,
 } from './oidc-config.service';
 export type { OidcConfig } from './oidc-config.service';
-export { DEFAULT_JWT_AUDIENCE, DEFAULT_OIDC_KEYS_PATH } from './oidc.constants';
+export {
+  DEFAULT_JWT_AUDIENCE,
+  DEFAULT_OIDC_KEYS_PATH,
+  GRAFANA_CLIENT_ID,
+} from './oidc.constants';
 export { OidcKeysService } from './oidc-keys.service';
 export type { OidcJwks } from './oidc-keys.service';
 export { OidcModel } from './entities/oidc-model.entity';

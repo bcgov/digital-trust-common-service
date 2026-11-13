@@ -14,3 +14,10 @@ export const DEFAULT_OIDC_KEYS_PATH = './config/oidc-keys.json';
  * environments.
  */
 export const DEFAULT_JWT_AUDIENCE = 'https://digital-trust-common-service';
+
+/**
+ * client_id of the tenant log viewer (Grafana), registered by the bootstrap
+ * CLI. The provider ends its grants with the session (`expiresWithSession`),
+ * so signing out of the service also signs the user out of Grafana.
+ */
+export const GRAFANA_CLIENT_ID = 'dtsc-grafana';

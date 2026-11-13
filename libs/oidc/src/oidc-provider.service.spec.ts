@@ -150,6 +150,65 @@ describe('buildOidcConfiguration', () => {
   });
 
   /**
+   * oidc-provider keeps an offline_access grant past sign-out by default. The
+   * tenant Grafana's must end with the session, or signing out of the service
+   * leaves that tenant's logs open in Grafana until its refresh token expires.
+   */
+  describe('grants that end with the session', () => {
+    type ExpiresWithSession = (
+      ctx: unknown,
+      code: { clientId: string; scopes: Set<string> },
+    ) => Promise<boolean> | boolean;
+
+    function expiresWithSession(): ExpiresWithSession {
+      const configuration = buildOidcConfiguration(
+        config,
+        jwks,
+        adapterFactory,
+        tenantUserService,
+        roleScopeService,
+      );
+
+      expect(configuration.expiresWithSession).toEqual(expect.any(Function));
+
+      return configuration.expiresWithSession as unknown as ExpiresWithSession;
+    }
+
+    it("ends the tenant Grafana's offline_access grant with the session", async () => {
+      expect(
+        await expiresWithSession()(
+          {},
+          {
+            clientId: 'dtsc-grafana',
+            scopes: new Set(['openid', 'tenant', 'offline_access']),
+          },
+        ),
+      ).toBe(true);
+    });
+
+    it("keeps another client's offline_access grant past sign-out", async () => {
+      expect(
+        await expiresWithSession()(
+          {},
+          {
+            clientId: 'dtsc-ui',
+            scopes: new Set(['openid', 'tenant', 'offline_access']),
+          },
+        ),
+      ).toBe(false);
+    });
+
+    it('ends any grant without offline_access with the session', async () => {
+      expect(
+        await expiresWithSession()(
+          {},
+          { clientId: 'dtsc-ui', scopes: new Set(['openid', 'tenant']) },
+        ),
+      ).toBe(true);
+    });
+  });
+
+  /**
    * AU-08 (#41) requires a per-client refresh TTL, which oidc-provider only
    * supports via the (ctx, token, client) function form.
    */

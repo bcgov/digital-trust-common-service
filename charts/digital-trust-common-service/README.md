@@ -206,6 +206,26 @@ Generate the JWKS payload with `npm run oidc:generate-keys > oidc-keys.json`, th
 | frontend.tolerations | list | `[]` | Tolerations for frontend pods |
 | frontend.trustedProxies | list | `["private_ranges"]` | Peers whose `X-Forwarded-*` headers Caddy trusts. An empty list omits the block entirely. |
 | fullnameOverride | string | `""` | Override the fully qualified release name |
+| grafana.affinity | object | `{}` | Affinity for Grafana pods |
+| grafana.enabled | bool | `false` | Deploy the tenant Grafana. Needs `logGateway.enabled`, `config.APP_PUBLIC_URL`, `config.LOG_GATEWAY_AUDIENCE` and `route.host`. |
+| grafana.image.pullPolicy | string | `"IfNotPresent"` | Grafana image pull policy |
+| grafana.image.registry | string | `"docker.io"` | Grafana image registry |
+| grafana.image.repository | string | `"grafana/grafana"` | Grafana image repository |
+| grafana.image.tag | string | `"13.3.1"` | Grafana image tag |
+| grafana.livenessProbe | object | `{"failureThreshold":3,"httpGet":{"path":"/api/health","port":"https","scheme":"HTTPS"},"initialDelaySeconds":30,"periodSeconds":15,"timeoutSeconds":3}` | Liveness probe for the Grafana container |
+| grafana.nodeSelector | object | `{}` | Node selector for Grafana pods |
+| grafana.oidc.clientId | string | `"dtsc-grafana"` | client_id Grafana presents to the OIDC provider. Register a public (PKCE) client under this id with redirect URI `https://<grafana.route.host>/login/generic_oauth`. |
+| grafana.podAnnotations | object | `{}` | Annotations added to Grafana pods |
+| grafana.podLabels | object | `{}` | Labels added to Grafana pods |
+| grafana.readinessProbe | object | `{"failureThreshold":3,"httpGet":{"path":"/api/health","port":"https","scheme":"HTTPS"},"initialDelaySeconds":10,"periodSeconds":10,"timeoutSeconds":3}` | Readiness probe for the Grafana container |
+| grafana.resources | object | `{"limits":{"cpu":"500m","memory":"512Mi"},"requests":{"cpu":"50m","memory":"256Mi"}}` | Resource requests and limits for the Grafana container. It idles near 170Mi with only the Loki plugin running; 512Mi is Grafana's documented minimum and leaves room for logs panels of up to 1000 lines each. |
+| grafana.route.annotations | object | `{"haproxy.router.openshift.io/timeout":"75s"}` | Annotations for the Route. The router's default timeout is 30s, which would cut off a query the gateway still allows; keep this above the datasource's 70s. |
+| grafana.route.enabled | bool | `true` | Expose Grafana through an OpenShift Route (re-encrypted to the pod, HTTP redirected) |
+| grafana.route.host | string | `""` | Tenant Grafana hostname; becomes Grafana's `root_url`. Required. |
+| grafana.service.port | int | `3000` | Grafana Service port exposed to the cluster |
+| grafana.service.targetPort | int | `3000` | Grafana container port |
+| grafana.service.type | string | `"ClusterIP"` | Grafana Service type |
+| grafana.tolerations | list | `[]` | Tolerations for Grafana pods |
 | image.pullPolicy | string | `"IfNotPresent"` | Image pull policy |
 | image.registry | string | `"ghcr.io"` | Container image registry (optional; omitted from the ref when empty) |
 | image.repository | string | `"bcgov/digital-trust-common-service"` | Container image repository. API, Worker and migrations share this image. |

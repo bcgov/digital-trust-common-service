@@ -7,6 +7,7 @@ import { argon2i, hash } from 'argon2';
 
 import {
   ADMIN_CLIENT_ID,
+  GRAFANA_CLIENT_ID,
   UI_CLIENT_ID,
 } from '../oauth-client/oauth-client.constants';
 import { OAuthClient } from '../oauth-client/oauth-client.entity';
@@ -16,6 +17,7 @@ import { TenantRepository } from '../tenant/tenant.repository';
 
 export {
   ADMIN_CLIENT_ID,
+  GRAFANA_CLIENT_ID,
   UI_CLIENT_ID,
 } from '../oauth-client/oauth-client.constants';
 
@@ -23,6 +25,8 @@ export {
 // As in apps/ui/src/lib/auth/constants.ts; the provider matches exactly.
 const UI_CALLBACK_PATH = '/auth/callback';
 const UI_POST_LOGOUT_PATH = '/login';
+// Grafana's generic_oauth callback; the provider matches it exactly.
+const GRAFANA_CALLBACK_PATH = '/login/generic_oauth';
 // Same parameters as OAuthClientService.
 const ARGON2 = {
   type: argon2i,
@@ -34,6 +38,8 @@ const ARGON2 = {
 export interface BootstrapResult {
   tenantId: string;
   redirectUris: string[];
+  /** Only when a Grafana URL was given. */
+  grafanaRedirectUris?: string[];
   /** Only when this run minted one (first run, or rotation); stored as a hash. */
   adminClientSecret?: string;
 }
@@ -55,6 +61,7 @@ export class EnvironmentBootstrapService {
     slug: string,
     name: string,
     rotateAdminSecret = false,
+    grafanaUrl?: string,
   ): Promise<BootstrapResult> {
     const tenant =
       (await this.tenants.findBySlug(slug)) ??
@@ -76,6 +83,28 @@ export class EnvironmentBootstrapService {
       postLogoutRedirectUris: [`${origin}${UI_POST_LOGOUT_PATH}`],
     });
 
+    // Grafana is served from its own host, so its redirect URI cannot come
+    // from APP_PUBLIC_URL. It is registered only where Grafana is deployed.
+    let grafanaRedirectUris: string[] | undefined;
+    if (grafanaUrl) {
+      grafanaRedirectUris = [
+        `${new URL(grafanaUrl).origin}${GRAFANA_CALLBACK_PATH}`,
+      ];
+      await this.upsertClient(GRAFANA_CLIENT_ID, {
+        tenantId: tenant.id,
+        name: 'Tenant log viewer (Grafana)',
+        isPublic: true,
+        clientSecretHash: null,
+        // Identity scopes only: Grafana puts every tenant in one org, so it
+        // must not hold names or emails, and the provider refuses a request
+        // for anything else. The gateway checks logs:read on every query.
+        scopes: ['openid', 'tenant', 'offline_access'],
+        grantTypes: ['authorization_code', 'refresh_token'],
+        redirectUris: grafanaRedirectUris,
+        postLogoutRedirectUris: [],
+      });
+    }
+
     let adminClientSecret: string | undefined;
     // Rotation is also the recovery path: once the only platform-admin secret
     // is lost, nothing can authenticate to rotate it through the API.
@@ -95,7 +124,12 @@ export class EnvironmentBootstrapService {
       });
     }
 
-    return { tenantId: tenant.id, redirectUris, adminClientSecret };
+    return {
+      tenantId: tenant.id,
+      redirectUris,
+      grafanaRedirectUris,
+      adminClientSecret,
+    };
   }
 
   private async upsertClient(

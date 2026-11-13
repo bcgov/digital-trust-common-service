@@ -1,0 +1,99 @@
+{
+  "uid": "tenant-logs",
+  "title": "Logs",
+  "tags": [],
+  "timezone": "browser",
+  "editable": false,
+  "graphTooltip": 0,
+  "refresh": "1m",
+  "schemaVersion": 39,
+  "time": { "from": "now-1h", "to": "now" },
+  "timepicker": { "refresh_intervals": ["1m", "5m", "15m"] },
+  "templating": {
+    "list": [
+      {
+        "name": "source",
+        "label": "Source",
+        "type": "custom",
+        "query": "Common service : digital-trust-common-service, Agent : acapy",
+        "includeAll": true,
+        "allValue": "digital-trust-common-service|acapy",
+        "current": { "selected": true, "text": "All", "value": "$__all" },
+        "multi": false
+      },
+      {
+        "name": "search",
+        "label": "Search",
+        "type": "textbox",
+        "query": "",
+        "current": { "selected": false, "text": "", "value": "" }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Errors and warnings by source",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 0 },
+      "datasource": { "type": "loki", "uid": "logs" },
+      "targets": [
+        {
+          "refId": "A",
+          "queryType": "range",
+          "legendFormat": "{{app}}",
+          "expr": "sum by (app) (count_over_time({app=~\"$source\"} |~ `(?i)${search:regex}` | json | level=~\"(?i)(error|fatal|warn.*)\" or levelname=~\"(?i)(error|critical|warn.*)\" [$__auto]))"
+        }
+      ],
+      "fieldConfig": { "defaults": { "custom": { "drawStyle": "bars", "stacking": { "mode": "normal" } } }, "overrides": [] }
+    },
+    {
+      "id": 2,
+      "type": "logs",
+      "title": "Recent errors",
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 8 },
+      "datasource": { "type": "loki", "uid": "logs" },
+      "targets": [
+        {
+          "refId": "A",
+          "queryType": "range",
+          "expr": "{app=~\"$source\"} |~ `(?i)${search:regex}` | json | level=~\"(?i)(error|fatal)\" or levelname=~\"(?i)(error|critical)\""
+        }
+      ],
+      "options": { "showTime": true, "prettifyLogMessage": false, "wrapLogMessage": true,
+        "sortOrder": "Descending", "enableLogDetails": true }
+    },
+    {
+      "id": 3,
+      "type": "logs",
+      "title": "All logs",
+      "gridPos": { "h": 12, "w": 24, "x": 0, "y": 17 },
+      "datasource": { "type": "loki", "uid": "logs" },
+      "targets": [
+        {
+          "refId": "A",
+          "queryType": "range",
+          "expr": "{app=~\"$source\"} |~ `(?i)${search:regex}`"
+        }
+      ],
+      "options": { "showTime": true, "prettifyLogMessage": false, "wrapLogMessage": true,
+        "sortOrder": "Descending", "enableLogDetails": true }
+    },
+    {
+      "id": 4,
+      "type": "logs",
+      "title": "Lines with a trace_id",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 29 },
+      "datasource": { "type": "loki", "uid": "logs" },
+      "targets": [
+        {
+          "refId": "A",
+          "queryType": "range",
+          "expr": "{app=~\"$source\"} |~ `(?i)${search:regex}` | json | trace_id != \"\""
+        }
+      ],
+      "options": { "showTime": true, "prettifyLogMessage": false, "wrapLogMessage": true,
+        "sortOrder": "Descending", "enableLogDetails": true }
+    }
+  ]
+}

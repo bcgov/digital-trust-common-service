@@ -9,6 +9,27 @@ and this chart adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.h
 
 ### Added
 
+- `grafana` values (`enabled` default `false`) for a tenant-facing Grafana that
+  shows a tenant its own service and agent logs. It signs users in through this
+  service's OIDC provider (Authorization Code with PKCE, a public client, the
+  log gateway as the resource indicator) and maps everyone to `Viewer`. It asks
+  only for `openid tenant offline_access`, so Grafana keeps no names or emails
+  and leaves the `logs:read` check to the gateway. Signing out, in Grafana or
+  in the service, ends the provider session and Grafana's grant with it. One
+  datasource, with no tenant identity, forwards the user's bearer token to the
+  log gateway over TLS (`oauthPassThru`), and waits 70s for it; the Route's
+  `haproxy.router.openshift.io/timeout` defaults to `75s`, both above the
+  gateway's `65s`. One generic dashboard has no tenant
+  selector and no live tail, and refreshes at most once a minute with one
+  request per panel, so an open tab stays well inside the tenant's budget; Explore, alerting, snapshots, public dashboards,
+  `/metrics` and the login form are off, and Grafana makes no outbound calls of
+  its own (no plugin installs or updates, no Gravatar). A re-encrypted Route
+  (Grafana serves the certificate OpenShift issues for its Service), and
+  NetworkPolicies that limit Grafana's egress to the log gateway, port 443 for
+  the OIDC provider's public URL, and DNS, and let Grafana call the gateway
+  in-cluster. Needs `logGateway.enabled`, `config.APP_PUBLIC_URL`,
+  `config.LOG_GATEWAY_AUDIENCE` and `grafana.route.host`. Off in every overlay.
+  Its sign-in client is registered with `run-bootstrap --grafana-url`.
 - `logGateway` values (`enabled` default `false`) and `networkPolicy.loki` for a
   standalone Envoy in front of Loki, following the `frontend` and `worker`
   layout: ConfigMap, Deployment, Service with a serving-certificate annotation,
@@ -46,6 +67,8 @@ and this chart adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.h
   to `haproxy.router.openshift.io/timeout: 70s`, so long queries are not cut off.
 - The log gateway also removes the caller's `Cookie` header before forwarding to Loki, so a
   token carried there never reaches the backend. `Authorization` handling is unchanged.
+  It removes `X-Id-Token` and `X-Grafana-Id` too, which the tenant Grafana sends with every
+  query, so a user's identity tokens never reach Loki either.
 - `logAccess` values (`enabled` default `false`, `port`, `tls.mountPath`,
   `gatewayPodSelector`) and `config.LOG_GATEWAY_AUDIENCE` (default `""`) for the
   internal log-access decision endpoint that the log gateway's `ext_authz`
