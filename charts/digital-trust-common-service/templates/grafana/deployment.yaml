@@ -48,7 +48,7 @@ spec:
             - name: GF_SERVER_HTTP_PORT
               value: {{ .Values.grafana.service.targetPort | quote }}
           ports:
-            - name: http
+            - name: https
               containerPort: {{ .Values.grafana.service.targetPort }}
               protocol: TCP
           {{- with .Values.grafana.livenessProbe }}
@@ -82,6 +82,9 @@ spec:
             - name: service-ca
               mountPath: /var/run/secrets/openshift-service-ca
               readOnly: true
+            - name: grafana-tls
+              mountPath: /var/run/secrets/grafana-tls
+              readOnly: true
             - name: grafana-data
               mountPath: /var/lib/grafana
       volumes:
@@ -94,6 +97,10 @@ spec:
         - name: service-ca
           configMap:
             name: {{ include "digital-trust-common-service.grafana.caBundleConfigMapName" . }}
+        # OpenShift issues this from the Service's serving-cert annotation.
+        - name: grafana-tls
+          secret:
+            secretName: {{ include "digital-trust-common-service.grafana.fullname" . }}-tls
         - name: grafana-data
           emptyDir: {}
       {{- with .Values.grafana.nodeSelector }}

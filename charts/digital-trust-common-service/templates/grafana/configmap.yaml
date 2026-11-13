@@ -29,6 +29,12 @@ data:
   grafana.ini: |
     [server]
     root_url = https://{{ .Values.grafana.route.host }}
+    # The Route re-encrypts, so Grafana itself serves TLS with the certificate
+    # OpenShift issues for its Service, and reloads it when it rotates.
+    protocol = https
+    cert_file = /var/run/secrets/grafana-tls/tls.crt
+    cert_key = /var/run/secrets/grafana-tls/tls.key
+    certs_watch_interval = 1h
 
     [security]
     # No local admin: the only way in is OIDC, and every user is a Viewer.

@@ -18,7 +18,8 @@ and this chart adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.h
   datasource, with no tenant identity, forwards the user's bearer token to the
   log gateway over TLS (`oauthPassThru`). One generic dashboard has no tenant
   selector and no live tail; Explore, alerting, snapshots, public dashboards and
-  the login form are off. A Route, and NetworkPolicies that limit Grafana's egress
+  the login form are off. A re-encrypted Route (Grafana serves the certificate
+  OpenShift issues for its Service), and NetworkPolicies that limit Grafana's egress
   to the log gateway, OIDC over https and DNS, and let only Grafana call the
   gateway in-cluster. Needs `logGateway.enabled`, `config.APP_PUBLIC_URL`,
   `config.LOG_GATEWAY_AUDIENCE` and `grafana.route.host`. Off in every overlay.

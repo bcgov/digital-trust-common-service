@@ -16,10 +16,12 @@ spec:
     name: {{ include "digital-trust-common-service.grafana.fullname" . }}
     weight: 100
   port:
-    targetPort: http
-  # Tokens cross this hop, so it is always TLS and plain HTTP is redirected.
+    targetPort: https
+  # Re-encrypted, never edge: the session cookie and the sign-in callback must
+  # be TLS-protected on the leg from the router to Grafana as well (T13). Not
+  # configurable.
   tls:
-    termination: edge
+    termination: reencrypt
     insecureEdgeTerminationPolicy: Redirect
   wildcardPolicy: None
 {{- end }}

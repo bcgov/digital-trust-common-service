@@ -212,15 +212,15 @@ Generate the JWKS payload with `npm run oidc:generate-keys > oidc-keys.json`, th
 | grafana.image.registry | string | `"docker.io"` | Grafana image registry |
 | grafana.image.repository | string | `"grafana/grafana"` | Grafana image repository |
 | grafana.image.tag | string | `"13.3.1"` | Grafana image tag |
-| grafana.livenessProbe | object | `{"failureThreshold":3,"httpGet":{"path":"/api/health","port":"http"},"initialDelaySeconds":30,"periodSeconds":15,"timeoutSeconds":3}` | Liveness probe for the Grafana container |
+| grafana.livenessProbe | object | `{"failureThreshold":3,"httpGet":{"path":"/api/health","port":"https","scheme":"HTTPS"},"initialDelaySeconds":30,"periodSeconds":15,"timeoutSeconds":3}` | Liveness probe for the Grafana container |
 | grafana.nodeSelector | object | `{}` | Node selector for Grafana pods |
 | grafana.oidc.clientId | string | `"dtsc-grafana"` | client_id Grafana presents to the OIDC provider. Register a public (PKCE) client under this id with redirect URI `https://<grafana.route.host>/login/generic_oauth`. |
 | grafana.podAnnotations | object | `{}` | Annotations added to Grafana pods |
 | grafana.podLabels | object | `{}` | Labels added to Grafana pods |
-| grafana.readinessProbe | object | `{"failureThreshold":3,"httpGet":{"path":"/api/health","port":"http"},"initialDelaySeconds":10,"periodSeconds":10,"timeoutSeconds":3}` | Readiness probe for the Grafana container |
+| grafana.readinessProbe | object | `{"failureThreshold":3,"httpGet":{"path":"/api/health","port":"https","scheme":"HTTPS"},"initialDelaySeconds":10,"periodSeconds":10,"timeoutSeconds":3}` | Readiness probe for the Grafana container |
 | grafana.resources | object | `{"limits":{"cpu":"500m","memory":"256Mi"},"requests":{"cpu":"50m","memory":"128Mi"}}` | Resource requests and limits for the Grafana container |
 | grafana.route.annotations | object | `{}` | Additional annotations for the Route |
-| grafana.route.enabled | bool | `true` | Expose Grafana through an OpenShift Route (always TLS, HTTP redirected) |
+| grafana.route.enabled | bool | `true` | Expose Grafana through an OpenShift Route (re-encrypted to the pod, HTTP redirected) |
 | grafana.route.host | string | `""` | Tenant Grafana hostname; becomes Grafana's `root_url`. Required. |
 | grafana.service.port | int | `3000` | Grafana Service port exposed to the cluster |
 | grafana.service.targetPort | int | `3000` | Grafana container port |

@@ -5,13 +5,15 @@ metadata:
   name: {{ include "digital-trust-common-service.grafana.fullname" . }}
   labels:
     {{- include "digital-trust-common-service.grafana.labels" . | nindent 4 }}
+  annotations:
+    service.beta.openshift.io/serving-cert-secret-name: {{ include "digital-trust-common-service.grafana.fullname" . }}-tls
 spec:
   type: {{ .Values.grafana.service.type }}
   ports:
     - port: {{ .Values.grafana.service.port }}
-      targetPort: http
+      targetPort: https
       protocol: TCP
-      name: http
+      name: https
   selector:
     {{- include "digital-trust-common-service.grafana.selectorLabels" . | nindent 4 }}
 {{- end }}

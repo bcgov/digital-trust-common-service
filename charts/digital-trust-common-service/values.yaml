@@ -250,7 +250,8 @@ grafana:
     # `https://<grafana.route.host>/login/generic_oauth`.
     clientId: dtsc-grafana
   route:
-    # -- Expose Grafana through an OpenShift Route (always TLS, HTTP redirected)
+    # -- Expose Grafana through an OpenShift Route (re-encrypted to the pod, HTTP
+    # redirected)
     enabled: true
     # -- Tenant Grafana hostname; becomes Grafana's `root_url`. Required.
     host: ""
@@ -268,7 +269,8 @@ grafana:
   livenessProbe:
     httpGet:
       path: /api/health
-      port: http
+      port: https
+      scheme: HTTPS
     initialDelaySeconds: 30
     periodSeconds: 15
     timeoutSeconds: 3
@@ -277,7 +279,8 @@ grafana:
   readinessProbe:
     httpGet:
       path: /api/health
-      port: http
+      port: https
+      scheme: HTTPS
     initialDelaySeconds: 10
     periodSeconds: 10
     timeoutSeconds: 3

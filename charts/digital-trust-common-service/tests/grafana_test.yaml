@@ -89,6 +89,54 @@ tests:
         template: templates/grafana/configmap.yaml
         documentIndex: 0
 
+  - it: keeps TLS on the hop from the router to Grafana (T13)
+    values:
+      - ../ci/ci-values.yaml
+    asserts:
+      - equal:
+          path: spec.tls.termination
+          value: reencrypt
+        template: templates/grafana/route.yaml
+      - equal:
+          path: spec.port.targetPort
+          value: https
+        template: templates/grafana/route.yaml
+      - equal:
+          path: metadata.annotations["service.beta.openshift.io/serving-cert-secret-name"]
+          value: RELEASE-NAME-digital-trust-common-service-grafana-tls
+        template: templates/grafana/service.yaml
+      - equal:
+          path: spec.ports[0].targetPort
+          value: https
+        template: templates/grafana/service.yaml
+      - matchRegex:
+          path: data["grafana.ini"]
+          pattern: '(?m)^\s*protocol = https\s+cert_file = /var/run/secrets/grafana-tls/tls\.crt\s+cert_key = /var/run/secrets/grafana-tls/tls\.key\s+certs_watch_interval = 1h$'
+        template: templates/grafana/configmap.yaml
+        documentIndex: 0
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: grafana-tls
+            secret:
+              secretName: RELEASE-NAME-digital-trust-common-service-grafana-tls
+        template: templates/grafana/deployment.yaml
+      - equal:
+          path: spec.template.spec.containers[0].readinessProbe.httpGet.scheme
+          value: HTTPS
+        template: templates/grafana/deployment.yaml
+      - equal:
+          path: spec.template.spec.containers[0].livenessProbe.httpGet.scheme
+          value: HTTPS
+        template: templates/grafana/deployment.yaml
+      - equal:
+          path: spec.ingress[0].ports[0].port
+          value: https
+        template: templates/networkpolicy.yaml
+        documentSelector:
+          path: metadata.name
+          value: RELEASE-NAME-digital-trust-common-service-grafana-allow-router
+
   - it: limits Grafana egress to the gateway, OIDC over https and DNS
     values:
       - ../ci/ci-values.yaml

@@ -384,7 +384,7 @@ spec:
               {{- toYaml .Values.networkPolicy.ingress.routerNamespaceSelector | nindent 14 }}
       ports:
         - protocol: TCP
-          port: http
+          port: https
 {{- end }}
 ---
 # Grafana is the only in-cluster caller of the gateway.
