@@ -38,9 +38,9 @@ export async function runBootstrap(
   }
 
   const grafanaUrl = values['grafana-url'];
-  if (grafanaUrl !== undefined && !URL.canParse(grafanaUrl)) {
+  if (grafanaUrl !== undefined && !isHttpsUrl(grafanaUrl)) {
     logger.error(
-      `${USAGE}\n  grafana-url: an absolute URL such as https://logs.example.com`,
+      `${USAGE}\n  grafana-url: an https URL such as https://logs.example.com`,
     );
     process.exitCode = 2;
     return;
@@ -84,6 +84,13 @@ export async function runBootstrap(
   } finally {
     await app.close();
   }
+}
+
+// Grafana's root_url is always https, and its redirect URI is built from this
+// URL's origin. URL.canParse alone also takes http, other schemes, and a bare
+// host:port read as a scheme, whose origin is the string "null".
+function isHttpsUrl(value: string): boolean {
+  return URL.canParse(value) && new URL(value).protocol === 'https:';
 }
 
 const entryScript = process.argv[1]?.replace(/\\/g, '/');
