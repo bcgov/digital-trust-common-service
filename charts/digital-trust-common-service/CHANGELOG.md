@@ -61,6 +61,8 @@ and this chart adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.h
   to `haproxy.router.openshift.io/timeout: 70s`, so long queries are not cut off.
 - The log gateway also removes the caller's `Cookie` header before forwarding to Loki, so a
   token carried there never reaches the backend. `Authorization` handling is unchanged.
+  It removes `X-Id-Token` and `X-Grafana-Id` too, which the tenant Grafana sends with every
+  query, so a user's identity tokens never reach Loki either.
 - `logAccess` values (`enabled` default `false`, `port`, `tls.mountPath`,
   `gatewayPodSelector`) and `config.LOG_GATEWAY_AUDIENCE` (default `""`) for the
   internal log-access decision endpoint that the log gateway's `ext_authz`

@@ -284,7 +284,7 @@ tests:
         documentIndex: 0
       - matchRegex:
           path: data["envoy.yaml"]
-          pattern: 'request_headers_to_remove:\s+- authorization\s+- cookie'
+          pattern: 'request_headers_to_remove:\s+- authorization\s+- cookie\s+- x-id-token\s+- x-grafana-id\s'
         template: templates/log-gateway/configmap.yaml
         documentIndex: 0
       - matchRegex:
