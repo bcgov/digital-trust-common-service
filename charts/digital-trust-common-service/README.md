@@ -218,7 +218,7 @@ Generate the JWKS payload with `npm run oidc:generate-keys > oidc-keys.json`, th
 | grafana.podAnnotations | object | `{}` | Annotations added to Grafana pods |
 | grafana.podLabels | object | `{}` | Labels added to Grafana pods |
 | grafana.readinessProbe | object | `{"failureThreshold":3,"httpGet":{"path":"/api/health","port":"https","scheme":"HTTPS"},"initialDelaySeconds":10,"periodSeconds":10,"timeoutSeconds":3}` | Readiness probe for the Grafana container |
-| grafana.resources | object | `{"limits":{"cpu":"500m","memory":"256Mi"},"requests":{"cpu":"50m","memory":"128Mi"}}` | Resource requests and limits for the Grafana container |
+| grafana.resources | object | `{"limits":{"cpu":"500m","memory":"512Mi"},"requests":{"cpu":"50m","memory":"256Mi"}}` | Resource requests and limits for the Grafana container. It idles near 170Mi with only the Loki plugin running; 512Mi is Grafana's documented minimum and leaves room for logs panels of up to 1000 lines each. |
 | grafana.route.annotations | object | `{}` | Additional annotations for the Route |
 | grafana.route.enabled | bool | `true` | Expose Grafana through an OpenShift Route (re-encrypted to the pod, HTTP redirected) |
 | grafana.route.host | string | `""` | Tenant Grafana hostname; becomes Grafana's `root_url`. Required. |

@@ -257,14 +257,16 @@ grafana:
     host: ""
     # -- Additional annotations for the Route
     annotations: {}
-  # -- Resource requests and limits for the Grafana container
+  # -- Resource requests and limits for the Grafana container. It idles near
+  # 170Mi with only the Loki plugin running; 512Mi is Grafana's documented
+  # minimum and leaves room for logs panels of up to 1000 lines each.
   resources:
     requests:
       cpu: 50m
-      memory: 128Mi
+      memory: 256Mi
     limits:
       cpu: 500m
-      memory: 256Mi
+      memory: 512Mi
   # -- Liveness probe for the Grafana container
   livenessProbe:
     httpGet:

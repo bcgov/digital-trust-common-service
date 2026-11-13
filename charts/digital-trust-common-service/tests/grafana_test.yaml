@@ -172,6 +172,22 @@ tests:
         template: templates/grafana/configmap.yaml
         documentIndex: 0
 
+  - it: starts only the Loki plugin and leaves Grafana memory headroom
+    values:
+      - ../ci/ci-values.yaml
+    asserts:
+      # Each bundled datasource otherwise runs its own process, which kept
+      # Grafana at about 90% of a 256Mi limit while idle.
+      - matchRegex:
+          path: data["grafana.ini"]
+          pattern: '(?m)^\s*disable_plugins = cloudwatch,elasticsearch,grafana-postgresql-datasource,grafana-pyroscope-datasource,influxdb,jaeger,mssql,mysql,opentsdb,prometheus,stackdriver,tempo,zipkin$'
+        template: templates/grafana/configmap.yaml
+        documentIndex: 0
+      - equal:
+          path: spec.template.spec.containers[0].resources.limits.memory
+          value: 512Mi
+        template: templates/grafana/deployment.yaml
+
   - it: limits Grafana egress to the gateway, OIDC over https and DNS
     values:
       - ../ci/ci-values.yaml

@@ -65,6 +65,8 @@ data:
     # bundled ones, the Loki plugin that forwards users' tokens included, to
     # versions this chart never pinned.
     preinstall_disabled = true
+    # Every bundled datasource but Loki: each would run its own process.
+    disable_plugins = cloudwatch,elasticsearch,grafana-postgresql-datasource,grafana-pyroscope-datasource,influxdb,jaeger,mssql,mysql,opentsdb,prometheus,stackdriver,tempo,zipkin
 
     [explore]
     enabled = false
