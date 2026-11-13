@@ -107,7 +107,6 @@ data:
 
     [auth]
     disable_login_form = true
-    disable_signout_menu = true
 
     [auth.anonymous]
     enabled = false
@@ -139,6 +138,10 @@ data:
     # expires. The provider approves it silently, with no consent screen.
     auth_url = {{ $issuer }}/auth?resource={{ .Values.config.LOG_GATEWAY_AUDIENCE | urlquery }}&prompt=consent
     token_url = {{ $issuer }}/token
+    # Signing out ends the provider session, which also revokes this Grafana's
+    # grant. The provider's page confirms it and stays there, rather than
+    # returning to a sign-in that an upstream session could pass silently.
+    signout_redirect_url = {{ $issuer }}/session/end
     use_pkce = true
     use_refresh_token = true
     # Creates the Grafana user on first sign-in; [users] allow_sign_up is

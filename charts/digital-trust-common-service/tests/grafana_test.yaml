@@ -261,6 +261,21 @@ tests:
         template: templates/grafana/configmap.yaml
         documentIndex: 1
 
+  - it: signs out at the provider, which ends Grafana's grant too
+    values:
+      - ../ci/ci-values.yaml
+    asserts:
+      - notMatchRegex:
+          path: data["grafana.ini"]
+          pattern: 'disable_signout_menu = true'
+        template: templates/grafana/configmap.yaml
+        documentIndex: 0
+      - matchRegex:
+          path: data["grafana.ini"]
+          pattern: '(?m)^\s*signout_redirect_url = https://digital-trust-common-service\.example\.com/oidc/session/end$'
+        template: templates/grafana/configmap.yaml
+        documentIndex: 0
+
   - it: limits Grafana egress to the gateway, OIDC over https and DNS
     values:
       - ../ci/ci-values.yaml

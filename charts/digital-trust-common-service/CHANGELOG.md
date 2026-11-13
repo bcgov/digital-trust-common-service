@@ -14,7 +14,8 @@ and this chart adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.h
   service's OIDC provider (Authorization Code with PKCE, a public client, the
   log gateway as the resource indicator) and maps everyone to `Viewer`. It asks
   only for `openid tenant offline_access`, so Grafana keeps no names or emails
-  and leaves the `logs:read` check to the gateway. One
+  and leaves the `logs:read` check to the gateway. Signing out, in Grafana or
+  in the service, ends the provider session and Grafana's grant with it. One
   datasource, with no tenant identity, forwards the user's bearer token to the
   log gateway over TLS (`oauthPassThru`), and waits 70s for it; the Route's
   `haproxy.router.openshift.io/timeout` defaults to `75s`, both above the
