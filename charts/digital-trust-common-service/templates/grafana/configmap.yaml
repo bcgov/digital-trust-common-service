@@ -96,6 +96,14 @@ data:
 
     [dashboards]
     default_home_dashboard_path = /etc/grafana/dashboards/tenant-logs.json
+    # Every query is charged to the tenant's gateway budget of 120 a minute.
+    min_refresh_interval = 1m
+
+    # Splitting a range into a request per day, refreshed by every open tab,
+    # lets one viewer spend the whole tenant's budget. Loki still splits each
+    # query itself, behind the gateway.
+    [feature_toggles]
+    lokiQuerySplitting = false
 
     [auth]
     disable_login_form = true

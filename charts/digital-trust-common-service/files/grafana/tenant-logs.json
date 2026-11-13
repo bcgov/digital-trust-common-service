@@ -5,10 +5,10 @@
   "timezone": "browser",
   "editable": false,
   "graphTooltip": 0,
-  "refresh": "30s",
+  "refresh": "1m",
   "schemaVersion": 39,
   "time": { "from": "now-1h", "to": "now" },
-  "timepicker": { "refresh_intervals": ["10s", "30s", "1m"] },
+  "timepicker": { "refresh_intervals": ["1m", "5m", "15m"] },
   "templating": {
     "list": [
       {

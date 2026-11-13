@@ -233,6 +233,34 @@ tests:
         template: templates/grafana/configmap.yaml
         documentIndex: 1
 
+  - it: keeps an open dashboard well inside the tenant's request budget
+    values:
+      - ../ci/ci-values.yaml
+    asserts:
+      # The gateway allows 120 requests a minute per tenant. Splitting a
+      # 30-day range into a request per day, refreshed every 30s, let one
+      # viewer spend all of it.
+      - matchRegex:
+          path: data["grafana.ini"]
+          pattern: '\[feature_toggles\]\s+lokiQuerySplitting = false'
+        template: templates/grafana/configmap.yaml
+        documentIndex: 0
+      - matchRegex:
+          path: data["grafana.ini"]
+          pattern: '(?m)^\s*min_refresh_interval = 1m$'
+        template: templates/grafana/configmap.yaml
+        documentIndex: 0
+      - matchRegex:
+          path: data["tenant-logs.json"]
+          pattern: '"refresh": "1m"'
+        template: templates/grafana/configmap.yaml
+        documentIndex: 1
+      - matchRegex:
+          path: data["tenant-logs.json"]
+          pattern: '"refresh_intervals": \["1m", "5m", "15m"\]'
+        template: templates/grafana/configmap.yaml
+        documentIndex: 1
+
   - it: limits Grafana egress to the gateway, OIDC over https and DNS
     values:
       - ../ci/ci-values.yaml

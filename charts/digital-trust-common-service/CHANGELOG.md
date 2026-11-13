@@ -19,7 +19,8 @@ and this chart adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.h
   log gateway over TLS (`oauthPassThru`), and waits 70s for it; the Route's
   `haproxy.router.openshift.io/timeout` defaults to `75s`, both above the
   gateway's `65s`. One generic dashboard has no tenant
-  selector and no live tail; Explore, alerting, snapshots, public dashboards,
+  selector and no live tail, and refreshes at most once a minute with one
+  request per panel, so an open tab stays well inside the tenant's budget; Explore, alerting, snapshots, public dashboards,
   `/metrics` and the login form are off, and Grafana makes no outbound calls of
   its own (no plugin installs or updates, no Gravatar). A re-encrypted Route
   (Grafana serves the certificate OpenShift issues for its Service), and
