@@ -28,6 +28,19 @@ import { useAuth } from '@/lib/auth/context';
 import { hasScope, TENANT_ADMIN_SCOPE } from '@/lib/auth/scopes';
 import { useActiveTenant } from '@/lib/tenant/active-tenant';
 
+type SemanticAttributeType = Attribute['type'];
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function semanticType(value: unknown): SemanticAttributeType {
+  const type = isRecord(value) ? value.type : value;
+  return type === 'integer' || type === 'number' || type === 'boolean'
+    ? type
+    : 'string';
+}
+
 export function CreateOrEditCredentialDefinitionPage() {
   const { t } = useTranslation();
   const { user } = useAuth();
@@ -56,7 +69,7 @@ export function CreateOrEditCredentialDefinitionPage() {
   const [version, setVersion] = useState('');
   const [description, setDescription] = useState('');
   const [attributes, setAttributes] = useState<Attribute[]>(() => [
-    { id: `${attributeIdPrefix}-initial`, name: '' },
+    { id: `${attributeIdPrefix}-initial`, name: '', type: 'string' },
   ]);
   const [chosenConnectorId, setChosenConnectorId] = useState<string | null>(
     null,
@@ -79,6 +92,8 @@ export function CreateOrEditCredentialDefinitionPage() {
     startTransition(() => {
       const schemaDefinition = definition.schema_definition ?? {};
       const attributeNames = schemaDefinition.attr_names;
+      const propertySchemas = schemaDefinition.properties;
+      const semanticTypes = schemaDefinition.attributes;
       setName(definition.name ?? '');
       setVersion(definition.version ?? '');
       setDescription(
@@ -95,12 +110,23 @@ export function CreateOrEditCredentialDefinitionPage() {
             .map((attributeName, index) => ({
               id: `${draftId}-${index}`,
               name: attributeName,
+              type: 'string' as const,
             }))
-        : [];
+        : Object.entries(
+            isRecord(propertySchemas)
+              ? propertySchemas
+              : isRecord(semanticTypes)
+                ? semanticTypes
+                : {},
+          ).map(([attributeName, declaration], index) => ({
+            id: `${draftId}-${index}`,
+            name: attributeName,
+            type: semanticType(declaration),
+          }));
       setAttributes(
         draftAttributes.length > 0
           ? draftAttributes
-          : [{ id: `${draftId}-initial`, name: '' }],
+          : [{ id: `${draftId}-initial`, name: '', type: 'string' }],
       );
       setChosenConnectorId(definition.connector_id ?? null);
       setLoadedDraftId(draftId);
@@ -169,8 +195,12 @@ export function CreateOrEditCredentialDefinitionPage() {
     const trimmedName = name.trim();
     const trimmedVersion = version.trim();
     const schemaDefinition = {
-      ...(draftQuery.data?.schema_definition ?? {}),
-      attr_names: namedAttributes.map((attribute) => attribute.name.trim()),
+      attributes: Object.fromEntries(
+        namedAttributes.map((attribute) => [
+          attribute.name.trim(),
+          attribute.type,
+        ]),
+      ),
       schema_name: trimmedName,
       schema_version: trimmedVersion,
       version: trimmedVersion,

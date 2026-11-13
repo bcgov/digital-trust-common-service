@@ -12,7 +12,6 @@ import { UpdateIssuanceProfileDto } from './dto/update-issuance-profile.dto';
 import { IssuanceProfileController } from './issuance-profile.controller';
 import {
   IssuanceProfile,
-  IssuanceProfileProtocolHint,
   IssuanceProfileStatus,
 } from './issuance-profile.entity';
 import { IssuanceProfileService } from './issuance-profile.service';
@@ -55,11 +54,10 @@ describe('IssuanceProfileController', () => {
     version: '1.0',
     description: undefined,
     credentialDefinitionId: '123e4567-e89b-12d3-a456-426614174002',
-    attributeSchema: { given_name: { type: 'string', required: true } },
-    defaults: undefined,
+    claims: { required: ['given_name'], properties: {} },
     display: undefined,
     metadata: {},
-    protocolHint: IssuanceProfileProtocolHint.AUTO,
+    delivery: { protocol: 'didcomm-v1' },
     status: IssuanceProfileStatus.DRAFT,
     createdAt: new Date(),
     updatedAt: new Date(),
@@ -143,7 +141,8 @@ describe('IssuanceProfileController', () => {
         name: mockProfile.name,
         version: mockProfile.version,
         credentialDefinitionId: mockProfile.credentialDefinitionId,
-        attributeSchema: mockProfile.attributeSchema,
+        claims: mockProfile.claims,
+        delivery: mockProfile.delivery,
       };
 
       mockCreate.mockResolvedValue(mockProfile);

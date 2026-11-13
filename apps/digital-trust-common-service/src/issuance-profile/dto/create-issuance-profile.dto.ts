@@ -1,15 +1,19 @@
-import { Expose } from 'class-transformer';
+import { ApiPropertyOptional } from '@nestjs/swagger';
+import { Expose, Type } from 'class-transformer';
 import {
-  IsEnum,
   IsObject,
   IsOptional,
   IsString,
   IsUUID,
   MaxLength,
   MinLength,
+  ValidateIf,
+  ValidateNested,
 } from 'class-validator';
 
-import { IssuanceProfileProtocolHint } from '../issuance-profile.entity';
+import type { ProfileClaims } from '../claims-schema';
+
+import { IssuanceDeliveryDto } from './issuance-delivery.dto';
 
 export class CreateIssuanceProfileDto {
   @Expose()
@@ -34,14 +38,15 @@ export class CreateIssuanceProfileDto {
   @IsUUID()
   public credentialDefinitionId!: string;
 
-  @Expose({ name: 'attribute_schema' })
-  @IsObject()
-  public attributeSchema!: Record<string, unknown>;
-
   @Expose()
-  @IsOptional()
+  @ApiPropertyOptional({
+    type: 'object',
+    additionalProperties: true,
+    description: 'Required claim names and allowed-value overlays.',
+  })
+  @ValidateIf((_object: unknown, value: unknown) => value !== undefined)
   @IsObject()
-  public defaults?: Record<string, unknown>;
+  public claims?: ProfileClaims;
 
   @Expose()
   @IsOptional()
@@ -53,8 +58,10 @@ export class CreateIssuanceProfileDto {
   @IsObject()
   public metadata?: Record<string, unknown>;
 
-  @Expose({ name: 'protocol_hint' })
-  @IsOptional()
-  @IsEnum(IssuanceProfileProtocolHint)
-  public protocolHint?: IssuanceProfileProtocolHint;
+  @ApiPropertyOptional({ type: IssuanceDeliveryDto })
+  @ValidateIf((_object: unknown, value: unknown) => value !== undefined)
+  @IsObject()
+  @ValidateNested()
+  @Type(() => IssuanceDeliveryDto)
+  public delivery?: IssuanceDeliveryDto;
 }

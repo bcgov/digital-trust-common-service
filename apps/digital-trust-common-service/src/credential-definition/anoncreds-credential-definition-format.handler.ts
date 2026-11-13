@@ -34,6 +34,10 @@ import {
 
 type OptionsDtoClass = new () => object;
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
 function normalizeOptions<T extends object>(
   dtoClass: new () => T,
   options: unknown,
@@ -81,9 +85,59 @@ export class AnonCredsCredentialDefinitionFormatHandler implements CredentialDef
   public normalizeSchema(schema: RegistrationSchema): RegistrationSchema {
     this.validateSchemaSource(schema);
     if (schema.definition !== undefined) {
-      this.validateSchemaDefinition(schema.definition);
+      return {
+        definition: this.normalizeDefinition(schema.definition),
+      };
     }
     return schema;
+  }
+
+  public getClaimsSchema(
+    schemaDefinition: Readonly<Record<string, unknown>>,
+  ): Record<string, unknown> {
+    let properties = schemaDefinition.properties;
+    if (!isRecord(properties) && Array.isArray(schemaDefinition.attr_names)) {
+      properties = Object.fromEntries(
+        schemaDefinition.attr_names
+          .filter((name): name is string => typeof name === 'string')
+          .map((name) => [name, { type: 'string' }]),
+      );
+    }
+    return {
+      type: 'object',
+      properties,
+    };
+  }
+
+  public getMandatoryClaims(
+    schemaDefinition: Readonly<Record<string, unknown>>,
+  ): readonly string[] {
+    const required = schemaDefinition.required;
+    return Array.isArray(required)
+      ? required.filter((name): name is string => typeof name === 'string')
+      : [];
+  }
+
+  public prepareClaimsForValidation(
+    schemaDefinition: Readonly<Record<string, unknown>>,
+    claims: Readonly<Record<string, unknown>>,
+  ): { claims: Record<string, unknown>; omittedClaims: string[] } {
+    const properties = this.getClaimsSchema(schemaDefinition).properties;
+    if (!isRecord(properties)) {
+      return { claims: { ...claims }, omittedClaims: [] };
+    }
+
+    const omittedClaims = Object.keys(properties).filter(
+      (name) => !Object.hasOwn(claims, name),
+    );
+
+    return {
+      claims: {
+        ...Object.fromEntries(omittedClaims.map((name) => [name, ''])),
+        ...claims,
+      },
+      omittedClaims,
+    };
   }
 
   public async prepare(
@@ -109,9 +163,13 @@ export class AnonCredsCredentialDefinitionFormatHandler implements CredentialDef
       resolved.context,
       dto.issuer,
     );
-    const schema = dto.schema.id
+    const resolvedSchema = dto.schema.id
       ? await registration.resolveSchema(resolved.context, dto.schema.id)
       : { definition: dto.schema.definition ?? {}, id: undefined };
+    const schema = {
+      ...resolvedSchema,
+      definition: this.normalizeDefinition(resolvedSchema.definition),
+    };
     if (dto.schema.id) {
       this.validateSchemaDefinition(schema.definition);
     }
@@ -179,6 +237,57 @@ export class AnonCredsCredentialDefinitionFormatHandler implements CredentialDef
     }
   }
 
+  private normalizeDefinition(
+    definition: Readonly<Record<string, unknown>>,
+  ): Record<string, unknown> {
+    const schemaName = definition.schema_name;
+    const schemaVersion = definition.schema_version;
+    const attributes = definition.attributes;
+    const schemaProperties = definition.properties;
+    const legacyNames = definition.attr_names;
+    if (
+      typeof schemaName !== 'string' ||
+      typeof schemaVersion !== 'string' ||
+      (!isRecord(attributes) &&
+        !isRecord(schemaProperties) &&
+        !Array.isArray(legacyNames))
+    ) {
+      this.validateSchemaDefinition(definition);
+    }
+
+    const properties: Record<string, unknown> = {};
+    if (isRecord(schemaProperties)) {
+      Object.assign(properties, schemaProperties);
+    } else if (isRecord(attributes)) {
+      for (const [name, type] of Object.entries(attributes)) {
+        if (
+          type !== 'string' &&
+          type !== 'integer' &&
+          type !== 'number' &&
+          type !== 'boolean'
+        ) {
+          throw new BadRequestException(
+            `AnonCreds attribute '${name}' must have a string, integer, number, or boolean type`,
+          );
+        }
+        properties[name] = { type };
+      }
+    } else if (Array.isArray(legacyNames)) {
+      for (const name of legacyNames) {
+        if (typeof name === 'string') properties[name] = { type: 'string' };
+      }
+    }
+
+    const normalized = {
+      schema_name: schemaName,
+      schema_version: schemaVersion,
+      type: 'object',
+      properties,
+    };
+    this.validateSchemaDefinition(normalized);
+    return normalized;
+  }
+
   private validateIssuerSelection(dto: CreateCredentialDefinitionDto): void {
     if (
       dto.issuer &&
@@ -212,6 +321,21 @@ export class NoRegistrationCredentialDefinitionFormatHandler implements Credenti
       );
     }
     return schema;
+  }
+
+  public getClaimsSchema(
+    schemaDefinition: Readonly<Record<string, unknown>>,
+  ): Record<string, unknown> {
+    return schemaDefinition;
+  }
+
+  public getMandatoryClaims(
+    schemaDefinition: Readonly<Record<string, unknown>>,
+  ): readonly string[] {
+    const required = schemaDefinition.required;
+    return Array.isArray(required)
+      ? required.filter((name): name is string => typeof name === 'string')
+      : [];
   }
 
   public async prepare(

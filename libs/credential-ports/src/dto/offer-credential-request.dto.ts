@@ -13,7 +13,8 @@ export interface OfferCredentialRequest {
   // Credential definition identifier for formats that require one.
   readonly credentialDefinitionId?: string;
   readonly format: CredentialFormat;
-  readonly attributes: readonly CredentialAttribute[];
+  readonly claims: Readonly<Record<string, unknown>>;
+  readonly schemaDefinition: Readonly<Record<string, unknown>>;
   readonly comment?: string;
   // When true, the adapter issues automatically without a separate step.
   readonly autoIssue?: boolean;

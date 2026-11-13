@@ -135,8 +135,11 @@ the definition API; other profile managers see definition IDs instead. Mock mode
 an initially empty profile list and supports draft creation, publication, archival, and deletion in memory. Readable definition names link to the read-only
 `/credential-definitions/:definitionId` view, which shows identity, format, status,
 and schema details with a return link to issuance profiles. Administrators can create
-draft profiles with a name, version, protocol, and published, issuance-ready definition.
-Attributes remain on the definition; the profile sends an empty `attribute_schema`.
+draft profiles with a name, version, and published, issuance-ready definition.
+The server defaults delivery to `didcomm-v1`. Claim names and semantic types
+remain on the definition; optional profile `claims` overlays can make claims
+required or restrict them with `enum`/`const`. Create, update, publish, and
+archive return the profile directly; delete remains a `204` response.
 Name/version conflicts include archived records. Draft rows offer a separate Publish
 profile action with confirmation. Publication rechecks the definition and connector
 on the server before making the profile available for issuance. List responses include

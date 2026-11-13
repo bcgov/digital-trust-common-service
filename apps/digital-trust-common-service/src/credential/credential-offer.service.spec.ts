@@ -2,7 +2,6 @@ import {
   ConnectorUnavailableError,
   CredentialExchangeState,
   CredentialFormat as PortCredentialFormat,
-  FormatValidatorRegistry,
   TimeoutError,
 } from '@app/credential-ports';
 import { JOB_QUEUES } from '@app/pg-boss';
@@ -26,11 +25,11 @@ import {
   CredentialDefinitionConnectorType,
 } from '../credential-definition/credential-definition.entity';
 import { CredentialDefinitionRepository } from '../credential-definition/credential-definition.repository';
+import { CredentialDefinitionService } from '../credential-definition/credential-definition.service';
 import { CredentialExchangeRepository } from '../credential-exchange/credential-exchange.repository';
 import { CredentialExchangeService } from '../credential-exchange/credential-exchange.service';
 import {
   IssuanceProfile,
-  IssuanceProfileProtocolHint,
   IssuanceProfileStatus,
 } from '../issuance-profile/issuance-profile.entity';
 import { IssuanceProfileRepository } from '../issuance-profile/issuance-profile.repository';
@@ -55,6 +54,7 @@ describe('CredentialOfferService', () => {
   let mockUpdateStateIfForward: jest.Mock;
   let mockSetExternalId: jest.Mock;
   let mockCredentialDefinitionFindById: jest.Mock;
+  let mockGetClaimsValidationSchema: jest.Mock;
   let mockProfileFindById: jest.Mock;
   let mockProfileFindByNameAndVersion: jest.Mock;
   let mockCreateOperation: jest.Mock;
@@ -62,9 +62,6 @@ describe('CredentialOfferService', () => {
   let mockOperationFindById: jest.Mock;
   let mockResolveAdapter: jest.Mock;
   let mockOfferCredential: jest.Mock;
-  let mockHas: jest.Mock;
-  let mockValidatorResolve: jest.Mock;
-  let mockValidateAttributes: jest.Mock;
   let mockEmit: jest.Mock;
   let mockSendInTransaction: jest.Mock;
   let mockEventEmit: jest.Mock;
@@ -75,6 +72,7 @@ describe('CredentialOfferService', () => {
   let mockExchangeReconcile: jest.Mock;
   let mockCredentialFindByExternalId: jest.Mock;
   let mockExchangeObserve: jest.Mock;
+  let mockExchangeCreate: jest.Mock;
   const mockMarkFailed = jest.fn();
   const mockLockedProfile = jest.fn();
   const mockManager = {
@@ -97,8 +95,8 @@ describe('CredentialOfferService', () => {
   ): OfferCredentialRequestDto =>
     Object.assign(new OfferCredentialRequestDto(), {
       profileId,
-      delivery: { protocol: 'didcomm-v1', connectionId },
-      credential: { credentialSubject: { given_name: 'Alice' } },
+      delivery: { connectionId },
+      claims: { given_name: 'Alice' },
       ...overrides,
     });
 
@@ -110,7 +108,15 @@ describe('CredentialOfferService', () => {
       tenantId,
       name: 'Diploma',
       format: CredentialDefinitionFormat.ANONCREDS,
-      schemaDefinition: { attr_names: ['given_name'] },
+      schemaDefinition: {
+        schema_name: 'Diploma',
+        schema_version: '1.0',
+        properties: {
+          given_name: { type: 'string' },
+          family_name: { type: 'string' },
+          age: { type: 'integer' },
+        },
+      },
       externalId: externalCredentialDefinitionId,
       connectorId,
       registrationState: 'ready',
@@ -132,10 +138,9 @@ describe('CredentialOfferService', () => {
       name: 'diploma',
       version: '1.0',
       credentialDefinitionId,
-      attributeSchema: {},
-      defaults: { family_name: 'Doe' },
+      claims: {},
       metadata: {},
-      protocolHint: IssuanceProfileProtocolHint.AUTO,
+      delivery: { protocol: 'didcomm-v1' },
       status: IssuanceProfileStatus.PUBLISHED,
       createdAt,
       updatedAt: createdAt,
@@ -217,9 +222,35 @@ describe('CredentialOfferService', () => {
     mockMarkFailed.mockReset().mockResolvedValue(undefined);
     mockCredentialFindByExternalId = jest.fn();
     mockExchangeObserve = jest.fn().mockResolvedValue(undefined);
+    mockExchangeCreate = jest.fn().mockResolvedValue({ id: 'local-exchange' });
     mockUpdateStateIfForward = jest.fn().mockResolvedValue(true);
     mockSetExternalId = jest.fn().mockResolvedValue(undefined);
     mockCredentialDefinitionFindById = jest.fn();
+    mockGetClaimsValidationSchema = jest.fn(() => ({
+      schema: {
+        type: 'object',
+        properties: {
+          given_name: { type: 'string' },
+          family_name: { type: 'string' },
+          age: { type: 'integer' },
+        },
+      },
+      mandatoryClaims: [],
+      prepareClaimsForValidation: (
+        claims: Readonly<Record<string, unknown>>,
+      ) => {
+        const omittedClaims = ['family_name', 'age'].filter(
+          (name) => !Object.hasOwn(claims, name),
+        );
+        return {
+          claims: {
+            ...Object.fromEntries(omittedClaims.map((name) => [name, ''])),
+            ...claims,
+          },
+          omittedClaims,
+        };
+      },
+    }));
     mockProfileFindById = jest.fn();
     mockProfileFindByNameAndVersion = jest.fn();
     mockCreateOperation = jest.fn();
@@ -230,11 +261,6 @@ describe('CredentialOfferService', () => {
       state: CredentialExchangeState.OfferSent,
     });
     mockResolveAdapter = jest.fn();
-    mockHas = jest.fn().mockReturnValue(false);
-    mockValidateAttributes = jest.fn().mockReturnValue([]);
-    mockValidatorResolve = jest
-      .fn()
-      .mockReturnValue({ validateAttributes: mockValidateAttributes });
     mockEmit = jest.fn().mockResolvedValue(undefined);
     mockSendInTransaction = jest.fn().mockResolvedValue('job-1');
     mockEventEmit = jest.fn();
@@ -249,7 +275,7 @@ describe('CredentialOfferService', () => {
         {
           provide: CredentialExchangeRepository,
           useValue: {
-            create: jest.fn().mockResolvedValue({ id: 'local-exchange' }),
+            create: mockExchangeCreate,
             observe: mockExchangeObserve,
             markFailed: mockMarkFailed,
           },
@@ -279,6 +305,12 @@ describe('CredentialOfferService', () => {
           useValue: { findById: mockCredentialDefinitionFindById },
         },
         {
+          provide: CredentialDefinitionService,
+          useValue: {
+            getClaimsValidationSchema: mockGetClaimsValidationSchema,
+          },
+        },
+        {
           provide: IssuanceProfileRepository,
           useValue: {
             findById: mockProfileFindById,
@@ -302,10 +334,6 @@ describe('CredentialOfferService', () => {
         {
           provide: AdapterRegistry,
           useValue: { resolve: mockResolveAdapter },
-        },
-        {
-          provide: FormatValidatorRegistry,
-          useValue: { has: mockHas, resolve: mockValidatorResolve },
         },
         {
           provide: DomainAuditService,
@@ -390,7 +418,7 @@ describe('CredentialOfferService', () => {
           service.offer(
             tenantId,
             buildDto({
-              credential: { credentialSubject: { given_name: value } },
+              claims: { given_name: value },
             }),
           ),
         ).rejects.toBeInstanceOf(BadRequestException);
@@ -399,30 +427,32 @@ describe('CredentialOfferService', () => {
       },
     );
 
-    it('maps finite numbers and booleans to preview strings without dropping false or zero', async () => {
+    it.each([{ nickname: 'Alice' }, { given_name: { first: 'Alice' } }])(
+      'rejects claims outside the definition schema %p before writes',
+      async (claims) => {
+        await expect(
+          service.offer(tenantId, buildDto({ claims })),
+        ).rejects.toBeInstanceOf(BadRequestException);
+        expect(mockTransaction).not.toHaveBeenCalled();
+        expect(mockResolveAdapter).not.toHaveBeenCalled();
+        expect(mockOfferCredential).not.toHaveBeenCalled();
+      },
+    );
+
+    it('passes the claims object unflattened to the adapter', async () => {
       await service.offer(
         tenantId,
         buildDto({
-          credential: {
-            credentialSubject: {
-              given_name: 'Alice',
-              active: false,
-              count: 0,
-              score: 1.25,
-            },
+          claims: {
+            given_name: 'Alice',
+            age: 0,
           },
         }),
       );
       expect(mockOfferCredential).toHaveBeenCalledWith(
         expect.anything(),
         expect.objectContaining({
-          attributes: [
-            { name: 'family_name', value: 'Doe' },
-            { name: 'given_name', value: 'Alice' },
-            { name: 'active', value: 'false' },
-            { name: 'count', value: '0' },
-            { name: 'score', value: '1.25' },
-          ],
+          claims: { given_name: 'Alice', age: 0 },
         }),
       );
     });
@@ -532,22 +562,10 @@ describe('CredentialOfferService', () => {
     );
   });
 
-  describe('profile_id / credential_definition_id resolution', () => {
-    it('throws 400 when neither profile_id nor credential_definition_id is provided', async () => {
+  describe('profile_id resolution', () => {
+    it('throws 400 when profile_id is missing', async () => {
       await expect(
         service.offer(tenantId, buildDto({ profileId: undefined })),
-      ).rejects.toBeInstanceOf(BadRequestException);
-      expect(mockCreateOperation).not.toHaveBeenCalled();
-    });
-
-    it('throws 400 when both profile_id and credential_definition_id are provided', async () => {
-      await expect(
-        service.offer(
-          tenantId,
-          buildDto({
-            credentialDefinitionId,
-          }),
-        ),
       ).rejects.toBeInstanceOf(BadRequestException);
       expect(mockCreateOperation).not.toHaveBeenCalled();
     });
@@ -578,34 +596,121 @@ describe('CredentialOfferService', () => {
     CredentialDefinitionStatus.DRAFT,
     CredentialDefinitionStatus.DEPRECATED,
   ])('definition status %s', (status) => {
-    it.each(['direct', 'profile'] as const)(
-      'rejects %s offers before connector resolution or writes',
-      async (mode) => {
-        mockCredentialDefinitionFindById.mockResolvedValue(
-          buildCredentialDefinition({ status, isActive: true }),
-        );
-        const dto =
-          mode === 'profile'
-            ? buildDto()
-            : buildDto({
-                profileId: undefined,
-                credentialDefinitionId,
-              });
+    it('rejects offers before connector resolution or writes', async () => {
+      mockCredentialDefinitionFindById.mockResolvedValue(
+        buildCredentialDefinition({ status, isActive: true }),
+      );
+      const dto = buildDto();
 
-        await expect(service.offer(tenantId, dto)).rejects.toThrow(
-          'Credential definition must be published before issuing credentials',
-        );
-        expect(mockResolveAdapter).not.toHaveBeenCalled();
-        expect(mockOfferCredential).not.toHaveBeenCalled();
-        expect(mockTransaction).not.toHaveBeenCalled();
-        expect(mockCreateOperation).not.toHaveBeenCalled();
-        expect(mockCredentialCreate).not.toHaveBeenCalled();
-        expect(mockSendInTransaction).not.toHaveBeenCalled();
-      },
-    );
+      await expect(service.offer(tenantId, dto)).rejects.toThrow(
+        'Credential definition must be published before issuing credentials',
+      );
+      expect(mockResolveAdapter).not.toHaveBeenCalled();
+      expect(mockOfferCredential).not.toHaveBeenCalled();
+      expect(mockTransaction).not.toHaveBeenCalled();
+      expect(mockCreateOperation).not.toHaveBeenCalled();
+      expect(mockCredentialCreate).not.toHaveBeenCalled();
+      expect(mockSendInTransaction).not.toHaveBeenCalled();
+    });
   });
 
   describe('profile mode', () => {
+    it('rejects unsupported persisted delivery before writes or backend submission', async () => {
+      mockProfileFindById.mockResolvedValue(
+        Object.assign(buildProfile(), {
+          delivery: { protocol: 'oid4vci' },
+        }),
+      );
+      await expect(service.offer(tenantId, buildDto())).rejects.toThrow(
+        'Profile delivery protocol is not supported',
+      );
+      expect(mockCreateOperation).not.toHaveBeenCalled();
+      expect(mockCredentialCreate).not.toHaveBeenCalled();
+      expect(mockOfferCredential).not.toHaveBeenCalled();
+    });
+    it('inherits delivery protocol from the profile', async () => {
+      await service.offer(tenantId, buildDto());
+      expect(mockExchangeCreate).toHaveBeenCalledWith(
+        expect.objectContaining({ protocol: 'didcomm-v1' }),
+        mockManager,
+      );
+      expect(mockCreateOperation).toHaveBeenCalledWith(
+        expect.objectContaining({
+          request: expect.objectContaining({
+            body: expect.objectContaining({
+              profile_id: profileId,
+              delivery: { connection_id: connectionId },
+            }),
+          }),
+        }),
+        mockManager,
+      );
+    });
+
+    it('rejects profile enum violations before connector resolution or writes', async () => {
+      mockProfileFindById.mockResolvedValue(
+        buildProfile({
+          claims: { properties: { given_name: { enum: ['Bob'] } } },
+        }),
+      );
+      await expect(service.offer(tenantId, buildDto())).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(mockResolveAdapter).not.toHaveBeenCalled();
+      expect(mockTransaction).not.toHaveBeenCalled();
+      expect(mockOfferCredential).not.toHaveBeenCalled();
+    });
+
+    it('rejects offers that omit a required profile claim', async () => {
+      mockProfileFindById.mockResolvedValue(
+        buildProfile({
+          claims: { required: ['family_name'] },
+        }),
+      );
+      await expect(service.offer(tenantId, buildDto())).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(mockOfferCredential).not.toHaveBeenCalled();
+    });
+
+    it('validates empty-string AnonCreds omissions against enum and const rules', async () => {
+      mockProfileFindById.mockResolvedValue(
+        buildProfile({
+          claims: { properties: { family_name: { const: 'Doe' } } },
+        }),
+      );
+      await expect(service.offer(tenantId, buildDto())).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(mockTransaction).not.toHaveBeenCalled();
+      expect(mockOfferCredential).not.toHaveBeenCalled();
+    });
+
+    it('preserves caller-supplied claims in the operation request', async () => {
+      await service.offer(
+        tenantId,
+        buildDto({
+          claims: { given_name: 'Alice', family_name: 'Smith' },
+        }),
+      );
+      expect(mockOfferCredential).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          claims: { given_name: 'Alice', family_name: 'Smith' },
+        }),
+      );
+      expect(mockCreateOperation).toHaveBeenCalledWith(
+        expect.objectContaining({
+          request: expect.objectContaining({
+            body: expect.objectContaining({
+              claims: { given_name: 'Alice', family_name: 'Smith' },
+            }),
+          }),
+        }),
+        expect.anything(),
+      );
+    });
+
     it('uses the definition binding for a profile without copied connector fields', async () => {
       await service.offer(tenantId, buildDto());
 
@@ -704,81 +809,15 @@ describe('CredentialOfferService', () => {
       );
       expect(mockCreateOperation).not.toHaveBeenCalled();
     });
-
-    it('merges profile defaults into submitted attributes before validating', async () => {
-      mockHas.mockReturnValue(true);
-
-      await service.offer(
-        tenantId,
-        buildDto({
-          credential: { credentialSubject: { given_name: 'Alice' } },
-        }),
-      );
-
-      expect(mockValidateAttributes).toHaveBeenCalledWith(
-        { attr_names: ['given_name'] },
-        expect.arrayContaining([
-          { name: 'given_name', value: 'Alice' },
-          { name: 'family_name', value: 'Doe' },
-        ]),
-      );
-    });
   });
 
-  describe('legacy credential_definition_id mode', () => {
-    const legacyDto = (): OfferCredentialRequestDto =>
-      buildDto({
-        profileId: undefined,
-        credentialDefinitionId,
-      });
-
-    it('infers format from the stored definition', async () => {
-      await service.offer(tenantId, legacyDto());
-      expect(mockOfferCredential).toHaveBeenCalledWith(
-        expect.anything(),
-        expect.objectContaining({
-          format: PortCredentialFormat.AnonCreds,
-          connectionId: 'backend-connection',
-          credentialDefinitionId: externalCredentialDefinitionId,
-        }),
-      );
-    });
-
-    it('resolves a direct offer using the definition connector binding', async () => {
-      const boundConnectorId = '123e4567-e89b-12d3-a456-426614174014';
-      mockCredentialDefinitionFindById.mockResolvedValue(
-        buildCredentialDefinition({ connectorId: boundConnectorId }),
-      );
-      await service.offer(tenantId, legacyDto());
-
-      expect(mockResolveAdapter).toHaveBeenCalledWith(
-        tenantId,
-        PortCredentialFormat.AnonCreds,
-        { connectorId: boundConnectorId },
-      );
-    });
-
-    it.each([null, undefined])(
-      'rejects a direct offer for an unbound definition (%s)',
-      async (connectorId) => {
-        mockCredentialDefinitionFindById.mockResolvedValue(
-          buildCredentialDefinition({ connectorId }),
-        );
-
-        await expect(service.offer(tenantId, legacyDto())).rejects.toThrow(
-          'Credential definition is not ready for issuance',
-        );
-        expect(mockResolveAdapter).not.toHaveBeenCalled();
-        expect(mockTransaction).not.toHaveBeenCalled();
-      },
-    );
-
+  describe('profile definition binding', () => {
     it('does not fall back when the bound connector is unavailable', async () => {
       mockResolveAdapter.mockRejectedValue(
         new ConnectorUnavailableError('Bound connector is unavailable'),
       );
 
-      await expect(service.offer(tenantId, legacyDto())).rejects.toThrow(
+      await expect(service.offer(tenantId, buildDto())).rejects.toThrow(
         BadRequestException,
       );
       expect(mockResolveAdapter).toHaveBeenCalledTimes(1);
@@ -790,28 +829,28 @@ describe('CredentialOfferService', () => {
       expect(mockTransaction).not.toHaveBeenCalled();
     });
 
-    it('throws 404 when the credential definition is not found', async () => {
+    it('throws 400 when the credential definition is not found', async () => {
       mockCredentialDefinitionFindById.mockResolvedValue(null);
 
-      await expect(service.offer(tenantId, legacyDto())).rejects.toBeInstanceOf(
-        NotFoundException,
+      await expect(service.offer(tenantId, buildDto())).rejects.toBeInstanceOf(
+        BadRequestException,
       );
     });
 
-    it('throws 404 when the credential definition belongs to another tenant', async () => {
+    it('throws 400 when the credential definition belongs to another tenant', async () => {
       mockCredentialDefinitionFindById.mockResolvedValue(
         buildCredentialDefinition({ tenantId: 'other-tenant' }),
       );
 
-      await expect(service.offer(tenantId, legacyDto())).rejects.toBeInstanceOf(
-        NotFoundException,
+      await expect(service.offer(tenantId, buildDto())).rejects.toBeInstanceOf(
+        BadRequestException,
       );
     });
 
-    it('resolves the credential definition directly with no profile defaults', async () => {
-      await service.offer(tenantId, legacyDto());
+    it('links the credential to its profile', async () => {
+      await service.offer(tenantId, buildDto());
 
-      expect(mockProfileFindById).not.toHaveBeenCalled();
+      expect(mockProfileFindById).toHaveBeenCalled();
       expect(mockResolveAdapter).toHaveBeenCalledWith(
         tenantId,
         PortCredentialFormat.AnonCreds,
@@ -819,8 +858,8 @@ describe('CredentialOfferService', () => {
       );
       expect(mockCredentialCreate).toHaveBeenCalledWith(
         expect.objectContaining({
-          issuanceProfileId: null,
-          metadata: { credentialDefinitionId },
+          issuanceProfileId: profileId,
+          metadata: {},
         }),
         mockManager,
       );
@@ -853,7 +892,7 @@ describe('CredentialOfferService', () => {
     });
   });
 
-  describe('attribute + format validation', () => {
+  describe('format validation', () => {
     it('throws 400 when the resolved format has no port mapping', async () => {
       mockCredentialDefinitionFindById.mockResolvedValue(
         buildCredentialDefinition({
@@ -865,27 +904,6 @@ describe('CredentialOfferService', () => {
         BadRequestException,
       );
       expect(mockCreateOperation).not.toHaveBeenCalled();
-    });
-
-    it('throws 400 when attribute validation fails', async () => {
-      mockHas.mockReturnValue(true);
-      mockValidateAttributes.mockReturnValue([
-        { path: 'given_name', message: 'is required' },
-      ]);
-
-      await expect(service.offer(tenantId, buildDto())).rejects.toBeInstanceOf(
-        BadRequestException,
-      );
-      expect(mockCreateOperation).not.toHaveBeenCalled();
-    });
-
-    it('skips attribute validation entirely for a format with no registered validator', async () => {
-      mockHas.mockReturnValue(false);
-
-      await service.offer(tenantId, buildDto());
-
-      expect(mockValidatorResolve).not.toHaveBeenCalled();
-      expect(mockCreateOperation).toHaveBeenCalled();
     });
   });
 

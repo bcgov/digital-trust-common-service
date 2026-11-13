@@ -14,7 +14,7 @@ import { ApiError } from '@/lib/api/errors';
 import { useCreateIssuanceProfile } from '@/lib/api/queries/issuance-profiles';
 import type { CredentialDefinition } from '@/lib/api/resources/credential-definitions';
 
-const PROTOCOLS = ['auto', 'didcomm'] as const;
+const PROTOCOLS = ['didcomm-v1'] as const;
 const FORMAT_KEYS = {
   anoncreds: 'credentialDefinitions.setup.anoncreds',
   'sd-jwt': 'credentialDefinitions.formats.sdJwt',
@@ -34,7 +34,8 @@ export function CreateIssuanceProfileButton({
   const [name, setName] = useState('');
   const [version, setVersion] = useState('');
   const [definitionId, setDefinitionId] = useState('');
-  const [protocol, setProtocol] = useState<(typeof PROTOCOLS)[number]>('auto');
+  const [protocol, setProtocol] =
+    useState<(typeof PROTOCOLS)[number]>('didcomm-v1');
   const mutation = useCreateIssuanceProfile(tenantId);
   const eligibleDefinitions = definitions.filter(
     (definition) =>
@@ -62,7 +63,7 @@ export function CreateIssuanceProfileButton({
     setName('');
     setVersion('');
     setDefinitionId('');
-    setProtocol('auto');
+    setProtocol('didcomm-v1');
     mutation.reset();
   };
 
@@ -92,8 +93,7 @@ export function CreateIssuanceProfileButton({
                 name: name.trim(),
                 version: version.trim(),
                 credential_definition_id: definitionId,
-                protocol_hint: protocol,
-                attribute_schema: {},
+                delivery: { protocol },
               },
               {
                 onSuccess: () => {
@@ -102,7 +102,7 @@ export function CreateIssuanceProfileButton({
                   setName('');
                   setVersion('');
                   setDefinitionId('');
-                  setProtocol('auto');
+                  setProtocol('didcomm-v1');
                 },
               },
             );

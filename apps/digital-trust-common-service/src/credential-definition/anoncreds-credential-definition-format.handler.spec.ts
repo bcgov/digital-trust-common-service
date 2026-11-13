@@ -119,20 +119,47 @@ describe('credential definition format options', () => {
     ).toThrow(BadRequestException);
   });
 
-  it('accepts free-form schema definitions after AnonCreds format validation', () => {
+  it('normalizes semantic AnonCreds attribute types', () => {
     const schema = {
       definition: {
         schema_name: 'employee',
         schema_version: '1.0',
-        attr_names: ['name'],
+        attributes: { name: 'string', age: 'integer' },
       },
     };
 
-    expect(anonCreds.normalizeSchema(schema)).toEqual(schema);
+    expect(anonCreds.normalizeSchema(schema)).toEqual({
+      definition: {
+        schema_name: 'employee',
+        schema_version: '1.0',
+        type: 'object',
+        properties: {
+          name: { type: 'string' },
+          age: { type: 'integer' },
+        },
+      },
+    });
     expect(formatValidators.resolve).toHaveBeenCalledWith(
       CredentialFormat.AnonCreds,
     );
-    expect(validateSchema).toHaveBeenCalledWith(schema.definition);
+    expect(validateSchema).toHaveBeenCalledWith(
+      expect.objectContaining({
+        schema_name: 'employee',
+        properties: {
+          name: { type: 'string' },
+          age: { type: 'integer' },
+        },
+      }),
+    );
+    expect(() =>
+      anonCreds.normalizeSchema({
+        definition: {
+          schema_name: 'employee',
+          schema_version: '1.0',
+          attributes: { age: 'date' },
+        },
+      }),
+    ).toThrow(BadRequestException);
   });
 
   it('rejects inline schema definitions that fail AnonCreds validation', () => {
@@ -156,7 +183,7 @@ describe('credential definition format options', () => {
     const schema = {
       schema_name: 'employee',
       schema_version: '1.0',
-      attr_names: ['name'],
+      attributes: { name: 'integer' },
     };
     const dto = {
       name: 'Employee',
@@ -167,7 +194,12 @@ describe('credential definition format options', () => {
     await expect(anonCreds.prepare('tenant', dto)).resolves.toEqual({
       connectorId: 'connector-id',
       connectorType: CredentialDefinitionConnectorType.TRACTION,
-      schemaDefinition: schema,
+      schemaDefinition: {
+        schema_name: 'employee',
+        schema_version: '1.0',
+        type: 'object',
+        properties: { name: { type: 'integer' } },
+      },
       registration: {
         issuerId: 'did:indy:issuer',
         schema: {},
@@ -206,7 +238,8 @@ describe('credential definition format options', () => {
     expect(validateSchema).toHaveBeenCalledWith({
       schema_name: 'employee',
       schema_version: '1.0',
-      attr_names: ['name'],
+      type: 'object',
+      properties: { name: { type: 'string' } },
     });
   });
 

@@ -76,7 +76,10 @@ export const mockCredentialDefinitions: CredentialDefinition[] = [
     registration_state: 'ready',
     external_id: 'employee-badge-1-0',
     schema_definition: {
-      attr_names: ['employee_id', 'department'],
+      properties: {
+        employee_id: { type: 'string' },
+        department: { type: 'string' },
+      },
       schema_name: 'Employee badge',
       schema_version: '1.0',
       version: '1.0',
@@ -103,7 +106,7 @@ export const mockCredentialDefinitions: CredentialDefinition[] = [
     registration_state: 'unverified',
     external_id: null,
     schema_definition: {
-      attr_names: ['visitor_name'],
+      properties: { visitor_name: { type: 'string' } },
       schema_name: 'Visitor pass',
       schema_version: '1.0',
       version: '1.0',
@@ -355,6 +358,12 @@ export const handlers = [
     `${API_BASE_PATH}/tenants/:id/profiles/issuance`,
     async ({ params, request }) => {
       const body = (await request.json()) as CreateIssuanceProfileRequest;
+      if (body.delivery?.protocol !== 'didcomm-v1') {
+        return HttpResponse.json(
+          { message: 'A supported delivery protocol is required.' },
+          { status: 400 },
+        );
+      }
       const definition = credentialDefinitions.find(
         (item) =>
           item.id === body.credential_definition_id &&
@@ -391,6 +400,8 @@ export const handlers = [
         id: crypto.randomUUID(),
         tenant_id: String(params.id),
         status: 'draft',
+        claims: body.claims ?? {},
+        delivery: body.delivery ?? { protocol: 'didcomm-v1' },
         can_delete: true,
         created_at: new Date().toISOString(),
       };

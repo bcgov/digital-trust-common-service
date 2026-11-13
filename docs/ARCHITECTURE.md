@@ -414,30 +414,24 @@ POST /api/v1/tenants/:tenantId/profiles/verification   → Create verification p
 GET  /api/v1/issuers/:tenantSlug/.well-known/openid-credential-issuer → Public discovery
 ```
 
+Issuance-profile create, update, publish, and deprecate return the profile
+directly. Profile reads and mutations use the same profile representation.
+
 **Request body example (issue via profile — DIDComm delivery):**
 ```json
 {
   "profile_id": "drivers-license/1.0",
-  "delivery": { "protocol": "didcomm-v1", "connection_id": "local-uuid" },
-  "credential": {
-    "credentialSubject": { "given_name": "Alice", "family_name": "Smith", "birth_date": "1995-03-15" }
+  "delivery": { "connection_id": "local-uuid" },
+  "claims": {
+    "given_name": "Alice", "family_name": "Smith", "birth_date": "1995-03-15"
   }
 }
 ```
 
 OID4VCI delivery is a future extension, not selected by omitting a connection.
-Only explicit `delivery.protocol: didcomm-v1` is currently accepted.
-
-**Direct definition mode** (format inferred from tenant-owned metadata):
-```json
-{
-  "delivery": { "protocol": "didcomm-v1", "connection_id": "local-uuid" },
-  "credential_definition_id": "uuid",
-  "credential": {
-    "credentialSubject": { "given_name": "Alice", "birth_date": "1995-03-15" }
-  }
-}
-```
+The published profile supplies `delivery.protocol: didcomm-v1`; offers supply
+only the recipient-specific `delivery.connection_id`. Direct-definition offers
+and caller-selected offer protocols are not supported.
 
 ### Credential Profiles
 
@@ -475,11 +469,13 @@ graph TD
 - **Lifecycle (draft → published → deprecated)**: prevents issuing against incomplete or retired configurations
 - **Verification profiles reference issuance profiles**: ensures requested attributes actually exist in the issued credential
 - **Public discovery**: verification profiles can be marked public for external verifier consumption
-- **Protocol hint**: profiles declare preferred delivery protocol; adapters honor or auto-detect
+- **Issuance delivery**: profiles declare explicit `delivery.protocol`; offers inherit it
+- **Claim overlays**: profiles add required claims or tighten allowed values
+  from the credential definition; see [profile creation](DEVELOPER.md#creating-an-issuance-profile)
 
 ### Multi-Protocol Delivery (DIDComm + OID4VCI/VP)
 
-The offer contract separates unsigned proposed content (`credential.credentialSubject`)
+The offer contract separates unsigned JSON-object claims (`claims`)
 from delivery. It infers format from the stored definition/profile and currently
 supports DIDComm v1 delivery only. AnonCreds scalar claims map to legacy preview
 attributes; the normalized input does not imply W3C-form AnonCreds output.
@@ -487,7 +483,7 @@ OID4VCI/VP remain future capabilities:
 
 | | DIDComm | OID4VCI / OID4VP |
 |---|---|---|
-| **When** | Explicit `delivery.protocol: didcomm-v1` for offers | Future explicit protocol |
+| **When** | Profile `delivery.protocol: didcomm-v1` | Future explicit protocol |
 | **Prerequisite** | Existing peer connection (CA-06) | None — generates one-time URI |
 | **Issuance flow** | Issuer pushes offer → holder agent auto-negotiates | Holder opens `credential_offer_uri` → authorization → retrieves credential |
 | **Verification flow** | Verifier sends proof request → holder agent responds | Holder opens `authorization_request_uri` → presents via wallet |
@@ -532,7 +528,7 @@ sequenceDiagram
     Controller->>ProfileSvc: resolve("drivers-license/1.0", tenantId)
     ProfileSvc-->>Controller: IssuanceProfile {credential_definition_id}
     Controller->>Controller: Resolve credential definition format and connector binding
-    Controller->>Controller: Validate attributes against profile.attribute_schema
+    Controller->>Controller: Validate claims against definition and profile overlay
     Controller->>Registry: resolve(connector_id, "anoncreds")
     Registry-->>Controller: TractionAdapter instance
     Controller->>Adapter: offerCredential(request)
@@ -663,7 +659,7 @@ sequenceDiagram
 
     Client->>API: POST /credentials/offer
     API->>PG: Resolve IssuanceProfile (if profile_id provided)
-    Note over API,PG: Profile → credential_definition + format + connector + defaults
+    Note over API,PG: Profile → definition + connector + delivery + claim overlay
     API->>Traction: Send credential offer (via resolved connector)
     Traction-->>API: 200 (exchange_id, state: offer_sent)
     API->>PG: BEGIN transaction
@@ -1445,11 +1441,10 @@ erDiagram
         uuid credential_definition_id FK
         string name
         string version
-        jsonb attribute_schema
-        jsonb defaults
+        jsonb claims
         jsonb display
         jsonb metadata
-        enum protocol_hint
+        jsonb delivery
         enum status
     }
 

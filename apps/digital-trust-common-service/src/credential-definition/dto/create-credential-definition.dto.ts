@@ -152,7 +152,7 @@ export class CreateCredentialDefinitionDto {
       },
     ],
     description:
-      'Supply exactly one of id or definition. Drafts require definition. AnonCreds definitions require schema_name, schema_version, and attr_names.',
+      'Supply exactly one of id or definition. Drafts require definition. AnonCreds definitions require schema_name, schema_version, and a flat attributes map from names to semantic types.',
   })
   @IsDefined()
   @IsObject()

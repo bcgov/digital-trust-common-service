@@ -20,6 +20,19 @@ export interface CredentialDefinitionFormatHandler {
   readonly format: CredentialDefinitionFormat;
   normalizeOptions(options: unknown): Record<string, unknown>;
   normalizeSchema(schema: RegistrationSchema): RegistrationSchema;
+  getClaimsSchema(
+    schemaDefinition: Readonly<Record<string, unknown>>,
+  ): Record<string, unknown>;
+  getMandatoryClaims(
+    schemaDefinition: Readonly<Record<string, unknown>>,
+  ): readonly string[];
+  prepareClaimsForValidation?(
+    schemaDefinition: Readonly<Record<string, unknown>>,
+    claims: Readonly<Record<string, unknown>>,
+  ): {
+    claims: Record<string, unknown>;
+    omittedClaims: string[];
+  };
   prepare(
     tenantId: string,
     dto: CreateCredentialDefinitionDto,
