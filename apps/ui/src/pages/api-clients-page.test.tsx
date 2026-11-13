@@ -289,6 +289,12 @@ describe('ApiClientsPage', () => {
         client_id: 'dtsc-platform-admin',
         name: 'Platform administration',
       },
+      {
+        ...existing,
+        client_id: 'dtsc-grafana',
+        name: 'Tenant log viewer',
+        is_public: true,
+      },
     ];
     server.use(http.get(clientsPath, () => HttpResponse.json(systemClients)));
     await renderPage();
