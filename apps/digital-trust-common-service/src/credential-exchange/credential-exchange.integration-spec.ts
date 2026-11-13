@@ -29,8 +29,10 @@ import {
 import { Connector } from '../connector/connector.entity';
 import { Credential, CredentialState } from '../credential/credential.entity';
 import { CredentialDefinitionFormat } from '../credential-definition/credential-definition.entity';
+import { OperationResponseDto } from '../operation/dto/operation-response.dto';
 import { OPERATION_TYPE } from '../operation/operation-type.constants';
 import { Operation, OperationState } from '../operation/operation.entity';
+import { OperationRepository } from '../operation/operation.repository';
 import { OperationService } from '../operation/operation.service';
 import { Tenant } from '../tenant/tenant.entity';
 
@@ -191,11 +193,69 @@ describe('credential exchanges (integration)', () => {
     await app?.close();
   });
 
+  it('hydrates batch item steps and fingerprints step-only exchange progress', async () => {
+    const parent = await operations.createOperation({
+      tenantId: tenant.id,
+      type: OPERATION_TYPE.CREDENTIAL_OFFER_BATCH,
+      request: { method: 'POST', path: '/batch', body: {} },
+    });
+    await db.getRepository(Operation).update(offer.id, {
+      batchId: parent.id,
+      state: OperationState.PROCESSING,
+    });
+    const repository = app.get(OperationRepository);
+    const before = await repository.findBatchStateFingerprintForTenant(
+      parent.id,
+      tenant.id,
+    );
+    const page = await operations.listItemsForTenant(tenant.id, parent.id);
+    expect(page.data).toHaveLength(1);
+    expect(OperationResponseDto.fromEntity(page.data[0]).steps).toEqual([
+      { type: 'credential-offer.send', state: 'completed' },
+      { type: 'credential-request.receive', state: 'completed' },
+      { type: 'credential.issue', state: 'waiting' },
+    ]);
+    await db
+      .getRepository(CredentialExchange)
+      .update(exchange.id, { issueSubmission: 'submitting' });
+    expect(
+      await repository.findBatchStateFingerprintForTenant(parent.id, tenant.id),
+    ).not.toBe(before);
+    const progressed = await operations.listItemsForTenant(
+      tenant.id,
+      parent.id,
+    );
+    expect(
+      OperationResponseDto.fromEntity(progressed.data[0]).steps[2],
+    ).toEqual({
+      type: 'credential.issue',
+      state: 'processing',
+    });
+  });
+
   it('issues once, completes both action and offer, then reconciles holder acknowledgement', async () => {
+    expect(
+      OperationResponseDto.fromEntity(
+        await operations.getForTenant(tenant.id, offer.id),
+      ).steps,
+    ).toEqual([
+      { type: 'credential-offer.send', state: 'completed' },
+      { type: 'credential-request.receive', state: 'completed' },
+      { type: 'credential.issue', state: 'pending' },
+    ]);
     const action = await service.issue(tenant.id, exchange.id);
     expect(action.type).toBe(OPERATION_TYPE.CREDENTIAL_ISSUE);
     expect(action.exchangeId).toBe(exchange.id);
     expect(action.state).toBe(OperationState.COMPLETED);
+    expect(
+      OperationResponseDto.fromEntity(
+        await operations.getForTenant(tenant.id, offer.id),
+      ).steps,
+    ).toEqual([
+      { type: 'credential-offer.send', state: 'completed' },
+      { type: 'credential-request.receive', state: 'completed' },
+      { type: 'credential.issue', state: 'completed' },
+    ]);
     expect((await operations.getForTenant(tenant.id, offer.id)).state).toBe(
       OperationState.COMPLETED,
     );

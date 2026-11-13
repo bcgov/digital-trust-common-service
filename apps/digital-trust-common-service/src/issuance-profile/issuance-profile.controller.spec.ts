@@ -1,7 +1,14 @@
 import { JwtGuard, ScopeGuard, TenantGuard, type AuthContext } from '@app/auth';
 import { CanActivate } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
+import { instanceToPlain } from 'class-transformer';
 
+import { OperationResponseDto } from '../operation/dto/operation-response.dto';
+import {
+  OPERATION_TYPE as OperationType,
+  type OperationType as OperationTypeValue,
+} from '../operation/operation-type.constants';
+import { Operation, OperationState } from '../operation/operation.entity';
 import { TenantTierRateLimitGuard } from '../rate-limit/tenant-tier-rate-limit.guard';
 import { TenantStatusGuard } from '../tenant/tenant-status.guard';
 import { TenantStatus } from '../tenant/tenant.entity';
@@ -12,7 +19,6 @@ import { UpdateIssuanceProfileDto } from './dto/update-issuance-profile.dto';
 import { IssuanceProfileController } from './issuance-profile.controller';
 import {
   IssuanceProfile,
-  IssuanceProfileProtocolHint,
   IssuanceProfileStatus,
 } from './issuance-profile.entity';
 import { IssuanceProfileService } from './issuance-profile.service';
@@ -55,11 +61,12 @@ describe('IssuanceProfileController', () => {
     version: '1.0',
     description: undefined,
     credentialDefinitionId: '123e4567-e89b-12d3-a456-426614174002',
-    attributeSchema: { given_name: { type: 'string', required: true } },
-    defaults: undefined,
+    claimConstraints: {
+      '/given_name': { value_type: 'string', required: true },
+    },
     display: undefined,
     metadata: {},
-    protocolHint: IssuanceProfileProtocolHint.AUTO,
+    delivery: { protocol: 'didcomm-v1' },
     status: IssuanceProfileStatus.DRAFT,
     createdAt: new Date(),
     updatedAt: new Date(),
@@ -75,6 +82,19 @@ describe('IssuanceProfileController', () => {
       deleted_at: new Date(),
     },
   } as IssuanceProfile;
+
+  const completed = (
+    type: OperationTypeValue,
+    profile = mockProfile,
+  ): Operation =>
+    Object.assign(new Operation(), {
+      id: 'operation-id',
+      type,
+      state: OperationState.COMPLETED,
+      result: instanceToPlain(IssuanceProfileResponseDto.fromEntity(profile)),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
 
   beforeEach(async () => {
     mockCreate = jest.fn();
@@ -143,17 +163,17 @@ describe('IssuanceProfileController', () => {
         name: mockProfile.name,
         version: mockProfile.version,
         credentialDefinitionId: mockProfile.credentialDefinitionId,
-        attributeSchema: mockProfile.attributeSchema,
+        claimConstraints: mockProfile.claimConstraints,
+        delivery: mockProfile.delivery,
       };
 
-      mockCreate.mockResolvedValue(mockProfile);
+      const operation = completed(OperationType.ISSUANCE_PROFILE_CREATE);
+      mockCreate.mockResolvedValue(operation);
 
       const result = await controller.create(tenantId, dto, auth);
 
       expect(mockCreate).toHaveBeenCalledWith(tenantId, dto, auth);
-      expect(result).toEqual(
-        IssuanceProfileResponseDto.fromEntity(mockProfile),
-      );
+      expect(result).toEqual(OperationResponseDto.fromEntity(operation));
     });
   });
 
@@ -246,12 +266,16 @@ describe('IssuanceProfileController', () => {
       const dto: UpdateIssuanceProfileDto = { description: 'Updated' };
       const updated = { ...mockProfile, description: 'Updated' };
 
-      mockUpdate.mockResolvedValue(updated);
+      const operation = completed(
+        OperationType.ISSUANCE_PROFILE_UPDATE,
+        updated,
+      );
+      mockUpdate.mockResolvedValue(operation);
 
       const result = await controller.update(tenantId, id, dto, auth);
 
       expect(mockUpdate).toHaveBeenCalledWith(tenantId, id, dto, auth);
-      expect(result).toEqual(IssuanceProfileResponseDto.fromEntity(updated));
+      expect(result).toEqual(OperationResponseDto.fromEntity(operation));
     });
   });
 
@@ -264,12 +288,16 @@ describe('IssuanceProfileController', () => {
         status: IssuanceProfileStatus.PUBLISHED,
       };
 
-      mockPublish.mockResolvedValue(published);
+      const operation = completed(
+        OperationType.ISSUANCE_PROFILE_PUBLISH,
+        published,
+      );
+      mockPublish.mockResolvedValue(operation);
 
       const result = await controller.publish(tenantId, id, auth);
 
       expect(mockPublish).toHaveBeenCalledWith(tenantId, id, auth);
-      expect(result).toEqual(IssuanceProfileResponseDto.fromEntity(published));
+      expect(result).toEqual(OperationResponseDto.fromEntity(operation));
     });
   });
 
@@ -282,12 +310,16 @@ describe('IssuanceProfileController', () => {
         status: IssuanceProfileStatus.DEPRECATED,
       };
 
-      mockDeprecate.mockResolvedValue(deprecated);
+      const operation = completed(
+        OperationType.ISSUANCE_PROFILE_DEPRECATE,
+        deprecated,
+      );
+      mockDeprecate.mockResolvedValue(operation);
 
       const result = await controller.deprecate(tenantId, id, auth);
 
       expect(mockDeprecate).toHaveBeenCalledWith(tenantId, id, auth);
-      expect(result).toEqual(IssuanceProfileResponseDto.fromEntity(deprecated));
+      expect(result).toEqual(OperationResponseDto.fromEntity(operation));
     });
   });
 });

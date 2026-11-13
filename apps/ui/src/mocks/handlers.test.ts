@@ -16,6 +16,7 @@ import {
   deleteIssuanceProfile,
   listIssuanceProfiles,
   publishIssuanceProfile,
+  type CreateIssuanceProfileRequest,
 } from '@/lib/api/resources/issuance-profiles';
 
 import { mockCredentialDefinitions } from './handlers';
@@ -48,14 +49,20 @@ const draftRequest: CreateCredentialDefinitionRequest = {
 
 describe('shared issuance-profile mock handlers', () => {
   it('isolates archive and delete operations and retains archived name/version reservations', async () => {
-    const body = {
+    const body: CreateIssuanceProfileRequest = {
       name: 'Lifecycle profile',
       version: '1.0',
       credential_definition_id: publishedId,
-      attribute_schema: {},
+      delivery: { protocol: 'didcomm-v1' },
     };
     const created = await createIssuanceProfile(tenantId, body);
-    const profileId = created.id!;
+    const profileId = created.result.id!;
+    expect(created).toMatchObject({
+      type: 'issuance-profile.create',
+      state: 'completed',
+      steps: [{ type: 'issuance-profile.create', state: 'completed' }],
+      result: { ...body, status: 'draft', claim_constraints: {} },
+    });
     expect((await listIssuanceProfiles(tenantId)).data[0]?.can_delete).toBe(
       true,
     );
@@ -70,7 +77,10 @@ describe('shared issuance-profile mock handlers', () => {
     ).rejects.toMatchObject({ status: 409 });
     await publishIssuanceProfile(tenantId, profileId);
     expect(await archiveIssuanceProfile(tenantId, profileId)).toMatchObject({
-      status: 'deprecated',
+      type: 'issuance-profile.deprecate',
+      state: 'completed',
+      steps: [{ type: 'issuance-profile.deprecate', state: 'completed' }],
+      result: { id: profileId, status: 'deprecated' },
     });
     await expect(createIssuanceProfile(tenantId, body)).rejects.toMatchObject({
       status: 409,
@@ -85,16 +95,17 @@ describe('shared issuance-profile mock handlers', () => {
       name: 'Employee profile',
       version: '1.0',
       credential_definition_id: publishedId,
-      attribute_schema: {},
-      protocol_hint: 'auto',
+      delivery: { protocol: 'didcomm-v1' },
     });
-    const profileId = created.id!;
+    const profileId = created.result.id!;
     await expect(
       publishIssuanceProfile(otherTenantId, profileId),
     ).rejects.toMatchObject({ status: 404 });
     expect(await publishIssuanceProfile(tenantId, profileId)).toMatchObject({
-      status: 'published',
-      tenant_id: tenantId,
+      type: 'issuance-profile.publish',
+      state: 'completed',
+      steps: [{ type: 'issuance-profile.publish', state: 'completed' }],
+      result: { id: profileId, status: 'published', tenant_id: tenantId },
     });
     await expect(
       publishIssuanceProfile(tenantId, profileId),
@@ -106,11 +117,11 @@ describe('shared issuance-profile mock handlers', () => {
       name: 'Employee profile',
       version: '1.0',
       credential_definition_id: publishedId,
-      attribute_schema: {},
+      delivery: { protocol: 'didcomm-v1' },
     });
     await deleteCredentialDefinition(tenantId, publishedId);
     await expect(
-      publishIssuanceProfile(tenantId, created.id!),
+      publishIssuanceProfile(tenantId, created.result.id!),
     ).rejects.toMatchObject({ status: 400 });
   });
 });

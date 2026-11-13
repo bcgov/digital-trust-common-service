@@ -1,11 +1,13 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { Expose } from 'class-transformer';
 
+import type { ClaimConstraints } from '../claim-constraints';
 import {
   IssuanceProfile,
-  IssuanceProfileProtocolHint,
   IssuanceProfileStatus,
 } from '../issuance-profile.entity';
+
+import { IssuanceDeliveryDto } from './issuance-delivery.dto';
 
 export class IssuanceProfileResponseDto {
   @ApiProperty({
@@ -49,20 +51,13 @@ export class IssuanceProfileResponseDto {
   })
   public credentialDefinitionId!: string;
 
-  @Expose({ name: 'attribute_schema' })
+  @Expose({ name: 'claim_constraints' })
   @ApiProperty({
-    name: 'attribute_schema',
-    description: 'Attributes/claims the consumer must supply',
-    example: { given_name: { type: 'string', required: true } },
+    name: 'claim_constraints',
+    description: 'JSON Pointer map of claim constraints and defaults',
+    example: { '/given_name': { value_type: 'string', required: true } },
   })
-  public attributeSchema!: Record<string, unknown>;
-
-  @ApiProperty({
-    description: 'Pre-filled attribute values',
-    required: false,
-    nullable: true,
-  })
-  public defaults?: Record<string, unknown> | null;
+  public claimConstraints!: ClaimConstraints;
 
   @ApiProperty({
     description: 'UI/metadata display hints',
@@ -77,14 +72,11 @@ export class IssuanceProfileResponseDto {
   })
   public metadata!: Record<string, unknown>;
 
-  @Expose({ name: 'protocol_hint' })
   @ApiProperty({
-    name: 'protocol_hint',
-    description: 'Preferred delivery protocol',
-    enum: IssuanceProfileProtocolHint,
-    example: IssuanceProfileProtocolHint.AUTO,
+    description: 'Delivery configuration inherited by offers',
+    type: IssuanceDeliveryDto,
   })
-  public protocolHint!: IssuanceProfileProtocolHint;
+  public delivery!: IssuanceDeliveryDto;
 
   @ApiProperty({
     description: 'Lifecycle status of the profile',
@@ -130,11 +122,10 @@ export class IssuanceProfileResponseDto {
     dto.version = profile.version;
     dto.description = profile.description;
     dto.credentialDefinitionId = profile.credentialDefinitionId;
-    dto.attributeSchema = profile.attributeSchema;
-    dto.defaults = profile.defaults;
+    dto.claimConstraints = profile.claimConstraints;
     dto.display = profile.display;
     dto.metadata = profile.metadata;
-    dto.protocolHint = profile.protocolHint;
+    dto.delivery = profile.delivery;
     dto.status = profile.status;
     dto.canDelete = canDelete;
     dto.createdAt = profile.createdAt;

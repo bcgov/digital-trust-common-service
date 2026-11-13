@@ -79,8 +79,8 @@ export function IssuanceProfilesTable({
                 {profile.version}
               </TableCell>
               <TableCell>
-                {profile.protocol_hint
-                  ? t(`issuanceProfiles.protocols.${profile.protocol_hint}`)
+                {profile.delivery?.protocol
+                  ? t(`issuanceProfiles.protocols.${profile.delivery.protocol}`)
                   : t('issuanceProfiles.unavailable')}
               </TableCell>
               <TableCell className="break-words whitespace-normal">

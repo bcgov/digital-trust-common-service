@@ -18,6 +18,7 @@ import { TenantService } from '../tenant/tenant.service';
 
 import { ListOperationItemsQueryDto } from './dto/list-operation-items-query.dto';
 import { ListOperationsQueryDto } from './dto/list-operations-query.dto';
+import { operationSteps } from './operation-steps';
 import {
   computeOperationExpiresAt,
   isTerminalOperationState,
@@ -149,6 +150,7 @@ export class OperationService {
       throw new NotFoundException('Operation not found');
     }
     const initialState = operation.state;
+    const initialSteps = JSON.stringify(operationSteps(operation));
     while (
       !isTerminalOperationState(operation.state) &&
       Date.now() < deadline
@@ -161,7 +163,10 @@ export class OperationService {
       if (!operation) {
         throw new NotFoundException('Operation not found');
       }
-      if (operation.state !== initialState) {
+      if (
+        operation.state !== initialState ||
+        JSON.stringify(operationSteps(operation)) !== initialSteps
+      ) {
         break;
       }
     }

@@ -5,10 +5,9 @@ import { OfferCredentialRequestDto } from './offer-credential-request.dto';
 
 describe('OfferCredentialRequestDto', () => {
   const payload = () => ({
-    credential_definition_id: '123e4567-e89b-12d3-a456-426614174001',
-    credential: { credentialSubject: { given_name: 'Alice' } },
+    profile_id: 'diploma/1.0',
+    claims: { '/given_name': 'Alice' },
     delivery: {
-      protocol: 'didcomm-v1',
       connection_id: '123e4567-e89b-12d3-a456-426614174000',
     },
   });
@@ -18,7 +17,7 @@ describe('OfferCredentialRequestDto', () => {
       forbidNonWhitelisted: true,
     });
 
-  it('accepts definition mode without caller-supplied format', async () => {
+  it('accepts a profile offer without caller-supplied protocol or format', async () => {
     expect(await check(payload())).toHaveLength(0);
   });
 
@@ -64,39 +63,34 @@ describe('OfferCredentialRequestDto', () => {
     expect(
       await check({
         profile_id: 'employment/1.0',
-        credential: payload().credential,
+        claims: payload().claims,
         delivery: payload().delivery,
       }),
     ).toHaveLength(0);
   });
 
-  it.each(['format', 'connection_id', 'attributes'])(
-    'rejects obsolete top-level %s',
-    async (field) => {
-      expect(
-        await check({ ...payload(), [field]: 'obsolete' }),
-      ).not.toHaveLength(0);
-    },
-  );
+  it.each([
+    'format',
+    'connection_id',
+    'attributes',
+    'credential_definition_id',
+    'credential',
+    'credentialSubject',
+  ])('rejects obsolete top-level %s', async (field) => {
+    expect(await check({ ...payload(), [field]: 'obsolete' })).not.toHaveLength(
+      0,
+    );
+  });
 
   it.each([null, [], 'invalid', undefined])(
-    'rejects invalid credential %p',
-    async (credential) => {
-      expect(await check({ ...payload(), credential })).not.toHaveLength(0);
+    'rejects invalid claims %p',
+    async (claims) => {
+      expect(await check({ ...payload(), claims })).not.toHaveLength(0);
     },
   );
 
-  it.each([null, [], 'invalid', undefined])(
-    'rejects invalid subject %p',
-    async (credentialSubject) => {
-      expect(
-        await check({ ...payload(), credential: { credentialSubject } }),
-      ).not.toHaveLength(0);
-    },
-  );
-
-  it.each(['didcomm-v2', 'oid4vci', undefined])(
-    'rejects unsupported delivery %p',
+  it.each(['didcomm-v1', 'didcomm-v2', 'oid4vci'])(
+    'rejects caller-supplied delivery protocol %p',
     async (protocol) => {
       expect(
         await check({
@@ -111,16 +105,23 @@ describe('OfferCredentialRequestDto', () => {
     expect(
       await check({
         ...payload(),
-        delivery: { protocol: 'didcomm-v1', connection_id: 'invalid' },
+        delivery: { connection_id: 'invalid' },
       }),
     ).not.toHaveLength(0);
   });
 
-  it('rejects unknown nested options and issuer-controlled credential fields', async () => {
+  it.each([undefined, null, '', 123])(
+    'requires profile_id (%p)',
+    async (profile_id) => {
+      expect(await check({ ...payload(), profile_id })).not.toHaveLength(0);
+    },
+  );
+
+  it('rejects the legacy credential wrapper and unknown delivery fields', async () => {
     expect(
       await check({
         ...payload(),
-        credential: { ...payload().credential, proof: {} },
+        credential: { credentialSubject: { given_name: 'Alice' }, proof: {} },
       }),
     ).not.toHaveLength(0);
     expect(

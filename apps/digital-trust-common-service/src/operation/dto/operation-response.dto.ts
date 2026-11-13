@@ -1,11 +1,24 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Expose } from 'class-transformer';
 
+import {
+  operationSteps,
+  OperationStepState,
+  OperationStepType,
+} from '../operation-steps';
 import { OPERATION_TYPE } from '../operation-type.constants';
 import { Operation, OperationState } from '../operation.entity';
 import type { OperationResult } from '../operation.entity';
 
 import { RegistrationProblemDetailsDto } from './registration-problem-details.dto';
+
+export class OperationStepDto {
+  @ApiProperty({ enum: OperationStepType, enumName: 'OperationStepType' })
+  public type!: OperationStepType;
+
+  @ApiProperty({ enum: OperationStepState, enumName: 'OperationStepState' })
+  public state!: OperationStepState;
+}
 
 /**
  * Uniform operation envelope. Deliberately a whitelist rather than the
@@ -42,11 +55,9 @@ export class OperationResponseDto {
   public batchId!: string | null;
 
   @ApiProperty({
-    description: `The operation type. Known values: ${Object.values(
-      OPERATION_TYPE,
-    ).join(
-      ', ',
-    )}. Left open rather than enumerated, since later slices add types.`,
+    description: 'The operation type identifying the action performed',
+    enum: OPERATION_TYPE,
+    enumName: 'OperationType',
     example: OPERATION_TYPE.CREDENTIAL_OFFER,
   })
   public type!: string;
@@ -57,6 +68,27 @@ export class OperationResponseDto {
     example: OperationState.PENDING,
   })
   public state!: OperationState;
+
+  @ApiProperty({
+    type: [OperationStepDto],
+    example: [
+      {
+        type: OperationStepType.OFFER_SEND,
+        state: OperationStepState.COMPLETED,
+      },
+      {
+        type: OperationStepType.HOLDER_REQUEST,
+        state: OperationStepState.WAITING,
+      },
+      {
+        type: OperationStepType.CREDENTIAL_ISSUE,
+        state: OperationStepState.PENDING,
+      },
+    ],
+    description:
+      'Ordered typed steps projected from durable workflow progress. Steps have no operation IDs; batch items remain separate operations. Empty for operation types without defined steps.',
+  })
+  public steps!: OperationStepDto[];
 
   @Expose({ name: 'created_at' })
   @ApiProperty({
@@ -101,6 +133,7 @@ export class OperationResponseDto {
     dto.batchId = operation.batchId ?? null;
     dto.type = operation.type;
     dto.state = operation.state;
+    dto.steps = operationSteps(operation);
     dto.createdAt = operation.createdAt;
     dto.updatedAt = operation.updatedAt;
     dto.result = operation.result ?? null;

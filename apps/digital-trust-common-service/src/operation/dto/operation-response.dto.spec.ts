@@ -1,6 +1,7 @@
 import { instanceToPlain } from 'class-transformer';
 
 import { decodeCursor, encodeCursor } from '../../common/cursor-pagination';
+import { operationSteps } from '../operation-steps';
 import { OPERATION_TYPE } from '../operation-type.constants';
 import { Operation, OperationState } from '../operation.entity';
 
@@ -56,6 +57,7 @@ describe('paginated operation responses', () => {
             batch_id: batchId,
             type: OPERATION_TYPE.CREDENTIAL_OFFER,
             state: OperationState.PENDING,
+            steps: operationSteps(operation),
             created_at: createdAt.toISOString(),
             updated_at: createdAt.toISOString(),
             result: null,
@@ -110,6 +112,7 @@ describe('operation response envelope', () => {
         batch_id: null,
         type: OPERATION_TYPE.CREDENTIAL_OFFER,
         state,
+        steps: operationSteps(operation),
         created_at: createdAt.toISOString(),
         updated_at: updatedAt.toISOString(),
         result,
@@ -138,6 +141,7 @@ describe('operation response envelope', () => {
       batch_id: 'parent',
       type: OPERATION_TYPE.CREDENTIAL_OFFER,
       state: OperationState.PENDING,
+      steps: operationSteps(operation),
       created_at: createdAt.toISOString(),
       updated_at: updatedAt.toISOString(),
       result: null,
@@ -177,6 +181,7 @@ describe('registration operation response', () => {
       'problem_details',
       'result',
       'state',
+      'steps',
       'type',
       'updated_at',
     ]);

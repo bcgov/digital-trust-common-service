@@ -18,6 +18,7 @@ import type { TenantRoleMapping } from '@/lib/api/resources/tenant-roles';
 import type {
   CreateIssuanceProfileRequest,
   IssuanceProfile,
+  IssuanceProfileOperation,
 } from '@/lib/api/resources/issuance-profiles';
 import type { TenantUser } from '@/lib/api/resources/tenant-users';
 import type { Tenant } from '@/lib/api/resources/tenants';
@@ -130,6 +131,26 @@ let issuanceProfiles: IssuanceProfile[] = [];
 
 export function resetIssuanceProfileMocks() {
   issuanceProfiles = [];
+}
+
+function completedProfileOperation(
+  profile: IssuanceProfile,
+  type:
+    | 'issuance-profile.create'
+    | 'issuance-profile.publish'
+    | 'issuance-profile.deprecate',
+): IssuanceProfileOperation {
+  const now = new Date().toISOString();
+  return {
+    id: crypto.randomUUID(),
+    batch_id: null,
+    type,
+    state: 'completed',
+    steps: [{ type, state: 'completed' }],
+    created_at: now,
+    updated_at: now,
+    result: structuredClone(profile),
+  };
 }
 
 export function resetCredentialDefinitionMocks() {
@@ -355,6 +376,12 @@ export const handlers = [
     `${API_BASE_PATH}/tenants/:id/profiles/issuance`,
     async ({ params, request }) => {
       const body = (await request.json()) as CreateIssuanceProfileRequest;
+      if (body.delivery?.protocol !== 'didcomm-v1') {
+        return HttpResponse.json(
+          { message: 'A supported delivery protocol is required.' },
+          { status: 400 },
+        );
+      }
       const definition = credentialDefinitions.find(
         (item) =>
           item.id === body.credential_definition_id &&
@@ -391,11 +418,15 @@ export const handlers = [
         id: crypto.randomUUID(),
         tenant_id: String(params.id),
         status: 'draft',
+        claim_constraints: body.claim_constraints ?? {},
         can_delete: true,
         created_at: new Date().toISOString(),
       };
       issuanceProfiles.push(profile);
-      return HttpResponse.json(profile, { status: 201 });
+      return HttpResponse.json(
+        completedProfileOperation(profile, 'issuance-profile.create'),
+        { status: 201 },
+      );
     },
   ),
   http.post(
@@ -444,7 +475,9 @@ export const handlers = [
       }
       profile.status = 'published';
       profile.updated_at = new Date().toISOString();
-      return HttpResponse.json(profile);
+      return HttpResponse.json(
+        completedProfileOperation(profile, 'issuance-profile.publish'),
+      );
     },
   ),
   http.post(
@@ -461,7 +494,9 @@ export const handlers = [
         );
       profile.status = 'deprecated';
       profile.updated_at = new Date().toISOString();
-      return HttpResponse.json(profile);
+      return HttpResponse.json(
+        completedProfileOperation(profile, 'issuance-profile.deprecate'),
+      );
     },
   ),
   http.delete(
@@ -594,6 +629,20 @@ export const handlers = [
         batch_id: null,
         type: 'credential-definition.register',
         state: 'pending',
+        steps:
+          body.options.format === 'anoncreds'
+            ? [
+                { type: 'schema.register', state: 'pending' },
+                { type: 'credential-definition.register', state: 'pending' },
+                {
+                  type: 'revocation.setup',
+                  state:
+                    body.options.status?.revocation?.enabled === false
+                      ? 'skipped'
+                      : 'pending',
+                },
+              ]
+            : [{ type: 'credential-definition.register', state: 'pending' }],
         created_at: now,
         updated_at: now,
         result: { credential_definition_id: definition.id },

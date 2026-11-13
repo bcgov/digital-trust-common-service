@@ -136,7 +136,10 @@ an initially empty profile list and supports draft creation, publication, archiv
 `/credential-definitions/:definitionId` view, which shows identity, format, status,
 and schema details with a return link to issuance profiles. Administrators can create
 draft profiles with a name, version, protocol, and published, issuance-ready definition.
-Attributes remain on the definition; the profile sends an empty `attribute_schema`.
+Attributes remain on the definition; creation sends `delivery.protocol: "didcomm-v1"`,
+not legacy `protocol_hint` or `attribute_schema` fields. Optional `claim_constraints`
+can be configured through the API. Create, publish, and archive return completed
+Operations with the profile snapshot in `result`; delete remains a `204` response.
 Name/version conflicts include archived records. Draft rows offer a separate Publish
 profile action with confirmation. Publication rechecks the definition and connector
 on the server before making the profile available for issuance. List responses include

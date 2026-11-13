@@ -291,6 +291,7 @@ export class OperationRepository {
   ): SelectQueryBuilder<Operation> {
     const query = this.repo
       .createQueryBuilder('op')
+      .leftJoinAndSelect('op.exchange', 'exchange')
       .where('op.tenant_id = :tenantId', { tenantId: filters.tenantId });
 
     if (filters.state !== undefined) {
@@ -362,7 +363,7 @@ export class OperationRepository {
   }
 
   /**
-   * Fingerprints tenant-scoped child IDs and states in stable ID order for
+   * Fingerprints tenant-scoped child IDs, states, and exchange progress for
    * long-poll change detection, including changes that leave state counts equal.
    * Empty batches hash an empty string; MD5 is not used for security here.
    */
@@ -372,8 +373,9 @@ export class OperationRepository {
   ): Promise<string> {
     const row = await this.repo
       .createQueryBuilder('op')
+      .leftJoin('op.exchange', 'exchange')
       .select(
-        `md5(COALESCE(string_agg(op.id::text || ':' || op.state::text, ',' ORDER BY op.id), ''))`,
+        `md5(COALESCE(string_agg(op.id::text || ':' || op.state::text || ':' || COALESCE(exchange.state, '') || ':' || COALESCE(exchange.issue_submission, ''), ',' ORDER BY op.id), ''))`,
         'fingerprint',
       )
       .where('op.tenant_id = :tenantId', { tenantId })

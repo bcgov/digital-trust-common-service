@@ -55,10 +55,7 @@
     "unavailable": "Indisponible",
     "definitionsRestricted": "Les noms et formats des définitions de justificatifs nécessitent la portée tenants:admin.",
     "protocols": {
-      "auto": "Auto",
-      "didcomm": "DIDComm",
-      "oid4vci": "OID4VCI",
-      "oid4vp": "OID4VP"
+      "didcomm-v1": "DIDComm v1"
     },
     "statuses": {
       "draft": "Brouillon",

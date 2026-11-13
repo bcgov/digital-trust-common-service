@@ -17,6 +17,10 @@ describe('operation type constants', () => {
       'credential.revoke-batch',
       'presentation.request',
       'connection.create',
+      'issuance-profile.create',
+      'issuance-profile.update',
+      'issuance-profile.publish',
+      'issuance-profile.deprecate',
     ]);
   });
 
@@ -40,9 +44,7 @@ describe('operation type constants', () => {
     });
 
     it.each([
-      // The column is an open varchar and the API contract keeps the type
-      // open, so anything can arrive. Only the declared set may reach a metric
-      // dimension.
+      // Storage remains varchar; only declared types may reach metric labels.
       ['credential.unknown'],
       ['credential.offer '],
       ['CREDENTIAL.OFFER'],

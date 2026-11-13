@@ -9,10 +9,7 @@ import {
   CredentialDefinitionConnectorType,
   CredentialDefinitionFormat,
 } from '../credential-definition/credential-definition.entity';
-import {
-  IssuanceProfileProtocolHint,
-  IssuanceProfileStatus,
-} from '../issuance-profile/issuance-profile.entity';
+import { IssuanceProfileStatus } from '../issuance-profile/issuance-profile.entity';
 import { UI_CLIENT_ID } from '../oauth-client/oauth-client.constants';
 import { OPERATION_TYPE } from '../operation/operation-type.constants';
 import { OperationState } from '../operation/operation.entity';
@@ -277,10 +274,12 @@ export const SEED_ISSUANCE_PROFILES = [
     description: 'Published person credential issuance profile.',
     status: IssuanceProfileStatus.PUBLISHED,
     credentialDefinitionName: 'Person credential',
-    attributeSchema: {
-      attributes: ['given_names', 'family_name', 'birthdate_dateint'],
+    claimConstraints: {
+      '/given_names': { required: true },
+      '/family_name': { required: true },
+      '/birthdate_dateint': { required: true },
     },
-    protocolHint: IssuanceProfileProtocolHint.DIDCOMM,
+    delivery: { protocol: 'didcomm-v1' },
   },
   {
     name: 'employee-badge',
@@ -288,10 +287,12 @@ export const SEED_ISSUANCE_PROFILES = [
     description: 'Draft employee badge issuance profile.',
     status: IssuanceProfileStatus.DRAFT,
     credentialDefinitionName: 'Employee badge',
-    attributeSchema: {
-      attributes: ['employee_id', 'department', 'title'],
+    claimConstraints: {
+      '/employee_id': { required: true },
+      '/department': { required: true },
+      '/title': { required: true },
     },
-    protocolHint: IssuanceProfileProtocolHint.DIDCOMM,
+    delivery: { protocol: 'didcomm-v1' },
   },
 ] as const;
 

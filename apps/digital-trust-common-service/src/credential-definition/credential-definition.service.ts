@@ -476,7 +476,7 @@ export class CredentialDefinitionService {
         request: {
           method: 'POST',
           path: `${API_BASE_PATH}/tenants/${tenantId}/credential-definitions`,
-          body: { name: dto.name, options: { format: dto.options.format } },
+          body: { name: dto.name, options: dto.options },
         },
       },
       manager,

@@ -462,10 +462,7 @@
     "unavailable": "Unavailable",
     "definitionsRestricted": "Credential definition names and formats require tenants:admin access.",
     "protocols": {
-      "auto": "Auto",
-      "didcomm": "DIDComm",
-      "oid4vci": "OID4VCI",
-      "oid4vp": "OID4VP"
+      "didcomm-v1": "DIDComm v1"
     },
     "statuses": {
       "draft": "Draft",

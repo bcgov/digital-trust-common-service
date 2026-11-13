@@ -4,6 +4,7 @@ import { Connector } from '../connector/connector.entity';
 import { ConnectorRepository } from '../connector/connector.repository';
 import { CredentialDefinition } from '../credential-definition/credential-definition.entity';
 import { CredentialDefinitionRepository } from '../credential-definition/credential-definition.repository';
+import { CredentialExchange } from '../credential-exchange/credential-exchange.entity';
 import { IssuanceProfile } from '../issuance-profile/issuance-profile.entity';
 import { IssuanceProfileRepository } from '../issuance-profile/issuance-profile.repository';
 import { OAuthClient } from '../oauth-client/oauth-client.entity';
@@ -29,6 +30,7 @@ export const SEED_ENTITIES = [
   OAuthClient,
   Connection,
   Operation,
+  CredentialExchange,
 ] as const;
 
 export const SEED_REPOSITORY_PROVIDERS = [

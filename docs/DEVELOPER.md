@@ -1420,9 +1420,9 @@ default limit 20 and maximum 100. Cursors use the shared cursor-pagination
 utility.
 
 Status reads accept `Prefer: wait=30` to wait for the requested operation's
-state to change, for standalone operations and batch parents alike. Batch-item
+state or typed steps to change, for standalone operations and batch parents alike. Batch-item
 reads additionally support the same preference, watching the parent and all
-tenant-scoped child states, not just the requested page or state filter.
+tenant-scoped child states and exchange progress, not just the requested page or state filter.
 The wait is capped at 30 seconds; `wait=0` or no wait preference returns
 immediately. Invalid or duplicate wait values return 400. Checks run once per
 second. Terminal operations return immediately. Timeout returns HTTP 200 with
@@ -1433,10 +1433,32 @@ Client disconnects stop further reads and response preparation; database calls
 already in flight may finish, but no connection is held between checks.
 
 Operation representations share six core fields: `id`, `type`, `state`,
-`created_at`, `updated_at`, and `result`. They also include `batch_id`, which
+`created_at`, `updated_at`, and `result`. They also include `steps` and `batch_id`, which
 is null for standalone operations and batch parents and identifies the parent
 for batch children. Credential-registration operations additionally include
 `problem_details`; other operation types omit it.
+
+`steps` is an ordered array of `{ type, state }` projected from the existing
+durable workflow; steps are not child operations and have no IDs or independent
+endpoints. Batch children remain under `/items`. Step types and states are
+published as `OperationStepType` and `OperationStepState` enums.
+
+- AnonCreds registration: `schema.register`, `credential-definition.register`,
+  `revocation.setup`. Resolution may reuse existing artifacts. Revocation setup
+  verifies backend readiness rather than initiating another registry creation;
+  it is `skipped` when revocation is disabled.
+- Local profile mutations: one matching `issuance-profile.*` step.
+- Issuance: `credential-offer.send`, `credential-request.receive`,
+  `credential.issue`. Sending the offer completes only the first step; the
+  original parent remains processing through issuance, including when a separate
+  explicit issue action is needed.
+
+Step states are `pending`, `processing`, `waiting`, `completed`, `failed`, and
+`skipped`. Waiting includes backend endorsement, holder response, and manual
+issuance. Other operation types return an empty array. Terminal exchange failure
+states do not retain the failing stage, so steps remain pending when that stage
+cannot be established; the parent state/result remains authoritative for failure.
+Steps are a current progress view, not a timestamped history.
 
 Non-batch pending and processing reads return `result: null`. Completed results
 contain operation-type-specific data; ordinary failures contain `code` and
@@ -1531,31 +1553,119 @@ For local development without an inbound webhook, use the explicit offer
 reconciliation read below. OID4VCI and VC proof/envelope configuration remain
 out of scope.
 
+### Creating an issuance profile
+
+`POST /api/v1/tenants/:tenantId/profiles/issuance` requires `profiles:manage`.
+The profile inherits its connector and credential format from its tenant-owned
+credential definition. Profiles start as drafts and must be published before use.
+
+```json
+{
+  "name": "employee",
+  "version": "1.0",
+  "credential_definition_id": "<local-definition-uuid>",
+  "delivery": { "protocol": "didcomm-v1" },
+  "claim_constraints": {
+    "/given_name": {
+      "value_type": "string",
+      "required": true,
+      "minLength": 1,
+      "maxLength": 100
+    },
+    "/country": {
+      "value_type": "string",
+      "default": "CA",
+      "enum": ["CA", "US"]
+    }
+  }
+}
+```
+
+`delivery` is required; only `didcomm-v1` is supported. Optional
+`claim_constraints` maps RFC 6901 JSON Pointers to rules, using the same paths
+as the offer's `claims` map. It is not JSON Schema. Supported
+keywords are `value_type`, `format`, `required`, `default`, `enum`, `pattern`,
+`minLength`, `maxLength`, `minimum`, `maximum`, `minItems`, and `maxItems`.
+Types are checked without coercion; `integer` accepts whole JSON numbers.
+Formats (`date`, `date-time`, `email`, `uri`) are enforced for strings.
+Patterns use the linear-time RE2 engine (no lookaround or backreferences),
+with substring matching unless anchored. String lengths count Unicode code points;
+numeric and length bounds are inclusive. Unknown keywords, incompatible rules,
+and invalid defaults are rejected when creating or editing a draft profile.
+Each explicit default is checked after composing its descendant defaults,
+including defaults masked by an ancestor value. Constraints on parent containers
+that depend on caller-provided claims are checked when resolving an offer,
+not against inferred empty-document containers during profile configuration.
+
+Defaults fill missing values, never explicit null or caller-supplied values.
+All defaults are applied before constraints and definition validation.
+Defaults are composed ancestor-first with numeric sibling array indices,
+independently of pointer-map order.
+Missing optional claims skip validation. Pointers support `~0` for `~`, `~1`
+for `/`, and existing array indices. Root pointers and prototype-related path
+segments are rejected. Default insertion creates missing object parents, not
+sparse arrays, and fails if an existing parent is not an object or array.
+There are at most 128 pointers, each at most 1024 characters and 32 segments;
+patterns are at most 1024 characters. Nested paths do not enable nested
+AnonCreds values: that format still accepts flat scalar claims only.
+Optional `display`, `metadata`, and `description` retain their existing purpose.
+Draft edits can replace `claim_constraints` and `delivery`; published profiles
+remain immutable.
+
+All issuance-profile mutations return an Operation envelope, even though they
+complete synchronously. Creation returns HTTP 201; update, publish, and deprecate
+return HTTP 200. The operation has `state: "completed"` and a type from the
+`OperationType` enum: `issuance-profile.create`, `issuance-profile.update`,
+`issuance-profile.publish`, or `issuance-profile.deprecate`. Its `result` contains
+the full profile snapshot in API snake_case form; use `result.id` as the profile
+ID, not the operation's top-level `id`. Reads and lists still return profiles.
+Profile changes and operation persistence commit in one transaction. Validation
+or lifecycle conflicts return an HTTP error without creating an operation.
+Operations use the existing tenant-scoped retrieval and retention rules; profile
+configuration remains after its operation expires. These local operations do
+not create credential exchanges or send DIDComm messages.
+
+This replaces `attribute_schema`, `defaults`, and `protocol_hint` on issuance
+profiles. Those fields are rejected on new requests. The additive migration
+preserves legacy columns for rollback and converts existing defaults into
+escaped pointer rules. Previously unenforced attribute-schema declarations are
+not promoted into new enforcement rules. Existing `auto` and `didcomm` profiles
+become `didcomm-v1`; an `oid4vci` profile blocks migration rather than silently
+changing its protocol. Rollback restores the retained legacy configuration,
+not new constraint edits.
+
 ### Offering a credential
 
 `POST /api/v1/tenants/:tenantId/credentials/offer` requires `credentials:offer`:
 
 ```json
 {
-  "credential_definition_id": "<local-definition-uuid>",
-  "credential": {
-    "credentialSubject": {
-      "given_name": "Alice",
-      "family_name": "Smith",
-      "employee_id": "TEST-001"
-    }
+  "profile_id": "employee/1.0",
+  "claims": {
+    "/given_name": "Alice",
+    "/family_name": "Smith",
+    "/employee_id": "TEST-001"
   },
   "delivery": {
-    "protocol": "didcomm-v1",
     "connection_id": "<local-connection-uuid>"
   }
 }
 ```
 
-Use either `credential_definition_id` or a published `profile_id` (UUID or
-`name/version`), never both. The stored source determines format; identifiers
-are not parsed to guess it. Profile defaults merge into subject claims, with
-explicit claims taking precedence. AnonCreds supports flat strings, finite
+Use a published `profile_id` (UUID or `name/version`). Direct offers using
+`credential_definition_id` are no longer supported. The profile supplies
+`delivery.protocol`; caller-supplied protocol fields are rejected.
+The stored definition determines format; identifiers are not parsed to guess it.
+Profile claim defaults and constraints are applied before definition validation.
+`claims` is a required RFC 6901 pointer-to-value map, not a nested claim document;
+an empty map is allowed when profile defaults supply the necessary values.
+Pointers use the same paths as `claim_constraints`. Invalid, root,
+prototype-related, or overlapping ancestor/descendant pointers are rejected.
+Missing parent containers become objects; arrays are supplied as values rather
+than inferred from numeric path segments. Supplied null, false, zero, and empty
+strings are never replaced with defaults. The old `credential.credentialSubject`
+wrapper is rejected.
+AnonCreds supports flat strings, finite
 numbers, and booleans, converted to string preview attributes. Objects, arrays,
 and null claims are rejected rather than flattened. This unsigned input does
 not select W3C-form AnonCreds or supply a proof.
