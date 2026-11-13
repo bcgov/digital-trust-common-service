@@ -1,18 +1,10 @@
+import { Button, InlineAlert } from '@bcgov/design-system-react-components';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Navigate, useLocation } from 'react-router';
 
 import { BcGovHeader } from '@/components/common/bc-gov-header';
 import { FullPageStatus } from '@/components/common/full-page-status';
-
-import { Button } from '@/components/common/button';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/common/card';
 import { POST_LOGIN_PATH } from '@/lib/auth/constants';
 import { useAuth } from '@/lib/auth/context';
 import { APP_NAME } from '@/lib/constants';
@@ -61,33 +53,36 @@ export function LoginPage() {
         tabIndex={-1}
         className="flex flex-1 items-center justify-center p-4"
       >
-        <Card className="w-full max-w-sm">
-          <CardHeader>
-            <CardTitle>{APP_NAME}</CardTitle>
-            <CardDescription>{t('auth.intro')}</CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-3">
+        <div className="flex w-full max-w-sm flex-col gap-(--layout-margin-medium) rounded-(--layout-border-radius-large) border border-(--surface-color-border-default) bg-(--surface-color-background-white) p-(--layout-padding-medium)">
+          <div className="flex flex-col gap-(--layout-margin-xsmall)">
+            <p className="text-h5 font-bold text-black">{APP_NAME}</p>
+            <p className="text-small-body text-(--typography-color-secondary)">
+              {t('auth.intro')}
+            </p>
+          </div>
+          <div className="flex flex-col gap-(--layout-margin-small) [&>.bcds-react-aria-Button]:w-full">
             <Button
-              className="w-full"
-              disabled={busy}
-              onClick={() => {
+              isDisabled={busy}
+              onPress={() => {
                 void handleLogin();
               }}
             >
               {busy ? t('auth.redirecting') : t('auth.signIn')}
             </Button>
             {loginError && (
-              <p role="alert" className="text-center text-sm text-destructive">
-                {loginError}
-              </p>
+              <InlineAlert
+                variant="danger"
+                role="alert"
+                description={loginError}
+              />
             )}
             {env.VITE_AUTH_MODE === 'mock' && (
-              <p className="text-center text-xs text-muted-foreground">
+              <p className="text-center text-label text-(--typography-color-secondary)">
                 {t('auth.mockMode')}
               </p>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       </main>
     </div>
   );

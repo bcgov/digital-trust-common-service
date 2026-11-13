@@ -6,7 +6,6 @@ import {
   FullPageError,
   FullPageStatus,
 } from '@/components/common/full-page-status';
-import { Button } from '@/components/common/button';
 import { POST_LOGIN_PATH, POST_LOGOUT_PATH } from '@/lib/auth/constants';
 import { useAuth } from '@/lib/auth/context';
 import { AuthProviderError } from '@/lib/auth/errors';
@@ -62,9 +61,12 @@ export function AuthCallbackPage() {
   if (error) {
     return (
       <FullPageError message={error}>
-        <Button asChild variant="outline">
-          <Link to={POST_LOGOUT_PATH}>{t('auth.backToSignIn')}</Link>
-        </Button>
+        <Link
+          to={POST_LOGOUT_PATH}
+          className="bcds-react-aria-Button medium secondary"
+        >
+          {t('auth.backToSignIn')}
+        </Link>
       </FullPageError>
     );
   }

@@ -1,4 +1,7 @@
-import { Loader2 } from 'lucide-react';
+import {
+  InlineAlert,
+  ProgressCircle,
+} from '@bcgov/design-system-react-components';
 import type { ReactNode } from 'react';
 
 /**
@@ -20,11 +23,10 @@ export function FullPageStatus({
       role="status"
       className="flex min-h-svh flex-col items-center justify-center gap-3 p-4 text-center"
     >
-      <Loader2
-        className="size-5 animate-spin text-muted-foreground"
-        aria-hidden="true"
-      />
-      <p className="text-sm text-muted-foreground">{message}</p>
+      <ProgressCircle isIndeterminate aria-label={message} />
+      <p className="text-small-body text-(--typography-color-secondary)">
+        {message}
+      </p>
       {children}
     </div>
   );
@@ -48,9 +50,7 @@ export function FullPageError({
 }) {
   return (
     <div className="flex min-h-svh flex-col items-center justify-center gap-4 p-4 text-center">
-      <p role="alert" className="text-sm text-destructive">
-        {message}
-      </p>
+      <InlineAlert variant="danger" role="alert" description={message} />
       {children}
     </div>
   );
