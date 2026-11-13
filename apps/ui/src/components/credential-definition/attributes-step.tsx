@@ -1,4 +1,8 @@
-import { Button, TextField } from '@bcgov/design-system-react-components';
+import {
+  Button,
+  Select,
+  TextField,
+} from '@bcgov/design-system-react-components';
 import { useId, useState, type KeyboardEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -12,6 +16,7 @@ import { cn } from '@/lib/utils';
 export interface Attribute {
   id: string;
   name: string;
+  type: 'string' | 'integer' | 'number' | 'boolean';
 }
 
 function move<T>(items: T[], from: number, to: number): T[] {
@@ -38,7 +43,10 @@ export function AttributesStep({
   const [overIndex, setOverIndex] = useState<number | null>(null);
 
   const addAttribute = () => {
-    setAttributes([...attributes, { id: `${idPrefix}-${nextId}`, name: '' }]);
+    setAttributes([
+      ...attributes,
+      { id: `${idPrefix}-${nextId}`, name: '', type: 'string' },
+    ]);
     setNextId(nextId + 1);
   };
 
@@ -133,6 +141,33 @@ export function AttributesStep({
                     ),
                   )
                 }
+              />
+              <Select
+                aria-label={t('credentialDefinitions.attributes.type', {
+                  index: index + 1,
+                })}
+                className="w-36"
+                items={(['string', 'integer', 'number', 'boolean'] as const).map(
+                  (type) => ({
+                    id: type,
+                    label: t(`credentialDefinitions.attributes.types.${type}`),
+                  }),
+                )}
+                selectedKey={attribute.type}
+                onSelectionChange={(key) => {
+                  if (
+                    key === 'string' ||
+                    key === 'integer' ||
+                    key === 'number' ||
+                    key === 'boolean'
+                  ) {
+                    setAttributes(
+                      attributes.map((item) =>
+                        item.id === attribute.id ? { ...item, type: key } : item,
+                      ),
+                    );
+                  }
+                }}
               />
               <Button
                 variant="tertiary"

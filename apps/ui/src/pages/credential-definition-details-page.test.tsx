@@ -54,7 +54,7 @@ describe('CredentialDefinitionDetailsPage', () => {
               credential_definition_id: definitionId,
               version: '1.0',
               status: 'published',
-              protocol_hint: 'auto',
+              delivery: { protocol: 'didcomm-v1' },
             },
           ],
         }),

@@ -82,7 +82,7 @@ export class IssuanceProfileController {
   @ApiNotFoundResponse({ description: 'Credential definition not found' })
   @ApiBadRequestResponse({
     description:
-      'attribute_schema is not a subset of the credential definition schema, ' +
+      'Profile claim rules or delivery configuration are invalid, ' +
       'or the credential definition connector binding is missing, unavailable, or incompatible',
   })
   @ApiConflictResponse({
@@ -101,11 +101,10 @@ export class IssuanceProfileController {
           version: '1.0',
           description: "Standard driver's license issuance profile",
           credential_definition_id: '123e4567-e89b-12d3-a456-426614174000',
-          attribute_schema: {
-            given_name: { type: 'string', required: true },
-            family_name: { type: 'string', required: true },
+          claims: {
+            required: ['given_name', 'family_name'],
+            properties: {},
           },
-          protocol_hint: 'auto',
         },
       },
     },
@@ -239,6 +238,7 @@ export class IssuanceProfileController {
   }
 
   @Post(':id/publish')
+  @HttpCode(200)
   @ApiOkResponse({
     description: 'Issuance profile published successfully',
     type: IssuanceProfileResponseDto,
@@ -267,6 +267,7 @@ export class IssuanceProfileController {
   }
 
   @Post(':id/deprecate')
+  @HttpCode(200)
   @ApiOkResponse({
     description: 'Issuance profile deprecated successfully',
     type: IssuanceProfileResponseDto,

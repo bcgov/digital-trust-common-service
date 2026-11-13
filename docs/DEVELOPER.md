@@ -1531,34 +1531,76 @@ For local development without an inbound webhook, use the explicit offer
 reconciliation read below. OID4VCI and VC proof/envelope configuration remain
 out of scope.
 
+### Creating an issuance profile
+
+`POST /api/v1/tenants/:tenantId/profiles/issuance` requires `profiles:manage`.
+The profile inherits its connector and credential format from its tenant-owned
+credential definition. Profiles start as drafts and must be published before use.
+
+```json
+{
+  "name": "employee",
+  "version": "1.0",
+  "credential_definition_id": "<local-definition-uuid>",
+  "claims": {
+    "required": ["given_name"],
+    "properties": {
+      "country": { "enum": ["CA", "US"] }
+    }
+  }
+}
+```
+
+Delivery currently supports `didcomm-v1` and defaults to it when omitted.
+`claims` is an optional profile overlay shaped like the claims document:
+`required` adds required claim names, and `properties.<name>.enum` or `const`
+restricts values. Every claim must exist in the credential definition.
+Definition constraints remain in force; profile rules may only tighten them.
+Format-mandatory claims cannot be made optional. Defaults and other validation
+keywords are not allowed in profile overlays. Optional `display`, `metadata`,
+and `description` retain their existing purpose. Draft edits can replace
+`claims` and `delivery`; published profiles remain immutable.
+
+Create, update, publish, and deprecate return an `IssuanceProfile` directly
+(creation uses HTTP 201; the other mutations use HTTP 200). Delete returns
+HTTP 204.
+
+For AnonCreds, define `schema.definition.attributes` as a flat map of attribute
+names to semantic types, for example `{ "given_name": "string", "age": "integer" }`,
+alongside the native schema name/version metadata. The adapter translates
+semantic values to AnonCreds' flat wire representation, where raw values are
+strings. Other formats may define claims with JSON Schema. Existing profile
+migrations derive `claims.required` from legacy required and optional-attribute
+metadata, and discard legacy defaults; no defaults are applied to offers.
+
 ### Offering a credential
 
 `POST /api/v1/tenants/:tenantId/credentials/offer` requires `credentials:offer`:
 
 ```json
 {
-  "credential_definition_id": "<local-definition-uuid>",
-  "credential": {
-    "credentialSubject": {
-      "given_name": "Alice",
-      "family_name": "Smith",
-      "employee_id": "TEST-001"
-    }
+  "profile_id": "employee/1.0",
+  "claims": {
+    "given_name": "Alice",
+    "family_name": "Smith",
+    "employee_id": "TEST-001"
   },
   "delivery": {
-    "protocol": "didcomm-v1",
     "connection_id": "<local-connection-uuid>"
   }
 }
 ```
 
-Use either `credential_definition_id` or a published `profile_id` (UUID or
-`name/version`), never both. The stored source determines format; identifiers
-are not parsed to guess it. Profile defaults merge into subject claims, with
-explicit claims taking precedence. AnonCreds supports flat strings, finite
-numbers, and booleans, converted to string preview attributes. Objects, arrays,
-and null claims are rejected rather than flattened. This unsigned input does
-not select W3C-form AnonCreds or supply a proof.
+Use a published `profile_id` (UUID or `name/version`). Direct offers using
+`credential_definition_id` are no longer supported. The profile supplies
+`delivery.protocol`; caller-supplied protocol fields are rejected.
+The stored definition determines format; identifiers are not parsed to guess it.
+`claims` is an unsigned JSON object validated against the definition and profile
+overlay; nested objects and arrays are supported when declared by the definition.
+No defaults are applied. AnonCreds supports flat scalar attributes only; its
+adapter converts semantic integer, number, and boolean values to strings and
+sends omitted optional attributes as empty strings. This unsigned input does not
+select W3C-form AnonCreds or supply a proof.
 
 The delivery connection is a tenant-owned local UUID, not Traction's ID. New
 connections pin the connector used to create them. Before offering, the service

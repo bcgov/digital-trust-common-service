@@ -141,7 +141,10 @@ export class MockAdapter implements AgentAdapter {
           ? CredentialExchangeState.CredentialIssued
           : CredentialExchangeState.OfferSent,
         format: req.format,
-        attributes: [...req.attributes],
+        attributes: Object.entries(req.claims).map(([name, value]) => ({
+          name,
+          value: typeof value === 'string' ? value : JSON.stringify(value),
+        })),
         createdAt: timestamp,
         updatedAt: timestamp,
       };
