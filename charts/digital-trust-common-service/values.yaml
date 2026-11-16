@@ -219,6 +219,88 @@ logGateway:
   # -- Affinity for log gateway pods
   affinity: {}
 
+# Tenant-facing Grafana for viewing a tenant's own service and agent logs. Users
+# sign in through this service's OIDC provider and Grafana forwards their
+# bearer token to the log gateway, which scopes every query to the token's
+# tenant. The UI lock-down below is usability only; isolation is enforced by
+# the token, the gateway and Loki. Single replica: state lives in an emptyDir.
+grafana:
+  # -- Deploy the tenant Grafana. Needs `logGateway.enabled`,
+  # `config.APP_PUBLIC_URL`, `config.LOG_GATEWAY_AUDIENCE` and `route.host`.
+  enabled: false
+  image:
+    # -- Grafana image registry
+    registry: docker.io
+    # -- Grafana image repository
+    repository: grafana/grafana
+    # -- Grafana image tag
+    tag: 13.3.1
+    # -- Grafana image pull policy
+    pullPolicy: IfNotPresent
+  service:
+    # -- Grafana Service type
+    type: ClusterIP
+    # -- Grafana Service port exposed to the cluster
+    port: 3000
+    # -- Grafana container port
+    targetPort: 3000
+  oidc:
+    # -- client_id Grafana presents to the OIDC provider. Register a public
+    # (PKCE) client under this id with redirect URI
+    # `https://<grafana.route.host>/login/generic_oauth`.
+    clientId: dtsc-grafana
+  route:
+    # -- Expose Grafana through an OpenShift Route (re-encrypted to the pod, HTTP
+    # redirected)
+    enabled: true
+    # -- Tenant Grafana hostname; becomes Grafana's `root_url`. Required.
+    host: ""
+    # -- Annotations for the Route. The router's default timeout is 30s, which
+    # would cut off a query the gateway still allows; keep this above the
+    # datasource's 70s.
+    annotations:
+      haproxy.router.openshift.io/timeout: 75s
+  # -- Resource requests and limits for the Grafana container. It idles near
+  # 170Mi with only the Loki plugin running; 512Mi is Grafana's documented
+  # minimum and leaves room for logs panels of up to 1000 lines each.
+  resources:
+    requests:
+      cpu: 50m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  # -- Liveness probe for the Grafana container
+  livenessProbe:
+    httpGet:
+      path: /api/health
+      port: https
+      scheme: HTTPS
+    initialDelaySeconds: 30
+    periodSeconds: 15
+    timeoutSeconds: 3
+    failureThreshold: 3
+  # -- Readiness probe for the Grafana container
+  readinessProbe:
+    httpGet:
+      path: /api/health
+      port: https
+      scheme: HTTPS
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 3
+    failureThreshold: 3
+  # -- Annotations added to Grafana pods
+  podAnnotations: {}
+  # -- Labels added to Grafana pods
+  podLabels: {}
+  # -- Node selector for Grafana pods
+  nodeSelector: {}
+  # -- Tolerations for Grafana pods
+  tolerations: []
+  # -- Affinity for Grafana pods
+  affinity: {}
+
 # OpenShift Route (default exposure mechanism on BC Gov clusters).
 route:
   # -- Expose the service via an OpenShift Route

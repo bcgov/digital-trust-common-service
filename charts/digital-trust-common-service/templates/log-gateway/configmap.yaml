@@ -161,9 +161,13 @@ data:
                       # still sees the caller's token while Loki only ever sees
                       # its own login. They share a level because the removal
                       # is applied before the addition only within one level.
+                      # The tenant Grafana also sends the user's ID token and
+                      # its own signed identity token; neither reaches Loki.
                       request_headers_to_remove:
                         - authorization
                         - cookie
+                        - x-id-token
+                        - x-grafana-id
                       request_headers_to_add:
                         - header:
                             key: authorization

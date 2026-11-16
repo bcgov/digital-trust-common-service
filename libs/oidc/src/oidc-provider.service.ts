@@ -12,6 +12,7 @@ import type { OidcConfig } from './oidc-config.service';
 import { OidcConfigService, OIDC_PROTOCOL_SCOPES } from './oidc-config.service';
 import type { OidcJwks } from './oidc-keys.service';
 import { OidcKeysService } from './oidc-keys.service';
+import { GRAFANA_CLIENT_ID } from './oidc.constants';
 import { OIDC_ROLE_SCOPE_PORT } from './ports/oidc-role-scope.port';
 import type { OidcRoleScopePort } from './ports/oidc-role-scope.port';
 import { OIDC_TENANT_USER_PORT } from './ports/oidc-tenant-user.port';
@@ -391,6 +392,12 @@ export function buildOidcConfiguration(
       Grant: config.grantTtlSeconds,
     },
     rotateRefreshToken: config.refreshTokenRotationEnabled,
+    // oidc-provider's default keeps an offline_access grant past sign-out.
+    // The tenant Grafana's ends with the session instead, so signing out of
+    // the service revokes it and Grafana stops reading that tenant's logs,
+    // rather than refreshing for hours on a shared machine.
+    expiresWithSession: (_ctx, code) =>
+      code.clientId === GRAFANA_CLIENT_ID || !code.scopes.has('offline_access'),
     cookies: {
       keys: config.cookieKeys,
     },

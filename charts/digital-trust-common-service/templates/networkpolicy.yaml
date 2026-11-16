@@ -362,3 +362,89 @@ spec:
         {{- end }}
 {{- end }}
 {{- end }}
+{{- if .Values.grafana.enabled }}
+{{- if .Values.networkPolicy.ingress.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "digital-trust-common-service.grafana.fullname" . }}-allow-router
+  labels:
+    {{- include "digital-trust-common-service.grafana.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "digital-trust-common-service.grafana.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              {{- toYaml .Values.networkPolicy.ingress.routerNamespaceSelector | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: https
+{{- end }}
+---
+# Grafana is the only in-cluster caller of the gateway.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "digital-trust-common-service.logGateway.fullname" . }}-allow-grafana
+  labels:
+    {{- include "digital-trust-common-service.logGateway.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "digital-trust-common-service.logGateway.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "digital-trust-common-service.grafana.selectorLabels" . | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: https
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "digital-trust-common-service.grafana.fullname" . }}-egress
+  labels:
+    {{- include "digital-trust-common-service.grafana.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "digital-trust-common-service.grafana.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Egress
+  egress:
+    # The log gateway. Loki and the platform Loki gateway are not reachable.
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "digital-trust-common-service.logGateway.selectorLabels" . | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.logGateway.service.targetPort }}
+    # The OIDC provider's token endpoint, on its public https URL: the API's own
+    # Service is plain HTTP, and the hop that returns tokens must be TLS (T13).
+    # Its address is the shared router's, which fronts every Route, so naming
+    # it would barely narrow this. Grafana's own outbound calls are turned off
+    # in grafana.ini instead.
+    - to: []
+      ports:
+        - protocol: TCP
+          port: 443
+    - to: []
+      ports:
+        {{- range .Values.networkPolicy.dnsEgress.ports }}
+        - protocol: UDP
+          port: {{ . }}
+        - protocol: TCP
+          port: {{ . }}
+        {{- end }}
+{{- end }}

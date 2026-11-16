@@ -13,6 +13,7 @@ export type Scope = NonNullable<
 export const RESERVED_API_CLIENT_IDS: ReadonlySet<string> = new Set([
   'dtsc-ui',
   'dtsc-platform-admin',
+  'dtsc-grafana',
 ]);
 
 export function isReservedApiClientId(

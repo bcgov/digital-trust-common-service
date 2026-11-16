@@ -7,7 +7,7 @@ import { BootstrapModule } from './bootstrap.module';
 import { EnvironmentBootstrapService } from './bootstrap.service';
 
 const USAGE =
-  'Usage: run-bootstrap --tenant-slug <slug> --tenant-name <name> [--rotate-admin-secret]';
+  'Usage: run-bootstrap --tenant-slug <slug> --tenant-name <name> [--rotate-admin-secret] [--grafana-url <https://host>]';
 // As CreateTenantDto, so the API can address the tenant afterwards.
 const SLUG_PATTERN = /^[a-z0-9-]{1,100}$/;
 const NAME_MAX_LENGTH = 255;
@@ -22,6 +22,7 @@ export async function runBootstrap(
       'tenant-slug': { type: 'string' },
       'tenant-name': { type: 'string' },
       'rotate-admin-secret': { type: 'boolean', default: false },
+      'grafana-url': { type: 'string' },
     },
   });
   const slug = values['tenant-slug'] ?? '';
@@ -36,6 +37,15 @@ export async function runBootstrap(
     return;
   }
 
+  const grafanaUrl = values['grafana-url'];
+  if (grafanaUrl !== undefined && !isHttpsUrl(grafanaUrl)) {
+    logger.error(
+      `${USAGE}\n  grafana-url: an https URL such as https://logs.example.com`,
+    );
+    process.exitCode = 2;
+    return;
+  }
+
   const app = await NestFactory.createApplicationContext(BootstrapModule, {
     logger: ['log', 'warn', 'error'],
   });
@@ -43,10 +53,16 @@ export async function runBootstrap(
   try {
     const result = await app
       .get(EnvironmentBootstrapService)
-      .run(slug, name, values['rotate-admin-secret']);
+      .run(slug, name, values['rotate-admin-secret'], grafanaUrl);
 
     logger.log(`Tenant ${slug}: ${result.tenantId}`);
     logger.log(`UI client redirect URIs: ${result.redirectUris.join(', ')}`);
+
+    if (result.grafanaRedirectUris) {
+      logger.log(
+        `Grafana client redirect URIs: ${result.grafanaRedirectUris.join(', ')}`,
+      );
+    }
 
     if (result.adminClientSecret) {
       // To the operator's terminal only — never through the logger, whose
@@ -68,6 +84,13 @@ export async function runBootstrap(
   } finally {
     await app.close();
   }
+}
+
+// Grafana's root_url is always https, and its redirect URI is built from this
+// URL's origin. URL.canParse alone also takes http, other schemes, and a bare
+// host:port read as a scheme, whose origin is the string "null".
+function isHttpsUrl(value: string): boolean {
+  return URL.canParse(value) && new URL(value).protocol === 'https:';
 }
 
 const entryScript = process.argv[1]?.replace(/\\/g, '/');

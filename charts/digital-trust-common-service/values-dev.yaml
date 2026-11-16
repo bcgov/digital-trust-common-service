@@ -116,3 +116,10 @@ logGateway:
     auth:
       existingSecret:
         name: dtsc-dev-loki-auth
+
+# Tenant log viewer. Register its sign-in client once per environment with
+# `run-bootstrap --grafana-url https://<grafana.route.host>`.
+grafana:
+  enabled: true
+  route:
+    host: digital-trust-common-service-grafana-dev.apps.silver.devops.gov.bc.ca
