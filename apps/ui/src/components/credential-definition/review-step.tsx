@@ -19,18 +19,18 @@ export function ReviewStep({
   const { t } = useTranslation();
 
   return (
-    <div className="flex flex-col gap-5 px-6">
-      <div className="flex flex-col gap-1">
-        <h2 className="text-h5 font-bold">
+    <div className="flex flex-col gap-4">
+      <div className="mb-4 flex flex-col gap-2">
+        <h2 className="text-h3 font-bold">
           {t('credentialDefinitions.review.title')}
         </h2>
-        <p className="text-small-body text-(--typography-color-secondary)">
+        <p className="max-w-150 text-body text-(--typography-color-secondary)">
           {t('credentialDefinitions.review.subtitle')}
         </p>
       </div>
-      <section className="flex w-full flex-col gap-medium rounded-(--layout-border-radius-medium) border border-(--surface-color-border-default) bg-(--surface-color-background-white) p-large">
+      <section className="flex w-full flex-col gap-medium rounded-(--layout-border-radius-large) border border-(--surface-color-border-default) bg-(--surface-color-background-white) p-medium">
         <div className="flex items-center justify-between">
-          <h3 className="text-body font-bold">
+          <h3 className="text-h5 font-bold">
             {t('credentialDefinitions.review.details')}
           </h3>
           <Button
@@ -58,9 +58,9 @@ export function ReviewStep({
           </dl>
         </div>
       </section>
-      <section className="flex w-full flex-col gap-medium rounded-(--layout-border-radius-medium) border border-(--surface-color-border-default) bg-(--surface-color-background-white) p-large">
+      <section className="flex w-full flex-col gap-medium rounded-(--layout-border-radius-large) border border-(--surface-color-border-default) bg-(--surface-color-background-white) p-medium">
         <div className="flex items-center justify-between">
-          <h3 className="text-body font-bold">
+          <h3 className="text-h5 font-bold">
             {t('credentialDefinitions.review.attributes')}
           </h3>
           <Button

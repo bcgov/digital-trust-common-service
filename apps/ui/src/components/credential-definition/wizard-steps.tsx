@@ -14,7 +14,7 @@ export function WizardSteps({ steps, currentStep }: WizardStepsProps) {
   return (
     <nav
       aria-label={t('credentialDefinitions.wizard.progress')}
-      className="mx-auto w-full max-w-4xl px-4"
+      className="w-full"
     >
       <ol className="flex items-center">
         {steps.map((label, index) => {
@@ -41,9 +41,11 @@ export function WizardSteps({ steps, currentStep }: WizardStepsProps) {
                 <span
                   className={cn(
                     'flex size-9 items-center justify-center rounded-full border-2 text-small-body font-bold',
-                    complete || current
+                    complete
                       ? 'border-(--surface-color-primary-default) bg-(--surface-color-primary-default) text-(--typography-color-primary-invert)'
-                      : 'border-(--surface-color-border-default) bg-(--surface-color-background-white) text-(--typography-color-secondary)',
+                      : current
+                        ? 'border-(--surface-color-primary-default) bg-(--surface-color-background-white) text-(--typography-color-primary)'
+                        : 'border-(--surface-color-border-default) bg-(--surface-color-background-white) text-(--typography-color-secondary)',
                   )}
                 >
                   {complete ? <CheckIcon className="size-4" /> : index + 1}
@@ -51,7 +53,7 @@ export function WizardSteps({ steps, currentStep }: WizardStepsProps) {
                 <span
                   className={cn(
                     'whitespace-nowrap text-small-body',
-                    current
+                    complete || current
                       ? 'font-bold text-(--typography-color-primary)'
                       : 'text-(--typography-color-secondary)',
                   )}

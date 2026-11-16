@@ -1,4 +1,8 @@
-import { Select, TextField } from '@bcgov/design-system-react-components';
+import {
+  Select,
+  TextArea,
+  TextField,
+} from '@bcgov/design-system-react-components';
 import { useTranslation } from 'react-i18next';
 
 import type { Connector } from '@/lib/api/resources/connectors';
@@ -31,13 +35,13 @@ export function DetailsStep({
   const { t } = useTranslation();
 
   return (
-    <div className="flex flex-col gap-5">
-      <section className="flex flex-col gap-4 px-6">
-        <div className="flex flex-col gap-1">
-          <h2 className="text-h5 font-bold">
+    <div className="flex flex-col gap-8">
+      <section className="flex flex-col gap-4">
+        <div className="mb-4 flex flex-col gap-2">
+          <h2 className="text-h3 font-bold">
             {t('credentialDefinitions.setup.identity')}
           </h2>
-          <p className="text-small-body text-(--typography-color-secondary)">
+          <p className="max-w-150 text-body text-(--typography-color-secondary)">
             {t('credentialDefinitions.setup.subtitle')}
           </p>
         </div>
@@ -72,7 +76,7 @@ export function DetailsStep({
             }}
           />
         </div>
-        <TextField
+        <TextArea
           label={t('credentialDefinitions.setup.description')}
           name="description"
           value={description}
@@ -84,12 +88,12 @@ export function DetailsStep({
           }}
         />
       </section>
-      <section className="flex flex-col gap-4 px-6">
+      <section className="flex flex-col gap-4">
         <h3 className="text-body font-bold">
           {t('credentialDefinitions.setup.chooseConnector')}
         </h3>
         <div className="flex flex-col gap-2">
-          <p className="text-small-body text-(--typography-color-secondary)">
+          <p className="max-w-150 text-body text-(--typography-color-secondary)">
             {t('credentialDefinitions.setup.connectorDescription')}
           </p>
           <Select
@@ -113,21 +117,11 @@ export function DetailsStep({
           />
         </div>
       </section>
-      <section className="flex flex-col gap-4 px-6">
+      <section className="flex flex-col gap-4">
         <h3 className="text-body font-bold">
           {t('credentialDefinitions.setup.format')}
         </h3>
-        <div className="flex w-1/2 items-start gap-3 rounded-lg border-2 border-(--surface-color-border-default) bg-(--surface-color-background-white) p-4 has-[:checked]:border-(--surface-color-border-active)">
-          <input
-            id="format-anoncreds"
-            type="radio"
-            name="format"
-            value="anoncreds"
-            checked
-            readOnly
-            aria-describedby="format-anoncreds-description"
-            className="mt-0.5 size-4 accent-(--surface-color-primary-default)"
-          />
+        <div className="flex w-1/2 items-start justify-between gap-3 rounded-(--layout-border-radius-medium) border border-(--surface-color-border-default) bg-(--surface-color-background-white) p-4 has-[:checked]:border-(--surface-color-border-active) has-[:checked]:bg-(--surface-color-background-light-blue)">
           <div className="flex flex-col gap-1">
             <label htmlFor="format-anoncreds" className="text-body font-bold">
               {t('credentialDefinitions.setup.anoncreds')}
@@ -139,6 +133,16 @@ export function DetailsStep({
               {t('credentialDefinitions.setup.anoncredsDescription')}
             </p>
           </div>
+          <input
+            id="format-anoncreds"
+            type="radio"
+            name="format"
+            value="anoncreds"
+            checked
+            readOnly
+            aria-describedby="format-anoncreds-description"
+            className="mt-1 size-5 shrink-0 accent-(--surface-color-primary-default)"
+          />
         </div>
       </section>
     </div>
