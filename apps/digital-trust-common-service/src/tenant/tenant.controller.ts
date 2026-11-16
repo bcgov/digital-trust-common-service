@@ -22,6 +22,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import {
+  ApiBadRequestResponse,
   ApiBody,
   ApiConflictResponse,
   ApiCreatedResponse,
@@ -48,6 +49,8 @@ import {
 import { UpdateTenantConfigDto } from './dto/update-tenant-config.dto';
 import { UpdateTenantStatusDto } from './dto/update-tenant-status.dto';
 import { UpdateTenantDto } from './dto/update-tenant.dto';
+import { TenantOnboardingResponseDto } from './onboarding/dto/tenant-onboarding-response.dto';
+import { TenantOnboardingService } from './onboarding/tenant-onboarding.service';
 import { TenantStatusGuard } from './tenant-status.guard';
 import { PaginatedTenants, TenantService } from './tenant.service';
 
@@ -57,7 +60,10 @@ import { PaginatedTenants, TenantService } from './tenant.service';
 @UseGuards(JwtGuard, ScopeGuard, TenantStatusGuard)
 @Controller({ path: 'tenants', version: API_VERSION })
 export class TenantController {
-  public constructor(private readonly tenantService: TenantService) {}
+  public constructor(
+    private readonly tenantService: TenantService,
+    private readonly tenantOnboardingService: TenantOnboardingService,
+  ) {}
 
   @Post()
   @RequireRoles(PLATFORM_ADMIN_ROLE)
@@ -314,6 +320,29 @@ export class TenantController {
 
     this.assertTenantAccess(auth, tenant.id);
     return TenantResponseDto.fromEntity(tenant);
+  }
+
+  @Get(':id/onboarding')
+  @ApiOperation({ summary: 'Get tenant onboarding progress' })
+  @ApiParam({ name: 'id', description: 'Tenant identifier', format: 'uuid' })
+  @ApiOkResponse({
+    description: 'Current tenant onboarding readiness',
+    type: TenantOnboardingResponseDto,
+  })
+  @ApiBadRequestResponse({ description: 'Tenant identifier must be a UUID' })
+  @ApiNotFoundResponse({ description: 'Tenant not found' })
+  @ApiForbiddenResponse({
+    description: 'Caller is not allowed to access the target tenant',
+  })
+  @ApiUnauthorizedResponse({ description: 'Authentication is required' })
+  public async getOnboardingStatus(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentAuth() auth?: AuthContext,
+  ): Promise<TenantOnboardingResponseDto> {
+    this.assertTenantAccess(auth, id);
+    await this.tenantService.findById(id);
+    const readiness = await this.tenantOnboardingService.getReadiness(id);
+    return TenantOnboardingResponseDto.fromReadiness(readiness);
   }
 
   @Get('slug/:slug')
