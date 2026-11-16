@@ -119,8 +119,9 @@
     },
     "wizard": {
       "progress": "Progression",
-      "newTitle": "Configuration de justificatif",
+      "newTitle": "Nouvelle configuration de justificatif",
       "editTitle": "Modifier la configuration de justificatif",
+      "draftTag": "Brouillon · v{{version}}",
       "loadingDraft": "Chargement du brouillon...",
       "draftLoadFailed": "Impossible de charger ce brouillon. Réessayez.",
       "draftNotEditable": "Seules les définitions de justificatifs à l'état de brouillon peuvent être modifiées.",
@@ -138,7 +139,7 @@
       "savingDraft": "Enregistrement...",
       "nextAttributes": "Suivant : Attributs",
       "nextReview": "Suivant : Vérification",
-      "publish": "Publier",
+      "publish": "Publier la configuration",
       "publishing": "Publication...",
       "registrationStarted": "L'enregistrement de la définition de justificatif a commencé.",
       "steps": {
@@ -164,7 +165,7 @@
       "details": "Détails du justificatif",
       "attributes": "Attributs",
       "noAttributes": "Aucun attribut ajouté.",
-      "credentialName": "Nom du justificatif",
+      "credentialName": "Nom",
       "version": "Version",
       "description": "Description",
       "connector": "Connecteur",
@@ -183,7 +184,7 @@
       "versionPlaceholder": "1.0.0",
       "versionInvalid": "Saisissez une version comme 1, 1.0, 1.0.0 ou 1.0.0-beta.1.",
       "description": "Description (facultatif)",
-      "descriptionPlaceholder": "Une courte description de votre justificatif...",
+      "descriptionPlaceholder": "Une courte description de votre justificatif",
       "chooseConnector": "Choisir un connecteur",
       "connector": "Connecteur",
       "connectorDescription": "Un connecteur détermine les formats de justificatifs disponibles. C'est aussi le service responsable de la délivrance ou de la vérification de ce justificatif.",
@@ -191,7 +192,7 @@
       "defaultConnector": "{{type}} ({{default}})",
       "format": "Format du justificatif",
       "anoncreds": "Anoncreds",
-      "anoncredsDescription": "Pour une confidentialité maximale, partagez des preuves, pas des données",
+      "anoncredsDescription": "Pour une confidentialité maximale, partagez des preuves, pas des données.",
       "formatLocked": "Le format du justificatif ne peut pas être modifié."
     }
   },

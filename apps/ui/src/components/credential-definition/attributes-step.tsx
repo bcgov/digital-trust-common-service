@@ -55,9 +55,9 @@ export function AttributesStep({
   };
 
   return (
-    <section className="flex flex-col gap-4 px-6">
+    <section className="flex flex-col gap-4">
       <div className="flex items-center justify-between gap-4">
-        <h2 className="text-h5 font-bold">
+        <h2 className="text-h3 font-bold">
           {t('credentialDefinitions.attributes.title')}
         </h2>
         <Button variant="secondary" onPress={addAttribute}>
@@ -65,7 +65,7 @@ export function AttributesStep({
           {t('credentialDefinitions.attributes.add')}
         </Button>
       </div>
-      <p className="text-small-body text-(--typography-color-secondary)">
+      <p className="mb-4 max-w-150 text-body text-(--typography-color-secondary)">
         {t('credentialDefinitions.attributes.subtitle')}
       </p>
       {attributes.length === 0 ? (
@@ -92,10 +92,10 @@ export function AttributesStep({
               }}
               onDragEnd={endDrag}
               className={cn(
-                'flex items-center gap-2 rounded-lg border p-3 transition-colors',
+                'flex items-center gap-3 border px-4 py-2 transition-colors',
                 attribute.name.trim()
                   ? 'border-(--surface-color-border-active) bg-(--surface-color-background-light-blue)'
-                  : 'border-(--surface-color-border-default) bg-(--surface-color-background-white)',
+                  : 'border-transparent bg-(--surface-color-background-light-gray)',
                 dragIndex === index && 'opacity-50',
                 overIndex === index &&
                   dragIndex !== null &&
@@ -137,7 +137,6 @@ export function AttributesStep({
               <Button
                 variant="tertiary"
                 isIconButton
-                danger
                 aria-label={t('credentialDefinitions.attributes.delete', {
                   index: index + 1,
                 })}
