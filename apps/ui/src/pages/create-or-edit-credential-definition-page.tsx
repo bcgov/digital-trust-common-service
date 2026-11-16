@@ -309,7 +309,7 @@ export function CreateOrEditCredentialDefinitionPage() {
         </Link>
         {draftId ? (
           <div className="flex flex-wrap items-center gap-3">
-            <h1 className="text-h1 font-bold text-black">
+            <h1 className="min-w-0 break-words text-h1 font-bold text-black">
               {draftQuery.data?.name ||
                 t('credentialDefinitions.wizard.editTitle')}
             </h1>
