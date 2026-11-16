@@ -28,8 +28,7 @@ and this chart adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.h
   NetworkPolicies that limit Grafana's egress to the log gateway, port 443 for
   the OIDC provider's public URL, and DNS, and let Grafana call the gateway
   in-cluster. Needs `logGateway.enabled`, `config.APP_PUBLIC_URL`,
-  `config.LOG_GATEWAY_AUDIENCE` and `grafana.route.host`. On in `values-dev.yaml`
-  only; off in every other overlay.
+  `config.LOG_GATEWAY_AUDIENCE` and `grafana.route.host`. Off in every overlay.
   Its sign-in client is registered with `run-bootstrap --grafana-url`.
 - `logGateway` values (`enabled` default `false`) and `networkPolicy.loki` for a
   standalone Envoy in front of Loki, following the `frontend` and `worker`
