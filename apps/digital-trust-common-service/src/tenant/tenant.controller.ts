@@ -323,6 +323,7 @@ export class TenantController {
   }
 
   @Get(':id/onboarding')
+  @RequireScopes(TENANT_SUPERUSER_SCOPE)
   @ApiOperation({ summary: 'Get tenant onboarding progress' })
   @ApiParam({ name: 'id', description: 'Tenant identifier', format: 'uuid' })
   @ApiOkResponse({
