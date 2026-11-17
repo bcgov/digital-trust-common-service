@@ -4,13 +4,15 @@
 // the spec, only these modules change.
 import { apiClient } from '../client';
 import { normalizePage, type CursorParams, type Page } from '../pagination';
-import type { components } from '../types.gen';
+import type { components, operations } from '../types.gen';
 
 export type Tenant = components['schemas']['Tenant'];
 export type TenantStatus = components['schemas']['TenantStatus'];
 
 export type CreateTenantRequest = components['schemas']['CreateTenantRequest'];
 export type UpdateTenantRequest = components['schemas']['UpdateTenantRequest'];
+export type TenantOnboarding =
+  operations['getOnboardingStatus']['responses'][200]['content']['application/json'];
 
 export async function listTenants(
   params: CursorParams = {},
@@ -21,6 +23,15 @@ export async function listTenants(
 
 export async function getTenant(id: string): Promise<Tenant> {
   const response = await apiClient.get<Tenant>(`/tenants/${id}`);
+  return response.data;
+}
+
+export async function getTenantOnboarding(
+  tenantId: string,
+): Promise<TenantOnboarding> {
+  const response = await apiClient.get<TenantOnboarding>(
+    `/tenants/${tenantId}/onboarding`,
+  );
   return response.data;
 }
 

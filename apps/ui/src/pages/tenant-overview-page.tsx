@@ -5,16 +5,19 @@ import { useTranslation } from 'react-i18next';
 import { Link, useParams } from 'react-router';
 
 import { Skeleton } from '@/components/common/skeleton';
+import { TenantOnboardingChecklist } from '@/components/tenant/tenant-onboarding-checklist';
 import { ApiError } from '@/lib/api/errors';
 import type { Page } from '@/lib/api/pagination';
 import { useConnections } from '@/lib/api/queries/connections';
 import { useCredentialDefinitions } from '@/lib/api/queries/credential-definitions';
 import { useTenant } from '@/lib/api/queries/tenants';
 import { useAuth } from '@/lib/auth/context';
-import { hasScope, USERS_MANAGE_SCOPE } from '@/lib/auth/scopes';
+import {
+  hasScope,
+  TENANT_ADMIN_SCOPE,
+  USERS_MANAGE_SCOPE,
+} from '@/lib/auth/scopes';
 
-// Each action lands on the tenant section that owns it. An action the token
-// cannot use is left out; the page behind it still handles a 403.
 const QUICK_ACTIONS: { label: ParseKeys; to: string; scope?: string }[] = [
   { label: 'overview.issueCredential', to: 'credentials' },
   { label: 'overview.verifyPresentation', to: 'credentials' },
@@ -94,7 +97,6 @@ export function TenantOverviewPage() {
   const { data: tenant, isLoading, error } = useTenant(tenantId);
   const definitions = useCredentialDefinitions(tenantId);
   const connections = useConnections(tenantId, { state: 'active', limit: 100 });
-
   const quickActions = QUICK_ACTIONS.filter(
     (action) => !action.scope || hasScope(user, action.scope),
   );
@@ -119,6 +121,10 @@ export function TenantOverviewPage() {
 
   return (
     <div className="flex flex-col gap-(--layout-margin-large)">
+      {hasScope(user, TENANT_ADMIN_SCOPE) && (
+        <TenantOnboardingChecklist tenantId={tenantId} />
+      )}
+
       <div className="grid gap-(--layout-margin-medium) sm:grid-cols-2 lg:grid-cols-3">
         <StatCard title={t('overview.definitions')} query={definitions} />
         <StatCard title={t('overview.activeConnections')} query={connections} />

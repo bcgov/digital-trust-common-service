@@ -37,6 +37,9 @@ describe('TenantLayout', () => {
       await screen.findByRole('heading', { name: 'Acme Ministry' }),
     ).toBeInTheDocument();
     expect(screen.getByText('overview content')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('navigation', { name: 'Tenant sections' }),
+    ).not.toBeInTheDocument();
   });
 
   /**
@@ -61,20 +64,7 @@ describe('TenantLayout', () => {
     expect(await screen.findByText('connections content')).toBeInTheDocument();
   });
 
-  it('shows the Users tab to a token that can manage users', async () => {
-    const client = createMockAuthClient();
-    await client.login();
-    renderWithAuth(routes, {
-      client,
-      initialEntries: [`/tenants/${activeTenantId}`],
-    });
-
-    expect(
-      await screen.findByRole('link', { name: 'Users' }),
-    ).toBeInTheDocument();
-  });
-
-  it('omits the tenant heading and tabs on the users page', async () => {
+  it('omits the tenant heading on the users page', async () => {
     const client = createMockAuthClient();
     await client.login();
     renderWithAuth(routes, {
@@ -85,31 +75,6 @@ describe('TenantLayout', () => {
     expect(await screen.findByText('users content')).toBeInTheDocument();
     expect(
       screen.queryByRole('heading', { name: 'Acme Ministry' }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole('navigation', { name: 'Tenant sections' }),
-    ).not.toBeInTheDocument();
-  });
-
-  it('leaves the Users tab out for a token without the scope', async () => {
-    const client = createMockAuthClient();
-    await client.login();
-    const state = client.getState();
-    const stripped = {
-      ...state,
-      user: state.user && { ...state.user, roles: ['member'], scopes: [] },
-    };
-    client.getState = () => stripped;
-    renderWithAuth(routes, {
-      client,
-      initialEntries: [`/tenants/${activeTenantId}`],
-    });
-
-    expect(
-      await screen.findByRole('link', { name: 'Overview' }),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByRole('link', { name: 'Users' }),
     ).not.toBeInTheDocument();
   });
 

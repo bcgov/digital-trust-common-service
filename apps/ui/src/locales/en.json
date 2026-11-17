@@ -118,15 +118,62 @@
     "loadFailedWithReason": "Failed to load tenant: {{reason}}",
     "title": "Tenant"
   },
-  "tenantTabs": {
-    "auditLogs": "Audit logs",
-    "connections": "Connections",
-    "credentials": "Credentials",
-    "label": "Tenant sections",
-    "logs": "Logs",
-    "overview": "Overview",
-    "settings": "Settings",
-    "users": "Users"
+  "tenantOnboarding": {
+    "title": "Tenant setup",
+    "reason": "Prepare this tenant to issue credentials.",
+    "completeTitle": "Tenant setup complete",
+    "completeReason": "This tenant is ready for credential issuance.",
+    "progress": "Setup progress",
+    "progressSummary": "{{completed}} of {{total}} steps complete",
+    "progressPercent": "{{percent}}% complete",
+    "stepsLabel": "Tenant setup steps",
+    "continueSetup": "Continue setup",
+    "backToOverview": "Return to overview",
+    "saveForLater": "Save for later",
+    "completeStep": "This setup step is complete.",
+    "connectorAdminRequired": "A tenant administrator is needed to configure a connector.",
+    "issuanceProfileAdminRequired": "A tenant administrator with profile management access is needed to create an issuance profile.",
+    "apiClientAdminRequired": "An administrator with client management access is needed to create an API client.",
+    "apiClientReadinessPending": "The API client was created. Waiting for tenant setup status to update.",
+    "publishingProfile": "Publishing the issuance profile...",
+    "profileReadinessPending": "The issuance profile was published. Waiting for tenant setup status to update.",
+    "publishProfileFailed": "Could not publish the issuance profile.",
+    "retryPublish": "Retry publishing the profile",
+    "registrationPending": "Credential definition registration is in progress. This page will advance when it is ready.",
+    "registrationFailed": "Credential definition registration failed.",
+    "registrationFailureUnknown": "The registration operation failed without providing a diagnostic.",
+    "registrationStatusLoadFailed": "Could not load credential definition registration status.",
+    "manageCredentialDefinitions": "Manage credential definitions",
+    "requires": "Complete {{steps}} first.",
+    "retry": "Retry loading tenant setup",
+    "loadFailedWithReason": "Could not load tenant setup: {{reason}}",
+    "status": {
+      "complete": "Complete",
+      "blocked": "Blocked",
+      "needsSetup": "Needs setup"
+    },
+    "steps": {
+      "connector": {
+        "title": "Configure a connector",
+        "reason": "Link the service that issues and verifies credentials.",
+        "action": "Configure connector"
+      },
+      "credentialDefinition": {
+        "title": "Register a credential definition",
+        "reason": "Define credential fields and register them with the connector.",
+        "action": "Create credential definition"
+      },
+      "issuanceProfile": {
+        "title": "Publish an issuance profile",
+        "reason": "Set how this tenant's credentials are issued.",
+        "action": "Create issuance profile"
+      },
+      "apiClient": {
+        "title": "Register an API client",
+        "reason": "Authorize applications to request credentials.",
+        "action": "Register API client"
+      }
+    }
   },
   "overview": {
     "activeConnections": "Active connections",

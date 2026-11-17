@@ -122,6 +122,13 @@ export const routes: RouteObject[] = [
                     ),
                   },
                   {
+                    path: 'setup',
+                    lazy: lazyPage(
+                      () => import('@/pages/tenant-onboarding-setup-page'),
+                      'TenantOnboardingSetupPage',
+                    ),
+                  },
+                  {
                     path: 'users',
                     lazy: lazyPage(
                       () => import('@/pages/tenant-users-page'),
