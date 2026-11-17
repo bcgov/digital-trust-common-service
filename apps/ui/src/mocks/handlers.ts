@@ -18,6 +18,7 @@ import type { TenantRoleMapping } from '@/lib/api/resources/tenant-roles';
 import type {
   CreateIssuanceProfileRequest,
   IssuanceProfile,
+  IssuanceProfileOperation,
 } from '@/lib/api/resources/issuance-profiles';
 import type { TenantUser } from '@/lib/api/resources/tenant-users';
 import type { Tenant } from '@/lib/api/resources/tenants';
@@ -130,6 +131,23 @@ export const mockConnectors: Connector[] = [
 
 let credentialDefinitions = structuredClone(mockCredentialDefinitions);
 let issuanceProfiles: IssuanceProfile[] = [];
+
+function completedProfileOperation(
+  type: IssuanceProfileOperation['type'],
+  profile: IssuanceProfile,
+): IssuanceProfileOperation {
+  const now = new Date().toISOString();
+  return {
+    id: crypto.randomUUID(),
+    batch_id: null,
+    type,
+    state: 'completed',
+    steps: [],
+    created_at: now,
+    updated_at: now,
+    result: { profile },
+  };
+}
 
 export function resetIssuanceProfileMocks() {
   issuanceProfiles = [];
@@ -404,9 +422,13 @@ export const handlers = [
         delivery: body.delivery ?? { protocol: 'didcomm-v1' },
         can_delete: true,
         created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
       };
       issuanceProfiles.push(profile);
-      return HttpResponse.json(profile, { status: 201 });
+      return HttpResponse.json(
+        completedProfileOperation('issuance-profile.create', profile),
+        { status: 201 },
+      );
     },
   ),
   http.post(
@@ -455,7 +477,9 @@ export const handlers = [
       }
       profile.status = 'published';
       profile.updated_at = new Date().toISOString();
-      return HttpResponse.json(profile);
+      return HttpResponse.json(
+        completedProfileOperation('issuance-profile.publish', profile),
+      );
     },
   ),
   http.post(
@@ -472,7 +496,9 @@ export const handlers = [
         );
       profile.status = 'deprecated';
       profile.updated_at = new Date().toISOString();
-      return HttpResponse.json(profile);
+      return HttpResponse.json(
+        completedProfileOperation('issuance-profile.deprecate', profile),
+      );
     },
   ),
   http.delete(
@@ -605,6 +631,7 @@ export const handlers = [
         batch_id: null,
         type: 'credential-definition.register',
         state: 'pending',
+        steps: [{ type: 'register', state: 'pending' }],
         created_at: now,
         updated_at: now,
         result: { credential_definition_id: definition.id },

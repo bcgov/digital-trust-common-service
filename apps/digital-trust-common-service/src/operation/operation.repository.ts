@@ -4,6 +4,7 @@ import { EntityManager, In, Repository, SelectQueryBuilder } from 'typeorm';
 
 import type { Cursor } from '../common/cursor-pagination';
 
+import type { OperationStep } from './operation.entity';
 import { Operation, OperationResult, OperationState } from './operation.entity';
 
 export interface FindByTenantFilters {
@@ -251,6 +252,7 @@ export class OperationRepository {
     patch: {
       state: OperationState;
       result?: OperationResult;
+      steps?: OperationStep[];
       expiresAt: Date;
       externalId?: string | null;
     },
@@ -260,6 +262,25 @@ export class OperationRepository {
       Operation,
       { id, tenantId, state: In(fromStates) },
       patch,
+    );
+
+    return (result.affected ?? 0) > 0;
+  }
+
+  public async updateStepsIfActive(
+    id: string,
+    tenantId: string,
+    steps: OperationStep[],
+    manager?: EntityManager,
+  ): Promise<boolean> {
+    const result = await (manager ?? this.repo.manager).update(
+      Operation,
+      {
+        id,
+        tenantId,
+        state: In([OperationState.PENDING, OperationState.PROCESSING]),
+      },
+      { steps },
     );
 
     return (result.affected ?? 0) > 0;

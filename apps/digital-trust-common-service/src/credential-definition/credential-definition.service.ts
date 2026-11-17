@@ -30,7 +30,11 @@ import { ConnectorType } from '../connection/connection.entity';
 import { ConnectorRepository } from '../connector/connector.repository';
 import { JobsService } from '../jobs/jobs.service';
 import { OPERATION_TYPE } from '../operation/operation-type.constants';
-import { Operation, OperationState } from '../operation/operation.entity';
+import {
+  Operation,
+  OperationState,
+  OperationStepState,
+} from '../operation/operation.entity';
 import { OperationService } from '../operation/operation.service';
 
 import {
@@ -517,6 +521,7 @@ export class CredentialDefinitionService {
       {
         tenantId,
         type: OPERATION_TYPE.CREDENTIAL_DEFINITION_REGISTER,
+        steps: [{ type: 'register', state: OperationStepState.PENDING }],
         request: {
           method: 'POST',
           path: `${API_BASE_PATH}/tenants/${tenantId}/credential-definitions`,
@@ -542,6 +547,7 @@ export class CredentialDefinitionService {
       operation.result,
       manager,
       tenantId,
+      [{ type: 'register', state: OperationStepState.COMPLETED }],
     );
     Object.assign(operation, completed);
   }

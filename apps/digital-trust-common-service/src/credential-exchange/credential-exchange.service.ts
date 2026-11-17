@@ -26,7 +26,11 @@ import { ConnectionService } from '../connection/connection.service';
 import { toPortCredentialFormat } from '../credential-definition/credential-definition.service';
 import { JobsService } from '../jobs/jobs.service';
 import { OPERATION_TYPE } from '../operation/operation-type.constants';
-import { Operation, OperationState } from '../operation/operation.entity';
+import {
+  Operation,
+  OperationState,
+  OperationStepState,
+} from '../operation/operation.entity';
 import { OperationRepository } from '../operation/operation.repository';
 import { OperationService } from '../operation/operation.service';
 import { ProtocolStateChangeService } from '../protocol-state-change/protocol-state-change.service';
@@ -195,6 +199,7 @@ export class CredentialExchangeService {
           tenantId,
           exchangeId: id,
           type: OPERATION_TYPE.CREDENTIAL_ISSUE,
+          steps: [{ type: 'issue', state: OperationStepState.PENDING }],
           externalId: exchange.externalId,
           request: {
             method: 'POST',
@@ -213,6 +218,8 @@ export class CredentialExchangeService {
         [OperationState.PENDING],
         undefined,
         manager,
+        undefined,
+        [{ type: 'issue', state: OperationStepState.PROCESSING }],
       );
       await this.audit.emit(
         {
@@ -256,6 +263,8 @@ export class CredentialExchangeService {
             [OperationState.PROCESSING],
             { code: error.code, message: error.message },
             manager,
+            undefined,
+            [{ type: 'issue', state: OperationStepState.FAILED }],
           );
           if (!failed) return;
           locked.issueSubmission = 'not-submitted';

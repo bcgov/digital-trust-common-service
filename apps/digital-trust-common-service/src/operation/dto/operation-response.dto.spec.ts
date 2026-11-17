@@ -2,7 +2,11 @@ import { instanceToPlain } from 'class-transformer';
 
 import { decodeCursor, encodeCursor } from '../../common/cursor-pagination';
 import { OPERATION_TYPE } from '../operation-type.constants';
-import { Operation, OperationState } from '../operation.entity';
+import {
+  Operation,
+  OperationState,
+  OperationStepState,
+} from '../operation.entity';
 
 import {
   OperationResponseDto,
@@ -32,6 +36,7 @@ describe('paginated operation responses', () => {
         batchId,
         type: OPERATION_TYPE.CREDENTIAL_OFFER,
         state: OperationState.PENDING,
+        steps: [],
         createdAt,
         updatedAt: createdAt,
         request: { method: 'POST', path: '/credentials/offer', body: {} },
@@ -56,6 +61,7 @@ describe('paginated operation responses', () => {
             batch_id: batchId,
             type: OPERATION_TYPE.CREDENTIAL_OFFER,
             state: OperationState.PENDING,
+            steps: [],
             created_at: createdAt.toISOString(),
             updated_at: createdAt.toISOString(),
             result: null,
@@ -91,6 +97,7 @@ describe('operation response envelope', () => {
         tenantId: 'tenant',
         type: OPERATION_TYPE.CREDENTIAL_OFFER,
         state,
+        steps: [],
         createdAt,
         updatedAt,
         result,
@@ -110,6 +117,7 @@ describe('operation response envelope', () => {
         batch_id: null,
         type: OPERATION_TYPE.CREDENTIAL_OFFER,
         state,
+        steps: [],
         created_at: createdAt.toISOString(),
         updated_at: updatedAt.toISOString(),
         result,
@@ -123,6 +131,7 @@ describe('operation response envelope', () => {
       batchId: 'parent',
       type: OPERATION_TYPE.CREDENTIAL_OFFER,
       state: OperationState.PENDING,
+      steps: [],
       createdAt,
       updatedAt,
     });
@@ -138,6 +147,7 @@ describe('operation response envelope', () => {
       batch_id: 'parent',
       type: OPERATION_TYPE.CREDENTIAL_OFFER,
       state: OperationState.PENDING,
+      steps: [],
       created_at: createdAt.toISOString(),
       updated_at: updatedAt.toISOString(),
       result: null,
@@ -177,6 +187,7 @@ describe('registration operation response', () => {
       'problem_details',
       'result',
       'state',
+      'steps',
       'type',
       'updated_at',
     ]);
@@ -227,6 +238,19 @@ describe('registration operation response', () => {
     );
     expect(response).not.toHaveProperty('problem_details');
     expect(response.result).toEqual({ value: 'existing-result' });
+  });
+
+  it('serializes persisted open-string phase types and closed states', () => {
+    const operationWithSteps = Object.assign(operation(null, false), {
+      steps: [{ type: 'custom-phase', state: OperationStepState.WAITING }],
+    });
+    const response = instanceToPlain(
+      OperationResponseDto.fromEntity(operationWithSteps),
+    );
+
+    expect(response.steps).toEqual([
+      { type: 'custom-phase', state: OperationStepState.WAITING },
+    ]);
   });
 
   it('returns only the local exchange reference for a completed linked action', () => {

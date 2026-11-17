@@ -31,6 +31,7 @@ describe('OperationService', () => {
   let mockFindByIdForTenant: jest.Mock;
   let mockMarkFirstView: jest.Mock;
   let mockTenantFindById: jest.Mock;
+  let mockUpdateStepsIfActive: jest.Mock;
   let mockTransitionIfForward: jest.Mock;
   let mockRecordCredentialOperation: jest.Mock;
   let mockFindPageForTenant: jest.Mock;
@@ -74,6 +75,7 @@ describe('OperationService', () => {
     mockFindByIdForTenant = jest.fn();
     mockMarkFirstView = jest.fn();
     mockTenantFindById = jest.fn();
+    mockUpdateStepsIfActive = jest.fn();
     mockTransitionIfForward = jest.fn();
     mockRecordCredentialOperation = jest.fn();
     mockFindPageForTenant = jest.fn();
@@ -89,6 +91,7 @@ describe('OperationService', () => {
       findById: mockFindById,
       findByIdForTenant: mockFindByIdForTenant,
       markFirstView: mockMarkFirstView,
+      updateStepsIfActive: mockUpdateStepsIfActive,
       transitionIfForward: mockTransitionIfForward,
       findPageForTenant: mockFindPageForTenant,
       countByBatchGroupedByState: mockCountByBatch,
@@ -126,6 +129,68 @@ describe('OperationService', () => {
 
   afterEach(() => {
     jest.useRealTimers();
+  });
+
+  it('creates a completed operation with its result inside the supplied transaction', async () => {
+    const txManager = {} as EntityManager;
+    mockCreate.mockImplementation((operation: Partial<Operation>) => {
+      return operation as Operation;
+    });
+    mockSave.mockImplementation((operation: Operation) =>
+      Promise.resolve({
+        ...operation,
+        id: 'completed-op',
+        createdAt,
+        updatedAt: createdAt,
+      }),
+    );
+
+    const result = await service.createCompleted(
+      {
+        tenantId: 't1',
+        type: OPERATION_TYPE.ISSUANCE_PROFILE_CREATE,
+        request: baseRequest,
+      },
+      { profile: { id: 'profile-1' } },
+      txManager,
+    );
+
+    expect(mockCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tenantId: 't1',
+        type: OPERATION_TYPE.ISSUANCE_PROFILE_CREATE,
+        state: OperationState.COMPLETED,
+        steps: [],
+        result: { profile: { id: 'profile-1' } },
+        expiresAt: expect.any(Date),
+      }),
+    );
+    expect(mockSave).toHaveBeenCalledWith(
+      expect.objectContaining({ state: OperationState.COMPLETED }),
+      txManager,
+    );
+    expect(result.id).toBe('completed-op');
+    expect(mockRecordCredentialOperation).toHaveBeenCalledWith(
+      OPERATION_TYPE.ISSUANCE_PROFILE_CREATE,
+      'completed',
+      txManager,
+    );
+  });
+
+  it('forwards tenant-scoped progress updates to the repository', async () => {
+    const steps = [{ type: 'request', state: 'waiting' as const }];
+    const txManager = {} as EntityManager;
+    mockUpdateStepsIfActive.mockResolvedValue(true);
+
+    await expect(
+      service.updateStepsIfActive('op-1', 't1', steps, txManager),
+    ).resolves.toBe(true);
+    expect(mockUpdateStepsIfActive).toHaveBeenCalledWith(
+      'op-1',
+      't1',
+      steps,
+      txManager,
+    );
   });
 
   describe('tenant read services', () => {

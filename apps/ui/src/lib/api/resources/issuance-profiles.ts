@@ -3,6 +3,8 @@ import { normalizePage, type CursorParams, type Page } from '../pagination';
 import type { components } from '../types.gen';
 
 export type IssuanceProfile = components['schemas']['IssuanceProfile'];
+export type IssuanceProfileOperation =
+  components['schemas']['IssuanceProfileOperation'];
 export type CreateIssuanceProfileRequest =
   components['schemas']['CreateIssuanceProfileRequest'];
 
@@ -14,8 +16,8 @@ export enum IssuanceProfileLifecycleAction {
 export async function archiveIssuanceProfile(
   tenantId: string,
   profileId: string,
-): Promise<IssuanceProfile> {
-  const response = await apiClient.post<IssuanceProfile>(
+): Promise<IssuanceProfileOperation> {
+  const response = await apiClient.post<IssuanceProfileOperation>(
     `/tenants/${tenantId}/profiles/issuance/${profileId}/deprecate`,
   );
   return response.data;
@@ -31,8 +33,8 @@ export async function deleteIssuanceProfile(
 export async function publishIssuanceProfile(
   tenantId: string,
   profileId: string,
-): Promise<IssuanceProfile> {
-  const response = await apiClient.post<IssuanceProfile>(
+): Promise<IssuanceProfileOperation> {
+  const response = await apiClient.post<IssuanceProfileOperation>(
     `/tenants/${tenantId}/profiles/issuance/${profileId}/publish`,
   );
   return response.data;
@@ -41,8 +43,8 @@ export async function publishIssuanceProfile(
 export async function createIssuanceProfile(
   tenantId: string,
   body: CreateIssuanceProfileRequest,
-): Promise<IssuanceProfile> {
-  const response = await apiClient.post<IssuanceProfile>(
+): Promise<IssuanceProfileOperation> {
+  const response = await apiClient.post<IssuanceProfileOperation>(
     `/tenants/${tenantId}/profiles/issuance`,
     body,
   );

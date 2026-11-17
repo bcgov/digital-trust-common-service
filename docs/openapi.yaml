@@ -1269,11 +1269,11 @@ paths:
               $ref: "#/components/schemas/CreateIssuanceProfileRequest"
       responses:
         "201":
-          description: Draft issuance profile created
+          description: Completed issuance-profile creation operation
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/IssuanceProfile"
+                $ref: "#/components/schemas/IssuanceProfileOperation"
         '404':
           description: Credential definition not found
           content:
@@ -1362,11 +1362,11 @@ paths:
               $ref: "#/components/schemas/UpdateIssuanceProfileRequest"
       responses:
         "200":
-          description: Issuance profile updated
+          description: Completed issuance-profile update operation
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/IssuanceProfile"
+                $ref: "#/components/schemas/IssuanceProfileOperation"
         '409':
           description: Cannot update a published or deprecated profile
           content:
@@ -1384,11 +1384,11 @@ paths:
       tags: [Issuance Profiles]
       responses:
         "200":
-          description: Issuance profile published
+          description: Completed issuance-profile publication operation
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/IssuanceProfile"
+                $ref: "#/components/schemas/IssuanceProfileOperation"
         '400':
           description: >-
             The credential definition is not published, or its connector no longer exists, is inactive, or its
@@ -1414,11 +1414,11 @@ paths:
       tags: [Issuance Profiles]
       responses:
         "200":
-          description: Issuance profile deprecated
+          description: Completed issuance-profile deprecation operation
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/IssuanceProfile"
+                $ref: "#/components/schemas/IssuanceProfileOperation"
         '409':
           description: Profile is not in published status
           content:
@@ -4193,6 +4193,17 @@ components:
     # ─── Issuance Profile ────────────────────────────────────────────
     IssuanceProfile:
       type: object
+      required:
+        - id
+        - tenant_id
+        - name
+        - version
+        - credential_definition_id
+        - claims
+        - delivery
+        - status
+        - created_at
+        - updated_at
       properties:
         can_delete:
           type: boolean
@@ -4644,7 +4655,7 @@ components:
       description: |
         Uniform envelope for all async and sync operations. The `result` field
         semantics depend on `(type, state)`.
-      required: [id, batch_id, type, state, created_at, updated_at, result]
+      required: [id, batch_id, type, state, steps, created_at, updated_at, result]
       properties:
         id:
           type: string
@@ -4668,7 +4679,9 @@ components:
             `credential-definition.register`, `credential.offer`, `credential.issue`, `credential.offer-batch`,
             `credential.accept`, `credential.reject`,
             `credential.revoke`, `credential.revoke-batch`,
-            `presentation.request`, `connection.create`
+            `presentation.request`, `connection.create`,
+            `issuance-profile.create`, `issuance-profile.update`,
+            `issuance-profile.publish`, `issuance-profile.deprecate`
           examples:
             - credential.offer
             - credential.issue
@@ -4679,8 +4692,20 @@ components:
             - credential.revoke-batch
             - presentation.request
             - connection.create
+            - issuance-profile.create
+            - issuance-profile.update
+            - issuance-profile.publish
+            - issuance-profile.deprecate
         state:
           $ref: "#/components/schemas/OperationState"
+        steps:
+          type: array
+          description: |
+            Persisted workflow progress written by the service or worker that
+            observes each transition. Known phase types include `register`,
+            `offer`, `request`, and `issue`; the type remains an open string.
+          items:
+            $ref: "#/components/schemas/OperationStep"
         created_at:
           type: string
           format: date-time
@@ -4702,6 +4727,8 @@ components:
               type: string
             message:
               type: string
+            profile:
+              $ref: "#/components/schemas/IssuanceProfile"
             registration:
               $ref: "#/components/schemas/CredentialDefinitionRegistrationProgress"
           description: |
@@ -4709,7 +4736,8 @@ components:
             - pending/processing: usually null; credential-definition.register
               includes { credential_definition_id } immediately
             - completed: operation-type-specific data
-              (exchange-linked actions return the local { exchange_id })
+              (profile mutations return { profile } with the completed profile
+              snapshot; exchange-linked actions return the local { exchange_id })
             - failed: { code, message }; credential registration additionally
               retains credential_definition_id, external_id, and registration
               progress/correlation identifiers.
@@ -4738,6 +4766,35 @@ components:
             not a standalone application/problem+json HTTP error response.
             status is omitted to avoid contradicting HTTP 200/202. Match the
             problem type URI for machine handling; do not parse title or detail.
+
+    OperationStep:
+      type: object
+      required: [type, state]
+      properties:
+        type:
+          type: string
+          description: |
+            Open phase name. Known values include `register`, `offer`,
+            `request`, and `issue`. Format-specific detail stays in `result`.
+          examples: [offer, request, issue]
+        state:
+          $ref: "#/components/schemas/OperationStepState"
+
+    IssuanceProfileOperation:
+      allOf:
+        - $ref: "#/components/schemas/Operation"
+        - type: object
+          required: [result]
+          properties:
+            result:
+              $ref: "#/components/schemas/IssuanceProfileOperationResult"
+
+    IssuanceProfileOperationResult:
+      type: object
+      required: [profile]
+      properties:
+        profile:
+          $ref: "#/components/schemas/IssuanceProfile"
 
     CredentialDefinitionRegistrationProgress:
       type: object
@@ -4803,6 +4860,10 @@ components:
     OperationState:
       type: string
       enum: [pending, processing, completed, failed]
+
+    OperationStepState:
+      type: string
+      enum: [pending, processing, waiting, completed, failed, skipped]
 
     # ─── Webhook ─────────────────────────────────────────────────────
     WebhookRegistration:

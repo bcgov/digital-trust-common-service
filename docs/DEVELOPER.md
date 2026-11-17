@@ -1436,8 +1436,12 @@ already in flight may finish, but no connection is held between checks.
 Operation representations share six core fields: `id`, `type`, `state`,
 `created_at`, `updated_at`, and `result`. They also include `batch_id`, which
 is null for standalone operations and batch parents and identifies the parent
-for batch children. Credential-registration operations additionally include
-`problem_details`; other operation types omit it.
+for batch children, plus `steps`, a persisted array of `{ type, state }`
+progress entries. Known phase names include `register`, `offer`, `request`, and
+`issue`; phase names remain open strings, while step states are
+`pending`, `processing`, `waiting`, `completed`, `failed`, or `skipped`.
+Credential-registration operations additionally include `problem_details`;
+other operation types omit it.
 
 Non-batch pending and processing reads return `result: null`. Completed results
 contain operation-type-specific data; ordinary failures contain `code` and
@@ -1562,9 +1566,11 @@ keywords are not allowed in profile overlays. Optional `display`, `metadata`,
 and `description` retain their existing purpose. Draft edits can replace
 `claims` and `delivery`; published profiles remain immutable.
 
-Create, update, publish, and deprecate return an `IssuanceProfile` directly
-(creation uses HTTP 201; the other mutations use HTTP 200). Delete returns
-HTTP 204.
+Create, update, publish, and deprecate return completed `Operation` envelopes
+(creation uses HTTP 201; the other mutations use HTTP 200). The profile snapshot
+is in `result.profile`; each mutation and its operation insert share one
+transaction. This replaces the direct-profile mutation response. Profile reads
+still return `IssuanceProfile`, and delete returns HTTP 204.
 
 For AnonCreds, define `schema.definition.attributes` as a flat map of attribute
 names to semantic types, for example `{ "given_name": "string", "age": "integer" }`,
@@ -1573,6 +1579,9 @@ semantic values to AnonCreds' flat wire representation, where raw values are
 strings. Other formats may define claims with JSON Schema. Existing profile
 migrations derive `claims.required` from legacy required and optional-attribute
 metadata, and discard legacy defaults; no defaults are applied to offers.
+Credential-definition registration persists a `register` step whose current
+state is updated by the owning registration service or worker; detailed backend
+stage, artifact, and correlation data remains in `result.registration`.
 
 ### Offering a credential
 
@@ -1602,6 +1611,23 @@ No defaults are applied. AnonCreds supports flat scalar attributes only; its
 adapter converts semantic integer, number, and boolean values to strings and
 sends omitted optional attributes as empty strings. This unsigned input does not
 select W3C-form AnonCreds or supply a proof.
+
+The offer operation persists the format-neutral `offer`, `request`, and `issue`
+steps as their owning service or protocol worker observes transitions. For
+example, after an offer is sent and the service is waiting for a holder request:
+
+```json
+{
+  "steps": [
+    { "type": "offer", "state": "completed" },
+    { "type": "request", "state": "waiting" },
+    { "type": "issue", "state": "pending" }
+  ]
+}
+```
+
+Protocol-specific registration or exchange details stay in `result`; operation
+reads do not reconstruct steps from stage strings or live exchange rows.
 
 The delivery connection is a tenant-owned local UUID, not Traction's ID. New
 connections pin the connector used to create them. Before offering, the service

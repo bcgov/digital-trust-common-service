@@ -1145,6 +1145,12 @@ describe('CredentialOfferService', () => {
         operationStatesBelow(OperationState.FAILED),
         expect.objectContaining({ code: adapterError.code }),
         mockManager,
+        undefined,
+        [
+          { type: 'offer', state: 'failed' },
+          { type: 'request', state: 'pending' },
+          { type: 'issue', state: 'pending' },
+        ],
       );
       expect(mockUpdateStateIfForward).toHaveBeenCalledWith(
         credentialId,

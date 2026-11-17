@@ -2,7 +2,11 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { EntityManager, In, Repository } from 'typeorm';
 
-import { Operation, OperationState } from './operation.entity';
+import {
+  Operation,
+  OperationState,
+  OperationStepState,
+} from './operation.entity';
 import { OperationRepository } from './operation.repository';
 
 describe('OperationRepository', () => {
@@ -152,6 +156,24 @@ describe('OperationRepository', () => {
     expect(mockRepo.findOne).toHaveBeenCalledWith({
       where: { id: 'op-1', tenantId: 't1' },
     });
+  });
+
+  it('updates persisted steps only for the owning tenant and active operations', async () => {
+    mockManagerUpdate.mockResolvedValue({ affected: 1 });
+    const steps = [{ type: 'request', state: OperationStepState.WAITING }];
+
+    await expect(
+      repository.updateStepsIfActive('op-1', 't1', steps),
+    ).resolves.toBe(true);
+    expect(mockManagerUpdate).toHaveBeenCalledWith(
+      Operation,
+      {
+        id: 'op-1',
+        tenantId: 't1',
+        state: In([OperationState.PENDING, OperationState.PROCESSING]),
+      },
+      { steps },
+    );
   });
 
   it('findByExternalIdForTenant queries by tenantId/externalId, scoped to in-flight states, newest first, and to the given operation types', async () => {

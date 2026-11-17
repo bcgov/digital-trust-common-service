@@ -273,6 +273,8 @@ describe('CredentialExchangeService', () => {
           message: 'Credential issue was not submitted',
         },
         manager,
+        undefined,
+        [{ type: 'issue', state: 'failed' }],
       );
       expect(claimed.issueSubmission).toBe('not-submitted');
       expect(sendInTransaction).toHaveBeenCalledWith(
@@ -452,6 +454,7 @@ describe('CredentialExchangeService', () => {
         tenantId,
         exchangeId,
         type: OPERATION_TYPE.CREDENTIAL_ISSUE,
+        steps: [{ type: 'issue', state: 'pending' }],
         externalId: backendId,
         request: {
           method: 'POST',
@@ -472,6 +475,8 @@ describe('CredentialExchangeService', () => {
       [OperationState.PENDING],
       undefined,
       manager,
+      undefined,
+      [{ type: 'issue', state: 'processing' }],
     );
     expect(emitAudit).toHaveBeenCalledWith(
       {

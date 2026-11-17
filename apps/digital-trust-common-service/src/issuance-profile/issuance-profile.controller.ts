@@ -37,6 +37,7 @@ import {
 import { SkipAutoAudit } from '../audit-log/skip-auto-audit.decorator';
 import { API_VERSION } from '../common/constants/api-version.constants';
 import { CredentialDefinitionFormat } from '../credential-definition/credential-definition.entity';
+import { OperationResponseDto } from '../operation/dto/operation-response.dto';
 import { TenantTierRateLimitGuard } from '../rate-limit/tenant-tier-rate-limit.guard';
 import { TenantStatusGuard } from '../tenant/tenant-status.guard';
 
@@ -76,8 +77,8 @@ export class IssuanceProfileController {
 
   @Post()
   @ApiCreatedResponse({
-    description: 'Issuance profile created successfully (draft status)',
-    type: IssuanceProfileResponseDto,
+    description: 'Completed issuance-profile creation operation',
+    type: OperationResponseDto,
   })
   @ApiNotFoundResponse({ description: 'Credential definition not found' })
   @ApiBadRequestResponse({
@@ -113,14 +114,14 @@ export class IssuanceProfileController {
     @Param('tenantId', ParseUUIDPipe) tenantId: string,
     @Body() dto: CreateIssuanceProfileDto,
     @CurrentAuth() auth: AuthContext,
-  ): Promise<IssuanceProfileResponseDto> {
-    const profile = await this.issuanceProfileService.create(
+  ): Promise<OperationResponseDto> {
+    const operation = await this.issuanceProfileService.create(
       tenantId,
       dto,
       auth,
     );
 
-    return IssuanceProfileResponseDto.fromEntity(profile);
+    return OperationResponseDto.fromEntity(operation);
   }
 
   @Get()
@@ -189,8 +190,8 @@ export class IssuanceProfileController {
 
   @Patch(':id')
   @ApiOkResponse({
-    description: 'Issuance profile updated successfully',
-    type: IssuanceProfileResponseDto,
+    description: 'Completed issuance-profile update operation',
+    type: OperationResponseDto,
   })
   @ApiNotFoundResponse({ description: 'Issuance profile not found' })
   @ApiConflictResponse({
@@ -211,15 +212,15 @@ export class IssuanceProfileController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateIssuanceProfileDto,
     @CurrentAuth() auth: AuthContext,
-  ): Promise<IssuanceProfileResponseDto> {
-    const profile = await this.issuanceProfileService.update(
+  ): Promise<OperationResponseDto> {
+    const operation = await this.issuanceProfileService.update(
       tenantId,
       id,
       dto,
       auth,
     );
 
-    return IssuanceProfileResponseDto.fromEntity(profile);
+    return OperationResponseDto.fromEntity(operation);
   }
 
   @Delete(':id')
@@ -240,8 +241,8 @@ export class IssuanceProfileController {
   @Post(':id/publish')
   @HttpCode(200)
   @ApiOkResponse({
-    description: 'Issuance profile published successfully',
-    type: IssuanceProfileResponseDto,
+    description: 'Completed issuance-profile publication operation',
+    type: OperationResponseDto,
   })
   @ApiNotFoundResponse({ description: 'Issuance profile not found' })
   @ApiBadRequestResponse({
@@ -256,21 +257,21 @@ export class IssuanceProfileController {
     @Param('tenantId', ParseUUIDPipe) tenantId: string,
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentAuth() auth: AuthContext,
-  ): Promise<IssuanceProfileResponseDto> {
-    const profile = await this.issuanceProfileService.publish(
+  ): Promise<OperationResponseDto> {
+    const operation = await this.issuanceProfileService.publish(
       tenantId,
       id,
       auth,
     );
 
-    return IssuanceProfileResponseDto.fromEntity(profile);
+    return OperationResponseDto.fromEntity(operation);
   }
 
   @Post(':id/deprecate')
   @HttpCode(200)
   @ApiOkResponse({
-    description: 'Issuance profile deprecated successfully',
-    type: IssuanceProfileResponseDto,
+    description: 'Completed issuance-profile deprecation operation',
+    type: OperationResponseDto,
   })
   @ApiNotFoundResponse({ description: 'Issuance profile not found' })
   @ApiConflictResponse({
@@ -280,13 +281,13 @@ export class IssuanceProfileController {
     @Param('tenantId', ParseUUIDPipe) tenantId: string,
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentAuth() auth: AuthContext,
-  ): Promise<IssuanceProfileResponseDto> {
-    const profile = await this.issuanceProfileService.deprecate(
+  ): Promise<OperationResponseDto> {
+    const operation = await this.issuanceProfileService.deprecate(
       tenantId,
       id,
       auth,
     );
 
-    return IssuanceProfileResponseDto.fromEntity(profile);
+    return OperationResponseDto.fromEntity(operation);
   }
 }

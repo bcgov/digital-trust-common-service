@@ -277,6 +277,7 @@ describe('AnonCreds credential-definition registration worker', () => {
       }),
       expect.any(Object),
       'tenant',
+      [{ type: 'register', state: 'completed' }],
     );
   });
 
@@ -306,6 +307,7 @@ describe('AnonCreds credential-definition registration worker', () => {
       expect.objectContaining({ external_id: 'existing-definition' }),
       expect.any(Object),
       'tenant',
+      [{ type: 'register', state: 'completed' }],
     );
   });
 
@@ -358,6 +360,7 @@ describe('AnonCreds credential-definition registration worker', () => {
       }),
       expect.any(Object),
       'tenant',
+      [{ type: 'register', state: 'waiting' }],
     );
   });
 
@@ -386,6 +389,7 @@ describe('AnonCreds credential-definition registration worker', () => {
       }),
       expect.any(Object),
       'tenant',
+      [{ type: 'register', state: 'failed' }],
     );
   });
 
@@ -422,6 +426,7 @@ describe('AnonCreds credential-definition registration worker', () => {
       }),
       expect.any(Object),
       'tenant',
+      [{ type: 'register', state: 'waiting' }],
     );
   });
 
@@ -471,6 +476,7 @@ describe('AnonCreds credential-definition registration worker', () => {
       }),
       expect.any(Object),
       'tenant',
+      [{ type: 'register', state: 'waiting' }],
     );
   });
 
@@ -492,6 +498,7 @@ describe('AnonCreds credential-definition registration worker', () => {
       expect.any(Object),
       expect.any(Object),
       'tenant',
+      [{ type: 'register', state: 'completed' }],
     );
   });
 
@@ -523,6 +530,7 @@ describe('AnonCreds credential-definition registration worker', () => {
       }),
       expect.any(Object),
       'tenant',
+      [{ type: 'register', state: 'waiting' }],
     );
   });
 
@@ -548,6 +556,7 @@ describe('AnonCreds credential-definition registration worker', () => {
       }),
       expect.any(Object),
       'tenant',
+      [{ type: 'register', state: 'failed' }],
     );
   });
 
@@ -575,6 +584,7 @@ describe('AnonCreds credential-definition registration worker', () => {
       }),
       expect.any(Object),
       'tenant',
+      [{ type: 'register', state: 'failed' }],
     );
     expect(sendInTransaction).not.toHaveBeenCalled();
   });
@@ -599,6 +609,7 @@ describe('AnonCreds credential-definition registration worker', () => {
       }),
       expect.any(Object),
       'tenant',
+      [{ type: 'register', state: 'failed' }],
     );
     expect(sendInTransaction).not.toHaveBeenCalled();
   });
@@ -638,6 +649,7 @@ describe('AnonCreds credential-definition registration worker', () => {
         }),
         expect.any(Object),
         'tenant',
+        [{ type: 'register', state: 'waiting' }],
       );
 
       if (artifact === 'schema') {
@@ -656,6 +668,7 @@ describe('AnonCreds credential-definition registration worker', () => {
         expect.any(Object),
         expect.any(Object),
         'tenant',
+        [{ type: 'register', state: 'completed' }],
       );
     },
   );
@@ -688,6 +701,7 @@ describe('AnonCreds credential-definition registration worker', () => {
         expect.any(Object),
         expect.any(Object),
         'tenant',
+        [{ type: 'register', state: 'completed' }],
       );
     },
   );
@@ -733,6 +747,7 @@ describe('AnonCreds credential-definition registration worker', () => {
       }),
       expect.any(Object),
       'tenant',
+      [{ type: 'register', state: 'failed' }],
     );
   });
 
@@ -757,6 +772,7 @@ describe('AnonCreds credential-definition registration worker', () => {
       }),
       expect.any(Object),
       'tenant',
+      [{ type: 'register', state: 'failed' }],
     );
   });
 
@@ -809,6 +825,7 @@ describe('AnonCreds credential-definition registration worker', () => {
       }),
       expect.any(Object),
       'tenant',
+      [{ type: 'register', state: 'failed' }],
     );
   });
 
@@ -831,6 +848,7 @@ describe('AnonCreds credential-definition registration worker', () => {
       }),
       expect.any(Object),
       'tenant',
+      [{ type: 'register', state: 'failed' }],
     );
   });
 
@@ -851,6 +869,7 @@ describe('AnonCreds credential-definition registration worker', () => {
       }),
       expect.any(Object),
       'tenant',
+      [{ type: 'register', state: 'failed' }],
     );
   });
 

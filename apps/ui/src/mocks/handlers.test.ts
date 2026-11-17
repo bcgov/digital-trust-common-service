@@ -56,8 +56,9 @@ describe('shared issuance-profile mock handlers', () => {
       delivery: { protocol: 'didcomm-v1' },
     };
     const created = await createIssuanceProfile(tenantId, body);
-    const profileId = created.id!;
-    expect(created).toMatchObject({
+    const profile = created.result.profile;
+    const profileId = profile.id;
+    expect(profile).toMatchObject({
       ...body,
       status: 'draft',
       claims: {},
@@ -76,10 +77,9 @@ describe('shared issuance-profile mock handlers', () => {
       archiveIssuanceProfile(tenantId, profileId),
     ).rejects.toMatchObject({ status: 409 });
     await publishIssuanceProfile(tenantId, profileId);
-    expect(await archiveIssuanceProfile(tenantId, profileId)).toMatchObject({
-      id: profileId,
-      status: 'deprecated',
-    });
+    expect(
+      (await archiveIssuanceProfile(tenantId, profileId)).result.profile,
+    ).toMatchObject({ id: profileId, status: 'deprecated' });
     await expect(createIssuanceProfile(tenantId, body)).rejects.toMatchObject({
       status: 409,
     });
@@ -95,15 +95,13 @@ describe('shared issuance-profile mock handlers', () => {
       credential_definition_id: publishedId,
       delivery: { protocol: 'didcomm-v1' },
     });
-    const profileId = created.id!;
+    const profileId = created.result.profile.id;
     await expect(
       publishIssuanceProfile(otherTenantId, profileId),
     ).rejects.toMatchObject({ status: 404 });
-    expect(await publishIssuanceProfile(tenantId, profileId)).toMatchObject({
-      id: profileId,
-      status: 'published',
-      tenant_id: tenantId,
-    });
+    expect(
+      (await publishIssuanceProfile(tenantId, profileId)).result.profile,
+    ).toMatchObject({ id: profileId, status: 'published', tenant_id: tenantId });
     await expect(
       publishIssuanceProfile(tenantId, profileId),
     ).rejects.toMatchObject({ status: 409 });
@@ -118,7 +116,7 @@ describe('shared issuance-profile mock handlers', () => {
     });
     await deleteCredentialDefinition(tenantId, publishedId);
     await expect(
-      publishIssuanceProfile(tenantId, created.id!),
+      publishIssuanceProfile(tenantId, created.result.profile.id),
     ).rejects.toMatchObject({ status: 400 });
   });
 });

@@ -1,9 +1,13 @@
 import { ConnectionState } from '../connection/connection.entity';
 import { CredentialState } from '../credential/credential.entity';
-import { OperationState } from '../operation/operation.entity';
+import {
+  OperationState,
+  OperationStepState,
+} from '../operation/operation.entity';
 
 import {
   connectionStatesBelow,
+  credentialOfferSteps,
   credentialStatesBelow,
   isForwardConnectionTransition,
   isForwardCredentialTransition,
@@ -176,6 +180,40 @@ describe('state-mapping', () => {
           seen.set(type, topic);
         }
       }
+    });
+  });
+
+  describe('credentialOfferSteps', () => {
+    it('uses format-neutral phases for a sent offer awaiting a holder request', () => {
+      expect(credentialOfferSteps('offer_sent')).toEqual([
+        { type: 'offer', state: OperationStepState.COMPLETED },
+        { type: 'request', state: OperationStepState.WAITING },
+        { type: 'issue', state: OperationStepState.PENDING },
+      ]);
+    });
+
+    it('marks the request complete and issue waiting after a holder request', () => {
+      expect(credentialOfferSteps('request_received')).toEqual([
+        { type: 'offer', state: OperationStepState.COMPLETED },
+        { type: 'request', state: OperationStepState.COMPLETED },
+        { type: 'issue', state: OperationStepState.WAITING },
+      ]);
+    });
+
+    it('records the exact issue step as failed after the request was received', () => {
+      expect(credentialOfferSteps('abandoned', 'request_received')).toEqual([
+        { type: 'offer', state: OperationStepState.COMPLETED },
+        { type: 'request', state: OperationStepState.COMPLETED },
+        { type: 'issue', state: OperationStepState.FAILED },
+      ]);
+    });
+
+    it('records the request step as failed when abandonment precedes a request', () => {
+      expect(credentialOfferSteps('abandoned', 'offer_sent')).toEqual([
+        { type: 'offer', state: OperationStepState.COMPLETED },
+        { type: 'request', state: OperationStepState.FAILED },
+        { type: 'issue', state: OperationStepState.PENDING },
+      ]);
     });
   });
 

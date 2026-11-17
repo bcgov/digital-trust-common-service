@@ -33,6 +33,7 @@ import {
   OperationRequest,
   OperationResult,
   OperationState,
+  OperationStep,
 } from './operation.entity';
 import { OperationRepository } from './operation.repository';
 
@@ -43,6 +44,7 @@ export interface CreateOperationInput {
   batchId?: string | null;
   externalId?: string | null;
   exchangeId?: string | null;
+  steps?: OperationStep[];
 }
 
 export interface PaginatedOperations {
@@ -106,6 +108,7 @@ export class OperationService {
       externalId: input.externalId ?? null,
       exchangeId: input.exchangeId ?? null,
       state: OperationState.PENDING,
+      steps: input.steps ?? [],
       expiresAt: this.computeExpiresAt(
         OperationState.PENDING,
         now,
@@ -115,6 +118,44 @@ export class OperationService {
     });
 
     return this.operations.save(operation, manager);
+  }
+
+  public async createCompleted(
+    input: CreateOperationInput,
+    result: OperationResult,
+    manager?: EntityManager,
+  ): Promise<Operation> {
+    const now = new Date();
+    const tenant = await this.tenants.findById(input.tenantId);
+    const operation = this.operations.create({
+      tenantId: input.tenantId,
+      type: input.type,
+      request: input.request,
+      batchId: input.batchId ?? null,
+      externalId: input.externalId ?? null,
+      exchangeId: input.exchangeId ?? null,
+      state: OperationState.COMPLETED,
+      result,
+      steps: input.steps ?? [],
+      expiresAt: this.computeExpiresAt(
+        OperationState.COMPLETED,
+        now,
+        null,
+        tenant.config,
+      ),
+    });
+    const saved = await this.operations.save(operation, manager);
+    this.recordTerminalOutcome(saved.type, saved.state, manager);
+    return saved;
+  }
+
+  public updateStepsIfActive(
+    id: string,
+    tenantId: string,
+    steps: OperationStep[],
+    manager?: EntityManager,
+  ): Promise<boolean> {
+    return this.operations.updateStepsIfActive(id, tenantId, steps, manager);
   }
 
   /**
@@ -522,6 +563,7 @@ export class OperationService {
     result?: OperationResult,
     manager?: EntityManager,
     tenantId?: string,
+    steps?: OperationStep[],
   ): Promise<Operation> {
     const operation =
       manager && tenantId
@@ -538,6 +580,9 @@ export class OperationService {
 
     if (result !== undefined) {
       operation.result = result;
+    }
+    if (steps !== undefined) {
+      operation.steps = steps;
     }
 
     operation.expiresAt = this.computeExpiresAt(
@@ -582,6 +627,7 @@ export class OperationService {
     result?: OperationResult,
     manager?: EntityManager,
     externalId?: string | null,
+    steps?: OperationStep[],
   ): Promise<Operation | null> {
     const operation = await this.operations.findById(id, manager);
 
@@ -606,6 +652,7 @@ export class OperationService {
         expiresAt,
         ...(result !== undefined ? { result } : {}),
         ...(externalId !== undefined ? { externalId } : {}),
+        ...(steps !== undefined ? { steps } : {}),
       },
       manager,
     );

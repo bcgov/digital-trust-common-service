@@ -30,6 +30,20 @@ export enum OperationState {
   FAILED = 'failed',
 }
 
+export enum OperationStepState {
+  PENDING = 'pending',
+  PROCESSING = 'processing',
+  WAITING = 'waiting',
+  COMPLETED = 'completed',
+  FAILED = 'failed',
+  SKIPPED = 'skipped',
+}
+
+export interface OperationStep {
+  type: string;
+  state: OperationStepState;
+}
+
 export interface OperationRequest {
   method: string;
   path: string;
@@ -113,6 +127,22 @@ export class Operation {
   })
   @IsEnum(OperationState)
   public state!: OperationState;
+
+  @ApiProperty({
+    description:
+      'Persisted workflow progress. Known phase types include register, offer, request, and issue; new phase types remain open strings.',
+    type: 'array',
+    items: {
+      type: 'object',
+      required: ['type', 'state'],
+      properties: {
+        type: { type: 'string', example: 'offer' },
+        state: { type: 'string', enum: Object.values(OperationStepState) },
+      },
+    },
+  })
+  @Column({ type: 'jsonb', default: () => "'[]'::jsonb" })
+  public steps!: OperationStep[];
 
   @ApiProperty({
     description:
