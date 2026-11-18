@@ -403,12 +403,19 @@ describe('Credential offer (e2e)', () => {
       .send(body)
       .expect(201);
     expect(created.body).toMatchObject({
-      status: 'draft',
-      delivery: { protocol: 'didcomm-v1' },
-      claims: body.claims,
-      display: body.display,
+      state: 'completed',
+      result: {
+        profile: {
+          status: 'draft',
+          delivery: { protocol: 'didcomm-v1' },
+          claims: body.claims,
+          display: body.display,
+        },
+      },
     });
-    const createdProfile = created.body as { id: string };
+    const { profile: createdProfile } = (
+      created.body as { result: { profile: { id: string } } }
+    ).result;
     await request(app.getHttpServer())
       .post(
         `${API_BASE_PATH}/tenants/${tenant.id}/profiles/issuance/${createdProfile.id}/publish`,
@@ -416,8 +423,10 @@ describe('Credential offer (e2e)', () => {
       .expect(200)
       .expect(({ body: published }: { body: unknown }) => {
         expect(published).toMatchObject({
-          id: createdProfile.id,
-          status: 'published',
+          state: 'completed',
+          result: {
+            profile: { id: createdProfile.id, status: 'published' },
+          },
         });
       });
     await request(app.getHttpServer())
@@ -466,7 +475,7 @@ describe('Credential offer (e2e)', () => {
     expect(await operationRepo.countBy({ tenantId: tenant.id })).toBe(0);
   });
 
-  it('returns issuance profiles from profile mutations without creating operations', async () => {
+  it('persists completed operations for successful profile mutations only', async () => {
     prepareBackend();
     const root = `${API_BASE_PATH}/tenants/${tenant.id}/profiles/issuance`;
     const created = await request(app.getHttpServer())
@@ -478,9 +487,14 @@ describe('Credential offer (e2e)', () => {
         delivery: {},
       })
       .expect(201);
-    const id = (created.body as { id: string }).id;
+    const { id } = (created.body as { result: { profile: { id: string } } })
+      .result.profile;
     expect(created.body).toMatchObject({
-      delivery: { protocol: 'didcomm-v1' },
+      type: OPERATION_TYPE.ISSUANCE_PROFILE_CREATE,
+      state: 'completed',
+      result: {
+        profile: { id, status: 'draft', delivery: { protocol: 'didcomm-v1' } },
+      },
     });
     await request(app.getHttpServer())
       .patch(`${root}/${id}`)
@@ -491,23 +505,27 @@ describe('Credential offer (e2e)', () => {
       .send({ description: 'Updated profile' })
       .expect(200);
     expect(updated.body).toMatchObject({
-      id,
-      description: 'Updated profile',
-      status: 'draft',
+      type: OPERATION_TYPE.ISSUANCE_PROFILE_UPDATE,
+      state: 'completed',
+      result: {
+        profile: { id, description: 'Updated profile', status: 'draft' },
+      },
     });
     const published = await request(app.getHttpServer())
       .post(`${root}/${id}/publish`)
       .expect(200);
     expect(published.body).toMatchObject({
-      id,
-      status: 'published',
+      type: OPERATION_TYPE.ISSUANCE_PROFILE_PUBLISH,
+      state: 'completed',
+      result: { profile: { id, status: 'published' } },
     });
     const deprecated = await request(app.getHttpServer())
       .post(`${root}/${id}/deprecate`)
       .expect(200);
     expect(deprecated.body).toMatchObject({
-      id,
-      status: 'deprecated',
+      type: OPERATION_TYPE.ISSUANCE_PROFILE_DEPRECATE,
+      state: 'completed',
+      result: { profile: { id, status: 'deprecated' } },
     });
     const otherTenant = await tenantRepo.save(
       tenantRepo.create({
@@ -530,7 +548,21 @@ describe('Credential offer (e2e)', () => {
       .patch(`${root}/${id}`)
       .send({ description: 'cannot edit' })
       .expect(409);
-    expect(await operationRepo.countBy({ tenantId: tenant.id })).toBe(0);
+    const operations = await operationRepo.findBy({ tenantId: tenant.id });
+    expect(operations).toHaveLength(4);
+    for (const response of [created, updated, published, deprecated]) {
+      const { id, type, state, result } = response.body as Pick<
+        Operation,
+        'id' | 'type' | 'state' | 'result'
+      >;
+      expect(operations.find((operation) => operation.id === id)).toMatchObject(
+        {
+          type,
+          state,
+          result,
+        },
+      );
+    }
     expect(backendRequest).not.toHaveBeenCalled();
   });
 
@@ -618,14 +650,20 @@ describe('Credential offer (e2e)', () => {
     expect(operationId).toEqual(expect.any(String));
     expect(exchangeId).toEqual(expect.any(String));
     expect(exchangeId).not.toBe(`exchange-${tenant.id}`);
+    const sentSteps = [
+      { type: 'offer', state: 'completed' },
+      { type: 'request', state: 'waiting' },
+      { type: 'issue', state: 'pending' },
+    ];
     expect(offered.body).toMatchObject({
       state: 'processing',
+      steps: sentSteps,
     });
     await request(app.getHttpServer())
       .get(`${API_BASE_PATH}/tenants/${tenant.id}/operations/${operationId}`)
       .expect(200)
       .expect(({ body }: { body: unknown }) => {
-        expect(body).toMatchObject({ id: operationId });
+        expect(body).toMatchObject({ id: operationId, steps: sentSteps });
       });
     await request(app.getHttpServer())
       .get(`${API_BASE_PATH}/tenants/${tenant.id}/operations`)
@@ -633,7 +671,7 @@ describe('Credential offer (e2e)', () => {
       .expect(({ body }: { body: { data: unknown[] } }) => {
         expect(body.data).toEqual(
           expect.arrayContaining([
-            expect.objectContaining({ id: operationId }),
+            expect.objectContaining({ id: operationId, steps: sentSteps }),
           ]),
         );
       });
@@ -688,6 +726,11 @@ describe('Credential offer (e2e)', () => {
       expect(reconciled.body).toMatchObject({
         id: operationId,
         state: 'completed',
+        steps: [
+          { type: 'offer', state: 'completed' },
+          { type: 'request', state: 'completed' },
+          { type: 'issue', state: 'completed' },
+        ],
       });
     }
     expect(
@@ -711,6 +754,52 @@ describe('Credential offer (e2e)', () => {
     expect(reconciledExchange.body).toMatchObject({
       state: 'credential-issued',
     });
+  });
+
+  it('does not hydrate another tenant exchange into operation steps', async () => {
+    prepareBackend();
+    const offered = await request(app.getHttpServer())
+      .post(`${API_BASE_PATH}/tenants/${tenant.id}/credentials/offer`)
+      .send(offerBody())
+      .expect(202);
+    const otherTenant = await tenantRepo.save({
+      name: 'Other operation tenant',
+      slug: `other-steps-${tenant.id}`,
+      config: {},
+    });
+    try {
+      const operation = await operationRepo.save(
+        operationRepo.create({
+          tenantId: otherTenant.id,
+          type: OPERATION_TYPE.CREDENTIAL_OFFER,
+          state: OperationState.PROCESSING,
+          exchangeId: (offered.body as { exchange_id: string }).exchange_id,
+          request: { method: 'POST', path: '', body: {} },
+          expiresAt: new Date(Date.now() + 60_000),
+        }),
+      );
+      const expected = {
+        id: operation.id,
+        steps: [],
+      };
+      await request(app.getHttpServer())
+        .get(
+          `${API_BASE_PATH}/tenants/${otherTenant.id}/operations/${operation.id}`,
+        )
+        .expect(200)
+        .expect(({ body }: { body: unknown }) => {
+          expect(body).toMatchObject(expected);
+        });
+      await request(app.getHttpServer())
+        .get(`${API_BASE_PATH}/tenants/${otherTenant.id}/operations`)
+        .expect(200)
+        .expect(({ body }: { body: { data: unknown[] } }) => {
+          expect(body.data).toEqual([expect.objectContaining(expected)]);
+        });
+    } finally {
+      await operationRepo.delete({ tenantId: otherTenant.id });
+      await tenantRepo.delete(otherTenant.id);
+    }
   });
 
   it('rejects a connection outside the tenant before submitting an offer', async () => {
