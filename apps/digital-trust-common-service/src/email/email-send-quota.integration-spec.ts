@@ -40,7 +40,9 @@ describe('Email send quota (integration)', () => {
   beforeEach(async () => {
     const fixtures = [createTestTenant(), createTestTenant()];
     tenantIds = fixtures.map(({ id }) => id);
-    await tenants.insert(fixtures.map(({ id, name, slug }) => ({ id, name, slug })));
+    await tenants.insert(
+      fixtures.map(({ id, name, slug }) => ({ id, name, slug })),
+    );
   });
 
   afterEach(async () => {
