@@ -2,6 +2,7 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
 import { DataSource, EntityManager } from 'typeorm';
@@ -9,6 +10,7 @@ import { DataSource, EntityManager } from 'typeorm';
 import { AuditAction } from '../audit-log/audit-log.entity';
 import { DomainAuditService } from '../audit-log/domain-audit.service';
 import { decodeCursor, encodeCursor } from '../common/cursor-pagination';
+import { EmailKind, EmailService } from '../email/email.service';
 import { TenantRepository } from '../tenant/tenant.repository';
 
 import { CreateTenantUserDto } from './dto/create-tenant-user.dto';
@@ -37,6 +39,7 @@ export class TenantUserService {
     private readonly tenantRepository: TenantRepository,
     private readonly domainAudit: DomainAuditService,
     private readonly dataSource: DataSource,
+    private readonly emailService: EmailService,
   ) {}
 
   /**
@@ -62,27 +65,47 @@ export class TenantUserService {
       dto.role === TenantUserRole.OWNER,
     );
 
-    const existing = await this.tenantUserRepository.findByTenantAndEmail(
-      tenantId,
-      dto.email,
-      manager,
-    );
-
-    if (existing) {
-      throw new ConflictException(
-        'A tenant user with this email already exists for this tenant.',
-      );
-    }
-
-    const created = await this.tenantUserRepository.create(
-      {
+    const createInvitation = async (transaction: EntityManager) => {
+      const existing = await this.tenantUserRepository.findByTenantAndEmail(
         tenantId,
-        email: dto.email,
-        role: dto.role,
-        status: TenantUserStatus.INVITED,
-      },
-      manager,
-    );
+        dto.email,
+        transaction,
+      );
+
+      if (existing) {
+        throw new ConflictException(
+          'A tenant user with this email already exists for this tenant.',
+        );
+      }
+
+      const invitation = await this.tenantUserRepository.create(
+        {
+          tenantId,
+          email: dto.email,
+          role: dto.role,
+          status: TenantUserStatus.INVITED,
+        },
+        transaction,
+      );
+      const jobId = await this.emailService.enqueue(
+        {
+          kind: EmailKind.TENANT_INVITATION,
+          tenantId,
+          invitationId: invitation.id,
+        },
+        transaction,
+      );
+      if (!jobId) {
+        throw new InternalServerErrorException(
+          'Could not enqueue invitation email.',
+        );
+      }
+      return invitation;
+    };
+
+    const created = manager
+      ? await createInvitation(manager)
+      : await this.dataSource.transaction(createInvitation);
 
     if (!manager) {
       await this.domainAudit.emit({
@@ -92,9 +115,6 @@ export class TenantUserService {
         resourceId: created.id,
       });
     }
-
-    // TODO(tenant-user invite email, P1): optionally send an invitation
-    // email once a mailer/email-sending service exists in the codebase.
 
     return created;
   }
