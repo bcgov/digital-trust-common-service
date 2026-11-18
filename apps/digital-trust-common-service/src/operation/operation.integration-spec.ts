@@ -37,7 +37,12 @@ import { Tenant } from '../tenant/tenant.entity';
 import { TenantService } from '../tenant/tenant.service';
 
 import { OperationController } from './operation.controller';
-import { Operation, OperationState } from './operation.entity';
+import {
+  Operation,
+  OperationState,
+  OperationStepState,
+  type OperationStep,
+} from './operation.entity';
 import { OperationRepository } from './operation.repository';
 import { OperationService } from './operation.service';
 
@@ -46,6 +51,7 @@ type HttpOperation = {
   batch_id: string | null;
   updated_at: string;
   result: unknown;
+  steps: OperationStep[];
 };
 
 type HttpOperationPage = {
@@ -563,11 +569,13 @@ describe('operation tenant isolation integration', () => {
   );
 
   it('allows readonly HTTP reads without API scopes and durably audits request disclosure', async () => {
+    const steps = [{ type: 'test-phase', state: OperationStepState.COMPLETED }];
     const operation = await repository.save(
       repository.create({
         tenantId: tenantAId,
         type: 'test.http',
         state: OperationState.COMPLETED,
+        steps,
         request: {
           method: 'POST',
           path: '/test',
@@ -595,6 +603,7 @@ describe('operation tenant isolation integration', () => {
     expect(listBody.data.map((item) => item.id)).toEqual([operation.id]);
     expect(listBody.data[0]).not.toHaveProperty('request');
     expect(listBody.data[0].result).toEqual({ reference: 'completed-result' });
+    expect(listBody.data[0].steps).toEqual(steps);
     const detail = await request(app.getHttpServer())
       .get(`${base}/${operation.id}`)
       .expect(200);
@@ -605,9 +614,11 @@ describe('operation tenant isolation integration', () => {
       'id',
       'result',
       'state',
+      'steps',
       'type',
       'updated_at',
     ]);
+    expect(detailBody.steps).toEqual(steps);
     expect(detailBody.updated_at).toBe(operation.updatedAt.toISOString());
     const original = await request(app.getHttpServer())
       .get(`${base}/${operation.id}/request`)
@@ -976,6 +987,7 @@ describe('operation tenant isolation integration', () => {
         id: operation.id,
         state: 'processing',
         result: null,
+        steps: [],
       });
       expect(lookup.mock.calls.length).toBeGreaterThanOrEqual(2);
       expect(Object.keys(response.body as HttpOperation).sort()).toEqual([
@@ -984,6 +996,7 @@ describe('operation tenant isolation integration', () => {
         'id',
         'result',
         'state',
+        'steps',
         'type',
         'updated_at',
       ]);

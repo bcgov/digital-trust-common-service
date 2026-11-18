@@ -101,7 +101,11 @@ describe('shared issuance-profile mock handlers', () => {
     ).rejects.toMatchObject({ status: 404 });
     expect(
       (await publishIssuanceProfile(tenantId, profileId)).result.profile,
-    ).toMatchObject({ id: profileId, status: 'published', tenant_id: tenantId });
+    ).toMatchObject({
+      id: profileId,
+      status: 'published',
+      tenant_id: tenantId,
+    });
     await expect(
       publishIssuanceProfile(tenantId, profileId),
     ).rejects.toMatchObject({ status: 409 });

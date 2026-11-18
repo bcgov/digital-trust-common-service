@@ -561,21 +561,18 @@ describe('IssuanceProfilesPage', () => {
   it('preserves form input after a duplicate conflict and supports retry', async () => {
     let conflict = true;
     server.use(
-      http.post(
-        `${API_BASE_PATH}/tenants/:id/profiles/issuance`,
-        () => {
-          if (conflict)
-            return HttpResponse.json({ message: 'Duplicate' }, { status: 409 });
-          return profileResponse(
-            {
-              ...profile,
-              id: 'new-profile',
-              status: 'draft',
-            },
-            201,
-          );
-        },
-      ),
+      http.post(`${API_BASE_PATH}/tenants/:id/profiles/issuance`, () => {
+        if (conflict)
+          return HttpResponse.json({ message: 'Duplicate' }, { status: 409 });
+        return profileResponse(
+          {
+            ...profile,
+            id: 'new-profile',
+            status: 'draft',
+          },
+          201,
+        );
+      }),
     );
     await renderPage();
     const { user, dialog } = await fillProfile();
