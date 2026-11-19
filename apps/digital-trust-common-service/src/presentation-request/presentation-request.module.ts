@@ -5,10 +5,14 @@ import { AdapterRegistryModule } from '../adapter-registry/adapter-registry.modu
 import { AuditLogModule } from '../audit-log/audit-log.module';
 import { ConnectionModule } from '../connection/connection.module';
 import { OperationModule } from '../operation/operation.module';
+import { ProtocolStateChangeModule } from '../protocol-state-change/protocol-state-change.module';
 import { RateLimitModule } from '../rate-limit/rate-limit.module';
 import { TenantStatusModule } from '../tenant/tenant-status.module';
 import { VerificationProfileModule } from '../verification-profile/verification-profile.module';
 
+import { PresentationExchangeController } from './presentation-exchange.controller';
+import { PresentationExchangeModule } from './presentation-exchange.module';
+import { PresentationExchangeService } from './presentation-exchange.service';
 import { PresentationExecutionController } from './presentation-execution.controller';
 import { PresentationRequestController } from './presentation-request.controller';
 import { PresentationRequestService } from './presentation-request.service';
@@ -24,15 +28,21 @@ import { PresentationRequestService } from './presentation-request.service';
 @Module({
   imports: [
     AdapterRegistryModule,
+    PresentationExchangeModule,
     AuditLogModule,
     AuthModule,
     ConnectionModule,
     OperationModule,
+    ProtocolStateChangeModule,
     RateLimitModule,
     TenantStatusModule,
     VerificationProfileModule,
   ],
-  controllers: [PresentationRequestController, PresentationExecutionController],
-  providers: [PresentationRequestService],
+  controllers: [
+    PresentationRequestController,
+    PresentationExecutionController,
+    PresentationExchangeController,
+  ],
+  providers: [PresentationRequestService, PresentationExchangeService],
 })
 export class PresentationRequestModule {}

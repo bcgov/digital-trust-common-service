@@ -30,7 +30,7 @@ export class OperationResponseDto {
   @ApiPropertyOptional({
     name: 'exchange_id',
     description:
-      'Stable local credential exchange ID; backend IDs remain internal',
+      'Stable local credential or presentation exchange ID; backend IDs remain internal',
     format: 'uuid',
   })
   declare public exchangeId?: string;
@@ -116,7 +116,8 @@ export class OperationResponseDto {
   public static fromEntity(operation: Operation): OperationResponseDto {
     const dto = new OperationResponseDto();
     dto.id = operation.id;
-    if (operation.exchangeId) dto.exchangeId = operation.exchangeId;
+    const exchangeId = operation.exchangeId ?? operation.presentationExchangeId;
+    if (exchangeId) dto.exchangeId = exchangeId;
     dto.batchId = operation.batchId ?? null;
     dto.type = operation.type;
     dto.state = operation.state;

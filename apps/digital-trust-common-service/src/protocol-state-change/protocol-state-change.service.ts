@@ -32,6 +32,7 @@ import {
 } from '../operation/operation.entity';
 import { OperationRepository } from '../operation/operation.repository';
 import { OperationService } from '../operation/operation.service';
+import { PresentationExchangeRepository } from '../presentation-request/presentation-exchange.repository';
 import {
   presentationStage,
   verifiedPresentationResult,
@@ -94,6 +95,7 @@ export class ProtocolStateChangeService {
     private readonly dataSource: DataSource,
     private readonly exchanges: CredentialExchangeRepository,
     private readonly adapters: AdapterRegistry,
+    private readonly presentationExchanges: PresentationExchangeRepository,
   ) {}
 
   public async process(
@@ -137,6 +139,12 @@ export class ProtocolStateChangeService {
     // again and retries both together.
     const result = await this.dataSource.transaction(async (manager) => {
       let exchangeTransition: ExchangeTransition | null = null;
+      const presentation = await this.observePresentation(
+        data,
+        outcome,
+        manager,
+      );
+      const effectiveOutcome = presentation?.outcome ?? outcome;
       if (data.topic === 'issue_credential') {
         const credential = exchangeCorrelation
           ? null
@@ -171,17 +179,19 @@ export class ProtocolStateChangeService {
       }
       const operationOutcome = await this.applyOperationOutcome(
         data,
-        outcome,
+        effectiveOutcome,
         manager,
         exchangeTransition,
+        presentation?.result,
       );
-      const appliedOutcome = operationOutcome.outcome ?? outcome;
-      let transitioned = operationOutcome.transitioned;
+      const appliedOutcome = operationOutcome.outcome ?? effectiveOutcome;
+      let transitioned =
+        operationOutcome.transitioned || !!presentation?.changed;
       const operationType = operationOutcome.operationType;
       // Finding no in-flight Operation is not itself a miss: one is
       // best-effort (see applyOperationOutcome), and the Credential or
       // Connection below may still be this delivery's real target.
-      let matched = operationOutcome.matched;
+      let matched = operationOutcome.matched || !!presentation;
       let established = false;
 
       if (data.topic === 'connections') {
@@ -311,11 +321,85 @@ export class ProtocolStateChangeService {
     }
   }
 
+  private async observePresentation(
+    data: ProtocolStateChangeJobData,
+    outcome: ProtocolOutcome,
+    manager: EntityManager,
+  ): Promise<{
+    outcome: ProtocolOutcome;
+    result?: OperationResult;
+    changed: boolean;
+  } | null> {
+    if (data.topic !== 'present_proof' || !data.connectorId) return null;
+    const local = await this.presentationExchanges.findByBackend(
+      data.tenantId,
+      data.connectorId,
+      data.externalId,
+      manager,
+    );
+    if (!local) return null;
+
+    let result: OperationResult | undefined;
+    if (outcome.operationState === OperationState.COMPLETED) {
+      try {
+        const resolved = await this.adapters.resolve(data.tenantId, undefined, {
+          connectorId: local.connectorId,
+        });
+        const remote = await resolved.adapter.getPresentation(
+          resolved.context,
+          data.externalId,
+        );
+        result = verifiedPresentationResult(
+          remote,
+          data.externalId,
+          local.externalConnectionId,
+        );
+      } catch (error) {
+        if (
+          !(error instanceof BackendNotFoundError) &&
+          !(error instanceof ValidationError)
+        )
+          throw error;
+        outcome = { operationState: OperationState.FAILED };
+        result = {
+          code: 'PRESENTATION_RESULT_UNAVAILABLE',
+          message: error.message,
+        };
+        this.logger.warn(
+          { exchange_id: local.id },
+          'Presentation verification result could not be established',
+        );
+      }
+    }
+
+    const stage = presentationStage(data.protocolState);
+    const state =
+      outcome.operationState === OperationState.COMPLETED
+        ? 'verified'
+        : outcome.operationState === OperationState.FAILED
+          ? data.protocolState === 'abandoned'
+            ? 'abandoned'
+            : 'failed'
+          : stage >= 2
+            ? 'presentation-received'
+            : stage >= 1
+              ? 'request-sent'
+              : 'pending';
+    const changed = await this.presentationExchanges.observe(
+      local,
+      data.externalId,
+      state,
+      manager,
+    );
+    return { outcome, result, changed };
+  }
+
   private async applyOperationOutcome(
     data: ProtocolStateChangeJobData,
     outcome: ProtocolOutcome,
     manager: EntityManager,
     exchangeTransition: ExchangeTransition | null,
+    presentationResult?: OperationResult,
   ): Promise<OperationOutcomeResult> {
     if (data.topic === 'present_proof' && !data.connectorId) {
       this.logger.warn(
@@ -347,7 +431,10 @@ export class ProtocolStateChangeService {
       return { matched: existed, transitioned: false, operationType: null };
     }
 
-    let result = this.resolveOperationResult(data, outcome);
+    let result =
+      presentationResult !== undefined
+        ? presentationResult
+        : this.resolveOperationResult(data, outcome);
     let steps: OperationStep[] | undefined;
     let presentationProgressed = false;
     if (data.topic === 'issue_credential' && exchangeTransition) {
@@ -368,7 +455,10 @@ export class ProtocolStateChangeService {
               ]
             : undefined;
     } else if (data.topic === 'present_proof') {
-      if (outcome.operationState === OperationState.COMPLETED) {
+      if (
+        outcome.operationState === OperationState.COMPLETED &&
+        presentationResult === undefined
+      ) {
         try {
           result = await this.resolveVerifiedPresentation(operation, data);
         } catch (error) {

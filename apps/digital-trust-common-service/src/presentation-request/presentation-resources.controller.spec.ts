@@ -82,6 +82,7 @@ describe('Presentation resource HTTP contract', () => {
     ...operation,
     state: OperationState.COMPLETED,
     type: `presentation-definition.${action}`,
+    steps: [{ type: `presentation-definition.${action}`, state: 'completed' }],
     result: {
       id,
       tenant_id: tenantId,
@@ -96,7 +97,7 @@ describe('Presentation resource HTTP contract', () => {
       data: [profile],
       pagination: { has_more: false, next_cursor: null },
     }),
-    findById: jest.fn().mockResolvedValue(profile),
+    findDefinition: jest.fn().mockResolvedValue(profile),
     updateDefinition: jest.fn().mockResolvedValue(configuration('update')),
     publishDefinition: jest
       .fn()
@@ -254,6 +255,11 @@ describe('Presentation resource HTTP contract', () => {
       ...operation,
       state: OperationState.FAILED,
       result: { code: 'TIMEOUT', message: 'Backend timed out' },
+      steps: [
+        { type: 'presentation-request.send', state: 'failed' },
+        { type: 'presentation.receive', state: 'pending' },
+        { type: 'presentation.verify', state: 'pending' },
+      ],
     });
     const response = await request(server)
       .post(`/api/v1/tenants/${tenantId}/presentation-requests`)

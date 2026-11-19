@@ -37,7 +37,7 @@ import { OperationResponseDto } from '../operation/dto/operation-response.dto';
 import { TenantTierRateLimitGuard } from '../rate-limit/tenant-tier-rate-limit.guard';
 import { TenantStatusGuard } from '../tenant/tenant-status.guard';
 
-import { ListVerificationProfilesQueryDto } from './dto/list-verification-profiles-query.dto';
+import { ListPresentationDefinitionsQueryDto } from './dto/list-verification-profiles-query.dto';
 import {
   CreatePresentationDefinitionDto,
   PresentationDefinitionResponseDto,
@@ -120,13 +120,12 @@ export class PresentationDefinitionController {
 
   @Get()
   @ApiOkResponse({
-    description:
-      'Cursor-paginated definitions, including legacy verification profiles',
+    description: 'Cursor-paginated presentation definitions',
     type: PaginatedPresentationDefinitionsResponseDto,
   })
   public async list(
     @Param('tenantId', ParseUUIDPipe) tenantId: string,
-    @Query() query: ListVerificationProfilesQueryDto,
+    @Query() query: ListPresentationDefinitionsQueryDto,
     @CurrentAuth() auth: AuthContext,
   ): Promise<PaginatedPresentationDefinitionsResponseDto> {
     const page = await this.profiles.findDefinitions(tenantId, query, auth);
@@ -146,7 +145,7 @@ export class PresentationDefinitionController {
     @CurrentAuth() auth: AuthContext,
   ): Promise<PresentationDefinitionResponseDto> {
     return PresentationDefinitionResponseDto.fromEntity(
-      await this.profiles.findById(tenantId, id, auth),
+      await this.profiles.findDefinition(tenantId, id, auth),
     );
   }
 

@@ -1,18 +1,16 @@
-import { Expose, Type } from 'class-transformer';
+import { ApiProperty } from '@nestjs/swagger';
+import { Expose } from 'class-transformer';
 import {
-  IsArray,
   IsBoolean,
   IsEnum,
   IsObject,
   IsOptional,
   IsString,
+  IsUUID,
   MaxLength,
-  ValidateNested,
 } from 'class-validator';
 
 import { VerificationProfileProtocolHint } from '../verification-profile.entity';
-
-import { VerificationPredicateDto } from './verification-predicate.dto';
 
 /**
  * Narrower than CreateVerificationProfileDto by design: name and version
@@ -26,17 +24,10 @@ export class UpdateVerificationProfileDto {
   @MaxLength(500)
   public description?: string;
 
-  @Expose({ name: 'presentation_definition' })
-  @IsOptional()
-  @IsObject()
-  public presentationDefinition?: Record<string, unknown>;
-
-  @Expose()
-  @IsOptional()
-  @IsArray()
-  @ValidateNested({ each: true })
-  @Type(() => VerificationPredicateDto)
-  public predicates?: VerificationPredicateDto[];
+  @Expose({ name: 'presentation_definition_id' })
+  @ApiProperty({ name: 'presentation_definition_id', format: 'uuid' })
+  @IsUUID()
+  public presentationDefinitionId!: string;
 
   @Expose()
   @IsOptional()

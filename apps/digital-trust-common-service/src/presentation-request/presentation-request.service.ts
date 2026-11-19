@@ -3,6 +3,7 @@ import { randomBytes } from 'crypto';
 import type { AuthContext } from '@app/auth';
 import {
   AdapterError,
+  PresentationExchangeState,
   PresentationRequest,
   RequestedPredicate,
 } from '@app/credential-ports';
@@ -10,6 +11,7 @@ import { JOB_QUEUES } from '@app/pg-boss';
 import {
   BadRequestException,
   Injectable,
+  InternalServerErrorException,
   Logger,
   NotFoundException,
 } from '@nestjs/common';
@@ -47,6 +49,7 @@ import {
   operationStatesBelow,
   resolveProtocolOutcome,
 } from '../protocol-state-change/state-mapping';
+import { PresentationDefinitionRepository } from '../verification-profile/presentation-definition.repository';
 import { extractRequestedAttributes } from '../verification-profile/presentation-definition.validator';
 import {
   VerificationProfile,
@@ -56,6 +59,7 @@ import { VerificationProfileRepository } from '../verification-profile/verificat
 
 import { CreatePresentationRequestDto } from './dto/create-presentation-request.dto';
 import { RequestPresentationDto } from './dto/request-presentation.dto';
+import { PresentationExchangeRepository } from './presentation-exchange.repository';
 import {
   presentationStage,
   verifiedPresentationResult,
@@ -120,6 +124,8 @@ export class PresentationRequestService {
     private readonly jobsService: JobsService,
     private readonly eventEmitter: EventEmitter2,
     private readonly dataSource: DataSource,
+    private readonly presentationDefinitions: PresentationDefinitionRepository,
+    private readonly presentationExchanges: PresentationExchangeRepository,
   ) {}
 
   public async create(
@@ -173,7 +179,7 @@ export class PresentationRequestService {
     }
 
     const [resolved, connection] = await Promise.all([
-      this.resolveRequest(tenantId, dto),
+      this.resolveRequest(tenantId, dto, resource),
       this.connectionRepository.findById(dto.connectionId),
     ]);
 
@@ -213,28 +219,50 @@ export class PresentationRequestService {
           : {}),
       });
 
-    const operation = await this.operationService.createOperation({
-      tenantId,
-      type: OPERATION_TYPE.PRESENTATION_REQUEST,
-      request: {
-        method: 'POST',
-        path: `${API_BASE_PATH}/tenants/${tenantId}/${resource}`,
-        body: {
-          ...(resource === 'presentation-requests'
-            ? {
-                presentation_definition_id: dto.verificationProfileId,
-                delivery: { connection_id: dto.connectionId },
-              }
-            : { ...dto }),
-          snapshot: structuredClone({
-            connector_id: resolvedAdapter.connector.id,
-            definition: resolved.definitionSnapshot,
-            proof_request: proofRequest,
-            options: { format: resolvedAdapter.format },
-          }),
+    const operation = await this.dataSource.transaction(async (manager) => {
+      const exchange = await this.presentationExchanges.create(
+        {
+          tenantId,
+          connectorId: resolvedAdapter.connector.id,
+          connectionId: connection.id,
+          externalConnectionId: proofRequest.connectionId,
+          protocol: connection.protocol,
+          format: resolvedAdapter.format,
+          state: 'pending',
+          submission: 'submitting',
         },
-      },
-      steps: presentationSteps(0, OperationState.PROCESSING),
+        manager,
+      );
+      const created = await this.operationService.createOperation(
+        {
+          tenantId,
+          type: OPERATION_TYPE.PRESENTATION_REQUEST,
+          presentationExchangeId: exchange.id,
+          request: {
+            method: 'POST',
+            path: `${API_BASE_PATH}/tenants/${tenantId}/${resource}`,
+            body: {
+              ...(resource === 'presentation-requests'
+                ? {
+                    presentation_definition_id: dto.verificationProfileId,
+                    delivery: { connection_id: dto.connectionId },
+                  }
+                : { ...dto }),
+              snapshot: structuredClone({
+                connector_id: resolvedAdapter.connector.id,
+                definition: resolved.definitionSnapshot,
+                proof_request: proofRequest,
+                options: { format: resolvedAdapter.format },
+              }),
+            },
+          },
+          steps: presentationSteps(0, OperationState.PROCESSING),
+        },
+        manager,
+      );
+      exchange.requestOperationId = created.id;
+      await manager.save(exchange);
+      return created;
     });
 
     return this.executeRequest(
@@ -287,30 +315,35 @@ export class PresentationRequestService {
   private async resolveRequest(
     tenantId: string,
     dto: RequestPresentationDto,
+    resource: 'presentations/request' | 'presentation-requests',
   ): Promise<ResolvedRequest> {
     if (dto.verificationProfileId !== undefined) {
-      const profile = await this.resolveProfile(
+      const profile =
+        resource === 'presentations/request'
+          ? await this.resolveProfile(tenantId, dto.verificationProfileId)
+          : null;
+      const definition = await this.resolveDefinition(
         tenantId,
-        dto.verificationProfileId,
+        profile?.presentationDefinitionId ?? dto.verificationProfileId,
       );
 
-      this.assertConstraintsRepresentable(profile.presentationDefinition);
+      this.assertConstraintsRepresentable(definition.presentationDefinition);
 
       return {
-        name: profile.name,
+        name: profile?.name ?? definition.name,
         requestedAttributes: (
-          profile.requestedAttributes ??
-          extractRequestedAttributes(profile.presentationDefinition)
+          definition.requestedAttributes ??
+          extractRequestedAttributes(definition.presentationDefinition)
         ).map((name) => ({ name })),
-        requestedPredicates: this.mapPredicates(profile.predicates),
-        format: profile.presentationFormat ?? undefined,
+        requestedPredicates: this.mapPredicates(definition.predicates),
+        format: definition.presentationFormat ?? undefined,
         definitionSnapshot: structuredClone({
-          id: profile.id,
-          name: profile.name,
-          version: profile.version,
-          presentation_definition: profile.presentationDefinition,
-          predicates: profile.predicates,
-          options: { format: profile.presentationFormat ?? null },
+          id: definition.id,
+          name: definition.name,
+          version: definition.version,
+          presentation_definition: definition.presentationDefinition,
+          predicates: definition.predicates,
+          options: { format: definition.presentationFormat ?? null },
         }),
       };
     }
@@ -341,6 +374,24 @@ export class PresentationRequestService {
         options: { format: dto.format },
       }),
     };
+  }
+
+  private async resolveDefinition(tenantId: string, id: string) {
+    const definition = await this.presentationDefinitions.findById(
+      tenantId,
+      id,
+    );
+    if (!definition || definition.tenantId !== tenantId) {
+      throw new BadRequestException(
+        `Presentation definition '${id}' was not found.`,
+      );
+    }
+    if (definition.status !== VerificationProfileStatus.PUBLISHED) {
+      throw new BadRequestException(
+        `Presentation definition '${id}' is not published.`,
+      );
+    }
+    return definition;
   }
 
   /**
@@ -587,8 +638,34 @@ export class PresentationRequestService {
       }
     }
 
-    const { current, won } = await this.dataSource.transaction(
-      async (manager) => {
+    const { current, won } = await this.dataSource
+      .transaction(async (manager) => {
+        if (!operation.presentationExchangeId) {
+          throw new NotFoundException('Presentation exchange not found');
+        }
+        const local = await this.presentationExchanges.lock(
+          tenantId,
+          operation.presentationExchangeId,
+          manager,
+        );
+        if (!local)
+          throw new NotFoundException('Presentation exchange not found');
+        await this.presentationExchanges.observe(
+          local,
+          externalId,
+          outcome.operationState === OperationState.COMPLETED
+            ? 'verified'
+            : outcome.operationState === OperationState.FAILED
+              ? exchange.state === PresentationExchangeState.Abandoned
+                ? 'abandoned'
+                : 'failed'
+              : presentationStage(exchange.state) >= 2
+                ? 'presentation-received'
+                : presentationStage(exchange.state) >= 1
+                  ? 'request-sent'
+                  : 'pending',
+          manager,
+        );
         const progress = await this.operationRepository.mergePresentationSteps(
           tenantId,
           operation.id,
@@ -651,8 +728,10 @@ export class PresentationRequestService {
         }
 
         return { current: updated, won: true };
-      },
-    );
+      })
+      .catch((error: unknown) =>
+        this.throwSubmissionPersistenceError(operation, error),
+      );
 
     // Only the call that actually won its own guarded transition may emit
     // the audit entry/domain event — a call that lost the race (e.g. a
@@ -693,6 +772,22 @@ export class PresentationRequestService {
 
     const { current, won } = await this.dataSource.transaction(
       async (manager) => {
+        if (!operation.presentationExchangeId) {
+          throw new NotFoundException('Presentation exchange not found');
+        }
+        const local = await this.presentationExchanges.lock(
+          tenantId,
+          operation.presentationExchangeId,
+          manager,
+        );
+        if (!local)
+          throw new NotFoundException('Presentation exchange not found');
+        await this.presentationExchanges.observe(
+          local,
+          externalId ?? null,
+          externalId ? 'failed' : 'pending',
+          manager,
+        );
         const progress = await this.operationRepository.mergePresentationSteps(
           tenantId,
           operation.id,
@@ -730,16 +825,16 @@ export class PresentationRequestService {
           return { current: existing, won: false };
         }
 
-        await this.jobsService.sendInTransaction(
-          manager,
-          JOB_QUEUES.WEBHOOK_DISPATCH,
-          {
+        await this.jobsService
+          .sendInTransaction(manager, JOB_QUEUES.WEBHOOK_DISPATCH, {
             tenantId,
             event: 'presentation.request.failed',
             resourceId: operation.id,
             occurredAt: new Date().toISOString(),
-          },
-        );
+          })
+          .catch((failure: unknown) =>
+            this.throwSubmissionPersistenceError(operation, failure),
+          );
 
         return { current: updated, won: true };
       },
@@ -751,6 +846,23 @@ export class PresentationRequestService {
 
     if (rethrowFailure) throw error;
     return current;
+  }
+
+  private throwSubmissionPersistenceError(
+    operation: Operation,
+    error: unknown,
+  ): never {
+    this.logger.error(
+      {
+        operation_id: operation.id,
+        exchange_id: operation.presentationExchangeId,
+      },
+      'Presentation submission outcome could not be persisted',
+    );
+    throw new InternalServerErrorException(
+      `Presentation submission outcome is uncertain for operation '${operation.id}' and exchange '${operation.presentationExchangeId}'; do not resend.`,
+      { cause: error },
+    );
   }
 
   private async emitAudit(

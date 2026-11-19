@@ -5,6 +5,7 @@ import { CredentialDefinitionFormat } from '../../credential-definition/credenti
 import { CreatePresentationRequestDto } from '../../presentation-request/dto/create-presentation-request.dto';
 import { VerificationProfile } from '../verification-profile.entity';
 
+import { ListPresentationDefinitionsQueryDto } from './list-verification-profiles-query.dto';
 import {
   CreatePresentationDefinitionDto,
   PresentationDefinitionResponseDto,
@@ -98,6 +99,15 @@ describe('Presentation resource DTOs', () => {
         }),
       ).rejects.toThrow(BadRequestException);
     }
+  });
+
+  it('rejects the profile-only public filter on definition lists', async () => {
+    await expect(
+      pipe.transform(
+        { public: 'true' },
+        { type: 'query', metatype: ListPresentationDefinitionsQueryDto },
+      ),
+    ).rejects.toThrow(BadRequestException);
   });
 
   it('serializes definition query fields without leaking legacy storage shape', () => {

@@ -43,12 +43,13 @@ export class VerificationProfileRepository {
   ): Promise<VerificationProfile | null> {
     return await (
       manager?.getRepository(VerificationProfile) ?? this.repository
-    ).findOne({ where: { id } });
+    ).findOne({ where: { id }, relations: { definition: true } });
   }
 
   public async findByTenant(tenantId: string): Promise<VerificationProfile[]> {
     return await this.repository.find({
       where: { tenantId },
+      relations: { definition: true },
       order: { createdAt: 'ASC' },
     });
   }
@@ -58,6 +59,7 @@ export class VerificationProfileRepository {
   ): Promise<VerificationProfile[]> {
     return await this.repository.find({
       where: { tenantId, isPublic: true },
+      relations: { definition: true },
       order: { createdAt: 'ASC' },
     });
   }
@@ -72,6 +74,7 @@ export class VerificationProfileRepository {
   ): Promise<VerificationProfilePage> {
     const qb = this.repository
       .createQueryBuilder('profile')
+      .leftJoinAndSelect('profile.definition', 'definition')
       .where('profile.tenant_id = :tenantId', { tenantId })
       .orderBy('profile.created_at', 'ASC')
       .addOrderBy('profile.id', 'ASC');
@@ -121,6 +124,7 @@ export class VerificationProfileRepository {
   ): Promise<VerificationProfile | null> {
     return await this.repository.findOne({
       where: { tenantId, name, version },
+      relations: { definition: true },
     });
   }
 

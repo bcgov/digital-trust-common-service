@@ -19,7 +19,7 @@ import {
 } from 'class-validator';
 
 import { CredentialDefinitionFormat } from '../../credential-definition/credential-definition.entity';
-import { VerificationProfile } from '../verification-profile.entity';
+import { PresentationDefinition } from '../presentation-definition.entity';
 
 import {
   VerificationPredicateDto,
@@ -148,7 +148,7 @@ export class PresentationDefinitionResponseDto extends PickType(
   public options!: { format: CredentialDefinitionFormat | null };
 
   public static fromEntity(
-    profile: VerificationProfile,
+    profile: PresentationDefinition,
   ): PresentationDefinitionResponseDto {
     const dto = new PresentationDefinitionResponseDto();
     dto.id = profile.id;

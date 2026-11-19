@@ -64,6 +64,41 @@ describe('presentation-definition.validator', () => {
       expect(names).toEqual([]);
     });
 
+    it.each(['$.credentialSubject', [42]])(
+      'ignores malformed field paths',
+      (path) => {
+        expect(
+          extractRequestedAttributes({
+            input_descriptors: [
+              { id: 'person', constraints: { fields: [{ path }] } },
+            ],
+          }),
+        ).toEqual([]);
+      },
+    );
+
+    it('deduplicates bracket and dot paths for the same attribute', () => {
+      expect(
+        extractRequestedAttributes({
+          input_descriptors: [
+            {
+              id: 'person',
+              constraints: {
+                fields: [
+                  {
+                    path: [
+                      "$['credentialSubject']['given_names']",
+                      '$.credentialSubject["given_names"]',
+                    ],
+                  },
+                ],
+              },
+            },
+          ],
+        }),
+      ).toEqual(['given_names']);
+    });
+
     it('deduplicates repeated attribute names across descriptors', () => {
       const names = extractRequestedAttributes({
         input_descriptors: [

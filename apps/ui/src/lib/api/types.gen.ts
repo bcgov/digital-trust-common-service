@@ -1055,14 +1055,14 @@ export interface paths {
         };
         /**
          * List tenant presentation definitions
-         * @description Requires profiles:manage. Includes existing verification profiles.
+         * @description Requires profiles:manage. Includes definitions backfilled from existing profiles.
          */
         get: operations["listPresentationDefinitions"];
         put?: never;
         /**
          * Create a reusable local presentation definition
-         * @description Requires profiles:manage. Shares storage and draft/published/deprecated lifecycle
-         *     with verification profiles; no ledger registration occurs. The query type is
+         * @description Requires profiles:manage. Definitions have their own draft/published/deprecated
+         *     lifecycle, independent of linked verification profiles; no ledger registration occurs. The query type is
          *     explicit: only the documented DIF attribute-selection subset and numeric
          *     predicates are supported. Native AnonCreds, QueryByExample and DCQL input
          *     are not supported. No new revocation policy is introduced.
@@ -1172,7 +1172,8 @@ export interface paths {
          *     No rolling revocation interval is invented: the existing DIF query path
          *     cannot express non-revocation intervals. Later definition changes cannot
          *     alter this request. Delivery requires an established tenant DIDComm connection.
-         *     Returns an Operation; its id is also the presentation request id.
+         *     Returns an Operation; its id is also the presentation request id and its
+         *     exchange_id identifies the durable presentation exchange.
          *     Steps project durable request-send, presentation-receive, and verification progress.
          *     After operation creation, submission exceptions return HTTP 200 with a failed
          *     Operation and diagnostic code/message, not an HTTP exception hiding its ID.
@@ -1209,6 +1210,57 @@ export interface paths {
         get: operations["getPresentationRequest"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tenants/{tenantId}/presentation-exchanges/{exchangeId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                exchangeId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Read a durable presentation exchange
+         * @description Requires credentials:verify. The exchange outlives its request Operation,
+         *     but does not retain verified results or revealed attributes.
+         */
+        get: operations["getPresentationExchange"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tenants/{tenantId}/presentation-exchanges/{exchangeId}/reconcile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                exchangeId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reconcile a correlated presentation exchange
+         * @description Requires credentials:verify. Reads the pinned backend record; it never
+         *     resubmits a proof request. An unknown submission with no backend ID cannot
+         *     be reconciled automatically.
+         */
+        post: operations["reconcilePresentationExchange"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2588,6 +2640,8 @@ export interface components {
             name?: string;
             version?: string;
             description?: string | null;
+            /** Format: uuid */
+            presentation_definition_id?: string;
             /** @description DIF Presentation Exchange format */
             presentation_definition?: Record<string, never>;
             requested_attributes?: string[];
@@ -2611,13 +2665,11 @@ export interface components {
             name: string;
             version: string;
             description?: string;
-            /** @description DIF Presentation Exchange object */
-            presentation_definition: Record<string, never>;
-            predicates?: {
-                attribute?: string;
-                condition?: string;
-                value?: string;
-            }[];
+            /**
+             * Format: uuid
+             * @description Existing tenant-owned presentation definition.
+             */
+            presentation_definition_id: string;
             metadata?: Record<string, never>;
             /** @default false */
             public: boolean;
@@ -2625,8 +2677,11 @@ export interface components {
         };
         UpdateVerificationProfileRequest: {
             description?: string;
-            presentation_definition?: Record<string, never>;
-            predicates?: Record<string, never>[];
+            /**
+             * Format: uuid
+             * @description Existing tenant-owned presentation definition.
+             */
+            presentation_definition_id: string;
             metadata?: Record<string, never>;
             public?: boolean;
             protocol_hint?: components["schemas"]["ProtocolHint"];
@@ -2751,6 +2806,27 @@ export interface components {
              */
             metadata?: Record<string, never>;
         };
+        PresentationExchange: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            connection_id: string | null;
+            protocol: string;
+            format: string;
+            /** @enum {string} */
+            state: "pending" | "request-sent" | "presentation-received" | "verified" | "failed" | "abandoned";
+            /** @enum {string} */
+            submission: "submitting" | "submitted" | "uncertain";
+            /**
+             * Format: uuid
+             * @description Null after the request Operation expires.
+             */
+            request_operation_id: string | null;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
         /** @description Durable protocol interaction; IDs are local, never backend exchange IDs. */
         CredentialExchange: {
             /** Format: uuid */
@@ -2812,7 +2888,7 @@ export interface components {
             batch_id: string | null;
             /**
              * Format: uuid
-             * @description Stable local credential exchange UUID, present when linked.
+             * @description Stable local credential or presentation exchange UUID, present when linked.
              */
             exchange_id?: string;
             /**
@@ -5195,7 +5271,6 @@ export interface operations {
                 /** @description Number of items per page */
                 limit?: components["parameters"]["Limit"];
                 status?: components["schemas"]["ProfileStatus"];
-                public?: boolean;
             };
             header?: never;
             path: {
@@ -5497,6 +5572,79 @@ export interface operations {
             };
             /** @description Presentation request not found in this tenant */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getPresentationExchange: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                exchangeId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Exchange found */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PresentationExchange"];
+                };
+            };
+            /** @description Exchange not found in this tenant */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    reconcilePresentationExchange: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                exchangeId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": Record<string, never>;
+            };
+        };
+        responses: {
+            /** @description Exchange reconciled */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PresentationExchange"];
+                };
+            };
+            /** @description Exchange not found in this tenant */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Backend record or verified correlation unavailable */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

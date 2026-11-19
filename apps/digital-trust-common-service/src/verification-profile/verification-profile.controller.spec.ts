@@ -8,6 +8,7 @@ import { TenantStatusGuard } from '../tenant/tenant-status.guard';
 import { CreateVerificationProfileDto } from './dto/create-verification-profile.dto';
 import { UpdateVerificationProfileDto } from './dto/update-verification-profile.dto';
 import { VerificationProfileResponseDto } from './dto/verification-profile-response.dto';
+import { PresentationDefinition } from './presentation-definition.entity';
 import { VerificationProfileController } from './verification-profile.controller';
 import {
   VerificationProfile,
@@ -52,6 +53,12 @@ describe('VerificationProfileController', () => {
     name: 'age-verification',
     version: '1.0',
     description: undefined,
+    presentationDefinitionId: '123e4567-e89b-12d3-a456-426614174003',
+    definition: {
+      presentationDefinition: { id: 'age-over-18', input_descriptors: [] },
+      requestedAttributes: ['given_names'],
+      predicates: null,
+    } as PresentationDefinition,
     presentationDefinition: { id: 'age-over-18', input_descriptors: [] },
     requestedAttributes: ['given_names'],
     predicates: undefined,
@@ -116,7 +123,7 @@ describe('VerificationProfileController', () => {
       const dto: CreateVerificationProfileDto = {
         name: mockProfile.name,
         version: mockProfile.version,
-        presentationDefinition: mockProfile.presentationDefinition,
+        presentationDefinitionId: mockProfile.presentationDefinitionId,
       };
 
       mockCreate.mockResolvedValue(mockProfile);
@@ -207,7 +214,10 @@ describe('VerificationProfileController', () => {
     it('updates a profile', async () => {
       const tenantId = mockProfile.tenantId;
       const id = mockProfile.id;
-      const dto: UpdateVerificationProfileDto = { description: 'Updated' };
+      const dto: UpdateVerificationProfileDto = {
+        description: 'Updated',
+        presentationDefinitionId: mockProfile.presentationDefinitionId,
+      };
       const updated = { ...mockProfile, description: 'Updated' };
 
       mockUpdate.mockResolvedValue(updated);

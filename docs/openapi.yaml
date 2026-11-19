@@ -1997,8 +1997,8 @@ paths:
       operationId: createPresentationDefinition
       summary: Create a reusable local presentation definition
       description: |
-        Requires profiles:manage. Shares storage and draft/published/deprecated lifecycle
-        with verification profiles; no ledger registration occurs. The query type is
+        Requires profiles:manage. Definitions have their own draft/published/deprecated
+        lifecycle, independent of linked verification profiles; no ledger registration occurs. The query type is
         explicit: only the documented DIF attribute-selection subset and numeric
         predicates are supported. Native AnonCreds, QueryByExample and DCQL input
         are not supported. No new revocation policy is introduced.
@@ -2028,7 +2028,7 @@ paths:
     get:
       operationId: listPresentationDefinitions
       summary: List tenant presentation definitions
-      description: Requires profiles:manage. Includes existing verification profiles.
+      description: Requires profiles:manage. Includes definitions backfilled from existing profiles.
       tags: [Presentations]
       parameters:
         - $ref: "#/components/parameters/Cursor"
@@ -2037,10 +2037,6 @@ paths:
           in: query
           schema:
             $ref: "#/components/schemas/ProfileStatus"
-        - name: public
-          in: query
-          schema:
-            type: boolean
       responses:
         "200":
           description: Cursor-paginated definitions
@@ -2164,7 +2160,8 @@ paths:
         No rolling revocation interval is invented: the existing DIF query path
         cannot express non-revocation intervals. Later definition changes cannot
         alter this request. Delivery requires an established tenant DIDComm connection.
-        Returns an Operation; its id is also the presentation request id.
+        Returns an Operation; its id is also the presentation request id and its
+        exchange_id identifies the durable presentation exchange.
         Steps project durable request-send, presentation-receive, and verification progress.
         After operation creation, submission exceptions return HTTP 200 with a failed
         Operation and diagnostic code/message, not an HTTP exception hiding its ID.
@@ -2223,6 +2220,60 @@ paths:
                 $ref: "#/components/schemas/Operation"
         "404":
           description: Presentation request not found in this tenant
+  /api/v1/tenants/{tenantId}/presentation-exchanges/{exchangeId}:
+    parameters:
+      - $ref: "#/components/parameters/TenantId"
+      - name: exchangeId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: getPresentationExchange
+      summary: Read a durable presentation exchange
+      description: |
+        Requires credentials:verify. The exchange outlives its request Operation,
+        but does not retain verified results or revealed attributes.
+      tags: [Presentations]
+      responses:
+        "200":
+          description: Exchange found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PresentationExchange"
+        "404":
+          description: Exchange not found in this tenant
+  /api/v1/tenants/{tenantId}/presentation-exchanges/{exchangeId}/reconcile:
+    parameters:
+      - $ref: "#/components/parameters/TenantId"
+      - name: exchangeId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      operationId: reconcilePresentationExchange
+      summary: Reconcile a correlated presentation exchange
+      description: |
+        Requires credentials:verify. Reads the pinned backend record; it never
+        resubmits a proof request. An unknown submission with no backend ID cannot
+        be reconciled automatically.
+      tags: [Presentations]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false }
+      responses:
+        "200":
+          description: Exchange reconciled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PresentationExchange"
+        "404":
+          description: Exchange not found in this tenant
+        "409":
+          description: Backend record or verified correlation unavailable
   /api/v1/tenants/{tenantId}/presentations/request:
     parameters:
       - $ref: "#/components/parameters/TenantId"
@@ -4729,6 +4780,9 @@ components:
         description:
           type: string
           nullable: true
+        presentation_definition_id:
+          type: string
+          format: uuid
         presentation_definition:
           type: object
           description: DIF Presentation Exchange format
@@ -4768,7 +4822,8 @@ components:
 
     CreateVerificationProfileRequest:
       type: object
-      required: [name, version, presentation_definition]
+      additionalProperties: false
+      required: [name, version, presentation_definition_id]
       properties:
         name:
           type: string
@@ -4781,20 +4836,10 @@ components:
         description:
           type: string
           maxLength: 500
-        presentation_definition:
-          type: object
-          description: DIF Presentation Exchange object
-        predicates:
-          type: array
-          items:
-            type: object
-            properties:
-              attribute:
-                type: string
-              condition:
-                type: string
-              value:
-                type: string
+        presentation_definition_id:
+          type: string
+          format: uuid
+          description: Existing tenant-owned presentation definition.
         metadata:
           type: object
         public:
@@ -4805,15 +4850,15 @@ components:
 
     UpdateVerificationProfileRequest:
       type: object
+      additionalProperties: false
+      required: [presentation_definition_id]
       properties:
         description:
           type: string
-        presentation_definition:
-          type: object
-        predicates:
-          type: array
-          items:
-            type: object
+        presentation_definition_id:
+          type: string
+          format: uuid
+          description: Existing tenant-owned presentation definition.
         metadata:
           type: object
         public:
@@ -4987,6 +5032,29 @@ components:
             goalCode: aries.rel.build
             multiUse: false
 
+    PresentationExchange:
+      type: object
+      additionalProperties: false
+      required: [id, connection_id, protocol, format, state, submission, request_operation_id, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        connection_id: { type: string, format: uuid, nullable: true }
+        protocol: { type: string }
+        format: { type: string }
+        state:
+          type: string
+          enum: [pending, request-sent, presentation-received, verified, failed, abandoned]
+        submission:
+          type: string
+          enum: [submitting, submitted, uncertain]
+        request_operation_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: Null after the request Operation expires.
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
     CredentialExchange:
       type: object
       additionalProperties: false
@@ -5063,7 +5131,7 @@ components:
         exchange_id:
           type: string
           format: uuid
-          description: Stable local credential exchange UUID, present when linked.
+          description: Stable local credential or presentation exchange UUID, present when linked.
         type:
           type: string
           description: |

@@ -41,6 +41,10 @@ export class VerificationProfileResponseDto {
   })
   public description?: string | null;
 
+  @Expose({ name: 'presentation_definition_id' })
+  @ApiProperty({ name: 'presentation_definition_id', format: 'uuid' })
+  public presentationDefinitionId!: string;
+
   @Expose({ name: 'presentation_definition' })
   @ApiProperty({
     name: 'presentation_definition',
@@ -116,15 +120,19 @@ export class VerificationProfileResponseDto {
   public static fromEntity(
     profile: VerificationProfile,
   ): VerificationProfileResponseDto {
+    if (!profile.definition) {
+      throw new Error('Verification profile definition was not loaded');
+    }
     const dto = new VerificationProfileResponseDto();
     dto.id = profile.id;
     dto.tenantId = profile.tenantId;
     dto.name = profile.name;
     dto.version = profile.version;
     dto.description = profile.description;
-    dto.presentationDefinition = profile.presentationDefinition;
-    dto.requestedAttributes = profile.requestedAttributes;
-    dto.predicates = profile.predicates;
+    dto.presentationDefinitionId = profile.presentationDefinitionId;
+    dto.presentationDefinition = profile.definition.presentationDefinition;
+    dto.requestedAttributes = profile.definition.requestedAttributes;
+    dto.predicates = profile.definition.predicates;
     dto.metadata = profile.metadata;
     dto.isPublic = profile.isPublic;
     dto.protocolHint = profile.protocolHint;

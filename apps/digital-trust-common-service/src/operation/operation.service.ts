@@ -44,6 +44,7 @@ export interface CreateOperationInput {
   batchId?: string | null;
   externalId?: string | null;
   exchangeId?: string | null;
+  presentationExchangeId?: string | null;
   steps?: OperationStep[];
 }
 
@@ -107,6 +108,7 @@ export class OperationService {
       batchId: input.batchId ?? null,
       externalId: input.externalId ?? null,
       exchangeId: input.exchangeId ?? null,
+      presentationExchangeId: input.presentationExchangeId ?? null,
       state: OperationState.PENDING,
       steps: input.steps ?? [],
       expiresAt: this.computeExpiresAt(
@@ -134,6 +136,7 @@ export class OperationService {
       batchId: input.batchId ?? null,
       externalId: input.externalId ?? null,
       exchangeId: input.exchangeId ?? null,
+      presentationExchangeId: input.presentationExchangeId ?? null,
       state: OperationState.COMPLETED,
       result,
       steps: input.steps ?? [],

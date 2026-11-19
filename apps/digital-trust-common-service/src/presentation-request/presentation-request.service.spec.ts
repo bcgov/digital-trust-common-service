@@ -27,6 +27,7 @@ import { OPERATION_TYPE } from '../operation/operation-type.constants';
 import { Operation, OperationState } from '../operation/operation.entity';
 import { OperationRepository } from '../operation/operation.repository';
 import { OperationService } from '../operation/operation.service';
+import { PresentationDefinitionRepository } from '../verification-profile/presentation-definition.repository';
 import {
   VerificationProfile,
   VerificationProfileStatus,
@@ -34,11 +35,13 @@ import {
 import { VerificationProfileRepository } from '../verification-profile/verification-profile.repository';
 
 import { RequestPresentationDto } from './dto/request-presentation.dto';
+import { PresentationExchangeRepository } from './presentation-exchange.repository';
 import { PresentationRequestService } from './presentation-request.service';
 
 describe('PresentationRequestService', () => {
   let service: PresentationRequestService;
   let mockFindProfileById: jest.Mock;
+  let mockFindDefinitionById: jest.Mock;
   let mockFindByNameAndVersion: jest.Mock;
   let mockFindConnectionById: jest.Mock;
   let mockFindOperationById: jest.Mock;
@@ -51,7 +54,9 @@ describe('PresentationRequestService', () => {
   let mockSendInTransaction: jest.Mock;
   let mockEventEmit: jest.Mock;
   let mockTransaction: jest.Mock;
-  const mockManager = {} as EntityManager;
+  let mockObserveExchange: jest.Mock;
+  const mockSave = jest.fn();
+  const mockManager = { save: mockSave } as unknown as EntityManager;
 
   const tenantId = '123e4567-e89b-12d3-a456-426614174001';
   const connectionId = '123e4567-e89b-12d3-a456-426614174002';
@@ -79,6 +84,7 @@ describe('PresentationRequestService', () => {
     ({
       id: profileId,
       tenantId,
+      presentationDefinitionId: profileId,
       name: 'age-verification',
       version: '1.0',
       presentationDefinition: {
@@ -110,6 +116,7 @@ describe('PresentationRequestService', () => {
       request: { method: 'POST', path: '/presentations/request', body: {} },
       result: null,
       externalId: null,
+      presentationExchangeId: 'local-exchange',
       viewedAt: null,
       expiresAt: new Date('2024-01-04T00:00:00.000Z'),
       createdAt,
@@ -136,6 +143,8 @@ describe('PresentationRequestService', () => {
 
   beforeEach(async () => {
     mockFindProfileById = jest.fn().mockResolvedValue(null);
+    mockFindDefinitionById = jest.fn().mockResolvedValue(null);
+    mockSave.mockImplementation((value) => Promise.resolve(value));
     mockFindByNameAndVersion = jest.fn().mockResolvedValue(null);
     mockFindConnectionById = jest.fn().mockResolvedValue(buildConnection());
     mockFindOperationById = jest.fn();
@@ -147,6 +156,7 @@ describe('PresentationRequestService', () => {
     mockEmit = jest.fn().mockResolvedValue(undefined);
     mockSendInTransaction = jest.fn().mockResolvedValue('job-1');
     mockEventEmit = jest.fn();
+    mockObserveExchange = jest.fn().mockResolvedValue(true);
     mockTransaction = jest.fn(
       async (callback: (manager: EntityManager) => Promise<unknown>) =>
         callback(mockManager),
@@ -160,6 +170,18 @@ describe('PresentationRequestService', () => {
           useValue: {
             findById: mockFindProfileById,
             findByNameAndVersion: mockFindByNameAndVersion,
+          },
+        },
+        {
+          provide: PresentationDefinitionRepository,
+          useValue: { findById: mockFindDefinitionById },
+        },
+        {
+          provide: PresentationExchangeRepository,
+          useValue: {
+            create: jest.fn().mockResolvedValue({ id: 'local-exchange' }),
+            lock: jest.fn().mockResolvedValue({ id: 'local-exchange' }),
+            observe: mockObserveExchange,
           },
         },
         {
@@ -242,7 +264,7 @@ describe('PresentationRequestService', () => {
     };
 
     beforeEach(() => {
-      mockFindProfileById.mockResolvedValue(
+      mockFindDefinitionById.mockResolvedValue(
         buildProfile({
           presentationFormat: CredentialDefinitionFormat.ANONCREDS,
         }),
@@ -256,6 +278,38 @@ describe('PresentationRequestService', () => {
       });
       mockTransitionStateIfForward.mockResolvedValue(
         buildOperation({ state: OperationState.PROCESSING }),
+      );
+    });
+
+    it('surfaces uncertainty without resubmitting when correlation persistence fails', async () => {
+      mockTransaction
+        .mockImplementationOnce(
+          async (callback: (manager: EntityManager) => Promise<unknown>) =>
+            callback(mockManager),
+        )
+        .mockRejectedValueOnce(new Error('database unavailable'));
+
+      await expect(service.create(tenantId, dto, auth)).rejects.toThrow(
+        "Presentation submission outcome is uncertain for operation 'presentation-op-1' and exchange 'local-exchange'; do not resend.",
+      );
+      expect(mockRequestPresentation).toHaveBeenCalledTimes(1);
+    });
+
+    it.each([
+      [PresentationExchangeState.PresentationReceived, 'presentation-received'],
+      [PresentationExchangeState.Abandoned, 'abandoned'],
+    ])('stores the initial %s exchange state', async (state, expected) => {
+      mockRequestPresentation.mockResolvedValue({
+        id: 'proof-1',
+        externalId: 'proof-1',
+        state,
+      });
+      await service.create(tenantId, dto, auth);
+      expect(mockObserveExchange).toHaveBeenCalledWith(
+        expect.anything(),
+        'proof-1',
+        expected,
+        mockManager,
       );
     });
 
@@ -374,13 +428,13 @@ describe('PresentationRequestService', () => {
     });
 
     it('rejects definitions and delivery connections owned by another tenant', async () => {
-      mockFindProfileById.mockResolvedValue(
+      mockFindDefinitionById.mockResolvedValue(
         buildProfile({ tenantId: 'other-tenant' }),
       );
       await expect(service.create(tenantId, dto, auth)).rejects.toThrow(
         BadRequestException,
       );
-      mockFindProfileById.mockResolvedValue(buildProfile());
+      mockFindDefinitionById.mockResolvedValue(buildProfile());
       mockFindConnectionById.mockResolvedValue(
         buildConnection({ tenantId: 'other-tenant' }),
       );
@@ -556,6 +610,7 @@ describe('PresentationRequestService', () => {
 
   it('resolves a profile by "name/version" string', async () => {
     mockFindByNameAndVersion.mockResolvedValue(buildProfile());
+    mockFindDefinitionById.mockResolvedValue(buildProfile());
     mockRequestPresentation.mockResolvedValue({
       id: 'exch-1',
       externalId: 'agent-exch-1',
@@ -774,6 +829,11 @@ describe('PresentationRequestService', () => {
         predicates: [{ attribute: 'age', condition: '>=', value: '18' }],
       }),
     );
+    mockFindDefinitionById.mockResolvedValue(
+      buildProfile({
+        predicates: [{ attribute: 'age', condition: '>=', value: '18' }],
+      }),
+    );
     mockRequestPresentation.mockResolvedValue({
       id: 'exch-1',
       state: PresentationExchangeState.RequestSent,
@@ -798,6 +858,13 @@ describe('PresentationRequestService', () => {
 
   it('rejects a profile predicate whose value is not numeric', async () => {
     mockFindProfileById.mockResolvedValue(
+      buildProfile({
+        predicates: [
+          { attribute: 'age', condition: '>=', value: 'not-a-number' },
+        ],
+      }),
+    );
+    mockFindDefinitionById.mockResolvedValue(
       buildProfile({
         predicates: [
           { attribute: 'age', condition: '>=', value: 'not-a-number' },

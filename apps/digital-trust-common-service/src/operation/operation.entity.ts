@@ -70,6 +70,9 @@ export class Operation {
   @Column({ name: 'exchange_id', type: 'uuid', nullable: true })
   public exchangeId?: string | null;
 
+  @Column({ name: 'presentation_exchange_id', type: 'uuid', nullable: true })
+  public presentationExchangeId?: string | null;
+
   @ApiProperty({
     description: 'The unique identifier of the operation',
     example: '123e4567-e89b-12d3-a456-426614174000',

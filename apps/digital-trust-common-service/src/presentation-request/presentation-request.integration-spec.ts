@@ -1,4 +1,4 @@
-import { randomUUID } from 'crypto';
+import { randomBytes, randomUUID } from 'crypto';
 
 import { type AuthContext } from '@app/auth';
 import {
@@ -21,6 +21,7 @@ import {
   ConnectionState,
   ConnectorType,
 } from '../connection/connection.entity';
+import { Connector } from '../connector/connector.entity';
 import { buildTractionPresentationRequest } from '../connector/connectors/traction/traction-presentation';
 import { CredentialDefinitionFormat } from '../credential-definition/credential-definition.entity';
 import { OperationResponseDto } from '../operation/dto/operation-response.dto';
@@ -29,9 +30,12 @@ import { OperationService } from '../operation/operation.service';
 import { ProtocolStateChangeService } from '../protocol-state-change/protocol-state-change.service';
 import { Tenant } from '../tenant/tenant.entity';
 import { VerificationPredicateCondition } from '../verification-profile/dto/verification-predicate.dto';
+import { PresentationDefinition } from '../verification-profile/presentation-definition.entity';
 import { VerificationProfile } from '../verification-profile/verification-profile.entity';
 import { VerificationProfileService } from '../verification-profile/verification-profile.service';
 
+import { PresentationExchange } from './presentation-exchange.entity';
+import { PresentationExchangeService } from './presentation-exchange.service';
 import { PresentationRequestService } from './presentation-request.service';
 
 describe('Presentation definition execution (integration)', () => {
@@ -40,8 +44,12 @@ describe('Presentation definition execution (integration)', () => {
   let requests: PresentationRequestService;
   let tenants: Repository<Tenant>;
   let profiles: Repository<VerificationProfile>;
+  let definitionRows: Repository<PresentationDefinition>;
   let connections: Repository<Connection>;
   let operations: Repository<Operation>;
+  let connectors: Repository<Connector>;
+  let exchanges: Repository<PresentationExchange>;
+  let exchangeService: PresentationExchangeService;
   let operationService: OperationService;
   let protocol: ProtocolStateChangeService;
   const connectorId = randomUUID();
@@ -97,13 +105,121 @@ describe('Presentation definition execution (integration)', () => {
     requests = module.get(PresentationRequestService);
     tenants = module.get(getRepositoryToken(Tenant));
     profiles = module.get(getRepositoryToken(VerificationProfile));
+    definitionRows = module.get(getRepositoryToken(PresentationDefinition));
     connections = module.get(getRepositoryToken(Connection));
     operations = module.get(getRepositoryToken(Operation));
+    connectors = module.get(getRepositoryToken(Connector));
+    exchanges = module.get(getRepositoryToken(PresentationExchange));
+    exchangeService = module.get(PresentationExchangeService);
     operationService = module.get(OperationService);
     protocol = module.get(ProtocolStateChangeService);
   }, 30000);
 
   afterAll(async () => app?.close());
+
+  it('creates and publishes a definition independently of profiles', async () => {
+    const tenant = await tenants.save(
+      tenants.create({
+        name: 'Independent presentation definition',
+        slug: `presentation-${randomUUID()}`,
+      }),
+    );
+    const auth = {
+      sub: 'user',
+      tokenType: 'user',
+      clientId: 'spa',
+      tenantId: tenant.id,
+      roles: [],
+      scope: 'profiles:manage',
+      scopes: ['profiles:manage'],
+      iss: 'https://issuer.example.test',
+      aud: 'https://api.example.test',
+      exp: 9999999999,
+      iat: 1,
+    } satisfies AuthContext;
+    try {
+      const creation = await definitions.createDefinition(
+        tenant.id,
+        {
+          name: 'independent',
+          version: '1.0',
+          query: {
+            type: 'dif-presentation-exchange',
+            presentationDefinition: {
+              id: 'identity',
+              input_descriptors: [
+                {
+                  id: 'person',
+                  constraints: {
+                    fields: [{ path: ['$.credentialSubject.name'] }],
+                  },
+                },
+              ],
+            },
+          },
+          options: { format: CredentialDefinitionFormat.ANONCREDS },
+        },
+        auth,
+      );
+      const id = String(creation.result?.id);
+      expect(
+        await definitionRows.findOneBy({ tenantId: tenant.id, id }),
+      ).toBeTruthy();
+      expect(await profiles.countBy({ tenantId: tenant.id })).toBe(0);
+      const published = await definitions.publishDefinition(
+        tenant.id,
+        id,
+        auth,
+      );
+      expect(published.result?.status).toBe('published');
+      expect(
+        (await operations.findOneByOrFail({ id: creation.id })).result?.status,
+      ).toBe('draft');
+
+      const fail = jest
+        .spyOn(operationService, 'createCompleted')
+        .mockRejectedValueOnce(new Error('operation persistence failed'));
+      try {
+        await expect(
+          definitions.createDefinition(
+            tenant.id,
+            {
+              name: 'rollback',
+              version: '1.0',
+              query: {
+                type: 'dif-presentation-exchange',
+                presentationDefinition: {
+                  id: 'identity',
+                  input_descriptors: [
+                    {
+                      id: 'person',
+                      constraints: {
+                        fields: [{ path: ['$.credentialSubject.name'] }],
+                      },
+                    },
+                  ],
+                },
+              },
+              options: { format: CredentialDefinitionFormat.ANONCREDS },
+            },
+            auth,
+          ),
+        ).rejects.toThrow('operation persistence failed');
+      } finally {
+        fail.mockRestore();
+      }
+      expect(
+        await definitionRows.findOneBy({
+          tenantId: tenant.id,
+          name: 'rollback',
+        }),
+      ).toBeNull();
+    } finally {
+      await operations.delete({ tenantId: tenant.id });
+      await definitionRows.delete({ tenantId: tenant.id });
+      await tenants.delete({ id: tenant.id });
+    }
+  });
 
   it('stores immutable execution snapshots, distinct nonces and isolated request reads across definition changes/deletion', async () => {
     const tenant = await tenants.save(
@@ -162,7 +278,7 @@ describe('Presentation definition execution (integration)', () => {
         },
         auth,
       );
-      const definition = await profiles.findOneByOrFail({
+      const definition = await definitionRows.findOneByOrFail({
         id: String(creation.result?.id),
         tenantId: tenant.id,
       });
@@ -189,11 +305,31 @@ describe('Presentation definition execution (integration)', () => {
         auth,
       );
       expect(publish.type).toBe('presentation-definition.publish');
+      const profile = await definitions.create(
+        tenant.id,
+        {
+          name: 'identity-profile',
+          version: '1.0',
+          presentationDefinitionId: definition.id,
+        },
+        auth,
+      );
+      await definitions.publish(tenant.id, profile.id, auth);
+      await connectors.save({
+        id: connectorId,
+        tenantId: tenant.id,
+        connectorType: ConnectorType.TRACTION,
+        credentialsEncrypted: randomBytes(32),
+        endpointUrl: 'https://agent.example.test',
+        active: true,
+        keyVersion: 1,
+      });
       const connection = await connections.save(
         connections.create({
           tenantId: tenant.id,
           externalConnectionId: randomUUID(),
           connectorType: ConnectorType.TRACTION,
+          connectorId,
           state: ConnectionState.ACTIVE,
           protocol: ConnectionProtocol.DIDCOMM_V1,
         }),
@@ -205,10 +341,39 @@ describe('Presentation definition execution (integration)', () => {
       const first = await requests.create(tenant.id, dto, auth);
       const second = await requests.create(tenant.id, dto, auth);
       expect(first.state).toBe(OperationState.PROCESSING);
+      expect(first.presentationExchangeId).toBeTruthy();
+      expect(
+        (
+          await exchangeService.get(
+            tenant.id,
+            first.presentationExchangeId!,
+            auth,
+          )
+        ).requestOperationId,
+      ).toBe(first.id);
       const stored = await operations.findOneByOrFail({
         id: first.id,
         tenantId: tenant.id,
       });
+      await expect(
+        exchangeService.get(other.id, first.presentationExchangeId!, {
+          ...auth,
+          tenantId: other.id,
+        }),
+      ).rejects.toThrow('Presentation exchange not found');
+      getPresentation.mockResolvedValueOnce({
+        id: first.externalId,
+        connectionId: randomUUID(),
+        state: PresentationExchangeState.RequestSent,
+      });
+      await expect(
+        exchangeService.reconcile(
+          tenant.id,
+          first.presentationExchangeId!,
+          auth,
+        ),
+      ).rejects.toThrow('Backend presentation correlation changed');
+      expect(submit).toHaveBeenCalledTimes(2);
       expect(stored.request.body.snapshot).toMatchObject({
         definition: { id: definition.id, version: '1.0' },
         options: { format: 'anoncreds' },
@@ -228,6 +393,17 @@ describe('Presentation definition execution (integration)', () => {
       submit.mockRejectedValueOnce(new Error('backend unavailable'));
       const failed = await requests.create(tenant.id, dto, auth);
       expect(failed.state).toBe(OperationState.FAILED);
+      const uncertain = await exchangeService.get(
+        tenant.id,
+        failed.presentationExchangeId!,
+        auth,
+      );
+      expect(uncertain.submission).toBe('uncertain');
+      const submittedCount = submit.mock.calls.length;
+      await expect(
+        exchangeService.reconcile(tenant.id, uncertain.id, auth),
+      ).rejects.toThrow('no verified backend correlation');
+      expect(submit).toHaveBeenCalledTimes(submittedCount);
       expect(
         (
           await operations.findOneByOrFail({
@@ -239,7 +415,7 @@ describe('Presentation definition execution (integration)', () => {
       submit.mockRejectedValueOnce(new Error('legacy submission failed'));
       await expect(
         requests.requestPresentation(tenant.id, {
-          verificationProfileId: definition.id,
+          verificationProfileId: profile.id,
           connectionId: connection.id,
         }),
       ).rejects.toThrow('legacy submission failed');
@@ -252,11 +428,12 @@ describe('Presentation definition execution (integration)', () => {
         ),
       ).rejects.toThrow('not in draft');
       await definitions.deprecateDefinition(tenant.id, definition.id, auth);
-      await profiles.update(
+      await profiles.delete({ id: profile.id, tenantId: tenant.id });
+      await definitionRows.update(
         { id: definition.id, tenantId: tenant.id },
         { presentationDefinition: {}, predicates: [] },
       );
-      await profiles.delete({ id: definition.id, tenantId: tenant.id });
+      await definitionRows.delete({ id: definition.id, tenantId: tenant.id });
       expect(
         (
           await operations.findOneByOrFail({
@@ -283,6 +460,23 @@ describe('Presentation definition execution (integration)', () => {
           },
         ],
       });
+      await protocol.process({
+        tenantId: tenant.id,
+        connectorId: randomUUID(),
+        topic: 'present_proof',
+        externalId: first.externalId!,
+        protocolState: 'done',
+        payload: { verified: 'true' },
+      });
+      expect(
+        (
+          await exchangeService.get(
+            tenant.id,
+            first.presentationExchangeId!,
+            auth,
+          )
+        ).state,
+      ).toBe('request-sent');
       await protocol.process({
         tenantId: tenant.id,
         connectorId,
@@ -315,10 +509,70 @@ describe('Presentation definition execution (integration)', () => {
         'completed',
         'completed',
       ]);
+      const exchange = await exchangeService.get(
+        tenant.id,
+        first.presentationExchangeId!,
+        auth,
+      );
+      expect(exchange.state).toBe('verified');
+      await protocol.process({
+        tenantId: tenant.id,
+        connectorId,
+        topic: 'present_proof',
+        externalId: first.externalId!,
+        protocolState: 'abandoned',
+        payload: {},
+      });
+      await protocol.process({
+        tenantId: tenant.id,
+        connectorId,
+        topic: 'present_proof',
+        externalId: first.externalId!,
+        protocolState: 'done',
+        payload: { verified: 'true' },
+      });
+      expect(
+        (await exchangeService.get(tenant.id, exchange.id, auth)).state,
+      ).toBe('verified');
+      await operations.delete({ id: first.id, tenantId: tenant.id });
+      const retained = await exchangeService.get(tenant.id, exchange.id, auth);
+      expect(retained.requestOperationId).toBeNull();
+      expect(retained).not.toHaveProperty('result');
+      expect(retained).not.toHaveProperty('revealedAttributes');
+      await exchangeService.reconcile(tenant.id, exchange.id, auth);
+      expect(submit).toHaveBeenCalledTimes(submittedCount + 1);
+      getPresentation.mockResolvedValueOnce({
+        id: second.externalId,
+        connectionId: connection.externalConnectionId,
+        state: PresentationExchangeState.Verified,
+        verified: false,
+        revealedAttributes: [],
+        predicates: [],
+      });
+      await protocol.process({
+        tenantId: tenant.id,
+        connectorId,
+        topic: 'present_proof',
+        externalId: second.externalId!,
+        protocolState: 'done',
+        payload: { verified: 'true' },
+      });
+      expect((await requests.get(tenant.id, second.id, auth)).state).toBe(
+        OperationState.FAILED,
+      );
+      expect(
+        (
+          await exchangeService.get(
+            tenant.id,
+            second.presentationExchangeId!,
+            auth,
+          )
+        ).state,
+      ).toBe('failed');
 
       const count = await operations.countBy({ tenantId: tenant.id });
       const fail = jest
-        .spyOn(operationService, 'transitionState')
+        .spyOn(operationService, 'createCompleted')
         .mockRejectedValueOnce(new Error('operation persistence failed'));
       try {
         await expect(
@@ -340,10 +594,12 @@ describe('Presentation definition execution (integration)', () => {
         fail.mockRestore();
       }
       expect(
-        await profiles.findOneBy({ tenantId: tenant.id, name: 'rollback' }),
+        await definitionRows.findOneBy({
+          tenantId: tenant.id,
+          name: 'rollback',
+        }),
       ).toBeNull();
       expect(await operations.countBy({ tenantId: tenant.id })).toBe(count);
-      expect((await requests.get(tenant.id, first.id, auth)).id).toBe(first.id);
       expect((await requests.get(tenant.id, second.id, auth)).id).toBe(
         second.id,
       );
@@ -351,7 +607,7 @@ describe('Presentation definition execution (integration)', () => {
         requests.get(other.id, first.id, { ...auth, tenantId: other.id }),
       ).rejects.toThrow('Operation not found');
       await expect(
-        definitions.findById(other.id, definition.id, {
+        definitions.findDefinition(other.id, definition.id, {
           ...auth,
           tenantId: other.id,
         }),
@@ -359,8 +615,11 @@ describe('Presentation definition execution (integration)', () => {
     } finally {
       for (const id of [tenant.id, other.id]) {
         await operations.delete({ tenantId: id });
+        await exchanges.delete({ tenantId: id });
         await connections.delete({ tenantId: id });
         await profiles.delete({ tenantId: id });
+        await definitionRows.delete({ tenantId: id });
+        await connectors.delete({ tenantId: id });
         await tenants.delete({ id });
       }
     }

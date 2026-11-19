@@ -26,6 +26,7 @@ import {
 } from '../operation/operation.entity';
 import { OperationRepository } from '../operation/operation.repository';
 import { OperationService } from '../operation/operation.service';
+import { PresentationExchangeRepository } from '../presentation-request/presentation-exchange.repository';
 
 import { ProtocolStateChangeService } from './protocol-state-change.service';
 import { ProtocolStateChangeJobData } from './protocol-state-change.worker';
@@ -213,6 +214,13 @@ describe('ProtocolStateChangeService', () => {
         {
           provide: CredentialExchangeRepository,
           useValue: exchangeRepository,
+        },
+        {
+          provide: PresentationExchangeRepository,
+          useValue: {
+            findByBackend: jest.fn().mockResolvedValue(null),
+            observe: jest.fn(),
+          },
         },
         { provide: ConnectionService, useValue: connectionService },
         { provide: JobsService, useValue: jobsService },

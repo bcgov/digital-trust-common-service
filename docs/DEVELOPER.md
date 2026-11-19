@@ -1709,14 +1709,16 @@ Native AnonCreds referent-keyed query input, DCQL and QueryByExample translators
 are not implemented; absent/unknown query types are rejected. This resource name
 does not imply a DIF-only storage model or support for arbitrary query languages.
 
-Definitions reuse `verification_profile` storage and its tenant/name/version
-uniqueness. `GET /presentation-definitions` lists with the existing cursor/status/
-public filters, and `GET /presentation-definitions/:id` reads a template.
+Definitions and verification profiles are separate tenant-scoped resources with
+independent lifecycles. `GET /presentation-definitions` supports cursor and status
+filters; public discoverability belongs to verification profiles, not definitions.
+`GET /presentation-definitions/:id` reads a template.
 `PATCH /:id` updates drafts; `POST /:id/publish` freezes a draft for execution;
 `POST /:id/deprecate` prevents new requests using it. Published definitions cannot
 be edited: create a new version instead. There is no new deletion or ledger
-registration API. Migration adds nullable `presentation_format` without assigning
-a new default to legacy profiles.
+registration API. Existing profiles are migrated to one definition each, with
+their profile IDs unchanged. Backfilled definition IDs match their originating
+profile IDs; their nullable format continues to allow connector inference.
 
 Definition mutations now return completed typed Operations, with one local step:
 `presentation-definition.create`, `.update`, `.publish`, or `.deprecate`. The
@@ -1752,7 +1754,8 @@ does not introduce a rolling interval or other revocation-policy API. Fixed
 intervals remain supported at the port/Traction boundary unchanged.
 
 The response is the standard Operation envelope: `202` while in flight, or `200`
-for a synchronous terminal result. Its ID is the request ID.
+for a synchronous terminal result. Its ID is the request ID; `exchange_id` is the
+separate durable local exchange ID.
 Submission exceptions after Operation creation return a failed HTTP 200 Operation
 with its ID and diagnostic `code`/`message`. Validation, tenant/authentication,
 and connector-selection preflight errors remain normal HTTP errors.
@@ -1770,17 +1773,30 @@ Revealed attributes contain `{ referent, name, value }`; predicates contain
 cryptographically verified proof attachments, never self-attestation. A terminal
 webhook is not sufficient proof by itself. Pending/processing results stay null.
 
-Existing `/profiles/verification` lifecycle endpoints and
-`/presentations/request` profile/raw submission remain supported. Profile UUIDs
-are also definition UUIDs, including through the new execution endpoint. Legacy
-profiles show `options.format: null` until explicitly set on a draft, preserving
-connector-inferred format selection. Existing callers do not need to migrate
-their payloads. Legacy profile mutations retain raw profile responses; the new
-definition routes return configuration Operations. Legacy presentation submission
-preserves HTTP exceptions after durably recording failures; the new execution
-route returns failed envelopes instead. Both routes use normalized terminal
-presentation results. There are no existing presentation/profile UI screens or resource
-clients to change; the generated UI API types include the new contracts.
+`GET /api/v1/tenants/:tenantId/presentation-exchanges/:exchangeId` reads the
+durable exchange. `POST /presentation-exchanges/:exchangeId/reconcile` reads the
+pinned backend record and checks its exchange and connection correlation without
+resending. If submission may have succeeded but no backend ID was recorded, the
+exchange reports an uncertain submission and reconciliation returns a conflict;
+do not automatically resubmit. A failure to persist a successful backend response
+returns an error identifying the Operation and exchange; the exchange may remain
+`submitting` with no backend ID, and must likewise not be resent automatically.
+The exchange retains no verified result or revealed
+attributes: those remain subject to the Operation's existing TTL. After Operation
+expiry, its ID on the exchange is null. Older requests are backfilled only when
+their stored tenant, connector and connection correlations can be verified.
+
+**Breaking profile write change:** `/profiles/verification` create and update
+requests must now provide `presentation_definition_id` and must not send inline
+`presentation_definition` or `predicates`. Create or select a tenant definition
+first; publish it before publishing the profile. Profile reads retain their existing
+IDs and inline fields, derived from the linked definition, and also expose the
+definition ID. A deprecated definition cannot be used for new proof requests.
+Profile mutations retain raw profile responses; definition mutations return
+configuration Operations. The legacy `/presentations/request` endpoint still accepts
+published profile IDs or raw requests and preserves submission HTTP exceptions;
+the new execution route returns failed envelopes instead. Both use normalized
+terminal presentation results.
 
 ### Offering a credential
 

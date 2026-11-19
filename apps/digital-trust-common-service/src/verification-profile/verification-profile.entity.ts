@@ -14,6 +14,8 @@ import {
 import type { CredentialDefinitionFormat } from '../credential-definition/credential-definition.entity';
 import { Tenant } from '../tenant/tenant.entity';
 
+import { PresentationDefinition } from './presentation-definition.entity';
+
 export enum VerificationProfileProtocolHint {
   DIDCOMM = 'didcomm',
   OID4VP = 'oid4vp',
@@ -53,6 +55,16 @@ export class VerificationProfile {
   })
   @JoinColumn({ name: 'tenant_id' })
   public tenant!: Tenant;
+
+  @Column({ name: 'presentation_definition_id', type: 'uuid' })
+  public presentationDefinitionId!: string;
+
+  @ManyToOne(() => PresentationDefinition, { onDelete: 'RESTRICT' })
+  @JoinColumn([
+    { name: 'tenant_id', referencedColumnName: 'tenantId' },
+    { name: 'presentation_definition_id', referencedColumnName: 'id' },
+  ])
+  public definition!: PresentationDefinition;
 
   @ApiProperty({
     description: 'Human-friendly profile identifier',
