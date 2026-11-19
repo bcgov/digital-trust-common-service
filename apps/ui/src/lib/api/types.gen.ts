@@ -297,71 +297,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/tenants/{tenantId}/onboarding/steps/{stepName}/complete": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Tenant UUID */
-                tenantId: components["parameters"]["TenantId"];
-                stepName: "configure-connector" | "register-credential-definition" | "create-issuance-profile" | "register-api-client";
-            };
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Mark an onboarding step as complete */
-        post: operations["completeOnboardingStep"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/tenants/{tenantId}/onboarding/steps/{stepName}/skip": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Tenant UUID */
-                tenantId: components["parameters"]["TenantId"];
-                stepName: "configure-connector" | "register-credential-definition" | "create-issuance-profile" | "register-api-client";
-            };
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Skip an onboarding step (mark as skipped) */
-        post: operations["skipOnboardingStep"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/tenants/{tenantId}/onboarding/reset": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Tenant UUID */
-                tenantId: components["parameters"]["TenantId"];
-            };
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Reset onboarding progress (testing/demo only)
-         * @description Clears all onboarding step progress and allows restart. Intended for development and testing scenarios.
-         */
-        post: operations["resetOnboarding"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/tenants/{tenantId}/users": {
         parameters: {
             query?: never;
@@ -3480,110 +3415,20 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        steps?: {
-                            name?: string;
-                            completed?: boolean;
-                            skipped?: boolean;
+                        steps: {
+                            /** @enum {string} */
+                            name: "configure-connector" | "register-credential-definition" | "create-issuance-profile" | "register-api-client";
+                            completed: boolean;
+                            blocked_by: ("configure-connector" | "register-credential-definition" | "create-issuance-profile" | "register-api-client")[];
                         }[];
-                        progress_percent?: number;
+                        progress_percent: number;
                     };
                 };
             };
-        };
-    };
-    completeOnboardingStep: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Tenant UUID */
-                tenantId: components["parameters"]["TenantId"];
-                stepName: "configure-connector" | "register-credential-definition" | "create-issuance-profile" | "register-api-client";
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Step marked complete */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        steps?: {
-                            name?: string;
-                            completed?: boolean;
-                            skipped?: boolean;
-                        }[];
-                        progress_percent?: number;
-                    };
-                };
-            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
-        };
-    };
-    skipOnboardingStep: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Tenant UUID */
-                tenantId: components["parameters"]["TenantId"];
-                stepName: "configure-connector" | "register-credential-definition" | "create-issuance-profile" | "register-api-client";
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Step marked skipped */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        steps?: {
-                            name?: string;
-                            completed?: boolean;
-                            skipped?: boolean;
-                        }[];
-                        progress_percent?: number;
-                    };
-                };
-            };
-            404: components["responses"]["NotFound"];
-        };
-    };
-    resetOnboarding: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Tenant UUID */
-                tenantId: components["parameters"]["TenantId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Onboarding progress reset */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        steps?: {
-                            name?: string;
-                            completed?: boolean;
-                            skipped?: boolean;
-                        }[];
-                        /** @example 0 */
-                        progress_percent?: number;
-                    };
-                };
-            };
         };
     };
     listTenantUsers: {
