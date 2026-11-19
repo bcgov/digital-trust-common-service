@@ -15,6 +15,8 @@ import { Tenant } from '../tenant/tenant.entity';
 import { TenantRepository } from '../tenant/tenant.repository';
 import { TenantUser } from '../tenant-user/tenant-user.entity';
 import { TenantUserRepository } from '../tenant-user/tenant-user.repository';
+import { PresentationDefinition } from '../verification-profile/presentation-definition.entity';
+import { PresentationDefinitionRepository } from '../verification-profile/presentation-definition.repository';
 import { VerificationProfile } from '../verification-profile/verification-profile.entity';
 import { VerificationProfileRepository } from '../verification-profile/verification-profile.repository';
 
@@ -26,6 +28,7 @@ export const SEED_ENTITIES = [
   Connector,
   CredentialDefinition,
   IssuanceProfile,
+  PresentationDefinition,
   VerificationProfile,
   OAuthClient,
   Connection,
@@ -40,6 +43,7 @@ export const SEED_REPOSITORY_PROVIDERS = [
   ConnectorRepository,
   CredentialDefinitionRepository,
   IssuanceProfileRepository,
+  PresentationDefinitionRepository,
   VerificationProfileRepository,
   OAuthClientRepository,
   ConnectionRepository,

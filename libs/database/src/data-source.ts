@@ -47,6 +47,9 @@ import { DropRedundantExchangeIssueIndex1793375254070 } from './migrations/00004
 import { ConfigureIssuanceProfileClaims1794328787660 } from './migrations/000044_configure-issuance-profile-claims';
 import { PersistOperationSteps1794928308442 } from './migrations/000045_persist-operation-steps';
 import { RestoreIssuanceDeliveryDefault1795099078637 } from './migrations/000046_restore-issuance-delivery-default';
+import { AddPresentationDefinitionFormat1793288034325 } from './migrations/000047_add-presentation-definition-format';
+import { SplitPresentationDefinitions1795105099183 } from './migrations/000048_split-presentation-definitions';
+import { CreatePresentationExchanges1795105834050 } from './migrations/000049_create-presentation-exchanges';
 import { buildSslConfig } from './ssl.util';
 
 export const AppDataSource = new DataSource({
@@ -108,6 +111,9 @@ export const AppDataSource = new DataSource({
     ConfigureIssuanceProfileClaims1794328787660,
     PersistOperationSteps1794928308442,
     RestoreIssuanceDeliveryDefault1795099078637,
+    AddPresentationDefinitionFormat1793288034325,
+    SplitPresentationDefinitions1795105099183,
+    CreatePresentationExchanges1795105834050,
   ],
   ssl: buildSslConfig(
     process.env.DB_SSL,

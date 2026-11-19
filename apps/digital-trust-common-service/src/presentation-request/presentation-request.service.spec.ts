@@ -1,5 +1,7 @@
+import type { AuthContext } from '@app/auth';
 import {
   ConnectorUnavailableError,
+  PresentationRequest,
   PresentationExchangeState,
 } from '@app/credential-ports';
 import { JOB_QUEUES } from '@app/pg-boss';
@@ -18,12 +20,14 @@ import {
   ConnectorType,
 } from '../connection/connection.entity';
 import { ConnectionRepository } from '../connection/connection.repository';
+import { buildTractionPresentationRequest } from '../connector/connectors/traction/traction-presentation';
 import { CredentialDefinitionFormat } from '../credential-definition/credential-definition.entity';
 import { JobsService } from '../jobs/jobs.service';
 import { OPERATION_TYPE } from '../operation/operation-type.constants';
 import { Operation, OperationState } from '../operation/operation.entity';
 import { OperationRepository } from '../operation/operation.repository';
 import { OperationService } from '../operation/operation.service';
+import { PresentationDefinitionRepository } from '../verification-profile/presentation-definition.repository';
 import {
   VerificationProfile,
   VerificationProfileStatus,
@@ -31,15 +35,18 @@ import {
 import { VerificationProfileRepository } from '../verification-profile/verification-profile.repository';
 
 import { RequestPresentationDto } from './dto/request-presentation.dto';
+import { PresentationExchangeRepository } from './presentation-exchange.repository';
 import { PresentationRequestService } from './presentation-request.service';
 
 describe('PresentationRequestService', () => {
   let service: PresentationRequestService;
   let mockFindProfileById: jest.Mock;
+  let mockFindDefinitionById: jest.Mock;
   let mockFindByNameAndVersion: jest.Mock;
   let mockFindConnectionById: jest.Mock;
   let mockFindOperationById: jest.Mock;
   let mockCreateOperation: jest.Mock;
+  let mockGetOperation: jest.Mock;
   let mockTransitionStateIfForward: jest.Mock;
   let mockResolve: jest.Mock;
   let mockRequestPresentation: jest.Mock;
@@ -47,7 +54,9 @@ describe('PresentationRequestService', () => {
   let mockSendInTransaction: jest.Mock;
   let mockEventEmit: jest.Mock;
   let mockTransaction: jest.Mock;
-  const mockManager = {} as EntityManager;
+  let mockObserveExchange: jest.Mock;
+  const mockSave = jest.fn();
+  const mockManager = { save: mockSave } as unknown as EntityManager;
 
   const tenantId = '123e4567-e89b-12d3-a456-426614174001';
   const connectionId = '123e4567-e89b-12d3-a456-426614174002';
@@ -75,6 +84,7 @@ describe('PresentationRequestService', () => {
     ({
       id: profileId,
       tenantId,
+      presentationDefinitionId: profileId,
       name: 'age-verification',
       version: '1.0',
       presentationDefinition: {
@@ -106,6 +116,7 @@ describe('PresentationRequestService', () => {
       request: { method: 'POST', path: '/presentations/request', body: {} },
       result: null,
       externalId: null,
+      presentationExchangeId: 'local-exchange',
       viewedAt: null,
       expiresAt: new Date('2024-01-04T00:00:00.000Z'),
       createdAt,
@@ -114,7 +125,17 @@ describe('PresentationRequestService', () => {
     }) as Operation;
 
   const mockResolvedAdapter = () => ({
-    adapter: { requestPresentation: mockRequestPresentation },
+    adapter: {
+      requestPresentation: mockRequestPresentation,
+      getPresentation: jest.fn().mockResolvedValue({
+        id: 'agent-exch-1',
+        connectionId: externalConnectionId,
+        state: PresentationExchangeState.Verified,
+        verified: true,
+        revealedAttributes: [],
+        predicates: [],
+      }),
+    },
     connector: { id: 'connector-1' },
     context: { connectorId: 'connector-1' },
     format: CredentialDefinitionFormat.ANONCREDS,
@@ -122,16 +143,20 @@ describe('PresentationRequestService', () => {
 
   beforeEach(async () => {
     mockFindProfileById = jest.fn().mockResolvedValue(null);
+    mockFindDefinitionById = jest.fn().mockResolvedValue(null);
+    mockSave.mockImplementation((value) => Promise.resolve(value));
     mockFindByNameAndVersion = jest.fn().mockResolvedValue(null);
     mockFindConnectionById = jest.fn().mockResolvedValue(buildConnection());
     mockFindOperationById = jest.fn();
     mockCreateOperation = jest.fn().mockResolvedValue(buildOperation());
+    mockGetOperation = jest.fn();
     mockTransitionStateIfForward = jest.fn();
     mockRequestPresentation = jest.fn();
     mockResolve = jest.fn().mockResolvedValue(mockResolvedAdapter());
     mockEmit = jest.fn().mockResolvedValue(undefined);
     mockSendInTransaction = jest.fn().mockResolvedValue('job-1');
     mockEventEmit = jest.fn();
+    mockObserveExchange = jest.fn().mockResolvedValue(true);
     mockTransaction = jest.fn(
       async (callback: (manager: EntityManager) => Promise<unknown>) =>
         callback(mockManager),
@@ -148,18 +173,40 @@ describe('PresentationRequestService', () => {
           },
         },
         {
+          provide: PresentationDefinitionRepository,
+          useValue: { findById: mockFindDefinitionById },
+        },
+        {
+          provide: PresentationExchangeRepository,
+          useValue: {
+            create: jest.fn().mockResolvedValue({ id: 'local-exchange' }),
+            lock: jest.fn().mockResolvedValue({ id: 'local-exchange' }),
+            observe: mockObserveExchange,
+          },
+        },
+        {
           provide: ConnectionRepository,
           useValue: { findById: mockFindConnectionById },
         },
         {
           provide: OperationRepository,
-          useValue: { findById: mockFindOperationById },
+          useValue: {
+            findById: mockFindOperationById,
+            mergePresentationSteps: jest
+              .fn()
+              .mockImplementation(
+                (_tenantId: string, _id: string, steps: Operation['steps']) =>
+                  Promise.resolve({ steps, changed: true }),
+              ),
+          },
         },
         {
           provide: OperationService,
           useValue: {
             createOperation: mockCreateOperation,
+            getForTenant: mockGetOperation,
             transitionStateIfForward: mockTransitionStateIfForward,
+            updateStepsIfActive: jest.fn().mockResolvedValue(true),
           },
         },
         {
@@ -196,6 +243,237 @@ describe('PresentationRequestService', () => {
     Object.assign(dto, overrides);
     return dto;
   };
+
+  describe('definition-based execution', () => {
+    const auth = {
+      sub: 'user-1',
+      tokenType: 'user',
+      clientId: 'spa',
+      tenantId,
+      roles: [],
+      scope: 'credentials:verify',
+      scopes: ['credentials:verify'],
+      iss: 'https://issuer.example.test',
+      aud: 'https://api.example.test',
+      exp: 9999999999,
+      iat: 1,
+    } satisfies AuthContext;
+    const dto = {
+      presentationDefinitionId: profileId,
+      delivery: { connectionId },
+    };
+
+    beforeEach(() => {
+      mockFindDefinitionById.mockResolvedValue(
+        buildProfile({
+          presentationFormat: CredentialDefinitionFormat.ANONCREDS,
+        }),
+      );
+      mockRequestPresentation.mockResolvedValue({
+        id: 'proof-1',
+        externalId: 'proof-1',
+        state: PresentationExchangeState.RequestSent,
+        createdAt: createdAt.toISOString(),
+        updatedAt: createdAt.toISOString(),
+      });
+      mockTransitionStateIfForward.mockResolvedValue(
+        buildOperation({ state: OperationState.PROCESSING }),
+      );
+    });
+
+    it('surfaces uncertainty without resubmitting when correlation persistence fails', async () => {
+      mockTransaction
+        .mockImplementationOnce(
+          async (callback: (manager: EntityManager) => Promise<unknown>) =>
+            callback(mockManager),
+        )
+        .mockRejectedValueOnce(new Error('database unavailable'));
+
+      await expect(service.create(tenantId, dto, auth)).rejects.toThrow(
+        "Presentation submission outcome is uncertain for operation 'presentation-op-1' and exchange 'local-exchange'; do not resend.",
+      );
+      expect(mockRequestPresentation).toHaveBeenCalledTimes(1);
+    });
+
+    it.each([
+      [PresentationExchangeState.PresentationReceived, 'presentation-received'],
+      [PresentationExchangeState.Abandoned, 'abandoned'],
+    ])('stores the initial %s exchange state', async (state, expected) => {
+      mockRequestPresentation.mockResolvedValue({
+        id: 'proof-1',
+        externalId: 'proof-1',
+        state,
+      });
+      await service.create(tenantId, dto, auth);
+      expect(mockObserveExchange).toHaveBeenCalledWith(
+        expect.anything(),
+        'proof-1',
+        expected,
+        mockManager,
+      );
+    });
+
+    it.each([
+      new ConnectorUnavailableError('agent unreachable'),
+      new Error('unexpected adapter failure'),
+    ])(
+      'returns the durable failed Operation when submission throws %p',
+      async (error) => {
+        mockRequestPresentation.mockRejectedValue(error);
+        mockTransitionStateIfForward.mockResolvedValue(
+          buildOperation({
+            state: OperationState.FAILED,
+            result: { code: 'ADAPTER_ERROR', message: error.message },
+          }),
+        );
+        const failed = await service.create(tenantId, dto, auth);
+        expect(failed.id).toBe('presentation-op-1');
+        expect(failed.state).toBe(OperationState.FAILED);
+        expect(mockTransitionStateIfForward).toHaveBeenCalledWith(
+          failed.id,
+          OperationState.FAILED,
+          expect.any(Array),
+          expect.objectContaining({ message: error.message }),
+          mockManager,
+          undefined,
+          expect.arrayContaining([
+            { type: 'presentation-request.send', state: 'failed' },
+          ]),
+        );
+        expect(mockSendInTransaction).toHaveBeenCalledWith(
+          mockManager,
+          JOB_QUEUES.WEBHOOK_DISPATCH,
+          expect.objectContaining({
+            resourceId: failed.id,
+            event: 'presentation.request.failed',
+          }),
+        );
+        expect(mockRequestPresentation).toHaveBeenCalledTimes(1);
+      },
+    );
+
+    it('persists fresh execution nonce and exact request before the Traction mapping', async () => {
+      await service.create(tenantId, dto, auth);
+      await service.create(tenantId, dto, auth);
+      const firstRequest = mockRequestPresentation.mock
+        .calls[0][1] as PresentationRequest;
+      const secondRequest = mockRequestPresentation.mock
+        .calls[1][1] as PresentationRequest;
+      expect(firstRequest.nonce).toMatch(/^[1-9][0-9]+$/);
+      expect(secondRequest.nonce).not.toBe(firstRequest.nonce);
+      expect(mockCreateOperation.mock.invocationCallOrder[0]).toBeLessThan(
+        mockRequestPresentation.mock.invocationCallOrder[0],
+      );
+      const persisted = mockCreateOperation.mock.calls[0][0];
+      expect(persisted.request.path).toBe(
+        `/api/v1/tenants/${tenantId}/presentation-requests`,
+      );
+      expect(persisted.request.body).toEqual(
+        expect.objectContaining({
+          presentation_definition_id: profileId,
+          delivery: { connection_id: connectionId },
+          snapshot: {
+            connector_id: 'connector-1',
+            definition: expect.objectContaining({
+              id: profileId,
+              version: '1.0',
+              options: { format: 'anoncreds' },
+            }),
+            proof_request: firstRequest,
+            options: { format: CredentialDefinitionFormat.ANONCREDS },
+          },
+        }),
+      );
+      expect(
+        buildTractionPresentationRequest(firstRequest).presentation_request
+          .anoncreds,
+      ).toEqual({
+        name: 'age-verification',
+        version: '1.0',
+        nonce: firstRequest.nonce,
+        requested_attributes: { attribute_0: { name: 'age' } },
+        requested_predicates: {},
+      });
+      expect(mockResolve).toHaveBeenCalledWith(
+        tenantId,
+        CredentialDefinitionFormat.ANONCREDS,
+        expect.objectContaining({ connectorType: ConnectorType.TRACTION }),
+      );
+    });
+
+    it('keeps definition and compiled request snapshots after source edits or removal', async () => {
+      const profile = buildProfile();
+      mockFindProfileById.mockResolvedValue(profile);
+      await service.create(tenantId, dto, auth);
+      const snapshot =
+        mockCreateOperation.mock.calls[0][0].request.body.snapshot;
+      const expected = structuredClone(snapshot);
+      profile.presentationDefinition.input_descriptors = [];
+      profile.name = 'changed';
+      profile.predicates = [{ attribute: 'age', condition: '<', value: '1' }];
+      mockFindProfileById.mockResolvedValue(null);
+      expect(snapshot).toEqual(expected);
+      expect(snapshot.proof_request.requestedAttributes).toEqual([
+        { name: 'age' },
+      ]);
+      expect(mockRequestPresentation.mock.calls[0][1]).toEqual(
+        snapshot.proof_request,
+      );
+    });
+
+    it('rejects caller tenant mismatch before any resource lookup', async () => {
+      await expect(service.create('other-tenant', dto, auth)).rejects.toThrow();
+      expect(mockFindProfileById).not.toHaveBeenCalled();
+      expect(mockCreateOperation).not.toHaveBeenCalled();
+    });
+
+    it('rejects definitions and delivery connections owned by another tenant', async () => {
+      mockFindDefinitionById.mockResolvedValue(
+        buildProfile({ tenantId: 'other-tenant' }),
+      );
+      await expect(service.create(tenantId, dto, auth)).rejects.toThrow(
+        BadRequestException,
+      );
+      mockFindDefinitionById.mockResolvedValue(buildProfile());
+      mockFindConnectionById.mockResolvedValue(
+        buildConnection({ tenantId: 'other-tenant' }),
+      );
+      await expect(service.create(tenantId, dto, auth)).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(mockCreateOperation).not.toHaveBeenCalled();
+    });
+
+    it('rejects a connection without an external id before persisting a request', async () => {
+      mockFindConnectionById.mockResolvedValue(
+        buildConnection({ externalConnectionId: null }),
+      );
+      await expect(service.create(tenantId, dto, auth)).rejects.toThrow(
+        'has no external connection id',
+      );
+      expect(mockCreateOperation).not.toHaveBeenCalled();
+      expect(mockRequestPresentation).not.toHaveBeenCalled();
+    });
+
+    it('reads only tenant-scoped presentation request operations', async () => {
+      mockGetOperation.mockResolvedValue(buildOperation());
+      expect(await service.get(tenantId, 'request-id', auth)).toEqual(
+        buildOperation(),
+      );
+      expect(mockGetOperation).toHaveBeenCalledWith(
+        tenantId,
+        'request-id',
+        OPERATION_TYPE.PRESENTATION_REQUEST,
+      );
+      mockGetOperation.mockRejectedValue(new Error('Operation not found'));
+      await expect(service.get(tenantId, 'request-id', auth)).rejects.toThrow(
+        'Operation not found',
+      );
+      await expect(
+        service.get('other-tenant', 'request-id', auth),
+      ).rejects.toThrow();
+    });
+  });
 
   it('rejects a request providing both verification_profile_id and presentation_definition', async () => {
     const dto = buildDto({
@@ -332,6 +610,7 @@ describe('PresentationRequestService', () => {
 
   it('resolves a profile by "name/version" string', async () => {
     mockFindByNameAndVersion.mockResolvedValue(buildProfile());
+    mockFindDefinitionById.mockResolvedValue(buildProfile());
     mockRequestPresentation.mockResolvedValue({
       id: 'exch-1',
       externalId: 'agent-exch-1',
@@ -469,6 +748,10 @@ describe('PresentationRequestService', () => {
       undefined,
       mockManager,
       'agent-exch-1',
+      expect.arrayContaining([
+        { type: 'presentation-request.send', state: 'completed' },
+        { type: 'presentation.receive', state: 'waiting' },
+      ]),
     );
     expect(mockEmit).toHaveBeenCalledWith(
       expect.objectContaining({ action: AuditAction.VERIFY }),
@@ -500,9 +783,12 @@ describe('PresentationRequestService', () => {
       'presentation-op-1',
       OperationState.COMPLETED,
       expect.any(Array),
-      expect.objectContaining({ id: 'exch-1', verified: true }),
+      { verified: true, revealed_attributes: [], predicates: [] },
       mockManager,
       'agent-exch-1',
+      expect.arrayContaining([
+        { type: 'presentation.verify', state: 'completed' },
+      ]),
     );
     expect(mockEventEmit).toHaveBeenCalledWith('credential.verified', {
       tenantId,
@@ -543,6 +829,11 @@ describe('PresentationRequestService', () => {
         predicates: [{ attribute: 'age', condition: '>=', value: '18' }],
       }),
     );
+    mockFindDefinitionById.mockResolvedValue(
+      buildProfile({
+        predicates: [{ attribute: 'age', condition: '>=', value: '18' }],
+      }),
+    );
     mockRequestPresentation.mockResolvedValue({
       id: 'exch-1',
       state: PresentationExchangeState.RequestSent,
@@ -573,6 +864,13 @@ describe('PresentationRequestService', () => {
         ],
       }),
     );
+    mockFindDefinitionById.mockResolvedValue(
+      buildProfile({
+        predicates: [
+          { attribute: 'age', condition: '>=', value: 'not-a-number' },
+        ],
+      }),
+    );
 
     const dto = buildDto({ verificationProfileId: profileId });
 
@@ -582,7 +880,7 @@ describe('PresentationRequestService', () => {
     expect(mockCreateOperation).not.toHaveBeenCalled();
   });
 
-  it('marks the operation FAILED (not thrown) when the adapter rejects with an AdapterError', async () => {
+  it('preserves legacy HTTP errors after durably marking the operation failed', async () => {
     mockRequestPresentation.mockRejectedValue(
       new ConnectorUnavailableError('agent unreachable'),
     );
@@ -608,6 +906,10 @@ describe('PresentationRequestService', () => {
       expect.any(Array),
       { code: 'CONNECTOR_UNAVAILABLE', message: 'agent unreachable' },
       mockManager,
+      undefined,
+      expect.arrayContaining([
+        { type: 'presentation-request.send', state: 'failed' },
+      ]),
     );
     expect(mockSendInTransaction).toHaveBeenCalledWith(
       mockManager,
@@ -643,6 +945,10 @@ describe('PresentationRequestService', () => {
       expect.any(Array),
       { code: 'ADAPTER_ERROR', message: 'boom' },
       mockManager,
+      undefined,
+      expect.arrayContaining([
+        { type: 'presentation-request.send', state: 'failed' },
+      ]),
     );
   });
 

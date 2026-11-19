@@ -75,8 +75,7 @@ export class VerificationProfileController {
     type: VerificationProfileResponseDto,
   })
   @ApiBadRequestResponse({
-    description:
-      'presentation_definition is not a valid DIF Presentation Exchange object',
+    description: 'presentation_definition_id must be a UUID',
   })
   @ApiConflictResponse({
     description:
@@ -92,17 +91,7 @@ export class VerificationProfileController {
           name: 'age-verification',
           version: '1.0',
           description: 'Verifies the holder is over 19',
-          presentation_definition: {
-            id: 'age-over-18',
-            input_descriptors: [
-              {
-                id: 'person_credential',
-                constraints: {
-                  fields: [{ path: ['$.credentialSubject.given_names'] }],
-                },
-              },
-            ],
-          },
+          presentation_definition_id: '123e4567-e89b-12d3-a456-426614174003',
           public: false,
           protocol_hint: 'auto',
         },
@@ -192,8 +181,7 @@ export class VerificationProfileController {
   })
   @ApiNotFoundResponse({ description: 'Verification profile not found' })
   @ApiBadRequestResponse({
-    description:
-      'presentation_definition is not a valid DIF Presentation Exchange object',
+    description: 'presentation_definition_id must be a UUID',
   })
   @ApiConflictResponse({
     description: 'Cannot update a published or deprecated profile',
@@ -204,7 +192,10 @@ export class VerificationProfileController {
     examples: {
       example1: {
         summary: 'Update verification profile description',
-        value: { description: 'Updated description' },
+        value: {
+          description: 'Updated description',
+          presentation_definition_id: '123e4567-e89b-12d3-a456-426614174003',
+        },
       },
     },
   })

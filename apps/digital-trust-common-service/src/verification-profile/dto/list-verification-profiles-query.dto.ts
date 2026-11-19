@@ -1,4 +1,4 @@
-import { ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiPropertyOptional, OmitType } from '@nestjs/swagger';
 import { Expose, Transform, Type } from 'class-transformer';
 import {
   IsBoolean,
@@ -50,3 +50,8 @@ export class ListVerificationProfilesQueryDto {
   @Max(100)
   public limit?: number;
 }
+
+export class ListPresentationDefinitionsQueryDto extends OmitType(
+  ListVerificationProfilesQueryDto,
+  ['isPublic'] as const,
+) {}

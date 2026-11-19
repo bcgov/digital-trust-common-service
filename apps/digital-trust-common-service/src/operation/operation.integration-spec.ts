@@ -13,6 +13,7 @@ import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { DataSource, LessThan } from 'typeorm';
 
+import { AdapterRegistry } from '../adapter-registry/adapter-registry.service';
 import { configureApp } from '../app.config';
 import {
   AuditAction,
@@ -29,6 +30,7 @@ import { CredentialRepository } from '../credential/credential.repository';
 import { CredentialExchange } from '../credential-exchange/credential-exchange.entity';
 import { CredentialExchangeRepository } from '../credential-exchange/credential-exchange.repository';
 import { JobsService } from '../jobs/jobs.service';
+import { PresentationExchangeRepository } from '../presentation-request/presentation-exchange.repository';
 import { ProtocolStateChangeService } from '../protocol-state-change/protocol-state-change.service';
 import { TenantTierRateLimitGuard } from '../rate-limit/tenant-tier-rate-limit.guard';
 import { SEED_ENTITIES } from '../seed/seed.constants';
@@ -112,6 +114,8 @@ describe('operation tenant isolation integration', () => {
         ScopeAuthorizationService,
         OperationService,
         ProtocolStateChangeService,
+        { provide: AdapterRegistry, useValue: { resolve: jest.fn() } },
+        { provide: PresentationExchangeRepository, useValue: {} },
         { provide: DataSource, useValue: dataSource },
         {
           provide: CredentialRepository,

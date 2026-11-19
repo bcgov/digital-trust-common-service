@@ -35,6 +35,7 @@ import {
   TenantUserStatus,
 } from '../tenant-user/tenant-user.entity';
 import { TenantUserRepository } from '../tenant-user/tenant-user.repository';
+import { PresentationDefinitionRepository } from '../verification-profile/presentation-definition.repository';
 import { VerificationProfile } from '../verification-profile/verification-profile.entity';
 import { VerificationProfileRepository } from '../verification-profile/verification-profile.repository';
 
@@ -105,6 +106,7 @@ export class DevSeedService {
     private readonly connectorCredentials: ConnectorRepository,
     private readonly credentialDefinitions: CredentialDefinitionRepository,
     private readonly issuanceProfiles: IssuanceProfileRepository,
+    private readonly presentationDefinitions: PresentationDefinitionRepository,
     private readonly verificationProfiles: VerificationProfileRepository,
     private readonly oauthClients: OAuthClientRepository,
     private readonly connections: ConnectionRepository,
@@ -576,6 +578,29 @@ export class DevSeedService {
       Object.assign(profile, payload);
       await this.verificationProfiles.save(profile);
     } else {
+      let definition = await this.presentationDefinitions.findByNameAndVersion(
+        tenantId,
+        SEED_VERIFICATION_PROFILE.name,
+        SEED_VERIFICATION_PROFILE.version,
+      );
+      if (
+        definition &&
+        definition.status !== SEED_VERIFICATION_PROFILE.status
+      ) {
+        throw new Error('Seed presentation definition must be published');
+      }
+      definition ??= await this.presentationDefinitions.create({
+        tenantId,
+        name: SEED_VERIFICATION_PROFILE.name,
+        version: SEED_VERIFICATION_PROFILE.version,
+        description: SEED_VERIFICATION_PROFILE.description,
+        presentationDefinition:
+          SEED_VERIFICATION_PROFILE.presentationDefinition,
+        requestedAttributes: [...SEED_VERIFICATION_PROFILE.requestedAttributes],
+        predicates: [...SEED_VERIFICATION_PROFILE.predicates],
+        status: SEED_VERIFICATION_PROFILE.status,
+      });
+      payload.presentationDefinitionId = definition.id;
       await this.verificationProfiles.create(payload);
     }
 

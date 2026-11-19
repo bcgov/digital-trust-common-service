@@ -13,6 +13,8 @@ export enum CredentialExchangeState {
 
 // Presentation proof exchange lifecycle states.
 export enum PresentationExchangeState {
+  ProposalSent = 'proposal-sent',
+  ProposalReceived = 'proposal-received',
   RequestSent = 'request-sent',
   RequestReceived = 'request-received',
   PresentationSent = 'presentation-sent',

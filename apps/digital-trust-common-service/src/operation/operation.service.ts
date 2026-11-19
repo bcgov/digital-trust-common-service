@@ -44,6 +44,7 @@ export interface CreateOperationInput {
   batchId?: string | null;
   externalId?: string | null;
   exchangeId?: string | null;
+  presentationExchangeId?: string | null;
   steps?: OperationStep[];
 }
 
@@ -107,6 +108,7 @@ export class OperationService {
       batchId: input.batchId ?? null,
       externalId: input.externalId ?? null,
       exchangeId: input.exchangeId ?? null,
+      presentationExchangeId: input.presentationExchangeId ?? null,
       state: OperationState.PENDING,
       steps: input.steps ?? [],
       expiresAt: this.computeExpiresAt(
@@ -134,6 +136,7 @@ export class OperationService {
       batchId: input.batchId ?? null,
       externalId: input.externalId ?? null,
       exchangeId: input.exchangeId ?? null,
+      presentationExchangeId: input.presentationExchangeId ?? null,
       state: OperationState.COMPLETED,
       result,
       steps: input.steps ?? [],
@@ -165,10 +168,17 @@ export class OperationService {
    * viewedAt for pending/processing, so stamping it on every poll of an in-flight
    * operation would be a write with no effect on expiry.
    */
-  public async getForTenant(tenantId: string, id: string): Promise<Operation> {
+  public async getForTenant(
+    tenantId: string,
+    id: string,
+    expectedType?: string,
+  ): Promise<Operation> {
     const operation = await this.operations.findByIdForTenant(id, tenantId);
 
-    if (!operation) {
+    if (
+      !operation ||
+      (expectedType !== undefined && operation.type !== expectedType)
+    ) {
       throw new NotFoundException('Operation not found');
     }
 

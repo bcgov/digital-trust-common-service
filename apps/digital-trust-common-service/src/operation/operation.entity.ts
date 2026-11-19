@@ -70,6 +70,9 @@ export class Operation {
   @Column({ name: 'exchange_id', type: 'uuid', nullable: true })
   public exchangeId?: string | null;
 
+  @Column({ name: 'presentation_exchange_id', type: 'uuid', nullable: true })
+  public presentationExchangeId?: string | null;
+
   @ApiProperty({
     description: 'The unique identifier of the operation',
     example: '123e4567-e89b-12d3-a456-426614174000',
@@ -130,7 +133,7 @@ export class Operation {
 
   @ApiProperty({
     description:
-      'Persisted workflow progress. Known phase types include register, offer, request, and issue; new phase types remain open strings.',
+      'Persisted workflow progress. Known phase types include register, offer, request, issue, presentation-definition mutations, and presentation request/receive/verify; new phase types remain open strings.',
     type: 'array',
     items: {
       type: 'object',
