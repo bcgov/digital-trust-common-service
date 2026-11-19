@@ -526,8 +526,9 @@
     },
     "wizard": {
       "progress": "Progress",
-      "newTitle": "Credential configuration",
+      "newTitle": "New credential configuration",
       "editTitle": "Edit credential configuration",
+      "draftTag": "Draft · v{{version}}",
       "loadingDraft": "Loading draft...",
       "draftLoadFailed": "Could not load this draft. Try again.",
       "draftNotEditable": "Only draft credential definitions can be edited.",
@@ -545,13 +546,13 @@
       "savingDraft": "Saving...",
       "nextAttributes": "Next: Attributes",
       "nextReview": "Next: Review",
-      "publish": "Publish",
+      "publish": "Publish configuration",
       "publishing": "Publishing...",
       "registrationStarted": "Credential definition registration started.",
       "steps": {
         "details": "Details",
         "attributes": "Attributes",
-        "review": "Review and Publish"
+        "review": "Review & Publish"
       }
     },
     "attributes": {
@@ -566,12 +567,12 @@
       "deleteButton": "Delete"
     },
     "review": {
-      "title": "Review and Publish",
+      "title": "Review & publish",
       "subtitle": "Please review the details below. Publishing sends this information to the selected connector to register the credential permanently.",
       "details": "Credential details",
       "attributes": "Attributes",
       "noAttributes": "No attributes added.",
-      "credentialName": "Credential name",
+      "credentialName": "Name",
       "version": "Version",
       "description": "Description",
       "connector": "Connector",
@@ -590,7 +591,7 @@
       "versionPlaceholder": "1.0.0",
       "versionInvalid": "Enter a version such as 1, 1.0, 1.0.0 or 1.0.0-beta",
       "description": "Description (optional)",
-      "descriptionPlaceholder": "A short description of your credential...",
+      "descriptionPlaceholder": "A short description of your credential",
       "chooseConnector": "Choose a connector",
       "connector": "Connector",
       "connectorDescription": "A connector determines which credential formats are available. It's also the service responsible for issuing or verifying this credential.",
@@ -598,7 +599,7 @@
       "defaultConnector": "{{type}} ({{default}})",
       "format": "Credential format",
       "anoncreds": "Anoncreds",
-      "anoncredsDescription": "For maximum privacy, share proofs, not data",
+      "anoncredsDescription": "For maximum privacy; share proofs, not data.",
       "formatLocked": "The credential format cannot be changed."
     }
   },

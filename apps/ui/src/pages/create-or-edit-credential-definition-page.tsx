@@ -8,6 +8,7 @@ import { AccessDenied } from '@/components/common/access-denied';
 import { ArrowLeftIcon, ArrowRightIcon } from '@/components/common/icons';
 import { LoadingMessage } from '@/components/common/query-status';
 import { notify } from '@/components/common/sonner';
+import { StaticTag } from '@/components/common/static-tag';
 import {
   AttributesStep,
   type Attribute,
@@ -297,7 +298,7 @@ export function CreateOrEditCredentialDefinitionPage() {
   }
 
   return (
-    <div className="flex flex-1 flex-col gap-5">
+    <div className="flex flex-1 flex-col gap-8">
       <div className="flex flex-col gap-2">
         <Link
           to="/credential-definitions"
@@ -306,11 +307,25 @@ export function CreateOrEditCredentialDefinitionPage() {
           <ArrowLeftIcon className="size-4" />
           {t('credentialDefinitions.wizard.backToList')}
         </Link>
-        <h1 className="text-h1 font-bold text-black">
-          {draftId
-            ? t('credentialDefinitions.wizard.editTitle')
-            : t('credentialDefinitions.wizard.newTitle')}
-        </h1>
+        {draftId ? (
+          <div className="flex flex-wrap items-center gap-3">
+            <h1 className="min-w-0 break-words text-h1 font-bold text-black">
+              {draftQuery.data?.name ||
+                t('credentialDefinitions.wizard.editTitle')}
+            </h1>
+            <StaticTag
+              color="grey"
+              tagStyle="circular"
+              label={t('credentialDefinitions.wizard.draftTag', {
+                version: draftQuery.data?.version ?? '',
+              })}
+            />
+          </div>
+        ) : (
+          <h1 className="text-h1 font-bold text-black">
+            {t('credentialDefinitions.wizard.newTitle')}
+          </h1>
+        )}
       </div>
       <WizardSteps steps={steps} currentStep={step} />
       {/* Kept mounted so entered values survive moving between steps. */}
@@ -348,7 +363,7 @@ export function CreateOrEditCredentialDefinitionPage() {
       {step === 0 && !isSetupValid && (
         <p
           role="status"
-          className="px-6 text-small-body font-bold text-(--typography-color-danger)"
+          className="text-small-body font-bold text-(--typography-color-danger)"
         >
           {t('credentialDefinitions.wizard.draftRequirements')}
         </p>
@@ -356,12 +371,12 @@ export function CreateOrEditCredentialDefinitionPage() {
       {step === 2 && !canPublish && (
         <p
           role="status"
-          className="px-6 text-small-body font-bold text-(--typography-color-danger)"
+          className="text-small-body font-bold text-(--typography-color-danger)"
         >
           {t('credentialDefinitions.wizard.publishRequirements')}
         </p>
       )}
-      <div className="mt-auto flex items-center justify-between border-t border-(--surface-color-border-default) px-6 pt-5">
+      <div className="mt-4 flex items-center justify-between">
         {step === 0 ? (
           <Button
             variant="secondary"
