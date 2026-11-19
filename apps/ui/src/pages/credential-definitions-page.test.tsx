@@ -186,7 +186,9 @@ describe('CredentialDefinitionsPage', () => {
     );
     await user.click(screen.getByRole('button', { name: 'Next: Attributes' }));
     await user.click(screen.getByRole('button', { name: 'Next: Review' }));
-    await user.click(screen.getByRole('button', { name: 'Publish' }));
+    await user.click(
+      screen.getByRole('button', { name: 'Publish configuration' }),
+    );
 
     const publishedRow = await screen.findByRole('row', {
       name: /Shared visitor pass.*Pending/,
@@ -498,7 +500,7 @@ describe('CredentialDefinitionsPage', () => {
       );
       const firstAttributeRow = firstAttribute.closest('li');
       expect(firstAttributeRow).toHaveClass(
-        'bg-(--surface-color-background-white)',
+        'bg-(--surface-color-background-light-gray)',
       );
       await user.type(firstAttribute, 'employee_id');
       await user.click(
@@ -513,7 +515,7 @@ describe('CredentialDefinitionsPage', () => {
       expect(screen.getByLabelText('Attribute 2 name')).toHaveValue('');
       expect(
         screen.getByLabelText('Attribute 2 name').closest('li'),
-      ).toHaveClass('bg-(--surface-color-background-white)');
+      ).toHaveClass('bg-(--surface-color-background-light-gray)');
       if (saveStep === 'review') {
         await user.click(screen.getByRole('button', { name: 'Next: Review' }));
         expect(
@@ -645,9 +647,10 @@ describe('CredentialDefinitionsPage', () => {
     expect(router.state.location.search).toBe(`?id=${draft.id}`);
     expect(
       await screen.findByRole('heading', {
-        name: 'Edit credential configuration',
+        name: 'Employee badge',
       }),
     ).toBeInTheDocument();
+    expect(screen.getByText('Draft · v1.0.0')).toBeInTheDocument();
     const nameInput = screen.getByLabelText(/^Credential name/);
     const versionInput = screen.getByLabelText(/^Version/);
     expect(nameInput).toHaveValue('Employee badge');
@@ -889,7 +892,7 @@ describe('CredentialDefinitionsPage', () => {
     expect(
       await screen.findByRole('heading', {
         level: 1,
-        name: 'Credential configuration',
+        name: 'New credential configuration',
       }),
     ).toBeInTheDocument();
     expect(screen.getByLabelText(/^Credential name/)).toBeInTheDocument();
@@ -901,7 +904,7 @@ describe('CredentialDefinitionsPage', () => {
     expect(screen.getByRole('radio', { name: /Anoncreds/ })).toBeChecked();
     expect(
       screen.getByRole('navigation', { name: 'Progress' }),
-    ).toHaveTextContent('1Details2Attributes3Review and Publish');
+    ).toHaveTextContent('1Details2Attributes3Review & Publish');
     expect(
       screen.getByRole('link', { name: 'Credential configurations' }),
     ).toHaveAttribute('href', '/credential-definitions');
@@ -933,7 +936,7 @@ describe('CredentialDefinitionsPage', () => {
     expect(screen.getByLabelText('Attribute 1 name')).toHaveValue('first');
     await user.click(screen.getByRole('button', { name: 'Next: Review' }));
     expect(
-      screen.getByRole('heading', { name: 'Review and Publish' }),
+      screen.getByRole('heading', { name: 'Review & publish' }),
     ).toBeInTheDocument();
     expect(
       screen.getByText(
@@ -964,7 +967,9 @@ describe('CredentialDefinitionsPage', () => {
     );
     await user.click(screen.getByRole('button', { name: 'Next: Review' }));
 
-    await user.click(screen.getByRole('button', { name: 'Publish' }));
+    await user.click(
+      screen.getByRole('button', { name: 'Publish configuration' }),
+    );
     await waitFor(() => {
       expect(createdRequest).toHaveBeenCalledWith({
         name: 'Visitor pass',

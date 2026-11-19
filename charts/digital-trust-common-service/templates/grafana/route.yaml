@@ -1,0 +1,27 @@
+{{- if and .Values.grafana.enabled .Values.grafana.route.enabled -}}
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: {{ include "digital-trust-common-service.grafana.fullname" . }}
+  labels:
+    {{- include "digital-trust-common-service.grafana.labels" . | nindent 4 }}
+  {{- with .Values.grafana.route.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  host: {{ .Values.grafana.route.host | quote }}
+  to:
+    kind: Service
+    name: {{ include "digital-trust-common-service.grafana.fullname" . }}
+    weight: 100
+  port:
+    targetPort: https
+  # Re-encrypted, never edge: the session cookie and the sign-in callback must
+  # be TLS-protected on the leg from the router to Grafana as well (T13). Not
+  # configurable.
+  tls:
+    termination: reencrypt
+    insecureEdgeTerminationPolicy: Redirect
+  wildcardPolicy: None
+{{- end }}
