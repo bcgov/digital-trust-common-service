@@ -694,127 +694,36 @@ paths:
             application/json:
               schema:
                 type: object
+                required: [steps, progress_percent]
                 properties:
                   steps:
                     type: array
                     items:
                       type: object
+                      required: [name, completed, blocked_by]
                       properties:
                         name:
                           type: string
+                          enum: [configure-connector, register-credential-definition, create-issuance-profile, register-api-client]
                         completed:
                           type: boolean
-                        skipped:
-                          type: boolean
+                        blocked_by:
+                          type: array
+                          items:
+                            type: string
+                            enum: [configure-connector, register-credential-definition, create-issuance-profile, register-api-client]
                   progress_percent:
                     type: integer
                     minimum: 0
                     maximum: 100
-
-  /api/v1/tenants/{tenantId}/onboarding/steps/{stepName}/complete:
-    parameters:
-      - $ref: "#/components/parameters/TenantId"
-      - name: stepName
-        in: path
-        required: true
-        schema:
-          type: string
-          enum: [configure-connector, register-credential-definition, create-issuance-profile, register-api-client]
-    post:
-      operationId: completeOnboardingStep
-      summary: Mark an onboarding step as complete
-      tags: [Tenant Settings]
-      responses:
-        "200":
-          description: Step marked complete
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  steps:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        name:
-                          type: string
-                        completed:
-                          type: boolean
-                        skipped:
-                          type: boolean
-                  progress_percent:
-                    type: integer
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
-
-  /api/v1/tenants/{tenantId}/onboarding/steps/{stepName}/skip:
-    parameters:
-      - $ref: "#/components/parameters/TenantId"
-      - name: stepName
-        in: path
-        required: true
-        schema:
-          type: string
-          enum: [configure-connector, register-credential-definition, create-issuance-profile, register-api-client]
-    post:
-      operationId: skipOnboardingStep
-      summary: Skip an onboarding step (mark as skipped)
-      tags: [Tenant Settings]
-      responses:
-        "200":
-          description: Step marked skipped
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  steps:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        name:
-                          type: string
-                        completed:
-                          type: boolean
-                        skipped:
-                          type: boolean
-                  progress_percent:
-                    type: integer
-        "404":
-          $ref: "#/components/responses/NotFound"
-
-  /api/v1/tenants/{tenantId}/onboarding/reset:
-    parameters:
-      - $ref: "#/components/parameters/TenantId"
-    post:
-      operationId: resetOnboarding
-      summary: Reset onboarding progress (testing/demo only)
-      description: Clears all onboarding step progress and allows restart. Intended for development and testing scenarios.
-      tags: [Tenant Settings]
-      responses:
-        "200":
-          description: Onboarding progress reset
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  steps:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        name:
-                          type: string
-                        completed:
-                          type: boolean
-                        skipped:
-                          type: boolean
-                  progress_percent:
-                    type: integer
-                    example: 0
 
   # ─── Tenant Users ─────────────────────────────────────────────────────
   /api/v1/tenants/{tenantId}/users:

@@ -14,6 +14,10 @@ import { CredentialDefinitionFormat } from '../credential-definition/credential-
 import { CreateTenantDto } from './dto/create-tenant.dto';
 import { TenantResponseDto } from './dto/tenant-response.dto';
 import { UpdateTenantConfigDto } from './dto/update-tenant-config.dto';
+import {
+  TenantOnboardingService,
+  TenantOnboardingStep,
+} from './onboarding/tenant-onboarding.service';
 import { TenantStatusGuard } from './tenant-status.guard';
 import { TenantController } from './tenant.controller';
 import { Tenant, TenantStatus } from './tenant.entity';
@@ -35,6 +39,7 @@ describe('TenantController', () => {
   let mockList: jest.Mock;
   let mockFindById: jest.Mock;
   let mockFindBySlug: jest.Mock;
+  let mockGetOnboardingReadiness: jest.Mock;
   let mockDelete: jest.Mock;
   let mockRestore: jest.Mock;
 
@@ -58,6 +63,7 @@ describe('TenantController', () => {
     mockList = jest.fn();
     mockFindById = jest.fn();
     mockFindBySlug = jest.fn();
+    mockGetOnboardingReadiness = jest.fn();
     mockDelete = jest.fn();
     mockRestore = jest.fn();
 
@@ -79,6 +85,10 @@ describe('TenantController', () => {
         {
           provide: TenantService,
           useValue: mockService,
+        },
+        {
+          provide: TenantOnboardingService,
+          useValue: { getReadiness: mockGetOnboardingReadiness },
         },
       ],
     })
@@ -333,6 +343,87 @@ describe('TenantController', () => {
       } as never);
 
       expect(result).toBeNull();
+    });
+  });
+
+  describe('GET /tenants/:id/onboarding', () => {
+    it('returns live readiness for an accessible tenant', async () => {
+      mockFindById.mockResolvedValue(mockTenant);
+      mockGetOnboardingReadiness.mockResolvedValue({
+        steps: [
+          {
+            name: TenantOnboardingStep.CONFIGURE_CONNECTOR,
+            completed: true,
+            blockedBy: [],
+          },
+          {
+            name: TenantOnboardingStep.REGISTER_CREDENTIAL_DEFINITION,
+            completed: false,
+            blockedBy: [],
+          },
+          {
+            name: TenantOnboardingStep.CREATE_ISSUANCE_PROFILE,
+            completed: false,
+            blockedBy: [TenantOnboardingStep.REGISTER_CREDENTIAL_DEFINITION],
+          },
+          {
+            name: TenantOnboardingStep.REGISTER_API_CLIENT,
+            completed: false,
+            blockedBy: [],
+          },
+        ],
+        progressPercent: 25,
+      });
+      const auth = { roles: [], tenantId: mockTenant.id } as never;
+
+      await expect(
+        controller.getOnboardingStatus(mockTenant.id, auth),
+      ).resolves.toEqual({
+        steps: [
+          {
+            name: TenantOnboardingStep.CONFIGURE_CONNECTOR,
+            completed: true,
+            blocked_by: [],
+          },
+          {
+            name: TenantOnboardingStep.REGISTER_CREDENTIAL_DEFINITION,
+            completed: false,
+            blocked_by: [],
+          },
+          {
+            name: TenantOnboardingStep.CREATE_ISSUANCE_PROFILE,
+            completed: false,
+            blocked_by: [TenantOnboardingStep.REGISTER_CREDENTIAL_DEFINITION],
+          },
+          {
+            name: TenantOnboardingStep.REGISTER_API_CLIENT,
+            completed: false,
+            blocked_by: [],
+          },
+        ],
+        progress_percent: 25,
+      });
+
+      expect(mockFindById).toHaveBeenCalledWith(mockTenant.id);
+      expect(mockGetOnboardingReadiness).toHaveBeenCalledWith(mockTenant.id);
+    });
+
+    it('rejects access to another tenant before reading onboarding status', async () => {
+      await expect(
+        controller.getOnboardingStatus(mockTenant.id, {
+          roles: [],
+          tenantId: 'other-tenant',
+        } as never),
+      ).rejects.toMatchObject({
+        response: {
+          error: {
+            code: 'TENANT_ACCESS_DENIED',
+          },
+        },
+      });
+
+      expect(mockFindById).not.toHaveBeenCalled();
+      expect(mockGetOnboardingReadiness).not.toHaveBeenCalled();
     });
   });
 
