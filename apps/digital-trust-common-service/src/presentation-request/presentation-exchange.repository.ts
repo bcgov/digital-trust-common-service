@@ -44,11 +44,13 @@ export class PresentationExchangeRepository {
     tenantId: string,
     connectorId: string,
     externalId: string,
-    manager: EntityManager,
+    manager?: EntityManager,
   ): Promise<PresentationExchange | null> {
-    return manager.findOne(PresentationExchange, {
+    return (
+      manager?.getRepository(PresentationExchange) ?? this.repository
+    ).findOne({
       where: { tenantId, connectorId, externalId },
-      lock: { mode: 'pessimistic_write' },
+      ...(manager ? { lock: { mode: 'pessimistic_write' as const } } : {}),
     });
   }
 

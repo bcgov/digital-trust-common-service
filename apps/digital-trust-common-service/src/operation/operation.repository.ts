@@ -116,8 +116,9 @@ export class OperationRepository {
     externalId: string,
     types: readonly string[],
     connectorId?: string,
+    manager?: EntityManager,
   ): Promise<Operation | null> {
-    return this.repo.findOne({
+    return (manager?.getRepository(Operation) ?? this.repo).findOne({
       where: {
         tenantId,
         externalId,
@@ -134,6 +135,7 @@ export class OperationRepository {
           : {}),
       },
       order: { createdAt: 'DESC' },
+      ...(manager ? { lock: { mode: 'pessimistic_write' as const } } : {}),
     });
   }
 
@@ -174,8 +176,9 @@ export class OperationRepository {
     tenantId: string,
     externalId: string,
     types: readonly string[],
+    manager?: EntityManager,
   ): Promise<boolean> {
-    const count = await this.repo.count({
+    const count = await (manager?.getRepository(Operation) ?? this.repo).count({
       where: { tenantId, externalId, type: In(types) },
     });
 

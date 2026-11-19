@@ -90,11 +90,14 @@ describe('Presentation definition execution (integration)', () => {
       .overrideProvider(AdapterRegistry)
       .useValue({
         register: jest.fn(),
-        resolve: jest.fn().mockResolvedValue({
-          adapter: { requestPresentation: submit, getPresentation },
-          context: {},
-          connector: { id: connectorId },
-          format: CredentialDefinitionFormat.ANONCREDS,
+        resolve: jest.fn().mockImplementation(async (tenantId: string) => {
+          await connections.countBy({ tenantId });
+          return {
+            adapter: { requestPresentation: submit, getPresentation },
+            context: {},
+            connector: { id: connectorId },
+            format: CredentialDefinitionFormat.ANONCREDS,
+          };
         }),
       })
       .compile();
@@ -477,14 +480,20 @@ describe('Presentation definition execution (integration)', () => {
           )
         ).state,
       ).toBe('request-sent');
-      await protocol.process({
+      const dispatchCount = boss.send.mock.calls.length;
+      const completion = {
         tenantId: tenant.id,
         connectorId,
-        topic: 'present_proof',
+        topic: 'present_proof' as const,
         externalId: first.externalId!,
         protocolState: 'done',
         payload: { verified: 'true' },
-      });
+      };
+      await Promise.all([
+        protocol.process(completion),
+        protocol.process(completion),
+      ]);
+      expect(boss.send).toHaveBeenCalledTimes(dispatchCount + 1);
       const completed = OperationResponseDto.fromEntity(
         await requests.get(tenant.id, first.id, auth),
       );
@@ -546,6 +555,34 @@ describe('Presentation definition execution (integration)', () => {
         connectionId: connection.externalConnectionId,
         state: PresentationExchangeState.Verified,
         verified: false,
+        revealedAttributes: [],
+        predicates: [],
+      });
+      await protocol.process({
+        tenantId: tenant.id,
+        connectorId,
+        topic: 'present_proof',
+        externalId: second.externalId!,
+        protocolState: 'done',
+        payload: { verified: 'true' },
+      });
+      expect((await requests.get(tenant.id, second.id, auth)).state).toBe(
+        OperationState.FAILED,
+      );
+      expect(
+        (
+          await exchangeService.get(
+            tenant.id,
+            second.presentationExchangeId!,
+            auth,
+          )
+        ).state,
+      ).toBe('failed');
+      getPresentation.mockResolvedValueOnce({
+        id: second.externalId,
+        connectionId: connection.externalConnectionId,
+        state: PresentationExchangeState.Verified,
+        verified: true,
         revealedAttributes: [],
         predicates: [],
       });

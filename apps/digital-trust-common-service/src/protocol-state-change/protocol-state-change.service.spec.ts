@@ -132,6 +132,9 @@ describe('ProtocolStateChangeService', () => {
   let domainAudit: jest.Mocked<Pick<DomainAuditService, 'emit'>>;
   let eventEmitter: jest.Mocked<Pick<EventEmitter2, 'emit'>>;
   let mockTransaction: jest.Mock;
+  let presentationExchanges: jest.Mocked<
+    Pick<PresentationExchangeRepository, 'findByBackend' | 'observe'>
+  >;
   const mockManager = {} as EntityManager;
   const getPresentation = jest.fn();
   const resolveAdapter = jest.fn();
@@ -170,6 +173,10 @@ describe('ProtocolStateChangeService', () => {
       updateStateIfForward: jest.fn().mockResolvedValue(true),
     };
     exchangeRepository = { observe: jest.fn().mockResolvedValue(null) };
+    presentationExchanges = {
+      findByBackend: jest.fn().mockResolvedValue(null),
+      observe: jest.fn().mockResolvedValue(true),
+    };
     connectionService = {
       findByExternalConnectionIdForTenant: jest.fn().mockResolvedValue(null),
       findByInvitationMsgIdForTenant: jest.fn().mockResolvedValue(null),
@@ -217,10 +224,7 @@ describe('ProtocolStateChangeService', () => {
         },
         {
           provide: PresentationExchangeRepository,
-          useValue: {
-            findByBackend: jest.fn().mockResolvedValue(null),
-            observe: jest.fn(),
-          },
+          useValue: presentationExchanges,
         },
         { provide: ConnectionService, useValue: connectionService },
         { provide: JobsService, useValue: jobsService },
@@ -713,6 +717,85 @@ describe('ProtocolStateChangeService', () => {
     );
   });
 
+  it('resolves a verified proof before opening the transaction', async () => {
+    operationRepository.findByExternalIdForTenant.mockResolvedValue(
+      operation(),
+    );
+    resolveAdapter.mockImplementation(() => {
+      expect(mockTransaction).not.toHaveBeenCalled();
+      return Promise.resolve({
+        adapter: { getPresentation },
+        context: { tenantId: TENANT_ID, connectorId: CONNECTOR_ID },
+      });
+    });
+    getPresentation.mockImplementation(() => {
+      expect(mockTransaction).not.toHaveBeenCalled();
+      return Promise.resolve({
+        id: 'ext-1',
+        connectionId: 'connection-1',
+        state: PresentationExchangeState.Verified,
+        verified: true,
+        revealedAttributes: [],
+        predicates: [],
+      });
+    });
+    await service.process(
+      baseData({ topic: 'present_proof', protocolState: 'verified' }),
+    );
+    expect(mockTransaction).toHaveBeenCalledTimes(1);
+    expect(operationService.transitionStateIfForward).toHaveBeenCalledTimes(1);
+  });
+
+  it('retries without writing when the locked exchange correlation changes', async () => {
+    const local = {
+      id: 'exchange-1',
+      tenantId: TENANT_ID,
+      connectorId: CONNECTOR_ID,
+      externalId: 'ext-1',
+      externalConnectionId: 'connection-1',
+    } as Awaited<ReturnType<PresentationExchangeRepository['findByBackend']>>;
+    presentationExchanges.findByBackend
+      .mockResolvedValueOnce(local)
+      .mockResolvedValueOnce({
+        ...local!,
+        externalConnectionId: 'changed-connection',
+      });
+    await expect(
+      service.process(
+        baseData({ topic: 'present_proof', protocolState: 'verified' }),
+      ),
+    ).rejects.toThrow('Presentation exchange correlation changed');
+    expect(presentationExchanges.observe).not.toHaveBeenCalled();
+    expect(operationService.transitionStateIfForward).not.toHaveBeenCalled();
+    expect(jobsService.sendInTransaction).not.toHaveBeenCalled();
+  });
+
+  it('retries if a legacy operation correlation changes before it is locked', async () => {
+    operationRepository.findByExternalIdForTenant
+      .mockResolvedValueOnce(operation())
+      .mockResolvedValueOnce(
+        operation({
+          request: {
+            method: 'POST',
+            path: '/x',
+            body: {
+              snapshot: {
+                connector_id: CONNECTOR_ID,
+                proof_request: { connectionId: 'different-connection' },
+              },
+            },
+          },
+        }),
+      );
+    await expect(
+      service.process(
+        baseData({ topic: 'present_proof', protocolState: 'verified' }),
+      ),
+    ).rejects.toThrow('Presentation operation correlation changed');
+    expect(operationService.transitionStateIfForward).not.toHaveBeenCalled();
+    expect(jobsService.sendInTransaction).not.toHaveBeenCalled();
+  });
+
   it.each([
     new BackendNotFoundError('Proof no longer available'),
     {
@@ -775,6 +858,7 @@ describe('ProtocolStateChangeService', () => {
         }),
       ),
     ).rejects.toThrow('Agent unavailable');
+    expect(mockTransaction).not.toHaveBeenCalled();
     expect(operationService.transitionStateIfForward).not.toHaveBeenCalled();
     expect(jobsService.sendInTransaction).not.toHaveBeenCalled();
   });
@@ -852,6 +936,7 @@ describe('ProtocolStateChangeService', () => {
         'ext-1',
         [OPERATION_TYPE.PRESENTATION_REQUEST],
         CONNECTOR_ID,
+        mockManager,
       );
       expect(operationService.transitionStateIfForward).toHaveBeenCalledWith(
         'op-1',
