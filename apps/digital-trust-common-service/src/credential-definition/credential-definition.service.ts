@@ -16,6 +16,7 @@ import {
 } from '@nestjs/common';
 import axios from 'axios';
 import { DataSource, QueryFailedError } from 'typeorm';
+import type { QueryDeepPartialEntity } from 'typeorm/query-builder/QueryPartialEntity';
 
 import { AuditAction } from '../audit-log/audit-log.entity';
 import { DomainAuditService } from '../audit-log/domain-audit.service';
@@ -88,6 +89,39 @@ export class CredentialDefinitionService {
     @Inject(CREDENTIAL_DEFINITION_FORMAT_HANDLERS)
     private readonly formatHandlers: CredentialDefinitionFormatHandler[],
   ) {}
+
+  public getClaimsValidationSchema(definition: CredentialDefinition): {
+    schema: Record<string, unknown>;
+    mandatoryClaims: readonly string[];
+    prepareClaimsForValidation?: (
+      claims: Readonly<Record<string, unknown>>,
+    ) => { claims: Record<string, unknown>; omittedClaims: string[] };
+  } {
+    const handler = this.formatHandlers.find(
+      (candidate) => candidate.format === definition.format,
+    );
+    if (!handler) {
+      throw new BadRequestException(
+        `Credential format '${definition.format}' does not support claim validation`,
+      );
+    }
+
+    return {
+      schema: handler.getClaimsSchema(definition.schemaDefinition),
+      mandatoryClaims: handler.getMandatoryClaims(definition.schemaDefinition),
+      ...(handler.prepareClaimsForValidation
+        ? {
+            prepareClaimsForValidation: (
+              claims: Readonly<Record<string, unknown>>,
+            ) =>
+              handler.prepareClaimsForValidation!(
+                definition.schemaDefinition,
+                claims,
+              ),
+          }
+        : {}),
+    };
+  }
 
   public async create(
     tenantId: string,
@@ -180,6 +214,10 @@ export class CredentialDefinitionService {
         'Drafts require schema.definition and connector_id.',
       );
     }
+    const schema = handler.normalizeSchema(dto.schema);
+    if (!schema.definition) {
+      throw new BadRequestException('Drafts require schema.definition.');
+    }
     const existing =
       await this.credentialDefinitionRepository.findByTenantAndNameAndFormat(
         tenantId,
@@ -201,13 +239,13 @@ export class CredentialDefinitionService {
         'Selected connector is not active for this tenant or has an unsupported type.',
       );
     const schemaVersion =
-      dto.schema.definition.version ?? dto.schema.definition.schema_version;
+      schema.definition.version ?? schema.definition.schema_version;
     const created = await this.credentialDefinitionRepository
       .create({
         tenantId,
         name: dto.name,
         format: dto.options.format,
-        schemaDefinition: dto.schema.definition,
+        schemaDefinition: schema.definition,
         externalId: null,
         connectorId: connector.id,
         connectorType,
@@ -340,7 +378,10 @@ export class CredentialDefinitionService {
       definition.connectorId !== prepared.connectorId ||
       definition.connectorType !== prepared.connectorType ||
       !isDeepStrictEqual(
-        definition.schemaDefinition,
+        isLocalDraft
+          ? handler.normalizeSchema({ definition: definition.schemaDefinition })
+              .definition
+          : definition.schemaDefinition,
         prepared.schemaDefinition,
       ) ||
       (dto.schema.id !== undefined &&
@@ -363,6 +404,7 @@ export class CredentialDefinitionService {
         dto,
         {
           status: CredentialDefinitionStatus.PUBLISHED,
+          schemaDefinition: prepared.schemaDefinition,
           registration: prepared.registration,
         },
       );
@@ -429,7 +471,9 @@ export class CredentialDefinitionService {
     definition: CredentialDefinition,
     tenantId: string,
     dto: CreateCredentialDefinitionDto,
-    changes: Partial<Pick<CredentialDefinition, 'status' | 'registration'>>,
+    changes: Partial<
+      Pick<CredentialDefinition, 'status' | 'registration' | 'schemaDefinition'>
+    >,
   ): Promise<{
     definition: CredentialDefinition;
     operation: Operation;
@@ -450,7 +494,7 @@ export class CredentialDefinitionService {
     await manager.update(
       CredentialDefinition,
       { id: definition.id, tenantId },
-      updates,
+      updates as QueryDeepPartialEntity<CredentialDefinition>,
     );
     operation.result = { credential_definition_id: definition.id };
     await manager.save(Operation, operation);
@@ -669,8 +713,19 @@ export class CredentialDefinitionService {
               'schema_definition must be an object.',
             );
           }
-          credentialDefinition.schemaDefinition = dto.schemaDefinition;
-          const schemaVersion = dto.schemaDefinition.version;
+          const handler = this.formatHandlers.find(
+            (candidate) => candidate.format === credentialDefinition.format,
+          );
+          if (!handler) {
+            this.registrationError(
+              new FormatNotSupportedError(credentialDefinition.format),
+            );
+          }
+          const definition = handler.normalizeSchema({
+            definition: dto.schemaDefinition,
+          }).definition!;
+          credentialDefinition.schemaDefinition = definition;
+          const schemaVersion = definition.version ?? definition.schema_version;
           if (
             typeof schemaVersion === 'string' &&
             schemaVersion.trim().length > 0

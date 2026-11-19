@@ -70,7 +70,7 @@ describe('AnonCreds credential-definition registration worker', () => {
       schemaDefinition: {
         schema_name: 'employee',
         schema_version: '1.0',
-        attr_names: ['name'],
+        properties: { name: { type: 'string' }, age: { type: 'integer' } },
       },
       options: {
         tag: 'default',
@@ -221,10 +221,20 @@ describe('AnonCreds credential-definition registration worker', () => {
   it('publishes deterministically and persists each returned artifact before advancing', async () => {
     await worker.process('tenant', 'definition');
 
+    const nativeSchema = {
+      schema_name: 'employee',
+      schema_version: '1.0',
+      attr_names: ['name', 'age'],
+    };
     expect(port.findSchema.mock.calls).toContainEqual([
       context,
       'issuer',
-      definition().schemaDefinition,
+      nativeSchema,
+    ]);
+    expect(port.publishSchema.mock.calls).toContainEqual([
+      context,
+      'issuer',
+      nativeSchema,
     ]);
     expect(manager.update).toHaveBeenCalledWith(
       CredentialDefinition,

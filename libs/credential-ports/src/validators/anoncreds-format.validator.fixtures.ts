@@ -1,51 +1,38 @@
 // Fixtures for AnonCredsFormatValidator specs.
 
 export const VALID_SCHEMA = {
-  attr_names: ['given_names', 'family_name', 'birthdate_dateint'],
+  properties: {
+    given_names: { type: 'string' },
+    family_name: { type: 'string' },
+    birthdate_dateint: { type: 'integer' },
+  },
   schema_name: 'person-credential',
   schema_version: '1.0',
 };
 
 export const VALID_SCHEMA_WITH_OPTIONAL = {
-  attr_names: ['given_names', 'family_name', 'middle_name'],
+  properties: {
+    given_names: { type: 'string' },
+    family_name: { type: 'string' },
+    middle_name: { type: 'string' },
+  },
   schema_name: 'person-credential',
   schema_version: '1.0',
-  optional_attributes: ['middle_name'],
 };
 
-export const SCHEMA_MISSING_ATTR_NAMES = {
+export const SCHEMA_MISSING_PROPERTIES = {
   schema_name: 'person-credential',
   schema_version: '1.0',
 };
 
-export const SCHEMA_WITH_DUPLICATE_ATTR_NAMES = {
-  attr_names: ['given_names', 'given_names'],
+export const SCHEMA_WITH_INVALID_PROPERTY_TYPE = {
+  properties: { given_names: { type: 'object' } },
   schema_name: 'person-credential',
   schema_version: '1.0',
 };
 
 export const SCHEMA_MISSING_NAME_AND_VERSION = {
-  attr_names: ['given_names'],
-};
-
-export const SCHEMA_WITH_INVALID_OPTIONAL_ATTRIBUTE = {
-  attr_names: ['given_names', 'family_name'],
-  schema_name: 'person-credential',
-  schema_version: '1.0',
-  optional_attributes: ['not_a_declared_attribute'],
-};
-
-export const SCHEMA_WITH_NON_ARRAY_OPTIONAL_ATTRIBUTES = {
-  attr_names: ['given_names', 'family_name'],
-  schema_name: 'person-credential',
-  schema_version: '1.0',
-  optional_attributes: 'given_names',
-};
-
-export const SCHEMA_MISSING_ATTR_NAMES_WITH_OPTIONAL = {
-  schema_name: 'person-credential',
-  schema_version: '1.0',
-  optional_attributes: ['given_names'],
+  properties: { given_names: { type: 'string' } },
 };
 
 export const VALID_ATTRIBUTES = [

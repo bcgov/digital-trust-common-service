@@ -32,16 +32,11 @@ export function validateOfferCredentialRequest(
     issues.push('format is required/invalid');
   }
 
-  const attributes: unknown = req.attributes;
-
-  if (!isReadonlyArray(attributes) || attributes.length === 0) {
-    issues.push('attributes must not be empty');
-  } else {
-    req.attributes.forEach((attribute) => {
-      if (!isRecord(attribute) || !hasText(attribute.name)) {
-        issues.push('attribute name must not be empty');
-      }
-    });
+  if (!isRecord(req.claims)) {
+    issues.push('claims must be a non-null object');
+  }
+  if (!isRecord(req.schemaDefinition)) {
+    issues.push('schemaDefinition must be a non-null object');
   }
 
   return issues.length === 0 ? null : new ValidationError(issues);

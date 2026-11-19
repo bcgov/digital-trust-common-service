@@ -87,7 +87,10 @@ describe('TractionAdapter', () => {
         format: CredentialFormat.AnonCreds,
         connectionId: 'connection',
         credentialDefinitionId: 'external-definition',
-        attributes: [{ name: 'name', value: 'Alice' }],
+        claims: { name: 'Alice' },
+        schemaDefinition: {
+          properties: { name: { type: 'string' } },
+        },
       },
     );
     expect(mockRequest).toHaveBeenCalledWith(
@@ -153,7 +156,10 @@ describe('TractionAdapter', () => {
         format: CredentialFormat.AnonCreds,
         connectionId: 'connection',
         credentialDefinitionId: 'external-definition',
-        attributes: [{ name: 'name', value: 'Alice' }],
+        claims: { name: 'Alice' },
+        schemaDefinition: {
+          properties: { name: { type: 'string' } },
+        },
         autoIssue: false,
       },
     );
@@ -298,7 +304,10 @@ describe('TractionAdapter', () => {
       format: CredentialFormat.AnonCreds,
       connectionId: 'connection',
       credentialDefinitionId: 'external-definition',
-      attributes: [{ name: 'name', value: 'Alice' }],
+      claims: { name: 'Alice' },
+      schemaDefinition: {
+        properties: { name: { type: 'string' } },
+      },
     };
 
     it.each(['getExchange', 'getById'] as const)(
@@ -367,6 +376,67 @@ describe('TractionAdapter', () => {
         updatedAt: 'updated',
         error: undefined,
       });
+    });
+
+    it('encodes semantic scalar types and fills omitted optional attributes with empty strings', async () => {
+      mockRequest.mockResolvedValue({
+        data: { cred_ex_id: 'exchange', state: 'offer_sent' },
+      });
+      await adapter.offerCredential(context, {
+        ...offer,
+        claims: { name: 'Alice', age: 42, active: false },
+        schemaDefinition: {
+          properties: {
+            name: { type: 'string' },
+            age: { type: 'integer' },
+            active: { type: 'boolean' },
+            nickname: { type: 'string' },
+          },
+        },
+      });
+      expect(mockRequest).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            credential_preview: expect.objectContaining({
+              attributes: [
+                { name: 'name', value: 'Alice' },
+                { name: 'age', value: '42' },
+                { name: 'active', value: 'false' },
+                { name: 'nickname', value: '' },
+              ],
+            }),
+          }),
+        }),
+        false,
+      );
+    });
+
+    it('supports existing definitions with legacy attr_names metadata', async () => {
+      mockRequest.mockResolvedValue({
+        data: { cred_ex_id: 'exchange', state: 'offer_sent' },
+      });
+      await adapter.offerCredential(context, {
+        ...offer,
+        claims: { name: 'Alice' },
+        schemaDefinition: {
+          schema_name: 'Employee',
+          schema_version: '1.0',
+          attr_names: ['name', 'nickname'],
+        },
+      });
+      expect(mockRequest).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            credential_preview: expect.objectContaining({
+              attributes: [
+                { name: 'name', value: 'Alice' },
+                { name: 'nickname', value: '' },
+              ],
+            }),
+          }),
+        }),
+        false,
+      );
     });
 
     it.each([

@@ -10,8 +10,12 @@ import {
 
 describe('validateOfferCredentialRequest', () => {
   const validRequest: OfferCredentialRequest = {
-    attributes: [{ name: 'given_name', value: 'Ada' }],
+    claims: { given_name: 'Ada' },
     format: CredentialFormat.AnonCreds,
+    schemaDefinition: {
+      type: 'object',
+      properties: { given_name: { type: 'string' } },
+    },
   };
 
   it('should return null for valid input', () => {
@@ -40,40 +44,29 @@ describe('validateOfferCredentialRequest', () => {
     expect(result?.issues).toContain('format is required/invalid');
   });
 
-  it('should reject empty attributes', () => {
-    const request: OfferCredentialRequest = { ...validRequest, attributes: [] };
+  it('should allow an empty claims object', () => {
+    const request: OfferCredentialRequest = { ...validRequest, claims: {} };
     const result = validateOfferCredentialRequest(request);
 
-    expect(result).toBeInstanceOf(ValidationError);
-    expect(result?.issues).toContain('attributes must not be empty');
+    expect(result).toBeNull();
   });
 
-  it('should reject missing attributes', () => {
+  it('should reject missing claims', () => {
     const request = {
       ...validRequest,
-      attributes: undefined,
+      claims: undefined,
     } as unknown as OfferCredentialRequest;
     const result = validateOfferCredentialRequest(request);
 
     expect(result).toBeInstanceOf(ValidationError);
-    expect(result?.issues).toContain('attributes must not be empty');
-  });
-
-  it('should reject an attribute with an empty name', () => {
-    const request: OfferCredentialRequest = {
-      ...validRequest,
-      attributes: [{ name: '', value: 'Ada' }],
-    };
-    const result = validateOfferCredentialRequest(request);
-
-    expect(result).toBeInstanceOf(ValidationError);
-    expect(result?.issues).toContain('attribute name must not be empty');
+    expect(result?.issues).toContain('claims must be a non-null object');
   });
 
   it('should collect multiple offer validation issues', () => {
     const request = {
-      attributes: [{ name: '', value: 'Ada' }],
       format: 'jwt-vc',
+      claims: undefined,
+      schemaDefinition: undefined,
     } as unknown as OfferCredentialRequest;
     const result = validateOfferCredentialRequest(request);
 
@@ -81,10 +74,11 @@ describe('validateOfferCredentialRequest', () => {
     expect(result?.issues).toEqual(
       expect.arrayContaining([
         'format is required/invalid',
-        'attribute name must not be empty',
+        'claims must be a non-null object',
+        'schemaDefinition must be a non-null object',
       ]),
     );
-    expect(result?.issues).toHaveLength(2);
+    expect(result?.issues).toHaveLength(3);
   });
 });
 

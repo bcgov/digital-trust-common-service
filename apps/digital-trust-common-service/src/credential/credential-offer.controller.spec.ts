@@ -36,8 +36,8 @@ describe('CredentialOfferController', () => {
     new OfferCredentialRequestDto(),
     {
       profileId: 'diploma/1.0',
-      delivery: { protocol: 'didcomm-v1', connectionId },
-      credential: { credentialSubject: {} },
+      delivery: { connectionId },
+      claims: {},
     },
   );
 

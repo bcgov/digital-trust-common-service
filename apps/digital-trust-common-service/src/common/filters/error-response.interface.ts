@@ -5,6 +5,7 @@
  */
 export interface ErrorResponseDetail {
   field?: string;
+  path?: (string | number)[];
   expected?: string;
   actual?: string;
   message?: string;

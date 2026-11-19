@@ -688,12 +688,13 @@ export interface paths {
         put?: never;
         /**
          * Offer/issue a credential
-         * @description Offer unsigned subject claims via a published issuance profile or a direct
-         *     credential definition reference. Both paths require an active, published
+         * @description Offer unsigned subject claims via a published issuance profile.
+         *     The profile requires an active, published
          *     credential definition with a connector binding. Format is inferred from the
          *     stored definition, not parsed from an identifier.
          *
-         *     Only explicit didcomm-v1 delivery is supported. Its connection_id is a
+         *     Delivery protocol is inherited from the profile; only didcomm-v1 is supported.
+         *     The offer supplies delivery.connection_id, a
          *     tenant-owned local connection UUID resolved in the definition's wallet.
          *     OID4VCI is not yet supported.
          */
@@ -1783,6 +1784,8 @@ export interface components {
                 message: string;
                 details?: {
                     field?: string;
+                    /** @description Property names and zero-based array indices locating a claim validation issue. */
+                    path?: (string | number)[];
                     expected?: string;
                     actual?: string;
                     message?: string;
@@ -2135,9 +2138,19 @@ export interface components {
             } | {
                 /**
                  * @description Free-form schema definition interpreted according to options.format.
-                 *     AnonCreds requires schema_name, schema_version, and attr_names.
+                 *     AnonCreds requires schema_name, schema_version, and a flat
+                 *     attributes map from names to semantic types (string, integer,
+                 *     number, or boolean). Attribute values on the wire remain strings.
                  *     W3C VC definitions may use JSON Schema. Formats without a
                  *     schema validator may accept the object as-is.
+                 * @example {
+                 *       "schema_name": "employee",
+                 *       "schema_version": "1.0",
+                 *       "attributes": {
+                 *         "given_name": "string",
+                 *         "age": "integer"
+                 *       }
+                 *     }
                  */
                 definition: {
                     [key: string]: unknown;
@@ -2187,10 +2200,7 @@ export interface components {
             description?: string | null;
             /** Format: uuid */
             credential_definition_id?: string;
-            /** @description Declares attributes the consumer must supply */
-            attribute_schema?: Record<string, never>;
-            /** @description Pre-filled attribute values */
-            defaults?: Record<string, never> | null;
+            claims?: components["schemas"]["ProfileClaims"];
             /** @description UI/metadata for rendering */
             display?: {
                 name?: string;
@@ -2202,7 +2212,7 @@ export interface components {
             } | null;
             /** @description Extensible metadata (OCA bundles, trust framework tags, etc.) */
             metadata?: Record<string, never> | null;
-            protocol_hint?: components["schemas"]["ProtocolHint"];
+            delivery?: components["schemas"]["IssuanceDelivery"];
             status?: components["schemas"]["ProfileStatus"];
             /** Format: date-time */
             created_at?: string;
@@ -2216,26 +2226,42 @@ export interface components {
             description?: string;
             /** Format: uuid */
             credential_definition_id: string;
-            /** @description Attribute definitions (names, types, required flags) */
-            attribute_schema: Record<string, never>;
-            defaults?: Record<string, never>;
+            claims?: components["schemas"]["ProfileClaims"];
             display?: Record<string, never>;
             metadata?: Record<string, never>;
-            protocol_hint?: components["schemas"]["ProtocolHint"];
+            delivery?: components["schemas"]["IssuanceDelivery"];
         };
         UpdateIssuanceProfileRequest: {
             description?: string;
-            defaults?: Record<string, never>;
+            claims?: components["schemas"]["ProfileClaims"];
             display?: Record<string, never>;
             metadata?: Record<string, never>;
-            protocol_hint?: components["schemas"]["ProtocolHint"];
+            delivery?: components["schemas"]["IssuanceDelivery"];
+        };
+        IssuanceDelivery: {
+            /**
+             * @description Delivery protocol inherited by offers using this profile.
+             * @enum {string}
+             */
+            protocol: "didcomm-v1";
+        };
+        /** @description Optional required-claim and allowed-value overlays. */
+        ProfileClaims: {
+            /** @description Claim names required in offers using this profile. */
+            required?: string[];
+            properties?: {
+                [key: string]: {
+                    enum?: unknown[];
+                    const?: unknown;
+                };
+            };
         };
         /** @enum {string} */
         ProfileStatus: "draft" | "published" | "deprecated";
         /**
          * @description Protocol hint for delivery. Valid values depend on context:
-         *     - Issuance profiles: didcomm, oid4vci, auto
          *     - Verification profiles: didcomm, oid4vp, auto
+         *     Issuance profiles use explicit delivery.protocol instead.
          *     Server validates that the value is appropriate for the profile type.
          * @default auto
          * @enum {string}
@@ -2293,27 +2319,23 @@ export interface components {
             protocol_hint?: components["schemas"]["ProtocolHint"];
         };
         /**
-         * @description Exactly one source is required. Format is inferred from stored metadata.
-         *     credential contains unsigned proposed claims, not a protocol offer or
-         *     a signed W3C credential. AnonCreds maps flat scalars to preview attributes.
+         * @description A published profile is required. Format and delivery protocol are inherited.
+         *     Claims are an unsigned JSON object validated against the definition and
+         *     profile. This is not a protocol offer or a signed W3C credential.
+         *     AnonCreds supports flat scalar attributes and encodes semantic values as
+         *     strings for its wire representation; it does not support nested claims.
          */
         OfferCredentialRequest: {
             /** @description UUID or "name/version" string (e.g., "drivers-license/1.0") */
-            profile_id?: string;
+            profile_id: string;
             /**
-             * Format: uuid
-             * @description Local definition reference (bypasses profile)
+             * @description JSON object with property names and nested values as declared by the
+             *     credential definition. No defaults are applied.
              */
-            credential_definition_id?: string;
-            credential: {
-                /** @description Flat scalar claims for AnonCreds; nested values are rejected */
-                credentialSubject: {
-                    [key: string]: unknown;
-                };
+            claims: {
+                [key: string]: unknown;
             };
             delivery: {
-                /** @enum {string} */
-                protocol: "didcomm-v1";
                 /**
                  * Format: uuid
                  * @description Local tenant-owned holder connection in the definition's wallet
@@ -2332,7 +2354,7 @@ export interface components {
                  */
                 auto_issue: boolean;
             };
-        } & (unknown | unknown);
+        };
         OfferCredentialBatchRequest: {
             /** @description UUID or "name/version" — applied to all items */
             profile_id?: string;
@@ -3908,7 +3930,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Issuance profile created (draft status) */
+            /** @description Draft issuance profile created */
             201: {
                 headers: {
                     [name: string]: unknown;
@@ -4004,7 +4026,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Profile updated */
+            /** @description Issuance profile updated */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -4037,7 +4059,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Profile published */
+            /** @description Issuance profile published */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -4079,7 +4101,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Profile deprecated */
+            /** @description Issuance profile deprecated */
             200: {
                 headers: {
                     [name: string]: unknown;

@@ -12,7 +12,7 @@ import {
 import { Test, TestingModule } from '@nestjs/testing';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
-import { QueryFailedError } from 'typeorm';
+import { DataSource, EntityManager, QueryFailedError } from 'typeorm';
 
 import { AdapterRegistry } from '../adapter-registry/adapter-registry.service';
 import { AuditAction } from '../audit-log/audit-log.entity';
@@ -31,7 +31,6 @@ import { CreateIssuanceProfileDto } from './dto/create-issuance-profile.dto';
 import { UpdateIssuanceProfileDto } from './dto/update-issuance-profile.dto';
 import {
   IssuanceProfile,
-  IssuanceProfileProtocolHint,
   IssuanceProfileStatus,
 } from './issuance-profile.entity';
 import {
@@ -52,8 +51,9 @@ describe('IssuanceProfileService', () => {
   let mockCredentialDefinitionFindById: jest.Mock;
   let mockResolve: jest.Mock;
   let mockTransitionStatus: jest.Mock;
+  let mockGetClaimsValidationSchema: jest.Mock;
+  const manager = {} as EntityManager;
   let mockDeleteIfUnused: jest.Mock;
-  let mockUpdateDraftIfCurrent: jest.Mock;
 
   const tenantId = '123e4567-e89b-12d3-a456-426614174001';
 
@@ -100,11 +100,10 @@ describe('IssuanceProfileService', () => {
     description: undefined,
     credentialDefinitionId: mockCredentialDefinition.id,
     credentialDefinition: mockCredentialDefinition,
-    attributeSchema: { given_name: { type: 'string', required: true } },
-    defaults: undefined,
+    claims: { required: ['given_name'], properties: {} },
     display: undefined,
     metadata: {},
-    protocolHint: IssuanceProfileProtocolHint.AUTO,
+    delivery: { protocol: 'didcomm-v1' },
     status: IssuanceProfileStatus.DRAFT,
     createdAt: new Date(),
     updatedAt: new Date(),
@@ -192,7 +191,22 @@ describe('IssuanceProfileService', () => {
       .fn()
       .mockResolvedValue({ connector: { id: mockConnectorId } });
     mockTransitionStatus = jest.fn().mockResolvedValue(true);
-    mockUpdateDraftIfCurrent = jest.fn().mockResolvedValue(true);
+    mockGetClaimsValidationSchema = jest.fn(
+      (definition: CredentialDefinition) => ({
+        schema: {
+          type: 'object',
+          properties: {
+            ...(definition.format === CredentialDefinitionFormat.ANONCREDS
+              ? {
+                  given_name: { type: 'string' },
+                  family_name: { type: 'string' },
+                }
+              : {}),
+          },
+        },
+        mandatoryClaims: [],
+      }),
+    );
     mockDeleteIfUnused = jest
       .fn()
       .mockResolvedValue(IssuanceProfileDeleteResult.DELETED);
@@ -201,22 +215,33 @@ describe('IssuanceProfileService', () => {
       providers: [
         IssuanceProfileService,
         {
+          provide: DataSource,
+          useValue: {
+            transaction: (
+              work: (transactionManager: EntityManager) => Promise<unknown>,
+            ) => work(manager),
+          },
+        },
+        {
           provide: IssuanceProfileRepository,
           useValue: {
             create: mockCreate,
             findById: mockFindById,
+            findForUpdate: (): unknown => mockFindById(),
             findByNameAndVersion: mockFindByNameAndVersion,
             findPage: mockFindPage,
             findUsedProfileIds: mockFindUsedProfileIds,
             save: mockSave,
-            updateDraftIfCurrent: mockUpdateDraftIfCurrent,
             transitionStatus: mockTransitionStatus,
             deleteIfUnused: mockDeleteIfUnused,
           },
         },
         {
           provide: CredentialDefinitionService,
-          useValue: { findById: mockCredentialDefinitionFindById },
+          useValue: {
+            findById: mockCredentialDefinitionFindById,
+            getClaimsValidationSchema: mockGetClaimsValidationSchema,
+          },
         },
         {
           provide: AdapterRegistry,
@@ -241,7 +266,8 @@ describe('IssuanceProfileService', () => {
       name: 'drivers-license',
       version: '1.0',
       credentialDefinitionId: mockCredentialDefinition.id,
-      attributeSchema: { given_name: { type: 'string', required: true } },
+      claims: { required: ['given_name'], properties: {} },
+      delivery: { protocol: 'didcomm-v1' },
     };
 
     it('creates a profile in draft status', async () => {
@@ -266,8 +292,10 @@ describe('IssuanceProfileService', () => {
           name: dto.name,
           version: dto.version,
           credentialDefinitionId: mockCredentialDefinition.id,
-          attributeSchema: dto.attributeSchema,
+          claims: dto.claims,
+          delivery: dto.delivery,
         }),
+        manager,
       );
       expect(mockEmit).toHaveBeenCalledWith({
         tenantId: mockProfile.tenantId,
@@ -275,9 +303,35 @@ describe('IssuanceProfileService', () => {
         resourceType: 'issuance_profile',
         resourceId: mockProfile.id,
       });
-      expect(result).toEqual(mockProfile);
+      expect(result).toBe(mockProfile);
       expect(mockCreate.mock.calls[0][0]).not.toHaveProperty('format');
       expect(mockCreate.mock.calls[0][0]).not.toHaveProperty('connectorId');
+    });
+
+    it('stores an empty map when constraints are omitted', async () => {
+      mockCreate.mockResolvedValue(mockProfile);
+      await service.create(tenantId, { ...dto, claims: undefined }, auth);
+      expect(mockCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          claims: {},
+        }),
+        manager,
+      );
+    });
+
+    it('rejects a default in profile claims before persisting a profile', async () => {
+      await expect(
+        service.create(
+          tenantId,
+          {
+            ...dto,
+            claims: { properties: { given_name: { default: '' } } },
+          },
+          auth,
+        ),
+      ).rejects.toThrow(BadRequestException);
+      expect(mockCreate).not.toHaveBeenCalled();
+      expect(mockEmit).not.toHaveBeenCalled();
     });
 
     it('throws ConflictException when name/version already exists for tenant', async () => {
@@ -311,7 +365,8 @@ describe('IssuanceProfileService', () => {
           name: dto.name,
           version: dto.version,
           credential_definition_id: dto.credentialDefinitionId,
-          attribute_schema: dto.attributeSchema,
+          claims: dto.claims,
+          delivery: dto.delivery,
           connector_id: connectorId,
         });
 
@@ -353,6 +408,7 @@ describe('IssuanceProfileService', () => {
         expect.objectContaining({
           credentialDefinitionId: mockCredentialDefinition.id,
         }),
+        manager,
       );
       expect(mockCreate.mock.calls[0][0]).not.toHaveProperty('connectorId');
     });
@@ -404,10 +460,10 @@ describe('IssuanceProfileService', () => {
       expect(mockFindByNameAndVersion).not.toHaveBeenCalled();
     });
 
-    it('throws BadRequestException when attribute_schema is not a subset of attr_names', async () => {
+    it('throws BadRequestException for claims outside the definition', async () => {
       const badDto: CreateIssuanceProfileDto = {
         ...dto,
-        attributeSchema: { unknown_attribute: { type: 'string' } },
+        claims: { required: ['unknown'] },
       };
       mockFindByNameAndVersion.mockResolvedValue(null);
 
@@ -436,7 +492,7 @@ describe('IssuanceProfileService', () => {
       );
     });
 
-    it('skips the attribute subset check for formats without checkable schema data', async () => {
+    it('allows an empty overlay for formats without claim schema data', async () => {
       // MDL maps to a port-layer format (unlike SD-JWT/W3C VC), so this
       // also exercises the format-mapped connector-resolution path.
       const mdlDefinition: CredentialDefinition = {
@@ -448,12 +504,12 @@ describe('IssuanceProfileService', () => {
       mockFindByNameAndVersion.mockResolvedValue(null);
       mockCreate.mockResolvedValue(mockProfile);
 
-      const badDto: CreateIssuanceProfileDto = {
+      const emptyDto: CreateIssuanceProfileDto = {
         ...dto,
-        attributeSchema: { anything: { type: 'string' } },
+        claims: {},
       };
 
-      await expect(service.create(tenantId, badDto, auth)).resolves.toEqual(
+      await expect(service.create(tenantId, emptyDto, auth)).resolves.toBe(
         mockProfile,
       );
       expect(mockResolve).toHaveBeenCalledWith(tenantId, CredentialFormat.Mdl, {
@@ -661,21 +717,81 @@ describe('IssuanceProfileService', () => {
   });
 
   describe('update', () => {
+    it('rejects a profile removed before the draft lock is acquired', async () => {
+      mockFindById
+        .mockResolvedValueOnce({ ...mockProfile })
+        .mockResolvedValueOnce(null);
+      await expect(
+        service.update(
+          tenantId,
+          mockProfile.id,
+          { description: 'Updated' },
+          auth,
+        ),
+      ).rejects.toThrow(NotFoundException);
+      expect(mockSave).not.toHaveBeenCalled();
+      expect(mockEmit).not.toHaveBeenCalled();
+    });
+
+    it('stores display and metadata edits', async () => {
+      mockFindById.mockResolvedValue({ ...mockProfile });
+      mockSave.mockImplementation((profile) => Promise.resolve(profile));
+      const dto = {
+        display: { name: 'Driver licence' },
+        metadata: { category: 'licence' },
+      };
+      const result = await service.update(tenantId, mockProfile.id, dto, auth);
+      expect(result).toMatchObject(dto);
+      expect(mockSave).toHaveBeenCalledWith(
+        expect.objectContaining(dto),
+        manager,
+      );
+    });
+    it('updates delivery and claims on a draft profile', async () => {
+      mockFindById.mockResolvedValue({ ...mockProfile });
+      mockSave.mockImplementation((profile) => Promise.resolve(profile));
+      const claims = {
+        properties: { given_name: { enum: ['Alice'] } },
+      };
+      const result = await service.update(
+        tenantId,
+        mockProfile.id,
+        {
+          claims,
+          delivery: { protocol: 'didcomm-v1' },
+        },
+        auth,
+      );
+      expect(result.claims).toEqual(claims);
+      expect(result.delivery).toEqual({ protocol: 'didcomm-v1' });
+    });
+
+    it('rejects invalid claims edits before saving', async () => {
+      mockFindById.mockResolvedValue({ ...mockProfile });
+      await expect(
+        service.update(
+          tenantId,
+          mockProfile.id,
+          {
+            claims: { properties: { given_name: { default: '' } } },
+          },
+          auth,
+        ),
+      ).rejects.toThrow(BadRequestException);
+      expect(mockSave).not.toHaveBeenCalled();
+      expect(mockEmit).not.toHaveBeenCalled();
+    });
+
     it('updates a draft profile', async () => {
       mockFindById
         .mockResolvedValueOnce({ ...mockProfile })
         .mockResolvedValueOnce({ ...mockProfile, description: 'Updated' });
 
       const dto: UpdateIssuanceProfileDto = { description: 'Updated' };
+      mockSave.mockImplementation((profile) => Promise.resolve(profile));
       const result = await service.update(tenantId, mockProfile.id, dto, auth);
 
       expect(result.description).toBe('Updated');
-      expect(mockUpdateDraftIfCurrent).toHaveBeenCalledWith(
-        tenantId,
-        mockProfile.id,
-        { description: 'Updated' },
-      );
-      expect(mockSave).not.toHaveBeenCalled();
       expect(mockEmit).toHaveBeenCalledWith({
         tenantId: mockProfile.tenantId,
         action: AuditAction.UPDATE,
@@ -693,12 +809,16 @@ describe('IssuanceProfileService', () => {
       await expect(
         service.update(tenantId, mockProfile.id, { description: 'nope' }, auth),
       ).rejects.toThrow(ConflictException);
-      expect(mockUpdateDraftIfCurrent).not.toHaveBeenCalled();
+      expect(mockSave).not.toHaveBeenCalled();
     });
 
-    it('rejects when deletion wins after the initial draft read', async () => {
-      mockFindById.mockResolvedValueOnce({ ...mockProfile });
-      mockUpdateDraftIfCurrent.mockResolvedValue(false);
+    it('rejects when publication wins after the initial draft read', async () => {
+      mockFindById
+        .mockResolvedValueOnce({ ...mockProfile })
+        .mockResolvedValueOnce({
+          ...mockProfile,
+          status: IssuanceProfileStatus.PUBLISHED,
+        });
 
       await expect(
         service.update(
@@ -714,6 +834,18 @@ describe('IssuanceProfileService', () => {
   });
 
   describe('publish', () => {
+    it.each([null, { tenantId: 'other-tenant' }])(
+      'does not record publication when the transaction reload returns %p',
+      async (reloaded) => {
+        mockFindById
+          .mockResolvedValueOnce({ ...mockProfile })
+          .mockResolvedValueOnce(reloaded);
+        await expect(
+          service.publish(tenantId, mockProfile.id, auth),
+        ).rejects.toThrow(NotFoundException);
+        expect(mockEmit).not.toHaveBeenCalled();
+      },
+    );
     it.each([
       CredentialDefinitionStatus.DRAFT,
       CredentialDefinitionStatus.DEPRECATED,
@@ -736,7 +868,12 @@ describe('IssuanceProfileService', () => {
     });
 
     it('publishes a draft profile with a healthy connector', async () => {
-      mockFindById.mockResolvedValue({ ...mockProfile });
+      mockFindById
+        .mockResolvedValueOnce({ ...mockProfile })
+        .mockResolvedValueOnce({
+          ...mockProfile,
+          status: IssuanceProfileStatus.PUBLISHED,
+        });
 
       const result = await service.publish(tenantId, mockProfile.id, auth);
 
@@ -755,6 +892,7 @@ describe('IssuanceProfileService', () => {
           connectorId: mockConnectorId,
           format: mockCredentialDefinition.format,
         },
+        manager,
       );
       expect(mockEmit).toHaveBeenCalledWith({
         tenantId: mockProfile.tenantId,
@@ -762,7 +900,10 @@ describe('IssuanceProfileService', () => {
         resourceType: 'issuance_profile',
         resourceId: mockProfile.id,
       });
-      expect(result).toEqual(mockProfile);
+      expect(result).toMatchObject({
+        ...mockProfile,
+        status: IssuanceProfileStatus.PUBLISHED,
+      });
     });
 
     it('requires a ready definition on the selected connector before publishing', async () => {
@@ -841,18 +982,39 @@ describe('IssuanceProfileService', () => {
           connectorId: mockConnectorId,
           format: mockCredentialDefinition.format,
         },
+        manager,
       );
     });
   });
 
   describe('deprecate', () => {
+    it.each([null, { tenantId: 'other-tenant' }])(
+      'does not record deprecation when the transaction reload returns %p',
+      async (reloaded) => {
+        mockFindById
+          .mockResolvedValueOnce({
+            ...mockProfile,
+            status: IssuanceProfileStatus.PUBLISHED,
+          })
+          .mockResolvedValueOnce(reloaded);
+        await expect(
+          service.deprecate(tenantId, mockProfile.id, auth),
+        ).rejects.toThrow(NotFoundException);
+        expect(mockEmit).not.toHaveBeenCalled();
+      },
+    );
     const publishedProfile = {
       ...mockProfile,
       status: IssuanceProfileStatus.PUBLISHED,
     };
 
     it('deprecates a published profile', async () => {
-      mockFindById.mockResolvedValue({ ...publishedProfile });
+      mockFindById
+        .mockResolvedValueOnce({ ...publishedProfile })
+        .mockResolvedValueOnce({
+          ...publishedProfile,
+          status: IssuanceProfileStatus.DEPRECATED,
+        });
 
       const result = await service.deprecate(tenantId, mockProfile.id, auth);
 
@@ -861,6 +1023,8 @@ describe('IssuanceProfileService', () => {
         mockProfile.id,
         IssuanceProfileStatus.PUBLISHED,
         IssuanceProfileStatus.DEPRECATED,
+        undefined,
+        manager,
       );
       expect(mockEmit).toHaveBeenCalledWith({
         tenantId: publishedProfile.tenantId,
@@ -868,7 +1032,10 @@ describe('IssuanceProfileService', () => {
         resourceType: 'issuance_profile',
         resourceId: publishedProfile.id,
       });
-      expect(result).toEqual(publishedProfile);
+      expect(result).toMatchObject({
+        ...publishedProfile,
+        status: IssuanceProfileStatus.DEPRECATED,
+      });
     });
 
     it('throws ConflictException when the profile is not in published status', async () => {

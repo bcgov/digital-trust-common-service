@@ -21,6 +21,21 @@ const context: ConnectorContext = {
   credentials: {},
 };
 
+const schemaDefinition = {
+  type: 'object',
+  properties: {
+    given_name: { type: 'string' },
+    family_name: { type: 'string' },
+  },
+};
+
+function offerRequest(
+  format: CredentialFormat,
+  claims: Record<string, unknown> = { given_name: 'Avery' },
+) {
+  return { format, claims, schemaDefinition };
+}
+
 describe('MockAdapter', () => {
   let adapter: MockAdapter;
 
@@ -61,9 +76,8 @@ describe('MockAdapter', () => {
 
   it('should resolve issuer, holder, and revocation operations with in-memory state by default', async () => {
     const exchange = await adapter.offerCredential(context, {
+      ...offerRequest(CredentialFormat.AnonCreds),
       connectionId: 'connection-1',
-      format: CredentialFormat.AnonCreds,
-      attributes: [{ name: 'given_name', value: 'Avery' }],
       autoIssue: true,
     });
 
@@ -75,10 +89,10 @@ describe('MockAdapter', () => {
       exchange,
     );
 
-    const pendingExchange = await adapter.offerCredential(context, {
-      format: CredentialFormat.AnonCreds,
-      attributes: [{ name: 'given_name', value: 'Avery' }],
-    });
+    const pendingExchange = await adapter.offerCredential(
+      context,
+      offerRequest(CredentialFormat.AnonCreds),
+    );
     const issuedExchange = await adapter.issueCredential(
       context,
       pendingExchange.id,
@@ -101,10 +115,10 @@ describe('MockAdapter', () => {
       acceptedExchange,
     );
 
-    const rejectedExchange = await adapter.offerCredential(context, {
-      format: CredentialFormat.JsonLd,
-      attributes: [{ name: 'family_name', value: 'Nguyen' }],
-    });
+    const rejectedExchange = await adapter.offerCredential(
+      context,
+      offerRequest(CredentialFormat.JsonLd, { family_name: 'Nguyen' }),
+    );
 
     await expect(
       adapter.rejectOffer(context, rejectedExchange.id),
@@ -207,8 +221,7 @@ describe('MockAdapter', () => {
 
     await expect(
       adapter.offerCredential(context, {
-        format: CredentialFormat.AnonCreds,
-        attributes: [{ name: 'given_name', value: 'Avery' }],
+        ...offerRequest(CredentialFormat.AnonCreds),
       }),
     ).rejects.toBe(failureError);
     await expect(
@@ -256,8 +269,7 @@ describe('MockAdapter', () => {
     let resolved = false;
     const promise = adapter
       .offerCredential(context, {
-        format: CredentialFormat.SdJwtVc,
-        attributes: [{ name: 'given_name', value: 'Avery' }],
+        ...offerRequest(CredentialFormat.SdJwtVc),
       })
       .then((exchange) => {
         resolved = true;
@@ -275,13 +287,10 @@ describe('MockAdapter', () => {
   });
 
   it('should record calls and filter them by method name', async () => {
-    const offerRequest = {
-      format: CredentialFormat.AnonCreds,
-      attributes: [{ name: 'given_name', value: 'Avery' }],
-    };
+    const request = offerRequest(CredentialFormat.AnonCreds);
     const filters = { alias: 'Acme' };
 
-    await adapter.offerCredential(context, offerRequest);
+    await adapter.offerCredential(context, request);
     await adapter.list(context, filters);
 
     const calls = adapter.getCalls();
@@ -289,7 +298,7 @@ describe('MockAdapter', () => {
     expect(calls).toHaveLength(2);
     expect(calls[0]).toMatchObject({
       method: 'offerCredential',
-      args: [context, offerRequest],
+      args: [context, request],
     });
     expect(calls[0].timestamp).toBeInstanceOf(Date);
     expect(adapter.getCalls('list')).toEqual([
@@ -301,10 +310,10 @@ describe('MockAdapter', () => {
   });
 
   it('should reset call history and in-memory state while preserving configuration', async () => {
-    const exchange = await adapter.offerCredential(context, {
-      format: CredentialFormat.AnonCreds,
-      attributes: [{ name: 'given_name', value: 'Avery' }],
-    });
+    const exchange = await adapter.offerCredential(
+      context,
+      offerRequest(CredentialFormat.AnonCreds),
+    );
 
     adapter.configure({
       mode: 'success',

@@ -119,20 +119,60 @@ describe('credential definition format options', () => {
     ).toThrow(BadRequestException);
   });
 
-  it('accepts free-form schema definitions after AnonCreds format validation', () => {
+  it('normalizes semantic AnonCreds attribute types', () => {
     const schema = {
       definition: {
         schema_name: 'employee',
         schema_version: '1.0',
-        attr_names: ['name'],
+        attributes: { name: 'string', age: 'integer' },
       },
     };
 
-    expect(anonCreds.normalizeSchema(schema)).toEqual(schema);
-    expect(formatValidators.resolve).toHaveBeenCalledWith(
-      CredentialFormat.AnonCreds,
+    expect(anonCreds.normalizeSchema(schema)).toEqual({
+      definition: {
+        schema_name: 'employee',
+        schema_version: '1.0',
+        type: 'object',
+        properties: {
+          name: { type: 'string' },
+          age: { type: 'integer' },
+        },
+      },
+    });
+    expect(validateSchema).not.toHaveBeenCalled();
+    expect(anonCreds.getClaimsSchema(schema.definition)).toEqual({
+      type: 'object',
+      properties: { name: { type: 'string' }, age: { type: 'integer' } },
+    });
+    expect(() =>
+      anonCreds.normalizeSchema({
+        definition: {
+          schema_name: 'employee',
+          schema_version: '1.0',
+          attributes: { age: 'date' },
+        },
+      }),
+    ).toThrow(BadRequestException);
+  });
+
+  it('normalizes an empty draft but rejects it for registration before resolving an issuer', async () => {
+    const schema = {
+      definition: {
+        schema_name: 'employee',
+        schema_version: '1.0',
+        attributes: {},
+      },
+    };
+    expect(anonCreds.normalizeSchema(schema).definition?.properties).toEqual(
+      {},
     );
-    expect(validateSchema).toHaveBeenCalledWith(schema.definition);
+    expect(validateSchema).not.toHaveBeenCalled();
+    const issue = { field: 'properties', message: 'is required' };
+    validateSchema.mockReturnValueOnce([issue]);
+    await expect(
+      anonCreds.prepare('tenant', { schema } as CreateCredentialDefinitionDto),
+    ).rejects.toMatchObject({ response: { details: [issue] } });
+    expect(adapters.resolve).not.toHaveBeenCalled();
   });
 
   it('rejects inline schema definitions that fail AnonCreds validation', () => {
@@ -156,7 +196,7 @@ describe('credential definition format options', () => {
     const schema = {
       schema_name: 'employee',
       schema_version: '1.0',
-      attr_names: ['name'],
+      attributes: { name: 'integer' },
     };
     const dto = {
       name: 'Employee',
@@ -167,7 +207,12 @@ describe('credential definition format options', () => {
     await expect(anonCreds.prepare('tenant', dto)).resolves.toEqual({
       connectorId: 'connector-id',
       connectorType: CredentialDefinitionConnectorType.TRACTION,
-      schemaDefinition: schema,
+      schemaDefinition: {
+        schema_name: 'employee',
+        schema_version: '1.0',
+        type: 'object',
+        properties: { name: { type: 'integer' } },
+      },
       registration: {
         issuerId: 'did:indy:issuer',
         schema: {},
@@ -206,7 +251,8 @@ describe('credential definition format options', () => {
     expect(validateSchema).toHaveBeenCalledWith({
       schema_name: 'employee',
       schema_version: '1.0',
-      attr_names: ['name'],
+      type: 'object',
+      properties: { name: { type: 'string' } },
     });
   });
 
@@ -220,7 +266,13 @@ describe('credential definition format options', () => {
     await expect(
       anonCreds.prepare('tenant', {
         name: 'Employee',
-        schema: { definition: {} },
+        schema: {
+          definition: {
+            schema_name: 'Employee',
+            schema_version: '1.0',
+            attributes: { age: 'integer' },
+          },
+        },
         issuer: { id: 'did:indy:issuer', method: 'indy' },
       } as CreateCredentialDefinitionDto),
     ).rejects.toThrow('Supply issuer.id or issuer.method, not both');
@@ -240,7 +292,13 @@ describe('credential definition format options', () => {
     await expect(
       anonCreds.prepare('tenant', {
         name: 'Employee',
-        schema: { definition: {} },
+        schema: {
+          definition: {
+            schema_name: 'Employee',
+            schema_version: '1.0',
+            attributes: { age: 'integer' },
+          },
+        },
       } as CreateCredentialDefinitionDto),
     ).rejects.toMatchObject({ code: 'FORMAT_NOT_SUPPORTED' });
   });
@@ -254,7 +312,13 @@ describe('credential definition format options', () => {
     await expect(
       anonCreds.prepare('tenant', {
         name: 'Employee',
-        schema: { definition: {} },
+        schema: {
+          definition: {
+            schema_name: 'Employee',
+            schema_version: '1.0',
+            attributes: { age: 'integer' },
+          },
+        },
       } as CreateCredentialDefinitionDto),
     ).rejects.toThrow('Unknown registration connector type');
 
@@ -298,7 +362,6 @@ describe('credential definition format options', () => {
     const handler = new NoRegistrationCredentialDefinitionFormatHandler(
       format,
       optionsDto,
-      {} as never,
     );
     expect(() =>
       handler.normalizeOptions({ format, unexpected: true }),
@@ -311,11 +374,10 @@ describe('credential definition format options', () => {
     ).toThrow(BadRequestException);
   });
 
-  it('prepares formats without a registration step and completes them immediately', async () => {
+  it('validates placeholder schemas without enabling registration', async () => {
     const handler = new NoRegistrationCredentialDefinitionFormatHandler(
       CredentialDefinitionFormat.SD_JWT,
       SdJwtCredentialDefinitionOptionsDto,
-      adapters as never,
     );
     const schema = { definition: { type: 'object' } };
     const dto = {
@@ -325,58 +387,25 @@ describe('credential definition format options', () => {
     } as CreateCredentialDefinitionDto;
 
     expect(handler.normalizeSchema(schema)).toBe(schema);
-    await expect(handler.prepare('tenant', dto)).resolves.toEqual({
-      connectorId: 'connector-id',
-      connectorType: CredentialDefinitionConnectorType.TRACTION,
-      schemaDefinition: schema.definition,
-      registration: null,
+    expect(handler.getClaimsSchema(schema.definition)).toBe(schema.definition);
+    await expect(handler.prepare('tenant', dto)).rejects.toMatchObject({
+      code: 'FORMAT_NOT_SUPPORTED',
     });
-    expect(adapters.resolve).toHaveBeenLastCalledWith('tenant', undefined, {
-      connectorId: 'connector-id',
-    });
-
-    const definition = {
-      id: 'definition-id',
-      tenantId: 'tenant-id',
-      registrationState: 'pending',
-    } as CredentialDefinition;
     const manager = { update: jest.fn().mockResolvedValue({ affected: 1 }) };
-
-    await handler.register(definition, manager as never);
-
-    expect(definition.registrationState).toBe('ready');
-    expect(manager.update).toHaveBeenCalledWith(
-      CredentialDefinition,
-      { id: 'definition-id', tenantId: 'tenant-id' },
-      { registrationState: 'ready' },
-    );
+    await expect(
+      handler.register({} as CredentialDefinition, manager as never),
+    ).rejects.toMatchObject({ code: 'FORMAT_NOT_SUPPORTED' });
+    expect(manager.update).not.toHaveBeenCalled();
   });
 
-  it('rejects invalid schemas and unknown connector types for no-registration formats', async () => {
+  it('rejects invalid schemas for placeholder formats', () => {
     const handler = new NoRegistrationCredentialDefinitionFormatHandler(
       CredentialDefinitionFormat.SD_JWT,
       SdJwtCredentialDefinitionOptionsDto,
-      adapters as never,
     );
 
     expect(() => handler.normalizeSchema({} as never)).toThrow(
       BadRequestException,
     );
-    await expect(
-      handler.prepare('tenant', {
-        name: 'Employee',
-        schema: {},
-      } as CreateCredentialDefinitionDto),
-    ).rejects.toThrow(BadRequestException);
-
-    adapters.resolve.mockResolvedValueOnce({
-      connector: { id: 'connector-id', connectorType: 'unknown' },
-    });
-    await expect(
-      handler.prepare('tenant', {
-        name: 'Employee',
-        schema: { id: 'schema-id' },
-      } as CreateCredentialDefinitionDto),
-    ).rejects.toThrow('Unknown registration connector type');
   });
 });

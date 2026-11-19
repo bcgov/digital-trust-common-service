@@ -261,6 +261,36 @@ export class AnonCredsCredentialDefinitionRegistrationWorker implements OnModule
     await this.persistOutcome(work, OperationState.COMPLETED);
   }
 
+  private nativeSchema(definition: Readonly<Record<string, unknown>>) {
+    const { schema_name, schema_version, properties, attr_names } = definition;
+    if (typeof schema_name !== 'string' || typeof schema_version !== 'string') {
+      throw new ValidationError([
+        'AnonCreds schema name and version are unavailable',
+      ]);
+    }
+    if (
+      properties &&
+      typeof properties === 'object' &&
+      !Array.isArray(properties)
+    ) {
+      return {
+        schema_name,
+        schema_version,
+        attr_names: Object.keys(properties),
+      };
+    }
+    if (Array.isArray(attr_names)) {
+      return {
+        schema_name,
+        schema_version,
+        attr_names: attr_names.filter(
+          (name): name is string => typeof name === 'string',
+        ),
+      };
+    }
+    throw new ValidationError(['AnonCreds schema properties are unavailable']);
+  }
+
   private async advanceSchema(
     work: RegistrationWork,
     backend: RegistrationBackend,
@@ -281,7 +311,7 @@ export class AnonCredsCredentialDefinitionRegistrationWorker implements OnModule
     const found = await backend.port.findSchema(
       backend.context,
       work.registration.issuerId,
-      work.definition.schemaDefinition,
+      this.nativeSchema(work.definition.schemaDefinition),
     );
     if (found) {
       work.registration.schema = {
@@ -380,7 +410,7 @@ export class AnonCredsCredentialDefinitionRegistrationWorker implements OnModule
         submitted = await backend.port.publishSchema(
           backend.context,
           work.registration.issuerId,
-          work.definition.schemaDefinition,
+          this.nativeSchema(work.definition.schemaDefinition),
         );
       } else {
         if (!schemaId) {

@@ -34,6 +34,10 @@ import {
 
 type OptionsDtoClass = new () => object;
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
 function normalizeOptions<T extends object>(
   dtoClass: new () => T,
   options: unknown,
@@ -81,9 +85,64 @@ export class AnonCredsCredentialDefinitionFormatHandler implements CredentialDef
   public normalizeSchema(schema: RegistrationSchema): RegistrationSchema {
     this.validateSchemaSource(schema);
     if (schema.definition !== undefined) {
-      this.validateSchemaDefinition(schema.definition);
+      return {
+        definition: this.normalizeDefinition(schema.definition),
+      };
     }
     return schema;
+  }
+
+  public getClaimsSchema(
+    schemaDefinition: Readonly<Record<string, unknown>>,
+  ): Record<string, unknown> {
+    let properties = schemaDefinition.properties;
+    if (!isRecord(properties) && isRecord(schemaDefinition.attributes)) {
+      properties = this.normalizeDefinition(schemaDefinition).properties;
+    } else if (
+      !isRecord(properties) &&
+      Array.isArray(schemaDefinition.attr_names)
+    ) {
+      properties = Object.fromEntries(
+        schemaDefinition.attr_names
+          .filter((name): name is string => typeof name === 'string')
+          .map((name) => [name, { type: 'string' }]),
+      );
+    }
+    return {
+      type: 'object',
+      properties,
+    };
+  }
+
+  public getMandatoryClaims(
+    schemaDefinition: Readonly<Record<string, unknown>>,
+  ): readonly string[] {
+    const required = schemaDefinition.required;
+    return Array.isArray(required)
+      ? required.filter((name): name is string => typeof name === 'string')
+      : [];
+  }
+
+  public prepareClaimsForValidation(
+    schemaDefinition: Readonly<Record<string, unknown>>,
+    claims: Readonly<Record<string, unknown>>,
+  ): { claims: Record<string, unknown>; omittedClaims: string[] } {
+    const properties = this.getClaimsSchema(schemaDefinition).properties;
+    if (!isRecord(properties)) {
+      return { claims: { ...claims }, omittedClaims: [] };
+    }
+
+    const omittedClaims = Object.keys(properties).filter(
+      (name) => !Object.hasOwn(claims, name),
+    );
+
+    return {
+      claims: {
+        ...Object.fromEntries(omittedClaims.map((name) => [name, ''])),
+        ...claims,
+      },
+      omittedClaims,
+    };
   }
 
   public async prepare(
@@ -92,6 +151,10 @@ export class AnonCredsCredentialDefinitionFormatHandler implements CredentialDef
   ): Promise<PreparedCredentialDefinition> {
     this.validateSchemaSource(dto.schema);
     this.validateIssuerSelection(dto);
+    const inlineDefinition = dto.schema.definition
+      ? this.normalizeDefinition(dto.schema.definition)
+      : undefined;
+    if (inlineDefinition) this.validateSchemaDefinition(inlineDefinition);
 
     const resolved = await this.adapters.resolve(
       tenantId,
@@ -109,12 +172,13 @@ export class AnonCredsCredentialDefinitionFormatHandler implements CredentialDef
       resolved.context,
       dto.issuer,
     );
-    const schema = dto.schema.id
+    const imported = dto.schema.id
       ? await registration.resolveSchema(resolved.context, dto.schema.id)
-      : { definition: dto.schema.definition ?? {}, id: undefined };
-    if (dto.schema.id) {
-      this.validateSchemaDefinition(schema.definition);
-    }
+      : undefined;
+    const schemaDefinition = imported
+      ? this.normalizeDefinition(imported.definition)
+      : (inlineDefinition ?? {});
+    if (imported) this.validateSchemaDefinition(schemaDefinition);
     const connectorTypeValue: string = resolved.connector.connectorType;
     const connectorType = Object.values(CredentialDefinitionConnectorType).find(
       (type) => String(type) === connectorTypeValue,
@@ -126,10 +190,10 @@ export class AnonCredsCredentialDefinitionFormatHandler implements CredentialDef
     return {
       connectorId: resolved.connector.id,
       connectorType,
-      schemaDefinition: schema.definition,
+      schemaDefinition,
       registration: {
         issuerId,
-        schema: schema.id ? { id: schema.id, state: 'finished' } : {},
+        schema: imported?.id ? { id: imported.id, state: 'finished' } : {},
         definition: {},
       },
     };
@@ -173,10 +237,66 @@ export class AnonCredsCredentialDefinitionFormatHandler implements CredentialDef
       .validateSchema(schemaDefinition);
     if (issues.length > 0) {
       throw new BadRequestException({
+        code: 'BAD_REQUEST',
         message: 'Credential definition schema failed format validation',
-        issues,
+        details: issues,
       });
     }
+  }
+
+  private normalizeDefinition(
+    definition: Readonly<Record<string, unknown>>,
+  ): Record<string, unknown> {
+    const schemaName = definition.schema_name;
+    const schemaVersion = definition.schema_version;
+    const attributes = definition.attributes;
+    const schemaProperties = definition.properties;
+    const legacyNames = definition.attr_names;
+    if (
+      typeof schemaName !== 'string' ||
+      typeof schemaVersion !== 'string' ||
+      (!isRecord(attributes) &&
+        !isRecord(schemaProperties) &&
+        !Array.isArray(legacyNames))
+    ) {
+      throw new BadRequestException(
+        'AnonCreds schema requires schema_name, schema_version, and an attributes map',
+      );
+    }
+
+    let properties: Record<string, unknown>;
+    if (isRecord(schemaProperties)) {
+      properties = { ...schemaProperties };
+    } else if (isRecord(attributes)) {
+      properties = Object.fromEntries(
+        Object.entries(attributes).map(([name, type]) => {
+          if (
+            type !== 'string' &&
+            type !== 'integer' &&
+            type !== 'number' &&
+            type !== 'boolean'
+          ) {
+            throw new BadRequestException(
+              `AnonCreds attribute '${name}' must have a string, integer, number, or boolean type`,
+            );
+          }
+          return [name, { type }];
+        }),
+      );
+    } else {
+      properties = Object.fromEntries(
+        (Array.isArray(legacyNames) ? legacyNames : [])
+          .filter((name): name is string => typeof name === 'string')
+          .map((name) => [name, { type: 'string' }]),
+      );
+    }
+
+    return {
+      schema_name: schemaName,
+      schema_version: schemaVersion,
+      type: 'object',
+      properties,
+    };
   }
 
   private validateIssuerSelection(dto: CreateCredentialDefinitionDto): void {
@@ -195,7 +315,6 @@ export class NoRegistrationCredentialDefinitionFormatHandler implements Credenti
   public constructor(
     public readonly format: CredentialDefinitionFormat,
     private readonly optionsDto: OptionsDtoClass,
-    private readonly adapters: AdapterRegistry,
   ) {}
 
   public normalizeOptions(options: unknown): Record<string, unknown> {
@@ -214,47 +333,33 @@ export class NoRegistrationCredentialDefinitionFormatHandler implements Credenti
     return schema;
   }
 
-  public async prepare(
-    tenantId: string,
-    dto: CreateCredentialDefinitionDto,
-  ): Promise<PreparedCredentialDefinition> {
-    if (
-      !dto.schema ||
-      (dto.schema.id !== undefined) === (dto.schema.definition !== undefined)
-    ) {
-      throw new BadRequestException(
-        'Supply schema.id or schema.definition, not both',
-      );
-    }
-
-    const resolved = await this.adapters.resolve(tenantId, undefined, {
-      connectorId: dto.connectorId,
-    });
-    const connectorTypeValue: string = resolved.connector.connectorType;
-    const connectorType = Object.values(CredentialDefinitionConnectorType).find(
-      (type) => String(type) === connectorTypeValue,
-    );
-    if (!connectorType) {
-      throw new BadRequestException('Unknown registration connector type');
-    }
-    return {
-      connectorId: resolved.connector.id,
-      connectorType,
-      schemaDefinition: dto.schema.definition ?? { id: dto.schema.id },
-      registration: null,
-    };
+  public getClaimsSchema(
+    schemaDefinition: Readonly<Record<string, unknown>>,
+  ): Record<string, unknown> {
+    return schemaDefinition;
   }
 
-  public async register(
-    definition: CredentialDefinition,
-    manager: EntityManager,
+  public getMandatoryClaims(
+    schemaDefinition: Readonly<Record<string, unknown>>,
+  ): readonly string[] {
+    const required = schemaDefinition.required;
+    return Array.isArray(required)
+      ? required.filter((name): name is string => typeof name === 'string')
+      : [];
+  }
+
+  public prepare(
+    _tenantId: string,
+    _dto: CreateCredentialDefinitionDto,
+  ): Promise<PreparedCredentialDefinition> {
+    return Promise.reject(new FormatNotSupportedError(this.format));
+  }
+
+  public register(
+    _definition: CredentialDefinition,
+    _manager: EntityManager,
   ): Promise<void> {
-    definition.registrationState = 'ready';
-    await manager.update(
-      CredentialDefinition,
-      { id: definition.id, tenantId: definition.tenantId },
-      { registrationState: 'ready' },
-    );
+    return Promise.reject(new FormatNotSupportedError(this.format));
   }
 }
 
