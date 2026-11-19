@@ -56,7 +56,7 @@ export class EmailWorker implements OnModuleInit {
       data.tenantId,
       data.invitationId,
     );
-    if (!invitation) return;
+    if (!invitation?.tenant) return;
 
     const signInUrl = new URL(
       '/login',
