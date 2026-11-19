@@ -27,12 +27,14 @@ import {
   TenantUserStatus,
 } from '../tenant-user/tenant-user.entity';
 import { TenantUserRepository } from '../tenant-user/tenant-user.repository';
+import { PresentationDefinitionRepository } from '../verification-profile/presentation-definition.repository';
 import { VerificationProfile } from '../verification-profile/verification-profile.entity';
 import { VerificationProfileRepository } from '../verification-profile/verification-profile.repository';
 
 import {
   MULTI_TENANT_USER,
   MOCK_TRACTION_ENDPOINT,
+  SEED_VERIFICATION_PROFILE,
   UI_SPA_CLIENT_ID,
   seedApiClientId,
 } from './dev-seed.data';
@@ -82,6 +84,11 @@ describe('DevSeedService', () => {
     findByNameAndVersion: jest.fn(),
     create: jest.fn(),
     save: jest.fn(),
+  };
+
+  const presentationDefinitionRepo = {
+    findByNameAndVersion: jest.fn(),
+    create: jest.fn(),
   };
 
   const oauthClientRepo = {
@@ -150,6 +157,10 @@ describe('DevSeedService', () => {
         {
           provide: VerificationProfileRepository,
           useValue: verificationProfileRepo,
+        },
+        {
+          provide: PresentationDefinitionRepository,
+          useValue: presentationDefinitionRepo,
         },
         { provide: OAuthClientRepository, useValue: oauthClientRepo },
         { provide: ConnectionRepository, useValue: connectionRepo },
@@ -227,6 +238,8 @@ describe('DevSeedService', () => {
 
     verificationProfileRepo.findByNameAndVersion.mockResolvedValue(null);
     verificationProfileRepo.create.mockResolvedValue({ id: 'vp-1' });
+    presentationDefinitionRepo.findByNameAndVersion.mockResolvedValue(null);
+    presentationDefinitionRepo.create.mockResolvedValue({ id: 'definition-1' });
 
     oauthClientRepo.findByClientId.mockResolvedValue(null);
     oauthClientRepo.create.mockResolvedValue({});
@@ -901,6 +914,45 @@ describe('DevSeedService', () => {
     const summary = await service.run();
 
     expect(summary.verificationProfiles).toBeGreaterThan(0);
-    expect(verificationProfileRepo.create).toHaveBeenCalled();
+    expect(verificationProfileRepo.create).toHaveBeenCalledWith(
+      expect.objectContaining({ presentationDefinitionId: 'definition-1' }),
+    );
+    expect(presentationDefinitionRepo.create).toHaveBeenCalled();
+  });
+
+  it('preserves the linked definition of an existing profile', async () => {
+    verificationProfileRepo.findByNameAndVersion.mockResolvedValue({
+      id: 'existing-profile',
+      presentationDefinitionId: 'existing-definition',
+    });
+
+    await service.run();
+
+    expect(verificationProfileRepo.save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: 'existing-profile',
+        presentationDefinitionId: 'existing-definition',
+      }),
+    );
+    expect(presentationDefinitionRepo.create).not.toHaveBeenCalled();
+    expect(
+      presentationDefinitionRepo.findByNameAndVersion,
+    ).not.toHaveBeenCalled();
+  });
+
+  it('reuses an existing published definition when creating the profile', async () => {
+    presentationDefinitionRepo.findByNameAndVersion.mockResolvedValue({
+      id: 'existing-definition',
+      status: SEED_VERIFICATION_PROFILE.status,
+    });
+
+    await service.run();
+
+    expect(verificationProfileRepo.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        presentationDefinitionId: 'existing-definition',
+      }),
+    );
+    expect(presentationDefinitionRepo.create).not.toHaveBeenCalled();
   });
 });

@@ -17,10 +17,19 @@ export class PresentationDefinitionRepository {
 
   public async create(
     value: Partial<PresentationDefinition>,
-    manager: EntityManager,
+    manager?: EntityManager,
   ): Promise<PresentationDefinition> {
-    const repository = manager.getRepository(PresentationDefinition);
+    const repository =
+      manager?.getRepository(PresentationDefinition) ?? this.repository;
     return repository.save(repository.create(value));
+  }
+
+  public findByNameAndVersion(
+    tenantId: string,
+    name: string,
+    version: string,
+  ): Promise<PresentationDefinition | null> {
+    return this.repository.findOne({ where: { tenantId, name, version } });
   }
 
   public findById(

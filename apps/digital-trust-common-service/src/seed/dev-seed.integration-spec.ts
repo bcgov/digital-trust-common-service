@@ -13,6 +13,7 @@ import {
   UI_SPA_CLIENT_ID,
   seedApiClientId,
   SEED_TENANTS,
+  SEED_VERIFICATION_PROFILE,
   UI_SPA_TENANT_SLUG,
   uiSpaOrigin,
   uiSpaPostLogoutRedirectUris,
@@ -167,9 +168,44 @@ describe('DevSeedService integration', () => {
     expect(await countRows('tenant_user', multiTenantWhere)).toBe(3);
     expect(oauthClientCount).toBe(3);
 
+    const profiles = await queryDataSource.query<
+      Array<{
+        id: string;
+        tenant_id: string;
+        presentation_definition_id: string;
+      }>
+    >(
+      `SELECT vp.id, vp.tenant_id, vp.presentation_definition_id
+       FROM verification_profile vp
+       JOIN presentation_definition pd
+         ON pd.id = vp.presentation_definition_id AND pd.tenant_id = vp.tenant_id
+       JOIN tenant t ON t.id = vp.tenant_id
+       WHERE t.slug IN ('acme-corp', 'test-org', 'suspended-co')
+         AND vp.name = $1 AND vp.version = $2
+       ORDER BY vp.id`,
+      [SEED_VERIFICATION_PROFILE.name, SEED_VERIFICATION_PROFILE.version],
+    );
+    expect(profiles).toHaveLength(first.verificationProfiles);
+
     const second = await seedService.run();
 
     expect(second.createdOAuthClients).toHaveLength(0);
+    const reseededProfiles = await queryDataSource.query<
+      Array<{
+        id: string;
+        tenant_id: string;
+        presentation_definition_id: string;
+      }>
+    >(
+      `SELECT vp.id, vp.tenant_id, vp.presentation_definition_id
+       FROM verification_profile vp
+       JOIN tenant t ON t.id = vp.tenant_id
+       WHERE t.slug IN ('acme-corp', 'test-org', 'suspended-co')
+         AND vp.name = $1 AND vp.version = $2
+       ORDER BY vp.id`,
+      [SEED_VERIFICATION_PROFILE.name, SEED_VERIFICATION_PROFILE.version],
+    );
+    expect(reseededProfiles).toEqual(profiles);
     expect(
       await countRows(
         'tenant',
