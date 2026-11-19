@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { DataSource, QueryRunner } from 'typeorm';
 
 import { ConfigureIssuanceProfileClaims1794328787660 } from './000044_configure-issuance-profile-claims';
+import { RestoreIssuanceDeliveryDefault1795099078637 } from './000046_restore-issuance-delivery-default';
 
 describe('issuance profile claims migration', () => {
   const schema = `profile_claims_${randomUUID().replaceAll('-', '')}`;
@@ -104,5 +105,21 @@ describe('issuance profile claims migration', () => {
     expect(columns).not.toEqual(
       expect.arrayContaining([{ column_name: 'delivery' }]),
     );
+  });
+
+  it('lets older writers omit delivery after the upgrade', async () => {
+    const restore = new RestoreIssuanceDeliveryDefault1795099078637();
+    await migration.up(runner);
+    await restore.up(runner);
+    const rows: unknown = await runner.query(
+      'INSERT INTO issuance_profile (id, credential_definition_id) VALUES (1, 1) RETURNING delivery',
+    );
+    expect(rows).toEqual([{ delivery: { protocol: 'didcomm-v1' } }]);
+    await restore.down(runner);
+    await expect(
+      runner.query(
+        'INSERT INTO issuance_profile (id, credential_definition_id) VALUES (2, 1)',
+      ),
+    ).rejects.toMatchObject({ code: '23502', column: 'delivery' });
   });
 });
