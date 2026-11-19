@@ -197,7 +197,7 @@ describe('Credential offer (e2e)', () => {
         schemaDefinition: {
           schema_name: 'Diploma',
           schema_version: '1.0',
-          properties: { given_name: { type: 'string' } },
+          attributes: { given_name: 'string' },
         },
         externalId: 'cred-def-external-e2e',
         connectorType: CredentialDefinitionConnectorType.TRACTION,
@@ -237,7 +237,7 @@ describe('Credential offer (e2e)', () => {
     await operationRepo.query('DELETE FROM operation WHERE tenant_id = $1', [
       tenant.id,
     ]);
-    await credentialDefinitionRepo.delete(credentialDefinition.id);
+    await credentialDefinitionRepo.delete({ tenantId: tenant.id });
     await connectionRepo.delete({ tenantId: tenant.id });
     await connectorRepo.delete({ tenantId: tenant.id });
     await tenantRepo.delete(tenant.id);
@@ -323,6 +323,72 @@ describe('Credential offer (e2e)', () => {
     });
   };
 
+  it('saves an empty AnonCreds draft, then edits and registers the same definition', async () => {
+    const root = `${API_BASE_PATH}/tenants/${tenant.id}/credential-definitions`;
+    const schema = {
+      schema_name: 'Employee badge',
+      schema_version: '2.0',
+      attributes: {},
+    };
+    const registration = {
+      name: 'Employee badge',
+      connector_id: connection.connectorId,
+      options: { format: 'anoncreds' },
+    };
+    const draft = await request(app.getHttpServer())
+      .post(root)
+      .send({
+        ...registration,
+        status: 'draft',
+        schema: { definition: schema },
+      })
+      .expect(201);
+    const id = (draft.body as { id: string }).id;
+    await request(app.getHttpServer())
+      .post(root)
+      .send({ ...registration, schema: { definition: schema } })
+      .expect(400);
+    expect(backendRequest).not.toHaveBeenCalled();
+
+    const edited = { ...schema, attributes: { age: 'integer' } };
+    await request(app.getHttpServer())
+      .patch(`${root}/${id}`)
+      .send({ schema_definition: edited })
+      .expect(200);
+    const stored = await credentialDefinitionRepo.findOneByOrFail({
+      id,
+      tenantId: tenant.id,
+    });
+    expect(stored.schemaDefinition).toEqual({
+      schema_name: schema.schema_name,
+      schema_version: schema.schema_version,
+      type: 'object',
+      properties: { age: { type: 'integer' } },
+    });
+
+    traction.onModuleInit();
+    backendRequest
+      .mockResolvedValueOnce({
+        data: { settings: { 'wallet.type': 'askar-anoncreds' } },
+      })
+      .mockResolvedValueOnce({
+        data: { result: { did: 'issuer', verkey: 'verification-key' } },
+      })
+      .mockResolvedValueOnce({ data: { verkey: 'verification-key' } });
+    await request(app.getHttpServer())
+      .post(root)
+      .send({ ...registration, schema: { definition: edited } })
+      .expect(202);
+    expect(
+      await credentialDefinitionRepo.findOneByOrFail({
+        id,
+        tenantId: tenant.id,
+      }),
+    ).toMatchObject({
+      registrationState: 'pending',
+      schemaDefinition: stored.schemaDefinition,
+    });
+  });
   it('creates, publishes, and offers through a profile with required claims and inherited delivery', async () => {
     prepareBackend();
     const body = {
@@ -409,10 +475,17 @@ describe('Credential offer (e2e)', () => {
         name: 'profile-operations',
         version: '1.0',
         credential_definition_id: credentialDefinition.id,
-        delivery: { protocol: 'didcomm-v1' },
+        delivery: {},
       })
       .expect(201);
     const id = (created.body as { id: string }).id;
+    expect(created.body).toMatchObject({
+      delivery: { protocol: 'didcomm-v1' },
+    });
+    await request(app.getHttpServer())
+      .patch(`${root}/${id}`)
+      .send({ delivery: { protocol: null } })
+      .expect(400);
     const updated = await request(app.getHttpServer())
       .patch(`${root}/${id}`)
       .send({ description: 'Updated profile' })
@@ -467,9 +540,19 @@ describe('Credential offer (e2e)', () => {
       .post(`${API_BASE_PATH}/tenants/${tenant.id}/credentials/offer`)
       .send({
         ...offerBody(),
-        claims: { given_name: '' },
+        claims: { given_name: 'Bob' },
       })
-      .expect(400);
+      .expect(400)
+      .expect(
+        ({
+          body,
+        }: {
+          body: { error: { code: string; details: unknown[] } };
+        }) => {
+          expect(body.error.code).toBe('BAD_REQUEST');
+          expect(body.error.details[0]).toMatchObject({ path: ['given_name'] });
+        },
+      );
     expect(backendRequest).not.toHaveBeenCalled();
     expect(await operationRepo.countBy({ tenantId: tenant.id })).toBe(0);
     expect(await exchangeRepo.countBy({ tenantId: tenant.id })).toBe(0);

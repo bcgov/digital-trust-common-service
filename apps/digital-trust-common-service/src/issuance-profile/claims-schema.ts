@@ -28,7 +28,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function fail(message: string, issues: ValidationIssue[] = []): never {
-  throw new BadRequestException({ message, issues });
+  throw new BadRequestException({
+    code: 'BAD_REQUEST',
+    message,
+    details: issues,
+  });
 }
 
 function equal(left: unknown, right: unknown): boolean {

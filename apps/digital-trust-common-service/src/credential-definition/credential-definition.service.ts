@@ -16,6 +16,7 @@ import {
 } from '@nestjs/common';
 import axios from 'axios';
 import { DataSource, QueryFailedError } from 'typeorm';
+import type { QueryDeepPartialEntity } from 'typeorm/query-builder/QueryPartialEntity';
 
 import { AuditAction } from '../audit-log/audit-log.entity';
 import { DomainAuditService } from '../audit-log/domain-audit.service';
@@ -377,7 +378,10 @@ export class CredentialDefinitionService {
       definition.connectorId !== prepared.connectorId ||
       definition.connectorType !== prepared.connectorType ||
       !isDeepStrictEqual(
-        definition.schemaDefinition,
+        isLocalDraft
+          ? handler.normalizeSchema({ definition: definition.schemaDefinition })
+              .definition
+          : definition.schemaDefinition,
         prepared.schemaDefinition,
       ) ||
       (dto.schema.id !== undefined &&
@@ -400,6 +404,7 @@ export class CredentialDefinitionService {
         dto,
         {
           status: CredentialDefinitionStatus.PUBLISHED,
+          schemaDefinition: prepared.schemaDefinition,
           registration: prepared.registration,
         },
       );
@@ -466,7 +471,9 @@ export class CredentialDefinitionService {
     definition: CredentialDefinition,
     tenantId: string,
     dto: CreateCredentialDefinitionDto,
-    changes: Partial<Pick<CredentialDefinition, 'status' | 'registration'>>,
+    changes: Partial<
+      Pick<CredentialDefinition, 'status' | 'registration' | 'schemaDefinition'>
+    >,
   ): Promise<{
     definition: CredentialDefinition;
     operation: Operation;
@@ -487,7 +494,7 @@ export class CredentialDefinitionService {
     await manager.update(
       CredentialDefinition,
       { id: definition.id, tenantId },
-      updates,
+      updates as QueryDeepPartialEntity<CredentialDefinition>,
     );
     operation.result = { credential_definition_id: definition.id };
     await manager.save(Operation, operation);
@@ -706,8 +713,19 @@ export class CredentialDefinitionService {
               'schema_definition must be an object.',
             );
           }
-          credentialDefinition.schemaDefinition = dto.schemaDefinition;
-          const schemaVersion = dto.schemaDefinition.version;
+          const handler = this.formatHandlers.find(
+            (candidate) => candidate.format === credentialDefinition.format,
+          );
+          if (!handler) {
+            this.registrationError(
+              new FormatNotSupportedError(credentialDefinition.format),
+            );
+          }
+          const definition = handler.normalizeSchema({
+            definition: dto.schemaDefinition,
+          }).definition!;
+          credentialDefinition.schemaDefinition = definition;
+          const schemaVersion = definition.version ?? definition.schema_version;
           if (
             typeof schemaVersion === 'string' &&
             schemaVersion.trim().length > 0

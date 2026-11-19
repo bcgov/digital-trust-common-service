@@ -1849,6 +1849,8 @@ export interface components {
                 message: string;
                 details?: {
                     field?: string;
+                    /** @description Property names and zero-based array indices locating a claim validation issue. */
+                    path?: (string | number)[];
                     expected?: string;
                     actual?: string;
                     message?: string;

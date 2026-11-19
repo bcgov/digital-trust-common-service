@@ -48,7 +48,7 @@ describe('profile claim schemas', () => {
       expect(error).toBeInstanceOf(BadRequestException);
       expect((error as BadRequestException).getResponse()).toMatchObject({
         message: 'Claims failed validation',
-        issues: [
+        details: [
           {
             path: [namespace, 'family_name'],
             message: "must have required property 'family_name'",
@@ -71,7 +71,7 @@ describe('profile claim schemas', () => {
       throw new Error('Expected claims validation to fail');
     } catch (error) {
       expect((error as BadRequestException).getResponse()).toMatchObject({
-        issues: [{ path: ['nickname'] }],
+        details: [{ path: ['nickname'] }],
       });
     }
   });
@@ -97,7 +97,7 @@ describe('profile claim schemas', () => {
       throw new Error('Expected claims validation to fail');
     } catch (error) {
       expect((error as BadRequestException).getResponse()).toMatchObject({
-        issues: [{ path: ['vehicles', 0, 'category'] }],
+        details: [{ path: ['vehicles', 0, 'category'] }],
       });
     }
   });
@@ -163,7 +163,7 @@ describe('profile claim schemas', () => {
       expect(error).toBeInstanceOf(BadRequestException);
       expect((error as BadRequestException).getResponse()).toMatchObject({
         message: 'Claims failed validation',
-        issues: [{ path: Array.from({ length: 33 }, () => 'nested') }],
+        details: [{ path: Array.from({ length: 33 }, () => 'nested') }],
       });
     }
   });

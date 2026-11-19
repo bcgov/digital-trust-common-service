@@ -170,7 +170,17 @@ describe('CredentialDefinition update concurrency', () => {
         { provide: OperationService, useValue: {} },
         { provide: JobsService, useValue: {} },
         { provide: DataSource, useValue: source },
-        { provide: CREDENTIAL_DEFINITION_FORMAT_HANDLERS, useValue: [] },
+        {
+          provide: CREDENTIAL_DEFINITION_FORMAT_HANDLERS,
+          useValue: [
+            {
+              format: CredentialDefinitionFormat.ANONCREDS,
+              normalizeSchema: (schema: {
+                definition: Record<string, unknown>;
+              }) => schema,
+            },
+          ],
+        },
         {
           provide: FormatValidatorRegistry,
           useValue: {

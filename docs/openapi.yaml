@@ -3494,6 +3494,13 @@ components:
                 properties:
                   field:
                     type: string
+                  path:
+                    type: array
+                    description: Property names and zero-based array indices locating a claim validation issue.
+                    items:
+                      oneOf:
+                        - type: string
+                        - type: integer
                   expected:
                     type: string
                   actual:

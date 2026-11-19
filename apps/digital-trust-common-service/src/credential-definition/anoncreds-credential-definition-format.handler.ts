@@ -96,7 +96,12 @@ export class AnonCredsCredentialDefinitionFormatHandler implements CredentialDef
     schemaDefinition: Readonly<Record<string, unknown>>,
   ): Record<string, unknown> {
     let properties = schemaDefinition.properties;
-    if (!isRecord(properties) && Array.isArray(schemaDefinition.attr_names)) {
+    if (!isRecord(properties) && isRecord(schemaDefinition.attributes)) {
+      properties = this.normalizeDefinition(schemaDefinition).properties;
+    } else if (
+      !isRecord(properties) &&
+      Array.isArray(schemaDefinition.attr_names)
+    ) {
       properties = Object.fromEntries(
         schemaDefinition.attr_names
           .filter((name): name is string => typeof name === 'string')
@@ -146,6 +151,10 @@ export class AnonCredsCredentialDefinitionFormatHandler implements CredentialDef
   ): Promise<PreparedCredentialDefinition> {
     this.validateSchemaSource(dto.schema);
     this.validateIssuerSelection(dto);
+    const inlineDefinition = dto.schema.definition
+      ? this.normalizeDefinition(dto.schema.definition)
+      : undefined;
+    if (inlineDefinition) this.validateSchemaDefinition(inlineDefinition);
 
     const resolved = await this.adapters.resolve(
       tenantId,
@@ -163,16 +172,13 @@ export class AnonCredsCredentialDefinitionFormatHandler implements CredentialDef
       resolved.context,
       dto.issuer,
     );
-    const resolvedSchema = dto.schema.id
+    const imported = dto.schema.id
       ? await registration.resolveSchema(resolved.context, dto.schema.id)
-      : { definition: dto.schema.definition ?? {}, id: undefined };
-    const schema = {
-      ...resolvedSchema,
-      definition: this.normalizeDefinition(resolvedSchema.definition),
-    };
-    if (dto.schema.id) {
-      this.validateSchemaDefinition(schema.definition);
-    }
+      : undefined;
+    const schemaDefinition = imported
+      ? this.normalizeDefinition(imported.definition)
+      : (inlineDefinition ?? {});
+    if (imported) this.validateSchemaDefinition(schemaDefinition);
     const connectorTypeValue: string = resolved.connector.connectorType;
     const connectorType = Object.values(CredentialDefinitionConnectorType).find(
       (type) => String(type) === connectorTypeValue,
@@ -184,10 +190,10 @@ export class AnonCredsCredentialDefinitionFormatHandler implements CredentialDef
     return {
       connectorId: resolved.connector.id,
       connectorType,
-      schemaDefinition: schema.definition,
+      schemaDefinition,
       registration: {
         issuerId,
-        schema: schema.id ? { id: schema.id, state: 'finished' } : {},
+        schema: imported?.id ? { id: imported.id, state: 'finished' } : {},
         definition: {},
       },
     };
@@ -231,8 +237,9 @@ export class AnonCredsCredentialDefinitionFormatHandler implements CredentialDef
       .validateSchema(schemaDefinition);
     if (issues.length > 0) {
       throw new BadRequestException({
+        code: 'BAD_REQUEST',
         message: 'Credential definition schema failed format validation',
-        issues,
+        details: issues,
       });
     }
   }
@@ -252,40 +259,44 @@ export class AnonCredsCredentialDefinitionFormatHandler implements CredentialDef
         !isRecord(schemaProperties) &&
         !Array.isArray(legacyNames))
     ) {
-      this.validateSchemaDefinition(definition);
+      throw new BadRequestException(
+        'AnonCreds schema requires schema_name, schema_version, and an attributes map',
+      );
     }
 
-    const properties: Record<string, unknown> = {};
+    let properties: Record<string, unknown>;
     if (isRecord(schemaProperties)) {
-      Object.assign(properties, schemaProperties);
+      properties = { ...schemaProperties };
     } else if (isRecord(attributes)) {
-      for (const [name, type] of Object.entries(attributes)) {
-        if (
-          type !== 'string' &&
-          type !== 'integer' &&
-          type !== 'number' &&
-          type !== 'boolean'
-        ) {
-          throw new BadRequestException(
-            `AnonCreds attribute '${name}' must have a string, integer, number, or boolean type`,
-          );
-        }
-        properties[name] = { type };
-      }
-    } else if (Array.isArray(legacyNames)) {
-      for (const name of legacyNames) {
-        if (typeof name === 'string') properties[name] = { type: 'string' };
-      }
+      properties = Object.fromEntries(
+        Object.entries(attributes).map(([name, type]) => {
+          if (
+            type !== 'string' &&
+            type !== 'integer' &&
+            type !== 'number' &&
+            type !== 'boolean'
+          ) {
+            throw new BadRequestException(
+              `AnonCreds attribute '${name}' must have a string, integer, number, or boolean type`,
+            );
+          }
+          return [name, { type }];
+        }),
+      );
+    } else {
+      properties = Object.fromEntries(
+        (Array.isArray(legacyNames) ? legacyNames : [])
+          .filter((name): name is string => typeof name === 'string')
+          .map((name) => [name, { type: 'string' }]),
+      );
     }
 
-    const normalized = {
+    return {
       schema_name: schemaName,
       schema_version: schemaVersion,
       type: 'object',
       properties,
     };
-    this.validateSchemaDefinition(normalized);
-    return normalized;
   }
 
   private validateIssuerSelection(dto: CreateCredentialDefinitionDto): void {
