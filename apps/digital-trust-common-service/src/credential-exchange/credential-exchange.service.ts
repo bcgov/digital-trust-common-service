@@ -34,6 +34,7 @@ import {
 import { OperationRepository } from '../operation/operation.repository';
 import { OperationService } from '../operation/operation.service';
 import { ProtocolStateChangeService } from '../protocol-state-change/protocol-state-change.service';
+import { credentialOfferSteps } from '../protocol-state-change/state-mapping';
 
 import { CredentialExchange } from './credential-exchange.entity';
 import { CredentialExchangeRepository } from './credential-exchange.repository';
@@ -221,6 +222,17 @@ export class CredentialExchangeService {
         undefined,
         [{ type: 'issue', state: OperationStepState.PROCESSING }],
       );
+      await this.operations.updateOfferStepsForExchange(
+        tenantId,
+        id,
+        credentialOfferSteps(CredentialExchangeState.RequestReceived).map(
+          (step) =>
+            step.type === 'issue'
+              ? { ...step, state: OperationStepState.PROCESSING }
+              : step,
+        ),
+        manager,
+      );
       await this.audit.emit(
         {
           tenantId,
@@ -269,6 +281,14 @@ export class CredentialExchangeService {
           if (!failed) return;
           locked.issueSubmission = 'not-submitted';
           await this.exchanges.save(locked, manager);
+          if (locked.state === CredentialExchangeState.RequestReceived) {
+            await this.operations.updateOfferStepsForExchange(
+              tenantId,
+              id,
+              credentialOfferSteps(CredentialExchangeState.RequestReceived),
+              manager,
+            );
+          }
           await this.jobs.sendInTransaction(
             manager,
             JOB_QUEUES.WEBHOOK_DISPATCH,

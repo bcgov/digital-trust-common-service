@@ -4,6 +4,7 @@ import { EntityManager, In, Repository, SelectQueryBuilder } from 'typeorm';
 
 import type { Cursor } from '../common/cursor-pagination';
 
+import { OPERATION_TYPE } from './operation-type.constants';
 import type { OperationStep } from './operation.entity';
 import { Operation, OperationResult, OperationState } from './operation.entity';
 
@@ -286,6 +287,24 @@ export class OperationRepository {
     return (result.affected ?? 0) > 0;
   }
 
+  public async updateOfferStepsForExchange(
+    tenantId: string,
+    exchangeId: string,
+    steps: OperationStep[],
+    manager: EntityManager,
+  ): Promise<void> {
+    await manager.update(
+      Operation,
+      {
+        tenantId,
+        exchangeId,
+        type: OPERATION_TYPE.CREDENTIAL_OFFER,
+        state: In([OperationState.PENDING, OperationState.PROCESSING]),
+      },
+      { steps },
+    );
+  }
+
   public async updateResult(
     id: string,
     result: OperationResult,
@@ -383,7 +402,7 @@ export class OperationRepository {
   }
 
   /**
-   * Fingerprints tenant-scoped child IDs and states in stable ID order for
+   * Fingerprints tenant-scoped child IDs, states and steps in stable ID order for
    * long-poll change detection, including changes that leave state counts equal.
    * Empty batches hash an empty string; MD5 is not used for security here.
    */
@@ -394,7 +413,7 @@ export class OperationRepository {
     const row = await this.repo
       .createQueryBuilder('op')
       .select(
-        `md5(COALESCE(string_agg(op.id::text || ':' || op.state::text, ',' ORDER BY op.id), ''))`,
+        `md5(COALESCE(string_agg(op.id::text || ':' || op.state::text || ':' || op.steps::text, ',' ORDER BY op.id), ''))`,
         'fingerprint',
       )
       .where('op.tenant_id = :tenantId', { tenantId })

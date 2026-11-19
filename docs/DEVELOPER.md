@@ -1421,9 +1421,10 @@ default limit 20 and maximum 100. Cursors use the shared cursor-pagination
 utility.
 
 Status reads accept `Prefer: wait=30` to wait for the requested operation's
-state to change, for standalone operations and batch parents alike. Batch-item
-reads additionally support the same preference, watching the parent and all
-tenant-scoped child states, not just the requested page or state filter.
+state or steps to change, for standalone operations and batch parents alike.
+Batch-item reads additionally support the same preference, watching the parent
+and all tenant-scoped child states and steps, not just the requested page or
+state filter.
 The wait is capped at 30 seconds; `wait=0` or no wait preference returns
 immediately. Invalid or duplicate wait values return 400. Checks run once per
 second. Terminal operations return immediately. Timeout returns HTTP 200 with

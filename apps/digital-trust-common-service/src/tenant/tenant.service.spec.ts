@@ -355,7 +355,7 @@ describe('TenantService', () => {
 
       const result = await service.findById(id);
 
-      expect(mockFindById).toHaveBeenCalledWith(id);
+      expect(mockFindById).toHaveBeenCalledWith(id, undefined);
       expect(result).toEqual(mockTenant);
     });
 
@@ -364,7 +364,7 @@ describe('TenantService', () => {
       mockFindById.mockResolvedValue(null);
 
       await expect(service.findById(id)).rejects.toThrow(NotFoundException);
-      expect(mockFindById).toHaveBeenCalledWith(id);
+      expect(mockFindById).toHaveBeenCalledWith(id, undefined);
     });
   });
 

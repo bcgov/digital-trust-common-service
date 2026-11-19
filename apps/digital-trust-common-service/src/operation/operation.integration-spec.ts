@@ -433,7 +433,10 @@ describe('operation tenant isolation integration', () => {
     expect(fingerprint).not.toBe(beforeEmpty);
     await operationRepo.update(
       { id: children[2].id, tenantId: tenantBId },
-      { state: OperationState.FAILED },
+      {
+        state: OperationState.FAILED,
+        steps: [{ type: 'issue', state: OperationStepState.PROCESSING }],
+      },
     );
     expect(
       await repository.findBatchStateFingerprintForTenant(parent.id, tenantAId),
@@ -456,6 +459,15 @@ describe('operation tenant isolation integration', () => {
     expect(
       await repository.findBatchStateFingerprintForTenant(parent.id, tenantAId),
     ).not.toBe(fingerprint);
+    const afterStateChange =
+      await repository.findBatchStateFingerprintForTenant(parent.id, tenantAId);
+    await operationRepo.update(
+      { id: children[0].id, tenantId: tenantAId },
+      { steps: [{ type: 'issue', state: OperationStepState.PROCESSING }] },
+    );
+    expect(
+      await repository.findBatchStateFingerprintForTenant(parent.id, tenantAId),
+    ).not.toBe(afterStateChange);
     expect(
       await repository.findBatchStateFingerprintForTenant(
         tenantAOperationId,

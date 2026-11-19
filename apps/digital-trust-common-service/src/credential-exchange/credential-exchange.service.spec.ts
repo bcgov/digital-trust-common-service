@@ -50,6 +50,7 @@ describe('CredentialExchangeService', () => {
   const resolveIdentity = jest.fn();
   const resolveAdapter = jest.fn();
   const findOperation = jest.fn();
+  const updateOfferStepsForExchange = jest.fn();
   const createOperation = jest.fn();
   const transitionOperation = jest.fn();
   const getOperation = jest.fn();
@@ -132,6 +133,7 @@ describe('CredentialExchangeService', () => {
       context,
     });
     createOperation.mockResolvedValue(operation());
+    updateOfferStepsForExchange.mockResolvedValue(undefined);
     transitionOperation.mockResolvedValue(
       operation({ state: OperationState.PROCESSING }),
     );
@@ -159,7 +161,10 @@ describe('CredentialExchangeService', () => {
         resolveIdentity,
       } as unknown as ConnectionService,
       { resolve: resolveAdapter } as unknown as AdapterRegistry,
-      { findByIdForTenant: findOperation } as unknown as OperationRepository,
+      {
+        findByIdForTenant: findOperation,
+        updateOfferStepsForExchange,
+      } as unknown as OperationRepository,
       {
         createOperation,
         transitionStateIfForward: transitionOperation,
