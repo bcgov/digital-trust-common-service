@@ -171,9 +171,8 @@ describe('TenantOnboardingSetupPage', () => {
     expect(createRequest).toHaveBeenCalledExactlyOnceWith({
       name: 'Staff badge',
       version: '1.0',
-      protocol_hint: 'auto',
       credential_definition_id: profile.credential_definition_id,
-      attribute_schema: {},
+      delivery: { protocol: 'didcomm-v1' },
     });
     expect(publishAttempts).toBe(2);
     await waitFor(() =>
@@ -344,7 +343,9 @@ describe('TenantOnboardingSetupPage', () => {
     await user.click(screen.getByRole('button', { name: 'Next: Attributes' }));
     await user.type(screen.getByLabelText('Attribute 1 name'), 'employee_id');
     await user.click(screen.getByRole('button', { name: 'Next: Review' }));
-    await user.click(screen.getByRole('button', { name: 'Publish' }));
+    await user.click(
+      screen.getByRole('button', { name: 'Publish configuration' }),
+    );
 
     expect(
       await screen.findByText(
@@ -362,9 +363,14 @@ describe('TenantOnboardingSetupPage', () => {
       expect.objectContaining({
         name: 'Onboarding credential',
         status: 'published',
-        schema: expect.objectContaining({
-          definition: expect.objectContaining({ attr_names: ['employee_id'] }),
-        }),
+        schema: {
+          definition: {
+            attributes: { employee_id: 'string' },
+            schema_name: 'Onboarding credential',
+            schema_version: '1.0',
+            version: '1.0',
+          },
+        },
       }),
     );
   }, 12_000);
@@ -742,7 +748,9 @@ describe('TenantOnboardingSetupPage', () => {
     await user.click(screen.getByRole('button', { name: 'Next: Attributes' }));
     await user.type(screen.getByLabelText('Attribute 1 name'), 'employee_id');
     await user.click(screen.getByRole('button', { name: 'Next: Review' }));
-    await user.click(screen.getByRole('button', { name: 'Publish' }));
+    await user.click(
+      screen.getByRole('button', { name: 'Publish configuration' }),
+    );
     await screen.findByText(
       'Credential definition registration is in progress. This page will advance when it is ready.',
     );
