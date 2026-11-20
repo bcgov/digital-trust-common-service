@@ -109,7 +109,9 @@ export class WebhookRegistrationController {
     @CurrentAuth() auth: AuthContext,
   ): Promise<WebhookRegistrationResponseDto[]> {
     const registrations = await this.registrations.findByTenant(tenantId, auth);
-    return registrations.map(WebhookRegistrationResponseDto.fromEntity);
+    return registrations.map((registration) =>
+      WebhookRegistrationResponseDto.fromEntity(registration),
+    );
   }
 
   @Delete(':id')

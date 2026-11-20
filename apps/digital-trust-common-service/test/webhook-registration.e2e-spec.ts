@@ -213,30 +213,30 @@ describe('Webhook registration API (e2e)', () => {
       .expect(201)
       .expect('cache-control', 'no-store');
 
-    expect(response.body).toMatchObject({
+    const body = response.body as { id: string; signing_secret: string };
+    expect(body).toMatchObject({
       tenant_id: tenantId,
       endpoint_url: 'https://93.184.216.34/events',
       events: [WebhookEvent.CREDENTIAL_ISSUED],
       status: 'active',
-      signing_secret: expect.stringMatching(/^[A-Za-z0-9_-]{43}$/),
     });
-    expect(response.body).not.toHaveProperty('credentials_encrypted');
-    expect(response.body).not.toHaveProperty('key_version');
+    expect(body.signing_secret).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(body).not.toHaveProperty('credentials_encrypted');
+    expect(body).not.toHaveProperty('key_version');
 
     const listed = await request(app.getHttpServer())
       .get(webhooksPath(tenantId))
       .set('Authorization', `Bearer ${token}`)
       .expect(200);
-    expect(listed.body).toHaveLength(1);
-    expect(listed.body[0]).toMatchObject({
-      id: response.body.id,
+    const registrations = listed.body as Array<{ id: string }>;
+    expect(registrations).toHaveLength(1);
+    expect(registrations[0]).toMatchObject({
+      id: body.id,
       tenant_id: tenantId,
       status: 'active',
     });
-    expect(listed.body[0]).not.toHaveProperty('signing_secret');
-    expect(JSON.stringify(listed.body)).not.toContain(
-      response.body.signing_secret,
-    );
+    expect(registrations[0]).not.toHaveProperty('signing_secret');
+    expect(JSON.stringify(registrations)).not.toContain(body.signing_secret);
   });
 
   it('requires webhooks:manage for each operation', async () => {
@@ -254,7 +254,8 @@ describe('Webhook registration API (e2e)', () => {
         events: [WebhookEvent.CREDENTIAL_ISSUED],
       })
       .expect(403);
-    expect(created.body.error.code).toBe('INSUFFICIENT_SCOPE');
+    const body = created.body as { error: { code: string } };
+    expect(body.error.code).toBe('INSUFFICIENT_SCOPE');
 
     await request(app.getHttpServer())
       .get(route)
@@ -281,17 +282,18 @@ describe('Webhook registration API (e2e)', () => {
         events: [WebhookEvent.CONNECTION_ESTABLISHED],
       })
       .expect(201);
+    const { id } = created.body as { id: string };
 
     await request(app.getHttpServer())
       .get(webhooksPath(otherTenantId))
       .set('Authorization', `Bearer ${ownToken}`)
       .expect(403);
     await request(app.getHttpServer())
-      .delete(`${webhooksPath(tenantId)}/${created.body.id}`)
+      .delete(`${webhooksPath(tenantId)}/${id}`)
       .set('Authorization', `Bearer ${ownToken}`)
       .expect(404);
     await request(app.getHttpServer())
-      .delete(`${webhooksPath(otherTenantId)}/${created.body.id}`)
+      .delete(`${webhooksPath(otherTenantId)}/${id}`)
       .set('Authorization', `Bearer ${otherToken}`)
       .expect(204);
   });
@@ -331,9 +333,10 @@ describe('Webhook registration API (e2e)', () => {
         events: [WebhookEvent.CREDENTIAL_ISSUED],
       })
       .expect(201);
+    const { id } = created.body as { id: string };
 
     await request(app.getHttpServer())
-      .delete(`${route}/${created.body.id}`)
+      .delete(`${route}/${id}`)
       .set('Authorization', `Bearer ${token}`)
       .expect(204);
     await request(app.getHttpServer())

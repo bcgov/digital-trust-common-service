@@ -5,12 +5,12 @@ import { HEADERS_METADATA, PATH_METADATA } from '@nestjs/common/constants';
 
 import { CreateWebhookRegistrationResponseDto } from './dto/create-webhook-registration-response.dto';
 import { WebhookRegistrationResponseDto } from './dto/webhook-registration-response.dto';
+import { WebhookRegistrationController } from './webhook-registration.controller';
 import { WebhookRegistration } from './webhook-registration.entity';
 import {
   WebhookEvent,
   WebhookRegistrationStatus,
 } from './webhook-registration.enums';
-import { WebhookRegistrationController } from './webhook-registration.controller';
 import { WebhookRegistrationService } from './webhook-registration.service';
 
 describe('WebhookRegistrationController', () => {
@@ -85,7 +85,10 @@ describe('WebhookRegistrationController', () => {
     expect(
       Reflect.getMetadata(
         HEADERS_METADATA,
-        WebhookRegistrationController.prototype.create,
+        Reflect.get(
+          WebhookRegistrationController.prototype,
+          'create',
+        ) as object,
       ),
     ).toEqual([{ name: 'Cache-Control', value: 'no-store' }]);
   });
