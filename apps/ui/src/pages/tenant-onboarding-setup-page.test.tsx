@@ -508,6 +508,17 @@ describe('TenantOnboardingSetupPage', () => {
   it('resumes a saved embedded credential-definition draft from the tenant overview', async () => {
     const user = userEvent.setup();
     const draftId = 'resumable-definition-draft';
+    const draftRequest = vi.fn();
+    const updateRequest = vi.fn();
+    let definitionsRequests = 0;
+    let releaseBackgroundRefetch = () => {};
+    let signalBackgroundRefetch: () => void = () => {};
+    const backgroundRefetchStarted = new Promise<void>((resolve) => {
+      signalBackgroundRefetch = resolve;
+    });
+    const backgroundRefetchGate = new Promise<void>((resolve) => {
+      releaseBackgroundRefetch = resolve;
+    });
     const draft = {
       id: draftId,
       tenant_id: tenantId,
@@ -555,11 +566,31 @@ describe('TenantOnboardingSetupPage', () => {
           progress_percent: 25,
         }),
       ),
-      http.get(`${API_BASE_PATH}/tenants/:id/credential-definitions`, () =>
-        HttpResponse.json([]),
+      http.get(
+        `${API_BASE_PATH}/tenants/:id/credential-definitions`,
+        async () => {
+          definitionsRequests += 1;
+          if (definitionsRequests > 1) {
+            signalBackgroundRefetch();
+            await backgroundRefetchGate;
+            return HttpResponse.json([draft]);
+          }
+          return HttpResponse.json([]);
+        },
       ),
-      http.post(`${API_BASE_PATH}/tenants/:id/credential-definitions`, () =>
-        HttpResponse.json(draft, { status: 201 }),
+      http.post(
+        `${API_BASE_PATH}/tenants/:id/credential-definitions`,
+        async ({ request }) => {
+          draftRequest(await request.json());
+          return HttpResponse.json(draft, { status: 201 });
+        },
+      ),
+      http.patch(
+        `${API_BASE_PATH}/tenants/:id/credential-definitions/:definitionId`,
+        async ({ request }) => {
+          updateRequest(await request.json());
+          return HttpResponse.json(draft);
+        },
       ),
       http.get(
         `${API_BASE_PATH}/tenants/:id/credential-definitions/:definitionId`,
@@ -577,9 +608,31 @@ describe('TenantOnboardingSetupPage', () => {
     );
     await user.type(screen.getByLabelText(/^Version/), '1.0');
     await user.click(screen.getByRole('button', { name: 'Save draft' }));
+    await backgroundRefetchStarted;
+    try {
+      expect(screen.getByLabelText(/^Credential name/)).toHaveValue(
+        'Resumable credential',
+      );
+    } finally {
+      releaseBackgroundRefetch();
+    }
     await waitFor(() =>
       expect(sessionStorage.getItem(embeddedDraftStorageKey)).toBe(draftId),
     );
+    expect(draftRequest).toHaveBeenCalledExactlyOnceWith({
+      name: 'Resumable credential',
+      connector_id: draft.connector_id,
+      status: 'draft',
+      schema: {
+        definition: {
+          attributes: {},
+          schema_name: 'Resumable credential',
+          schema_version: '1.0',
+          version: '1.0',
+        },
+      },
+      options: draft.options,
+    });
     await waitFor(() =>
       expect(screen.getByLabelText(/^Credential name/)).toHaveValue(
         'Resumable credential',
@@ -587,6 +640,15 @@ describe('TenantOnboardingSetupPage', () => {
     );
 
     await user.click(screen.getByRole('button', { name: 'Save for later' }));
+    await waitFor(() =>
+      expect(updateRequest).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'Resumable credential',
+          status: 'draft',
+          connector_id: draft.connector_id,
+        }),
+      ),
+    );
     await user.click(
       await screen.findByRole('link', { name: 'Continue setup' }),
     );

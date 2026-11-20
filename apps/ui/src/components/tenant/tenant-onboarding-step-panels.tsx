@@ -137,13 +137,13 @@ export function CredentialDefinitionRegistrationStep({
     );
   }
 
-  if (definitionsQuery.isLoading || definitionsQuery.isFetching) {
+  if (definitionsQuery.isLoading) {
     return (
       <LoadingMessage>{t('credentialDefinitions.loading')}</LoadingMessage>
     );
   }
 
-  if (definitionsQuery.error) {
+  if (definitionsQuery.error && !definitionsQuery.data) {
     return (
       <LoadError
         message={t('credentialDefinitions.loadFailed')}

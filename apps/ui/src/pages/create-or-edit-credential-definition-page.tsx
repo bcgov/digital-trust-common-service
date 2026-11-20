@@ -353,6 +353,14 @@ export function CreateOrEditCredentialDefinitionPage({
     if (isSetupValid) createDefinition('draft');
   };
 
+  const saveForLater = () => {
+    if (embedded) {
+      if (isSetupValid) createDefinition('draft', true);
+      return;
+    }
+    leaveEditor();
+  };
+
   const publish = () => {
     if (canPublish) createDefinition('published');
   };
@@ -444,7 +452,11 @@ export function CreateOrEditCredentialDefinitionPage({
       )}
       <div className="mt-4 flex items-center justify-between">
         {step === 0 ? (
-          <Button variant="secondary" onPress={leaveEditor}>
+          <Button
+            variant="secondary"
+            isDisabled={isSaving || (embedded && !isSetupValid)}
+            onPress={saveForLater}
+          >
             {exitLabel ?? t('credentialDefinitions.wizard.cancel')}
           </Button>
         ) : (
@@ -457,7 +469,11 @@ export function CreateOrEditCredentialDefinitionPage({
               <ArrowLeftIcon className="size-5" />
               {t('credentialDefinitions.wizard.previous')}
             </Button>
-            <Button variant="secondary" onPress={leaveEditor}>
+            <Button
+              variant="secondary"
+              isDisabled={isSaving || (embedded && !isSetupValid)}
+              onPress={saveForLater}
+            >
               {exitLabel ?? t('credentialDefinitions.wizard.cancel')}
             </Button>
           </div>
