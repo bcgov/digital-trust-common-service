@@ -48,6 +48,7 @@ import { ConfigureIssuanceProfileClaims1794328787660 } from './migrations/000044
 import { PersistOperationSteps1794928308442 } from './migrations/000045_persist-operation-steps';
 import { RestoreIssuanceDeliveryDefault1795099078637 } from './migrations/000046_restore-issuance-delivery-default';
 import { CreateEmailSendQuotaTable1795195920000 } from './migrations/000047_create-email-send-quota-table';
+import { CreateWebhookRegistration1795196787879 } from './migrations/000048_create-webhook-registration';
 import { buildSslConfig } from './ssl.util';
 
 export const AppDataSource = new DataSource({
@@ -110,6 +111,7 @@ export const AppDataSource = new DataSource({
     RestoreIssuanceDeliveryDefault1795099078637,
     DropRedundantExchangeIssueIndex1793375254070,
     CreateEmailSendQuotaTable1795195920000,
+    CreateWebhookRegistration1795196787879,
   ],
   ssl: buildSslConfig(
     process.env.DB_SSL,

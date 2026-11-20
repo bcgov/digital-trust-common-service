@@ -16,6 +16,7 @@ import { OAuthClientModule } from '../oauth-client/oauth-client.module';
 import { OperationModule } from '../operation/operation.module';
 import { TenantModule } from '../tenant/tenant.module';
 import { TenantUserModule } from '../tenant-user/tenant-user.module';
+import { WebhookDispatchModule } from '../webhook-dispatch/webhook-dispatch.module';
 import { WebhookIngestionModule } from '../webhook-ingestion/webhook-ingestion.module';
 
 const FULL_DOC_TITLE = 'Digital Credential Common Service API';
@@ -45,6 +46,7 @@ const swaggerApps = [
       CredentialDefinitionModule,
       AuditLogModule,
       OAuthClientModule,
+      WebhookDispatchModule,
     ],
   },
   {

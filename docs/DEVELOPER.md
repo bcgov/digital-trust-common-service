@@ -20,13 +20,13 @@ mise install                          # installs everything pinned in .mise.toml
 mise current                          # shows the resolved versions
 ```
 
-| Tool | Pinned | Used for |
-| --- | --- | --- |
-| node | 24 | the application; matches `engines` and the `node:24-alpine` image |
-| helm | 3.16.2 | chart lint, template, and unit tests |
-| helm-docs | 1.14.2 | regenerating the chart README (CI fails if it is stale) |
-| actionlint | 1.7.12 | linting `.github/workflows/*.yml` |
-| yamllint | latest | `--strict` checks on chart values and `Chart.yaml` |
+| Tool       | Pinned | Used for                                                          |
+| ---------- | ------ | ----------------------------------------------------------------- |
+| node       | 24     | the application; matches `engines` and the `node:24-alpine` image |
+| helm       | 3.16.2 | chart lint, template, and unit tests                              |
+| helm-docs  | 1.14.2 | regenerating the chart README (CI fails if it is stale)           |
+| actionlint | 1.7.12 | linting `.github/workflows/*.yml`                                 |
+| yamllint   | latest | `--strict` checks on chart values and `Chart.yaml`                |
 
 These versions mirror `.github/workflows/ci-checks.yml`. When you bump one, bump both.
 
@@ -418,13 +418,13 @@ Sign in with one of the realm's `acme-corp` accounts (the password is the
 username). The seed holds an unclaimed invitation for each, so the first
 sign-in claims the matching `tenant_user` row and lands with that role:
 
-| Username | Email | Role |
-|----------|-------|------|
-| `acme-owner` | `owner@acme-corp.example.test` | owner |
-| `acme-admin` | `admin@acme-corp.example.test` | admin |
-| `acme-member` | `member@acme-corp.example.test` | member |
-| `multi-tenant` | `multi-tenant@example.test` | admin in `acme-corp`, owner in `test-org`, member in `suspended-co` |
-| `admin` | `admin@example.com` | owner in `acme-corp` and platform admin |
+| Username       | Email                           | Role                                                                |
+| -------------- | ------------------------------- | ------------------------------------------------------------------- |
+| `acme-owner`   | `owner@acme-corp.example.test`  | owner                                                               |
+| `acme-admin`   | `admin@acme-corp.example.test`  | admin                                                               |
+| `acme-member`  | `member@acme-corp.example.test` | member                                                              |
+| `multi-tenant` | `multi-tenant@example.test`     | admin in `acme-corp`, owner in `test-org`, member in `suspended-co` |
+| `admin`        | `admin@example.com`             | owner in `acme-corp` and platform admin                             |
 
 `multi-tenant` is the odd one out: its rows are seeded already active, in
 three tenants, so it exists to exercise the tenant switcher. It signs in to
@@ -458,7 +458,7 @@ docker compose rm -sf keycloak keycloak-db
 docker volume rm $(docker volume ls -q --filter name=keycloak-db-data)
 ```
 
-(avoid `docker compose down -v` here — it removes *every* project volume,
+(avoid `docker compose down -v` here — it removes _every_ project volume,
 including your Postgres data and the Caddy CA.)
 
 Likewise, a database seeded before these invitations existed still holds
@@ -487,20 +487,20 @@ Users page leaves the flag, and so platform admin, in place.
 
 The client the SPA uses:
 
-| Property | Value | Why |
-|----------|-------|-----|
-| `client_id` | `dtsc-ui` | The SPA reads the id it presents from its runtime config (`oidcClientId` in `apps/ui/public/config.json`; `frontend.config.oidcClientId` in the chart), so one image works in any environment. |
-| Kind | Public (PKCE, no secret) | A browser cannot keep a secret. Registered with `token_endpoint_auth_method=none`. |
-| Grants | `authorization_code`, `refresh_token` | `refresh_token` is what keeps the session past the 5-minute access token. |
-| Redirect URI | `<APP_PUBLIC_URL>/auth/callback` | `https://app.localhost/auth/callback` locally. The seed derives the origin from `APP_PUBLIC_URL` because the front door serves the SPA and `/oidc` on one origin, so the same seed registers the right URIs in a PR environment. |
-| Post-logout URI | `<APP_PUBLIC_URL>/login` | Validated separately from the login redirect. |
-| Scopes | `openid profile email tenant offline_access` | Identity scopes only, the set **every** role holds. The SPA never requests API scopes: the provider derives them from the user's role — see the caveat below. |
-| Tenant | `acme-corp` locally (seed); the operator tenant in a hosted environment (bootstrap) | Interactive login is tenant-scoped through the client (see below). |
+| Property        | Value                                                                               | Why                                                                                                                                                                                                                              |
+| --------------- | ----------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `client_id`     | `dtsc-ui`                                                                           | The SPA reads the id it presents from its runtime config (`oidcClientId` in `apps/ui/public/config.json`; `frontend.config.oidcClientId` in the chart), so one image works in any environment.                                   |
+| Kind            | Public (PKCE, no secret)                                                            | A browser cannot keep a secret. Registered with `token_endpoint_auth_method=none`.                                                                                                                                               |
+| Grants          | `authorization_code`, `refresh_token`                                               | `refresh_token` is what keeps the session past the 5-minute access token.                                                                                                                                                        |
+| Redirect URI    | `<APP_PUBLIC_URL>/auth/callback`                                                    | `https://app.localhost/auth/callback` locally. The seed derives the origin from `APP_PUBLIC_URL` because the front door serves the SPA and `/oidc` on one origin, so the same seed registers the right URIs in a PR environment. |
+| Post-logout URI | `<APP_PUBLIC_URL>/login`                                                            | Validated separately from the login redirect.                                                                                                                                                                                    |
+| Scopes          | `openid profile email tenant offline_access`                                        | Identity scopes only, the set **every** role holds. The SPA never requests API scopes: the provider derives them from the user's role — see the caveat below.                                                                    |
+| Tenant          | `acme-corp` locally (seed); the operator tenant in a hosted environment (bootstrap) | Interactive login is tenant-scoped through the client (see below).                                                                                                                                                               |
 
 Two constraints worth knowing before changing any of that:
 
 - **API scopes come from the role, not from the request.** The interaction
-  handler *rejects* a sign-in that requests scopes the user's role lacks
+  handler _rejects_ a sign-in that requests scopes the user's role lacks
   rather than trimming them, and `readonly` carries no API scopes at all — so
   the SPA requests identity scopes only, and adding e.g. `tenants:admin` to
   `oidcScopes` in the SPA's runtime config would lock out every user below
@@ -519,7 +519,7 @@ Two constraints worth knowing before changing any of that:
   reads it. What makes the access token an API-audience JWT is
   `features.resourceIndicators.useGrantedResource` in the provider config.
   Without it, any grant carrying `openid` gets an access token scoped to the
-  *userinfo* endpoint instead, and — because that token has no `aud` —
+  _userinfo_ endpoint instead, and — because that token has no `aud` —
   oidc-provider also withholds the identity claims from the id_token. Both
   failures are silent: sign-in appears to work, then every API call 401s and
   the profile has only `sub`.
@@ -560,6 +560,7 @@ docker compose up
 ```
 
 This will:
+
 - Start PostgreSQL, Keycloak (with the realm imported) and Caddy
 - Run database migrations, then the development seed
 - Start the application server on http://localhost:3000, fronted by Caddy at
@@ -590,6 +591,7 @@ files (`docker-compose.yml`, `.env.example`, `Dockerfile`, `caddy/`, `keycloak/`
 fails if the stack does not come up. Nothing else in CI reads `docker-compose.yml`.
 
 **Useful commands:**
+
 ```bash
 # Stop all services
 docker compose down
@@ -727,9 +729,14 @@ The service logs structured JSON to stdout — one object per line, from startup
 onwards:
 
 ```json
-{"level":"log","timestamp":1788464635181,"pid":22814,
- "service":"digital-trust-common-service","context":"NestFactory",
- "message":"Starting Nest application..."}
+{
+  "level": "log",
+  "timestamp": 1788464635181,
+  "pid": 22814,
+  "service": "digital-trust-common-service",
+  "context": "NestFactory",
+  "message": "Starting Nest application..."
+}
 ```
 
 Alloy parses these fields, so the set is a contract rather than an
@@ -739,19 +746,19 @@ logger adds nothing beyond it, so a pino upgrade cannot quietly reintroduce
 attaches on its own; a call site is free to log fields of its own alongside
 them.
 
-| Field | Always | Meaning |
-| --- | --- | --- |
-| `timestamp` | yes | Epoch milliseconds. |
-| `level` | yes | Nest's name for the level — `verbose`, `debug`, `log`, `warn`, `error`, `fatal`. |
-| `message` | yes | The log message. |
-| `service` | yes | Always `digital-trust-common-service`. |
-| `pid` | yes | Id of the emitting process. Not a way to tell API from worker — they are separate Deployments, and each container's process is usually PID 1. Use `source`, or the pod and workload labels. |
-| `context` | no | The `Logger` name at the call site, e.g. `NestFactory`. |
-| `source` | no | `api` for a request, `job:<queue>` for a job. Absent on startup. |
-| `request_id` | no | Present for a request, and for a job enqueued by one. |
-| `tenant_id` | no | Present once trusted context has resolved a tenant. |
-| `operation_id` | no | Present once the line belongs to an operation. |
-| `trace_id`, `span_id`, `trace_flags` | no | Injected by OpenTelemetry while a span is recording. |
+| Field                                | Always | Meaning                                                                                                                                                                                     |
+| ------------------------------------ | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `timestamp`                          | yes    | Epoch milliseconds.                                                                                                                                                                         |
+| `level`                              | yes    | Nest's name for the level — `verbose`, `debug`, `log`, `warn`, `error`, `fatal`.                                                                                                            |
+| `message`                            | yes    | The log message.                                                                                                                                                                            |
+| `service`                            | yes    | Always `digital-trust-common-service`.                                                                                                                                                      |
+| `pid`                                | yes    | Id of the emitting process. Not a way to tell API from worker — they are separate Deployments, and each container's process is usually PID 1. Use `source`, or the pod and workload labels. |
+| `context`                            | no     | The `Logger` name at the call site, e.g. `NestFactory`.                                                                                                                                     |
+| `source`                             | no     | `api` for a request, `job:<queue>` for a job. Absent on startup.                                                                                                                            |
+| `request_id`                         | no     | Present for a request, and for a job enqueued by one.                                                                                                                                       |
+| `tenant_id`                          | no     | Present once trusted context has resolved a tenant.                                                                                                                                         |
+| `operation_id`                       | no     | Present once the line belongs to an operation.                                                                                                                                              |
+| `trace_id`, `span_id`, `trace_flags` | no     | Injected by OpenTelemetry while a span is recording.                                                                                                                                        |
 
 The correlation fields come from the request context rather than from call
 sites, so a line logged by code that knows nothing about the request still
@@ -830,10 +837,10 @@ button that opens it in Tempo.
 Loki by different routes. Using the wrong one returns nothing and looks
 identical to broken correlation.
 
-| | how the line reaches Loki | where `trace_id` ends up |
-| --- | --- | --- |
-| local | SDK pushes log records over OTLP (`OTEL_LOGS_EXPORTER=otlp`) | OTLP attribute → **structured metadata** |
-| deployed | pod stdout → Alloy → Loki (`otel.logsExporter: none`) | a field inside the JSON **body** |
+|          | how the line reaches Loki                                    | where `trace_id` ends up                 |
+| -------- | ------------------------------------------------------------ | ---------------------------------------- |
+| local    | SDK pushes log records over OTLP (`OTEL_LOGS_EXPORTER=otlp`) | OTLP attribute → **structured metadata** |
+| deployed | pod stdout → Alloy → Loki (`otel.logsExporter: none`)        | a field inside the JSON **body**         |
 
 **This divergence is a gap in the local stack, not a design intent.** The local
 stack runs no log shipper, so pushing records over OTLP is currently the only
@@ -843,12 +850,12 @@ already ships from stdout, which is why it is off there.
 The consequence matters more than the cause: **confirming correlation locally
 does not prove the deployed path works.** The two exercise different routes
 into Loki, different query shapes, and different datasource matchers. Local is
-useful for checking that the service *emits* trace fields; only the deployed
+useful for checking that the service _emits_ trace fields; only the deployed
 query below tells you whether an operator can actually follow them. Local
 should eventually ship stdout through a collector the way OpenShift does, which
 would collapse both rows into one.
 
-Locally, `trace_id` is structured metadata, so filter for it *after* the
+Locally, `trace_id` is structured metadata, so filter for it _after_ the
 selector — putting it inside `{...}` matches nothing:
 
 ```
@@ -895,9 +902,9 @@ service's lines rather than applied to every log line on the platform.
 The service emits a per-request access log, so request handling should produce a
 line per request rather than only the startup and background work that has no
 active span. That makes this query more informative than it used to be: an
-access log that appears *without* `trace_id` means correlation is broken for the
+access log that appears _without_ `trace_id` means correlation is broken for the
 case operators care about most, not that there is simply little to correlate.
-Either way, confirm the query returns *some* line before concluding the
+Either way, confirm the query returns _some_ line before concluding the
 datasource is misconfigured.
 
 #### Background job traces
@@ -961,6 +968,7 @@ npm run migrate:up
 ```
 
 **In Docker**: Migrations run automatically when containers start. To re-run:
+
 ```bash
 docker compose up migrate
 ```
@@ -996,17 +1004,17 @@ SEED_ON_START=true
 
 **What gets seeded**
 
-| Resource | Details |
-|----------|---------|
-| Tenants | `acme-corp`, `test-org` (active), `suspended-co` (suspended) |
-| Users | owner / admin / member per tenant. In `acme-corp` these are unclaimed invitations at the emails of the realm's accounts (see [Signing in for real](#signing-in-for-real)); elsewhere they are placeholders that cannot sign in. Plus `multi-tenant`, active in all three tenants, for the tenant switcher. When `SEED_PLATFORM_OPERATOR_EMAILS` is set, also an owner invitation per listed email in `acme-corp` carrying the platform-operator flag (see [Signing in for real](#signing-in-for-real)) |
-| Connectors | Mock Traction endpoint per tenant |
-| Credential defs | Person credential, Employee badge (active tenants) |
-| Issuance profiles | Published `person-credential/1.0`, draft `employee-badge/1.0` |
-| Verification profile | Published `identity-check/1.0` with age predicate |
-| OAuth clients | One confidential client per tenant (secret from `SEED_CLIENT_SECRET`; where unset — hosted previews — a random one nothing can replay), plus the public UI client `dtsc-ui` with redirect URIs on `APP_PUBLIC_URL`'s origin |
-| Connections | Five states per active tenant |
-| Operations | pending, completed, failed per active tenant |
+| Resource             | Details                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Tenants              | `acme-corp`, `test-org` (active), `suspended-co` (suspended)                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| Users                | owner / admin / member per tenant. In `acme-corp` these are unclaimed invitations at the emails of the realm's accounts (see [Signing in for real](#signing-in-for-real)); elsewhere they are placeholders that cannot sign in. Plus `multi-tenant`, active in all three tenants, for the tenant switcher. When `SEED_PLATFORM_OPERATOR_EMAILS` is set, also an owner invitation per listed email in `acme-corp` carrying the platform-operator flag (see [Signing in for real](#signing-in-for-real)) |
+| Connectors           | Mock Traction endpoint per tenant                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| Credential defs      | Person credential, Employee badge (active tenants)                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| Issuance profiles    | Published `person-credential/1.0`, draft `employee-badge/1.0`                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| Verification profile | Published `identity-check/1.0` with age predicate                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| OAuth clients        | One confidential client per tenant (secret from `SEED_CLIENT_SECRET`; where unset — hosted previews — a random one nothing can replay), plus the public UI client `dtsc-ui` with redirect URIs on `APP_PUBLIC_URL`'s origin                                                                                                                                                                                                                                                                            |
+| Connections          | Five states per active tenant                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| Operations           | pending, completed, failed per active tenant                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 
 Re-running the seed updates existing rows keyed by slug, email (users), external IDs, and profile name/version — it does not create duplicates. A user row that a real sign-in has claimed keeps its identity and status; the seed only refreshes its role and display name. A listed platform operator is made owner and flagged on every run, claimed or not; nothing else on the row changes.
 
@@ -1017,12 +1025,12 @@ environment (dev, test, prod) starts from an empty database and gets these
 rows from the bootstrap CLI instead — the minimum for real sign-in and
 for administering everything else through the API:
 
-| Created | Details |
-|---------|---------|
-| Tenant | The operator's own tenant (`--tenant-slug`, `--tenant-name`). Left untouched if it already exists. |
-| UI client | The SPA's public client `dtsc-ui`, owned by that tenant, with redirect URIs on `APP_PUBLIC_URL`'s origin (`/auth/callback`, `/login`). Re-registered in place on every run, so a changed public URL is picked up by running it again. |
+| Created                   | Details                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Tenant                    | The operator's own tenant (`--tenant-slug`, `--tenant-name`). Left untouched if it already exists.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| UI client                 | The SPA's public client `dtsc-ui`, owned by that tenant, with redirect URIs on `APP_PUBLIC_URL`'s origin (`/auth/callback`, `/login`). Re-registered in place on every run, so a changed public URL is picked up by running it again.                                                                                                                                                                                                                                                                                                                                                           |
 | Grafana client (optional) | `dtsc-grafana`: a public PKCE client for the tenant log viewer, created only when `--grafana-url https://<grafana host>` is given. It is owned by the same tenant, with the single redirect URI `<grafana host>/login/generic_oauth`. Its scopes are only `openid tenant offline_access`: every tenant shares one Grafana org, so Grafana keeps no names or emails. Any member can sign in, and the log gateway decides what each token may read: by default `owner` (through `tenants:admin`) and `admin` see their tenant's logs, and a role without `logs:read` sees an error on each panel. |
-| Platform-admin client | `dtsc-platform-admin`: a confidential `client_credentials` client with the `platform-admin` role and the `tenants:admin` scope. Its secret is printed **once**, on creation, and stored only as a hash; keep it with the environment's other secrets. A re-run leaves an existing one alone; `--rotate-admin-secret` mints and prints a new secret — also the recovery path when the only platform-admin secret is lost, since nothing can then authenticate to rotate it through the API. |
+| Platform-admin client     | `dtsc-platform-admin`: a confidential `client_credentials` client with the `platform-admin` role and the `tenants:admin` scope. Its secret is printed **once**, on creation, and stored only as a hash; keep it with the environment's other secrets. A re-run leaves an existing one alone; `--rotate-admin-secret` mints and prints a new secret — also the recovery path when the only platform-admin secret is lost, since nothing can then authenticate to rotate it through the API.                                                                                                      |
 
 Run it once per environment from a running API pod, which already has the
 database credentials and `APP_PUBLIC_URL` in its environment:
@@ -1047,20 +1055,20 @@ The canonical OAuth scope names live in `@app/auth` (`libs/auth/src/constants/sc
 
 ### Scope levels
 
-| Level | Scopes |
-|-------|--------|
-| **Level 1 — tenant superuser** | `tenants:admin` (implicitly grants all Level 2 + Level 3 scopes) |
-| **Level 2 — domain operations** | `credentials:offer`, `credentials:verify`, `credentials:hold`, `credentials:revoke`, `connections:manage`, `profiles:manage`, `users:manage`, `clients:manage` |
-| **Level 3 — read-only** | `logs:read`, `audit:read` |
+| Level                           | Scopes                                                                                                                                                                            |
+| ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Level 1 — tenant superuser**  | `tenants:admin` (implicitly grants all Level 2 + Level 3 scopes)                                                                                                                  |
+| **Level 2 — domain operations** | `credentials:offer`, `credentials:verify`, `credentials:hold`, `credentials:revoke`, `connections:manage`, `profiles:manage`, `users:manage`, `clients:manage`, `webhooks:manage` |
+| **Level 3 — read-only**         | `logs:read`, `audit:read`                                                                                                                                                         |
 
 ### Role → scope seed (`role_scope` table)
 
-| Role | Scopes |
-|------|--------|
-| `owner` | `tenants:admin` |
-| `admin` | all Level 2 + Level 3 scopes (including `credentials:hold` / `credentials:revoke`) |
-| `member` | `credentials:offer`, `credentials:verify` |
-| `readonly` | _(none — GET endpoints that require no specific scope)_ |
+| Role       | Scopes                                                                             |
+| ---------- | ---------------------------------------------------------------------------------- |
+| `owner`    | `tenants:admin`                                                                    |
+| `admin`    | all Level 2 + Level 3 scopes (including `credentials:hold` / `credentials:revoke`) |
+| `member`   | `credentials:offer`, `credentials:verify`                                          |
+| `readonly` | _(none — GET endpoints that require no specific scope)_                            |
 
 `platform-admin` is **not** a scope. It is a JWT **role** claim that bypasses `ScopeGuard` and `TenantGuard`. Machine clients may carry `platform-admin` or a tenant-scoped role (`owner`, `admin`, `member`, `readonly`) via the `oauth_client.roles` column.
 
@@ -1078,7 +1086,7 @@ scopes from the role at every issuance — login, refresh, and
 `POST /api/v1/auth/switch-tenant` — by resolving `role_scope` (and the
 tenant's `tenant_role_scope` override) for the token's `tenant_role` and
 `tenant_id` as it signs the JWT, so a user JWT's API scopes are exactly the
-`OIDC_SCOPES`-allowlisted scopes of the *current* role for the active tenant: a
+`OIDC_SCOPES`-allowlisted scopes of the _current_ role for the active tenant: a
 scope the Grant still holds from login or a tenant switch is dropped once the
 role loses it, and only the
 non-API scopes (`openid`, `offline_access`, and any identity scope the token
@@ -1099,13 +1107,13 @@ issuance, so they reach the JWT `scope` claim.
 
 ### Endpoints
 
-| Method | Path | Auth |
-|--------|------|------|
-| `GET` | `/api/v1/scopes` | Any valid JWT |
-| `GET` | `/api/v1/roles` | Any valid JWT — platform defaults |
-| `GET` | `/api/v1/tenants/:tenantId/roles` | Any valid JWT for that tenant — effective mapping |
-| `PATCH` | `/api/v1/tenants/:tenantId/roles/:role/scopes` | `tenants:admin` |
-| `DELETE` | `/api/v1/tenants/:tenantId/roles/:role/scopes` | `tenants:admin` |
+| Method   | Path                                           | Auth                                              |
+| -------- | ---------------------------------------------- | ------------------------------------------------- |
+| `GET`    | `/api/v1/scopes`                               | Any valid JWT                                     |
+| `GET`    | `/api/v1/roles`                                | Any valid JWT — platform defaults                 |
+| `GET`    | `/api/v1/tenants/:tenantId/roles`              | Any valid JWT for that tenant — effective mapping |
+| `PATCH`  | `/api/v1/tenants/:tenantId/roles/:role/scopes` | `tenants:admin`                                   |
+| `DELETE` | `/api/v1/tenants/:tenantId/roles/:role/scopes` | `tenants:admin`                                   |
 
 The two catalog `GET`s require authentication but no scope. "Public
 information" here means non-secret, not anonymous: serving it unauthenticated
@@ -1140,10 +1148,10 @@ This is the easiest thing to get wrong. In the global `role_scope` table,
 "no rows for a role" means the role has no scopes — that is how `readonly` is
 represented. In `tenant_role_scope` the semantics are deliberately different:
 
-| State | Meaning |
-|-------|---------|
-| No row for `(tenant_id, role)` | Inherit the platform default |
-| Row with `scopes = '{}'` | The role has been deliberately stripped to no scopes |
+| State                          | Meaning                                              |
+| ------------------------------ | ---------------------------------------------------- |
+| No row for `(tenant_id, role)` | Inherit the platform default                         |
+| Row with `scopes = '{}'`       | The role has been deliberately stripped to no scopes |
 
 `readonly` legitimately has zero scopes, so an empty array cannot double as
 "reset". `PATCH` always writes a row; `DELETE` removes it. That is why reset is
@@ -1189,7 +1197,7 @@ this safe at `replicaCount: 3`: validation reads the whole mapping, decides,
 then writes, so two concurrent writes to different roles could otherwise each
 pass against a stale snapshot and commit a combined state that violates the
 hierarchy. Row locks cannot close it, because "inherit the default" is the
-*absence* of a row and `FOR UPDATE` has nothing to lock.
+_absence_ of a row and `FOR UPDATE` has nothing to lock.
 
 The advisory lock serializes writers only — nothing on the login path takes
 it — so a login that read the old, wider mapping can save its grant after the
@@ -1275,19 +1283,19 @@ active membership** at login. To change context, the SPA calls
 
 ### Controller auth inventory
 
-| Surface | Controller | Guards | Scope / notes |
-|---------|------------|--------|---------------|
-| Platform admin | `admin-operations`, `admin-sessions` | Jwt + Scope (+ `@RequireRoles(platform-admin)`) | Role, not scope |
-| Tenant CRUD | `tenant` | Jwt + Scope | `tenants:admin` on mutating routes; list filtered by claim |
-| Tenant users | `tenant-user` | Jwt + Scope + Tenant + membership | `users:manage` |
-| Role/scope catalog | `role`, `scope` | Jwt | Authenticated read |
-| Tenant role overrides | `tenant-role-scope` | Jwt + Scope + Tenant | `tenants:admin` on writes |
-| Audit logs | `audit-log` | Jwt + Scope + Tenant | `audit:read` |
-| Connections | `connection` | Jwt + Scope + Tenant (`:tenantId` lists) | `connections:manage`; body create → `assertTenantAccess` (403); load-by-id → `assertResourceTenantOrNotFound` (404) in the service |
-| OAuth clients | `oauth-client` | Jwt + Scope + Tenant | `clients:manage`; nested at `tenants/:tenantId/clients` so TenantGuard enforces the path |
-| Connector credentials | `connector-credential` | Jwt + Scope + Tenant | `tenants:admin`; same create/load pattern in the service |
-| Credential definitions | `credential-definition` | Jwt + Scope + Tenant | `tenants:admin`; format/connector lists are tenant-scoped in SQL (platform-admin sees all) |
-| Health / hello / OIDC | `health`, `app`, `oidc-interaction` | none | Intentionally public |
+| Surface                | Controller                           | Guards                                          | Scope / notes                                                                                                                      |
+| ---------------------- | ------------------------------------ | ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| Platform admin         | `admin-operations`, `admin-sessions` | Jwt + Scope (+ `@RequireRoles(platform-admin)`) | Role, not scope                                                                                                                    |
+| Tenant CRUD            | `tenant`                             | Jwt + Scope                                     | `tenants:admin` on mutating routes; list filtered by claim                                                                         |
+| Tenant users           | `tenant-user`                        | Jwt + Scope + Tenant + membership               | `users:manage`                                                                                                                     |
+| Role/scope catalog     | `role`, `scope`                      | Jwt                                             | Authenticated read                                                                                                                 |
+| Tenant role overrides  | `tenant-role-scope`                  | Jwt + Scope + Tenant                            | `tenants:admin` on writes                                                                                                          |
+| Audit logs             | `audit-log`                          | Jwt + Scope + Tenant                            | `audit:read`                                                                                                                       |
+| Connections            | `connection`                         | Jwt + Scope + Tenant (`:tenantId` lists)        | `connections:manage`; body create → `assertTenantAccess` (403); load-by-id → `assertResourceTenantOrNotFound` (404) in the service |
+| OAuth clients          | `oauth-client`                       | Jwt + Scope + Tenant                            | `clients:manage`; nested at `tenants/:tenantId/clients` so TenantGuard enforces the path                                           |
+| Connector credentials  | `connector-credential`               | Jwt + Scope + Tenant                            | `tenants:admin`; same create/load pattern in the service                                                                           |
+| Credential definitions | `credential-definition`              | Jwt + Scope + Tenant                            | `tenants:admin`; format/connector lists are tenant-scoped in SQL (platform-admin sees all)                                         |
+| Health / hello / OIDC  | `health`, `app`, `oidc-interaction`  | none                                            | Intentionally public                                                                                                               |
 
 Integration coverage for the guard stack uses ephemeral
 `/api/v1/integration/tenant-check/:tenantId` routes. Product-controller 401
@@ -1323,13 +1331,13 @@ the same `(connectorType, agentLogId)` pair.
 are covered by `assertTenantAccess` today; nesting under
 `/tenants/:tenantId/...` (as OpenAPI documents) is still a follow-up:
 
-| Shape | Examples today | TenantGuard behavior | Status |
-|-------|----------------|----------------------|--------|
-| Path `:tenantId` | `tenants/:tenantId/audit-logs`, `tenants/:tenantId/clients` | Enforced | Wired |
-| Tenant UUID as `:id` | `GET/PUT/DELETE /tenants/:id` | **No-op** (param name is `id`) | `assertTenantAccess` in `TenantController` |
-| Body-only `tenantId` | create connection / credential-definition / etc. | **No-op** | `assertTenantAccess` in the service on create (403); nesting still open |
-| Resource `:id` | `GET /connections/:id` | **No-op** | `assertResourceTenantOrNotFound` in the service after load (404, no cross-tenant oracle) |
-| Admin / no tenant | `/admin/operations/stats` | No-op (correct) | Wired |
+| Shape                | Examples today                                              | TenantGuard behavior           | Status                                                                                   |
+| -------------------- | ----------------------------------------------------------- | ------------------------------ | ---------------------------------------------------------------------------------------- |
+| Path `:tenantId`     | `tenants/:tenantId/audit-logs`, `tenants/:tenantId/clients` | Enforced                       | Wired                                                                                    |
+| Tenant UUID as `:id` | `GET/PUT/DELETE /tenants/:id`                               | **No-op** (param name is `id`) | `assertTenantAccess` in `TenantController`                                               |
+| Body-only `tenantId` | create connection / credential-definition / etc.            | **No-op**                      | `assertTenantAccess` in the service on create (403); nesting still open                  |
+| Resource `:id`       | `GET /connections/:id`                                      | **No-op**                      | `assertResourceTenantOrNotFound` in the service after load (404, no cross-tenant oracle) |
+| Admin / no tenant    | `/admin/operations/stats`                                   | No-op (correct)                | Wired                                                                                    |
 
 Do **not** treat every `:id` as a tenant id — most are resource primary keys.
 
@@ -1766,8 +1774,7 @@ without resubmission. Explicit issuance is
 repeated calls reuse the same retained tenant-owned action without contacting
 the backend, including during an outage, unless the previous attempt was
 definitively rejected or never sent. Token acquisition failure returns 502,
-backend request rejection returns 400, and a missing backend exchange returns
-409. A definite failed attempt ends its operation with
+backend request rejection returns 400, and a missing backend exchange returns 409. A definite failed attempt ends its operation with
 `{ code: "SUBMISSION_REJECTED", message: "Credential issue was not submitted" }`
 and releases the claim to `not-submitted`; a repeated POST creates a new issue
 operation after fresh holder/exchange verification. The failed operation remains
@@ -1793,14 +1800,67 @@ A newly observed holder request enqueues a `webhook.dispatch` notification for
 Notification enqueue and monotonic progress commit together: concurrent,
 duplicate, or delayed observations do not send a second request notification.
 Use that UUID to read the exchange and explicitly issue when `auto_issue` is
-false. The current dispatcher is a stub that acknowledges intents without HTTP
-delivery; callers must poll the exchange for now. Without inbound backend
-webhooks, reconcile to discover the request.
+false. The webhook registration contract currently supports only the six
+declared credential and connection event types, so this
+`credential-exchange.request-received` intent is acknowledged without delivery;
+callers must poll the exchange for now. Without inbound backend webhooks,
+reconcile to discover the request.
 
 The additive retry migration removes the redundant issue unique index while
 retaining the latest-action FK/index and the durable marker. Rolling it back
 after multiple attempts for an exchange fails the old uniqueness constraint
 rather than deleting operation history; plan a forward fix instead.
+
+## Outbound webhook registration storage
+
+`WebhookDispatchModule` owns registration persistence alongside the dispatch
+worker. The `webhook_registration` table stores a tenant-owned endpoint URL,
+event subscriptions, an active flag, an encrypted credential envelope with its
+key version, and timestamps. Its `(tenant_id, active)` index supports tenant
+dispatch lookups. PostgreSQL rejects unsupported or empty event subscriptions.
+
+Repository reads and deletes are tenant-scoped, ordinary reads exclude the
+encrypted envelope and key version, and registration deletion is a hard delete.
+Tenant deletion cascades to its registrations. Persistence integration tests
+exercise migration up/down in a temporary schema without changing the working
+application schema.
+
+`WebhookRegistrationService` generates a fresh 32-byte, base64url-encoded signing
+secret per registration. It stores `{ signingSecret }` using the existing
+versioned AES-256-GCM envelope and returns the plaintext only in the creation
+result after persistence succeeds. The creation response DTO includes
+`signing_secret`; ordinary response mapping omits it and all credential storage
+fields. Creation audit records carry only resource identifiers, and the logger
+redacts both signing-secret field names. There is no secret retrieval or
+rotation endpoint.
+
+Registration service operations require a matching tenant claim and
+`webhooks:manage`. Owners inherit this permission through `tenants:admin`, and
+platform administrators retain their existing bypass. The default admin mapping
+includes the scope; explicit tenant role overrides are unchanged. Existing
+tokens need to be refreshed or reissued to carry newly granted scopes, and
+machine clients must be explicitly assigned the scope if needed. Listing and
+hard deletion are tenant-scoped, with identifier-only audits after successful
+deletion.
+
+The API exposes `POST`, `GET`, and `DELETE` under
+`/api/v1/tenants/:tenantId/webhooks`, guarded by JWT, `webhooks:manage`, tenant
+match, active-tenant, and tenant rate-limit checks. Creation accepts only public
+HTTPS destinations; DNS results are checked against private, loopback, and
+reserved ranges. Dispatch resolves and validates the destination again, then
+pins the validated address on the HTTPS connection to close the validation to
+connect DNS-rebinding window.
+
+For each active subscription matching a queued event, `webhook.dispatch` sends
+the UTF-8 JSON event body with `Content-Type: application/json`,
+`X-Webhook-Event`, `X-Webhook-Delivery` (the pg-boss job ID), and
+`X-Webhook-Signature: sha256=<hex>`. The signature is HMAC-SHA256 over the exact
+request body using that registration's signing secret. Any 2xx response counts
+as delivered; network failures, timeouts, and other HTTP statuses fail the job
+and use the queue's existing retry/backoff/dead-letter policy. Retries currently
+redeliver the event to every matching endpoint, including endpoints that may
+already have accepted it; receivers can deduplicate by `X-Webhook-Delivery`.
+Per-endpoint delivery state and retry tracking remain future work.
 
 ## Adapter registry (CA-02)
 
@@ -1865,13 +1925,13 @@ resolver has no way to supply.
 
 ### Errors
 
-| Condition | Error | `code` |
-| --- | --- | --- |
-| No adapter registered for the connector type | `ConnectorUnavailableError` | `CONNECTOR_UNAVAILABLE` |
+| Condition                                               | Error                       | `code`                  |
+| ------------------------------------------------------- | --------------------------- | ----------------------- |
+| No adapter registered for the connector type            | `ConnectorUnavailableError` | `CONNECTOR_UNAVAILABLE` |
 | Connector missing, inactive, or owned by another tenant | `ConnectorUnavailableError` | `CONNECTOR_UNAVAILABLE` |
-| No active connector, or an ambiguous fallback | `ConnectorUnavailableError` | `CONNECTOR_UNAVAILABLE` |
-| Requested format not in `supportedFormats` | `FormatNotSupportedError` | `FORMAT_NOT_SUPPORTED` |
-| Override requested but not permitted | `ForbiddenException` | HTTP 403 |
+| No active connector, or an ambiguous fallback           | `ConnectorUnavailableError` | `CONNECTOR_UNAVAILABLE` |
+| Requested format not in `supportedFormats`              | `FormatNotSupportedError`   | `FORMAT_NOT_SUPPORTED`  |
+| Override requested but not permitted                    | `ForbiddenException`        | HTTP 403                |
 
 Registering two adapters for the same connector type throws a plain `Error` at startup — a
 misconfiguration should be loud, not silently resolved to whichever registered last.
@@ -1925,16 +1985,16 @@ throws `ThrottlerException` on block.
 
 **Environment variables** (see `.env.example`):
 
-| Variable | Default | Purpose |
-| --- | --- | --- |
-| `RATE_LIMIT_ENABLED` | `true` | Master switch for both guards. Set `false` to disable (the integration/e2e test setup does this by default). |
-| `RATE_LIMIT_WINDOW_MS` | `60000` | Sliding window length, in milliseconds. |
-| `RATE_LIMIT_GLOBAL_PER_MINUTE` | `2000` | Flat rate `RateLimitGuard` applies to every caller, regardless of tenant tier. Kept above `RATE_LIMIT_PREMIUM_PER_MINUTE` on purpose — see above. |
-| `RATE_LIMIT_STANDARD_PER_MINUTE` | `100` | Request limit for the `standard` tier, enforced by `TenantTierRateLimitGuard` only. |
-| `RATE_LIMIT_PREMIUM_PER_MINUTE` | `1000` | Request limit for the `premium` tier, enforced by `TenantTierRateLimitGuard` only. |
-| `RATE_LIMIT_PRUNE_CRON` | `0 * * * *` | Cron schedule for the pg-boss pruning worker. |
-| `RATE_LIMIT_HIT_RETENTION_MINUTES` | `5` | How long a hit row is kept before pruning. Must stay comfortably above `RATE_LIMIT_WINDOW_MS`, or the sliding window loses hits it still needs to count. |
-| `CORS_ALLOWED_ORIGINS` | `*` | Comma-separated list of exact allowed origins (scheme + host + port, no path), or `*` to allow any origin. Refused at startup when `NODE_ENV=production` — with `credentials: false` this is not the usual reflect-any-origin-with-credentials hole, but a wildcard reaching a deployed environment is far more likely a forgotten override than intent. |
+| Variable                           | Default     | Purpose                                                                                                                                                                                                                                                                                                                                                  |
+| ---------------------------------- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `RATE_LIMIT_ENABLED`               | `true`      | Master switch for both guards. Set `false` to disable (the integration/e2e test setup does this by default).                                                                                                                                                                                                                                             |
+| `RATE_LIMIT_WINDOW_MS`             | `60000`     | Sliding window length, in milliseconds.                                                                                                                                                                                                                                                                                                                  |
+| `RATE_LIMIT_GLOBAL_PER_MINUTE`     | `2000`      | Flat rate `RateLimitGuard` applies to every caller, regardless of tenant tier. Kept above `RATE_LIMIT_PREMIUM_PER_MINUTE` on purpose — see above.                                                                                                                                                                                                        |
+| `RATE_LIMIT_STANDARD_PER_MINUTE`   | `100`       | Request limit for the `standard` tier, enforced by `TenantTierRateLimitGuard` only.                                                                                                                                                                                                                                                                      |
+| `RATE_LIMIT_PREMIUM_PER_MINUTE`    | `1000`      | Request limit for the `premium` tier, enforced by `TenantTierRateLimitGuard` only.                                                                                                                                                                                                                                                                       |
+| `RATE_LIMIT_PRUNE_CRON`            | `0 * * * *` | Cron schedule for the pg-boss pruning worker.                                                                                                                                                                                                                                                                                                            |
+| `RATE_LIMIT_HIT_RETENTION_MINUTES` | `5`         | How long a hit row is kept before pruning. Must stay comfortably above `RATE_LIMIT_WINDOW_MS`, or the sliding window loses hits it still needs to count.                                                                                                                                                                                                 |
+| `CORS_ALLOWED_ORIGINS`             | `*`         | Comma-separated list of exact allowed origins (scheme + host + port, no path), or `*` to allow any origin. Refused at startup when `NODE_ENV=production` — with `credentials: false` this is not the usual reflect-any-origin-with-credentials hole, but a wildcard reaching a deployed environment is far more likely a forgotten override than intent. |
 
 A pg-boss worker (`rate-limit-prune.worker.ts`, queue `rate-limit.prune`) runs on the
 `RATE_LIMIT_PRUNE_CRON` schedule and deletes hit rows older than `RATE_LIMIT_HIT_RETENTION_MINUTES`,
@@ -1943,11 +2003,10 @@ gated by `PG_BOSS_WORKERS_ENABLED` like the other maintenance workers.
 **Admin endpoints** (platform-admin role required, subject only to the global `RateLimitGuard`, not
 `TenantTierRateLimitGuard`):
 
-| Endpoint | Purpose |
-| --- | --- |
-| `GET /api/v1/admin/rate-limits/{tenantId}` | Resolved tier, limit, and per-route hit counts for the tenant within the current window. |
-| `POST /api/v1/admin/rate-limits/{tenantId}/reset` | Deletes every recorded hit for the tenant, clearing it back to zero across every route. |
-
+| Endpoint                                          | Purpose                                                                                  |
+| ------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `GET /api/v1/admin/rate-limits/{tenantId}`        | Resolved tier, limit, and per-route hit counts for the tenant within the current window. |
+| `POST /api/v1/admin/rate-limits/{tenantId}/reset` | Deletes every recorded hit for the tenant, clearing it back to zero across every route.  |
 
 `RateLimitGuard` always keys on the caller's IP, never on route params, so these two admin routes
 are throttled at the flat global rate against the calling admin — the same as every other route —
@@ -1963,7 +2022,13 @@ every exception and normalizes the response into the `ErrorResponse` envelope do
 `docs/openapi.yaml`:
 
 ```json
-{ "error": { "code": "RESOURCE_NOT_FOUND", "message": "Tenant not found", "request_id": "..." } }
+{
+  "error": {
+    "code": "RESOURCE_NOT_FOUND",
+    "message": "Tenant not found",
+    "request_id": "..."
+  }
+}
 ```
 
 - `code`/`message`/extra fields are taken as-is from exceptions that already build this shape (e.g.
@@ -1982,6 +2047,7 @@ every exception and normalizes the response into the `ErrorResponse` envelope do
 - DTO validation failures (`ValidationPipe`) go through `buildValidationExceptionFactory()`
   (`apps/.../common/filters/validation-exception-factory.ts`), which builds the `VALIDATION_FAILED`
   envelope directly with one `details` entry per failed constraint (`field`, `message`).
+
 ## CORS
 
 `configureApp()` (`app.config.ts`) calls `app.enableCors()` with options built by
@@ -1998,7 +2064,6 @@ callers.
 - `credentials` is always `false` — auth is Bearer-token only, never a cross-origin cookie.
 
 ## Testing
-
 
 ### Run Unit Tests
 
@@ -2104,7 +2169,10 @@ any of the tiers above:
   `getCalls()`/`reset()`:
 
   ```ts
-  import { ConnectorUnavailableError, MockAdapter } from '@app/credential-ports';
+  import {
+    ConnectorUnavailableError,
+    MockAdapter,
+  } from '@app/credential-ports';
 
   const adapter = new MockAdapter();
   adapter.configure({
@@ -2270,8 +2338,6 @@ npm run migrate:down
 # Rebuild and try again
 npm run build && npm run migrate:up
 ```
-
-
 
 ## Additional Resources
 

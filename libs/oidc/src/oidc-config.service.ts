@@ -104,6 +104,7 @@ const DEFAULT_SCOPES = [
   'profiles:manage',
   'users:manage',
   'clients:manage',
+  'webhooks:manage',
   'logs:read',
   'audit:read',
 ];

@@ -1,4 +1,4 @@
-import { assertSafeConnectorUrl } from './assert-safe-connector-url';
+import { assertSafePublicHttpsUrl } from './assert-safe-connector-url';
 
 jest.mock('node:dns/promises', () => ({
   lookup: jest.fn(),
@@ -9,21 +9,24 @@ const { lookup } = require('node:dns/promises') as {
   lookup: jest.Mock;
 };
 
-describe('assertSafeConnectorUrl', () => {
+describe('assertSafePublicHttpsUrl for connector endpoints', () => {
   beforeEach(() => {
     lookup.mockReset();
   });
 
   it('rejects a malformed URL', async () => {
-    await expect(assertSafeConnectorUrl('not-a-url')).rejects.toThrow(
-      'Connector endpoint URL is not a valid URL.',
-    );
+    await expect(
+      assertSafePublicHttpsUrl('not-a-url', 'Connector endpoint'),
+    ).rejects.toThrow('Connector endpoint URL is not a valid URL.');
     expect(lookup).not.toHaveBeenCalled();
   });
 
   it('rejects a non-https URL', async () => {
     await expect(
-      assertSafeConnectorUrl('http://traction.example.com'),
+      assertSafePublicHttpsUrl(
+        'http://traction.example.com',
+        'Connector endpoint',
+      ),
     ).rejects.toThrow('Connector endpoint URL must use https.');
     expect(lookup).not.toHaveBeenCalled();
   });
@@ -32,7 +35,10 @@ describe('assertSafeConnectorUrl', () => {
     lookup.mockRejectedValue(new Error('ENOTFOUND'));
 
     await expect(
-      assertSafeConnectorUrl('https://nonexistent.example.test'),
+      assertSafePublicHttpsUrl(
+        'https://nonexistent.example.test',
+        'Connector endpoint',
+      ),
     ).rejects.toThrow('Connector endpoint hostname could not be resolved.');
   });
 
@@ -40,14 +46,17 @@ describe('assertSafeConnectorUrl', () => {
     lookup.mockResolvedValue([{ address: '93.184.216.34', family: 4 }]);
 
     await expect(
-      assertSafeConnectorUrl('https://traction.example.com'),
-    ).resolves.toBeUndefined();
+      assertSafePublicHttpsUrl(
+        'https://traction.example.com',
+        'Connector endpoint',
+      ),
+    ).resolves.toEqual(['93.184.216.34']);
   });
 
   it('allows a literal public IPv4 address without a DNS lookup', async () => {
     await expect(
-      assertSafeConnectorUrl('https://93.184.216.34'),
-    ).resolves.toBeUndefined();
+      assertSafePublicHttpsUrl('https://93.184.216.34', 'Connector endpoint'),
+    ).resolves.toEqual(['93.184.216.34']);
     expect(lookup).not.toHaveBeenCalled();
   });
 
@@ -71,7 +80,10 @@ describe('assertSafeConnectorUrl', () => {
     lookup.mockResolvedValue([{ address, family: 4 }]);
 
     await expect(
-      assertSafeConnectorUrl('https://internal.example.com'),
+      assertSafePublicHttpsUrl(
+        'https://internal.example.com',
+        'Connector endpoint',
+      ),
     ).rejects.toThrow(
       'Connector endpoint resolves to a private, loopback, or reserved network address.',
     );
@@ -88,7 +100,10 @@ describe('assertSafeConnectorUrl', () => {
     lookup.mockResolvedValue([{ address, family: 6 }]);
 
     await expect(
-      assertSafeConnectorUrl('https://internal.example.com'),
+      assertSafePublicHttpsUrl(
+        'https://internal.example.com',
+        'Connector endpoint',
+      ),
     ).rejects.toThrow(
       'Connector endpoint resolves to a private, loopback, or reserved network address.',
     );
@@ -98,8 +113,11 @@ describe('assertSafeConnectorUrl', () => {
     lookup.mockResolvedValue([{ address: '2001:4860:4860::8888', family: 6 }]);
 
     await expect(
-      assertSafeConnectorUrl('https://internal.example.com'),
-    ).resolves.toBeUndefined();
+      assertSafePublicHttpsUrl(
+        'https://internal.example.com',
+        'Connector endpoint',
+      ),
+    ).resolves.toEqual(['2001:4860:4860::8888']);
   });
 
   it('rejects when any resolved address is private, even if another is public', async () => {
@@ -109,9 +127,52 @@ describe('assertSafeConnectorUrl', () => {
     ]);
 
     await expect(
-      assertSafeConnectorUrl('https://internal.example.com'),
+      assertSafePublicHttpsUrl(
+        'https://internal.example.com',
+        'Connector endpoint',
+      ),
     ).rejects.toThrow(
       'Connector endpoint resolves to a private, loopback, or reserved network address.',
     );
+  });
+});
+
+describe('assertSafePublicHttpsUrl for webhook destinations', () => {
+  beforeEach(() => {
+    lookup.mockReset();
+  });
+
+  it('allows a public HTTPS address without DNS lookup', async () => {
+    await expect(
+      assertSafePublicHttpsUrl(
+        'https://93.184.216.34/webhooks',
+        'Webhook endpoint',
+      ),
+    ).resolves.toEqual(['93.184.216.34']);
+    expect(lookup).not.toHaveBeenCalled();
+  });
+
+  it('rejects a hostname that resolves to a private address', async () => {
+    lookup.mockResolvedValue([{ address: '10.0.0.8', family: 4 }]);
+
+    await expect(
+      assertSafePublicHttpsUrl(
+        'https://hooks.example.com/events',
+        'Webhook endpoint',
+      ),
+    ).rejects.toThrow(
+      'Webhook endpoint resolves to a private, loopback, or reserved network address.',
+    );
+  });
+
+  it('rejects unresolved webhook hostnames with a webhook-specific error', async () => {
+    lookup.mockRejectedValue(new Error('ENOTFOUND'));
+
+    await expect(
+      assertSafePublicHttpsUrl(
+        'https://missing.example.test/events',
+        'Webhook endpoint',
+      ),
+    ).rejects.toThrow('Webhook endpoint hostname could not be resolved.');
   });
 });

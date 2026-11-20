@@ -25,7 +25,7 @@ describe('SmtpEmailProvider', () => {
     jest.clearAllMocks();
     jest.mocked(createTransport).mockReturnValue({
       sendMail,
-    } as unknown as ReturnType<typeof createTransport>);
+  } as unknown as ReturnType<typeof createTransport>);
   });
 
   it('requires STARTTLS and sends both invitation formats', async () => {

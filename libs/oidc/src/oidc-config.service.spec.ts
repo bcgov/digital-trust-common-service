@@ -203,6 +203,7 @@ describe('OidcConfigService', () => {
         'profiles:manage',
         'users:manage',
         'clients:manage',
+        'webhooks:manage',
         'logs:read',
         'audit:read',
       ]);

@@ -129,6 +129,25 @@ describe('AppController (e2e)', () => {
     });
   });
 
+  it('mounts all versioned tenant webhook registration routes behind authentication', async () => {
+    const tenantId = '123e4567-e89b-4234-8234-123456789abc';
+    const registrationId = '123e4567-e89b-4234-8234-abcdefabcdef';
+
+    await request(app.getHttpServer())
+      .post(`/api/v1/tenants/${tenantId}/webhooks`)
+      .send({
+        endpoint_url: 'https://93.184.216.34/events',
+        events: ['credential.issued'],
+      })
+      .expect(401);
+    await request(app.getHttpServer())
+      .get(`/api/v1/tenants/${tenantId}/webhooks`)
+      .expect(401);
+    await request(app.getHttpServer())
+      .delete(`/api/v1/tenants/${tenantId}/webhooks/${registrationId}`)
+      .expect(401);
+  });
+
   it('/health/ready (GET) reports the database up against a real connection', async () => {
     // The only tier where the readiness contract meets real collaborators. A
     // unit test can assert the mapping from a mocked indicator, but not that
