@@ -6,7 +6,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import axios from 'axios';
 import { decodeJwt } from 'jose';
 
-import { assertSafeConnectorUrl } from '../../../common/assert-safe-connector-url';
+import { assertSafePublicHttpsUrl } from '../../../common/assert-safe-connector-url';
 import {
   buildTractionTokenRequestBody,
   buildTractionTokenUrl,
@@ -159,10 +159,10 @@ export class TractionTokenManager {
     // outbound request to it.
     const { apiKey, tractionTenantId } = this.readCredentials(context);
 
-    await assertSafeConnectorUrl(context.endpointUrl);
+    await assertSafePublicHttpsUrl(context.endpointUrl, 'Connector endpoint');
 
     // codeql[js/request-forgery]: context.endpointUrl is validated
-    // immediately above by assertSafeConnectorUrl (https-only, DNS-checked
+    // immediately above by assertSafePublicHttpsUrl (https-only, DNS-checked
     // against private/loopback/reserved ranges); tractionTenantId is
     // percent-encoded by buildTractionTokenUrl so it can only affect the
     // path on that already-validated host.

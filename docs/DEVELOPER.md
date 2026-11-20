@@ -1050,7 +1050,7 @@ The canonical OAuth scope names live in `@app/auth` (`libs/auth/src/constants/sc
 | Level | Scopes |
 |-------|--------|
 | **Level 1 — tenant superuser** | `tenants:admin` (implicitly grants all Level 2 + Level 3 scopes) |
-| **Level 2 — domain operations** | `credentials:offer`, `credentials:verify`, `credentials:hold`, `credentials:revoke`, `connections:manage`, `profiles:manage`, `users:manage`, `clients:manage` |
+| **Level 2 — domain operations** | `credentials:offer`, `credentials:verify`, `credentials:hold`, `credentials:revoke`, `connections:manage`, `profiles:manage`, `users:manage`, `clients:manage`, `webhooks:manage` |
 | **Level 3 — read-only** | `logs:read`, `audit:read` |
 
 ### Role → scope seed (`role_scope` table)
@@ -1801,6 +1801,29 @@ The additive retry migration removes the redundant issue unique index while
 retaining the latest-action FK/index and the durable marker. Rolling it back
 after multiple attempts for an exchange fails the old uniqueness constraint
 rather than deleting operation history; plan a forward fix instead.
+
+## Outbound webhook registration
+
+Tenant webhook registrations are managed through `POST`, `GET`, and `DELETE`
+under `/api/v1/tenants/:tenantId/webhooks`. These endpoints require
+`webhooks:manage` and enforce tenant access and active-tenant status. Owners
+inherit the scope through `tenants:admin`; administrators receive it by default,
+while explicit tenant role overrides remain unchanged. Machine clients must be
+assigned the scope explicitly, and existing tokens must be refreshed or reissued.
+
+Creation accepts a public HTTPS endpoint and a non-empty set of supported events.
+The generated signing secret is returned once and stored in a versioned
+AES-256-GCM encrypted envelope. List responses never contain secrets or encrypted
+credentials. Registration deletion is a hard delete, and tenant deletion
+cascades to its registrations. Creation and deletion audit records contain only
+resource identifiers.
+
+Registration validates DNS results against private, loopback, and reserved
+addresses. This check alone does not prevent DNS rebinding: a delivery
+implementation must validate and pin the destination when it connects.
+
+The `webhook.dispatch` worker is currently a stub: it acknowledges valid events
+without sending HTTP requests. Registering an endpoint does not enable delivery.
 
 ## Adapter registry (CA-02)
 

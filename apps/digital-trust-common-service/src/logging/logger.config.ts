@@ -82,6 +82,8 @@ const SENSITIVE_LOG_KEYS = [
   'client_secret',
   'clientSecretHash',
   'client_secret_hash',
+  'signingSecret',
+  'signing_secret',
   'clientAssertion',
   'client_assertion',
   'password',

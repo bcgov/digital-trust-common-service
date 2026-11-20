@@ -1,3 +1,5 @@
+import { randomBytes } from 'node:crypto';
+
 import { RequestContextService } from '@app/common/context/request-context.service';
 import { ConsoleLogger, Logger as NestLogger } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
@@ -139,6 +141,27 @@ describe('createLoggerModuleParams', () => {
       },
     });
   });
+
+  it.each(['signingSecret', 'signing_secret'])(
+    'redacts webhook %s at the top level and in nested payloads',
+    (field) => {
+      const { logger, stream } = createLogger('info');
+      const secret = randomBytes(32).toString('base64url');
+
+      logger.info(
+        { [field]: secret, registration: { [field]: secret } },
+        'redacted',
+      );
+
+      expect(stream.records()).toHaveLength(1);
+      expect(stream.records()[0]).toMatchObject({
+        message: 'redacted',
+        [field]: '[Redacted]',
+        registration: { [field]: '[Redacted]' },
+      });
+      expect(stream.chunks.join('')).not.toContain(secret);
+    },
+  );
 
   it('redacts secrets carried on error payloads', () => {
     const { logger, stream } = createLogger('info');

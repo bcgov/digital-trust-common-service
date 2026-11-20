@@ -9,7 +9,7 @@ import {
   wrap,
 } from 'cockatiel';
 
-import { assertSafeConnectorUrl } from '../../../common/assert-safe-connector-url';
+import { assertSafePublicHttpsUrl } from '../../../common/assert-safe-connector-url';
 
 const REQUEST_TIMEOUT_MS = 30_000;
 // cockatiel's `maxAttempts` counts retries after the first attempt, not
@@ -77,7 +77,7 @@ export class TractionHttpClient {
     retrySafe = true,
   ): Promise<AxiosResponse<T>> {
     if (config.url) {
-      await assertSafeConnectorUrl(config.url);
+      await assertSafePublicHttpsUrl(config.url, 'Connector endpoint');
     }
 
     return retrySafe

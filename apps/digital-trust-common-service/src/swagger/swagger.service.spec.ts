@@ -80,6 +80,7 @@ const modulesToMock = [
   '../operation/operation.module',
   '../audit-log/audit-log.module',
   '../admin/admin.module',
+  '../webhook-dispatch/webhook-dispatch.module',
 ];
 
 const modulesMock = mockAppModules(modulesToMock);

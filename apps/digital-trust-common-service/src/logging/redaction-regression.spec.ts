@@ -12,7 +12,7 @@ import { LoggerModule, Logger as PinoNestLogger } from 'nestjs-pino';
 
 import { config, InMemoryStream } from '../../test/support/logger-harness';
 import { instrumentAdapter } from '../adapter-registry/instrumented-adapter';
-import { assertSafeConnectorUrl } from '../common/assert-safe-connector-url';
+import { assertSafePublicHttpsUrl } from '../common/assert-safe-connector-url';
 import { BusinessMetricsService } from '../common/telemetry/business-metrics.service';
 import { ConnectorType } from '../connection/connection.entity';
 import { TractionHttpClient } from '../connector/connectors/traction/traction-http-client.service';
@@ -25,7 +25,7 @@ import { createLoggerModuleParams } from './logger.config';
 
 jest.mock('../common/assert-safe-connector-url');
 
-const mockedAssertSafeConnectorUrl = assertSafeConnectorUrl as jest.Mock;
+const mockedAssertSafeConnectorUrl = assertSafePublicHttpsUrl as jest.Mock;
 
 /**
  * The adapter-failure, webhook-ingestion, and token-acquisition event sources

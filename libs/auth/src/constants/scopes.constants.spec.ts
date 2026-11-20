@@ -1,14 +1,29 @@
 import {
   ALL_TENANT_SCOPES,
+  ASSIGNABLE_OAUTH_CLIENT_SCOPES,
+  LEVEL2_SCOPES,
   OAUTH_CLIENT_ALLOWED_ROLES,
   OIDC_SCOPE_ALLOWLIST,
   ROLE_HIERARCHY,
   SCOPE_CATALOG,
   TENANT_SUPERUSER_SCOPE,
+  WEBHOOKS_MANAGE_SCOPE,
   isKnownScope,
 } from './scopes.constants';
 
 describe('scope constants', () => {
+  it('publishes webhook management as an assignable and issuable level-two scope', () => {
+    expect(LEVEL2_SCOPES).toContain(WEBHOOKS_MANAGE_SCOPE);
+    expect(ASSIGNABLE_OAUTH_CLIENT_SCOPES).toContain(WEBHOOKS_MANAGE_SCOPE);
+    expect(OIDC_SCOPE_ALLOWLIST).toContain(WEBHOOKS_MANAGE_SCOPE);
+    expect(isKnownScope(WEBHOOKS_MANAGE_SCOPE)).toBe(true);
+    expect(SCOPE_CATALOG).toContainEqual({
+      name: WEBHOOKS_MANAGE_SCOPE,
+      description: 'Register, list, and delete tenant webhooks.',
+      level: 2,
+    });
+  });
+
   describe('SCOPE_CATALOG', () => {
     it('publishes every tenant scope plus the superuser scope', () => {
       expect(SCOPE_CATALOG.map((entry) => entry.name).sort()).toEqual(
