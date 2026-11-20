@@ -1,5 +1,11 @@
 import { Button } from '@bcgov/design-system-react-components';
-import { startTransition, useEffect, useId, useState } from 'react';
+import {
+  startTransition,
+  useCallback,
+  useEffect,
+  useId,
+  useState,
+} from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useNavigate, useSearchParams } from 'react-router';
 import valid from 'semver/functions/valid';
@@ -8,7 +14,6 @@ import { AccessDenied } from '@/components/common/access-denied';
 import { ArrowLeftIcon, ArrowRightIcon } from '@/components/common/icons';
 import { LoadingMessage } from '@/components/common/query-status';
 import { notify } from '@/components/common/sonner';
-import { StaticTag } from '@/components/common/static-tag';
 import {
   AttributesStep,
   type Attribute,
@@ -24,6 +29,7 @@ import {
   useRegisterCredentialDefinition,
   useUpdateCredentialDefinition,
 } from '@/lib/api/queries/credential-definitions';
+import type { CredentialDefinitionRegistrationOperation } from '@/lib/api/resources/credential-definitions';
 import { useTenant } from '@/lib/api/queries/tenants';
 import { useAuth } from '@/lib/auth/context';
 import { hasScope, TENANT_ADMIN_SCOPE } from '@/lib/auth/scopes';
@@ -41,8 +47,21 @@ function semanticType(value: unknown): SemanticAttributeType {
     ? type
     : 'string';
 }
+interface CreateOrEditCredentialDefinitionPageProps {
+  embedded?: boolean;
+  onExit?: () => void;
+  exitLabel?: string;
+  onRegistrationStarted?: (
+    operation: CredentialDefinitionRegistrationOperation,
+  ) => void;
+}
 
-export function CreateOrEditCredentialDefinitionPage() {
+export function CreateOrEditCredentialDefinitionPage({
+  embedded = false,
+  onExit,
+  exitLabel,
+  onRegistrationStarted,
+}: CreateOrEditCredentialDefinitionPageProps = {}) {
   const { t } = useTranslation();
   const { user } = useAuth();
   const { tenant } = useActiveTenant();
@@ -51,7 +70,17 @@ export function CreateOrEditCredentialDefinitionPage() {
   const tenantQuery = useTenant(tenant?.id, { enabled: canManage });
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const draftId = searchParams.get('id');
+  const [embeddedDraftId, setEmbeddedDraftId] = useState<string | null>(null);
+  const embeddedDraftStorageKey =
+    embedded && tenant?.id
+      ? `tenant-onboarding:credential-definition-draft:${tenant.id}`
+      : null;
+  const storedEmbeddedDraftId = embeddedDraftStorageKey
+    ? sessionStorage.getItem(embeddedDraftStorageKey)
+    : null;
+  const draftId = embedded
+    ? (embeddedDraftId ?? storedEmbeddedDraftId)
+    : searchParams.get('id');
   const draftQuery = useCredentialDefinition(tenant?.id, draftId, {
     enabled: canManage,
   });
@@ -75,18 +104,26 @@ export function CreateOrEditCredentialDefinitionPage() {
   const [chosenConnectorId, setChosenConnectorId] = useState<string | null>(
     null,
   );
+  const leaveEditor = useCallback(() => {
+    if (embedded && onExit) {
+      onExit();
+    } else {
+      void navigate('/credential-definitions');
+    }
+  }, [embedded, navigate, onExit]);
+
   useEffect(() => {
     const definition = draftQuery.data;
     if (!canManage || !draftId || !definition || loadedDraftId === draftId)
       return;
     if (definition.status !== 'draft') {
       notify.danger(t('credentialDefinitions.wizard.draftNotEditable'));
-      void navigate('/credential-definitions');
+      leaveEditor();
       return;
     }
     if (definition.format !== 'anoncreds') {
       notify.danger(t('credentialDefinitions.wizard.unsupportedFormat'));
-      void navigate('/credential-definitions');
+      leaveEditor();
       return;
     }
 
@@ -132,14 +169,14 @@ export function CreateOrEditCredentialDefinitionPage() {
       setChosenConnectorId(definition.connector_id ?? null);
       setLoadedDraftId(draftId);
     });
-  }, [canManage, draftId, draftQuery.data, loadedDraftId, navigate, t]);
+  }, [canManage, draftId, draftQuery.data, leaveEditor, loadedDraftId, t]);
 
   useEffect(() => {
     if (canManage && draftQuery.isError) {
       notify.danger(t('credentialDefinitions.wizard.draftLoadFailed'));
-      void navigate('/credential-definitions');
+      leaveEditor();
     }
-  }, [canManage, draftQuery.isError, navigate, t]);
+  }, [canManage, draftQuery.isError, leaveEditor, t]);
   const activeConnectors = (connectorsQuery.data?.data ?? []).filter(
     (connector) => connector.active === true,
   );
@@ -250,9 +287,15 @@ export function CreateOrEditCredentialDefinitionPage() {
             : 'credentialDefinitions.notifications.draftSaved',
         ),
       );
+      if (embedded && definitionId) {
+        setEmbeddedDraftId(definitionId);
+        if (embeddedDraftStorageKey) {
+          sessionStorage.setItem(embeddedDraftStorageKey, definitionId);
+        }
+      }
       if (exitAfterSave) {
-        void navigate('/credential-definitions');
-      } else if (!draftId && definitionId) {
+        leaveEditor();
+      } else if (!embedded && !draftId && definitionId) {
         void navigate(
           `/credential-definitions/create-or-edit?id=${encodeURIComponent(definitionId)}`,
           { replace: true },
@@ -280,9 +323,14 @@ export function CreateOrEditCredentialDefinitionPage() {
 
     const register = () =>
       registerMutation.mutate(request, {
-        onSuccess: () => {
+        onSuccess: (operation) => {
           notify.success(t('credentialDefinitions.wizard.registrationStarted'));
-          void navigate('/credential-definitions');
+          if (embedded) {
+            if (embeddedDraftStorageKey) {
+              sessionStorage.removeItem(embeddedDraftStorageKey);
+            }
+            onRegistrationStarted?.(operation);
+          } else void navigate('/credential-definitions');
         },
         onError,
       });
@@ -303,6 +351,14 @@ export function CreateOrEditCredentialDefinitionPage() {
 
   const saveDraft = () => {
     if (isSetupValid) createDefinition('draft');
+  };
+
+  const saveForLater = () => {
+    if (embedded) {
+      if (isSetupValid) createDefinition('draft', true);
+      return;
+    }
+    leaveEditor();
   };
 
   const publish = () => {
@@ -328,35 +384,23 @@ export function CreateOrEditCredentialDefinitionPage() {
   }
 
   return (
-    <div className="flex flex-1 flex-col gap-8">
-      <div className="flex flex-col gap-2">
-        <Link
-          to="/credential-definitions"
-          className="inline-flex w-fit items-center gap-2 text-small-body text-(--typography-color-link) hover:underline"
-        >
-          <ArrowLeftIcon className="size-4" />
-          {t('credentialDefinitions.wizard.backToList')}
-        </Link>
-        {draftId ? (
-          <div className="flex flex-wrap items-center gap-3">
-            <h1 className="min-w-0 break-words text-h1 font-bold text-black">
-              {draftQuery.data?.name ||
-                t('credentialDefinitions.wizard.editTitle')}
-            </h1>
-            <StaticTag
-              color="grey"
-              tagStyle="circular"
-              label={t('credentialDefinitions.wizard.draftTag', {
-                version: draftQuery.data?.version ?? '',
-              })}
-            />
-          </div>
-        ) : (
+    <div className="flex flex-1 flex-col gap-5">
+      {!embedded && (
+        <div className="flex flex-col gap-2">
+          <Link
+            to="/credential-definitions"
+            className="inline-flex w-fit items-center gap-2 text-small-body text-(--typography-color-link) hover:underline"
+          >
+            <ArrowLeftIcon className="size-4" />
+            {t('credentialDefinitions.wizard.backToList')}
+          </Link>
           <h1 className="text-h1 font-bold text-black">
-            {t('credentialDefinitions.wizard.newTitle')}
+            {draftId
+              ? t('credentialDefinitions.wizard.editTitle')
+              : t('credentialDefinitions.wizard.newTitle')}
           </h1>
-        )}
-      </div>
+        </div>
+      )}
       <WizardSteps steps={steps} currentStep={step} />
       {/* Kept mounted so entered values survive moving between steps. */}
       <div hidden={step !== 0} className="flex flex-col gap-5">
@@ -410,9 +454,10 @@ export function CreateOrEditCredentialDefinitionPage() {
         {step === 0 ? (
           <Button
             variant="secondary"
-            onPress={() => void navigate('/credential-definitions')}
+            isDisabled={isSaving || (embedded && !isSetupValid)}
+            onPress={saveForLater}
           >
-            {t('credentialDefinitions.wizard.cancel')}
+            {exitLabel ?? t('credentialDefinitions.wizard.cancel')}
           </Button>
         ) : (
           <div className="flex gap-3">
@@ -426,9 +471,10 @@ export function CreateOrEditCredentialDefinitionPage() {
             </Button>
             <Button
               variant="secondary"
-              onPress={() => void navigate('/credential-definitions')}
+              isDisabled={isSaving || (embedded && !isSetupValid)}
+              onPress={saveForLater}
             >
-              {t('credentialDefinitions.wizard.cancel')}
+              {exitLabel ?? t('credentialDefinitions.wizard.cancel')}
             </Button>
           </div>
         )}

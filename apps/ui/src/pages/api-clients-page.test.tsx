@@ -112,6 +112,15 @@ describe('ApiClientsPage', () => {
     );
     await user.keyboard('{Escape}');
     expect(
+      within(dialog).getByRole('checkbox', { name: 'Client credentials' }),
+    ).toBeChecked();
+    expect(
+      within(dialog).getByRole('checkbox', { name: 'Client credentials' }),
+    ).toBeEnabled();
+    expect(
+      within(dialog).getByRole('checkbox', { name: 'Authorization code' }),
+    ).toBeEnabled();
+    expect(
       within(dialog)
         .getByRole('button', { name: /^Remove credentials:offer/ })
         .closest('.bcds-react-aria-Tag'),

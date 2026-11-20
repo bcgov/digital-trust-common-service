@@ -4,9 +4,11 @@ import {
   createTenant,
   deleteTenant,
   getTenant,
+  getTenantOnboarding,
   listTenants,
   updateTenant,
   type CreateTenantRequest,
+  type TenantOnboarding,
   type UpdateTenantRequest,
 } from '../resources/tenants';
 import type { CursorParams } from '../pagination';
@@ -15,6 +17,7 @@ export const tenantKeys = {
   all: ['tenants'] as const,
   list: (params: CursorParams) => [...tenantKeys.all, 'list', params] as const,
   detail: (id: string) => [...tenantKeys.all, 'detail', id] as const,
+  onboarding: (id: string) => [...tenantKeys.detail(id), 'onboarding'] as const,
 };
 
 export function useTenants(
@@ -39,6 +42,30 @@ export function useTenant(
       return getTenant(id);
     },
     enabled: Boolean(id) && options.enabled !== false,
+  });
+}
+
+export function useTenantOnboarding(
+  tenantId: string | undefined,
+  options: {
+    enabled?: boolean;
+    refetchInterval?:
+      number | false | ((data: TenantOnboarding | undefined) => number | false);
+  } = {},
+) {
+  const refetchInterval = options.refetchInterval;
+
+  return useQuery<TenantOnboarding>({
+    queryKey: tenantKeys.onboarding(tenantId ?? ''),
+    queryFn: () => {
+      if (!tenantId) throw new Error('Tenant id is required');
+      return getTenantOnboarding(tenantId);
+    },
+    enabled: Boolean(tenantId) && options.enabled !== false,
+    refetchInterval:
+      typeof refetchInterval === 'function'
+        ? (query) => refetchInterval(query.state.data)
+        : refetchInterval,
   });
 }
 

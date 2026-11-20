@@ -8,13 +8,17 @@ import type { ClientCredentials } from '@/lib/api/resources/api-clients';
 export function ApiClientSecret({
   credentials,
   onDone,
+  embedded = false,
 }: {
   credentials: ClientCredentials;
   onDone: () => void;
+  embedded?: boolean;
 }) {
   const { t } = useTranslation();
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-6">
+    <div
+      className={`flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto ${embedded ? '' : 'p-6'}`}
+    >
       <p className="text-small-body text-(--typography-color-primary)">
         {t('apiClients.secret.storeSecurely')}
       </p>
