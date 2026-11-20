@@ -56,9 +56,9 @@ describe('Webhook registration API (e2e)', () => {
   let limitedClientId: string;
   let otherTenantClientId: string;
 
-  const managerClientSecret = 'webhook-manager-e2e-secret';
-  const limitedClientSecret = 'webhook-limited-e2e-secret';
-  const otherTenantClientSecret = 'webhook-other-tenant-e2e-secret';
+  const managerClientSecret = randomUUID();
+  const limitedClientSecret = randomUUID();
+  const otherTenantClientSecret = randomUUID();
 
   const mockBoss = {
     start: jest.fn().mockResolvedValue(undefined),
