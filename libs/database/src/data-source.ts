@@ -105,7 +105,6 @@ export const AppDataSource = new DataSource({
     BindConnectionsToConnectors1792502783893,
     CreateCredentialExchanges1792506949095,
     IndexExchangeIssueOperation1792543244948,
-    DropRedundantExchangeIssueIndex1793375254070,
     ConfigureIssuanceProfileClaims1794328787660,
     PersistOperationSteps1794928308442,
     RestoreIssuanceDeliveryDefault1795099078637,
