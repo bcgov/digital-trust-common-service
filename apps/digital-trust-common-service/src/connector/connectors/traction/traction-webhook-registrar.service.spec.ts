@@ -1,7 +1,7 @@
 import { ConnectorContext } from '@app/credential-ports';
 import { DataSource } from 'typeorm';
 
-import { assertSafeConnectorUrl } from '../../../common/assert-safe-connector-url';
+import { assertSafePublicHttpsUrl } from '../../../common/assert-safe-connector-url';
 
 import { TractionHttpClient } from './traction-http-client.service';
 import { TractionTokenManager } from './traction-token-manager.service';
@@ -12,7 +12,7 @@ import {
 
 jest.mock('../../../common/assert-safe-connector-url');
 
-const mockedAssertSafeConnectorUrl = assertSafeConnectorUrl as jest.Mock;
+const mockedAssertSafeConnectorUrl = assertSafePublicHttpsUrl as jest.Mock;
 
 function makeContext(
   overrides: Partial<ConnectorContext> = {},
@@ -73,6 +73,7 @@ describe('TractionWebhookRegistrar', () => {
     );
     expect(mockedAssertSafeConnectorUrl).toHaveBeenCalledWith(
       context.endpointUrl,
+      'Connector endpoint',
     );
     expect(mockGetToken).toHaveBeenCalledWith(context);
     expect(mockRequest).toHaveBeenNthCalledWith(1, {

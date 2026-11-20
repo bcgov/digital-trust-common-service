@@ -19,6 +19,8 @@ export const CONNECTIONS_MANAGE_SCOPE = 'connections:manage';
 /** Level 2 scope for OAuth / API client registration. */
 export const CLIENTS_MANAGE_SCOPE = 'clients:manage';
 
+export const WEBHOOKS_MANAGE_SCOPE = 'webhooks:manage';
+
 /** Level 3 scope for the tenant audit-log API. */
 export const AUDIT_READ_SCOPE = 'audit:read';
 
@@ -32,6 +34,7 @@ export const LEVEL2_SCOPES = [
   'profiles:manage',
   USERS_MANAGE_SCOPE,
   CLIENTS_MANAGE_SCOPE,
+  WEBHOOKS_MANAGE_SCOPE,
 ] as const;
 
 /** Level 3 read-only scopes. */
@@ -118,6 +121,11 @@ export const SCOPE_CATALOG: readonly ScopeCatalogEntry[] = [
   {
     name: CLIENTS_MANAGE_SCOPE,
     description: 'Register and revoke API clients.',
+    level: 2,
+  },
+  {
+    name: WEBHOOKS_MANAGE_SCOPE,
+    description: 'Register, list, and delete tenant webhooks.',
     level: 2,
   },
   {

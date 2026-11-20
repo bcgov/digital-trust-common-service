@@ -10,14 +10,14 @@ import {
 } from 'axios';
 import pino from 'pino';
 
-import { assertSafeConnectorUrl } from '../../../common/assert-safe-connector-url';
+import { assertSafePublicHttpsUrl } from '../../../common/assert-safe-connector-url';
 
 import { TractionHttpClient } from './traction-http-client.service';
 import { TractionTokenManager } from './traction-token-manager.service';
 
 jest.mock('../../../common/assert-safe-connector-url');
 
-const mockedAssertSafeConnectorUrl = assertSafeConnectorUrl as jest.Mock;
+const mockedAssertSafeConnectorUrl = assertSafePublicHttpsUrl as jest.Mock;
 
 function makeJwt(payload: Record<string, unknown>): string {
   const base64url = (value: unknown): string =>
@@ -121,6 +121,7 @@ describe('TractionTokenManager', () => {
     expect(result).toBe(token);
     expect(mockedAssertSafeConnectorUrl).toHaveBeenCalledWith(
       context.endpointUrl,
+      'Connector endpoint',
     );
     expect(mockRequest).toHaveBeenCalledWith({
       method: 'POST',

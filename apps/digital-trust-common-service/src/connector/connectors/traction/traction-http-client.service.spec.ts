@@ -1,7 +1,7 @@
 import axios, { AxiosInstance } from 'axios';
 import { BrokenCircuitError } from 'cockatiel';
 
-import { assertSafeConnectorUrl } from '../../../common/assert-safe-connector-url';
+import { assertSafePublicHttpsUrl } from '../../../common/assert-safe-connector-url';
 
 import {
   isRetryableError,
@@ -12,7 +12,7 @@ jest.mock('axios');
 jest.mock('../../../common/assert-safe-connector-url');
 
 const mockedAxios = axios as jest.Mocked<typeof axios>;
-const mockedAssertSafeConnectorUrl = assertSafeConnectorUrl as jest.Mock;
+const mockedAssertSafeConnectorUrl = assertSafePublicHttpsUrl as jest.Mock;
 
 function axiosError(status?: number): unknown {
   return { isAxiosError: true, response: status ? { status } : undefined };
@@ -110,6 +110,7 @@ describe('TractionHttpClient', () => {
     expect(mockedAssertSafeConnectorUrl).toHaveBeenCalledTimes(2);
     expect(mockedAssertSafeConnectorUrl).toHaveBeenCalledWith(
       'https://traction.example.com/connections',
+      'Connector endpoint',
     );
   });
 
