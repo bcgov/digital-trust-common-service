@@ -14,6 +14,7 @@ import { Test } from '@nestjs/testing';
 
 import { AuditAction } from '../audit-log/audit-log.entity';
 import { DomainAuditService } from '../audit-log/domain-audit.service';
+import { assertSafePublicHttpsUrl } from '../common/assert-safe-connector-url';
 import { EncryptionService } from '../common/crypto/encryption.service';
 import { KeyProviderService } from '../common/crypto/key-provider.service';
 
@@ -21,7 +22,6 @@ import { WebhookRegistration } from './webhook-registration.entity';
 import { WebhookEvent } from './webhook-registration.enums';
 import { WebhookRegistrationRepository } from './webhook-registration.repository';
 import { WebhookRegistrationService } from './webhook-registration.service';
-import { assertSafePublicHttpsUrl } from '../common/assert-safe-connector-url';
 
 jest.mock('../common/assert-safe-connector-url', () => ({
   assertSafePublicHttpsUrl: jest.fn().mockResolvedValue(undefined),

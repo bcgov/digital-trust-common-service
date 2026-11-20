@@ -17,9 +17,7 @@ describe('assertSafePublicHttpsUrl for connector endpoints', () => {
   it('rejects a malformed URL', async () => {
     await expect(
       assertSafePublicHttpsUrl('not-a-url', 'Connector endpoint'),
-    ).rejects.toThrow(
-      'Connector endpoint URL is not a valid URL.',
-    );
+    ).rejects.toThrow('Connector endpoint URL is not a valid URL.');
     expect(lookup).not.toHaveBeenCalled();
   });
 

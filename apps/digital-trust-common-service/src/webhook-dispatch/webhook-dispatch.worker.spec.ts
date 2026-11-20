@@ -2,13 +2,14 @@ import { createHmac, randomBytes } from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import { Agent, request as httpsRequest } from 'node:https';
 
-import { ConfigService } from '@nestjs/config';
 import { MODULE_METADATA } from '@nestjs/common/constants';
+import { ConfigService } from '@nestjs/config';
 import { Test, TestingModule } from '@nestjs/testing';
 import type { Job } from 'pg-boss';
 
-import { JobsService } from '../jobs/jobs.service';
+import { assertSafePublicHttpsUrl } from '../common/assert-safe-connector-url';
 import { EncryptionService } from '../common/crypto/encryption.service';
+import { JobsService } from '../jobs/jobs.service';
 
 import { WebhookDispatchModule } from './webhook-dispatch.module';
 import {
@@ -16,9 +17,8 @@ import {
   WebhookDispatchWorker,
 } from './webhook-dispatch.worker';
 import { WebhookRegistrationController } from './webhook-registration.controller';
-import { WebhookRegistrationRepository } from './webhook-registration.repository';
 import { WebhookEvent } from './webhook-registration.enums';
-import { assertSafePublicHttpsUrl } from '../common/assert-safe-connector-url';
+import { WebhookRegistrationRepository } from './webhook-registration.repository';
 
 jest.mock('node:https', () => ({
   ...jest.requireActual<typeof import('node:https')>('node:https'),

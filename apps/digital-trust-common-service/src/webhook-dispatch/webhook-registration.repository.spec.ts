@@ -97,9 +97,9 @@ describe('WebhookRegistrationRepository', () => {
     }
     repository.createQueryBuilder.mockReturnValue(queryBuilder);
 
-    await expect(registrations.findActiveForDispatch(tenantId)).resolves.toEqual(
-      [],
-    );
+    await expect(
+      registrations.findActiveForDispatch(tenantId),
+    ).resolves.toEqual([]);
 
     expect(repository.createQueryBuilder).toHaveBeenCalledWith('registration');
     expect(queryBuilder.addSelect).toHaveBeenCalledWith([
