@@ -155,3 +155,5 @@ config/oidc-keys.json
 oidc-keys.json*
 # Caddy
 root.crt
+/caddy/mailpit.crt
+/.mailpit/

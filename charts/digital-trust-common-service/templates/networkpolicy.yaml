@@ -134,6 +134,36 @@ spec:
         - protocol: TCP
           port: {{ .Values.networkPolicy.keycloak.port }}
 {{- end }}
+{{- if .Values.networkPolicy.smtp.enabled }}
+{{- if not .Values.networkPolicy.smtp.to }}
+{{- fail "networkPolicy.smtp.to must specify SMTP relay destination peers when SMTP egress is enabled" }}
+{{- end }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "digital-trust-common-service.fullname" . }}-egress-smtp
+  labels:
+    {{- include "digital-trust-common-service.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app.kubernetes.io/component
+        operator: In
+        values:
+          - api
+          - worker
+    matchLabels:
+      {{- toYaml $baseSelector | nindent 6 }}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        {{- toYaml .Values.networkPolicy.smtp.to | nindent 8 }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.config.SMTP_PORT | int }}
+{{- end }}
 {{- if or .Values.networkPolicy.collector.enabled .Values.otel.enabled }}
 ---
 apiVersion: networking.k8s.io/v1
@@ -178,7 +208,7 @@ spec:
         - protocol: TCP
           port: {{ .Values.networkPolicy.collector.port }}
 {{- end }}
-{{- if and .Values.networkPolicy.dnsEgress.enabled (or .Values.networkPolicy.database.enabled .Values.networkPolicy.keycloak.enabled .Values.networkPolicy.collector.enabled .Values.otel.enabled) }}
+{{- if and .Values.networkPolicy.dnsEgress.enabled (or .Values.networkPolicy.database.enabled .Values.networkPolicy.keycloak.enabled .Values.networkPolicy.smtp.enabled .Values.networkPolicy.collector.enabled .Values.otel.enabled) }}
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy

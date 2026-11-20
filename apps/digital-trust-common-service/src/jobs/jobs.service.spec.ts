@@ -12,22 +12,27 @@ import {
   trace,
 } from '@opentelemetry/api';
 import type { Context, Tracer } from '@opentelemetry/api';
+import { PinoLogger } from 'nestjs-pino';
+import type { JobWithMetadata } from 'pg-boss';
+import type { EntityManager } from 'typeorm';
 
 import { ShutdownRegistry } from '../shutdown/shutdown-registry';
 
-import { JobsService } from './jobs.service';
+import { JobsService, SafeJobFailure } from './jobs.service';
 
 describe('JobsService', () => {
   let service: JobsService;
   let shutdownRegistry: ShutdownRegistry;
 
   const send = jest.fn();
+  const complete = jest.fn();
   const createQueue = jest.fn().mockResolvedValue(undefined);
   const work = jest.fn().mockResolvedValue('worker-1');
   const stop = jest.fn().mockResolvedValue(undefined);
   const schedule = jest.fn().mockResolvedValue(undefined);
   const stopService = jest.fn().mockResolvedValue(undefined);
   const emit = jest.fn();
+  const logJobError = jest.fn();
   const getRequestContext = jest.fn().mockReturnValue(undefined);
   const runRequestContext = jest.fn(
     <T>(_store: RequestContextStore, callback: () => T): T => callback(),
@@ -37,6 +42,7 @@ describe('JobsService', () => {
     stop: stopService,
     boss: {
       send,
+      complete,
       createQueue,
       work,
       stop,
@@ -51,6 +57,7 @@ describe('JobsService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         JobsService,
+        { provide: PinoLogger, useValue: { error: logJobError } },
         {
           provide: PgBossService,
           useValue: mockPgBossService,
@@ -87,6 +94,46 @@ describe('JobsService', () => {
 
   it('should be defined', () => {
     expect(service).toBeDefined();
+  });
+
+  describe('deferInTransaction', () => {
+    const manager = {} as EntityManager;
+    const retryAt = new Date('2026-04-01T10:00:00Z');
+    const job = {
+      id: 'job-id',
+      name: 'email.send',
+      data: { tenantId: 'tenant-id' },
+      retryCount: 2,
+      retryLimit: 2,
+    } as JobWithMetadata;
+
+    it('schedules the replacement with the same remaining retries', async () => {
+      complete.mockResolvedValueOnce({ affected: 1 });
+      send.mockResolvedValueOnce('replacement-id');
+
+      await service.deferInTransaction(manager, job, retryAt);
+
+      expect(complete).toHaveBeenCalledWith(
+        job.name,
+        { id: job.id, retryCount: 2 },
+        null,
+        { db: expect.any(Object) },
+      );
+      expect(send).toHaveBeenCalledWith(job.name, job.data, {
+        db: expect.any(Object),
+        startAfter: retryAt,
+        retryLimit: 0,
+      });
+    });
+
+    it('does not enqueue a replacement if the active attempt could not be settled', async () => {
+      complete.mockResolvedValueOnce({ affected: 0 });
+
+      await expect(
+        service.deferInTransaction(manager, job, retryAt),
+      ).rejects.toThrow('Could not settle active job for deferral.');
+      expect(send).not.toHaveBeenCalled();
+    });
   });
 
   it('should register itself and ensure queues on module init', async () => {
@@ -586,31 +633,35 @@ describe('JobsService', () => {
       logSpy.mockRestore();
     });
 
-    it('logs a failing job and rethrows so pg-boss can retry it', async () => {
-      const failure = new Error('handler blew up');
-      const errorSpy = jest
-        .spyOn(Logger.prototype, 'error')
-        .mockImplementation();
-      const workHandler = await startWorker('audit.write', () =>
-        Promise.reject(failure),
-      );
+    it.each([
+      [new Error('handler blew up'), {}],
+      [
+        new SafeJobFailure('SMTP hostname could not be resolved.'),
+        { failure_reason: 'SMTP hostname could not be resolved.' },
+      ],
+    ])(
+      'logs a failing job and rethrows so pg-boss can retry it (%s)',
+      async (failure, fields) => {
+        const workHandler = await startWorker('audit.write', () =>
+          Promise.reject(failure),
+        );
 
-      await expect(
-        workHandler([{ id: 'j1', data: { requestId: 'req-1' } }]),
-      ).rejects.toThrow('handler blew up');
+        await expect(
+          workHandler([{ id: 'j1', data: { requestId: 'req-1' } }]),
+        ).rejects.toBe(failure);
 
-      expect(errorSpy).toHaveBeenCalledWith(
-        {
-          duration_ms: expect.any(Number),
-          err: failure,
-          job_id: 'j1',
-          queue: 'audit.write',
-        },
-        'job failed',
-      );
-
-      errorSpy.mockRestore();
-    });
+        expect(logJobError).toHaveBeenCalledWith(
+          {
+            context: 'JobsService',
+            duration_ms: expect.any(Number),
+            job_id: 'j1',
+            queue: 'audit.write',
+            ...fields,
+          },
+          'job failed',
+        );
+      },
+    );
 
     it('keeps the request operation id off the job payload', async () => {
       // audit.write persists operationId as the operation the record is

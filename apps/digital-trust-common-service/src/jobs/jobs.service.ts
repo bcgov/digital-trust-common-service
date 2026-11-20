@@ -20,6 +20,7 @@ import {
   ATTR_MESSAGING_OPERATION_NAME,
   ATTR_MESSAGING_SYSTEM,
 } from '@opentelemetry/semantic-conventions/incubating';
+import { PinoLogger } from 'nestjs-pino';
 import type { Job, WorkHandler, WorkOptions } from 'pg-boss';
 import type { EntityManager } from 'typeorm';
 
@@ -47,6 +48,8 @@ const TENANT_ID_ATTRIBUTE = 'tenant.id';
 // trace of the request that enqueued the job rather than starting its own.
 const TRACE_CARRIER_KEYS = ['traceparent', 'tracestate'] as const;
 
+export class SafeJobFailure extends Error {}
+
 @Injectable()
 export class JobsService implements ShutdownParticipant, OnModuleInit {
   private readonly logger = new Logger(JobsService.name);
@@ -62,6 +65,7 @@ export class JobsService implements ShutdownParticipant, OnModuleInit {
     private readonly config: ConfigService,
     private readonly eventEmitter: EventEmitter2,
     private readonly requestContext: RequestContextService,
+    private readonly jobLogger: PinoLogger,
   ) {}
 
   public async onModuleInit(): Promise<void> {
@@ -135,6 +139,33 @@ export class JobsService implements ShutdownParticipant, OnModuleInit {
         db: fromTypeOrm(manager),
       },
     );
+  }
+
+  public async deferInTransaction(
+    manager: EntityManager,
+    job: Job,
+    startAfter: Date,
+  ): Promise<void> {
+    if (!('retryLimit' in job) || typeof job.retryLimit !== 'number') {
+      throw new Error('Job retry metadata is required for deferral.');
+    }
+
+    const settled = await this.bossService.boss.complete(
+      job.name,
+      { id: job.id, retryCount: job.retryCount },
+      null,
+      { db: fromTypeOrm(manager) },
+    );
+    if (!('affected' in settled) || settled.affected !== 1) {
+      throw new Error('Could not settle active job for deferral.');
+    }
+
+    const replacement = await this.bossService.boss.send(job.name, job.data, {
+      db: fromTypeOrm(manager),
+      startAfter,
+      retryLimit: job.retryLimit - job.retryCount,
+    });
+    if (!replacement) throw new Error('Could not enqueue deferred job.');
   }
 
   /**
@@ -324,10 +355,13 @@ export class JobsService implements ShutdownParticipant, OnModuleInit {
               span.recordException(error);
             }
 
-            this.logger.error(
+            this.jobLogger.error(
               {
+                context: JobsService.name,
                 duration_ms: Date.now() - startedAt,
-                err: error,
+                ...(error instanceof SafeJobFailure
+                  ? { failure_reason: error.message }
+                  : {}),
                 job_id: job.id,
                 queue: queueName,
               },

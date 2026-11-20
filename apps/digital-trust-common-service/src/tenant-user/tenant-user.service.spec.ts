@@ -10,6 +10,7 @@ import { DataSource, EntityManager } from 'typeorm';
 import { AuditAction } from '../audit-log/audit-log.entity';
 import { DomainAuditService } from '../audit-log/domain-audit.service';
 import { encodeCursor } from '../common/cursor-pagination';
+import { EmailKind, EmailService } from '../email/email.service';
 import { TenantRepository } from '../tenant/tenant.repository';
 
 import { CreateTenantUserDto } from './dto/create-tenant-user.dto';
@@ -41,6 +42,7 @@ describe('TenantUserService', () => {
   let mockUpdate: jest.Mock;
   let mockDelete: jest.Mock;
   let mockEmit: jest.Mock;
+  let mockEnqueue: jest.Mock;
   let mockTransaction: jest.Mock;
   let transactionManager: EntityManager;
 
@@ -91,6 +93,7 @@ describe('TenantUserService', () => {
     mockUpdate = jest.fn();
     mockDelete = jest.fn();
     mockEmit = jest.fn().mockResolvedValue(undefined);
+    mockEnqueue = jest.fn().mockResolvedValue('email-job-id');
     transactionManager = {} as EntityManager;
     mockTransaction = jest.fn(
       (callback: (manager: EntityManager) => Promise<unknown>) =>
@@ -118,6 +121,7 @@ describe('TenantUserService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         TenantUserService,
+        { provide: EmailService, useValue: { enqueue: mockEnqueue } },
         {
           provide: TenantRepository,
           useValue: { findByIdForUpdate: mockFindTenantByIdForUpdate },
@@ -164,10 +168,11 @@ describe('TenantUserService', () => {
 
       const result = await service.invite(tenantId, dto);
 
+      expect(mockTransaction).toHaveBeenCalledTimes(1);
       expect(mockFindByTenantAndEmail).toHaveBeenCalledWith(
         tenantId,
         dto.email,
-        undefined,
+        transactionManager,
       );
       expect(mockCreate).toHaveBeenCalledWith(
         {
@@ -176,7 +181,16 @@ describe('TenantUserService', () => {
           role: dto.role,
           status: TenantUserStatus.INVITED,
         },
-        undefined,
+        transactionManager,
+      );
+      expect(mockEnqueue).toHaveBeenCalledTimes(1);
+      expect(mockEnqueue).toHaveBeenCalledWith(
+        {
+          kind: EmailKind.TENANT_INVITATION,
+          tenantId,
+          invitationId: invited.id,
+        },
+        transactionManager,
       );
       expect(mockEmit).toHaveBeenCalledWith({
         tenantId: invited.tenantId,
@@ -202,9 +216,24 @@ describe('TenantUserService', () => {
       expect(mockFindByTenantAndEmail).toHaveBeenCalledWith(
         tenantId,
         dto.email,
-        undefined,
+        transactionManager,
       );
       expect(mockCreate).not.toHaveBeenCalled();
+      expect(mockEnqueue).not.toHaveBeenCalled();
+      expect(mockEmit).not.toHaveBeenCalled();
+    });
+
+    it('does not audit an invitation if no email job was created', async () => {
+      mockFindByTenantAndEmail.mockResolvedValue(null);
+      mockCreate.mockResolvedValue(mockTenantUser);
+      mockEnqueue.mockResolvedValue(null);
+
+      await expect(
+        service.invite(mockTenantUser.tenantId, {
+          email: mockTenantUser.email,
+          role: TenantUserRole.MEMBER,
+        }),
+      ).rejects.toThrow('Could not enqueue invitation email.');
       expect(mockEmit).not.toHaveBeenCalled();
     });
 
@@ -222,6 +251,16 @@ describe('TenantUserService', () => {
 
       const result = await service.invite(tenantId, dto, undefined, manager);
 
+      expect(mockTransaction).not.toHaveBeenCalled();
+      expect(mockEnqueue).toHaveBeenCalledTimes(1);
+      expect(mockEnqueue).toHaveBeenCalledWith(
+        {
+          kind: EmailKind.TENANT_INVITATION,
+          tenantId,
+          invitationId: invited.id,
+        },
+        manager,
+      );
       expect(mockFindByTenantAndEmail).toHaveBeenCalledWith(
         tenantId,
         dto.email,

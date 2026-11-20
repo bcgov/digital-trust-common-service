@@ -79,6 +79,87 @@ DB_SSL=false                       # Enable SSL connection
 CONNECTOR_ENCRYPTION_KEYS_PATH='./config/encryption-keys.json'  # Path to encryption keys
 ```
 
+For local invitation testing, set `MAIL_DRIVER=log` and `NODE_ENV=development`
+in `.env`. The email worker logs the tenant name and public sign-in link,
+without logging the recipient or sending mail. Use this only with a development
+queue: log mode acknowledges pending email jobs. Leave `MAIL_DRIVER` blank to
+keep email jobs queued.
+
+For real delivery, set `MAIL_DRIVER=smtp`, `SMTP_HOST`, and `SMTP_FROM` (a
+sender authorized by the relay). `SMTP_PORT` defaults to `587` and the transport
+requires STARTTLS by default. For implicit TLS, set `SMTP_SECURE=true` and the
+relay's implicit TLS port (typically `465`). Set both `SMTP_USER` and
+`SMTP_PASSWORD` if the relay requires authentication. For Helm, set the plain
+values under `config` and inject relay credentials from a pre-provisioned Secret
+using `extraEnvFrom` so both the API and worker receive the settings.
+
+With chart NetworkPolicies enabled, SMTP also requires explicitly opting in to
+relay egress. Set `networkPolicy.smtp.enabled: true` and provide destination
+peers under `networkPolicy.smtp.to`. For example, replace this documentation
+address with the relay's actual IP range:
+
+```yaml
+networkPolicy:
+  smtp:
+    enabled: true
+    to:
+      - ipBlock:
+          cidr: 192.0.2.10/32
+```
+
+The policy selects both API and worker pods and permits only TCP on
+`config.SMTP_PORT`. Destinations are mandatory when enabled; Kubernetes
+`namespaceSelector` and `podSelector` peers are also supported for in-cluster
+relays. Standard NetworkPolicies cannot restrict destinations by DNS hostname,
+so use the relay's IP ranges or pod selectors. SMTP egress is disabled by
+default in every overlay. Leave it disabled for API-based email providers;
+GC Notify support and its API egress will be configured separately when added.
+
+Before enabling SMTP, use a development queue with no outstanding real
+invitations. Invite one test mailbox that you control, confirm receipt, and
+check that the link opens sign-in. Enabling SMTP can also send existing pending
+invitations from that queue.
+
+**Local SMTP with Mailpit**
+
+Mailpit captures email without forwarding it. Generate a local certificate
+before starting the optional `mail` profile:
+
+```bash
+mkdir -p .mailpit
+openssl req -x509 -newkey rsa:2048 -sha256 -nodes -days 365 \
+  -subj '/CN=mailpit' -addext 'subjectAltName=DNS:mailpit,DNS:localhost' \
+  -keyout .mailpit/mailpit.key -out caddy/mailpit.crt
+docker compose --profile mail up -d mailpit
+```
+
+Set these values in `.env` for a Compose-run app. Leave `SMTP_USER` and
+`SMTP_PASSWORD` blank:
+
+```env
+MAIL_DRIVER=smtp
+SMTP_HOST=mailpit
+SMTP_PORT=1025
+SMTP_SECURE=false
+SMTP_FROM=sender@example.test
+```
+
+Run `docker compose up -d --force-recreate caddy-ca` to republish the local
+trust bundle, then `docker compose --profile mail up -d --force-recreate app`
+so Node picks it up. For a host-run app, use `SMTP_HOST=localhost` instead. Once
+you have [exported Caddy's root certificate](#export-and-trust-the-caddy-local-ca), combine the public
+certificates and set the bundle before starting Node:
+
+```bash
+cat caddy/root.crt caddy/mailpit.crt > .mailpit/ca-bundle.crt
+export NODE_EXTRA_CA_CERTS="$PWD/.mailpit/ca-bundle.crt"
+```
+
+Invite a test address, then inspect the captured invitation at
+<http://127.0.0.1:8025>. Both published Mailpit ports are loopback-only, and
+SMTP requires STARTTLS with certificate verification enabled. Leave
+`MAIL_DRIVER` blank when not testing delivery.
+
 ### 3. Encryption Keys Configuration
 
 The application uses AES-256-GCM encryption to protect sensitive data. Encryption keys are managed via the `CONNECTOR_ENCRYPTION_KEYS_PATH` environment variable, which points to a JSON configuration file.
@@ -1964,6 +2045,21 @@ Note CI runs integration tests against a different PostgreSQL instance
 (GitHub Actions `services: postgres` on `localhost:5432` /
 `dc_common_service`) — check your `DB_*` variables if a test behaves
 differently locally vs. in CI.
+
+Email queue coverage can be run separately against the migrated database:
+
+```bash
+npm run test:integration -- email.integration-spec.ts email-send-quota.integration-spec.ts
+```
+
+These specs use real PostgreSQL transactions and pg-boss with a unique,
+temporary queue schema. They remove their tenant fixtures and queue schema
+afterward, without consuming application jobs. A recording email provider
+replaces external delivery; Mailpit is not required. Coverage includes atomic
+enqueue, worker delivery, tenant and invitation-state filtering, three retries
+and dead-letter routing, rolling quota concurrency, and transactional deferral
+that preserves the remaining retry budget. Retry tests advance only their own
+jobs' scheduled times to avoid waiting through the production backoff.
 
 ### Audit log partitions
 

@@ -3,6 +3,7 @@ import { forwardRef, Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { AuditLogModule } from '../audit-log/audit-log.module';
+import { EmailModule } from '../email/email.module';
 import { TenantStatusModule } from '../tenant/tenant-status.module';
 import { TenantModule } from '../tenant/tenant.module';
 
@@ -18,6 +19,7 @@ import { TenantUserService } from './tenant-user.service';
     TypeOrmModule.forFeature([TenantUser]),
     AuditLogModule,
     AuthModule,
+    EmailModule,
     forwardRef(() => TenantModule),
     TenantStatusModule,
   ],

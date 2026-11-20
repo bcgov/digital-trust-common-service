@@ -1,0 +1,123 @@
+suite: opt-in SMTP egress
+templates:
+  - templates/networkpolicy.yaml
+tests:
+  - it: leaves SMTP egress disabled by default even when SMTP delivery is configured
+    set:
+      config.MAIL_DRIVER: smtp
+      frontend.enabled: false
+      networkPolicy.ingress.enabled: false
+      networkPolicy.database.enabled: false
+      networkPolicy.keycloak.enabled: false
+      networkPolicy.collector.enabled: false
+      otel.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: restricts API and worker egress to the configured relay and SMTP port
+    set:
+      networkPolicy.smtp.enabled: true
+      networkPolicy.smtp.to:
+        - ipBlock:
+            cidr: 192.0.2.0/24
+    documentSelector:
+      path: metadata.name
+      value: RELEASE-NAME-digital-trust-common-service-egress-smtp
+    asserts:
+      - equal:
+          path: spec.podSelector.matchExpressions
+          value:
+            - key: app.kubernetes.io/component
+              operator: In
+              values: [api, worker]
+      - equal:
+          path: spec.podSelector.matchLabels
+          value:
+            app.kubernetes.io/name: digital-trust-common-service
+            app.kubernetes.io/instance: RELEASE-NAME
+      - equal:
+          path: spec.policyTypes
+          value: [Egress]
+      - equal:
+          path: spec.egress
+          value:
+            - to:
+                - ipBlock:
+                    cidr: 192.0.2.0/24
+              ports:
+                - protocol: TCP
+                  port: 587
+
+  - it: follows the SMTP port and accepts an in-cluster relay selector
+    set:
+      config.SMTP_PORT: "465"
+      networkPolicy.smtp.enabled: true
+      networkPolicy.smtp.to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: mail
+          podSelector:
+            matchLabels:
+              app: relay
+    documentSelector:
+      path: metadata.name
+      value: RELEASE-NAME-digital-trust-common-service-egress-smtp
+    asserts:
+      - equal:
+          path: spec.egress[0].ports
+          value:
+            - protocol: TCP
+              port: 465
+      - equal:
+          path: spec.egress[0].to
+          value:
+            - namespaceSelector:
+                matchLabels:
+                  kubernetes.io/metadata.name: mail
+              podSelector:
+                matchLabels:
+                  app: relay
+
+  - it: fails closed without relay destinations
+    set:
+      networkPolicy.smtp.enabled: true
+    asserts:
+      - failedTemplate:
+          errorMessage: networkPolicy.smtp.to must specify SMTP relay destination peers when SMTP egress is enabled
+
+  - it: renders DNS egress when SMTP is the only egress service
+    set:
+      frontend.enabled: false
+      networkPolicy.ingress.enabled: false
+      networkPolicy.database.enabled: false
+      networkPolicy.keycloak.enabled: false
+      networkPolicy.collector.enabled: false
+      otel.enabled: false
+      networkPolicy.smtp.enabled: true
+      networkPolicy.smtp.to:
+        - ipBlock:
+            cidr: 192.0.2.0/24
+    documentSelector:
+      path: metadata.name
+      value: RELEASE-NAME-digital-trust-common-service-egress-dns
+    asserts:
+      - equal:
+          path: spec.egress[0].ports
+          value:
+            - protocol: UDP
+              port: 53
+            - protocol: TCP
+              port: 53
+            - protocol: UDP
+              port: 5353
+            - protocol: TCP
+              port: 5353
+
+  - it: respects the global network policy switch
+    set:
+      networkPolicy.enabled: false
+      networkPolicy.smtp.enabled: true
+    asserts:
+      - hasDocuments:
+          count: 0

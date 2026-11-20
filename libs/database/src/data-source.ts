@@ -47,6 +47,7 @@ import { DropRedundantExchangeIssueIndex1793375254070 } from './migrations/00004
 import { ConfigureIssuanceProfileClaims1794328787660 } from './migrations/000044_configure-issuance-profile-claims';
 import { PersistOperationSteps1794928308442 } from './migrations/000045_persist-operation-steps';
 import { RestoreIssuanceDeliveryDefault1795099078637 } from './migrations/000046_restore-issuance-delivery-default';
+import { CreateEmailSendQuotaTable1795195920000 } from './migrations/000047_create-email-send-quota-table';
 import { buildSslConfig } from './ssl.util';
 
 export const AppDataSource = new DataSource({
@@ -104,10 +105,11 @@ export const AppDataSource = new DataSource({
     BindConnectionsToConnectors1792502783893,
     CreateCredentialExchanges1792506949095,
     IndexExchangeIssueOperation1792543244948,
-    DropRedundantExchangeIssueIndex1793375254070,
     ConfigureIssuanceProfileClaims1794328787660,
     PersistOperationSteps1794928308442,
     RestoreIssuanceDeliveryDefault1795099078637,
+    DropRedundantExchangeIssueIndex1793375254070,
+    CreateEmailSendQuotaTable1795195920000,
   ],
   ssl: buildSslConfig(
     process.env.DB_SSL,
