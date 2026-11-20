@@ -1111,8 +1111,8 @@ export interface paths {
          *     counts retain the ordinary { code, message } parent-level failure shape.
          *     At most 100 retained child errors are included; use /items?state=failed for
          *     all retained failures. Failure details remain subject to child TTL.
-         *     Prefer: wait=30 checks this operation's state once per second until it
-         *     changes or the timeout expires. The wait is capped at 30 seconds;
+         *     Prefer: wait=30 checks this operation's state and steps once per second
+         *     until either changes or the timeout expires. The wait is capped at 30 seconds;
          *     terminal operations return immediately. Timeout returns HTTP 200 with
          *     the normal operation envelope, without additional fields. First-view
          *     TTL treatment happens only when preparing the final response.
@@ -1178,8 +1178,8 @@ export interface paths {
          *     shared opaque cursor format. Terminal children returned on a page receive
          *     first-view TTL treatment.
          *
-         *     Prefer: wait=30 checks all tenant-scoped child states and the parent once per
-         *     second until a state change or timeout, including changes outside the requested
+         *     Prefer: wait=30 checks all tenant-scoped child states and steps and the parent once per
+         *     second until a change or timeout, including changes outside the requested
          *     page or state filter. Terminal parents return immediately. Timeout returns
          *     HTTP 200 with the normal paginated response and no additional fields.
          *     Client disconnects cancel polling; no database connection is held between checks.
@@ -2502,6 +2502,12 @@ export interface components {
              */
             type: string;
             state: components["schemas"]["OperationState"];
+            /**
+             * @description Persisted workflow progress written by the service or worker that
+             *     observes each transition. Known phase types include `register`,
+             *     `offer`, `request`, and `issue`; the type remains an open string.
+             */
+            steps: components["schemas"]["OperationStep"][];
             /** Format: date-time */
             created_at: string;
             /** Format: date-time */
@@ -2510,8 +2516,8 @@ export interface components {
              * @description State-dependent result:
              *     - pending/processing: usually null; credential-definition.register
              *       includes { credential_definition_id } immediately
-             *     - completed: operation-type-specific data
-             *       (exchange-linked actions return the local { exchange_id })
+             *     - completed: operation-type-specific data; exchange-linked actions
+             *       return the local { exchange_id }
              *     - failed: { code, message }; credential registration additionally
              *       retains credential_definition_id, external_id, and registration
              *       progress/correlation identifiers.
@@ -2533,6 +2539,7 @@ export interface components {
                 external_id?: string | null;
                 code?: string;
                 message?: string;
+                profile?: components["schemas"]["IssuanceProfile"];
                 registration?: components["schemas"]["CredentialDefinitionRegistrationProgress"];
             } & {
                 [key: string]: unknown;
@@ -2549,6 +2556,17 @@ export interface components {
              *     problem type URI for machine handling; do not parse title or detail.
              */
             problem_details?: components["schemas"]["RegistrationProblemDetails"] | null;
+        };
+        OperationStep: {
+            /**
+             * @description Open phase name. Known values include `register`, `offer`,
+             *     `request`, and `issue`. Format-specific detail stays in `result`.
+             * @example offer
+             * @example request
+             * @example issue
+             */
+            type: string;
+            state: components["schemas"]["OperationStepState"];
         };
         CredentialDefinitionRegistrationProgress: {
             stage?: string;
@@ -2601,6 +2619,8 @@ export interface components {
         };
         /** @enum {string} */
         OperationState: "pending" | "processing" | "completed" | "failed";
+        /** @enum {string} */
+        OperationStepState: "pending" | "processing" | "waiting" | "completed" | "failed" | "skipped";
         WebhookRegistration: {
             /** Format: uuid */
             id?: string;

@@ -10,7 +10,11 @@ import {
   OPERATION_TYPE,
   OperationType,
 } from '../operation/operation-type.constants';
-import { OperationState } from '../operation/operation.entity';
+import {
+  OperationState,
+  OperationStepState,
+} from '../operation/operation.entity';
+import type { OperationStep } from '../operation/operation.entity';
 
 /**
  * The webhook topics ACA-Py/Traction (and, in future, Credo) deliver.
@@ -275,6 +279,101 @@ export function resolveProtocolOutcome(
     default:
       return null;
   }
+}
+
+export function credentialOfferSteps(
+  protocolState: string,
+  previousState?: string,
+): OperationStep[] {
+  const state = protocolState.replace(/_/g, '-');
+  const exchangeState = state as CredentialExchangeState;
+  const previous = previousState?.replace(/_/g, '-');
+  const requestComplete = [
+    CredentialExchangeState.RequestReceived,
+    CredentialExchangeState.CredentialIssued,
+    CredentialExchangeState.CredentialReceived,
+    CredentialExchangeState.Done,
+  ].includes(exchangeState);
+  const issuanceComplete = [
+    CredentialExchangeState.CredentialIssued,
+    CredentialExchangeState.CredentialReceived,
+    CredentialExchangeState.Done,
+  ].includes(exchangeState);
+
+  if (exchangeState === CredentialExchangeState.Abandoned) {
+    const failedStep =
+      previous === 'pending'
+        ? 'offer'
+        : requestCompleteState(previous)
+          ? 'issue'
+          : 'request';
+    return [
+      {
+        type: 'offer',
+        state:
+          failedStep === 'offer'
+            ? OperationStepState.FAILED
+            : OperationStepState.COMPLETED,
+      },
+      {
+        type: 'request',
+        state:
+          failedStep === 'request'
+            ? OperationStepState.FAILED
+            : requestCompleteState(previous)
+              ? OperationStepState.COMPLETED
+              : OperationStepState.PENDING,
+      },
+      {
+        type: 'issue',
+        state:
+          failedStep === 'issue'
+            ? OperationStepState.FAILED
+            : OperationStepState.PENDING,
+      },
+    ].map((step) =>
+      failedStep === 'offer' && step.type === 'offer'
+        ? { ...step, state: OperationStepState.FAILED }
+        : step,
+    );
+  }
+
+  return [
+    {
+      type: 'offer',
+      state:
+        state === 'pending'
+          ? OperationStepState.PROCESSING
+          : OperationStepState.COMPLETED,
+    },
+    {
+      type: 'request',
+      state: requestComplete
+        ? OperationStepState.COMPLETED
+        : exchangeState === CredentialExchangeState.RequestSent
+          ? OperationStepState.PROCESSING
+          : state === 'pending'
+            ? OperationStepState.PENDING
+            : OperationStepState.WAITING,
+    },
+    {
+      type: 'issue',
+      state: issuanceComplete
+        ? OperationStepState.COMPLETED
+        : requestComplete
+          ? OperationStepState.WAITING
+          : OperationStepState.PENDING,
+    },
+  ];
+}
+
+function requestCompleteState(state?: string): boolean {
+  return [
+    CredentialExchangeState.RequestReceived,
+    CredentialExchangeState.CredentialIssued,
+    CredentialExchangeState.CredentialReceived,
+    CredentialExchangeState.Done,
+  ].includes(state as CredentialExchangeState);
 }
 
 function resolveFromTable<T extends string>(

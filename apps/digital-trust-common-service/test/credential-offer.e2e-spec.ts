@@ -618,14 +618,20 @@ describe('Credential offer (e2e)', () => {
     expect(operationId).toEqual(expect.any(String));
     expect(exchangeId).toEqual(expect.any(String));
     expect(exchangeId).not.toBe(`exchange-${tenant.id}`);
+    const sentSteps = [
+      { type: 'offer', state: 'completed' },
+      { type: 'request', state: 'waiting' },
+      { type: 'issue', state: 'pending' },
+    ];
     expect(offered.body).toMatchObject({
       state: 'processing',
+      steps: sentSteps,
     });
     await request(app.getHttpServer())
       .get(`${API_BASE_PATH}/tenants/${tenant.id}/operations/${operationId}`)
       .expect(200)
       .expect(({ body }: { body: unknown }) => {
-        expect(body).toMatchObject({ id: operationId });
+        expect(body).toMatchObject({ id: operationId, steps: sentSteps });
       });
     await request(app.getHttpServer())
       .get(`${API_BASE_PATH}/tenants/${tenant.id}/operations`)
@@ -633,7 +639,7 @@ describe('Credential offer (e2e)', () => {
       .expect(({ body }: { body: { data: unknown[] } }) => {
         expect(body.data).toEqual(
           expect.arrayContaining([
-            expect.objectContaining({ id: operationId }),
+            expect.objectContaining({ id: operationId, steps: sentSteps }),
           ]),
         );
       });
@@ -688,6 +694,11 @@ describe('Credential offer (e2e)', () => {
       expect(reconciled.body).toMatchObject({
         id: operationId,
         state: 'completed',
+        steps: [
+          { type: 'offer', state: 'completed' },
+          { type: 'request', state: 'completed' },
+          { type: 'issue', state: 'completed' },
+        ],
       });
     }
     expect(
@@ -711,6 +722,52 @@ describe('Credential offer (e2e)', () => {
     expect(reconciledExchange.body).toMatchObject({
       state: 'credential-issued',
     });
+  });
+
+  it('does not hydrate another tenant exchange into operation steps', async () => {
+    prepareBackend();
+    const offered = await request(app.getHttpServer())
+      .post(`${API_BASE_PATH}/tenants/${tenant.id}/credentials/offer`)
+      .send(offerBody())
+      .expect(202);
+    const otherTenant = await tenantRepo.save({
+      name: 'Other operation tenant',
+      slug: `other-steps-${tenant.id}`,
+      config: {},
+    });
+    try {
+      const operation = await operationRepo.save(
+        operationRepo.create({
+          tenantId: otherTenant.id,
+          type: OPERATION_TYPE.CREDENTIAL_OFFER,
+          state: OperationState.PROCESSING,
+          exchangeId: (offered.body as { exchange_id: string }).exchange_id,
+          request: { method: 'POST', path: '', body: {} },
+          expiresAt: new Date(Date.now() + 60_000),
+        }),
+      );
+      const expected = {
+        id: operation.id,
+        steps: [],
+      };
+      await request(app.getHttpServer())
+        .get(
+          `${API_BASE_PATH}/tenants/${otherTenant.id}/operations/${operation.id}`,
+        )
+        .expect(200)
+        .expect(({ body }: { body: unknown }) => {
+          expect(body).toMatchObject(expected);
+        });
+      await request(app.getHttpServer())
+        .get(`${API_BASE_PATH}/tenants/${otherTenant.id}/operations`)
+        .expect(200)
+        .expect(({ body }: { body: { data: unknown[] } }) => {
+          expect(body.data).toEqual([expect.objectContaining(expected)]);
+        });
+    } finally {
+      await operationRepo.delete({ tenantId: otherTenant.id });
+      await tenantRepo.delete(otherTenant.id);
+    }
   });
 
   it('rejects a connection outside the tenant before submitting an offer', async () => {

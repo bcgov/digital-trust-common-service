@@ -2130,8 +2130,8 @@ paths:
         counts retain the ordinary { code, message } parent-level failure shape.
         At most 100 retained child errors are included; use /items?state=failed for
         all retained failures. Failure details remain subject to child TTL.
-        Prefer: wait=30 checks this operation's state once per second until it
-        changes or the timeout expires. The wait is capped at 30 seconds;
+        Prefer: wait=30 checks this operation's state and steps once per second
+        until either changes or the timeout expires. The wait is capped at 30 seconds;
         terminal operations return immediately. Timeout returns HTTP 200 with
         the normal operation envelope, without additional fields. First-view
         TTL treatment happens only when preparing the final response.
@@ -2312,8 +2312,8 @@ paths:
         shared opaque cursor format. Terminal children returned on a page receive
         first-view TTL treatment.
 
-        Prefer: wait=30 checks all tenant-scoped child states and the parent once per
-        second until a state change or timeout, including changes outside the requested
+        Prefer: wait=30 checks all tenant-scoped child states and steps and the parent once per
+        second until a change or timeout, including changes outside the requested
         page or state filter. Terminal parents return immediately. Timeout returns
         HTTP 200 with the normal paginated response and no additional fields.
         Client disconnects cancel polling; no database connection is held between checks.
@@ -4553,7 +4553,7 @@ components:
       description: |
         Uniform envelope for all async and sync operations. The `result` field
         semantics depend on `(type, state)`.
-      required: [id, batch_id, type, state, created_at, updated_at, result]
+      required: [id, batch_id, type, state, steps, created_at, updated_at, result]
       properties:
         id:
           type: string
@@ -4590,6 +4590,14 @@ components:
             - connection.create
         state:
           $ref: "#/components/schemas/OperationState"
+        steps:
+          type: array
+          description: |
+            Persisted workflow progress written by the service or worker that
+            observes each transition. Known phase types include `register`,
+            `offer`, `request`, and `issue`; the type remains an open string.
+          items:
+            $ref: "#/components/schemas/OperationStep"
         created_at:
           type: string
           format: date-time
@@ -4611,14 +4619,16 @@ components:
               type: string
             message:
               type: string
+            profile:
+              $ref: "#/components/schemas/IssuanceProfile"
             registration:
               $ref: "#/components/schemas/CredentialDefinitionRegistrationProgress"
           description: |
             State-dependent result:
             - pending/processing: usually null; credential-definition.register
               includes { credential_definition_id } immediately
-            - completed: operation-type-specific data
-              (exchange-linked actions return the local { exchange_id })
+            - completed: operation-type-specific data; exchange-linked actions
+              return the local { exchange_id }
             - failed: { code, message }; credential registration additionally
               retains credential_definition_id, external_id, and registration
               progress/correlation identifiers.
@@ -4647,6 +4657,19 @@ components:
             not a standalone application/problem+json HTTP error response.
             status is omitted to avoid contradicting HTTP 200/202. Match the
             problem type URI for machine handling; do not parse title or detail.
+
+    OperationStep:
+      type: object
+      required: [type, state]
+      properties:
+        type:
+          type: string
+          description: |
+            Open phase name. Known values include `register`, `offer`,
+            `request`, and `issue`. Format-specific detail stays in `result`.
+          examples: [offer, request, issue]
+        state:
+          $ref: "#/components/schemas/OperationStepState"
 
     CredentialDefinitionRegistrationProgress:
       type: object
@@ -4712,6 +4735,10 @@ components:
     OperationState:
       type: string
       enum: [pending, processing, completed, failed]
+
+    OperationStepState:
+      type: string
+      enum: [pending, processing, waiting, completed, failed, skipped]
 
     # ─── Webhook ─────────────────────────────────────────────────────
     WebhookRegistration:

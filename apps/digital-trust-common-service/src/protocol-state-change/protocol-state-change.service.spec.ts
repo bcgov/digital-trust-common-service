@@ -13,7 +13,11 @@ import { CredentialRepository } from '../credential/credential.repository';
 import { CredentialExchangeRepository } from '../credential-exchange/credential-exchange.repository';
 import { JobsService } from '../jobs/jobs.service';
 import { OPERATION_TYPE } from '../operation/operation-type.constants';
-import { Operation, OperationState } from '../operation/operation.entity';
+import {
+  Operation,
+  OperationState,
+  OperationStepState,
+} from '../operation/operation.entity';
 import { OperationRepository } from '../operation/operation.repository';
 import { OperationService } from '../operation/operation.service';
 
@@ -83,7 +87,10 @@ describe('ProtocolStateChangeService', () => {
     >
   >;
   let operationService: jest.Mocked<
-    Pick<OperationService, 'transitionState' | 'transitionStateIfForward'>
+    Pick<
+      OperationService,
+      'transitionState' | 'transitionStateIfForward' | 'updateStepsIfActive'
+    >
   >;
   let credentialRepository: jest.Mocked<
     Pick<CredentialRepository, 'findByExternalId' | 'updateStateIfForward'>
@@ -120,6 +127,7 @@ describe('ProtocolStateChangeService', () => {
     operationService = {
       transitionState: jest.fn(),
       transitionStateIfForward: jest.fn().mockResolvedValue(operation()),
+      updateStepsIfActive: jest.fn().mockResolvedValue(true),
     };
     credentialRepository = {
       findByExternalId: jest.fn().mockResolvedValue(null),
@@ -179,7 +187,7 @@ describe('ProtocolStateChangeService', () => {
 
   it('notifies a newly observed holder request even when its offer stays processing', async () => {
     operationRepository.findByExternalIdForTenant.mockResolvedValue(
-      operation(),
+      operation({ type: OPERATION_TYPE.CREDENTIAL_OFFER }),
     );
     operationService.transitionStateIfForward.mockResolvedValue(null);
     exchangeRepository.observe.mockResolvedValueOnce({
@@ -215,6 +223,12 @@ describe('ProtocolStateChangeService', () => {
       operationStatesBelow(OperationState.PROCESSING),
       null,
       mockManager,
+      undefined,
+      [
+        { type: 'offer', state: OperationStepState.COMPLETED },
+        { type: 'request', state: OperationStepState.COMPLETED },
+        { type: 'issue', state: OperationStepState.WAITING },
+      ],
     );
   });
 
@@ -396,7 +410,10 @@ describe('ProtocolStateChangeService', () => {
     );
     credentialRepository.findByExternalId.mockResolvedValue(credential());
 
-    await service.process(baseData({ protocolState: 'abandoned' }));
+    await service.process(baseData({ protocolState: 'abandoned' }), {
+      exchangeId: 'local-exchange',
+      connectorId: 'wallet',
+    });
 
     expect(operationService.transitionStateIfForward).toHaveBeenCalledWith(
       'op-1',
@@ -416,6 +433,37 @@ describe('ProtocolStateChangeService', () => {
     expect(eventEmitter.emit).toHaveBeenCalledWith(
       'credential.rejected',
       expect.anything(),
+    );
+  });
+
+  it('persists the failed issue step when an offered exchange is abandoned after a holder request', async () => {
+    operationRepository.findByExternalIdForTenant.mockResolvedValue(
+      operation({ type: OPERATION_TYPE.CREDENTIAL_OFFER }),
+    );
+    credentialRepository.findByExternalId.mockResolvedValue(credential());
+    exchangeRepository.observe.mockResolvedValueOnce({
+      exchangeId: 'local-exchange',
+      from: CredentialExchangeState.RequestReceived,
+      to: CredentialExchangeState.Abandoned,
+    });
+
+    await service.process(baseData({ protocolState: 'abandoned' }), {
+      exchangeId: 'local-exchange',
+      connectorId: 'wallet',
+    });
+
+    expect(operationService.transitionStateIfForward).toHaveBeenCalledWith(
+      'op-1',
+      OperationState.FAILED,
+      operationStatesBelow(OperationState.FAILED),
+      { code: 'ISSUE_CREDENTIAL_FAILED', message: 'abandoned' },
+      mockManager,
+      undefined,
+      [
+        { type: 'offer', state: OperationStepState.COMPLETED },
+        { type: 'request', state: OperationStepState.COMPLETED },
+        { type: 'issue', state: OperationStepState.FAILED },
+      ],
     );
   });
 

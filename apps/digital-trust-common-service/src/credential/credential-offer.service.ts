@@ -49,10 +49,12 @@ import { IssuanceProfileRepository } from '../issuance-profile/issuance-profile.
 import { JobsService } from '../jobs/jobs.service';
 import { OPERATION_TYPE } from '../operation/operation-type.constants';
 import { Operation, OperationState } from '../operation/operation.entity';
+import { OperationStepState } from '../operation/operation.entity';
 import { OperationRepository } from '../operation/operation.repository';
 import { OperationService } from '../operation/operation.service';
 import {
   credentialStatesBelow,
+  credentialOfferSteps,
   operationStatesBelow,
   resolveProtocolOutcome,
 } from '../protocol-state-change/state-mapping';
@@ -267,6 +269,11 @@ export class CredentialOfferService {
             tenantId,
             exchangeId: exchange.id,
             type: OPERATION_TYPE.CREDENTIAL_OFFER,
+            steps: [
+              { type: 'offer', state: OperationStepState.PROCESSING },
+              { type: 'request', state: OperationStepState.PENDING },
+              { type: 'issue', state: OperationStepState.PENDING },
+            ],
             request: {
               method: 'POST',
               path: `${API_BASE_PATH}/tenants/${tenantId}/credentials/offer`,
@@ -510,28 +517,33 @@ export class CredentialOfferService {
       // for issue_credential) is exactly what this guard protects against.
       const { current, won } = await this.dataSource.transaction(
         async (manager) => {
-          if (operation.exchangeId) {
-            const transition = await this.exchanges.observe(
-              tenantId,
-              resolvedAdapter.connector.id,
-              externalId,
-              exchange.state,
-              manager,
-              operation.exchangeId,
-            );
-            if (transition?.to === CredentialExchangeState.RequestReceived) {
-              await this.jobsService.sendInTransaction(
+          const exchangeTransition = operation.exchangeId
+            ? await this.exchanges.observe(
+                tenantId,
+                resolvedAdapter.connector.id,
+                externalId,
+                exchange.state,
                 manager,
-                JOB_QUEUES.WEBHOOK_DISPATCH,
-                {
-                  tenantId,
-                  event: 'credential-exchange.request-received',
-                  resourceId: transition.exchangeId,
-                  occurredAt: new Date().toISOString(),
-                },
-              );
-            }
+                operation.exchangeId,
+              )
+            : null;
+          if (
+            exchangeTransition?.to === CredentialExchangeState.RequestReceived
+          ) {
+            await this.jobsService.sendInTransaction(
+              manager,
+              JOB_QUEUES.WEBHOOK_DISPATCH,
+              {
+                tenantId,
+                event: 'credential-exchange.request-received',
+                resourceId: exchangeTransition.exchangeId,
+                occurredAt: new Date().toISOString(),
+              },
+            );
           }
+          const steps = exchangeTransition
+            ? credentialOfferSteps(exchange.state, exchangeTransition.from)
+            : undefined;
           const updatedOperation =
             await this.operationService.transitionStateIfForward(
               operation.id,
@@ -540,6 +552,7 @@ export class CredentialOfferService {
               result,
               manager,
               externalId,
+              steps,
             );
 
           if (!updatedOperation) {
@@ -647,6 +660,12 @@ export class CredentialOfferService {
             operationStatesBelow(OperationState.FAILED),
             { code: error.code, message: error.message },
             manager,
+            undefined,
+            [
+              { type: 'offer', state: OperationStepState.FAILED },
+              { type: 'request', state: OperationStepState.PENDING },
+              { type: 'issue', state: OperationStepState.PENDING },
+            ],
           );
 
         if (!failedOperation) {

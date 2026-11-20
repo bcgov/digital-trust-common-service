@@ -17,13 +17,18 @@ import {
 } from '../credential-exchange/credential-exchange.repository';
 import { JobsService } from '../jobs/jobs.service';
 import { OPERATION_TYPE } from '../operation/operation-type.constants';
-import { OperationResult, OperationState } from '../operation/operation.entity';
+import {
+  OperationResult,
+  OperationState,
+  OperationStepState,
+} from '../operation/operation.entity';
 import { OperationRepository } from '../operation/operation.repository';
 import { OperationService } from '../operation/operation.service';
 
 import type { ProtocolStateChangeJobData } from './protocol-state-change.worker';
 import {
   credentialStatesBelow,
+  credentialOfferSteps,
   operationStatesBelow,
   ProtocolOutcome,
   resolveProtocolOutcome,
@@ -150,6 +155,7 @@ export class ProtocolStateChangeService {
         data,
         outcome,
         manager,
+        exchangeTransition,
       );
       let transitioned = operationOutcome.transitioned;
       const operationType = operationOutcome.operationType;
@@ -279,6 +285,7 @@ export class ProtocolStateChangeService {
     data: ProtocolStateChangeJobData,
     outcome: ProtocolOutcome,
     manager: EntityManager,
+    exchangeTransition: ExchangeTransition | null,
   ): Promise<OperationOutcomeResult> {
     const operation = await this.operationRepository.findByExternalIdForTenant(
       data.tenantId,
@@ -302,15 +309,51 @@ export class ProtocolStateChangeService {
       return { matched: existed, transitioned: false, operationType: null };
     }
 
-    const updated = await this.operationService.transitionStateIfForward(
-      operation.id,
-      outcome.operationState,
-      operationStatesBelow(outcome.operationState),
-      this.resolveOperationResult(data, outcome),
-      manager,
-    );
+    const steps =
+      data.topic === 'issue_credential' && exchangeTransition
+        ? operation.type === OPERATION_TYPE.CREDENTIAL_OFFER
+          ? credentialOfferSteps(exchangeTransition.to, exchangeTransition.from)
+          : operation.type === OPERATION_TYPE.CREDENTIAL_ISSUE
+            ? [
+                {
+                  type: 'issue',
+                  state:
+                    outcome.operationState === OperationState.FAILED
+                      ? OperationStepState.FAILED
+                      : outcome.operationState === OperationState.COMPLETED
+                        ? OperationStepState.COMPLETED
+                        : OperationStepState.PROCESSING,
+                },
+              ]
+            : undefined
+        : undefined;
+    const updated = steps
+      ? await this.operationService.transitionStateIfForward(
+          operation.id,
+          outcome.operationState,
+          operationStatesBelow(outcome.operationState),
+          this.resolveOperationResult(data, outcome),
+          manager,
+          undefined,
+          steps,
+        )
+      : await this.operationService.transitionStateIfForward(
+          operation.id,
+          outcome.operationState,
+          operationStatesBelow(outcome.operationState),
+          this.resolveOperationResult(data, outcome),
+          manager,
+        );
 
     if (!updated) {
+      if (steps) {
+        await this.operationService.updateStepsIfActive(
+          operation.id,
+          data.tenantId,
+          steps,
+          manager,
+        );
+      }
       return {
         matched: true,
         transitioned: false,
@@ -340,7 +383,12 @@ export class ProtocolStateChangeService {
       (outcome.operationState === OperationState.COMPLETED ||
         outcome.operationState === OperationState.FAILED)
     ) {
-      await this.settleRelatedOfferOperation(data, outcome, manager);
+      await this.settleRelatedOfferOperation(
+        data,
+        outcome,
+        manager,
+        exchangeTransition,
+      );
     }
 
     return {
@@ -382,6 +430,7 @@ export class ProtocolStateChangeService {
     data: ProtocolStateChangeJobData,
     outcome: ProtocolOutcome,
     manager: EntityManager,
+    exchangeTransition: ExchangeTransition | null,
   ): Promise<void> {
     const credential = await this.credentialRepository.findByExternalId(
       data.tenantId,
@@ -407,13 +456,27 @@ export class ProtocolStateChangeService {
       return;
     }
 
-    const updated = await this.operationService.transitionStateIfForward(
-      offerOperation.id,
-      outcome.operationState,
-      operationStatesBelow(outcome.operationState),
-      this.resolveOperationResult(data, outcome),
-      manager,
-    );
+    const steps =
+      data.topic === 'issue_credential' && exchangeTransition
+        ? credentialOfferSteps(exchangeTransition.to, exchangeTransition.from)
+        : undefined;
+    const updated = steps
+      ? await this.operationService.transitionStateIfForward(
+          offerOperation.id,
+          outcome.operationState,
+          operationStatesBelow(outcome.operationState),
+          this.resolveOperationResult(data, outcome),
+          manager,
+          undefined,
+          steps,
+        )
+      : await this.operationService.transitionStateIfForward(
+          offerOperation.id,
+          outcome.operationState,
+          operationStatesBelow(outcome.operationState),
+          this.resolveOperationResult(data, outcome),
+          manager,
+        );
 
     if (!updated) {
       return;

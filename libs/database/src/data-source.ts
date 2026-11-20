@@ -45,6 +45,7 @@ import { CreateCredentialExchanges1792506949095 } from './migrations/000041_crea
 import { IndexExchangeIssueOperation1792543244948 } from './migrations/000042_index-exchange-issue-operation';
 import { DropRedundantExchangeIssueIndex1793375254070 } from './migrations/000043_drop-redundant-exchange-issue-index';
 import { ConfigureIssuanceProfileClaims1794328787660 } from './migrations/000044_configure-issuance-profile-claims';
+import { PersistOperationSteps1794928308442 } from './migrations/000045_persist-operation-steps';
 import { RestoreIssuanceDeliveryDefault1795099078637 } from './migrations/000046_restore-issuance-delivery-default';
 import { buildSslConfig } from './ssl.util';
 
@@ -105,6 +106,7 @@ export const AppDataSource = new DataSource({
     IndexExchangeIssueOperation1792543244948,
     DropRedundantExchangeIssueIndex1793375254070,
     ConfigureIssuanceProfileClaims1794328787660,
+    PersistOperationSteps1794928308442,
     RestoreIssuanceDeliveryDefault1795099078637,
   ],
   ssl: buildSslConfig(

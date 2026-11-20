@@ -2,7 +2,11 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Expose } from 'class-transformer';
 
 import { OPERATION_TYPE } from '../operation-type.constants';
-import { Operation, OperationState } from '../operation.entity';
+import {
+  Operation,
+  OperationState,
+  OperationStepState,
+} from '../operation.entity';
 import type { OperationResult } from '../operation.entity';
 
 import { RegistrationProblemDetailsDto } from './registration-problem-details.dto';
@@ -58,6 +62,21 @@ export class OperationResponseDto {
   })
   public state!: OperationState;
 
+  @ApiProperty({
+    description:
+      'Persisted workflow progress. Known phase types include register, offer, request, and issue; new phase types remain open strings.',
+    type: 'array',
+    items: {
+      type: 'object',
+      required: ['type', 'state'],
+      properties: {
+        type: { type: 'string', example: 'offer' },
+        state: { type: 'string', enum: Object.values(OperationStepState) },
+      },
+    },
+  })
+  public steps!: { type: string; state: OperationStepState }[];
+
   @Expose({ name: 'created_at' })
   @ApiProperty({
     name: 'created_at',
@@ -101,6 +120,7 @@ export class OperationResponseDto {
     dto.batchId = operation.batchId ?? null;
     dto.type = operation.type;
     dto.state = operation.state;
+    dto.steps = operation.steps ?? [];
     dto.createdAt = operation.createdAt;
     dto.updatedAt = operation.updatedAt;
     dto.result = operation.result ?? null;

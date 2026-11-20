@@ -253,9 +253,18 @@ describe('credential exchanges (integration)', () => {
   it.each(['authentication', 'validation', 'not-found'] as const)(
     'retries a definite %s failure but retains both attempt histories',
     async (reason) => {
-      issueCredential.mockRejectedValueOnce(
-        new SubmissionRejectedError(reason),
-      );
+      issueCredential.mockImplementationOnce(async () => {
+        expect(
+          await operations.getForTenant(tenant.id, offer.id),
+        ).toMatchObject({
+          steps: [
+            { type: 'offer', state: 'completed' },
+            { type: 'request', state: 'completed' },
+            { type: 'issue', state: 'processing' },
+          ],
+        });
+        throw new SubmissionRejectedError(reason);
+      });
       await expect(service.issue(tenant.id, exchange.id)).rejects.toMatchObject(
         {
           status:
@@ -277,9 +286,14 @@ describe('credential exchanges (integration)', () => {
           message: 'Credential issue was not submitted',
         },
       });
-      expect((await operations.getForTenant(tenant.id, offer.id)).state).toBe(
-        OperationState.PROCESSING,
-      );
+      expect(await operations.getForTenant(tenant.id, offer.id)).toMatchObject({
+        state: OperationState.PROCESSING,
+        steps: [
+          { type: 'offer', state: 'completed' },
+          { type: 'request', state: 'completed' },
+          { type: 'issue', state: 'waiting' },
+        ],
+      });
 
       const retried = await Promise.all([
         service.issue(tenant.id, exchange.id),
@@ -318,6 +332,9 @@ describe('credential exchanges (integration)', () => {
       (await operations.getForTenant(tenant.id, stored.issueOperationId!))
         .state,
     ).toBe(OperationState.PROCESSING);
+    expect(
+      (await operations.getForTenant(tenant.id, offer.id)).steps,
+    ).toContainEqual({ type: 'issue', state: 'processing' });
     await service.issue(tenant.id, exchange.id);
     expect(issueCredential).toHaveBeenCalledTimes(1);
   });

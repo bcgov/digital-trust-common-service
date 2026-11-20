@@ -8,7 +8,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { DataSource } from 'typeorm';
+import { DataSource, EntityManager } from 'typeorm';
 
 import { AuditAction } from '../audit-log/audit-log.entity';
 import { DomainAuditService } from '../audit-log/domain-audit.service';
@@ -155,8 +155,8 @@ export class TenantService {
     };
   }
 
-  public async findById(id: string) {
-    const tenant = await this.tenants.findById(id);
+  public async findById(id: string, manager?: EntityManager) {
+    const tenant = await this.tenants.findById(id, manager);
 
     if (!tenant) {
       throw new NotFoundException('Tenant not found');

@@ -561,6 +561,7 @@ describe('OperationController', () => {
       batchId: null,
       type: 'credential.offer',
       state: OperationState.PENDING,
+      steps: [],
       createdAt,
       updatedAt: createdAt,
       result: null,
@@ -617,6 +618,7 @@ describe('OperationController', () => {
       'id',
       'result',
       'state',
+      'steps',
       'type',
       'updatedAt',
     ]);

@@ -109,7 +109,6 @@ describe('IssuanceProfileService', () => {
     updatedAt: new Date(),
     tenant: mockCredentialDefinition.tenant,
   };
-
   const auth = {
     sub: 'user-1',
     tokenType: 'user' as const,
@@ -210,7 +209,6 @@ describe('IssuanceProfileService', () => {
     mockDeleteIfUnused = jest
       .fn()
       .mockResolvedValue(IssuanceProfileDeleteResult.DELETED);
-
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         IssuanceProfileService,

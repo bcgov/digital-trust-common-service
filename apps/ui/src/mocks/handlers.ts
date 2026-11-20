@@ -404,6 +404,7 @@ export const handlers = [
         delivery: body.delivery ?? { protocol: 'didcomm-v1' },
         can_delete: true,
         created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
       };
       issuanceProfiles.push(profile);
       return HttpResponse.json(profile, { status: 201 });
@@ -605,6 +606,7 @@ export const handlers = [
         batch_id: null,
         type: 'credential-definition.register',
         state: 'pending',
+        steps: [{ type: 'register', state: 'pending' }],
         created_at: now,
         updated_at: now,
         result: { credential_definition_id: definition.id },

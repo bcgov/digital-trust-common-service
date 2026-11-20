@@ -31,6 +31,7 @@ describe('OperationService', () => {
   let mockFindByIdForTenant: jest.Mock;
   let mockMarkFirstView: jest.Mock;
   let mockTenantFindById: jest.Mock;
+  let mockUpdateStepsIfActive: jest.Mock;
   let mockTransitionIfForward: jest.Mock;
   let mockRecordCredentialOperation: jest.Mock;
   let mockFindPageForTenant: jest.Mock;
@@ -74,6 +75,7 @@ describe('OperationService', () => {
     mockFindByIdForTenant = jest.fn();
     mockMarkFirstView = jest.fn();
     mockTenantFindById = jest.fn();
+    mockUpdateStepsIfActive = jest.fn();
     mockTransitionIfForward = jest.fn();
     mockRecordCredentialOperation = jest.fn();
     mockFindPageForTenant = jest.fn();
@@ -89,6 +91,7 @@ describe('OperationService', () => {
       findById: mockFindById,
       findByIdForTenant: mockFindByIdForTenant,
       markFirstView: mockMarkFirstView,
+      updateStepsIfActive: mockUpdateStepsIfActive,
       transitionIfForward: mockTransitionIfForward,
       findPageForTenant: mockFindPageForTenant,
       countByBatchGroupedByState: mockCountByBatch,
@@ -126,6 +129,83 @@ describe('OperationService', () => {
 
   afterEach(() => {
     jest.useRealTimers();
+  });
+
+  it('creates a completed operation with its result inside the supplied transaction', async () => {
+    const txManager = {} as EntityManager;
+    mockCreate.mockImplementation((operation: Partial<Operation>) => {
+      return operation as Operation;
+    });
+    mockSave.mockImplementation((operation: Operation) =>
+      Promise.resolve({
+        ...operation,
+        id: 'completed-op',
+        createdAt,
+        updatedAt: createdAt,
+      }),
+    );
+
+    const result = await service.createCompleted(
+      {
+        tenantId: 't1',
+        type: OPERATION_TYPE.CREDENTIAL_OFFER,
+        request: baseRequest,
+      },
+      { profile: { id: 'profile-1' } },
+      txManager,
+    );
+
+    expect(mockCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tenantId: 't1',
+        type: OPERATION_TYPE.CREDENTIAL_OFFER,
+        state: OperationState.COMPLETED,
+        steps: [],
+        result: { profile: { id: 'profile-1' } },
+        expiresAt: expect.any(Date),
+      }),
+    );
+    expect(mockSave).toHaveBeenCalledWith(
+      expect.objectContaining({ state: OperationState.COMPLETED }),
+      txManager,
+    );
+    expect(mockTenantFindById).toHaveBeenCalledWith('t1', txManager);
+    expect(result.id).toBe('completed-op');
+    expect(mockRecordCredentialOperation).toHaveBeenCalledWith(
+      OPERATION_TYPE.CREDENTIAL_OFFER,
+      'completed',
+      txManager,
+    );
+  });
+
+  it('forwards tenant-scoped progress updates to the repository', async () => {
+    const steps = [{ type: 'request', state: 'waiting' as const }];
+    const txManager = {} as EntityManager;
+    mockUpdateStepsIfActive.mockResolvedValue(true);
+
+    await expect(
+      service.updateStepsIfActive('op-1', 't1', steps, txManager),
+    ).resolves.toBe(true);
+    expect(mockUpdateStepsIfActive).toHaveBeenCalledWith(
+      'op-1',
+      't1',
+      steps,
+      txManager,
+    );
+  });
+
+  it('uses the supplied transaction for pending operation creation', async () => {
+    const manager = {} as EntityManager;
+    mockCreate.mockImplementation((value: Operation) => value);
+    mockSave.mockImplementation((value: Operation) => Promise.resolve(value));
+
+    await service.createOperation(
+      { tenantId: 't1', type: 'credential.offer', request: baseRequest },
+      manager,
+    );
+
+    expect(mockTenantFindById).toHaveBeenCalledWith('t1', manager);
+    expect(mockSave).toHaveBeenCalledWith(expect.anything(), manager);
   });
 
   describe('tenant read services', () => {
@@ -360,6 +440,22 @@ describe('OperationService', () => {
       mockFindByIdForTenant.mockImplementation(() =>
         Promise.resolve(buildOperation({ state: OperationState.PROCESSING })),
       );
+    });
+
+    it('returns when steps change without a state change', async () => {
+      const before = [{ type: 'issue', state: 'waiting' as const }];
+      const after = [{ type: 'issue', state: 'processing' as const }];
+      mockFindByIdForTenant
+        .mockResolvedValueOnce(
+          buildOperation({ state: OperationState.PROCESSING, steps: before }),
+        )
+        .mockResolvedValue(
+          buildOperation({ state: OperationState.PROCESSING, steps: after }),
+        );
+      const pending = service.waitForStatusForTenant('t1', 'op-1', 30);
+      await jest.advanceTimersByTimeAsync(1000);
+      await expect(pending).resolves.toMatchObject({ steps: after });
+      expect(jest.getTimerCount()).toBe(0);
     });
 
     it.each([
@@ -1274,7 +1370,7 @@ describe('OperationService', () => {
         request: baseRequest,
       });
 
-      expect(mockTenantFindById).toHaveBeenCalledWith('t1');
+      expect(mockTenantFindById).toHaveBeenCalledWith('t1', undefined);
       expect(mockCreate).toHaveBeenCalledWith(
         expect.objectContaining({
           tenantId: 't1',
@@ -1561,6 +1657,8 @@ describe('OperationService', () => {
       );
 
       expect(mockSave).toHaveBeenCalledWith(operation, manager);
+      expect(mockFindById).toHaveBeenCalledWith('op-1', manager);
+      expect(mockTenantFindById).toHaveBeenCalledWith('t1', manager);
     });
 
     it('reads transaction-owned operations by both id and tenant', async () => {
@@ -1665,6 +1763,7 @@ describe('OperationService', () => {
         manager,
       );
       expect(mockFindById).toHaveBeenNthCalledWith(2, 'op-1', manager);
+      expect(mockTenantFindById).toHaveBeenCalledWith('t1', manager);
     });
 
     it('returns null without mutating the caller-visible state when another delivery already won', async () => {

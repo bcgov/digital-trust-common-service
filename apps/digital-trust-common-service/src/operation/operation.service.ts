@@ -33,6 +33,7 @@ import {
   OperationRequest,
   OperationResult,
   OperationState,
+  OperationStep,
 } from './operation.entity';
 import { OperationRepository } from './operation.repository';
 
@@ -43,6 +44,7 @@ export interface CreateOperationInput {
   batchId?: string | null;
   externalId?: string | null;
   exchangeId?: string | null;
+  steps?: OperationStep[];
 }
 
 export interface PaginatedOperations {
@@ -90,7 +92,7 @@ export class OperationService {
     manager?: EntityManager,
   ): Promise<Operation> {
     const now = new Date();
-    const tenant = await this.tenants.findById(input.tenantId);
+    const tenant = await this.tenants.findById(input.tenantId, manager);
 
     // On create the operation is pending: expires_at = created_at +
     // tenant.config.operation_ttl.pending_stale (default 24h), resolved via
@@ -106,6 +108,7 @@ export class OperationService {
       externalId: input.externalId ?? null,
       exchangeId: input.exchangeId ?? null,
       state: OperationState.PENDING,
+      steps: input.steps ?? [],
       expiresAt: this.computeExpiresAt(
         OperationState.PENDING,
         now,
@@ -115,6 +118,44 @@ export class OperationService {
     });
 
     return this.operations.save(operation, manager);
+  }
+
+  public async createCompleted(
+    input: CreateOperationInput,
+    result: OperationResult,
+    manager?: EntityManager,
+  ): Promise<Operation> {
+    const now = new Date();
+    const tenant = await this.tenants.findById(input.tenantId, manager);
+    const operation = this.operations.create({
+      tenantId: input.tenantId,
+      type: input.type,
+      request: input.request,
+      batchId: input.batchId ?? null,
+      externalId: input.externalId ?? null,
+      exchangeId: input.exchangeId ?? null,
+      state: OperationState.COMPLETED,
+      result,
+      steps: input.steps ?? [],
+      expiresAt: this.computeExpiresAt(
+        OperationState.COMPLETED,
+        now,
+        null,
+        tenant.config,
+      ),
+    });
+    const saved = await this.operations.save(operation, manager);
+    this.recordTerminalOutcome(saved.type, saved.state, manager);
+    return saved;
+  }
+
+  public updateStepsIfActive(
+    id: string,
+    tenantId: string,
+    steps: OperationStep[],
+    manager?: EntityManager,
+  ): Promise<boolean> {
+    return this.operations.updateStepsIfActive(id, tenantId, steps, manager);
   }
 
   /**
@@ -149,6 +190,7 @@ export class OperationService {
       throw new NotFoundException('Operation not found');
     }
     const initialState = operation.state;
+    const initialSteps = JSON.stringify(operation.steps);
     while (
       !isTerminalOperationState(operation.state) &&
       Date.now() < deadline
@@ -161,7 +203,10 @@ export class OperationService {
       if (!operation) {
         throw new NotFoundException('Operation not found');
       }
-      if (operation.state !== initialState) {
+      if (
+        operation.state !== initialState ||
+        JSON.stringify(operation.steps) !== initialSteps
+      ) {
         break;
       }
     }
@@ -522,22 +567,26 @@ export class OperationService {
     result?: OperationResult,
     manager?: EntityManager,
     tenantId?: string,
+    steps?: OperationStep[],
   ): Promise<Operation> {
     const operation =
       manager && tenantId
         ? await manager.findOne(Operation, { where: { id, tenantId } })
-        : await this.operations.findById(id);
+        : await this.operations.findById(id, manager);
 
     if (!operation) {
       throw new NotFoundException('Operation not found');
     }
 
-    const tenant = await this.tenants.findById(operation.tenantId);
+    const tenant = await this.tenants.findById(operation.tenantId, manager);
 
     operation.state = state;
 
     if (result !== undefined) {
       operation.result = result;
+    }
+    if (steps !== undefined) {
+      operation.steps = steps;
     }
 
     operation.expiresAt = this.computeExpiresAt(
@@ -582,6 +631,7 @@ export class OperationService {
     result?: OperationResult,
     manager?: EntityManager,
     externalId?: string | null,
+    steps?: OperationStep[],
   ): Promise<Operation | null> {
     const operation = await this.operations.findById(id, manager);
 
@@ -589,7 +639,7 @@ export class OperationService {
       throw new NotFoundException('Operation not found');
     }
 
-    const tenant = await this.tenants.findById(operation.tenantId);
+    const tenant = await this.tenants.findById(operation.tenantId, manager);
     const expiresAt = this.computeExpiresAt(
       state,
       operation.createdAt,
@@ -606,6 +656,7 @@ export class OperationService {
         expiresAt,
         ...(result !== undefined ? { result } : {}),
         ...(externalId !== undefined ? { externalId } : {}),
+        ...(steps !== undefined ? { steps } : {}),
       },
       manager,
     );

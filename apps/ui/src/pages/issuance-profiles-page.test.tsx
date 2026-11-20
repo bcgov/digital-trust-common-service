@@ -19,7 +19,10 @@ const profile: IssuanceProfile = {
   version: '1.0',
   delivery: { protocol: 'didcomm-v1' },
   credential_definition_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+  claims: {},
   status: 'published',
+  created_at: '2026-01-01T00:00:00Z',
+  updated_at: '2026-01-01T00:00:00Z',
 };
 
 function profileResponse(result: IssuanceProfile, status = 200) {

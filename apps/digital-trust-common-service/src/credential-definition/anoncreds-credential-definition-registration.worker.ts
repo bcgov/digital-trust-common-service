@@ -17,7 +17,11 @@ import { AdapterRegistry } from '../adapter-registry/adapter-registry.service';
 import { RegistrationBackendError } from '../common/registration-backend-error';
 import { JobsService } from '../jobs/jobs.service';
 import { RegistrationProblemDetailsDto } from '../operation/dto/registration-problem-details.dto';
-import { Operation, OperationState } from '../operation/operation.entity';
+import {
+  Operation,
+  OperationState,
+  OperationStepState,
+} from '../operation/operation.entity';
 import { OperationService } from '../operation/operation.service';
 
 import {
@@ -608,6 +612,17 @@ export class AnonCredsCredentialDefinitionRegistrationWorker implements OnModule
         },
         manager,
         work.tenantId,
+        [
+          {
+            type: 'register',
+            state:
+              state === OperationState.COMPLETED
+                ? OperationStepState.COMPLETED
+                : state === OperationState.FAILED
+                  ? OperationStepState.FAILED
+                  : OperationStepState.WAITING,
+          },
+        ],
       );
       if (scheduleFollowUp && work.checks < MAX_WAIT_CHECKS) {
         await this.jobs.sendInTransaction(
@@ -642,6 +657,7 @@ export class AnonCredsCredentialDefinitionRegistrationWorker implements OnModule
         },
         manager,
         work.tenantId,
+        [{ type: 'register', state: OperationStepState.PROCESSING }],
       );
     });
   }
