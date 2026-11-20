@@ -177,8 +177,56 @@ describe('credential definition registration (integration)', () => {
       tenantId: tenant.id,
     });
     expect(completed.state).toBe(OperationState.COMPLETED);
+    expect(completed.steps).toEqual([{ type: 'register', state: 'completed' }]);
     expect(port.publishSchema).toHaveBeenCalledTimes(1);
     expect(port.publishDefinition).toHaveBeenCalledTimes(1);
+  });
+
+  it('persists waiting progress while schema endorsement is pending', async () => {
+    port.publishSchema.mockResolvedValueOnce({
+      state: 'wait',
+      jobId: 'schema-job',
+    });
+    const operation = await service.create(tenant.id, dto, auth);
+    const row = await db.getRepository(CredentialDefinition).findOneByOrFail({
+      tenantId: tenant.id,
+      registrationOperationId: operation.id,
+    });
+    await worker.process(tenant.id, row.id);
+    const waiting = await db.getRepository(Operation).findOneByOrFail({
+      tenantId: tenant.id,
+      id: operation.id,
+    });
+    expect(waiting.state).toBe(OperationState.PROCESSING);
+    expect(waiting.steps).toEqual([{ type: 'register', state: 'waiting' }]);
+    expect(port.publishDefinition).not.toHaveBeenCalled();
+  });
+
+  it('completes registration without a revocation check when disabled', async () => {
+    const operation = await service.create(
+      tenant.id,
+      {
+        ...dto,
+        options: {
+          format: CredentialDefinitionFormat.ANONCREDS,
+          tag: 'default',
+          status: { revocation: { enabled: false } },
+        },
+      },
+      auth,
+    );
+    const row = await db.getRepository(CredentialDefinition).findOneByOrFail({
+      tenantId: tenant.id,
+      registrationOperationId: operation.id,
+    });
+    await worker.process(tenant.id, row.id);
+    const completed = await db.getRepository(Operation).findOneByOrFail({
+      tenantId: tenant.id,
+      id: operation.id,
+    });
+    expect(completed.state).toBe(OperationState.COMPLETED);
+    expect(completed.steps).toEqual([{ type: 'register', state: 'completed' }]);
+    expect(port.verifyRevocation).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -329,6 +377,7 @@ describe('credential definition registration (integration)', () => {
       id: operation.id,
     });
     expect(failed.state).toBe(OperationState.FAILED);
+    expect(failed.steps).toEqual([{ type: 'register', state: 'failed' }]);
     expect(failed.result).toMatchObject({
       credential_definition_id: row.id,
       code: 'REGISTRATION_FAILED',
