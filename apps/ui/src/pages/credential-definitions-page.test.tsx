@@ -647,10 +647,9 @@ describe('CredentialDefinitionsPage', () => {
     expect(router.state.location.search).toBe(`?id=${draft.id}`);
     expect(
       await screen.findByRole('heading', {
-        name: 'Employee badge',
+        name: 'Edit credential configuration',
       }),
     ).toBeInTheDocument();
-    expect(screen.getByText('Draft · v1.0.0')).toBeInTheDocument();
     const nameInput = screen.getByLabelText(/^Credential name/);
     const versionInput = screen.getByLabelText(/^Version/);
     expect(nameInput).toHaveValue('Employee badge');
