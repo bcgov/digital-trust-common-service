@@ -19,10 +19,6 @@ export const OPERATION_TYPE = {
   CREDENTIAL_REVOKE_BATCH: 'credential.revoke-batch',
   PRESENTATION_REQUEST: 'presentation.request',
   CONNECTION_CREATE: 'connection.create',
-  ISSUANCE_PROFILE_CREATE: 'issuance-profile.create',
-  ISSUANCE_PROFILE_UPDATE: 'issuance-profile.update',
-  ISSUANCE_PROFILE_PUBLISH: 'issuance-profile.publish',
-  ISSUANCE_PROFILE_DEPRECATE: 'issuance-profile.deprecate',
 } as const;
 
 export type OperationType =

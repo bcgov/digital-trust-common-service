@@ -17,10 +17,6 @@ describe('operation type constants', () => {
       'credential.revoke-batch',
       'presentation.request',
       'connection.create',
-      'issuance-profile.create',
-      'issuance-profile.update',
-      'issuance-profile.publish',
-      'issuance-profile.deprecate',
     ]);
   });
 

@@ -25,9 +25,6 @@ import {
   CredentialDefinitionStatus,
 } from '../credential-definition/credential-definition.entity';
 import { CredentialDefinitionService } from '../credential-definition/credential-definition.service';
-import { OPERATION_TYPE } from '../operation/operation-type.constants';
-import { OperationState } from '../operation/operation.entity';
-import { OperationService } from '../operation/operation.service';
 import { TenantStatus } from '../tenant/tenant.entity';
 
 import { CreateIssuanceProfileDto } from './dto/create-issuance-profile.dto';
@@ -55,7 +52,6 @@ describe('IssuanceProfileService', () => {
   let mockResolve: jest.Mock;
   let mockTransitionStatus: jest.Mock;
   let mockGetClaimsValidationSchema: jest.Mock;
-  let mockCreateCompleted: jest.Mock;
   const manager = {} as EntityManager;
   let mockDeleteIfUnused: jest.Mock;
 
@@ -113,12 +109,6 @@ describe('IssuanceProfileService', () => {
     updatedAt: new Date(),
     tenant: mockCredentialDefinition.tenant,
   };
-  const completedOperation = {
-    id: 'operation-1',
-    state: OperationState.COMPLETED,
-    result: { profile: mockProfile },
-  };
-
   const auth = {
     sub: 'user-1',
     tokenType: 'user' as const,
@@ -219,8 +209,6 @@ describe('IssuanceProfileService', () => {
     mockDeleteIfUnused = jest
       .fn()
       .mockResolvedValue(IssuanceProfileDeleteResult.DELETED);
-    mockCreateCompleted = jest.fn().mockResolvedValue(completedOperation);
-
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         IssuanceProfileService,
@@ -260,10 +248,6 @@ describe('IssuanceProfileService', () => {
         {
           provide: DomainAuditService,
           useValue: { emit: mockEmit },
-        },
-        {
-          provide: OperationService,
-          useValue: { createCompleted: mockCreateCompleted },
         },
       ],
     }).compile();
@@ -317,25 +301,7 @@ describe('IssuanceProfileService', () => {
         resourceType: 'issuance_profile',
         resourceId: mockProfile.id,
       });
-      expect(mockCreateCompleted).toHaveBeenCalledWith(
-        expect.objectContaining({
-          tenantId,
-          type: OPERATION_TYPE.ISSUANCE_PROFILE_CREATE,
-          request: expect.objectContaining({
-            method: 'POST',
-            path: `/api/v1/tenants/${tenantId}/profiles/issuance`,
-          }),
-        }),
-        {
-          profile: expect.objectContaining({
-            id: mockProfile.id,
-            tenant_id: tenantId,
-            credential_definition_id: mockCredentialDefinition.id,
-          }),
-        },
-        manager,
-      );
-      expect(result).toBe(completedOperation);
+      expect(result).toBe(mockProfile);
       expect(mockCreate.mock.calls[0][0]).not.toHaveProperty('format');
       expect(mockCreate.mock.calls[0][0]).not.toHaveProperty('connectorId');
     });
@@ -542,7 +508,7 @@ describe('IssuanceProfileService', () => {
       };
 
       await expect(service.create(tenantId, emptyDto, auth)).resolves.toBe(
-        completedOperation,
+        mockProfile,
       );
       expect(mockResolve).toHaveBeenCalledWith(tenantId, CredentialFormat.Mdl, {
         connectorId: mockConnectorId,
@@ -773,19 +739,7 @@ describe('IssuanceProfileService', () => {
         metadata: { category: 'licence' },
       };
       const result = await service.update(tenantId, mockProfile.id, dto, auth);
-      expect(result).toBe(completedOperation);
-      expect(mockCreateCompleted).toHaveBeenCalledWith(
-        expect.objectContaining({
-          type: OPERATION_TYPE.ISSUANCE_PROFILE_UPDATE,
-        }),
-        {
-          profile: expect.objectContaining({
-            display: dto.display,
-            metadata: dto.metadata,
-          }),
-        },
-        manager,
-      );
+      expect(result).toMatchObject(dto);
       expect(mockSave).toHaveBeenCalledWith(
         expect.objectContaining(dto),
         manager,
@@ -806,19 +760,8 @@ describe('IssuanceProfileService', () => {
         },
         auth,
       );
-      expect(result).toBe(completedOperation);
-      expect(mockCreateCompleted).toHaveBeenCalledWith(
-        expect.objectContaining({
-          type: OPERATION_TYPE.ISSUANCE_PROFILE_UPDATE,
-        }),
-        {
-          profile: expect.objectContaining({
-            claims,
-            delivery: { protocol: 'didcomm-v1' },
-          }),
-        },
-        manager,
-      );
+      expect(result.claims).toEqual(claims);
+      expect(result.delivery).toEqual({ protocol: 'didcomm-v1' });
     });
 
     it('rejects invalid claims edits before saving', async () => {
@@ -846,7 +789,7 @@ describe('IssuanceProfileService', () => {
       mockSave.mockImplementation((profile) => Promise.resolve(profile));
       const result = await service.update(tenantId, mockProfile.id, dto, auth);
 
-      expect(result).toBe(completedOperation);
+      expect(result.description).toBe('Updated');
       expect(mockEmit).toHaveBeenCalledWith({
         tenantId: mockProfile.tenantId,
         action: AuditAction.UPDATE,
@@ -955,19 +898,10 @@ describe('IssuanceProfileService', () => {
         resourceType: 'issuance_profile',
         resourceId: mockProfile.id,
       });
-      expect(result).toBe(completedOperation);
-      expect(mockCreateCompleted).toHaveBeenCalledWith(
-        expect.objectContaining({
-          type: OPERATION_TYPE.ISSUANCE_PROFILE_PUBLISH,
-        }),
-        {
-          profile: expect.objectContaining({
-            id: mockProfile.id,
-            status: IssuanceProfileStatus.PUBLISHED,
-          }),
-        },
-        manager,
-      );
+      expect(result).toMatchObject({
+        ...mockProfile,
+        status: IssuanceProfileStatus.PUBLISHED,
+      });
     });
 
     it('requires a ready definition on the selected connector before publishing', async () => {
@@ -1096,19 +1030,10 @@ describe('IssuanceProfileService', () => {
         resourceType: 'issuance_profile',
         resourceId: publishedProfile.id,
       });
-      expect(result).toBe(completedOperation);
-      expect(mockCreateCompleted).toHaveBeenCalledWith(
-        expect.objectContaining({
-          type: OPERATION_TYPE.ISSUANCE_PROFILE_DEPRECATE,
-        }),
-        {
-          profile: expect.objectContaining({
-            id: mockProfile.id,
-            status: IssuanceProfileStatus.DEPRECATED,
-          }),
-        },
-        manager,
-      );
+      expect(result).toMatchObject({
+        ...publishedProfile,
+        status: IssuanceProfileStatus.DEPRECATED,
+      });
     });
 
     it('throws ConflictException when the profile is not in published status', async () => {

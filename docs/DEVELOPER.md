@@ -1567,11 +1567,9 @@ keywords are not allowed in profile overlays. Optional `display`, `metadata`,
 and `description` retain their existing purpose. Draft edits can replace
 `claims` and `delivery`; published profiles remain immutable.
 
-Create, update, publish, and deprecate return completed `Operation` envelopes
-(creation uses HTTP 201; the other mutations use HTTP 200). The profile snapshot
-is in `result.profile`; each mutation and its operation insert share one
-transaction. This replaces the direct-profile mutation response. Profile reads
-still return `IssuanceProfile`, and delete returns HTTP 204.
+Create, update, publish, and deprecate return an `IssuanceProfile` directly
+(creation uses HTTP 201; the other mutations use HTTP 200). Delete returns
+HTTP 204.
 
 For AnonCreds, define `schema.definition.attributes` as a flat map of attribute
 names to semantic types, for example `{ "given_name": "string", "age": "integer" }`,
@@ -1612,7 +1610,6 @@ No defaults are applied. AnonCreds supports flat scalar attributes only; its
 adapter converts semantic integer, number, and boolean values to strings and
 sends omitted optional attributes as empty strings. This unsigned input does not
 select W3C-form AnonCreds or supply a proof.
-
 The offer operation persists the format-neutral `offer`, `request`, and `issue`
 steps as their owning service or protocol worker observes transitions. For
 example, after an offer is sent and the service is waiting for a holder request:

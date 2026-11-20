@@ -15,7 +15,6 @@ import {
   assertResourceTenantOrNotFound,
   assertTenantAccess,
 } from '../common/assert-tenant-access';
-import { API_BASE_PATH } from '../common/constants/api-version.constants';
 import { decodeCursor, encodeCursor } from '../common/cursor-pagination';
 import {
   CredentialDefinitionFormat,
@@ -26,13 +25,9 @@ import {
   CredentialDefinitionService,
   toPortCredentialFormat,
 } from '../credential-definition/credential-definition.service';
-import { OPERATION_TYPE } from '../operation/operation-type.constants';
-import { Operation } from '../operation/operation.entity';
-import { OperationService } from '../operation/operation.service';
 
 import { validateProfileClaims } from './claims-schema';
 import { CreateIssuanceProfileDto } from './dto/create-issuance-profile.dto';
-import { IssuanceProfileResponseDto } from './dto/issuance-profile-response.dto';
 import { UpdateIssuanceProfileDto } from './dto/update-issuance-profile.dto';
 import {
   IssuanceProfile,
@@ -60,14 +55,13 @@ export class IssuanceProfileService {
     private readonly adapterRegistry: AdapterRegistry,
     private readonly domainAudit: DomainAuditService,
     private readonly dataSource: DataSource,
-    private readonly operations: OperationService,
   ) {}
 
   public async create(
     tenantId: string,
     dto: CreateIssuanceProfileDto,
     auth: AuthContext,
-  ): Promise<Operation> {
+  ): Promise<IssuanceProfile> {
     assertTenantAccess(auth, tenantId);
 
     const credentialDefinition =
@@ -121,47 +115,31 @@ export class IssuanceProfileService {
       credentialDefinition.connectorId,
     );
 
-    const { profile, operation } = await this.dataSource.transaction(
-      async (manager) => {
-        const profile = await this.createProfile(
-          {
-            tenantId,
-            name: dto.name,
-            version: dto.version,
-            description: dto.description,
-            credentialDefinitionId: credentialDefinition.id,
-            claims,
-            display: dto.display,
-            metadata: dto.metadata,
-            delivery: dto.delivery ?? { protocol: 'didcomm-v1' },
-          },
-          manager,
-        );
-        const operation = await this.operations.createCompleted(
-          {
-            tenantId,
-            type: OPERATION_TYPE.ISSUANCE_PROFILE_CREATE,
-            request: {
-              method: 'POST',
-              path: `${API_BASE_PATH}/tenants/${tenantId}/profiles/issuance`,
-              body: this.createRequestBody(dto),
-            },
-          },
-          { profile: this.profileSnapshot(profile) },
-          manager,
-        );
-        return { profile, operation };
-      },
+    const created = await this.dataSource.transaction((manager) =>
+      this.createProfile(
+        {
+          tenantId,
+          name: dto.name,
+          version: dto.version,
+          description: dto.description,
+          credentialDefinitionId: credentialDefinition.id,
+          claims,
+          display: dto.display,
+          metadata: dto.metadata,
+          delivery: dto.delivery ?? { protocol: 'didcomm-v1' },
+        },
+        manager,
+      ),
     );
 
     await this.domainAudit.emit({
-      tenantId: profile.tenantId,
+      tenantId: created.tenantId,
       action: AuditAction.CREATE,
       resourceType: 'issuance_profile',
-      resourceId: profile.id,
+      resourceId: created.id,
     });
 
-    return operation;
+    return created;
   }
 
   /**
@@ -300,7 +278,7 @@ export class IssuanceProfileService {
     id: string,
     dto: UpdateIssuanceProfileDto,
     auth: AuthContext,
-  ): Promise<Operation> {
+  ): Promise<IssuanceProfile> {
     const current = await this.findById(tenantId, id, auth);
     const definition = await this.credentialDefinitionService.findById(
       tenantId,
@@ -310,13 +288,8 @@ export class IssuanceProfileService {
     const validationSchema =
       this.credentialDefinitionService.getClaimsValidationSchema(definition);
 
-    const { profile: updated, operation } = await this.dataSource.transaction(
-      async (
-        manager,
-      ): Promise<{
-        profile: IssuanceProfile;
-        operation: Operation;
-      }> => {
+    const updated = await this.dataSource.transaction(
+      async (manager): Promise<IssuanceProfile> => {
         const profile = await this.issuanceProfileRepository.findForUpdate(
           tenantId,
           id,
@@ -358,24 +331,7 @@ export class IssuanceProfileService {
           profile.delivery = dto.delivery;
         }
 
-        const saved = await this.issuanceProfileRepository.save(
-          profile,
-          manager,
-        );
-        const operation = await this.operations.createCompleted(
-          {
-            tenantId,
-            type: OPERATION_TYPE.ISSUANCE_PROFILE_UPDATE,
-            request: {
-              method: 'PATCH',
-              path: `${API_BASE_PATH}/tenants/${tenantId}/profiles/issuance/${id}`,
-              body: this.updateRequestBody(dto),
-            },
-          },
-          { profile: this.profileSnapshot(saved) },
-          manager,
-        );
-        return { profile: saved, operation };
+        return await this.issuanceProfileRepository.save(profile, manager);
       },
     );
 
@@ -386,7 +342,7 @@ export class IssuanceProfileService {
       resourceId: updated.id,
     });
 
-    return operation;
+    return updated;
   }
 
   public async remove(
@@ -423,7 +379,7 @@ export class IssuanceProfileService {
     tenantId: string,
     id: string,
     auth: AuthContext,
-  ): Promise<Operation> {
+  ): Promise<IssuanceProfile> {
     const profile = await this.findById(tenantId, id, auth);
 
     if (profile.status !== IssuanceProfileStatus.DRAFT) {
@@ -446,46 +402,31 @@ export class IssuanceProfileService {
     );
     const binding = await this.assertConnectorHealthy(profile, auth);
 
-    const { profile: published, operation } = await this.dataSource.transaction(
-      async (manager) => {
-        const transitioned =
-          await this.issuanceProfileRepository.transitionStatus(
-            tenantId,
-            id,
-            IssuanceProfileStatus.DRAFT,
-            IssuanceProfileStatus.PUBLISHED,
-            binding,
-            manager,
-          );
-
-        if (!transitioned) {
-          throw new ConflictException(
-            `Issuance profile '${id}' cannot be published because it is not in draft status.`,
-          );
-        }
-
-        const published = await this.issuanceProfileRepository.findById(
+    const published = await this.dataSource.transaction(async (manager) => {
+      const transitioned =
+        await this.issuanceProfileRepository.transitionStatus(
+          tenantId,
           id,
+          IssuanceProfileStatus.DRAFT,
+          IssuanceProfileStatus.PUBLISHED,
+          binding,
           manager,
         );
-        if (!published || published.tenantId !== tenantId)
-          throw new NotFoundException('Issuance profile not found');
-        const operation = await this.operations.createCompleted(
-          {
-            tenantId,
-            type: OPERATION_TYPE.ISSUANCE_PROFILE_PUBLISH,
-            request: {
-              method: 'POST',
-              path: `${API_BASE_PATH}/tenants/${tenantId}/profiles/issuance/${id}/publish`,
-              body: {},
-            },
-          },
-          { profile: this.profileSnapshot(published) },
-          manager,
+
+      if (!transitioned) {
+        throw new ConflictException(
+          `Issuance profile '${id}' cannot be published because it is not in draft status.`,
         );
-        return { profile: published, operation };
-      },
-    );
+      }
+
+      const published = await this.issuanceProfileRepository.findById(
+        id,
+        manager,
+      );
+      if (!published || published.tenantId !== tenantId)
+        throw new NotFoundException('Issuance profile not found');
+      return published;
+    });
 
     await this.domainAudit.emit({
       tenantId: published.tenantId,
@@ -494,7 +435,7 @@ export class IssuanceProfileService {
       resourceId: published.id,
     });
 
-    return operation;
+    return published;
   }
 
   /**
@@ -504,7 +445,7 @@ export class IssuanceProfileService {
     tenantId: string,
     id: string,
     auth: AuthContext,
-  ): Promise<Operation> {
+  ): Promise<IssuanceProfile> {
     const profile = await this.findById(tenantId, id, auth);
 
     if (profile.status !== IssuanceProfileStatus.PUBLISHED) {
@@ -513,45 +454,31 @@ export class IssuanceProfileService {
       );
     }
 
-    const { profile: deprecated, operation } =
-      await this.dataSource.transaction(async (manager) => {
-        const transitioned =
-          await this.issuanceProfileRepository.transitionStatus(
-            tenantId,
-            id,
-            IssuanceProfileStatus.PUBLISHED,
-            IssuanceProfileStatus.DEPRECATED,
-            undefined,
-            manager,
-          );
-
-        if (!transitioned) {
-          throw new ConflictException(
-            `Issuance profile '${id}' cannot be deprecated because it is not in published status.`,
-          );
-        }
-
-        const deprecated = await this.issuanceProfileRepository.findById(
+    const deprecated = await this.dataSource.transaction(async (manager) => {
+      const transitioned =
+        await this.issuanceProfileRepository.transitionStatus(
+          tenantId,
           id,
+          IssuanceProfileStatus.PUBLISHED,
+          IssuanceProfileStatus.DEPRECATED,
+          undefined,
           manager,
         );
-        if (!deprecated || deprecated.tenantId !== tenantId)
-          throw new NotFoundException('Issuance profile not found');
-        const operation = await this.operations.createCompleted(
-          {
-            tenantId,
-            type: OPERATION_TYPE.ISSUANCE_PROFILE_DEPRECATE,
-            request: {
-              method: 'POST',
-              path: `${API_BASE_PATH}/tenants/${tenantId}/profiles/issuance/${id}/deprecate`,
-              body: {},
-            },
-          },
-          { profile: this.profileSnapshot(deprecated) },
-          manager,
+
+      if (!transitioned) {
+        throw new ConflictException(
+          `Issuance profile '${id}' cannot be deprecated because it is not in published status.`,
         );
-        return { profile: deprecated, operation };
-      });
+      }
+
+      const deprecated = await this.issuanceProfileRepository.findById(
+        id,
+        manager,
+      );
+      if (!deprecated || deprecated.tenantId !== tenantId)
+        throw new NotFoundException('Issuance profile not found');
+      return deprecated;
+    });
 
     await this.domainAudit.emit({
       tenantId: deprecated.tenantId,
@@ -560,57 +487,7 @@ export class IssuanceProfileService {
       resourceId: deprecated.id,
     });
 
-    return operation;
-  }
-
-  private createRequestBody(
-    dto: CreateIssuanceProfileDto,
-  ): Record<string, unknown> {
-    return {
-      name: dto.name,
-      version: dto.version,
-      ...(dto.description !== undefined
-        ? { description: dto.description }
-        : {}),
-      credential_definition_id: dto.credentialDefinitionId,
-      ...(dto.claims !== undefined ? { claims: dto.claims } : {}),
-      ...(dto.display !== undefined ? { display: dto.display } : {}),
-      ...(dto.metadata !== undefined ? { metadata: dto.metadata } : {}),
-      ...(dto.delivery !== undefined ? { delivery: dto.delivery } : {}),
-    };
-  }
-
-  private updateRequestBody(
-    dto: UpdateIssuanceProfileDto,
-  ): Record<string, unknown> {
-    return {
-      ...(dto.description !== undefined
-        ? { description: dto.description }
-        : {}),
-      ...(dto.claims !== undefined ? { claims: dto.claims } : {}),
-      ...(dto.display !== undefined ? { display: dto.display } : {}),
-      ...(dto.metadata !== undefined ? { metadata: dto.metadata } : {}),
-      ...(dto.delivery !== undefined ? { delivery: dto.delivery } : {}),
-    };
-  }
-
-  private profileSnapshot(profile: IssuanceProfile): Record<string, unknown> {
-    const dto = IssuanceProfileResponseDto.fromEntity(profile);
-    return {
-      id: dto.id,
-      tenant_id: dto.tenantId,
-      name: dto.name,
-      version: dto.version,
-      description: dto.description ?? null,
-      credential_definition_id: dto.credentialDefinitionId,
-      claims: dto.claims,
-      display: dto.display ?? null,
-      metadata: dto.metadata,
-      delivery: dto.delivery,
-      status: dto.status,
-      created_at: dto.createdAt.toISOString(),
-      updated_at: dto.updatedAt.toISOString(),
-    };
+    return deprecated;
   }
 
   /**

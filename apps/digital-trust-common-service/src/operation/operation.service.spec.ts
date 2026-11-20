@@ -148,7 +148,7 @@ describe('OperationService', () => {
     const result = await service.createCompleted(
       {
         tenantId: 't1',
-        type: OPERATION_TYPE.ISSUANCE_PROFILE_CREATE,
+        type: OPERATION_TYPE.CREDENTIAL_OFFER,
         request: baseRequest,
       },
       { profile: { id: 'profile-1' } },
@@ -158,7 +158,7 @@ describe('OperationService', () => {
     expect(mockCreate).toHaveBeenCalledWith(
       expect.objectContaining({
         tenantId: 't1',
-        type: OPERATION_TYPE.ISSUANCE_PROFILE_CREATE,
+        type: OPERATION_TYPE.CREDENTIAL_OFFER,
         state: OperationState.COMPLETED,
         steps: [],
         result: { profile: { id: 'profile-1' } },
@@ -172,7 +172,7 @@ describe('OperationService', () => {
     expect(mockTenantFindById).toHaveBeenCalledWith('t1', txManager);
     expect(result.id).toBe('completed-op');
     expect(mockRecordCredentialOperation).toHaveBeenCalledWith(
-      OPERATION_TYPE.ISSUANCE_PROFILE_CREATE,
+      OPERATION_TYPE.CREDENTIAL_OFFER,
       'completed',
       txManager,
     );

@@ -2,9 +2,6 @@ import { JwtGuard, ScopeGuard, TenantGuard, type AuthContext } from '@app/auth';
 import { CanActivate } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 
-import { OperationResponseDto } from '../operation/dto/operation-response.dto';
-import { OPERATION_TYPE } from '../operation/operation-type.constants';
-import { Operation, OperationState } from '../operation/operation.entity';
 import { TenantTierRateLimitGuard } from '../rate-limit/tenant-tier-rate-limit.guard';
 import { TenantStatusGuard } from '../tenant/tenant-status.guard';
 import { TenantStatus } from '../tenant/tenant.entity';
@@ -77,32 +74,6 @@ describe('IssuanceProfileController', () => {
     },
   } as IssuanceProfile;
 
-  const completedOperation = (
-    type: string,
-    profile: IssuanceProfile,
-  ): Operation =>
-    Object.assign(new Operation(), {
-      id: '123e4567-e89b-12d3-a456-426614174099',
-      tenantId: profile.tenantId,
-      type,
-      state: OperationState.COMPLETED,
-      steps: [],
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      result: {
-        profile: {
-          id: profile.id,
-          tenant_id: profile.tenantId,
-          name: profile.name,
-          version: profile.version,
-          credential_definition_id: profile.credentialDefinitionId,
-          claims: profile.claims,
-          delivery: profile.delivery,
-          status: profile.status,
-        },
-      },
-    });
-
   beforeEach(async () => {
     mockCreate = jest.fn();
     mockFindById = jest.fn();
@@ -174,16 +145,14 @@ describe('IssuanceProfileController', () => {
         delivery: mockProfile.delivery,
       };
 
-      const operation = completedOperation(
-        OPERATION_TYPE.ISSUANCE_PROFILE_CREATE,
-        mockProfile,
-      );
-      mockCreate.mockResolvedValue(operation);
+      mockCreate.mockResolvedValue(mockProfile);
 
       const result = await controller.create(tenantId, dto, auth);
 
       expect(mockCreate).toHaveBeenCalledWith(tenantId, dto, auth);
-      expect(result).toEqual(OperationResponseDto.fromEntity(operation));
+      expect(result).toEqual(
+        IssuanceProfileResponseDto.fromEntity(mockProfile),
+      );
     });
   });
 
@@ -276,16 +245,12 @@ describe('IssuanceProfileController', () => {
       const dto: UpdateIssuanceProfileDto = { description: 'Updated' };
       const updated = { ...mockProfile, description: 'Updated' };
 
-      const operation = completedOperation(
-        OPERATION_TYPE.ISSUANCE_PROFILE_UPDATE,
-        updated,
-      );
-      mockUpdate.mockResolvedValue(operation);
+      mockUpdate.mockResolvedValue(updated);
 
       const result = await controller.update(tenantId, id, dto, auth);
 
       expect(mockUpdate).toHaveBeenCalledWith(tenantId, id, dto, auth);
-      expect(result).toEqual(OperationResponseDto.fromEntity(operation));
+      expect(result).toEqual(IssuanceProfileResponseDto.fromEntity(updated));
     });
   });
 
@@ -298,16 +263,12 @@ describe('IssuanceProfileController', () => {
         status: IssuanceProfileStatus.PUBLISHED,
       };
 
-      const operation = completedOperation(
-        OPERATION_TYPE.ISSUANCE_PROFILE_PUBLISH,
-        published,
-      );
-      mockPublish.mockResolvedValue(operation);
+      mockPublish.mockResolvedValue(published);
 
       const result = await controller.publish(tenantId, id, auth);
 
       expect(mockPublish).toHaveBeenCalledWith(tenantId, id, auth);
-      expect(result).toEqual(OperationResponseDto.fromEntity(operation));
+      expect(result).toEqual(IssuanceProfileResponseDto.fromEntity(published));
     });
   });
 
@@ -320,16 +281,12 @@ describe('IssuanceProfileController', () => {
         status: IssuanceProfileStatus.DEPRECATED,
       };
 
-      const operation = completedOperation(
-        OPERATION_TYPE.ISSUANCE_PROFILE_DEPRECATE,
-        deprecated,
-      );
-      mockDeprecate.mockResolvedValue(operation);
+      mockDeprecate.mockResolvedValue(deprecated);
 
       const result = await controller.deprecate(tenantId, id, auth);
 
       expect(mockDeprecate).toHaveBeenCalledWith(tenantId, id, auth);
-      expect(result).toEqual(OperationResponseDto.fromEntity(operation));
+      expect(result).toEqual(IssuanceProfileResponseDto.fromEntity(deprecated));
     });
   });
 });

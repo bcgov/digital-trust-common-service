@@ -1178,11 +1178,11 @@ paths:
               $ref: "#/components/schemas/CreateIssuanceProfileRequest"
       responses:
         "201":
-          description: Completed issuance-profile creation operation
+          description: Draft issuance profile created
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/IssuanceProfileOperation"
+                $ref: "#/components/schemas/IssuanceProfile"
         '404':
           description: Credential definition not found
           content:
@@ -1271,11 +1271,11 @@ paths:
               $ref: "#/components/schemas/UpdateIssuanceProfileRequest"
       responses:
         "200":
-          description: Completed issuance-profile update operation
+          description: Issuance profile updated
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/IssuanceProfileOperation"
+                $ref: "#/components/schemas/IssuanceProfile"
         '409':
           description: Cannot update a published or deprecated profile
           content:
@@ -1293,11 +1293,11 @@ paths:
       tags: [Issuance Profiles]
       responses:
         "200":
-          description: Completed issuance-profile publication operation
+          description: Issuance profile published
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/IssuanceProfileOperation"
+                $ref: "#/components/schemas/IssuanceProfile"
         '400':
           description: >-
             The credential definition is not published, or its connector no longer exists, is inactive, or its
@@ -1323,11 +1323,11 @@ paths:
       tags: [Issuance Profiles]
       responses:
         "200":
-          description: Completed issuance-profile deprecation operation
+          description: Issuance profile deprecated
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/IssuanceProfileOperation"
+                $ref: "#/components/schemas/IssuanceProfile"
         '409':
           description: Profile is not in published status
           content:
@@ -4102,17 +4102,6 @@ components:
     # ─── Issuance Profile ────────────────────────────────────────────
     IssuanceProfile:
       type: object
-      required:
-        - id
-        - tenant_id
-        - name
-        - version
-        - credential_definition_id
-        - claims
-        - delivery
-        - status
-        - created_at
-        - updated_at
       properties:
         can_delete:
           type: boolean
@@ -4588,9 +4577,7 @@ components:
             `credential-definition.register`, `credential.offer`, `credential.issue`, `credential.offer-batch`,
             `credential.accept`, `credential.reject`,
             `credential.revoke`, `credential.revoke-batch`,
-            `presentation.request`, `connection.create`,
-            `issuance-profile.create`, `issuance-profile.update`,
-            `issuance-profile.publish`, `issuance-profile.deprecate`
+            `presentation.request`, `connection.create`
           examples:
             - credential.offer
             - credential.issue
@@ -4601,10 +4588,6 @@ components:
             - credential.revoke-batch
             - presentation.request
             - connection.create
-            - issuance-profile.create
-            - issuance-profile.update
-            - issuance-profile.publish
-            - issuance-profile.deprecate
         state:
           $ref: "#/components/schemas/OperationState"
         steps:
@@ -4644,9 +4627,8 @@ components:
             State-dependent result:
             - pending/processing: usually null; credential-definition.register
               includes { credential_definition_id } immediately
-            - completed: operation-type-specific data
-              (profile mutations return { profile } with the completed profile
-              snapshot; exchange-linked actions return the local { exchange_id })
+            - completed: operation-type-specific data; exchange-linked actions
+              return the local { exchange_id }
             - failed: { code, message }; credential registration additionally
               retains credential_definition_id, external_id, and registration
               progress/correlation identifiers.
@@ -4688,22 +4670,6 @@ components:
           examples: [offer, request, issue]
         state:
           $ref: "#/components/schemas/OperationStepState"
-
-    IssuanceProfileOperation:
-      allOf:
-        - $ref: "#/components/schemas/Operation"
-        - type: object
-          required: [result]
-          properties:
-            result:
-              $ref: "#/components/schemas/IssuanceProfileOperationResult"
-
-    IssuanceProfileOperationResult:
-      type: object
-      required: [profile]
-      properties:
-        profile:
-          $ref: "#/components/schemas/IssuanceProfile"
 
     CredentialDefinitionRegistrationProgress:
       type: object

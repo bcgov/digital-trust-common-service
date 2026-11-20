@@ -403,19 +403,12 @@ describe('Credential offer (e2e)', () => {
       .send(body)
       .expect(201);
     expect(created.body).toMatchObject({
-      state: 'completed',
-      result: {
-        profile: {
-          status: 'draft',
-          delivery: { protocol: 'didcomm-v1' },
-          claims: body.claims,
-          display: body.display,
-        },
-      },
+      status: 'draft',
+      delivery: { protocol: 'didcomm-v1' },
+      claims: body.claims,
+      display: body.display,
     });
-    const { profile: createdProfile } = (
-      created.body as { result: { profile: { id: string } } }
-    ).result;
+    const createdProfile = created.body as { id: string };
     await request(app.getHttpServer())
       .post(
         `${API_BASE_PATH}/tenants/${tenant.id}/profiles/issuance/${createdProfile.id}/publish`,
@@ -423,10 +416,8 @@ describe('Credential offer (e2e)', () => {
       .expect(200)
       .expect(({ body: published }: { body: unknown }) => {
         expect(published).toMatchObject({
-          state: 'completed',
-          result: {
-            profile: { id: createdProfile.id, status: 'published' },
-          },
+          id: createdProfile.id,
+          status: 'published',
         });
       });
     await request(app.getHttpServer())
@@ -475,7 +466,7 @@ describe('Credential offer (e2e)', () => {
     expect(await operationRepo.countBy({ tenantId: tenant.id })).toBe(0);
   });
 
-  it('persists completed operations for successful profile mutations only', async () => {
+  it('returns issuance profiles from profile mutations without creating operations', async () => {
     prepareBackend();
     const root = `${API_BASE_PATH}/tenants/${tenant.id}/profiles/issuance`;
     const created = await request(app.getHttpServer())
@@ -487,14 +478,9 @@ describe('Credential offer (e2e)', () => {
         delivery: {},
       })
       .expect(201);
-    const { id } = (created.body as { result: { profile: { id: string } } })
-      .result.profile;
+    const id = (created.body as { id: string }).id;
     expect(created.body).toMatchObject({
-      type: OPERATION_TYPE.ISSUANCE_PROFILE_CREATE,
-      state: 'completed',
-      result: {
-        profile: { id, status: 'draft', delivery: { protocol: 'didcomm-v1' } },
-      },
+      delivery: { protocol: 'didcomm-v1' },
     });
     await request(app.getHttpServer())
       .patch(`${root}/${id}`)
@@ -505,27 +491,23 @@ describe('Credential offer (e2e)', () => {
       .send({ description: 'Updated profile' })
       .expect(200);
     expect(updated.body).toMatchObject({
-      type: OPERATION_TYPE.ISSUANCE_PROFILE_UPDATE,
-      state: 'completed',
-      result: {
-        profile: { id, description: 'Updated profile', status: 'draft' },
-      },
+      id,
+      description: 'Updated profile',
+      status: 'draft',
     });
     const published = await request(app.getHttpServer())
       .post(`${root}/${id}/publish`)
       .expect(200);
     expect(published.body).toMatchObject({
-      type: OPERATION_TYPE.ISSUANCE_PROFILE_PUBLISH,
-      state: 'completed',
-      result: { profile: { id, status: 'published' } },
+      id,
+      status: 'published',
     });
     const deprecated = await request(app.getHttpServer())
       .post(`${root}/${id}/deprecate`)
       .expect(200);
     expect(deprecated.body).toMatchObject({
-      type: OPERATION_TYPE.ISSUANCE_PROFILE_DEPRECATE,
-      state: 'completed',
-      result: { profile: { id, status: 'deprecated' } },
+      id,
+      status: 'deprecated',
     });
     const otherTenant = await tenantRepo.save(
       tenantRepo.create({
@@ -548,21 +530,7 @@ describe('Credential offer (e2e)', () => {
       .patch(`${root}/${id}`)
       .send({ description: 'cannot edit' })
       .expect(409);
-    const operations = await operationRepo.findBy({ tenantId: tenant.id });
-    expect(operations).toHaveLength(4);
-    for (const response of [created, updated, published, deprecated]) {
-      const { id, type, state, result } = response.body as Pick<
-        Operation,
-        'id' | 'type' | 'state' | 'result'
-      >;
-      expect(operations.find((operation) => operation.id === id)).toMatchObject(
-        {
-          type,
-          state,
-          result,
-        },
-      );
-    }
+    expect(await operationRepo.countBy({ tenantId: tenant.id })).toBe(0);
     expect(backendRequest).not.toHaveBeenCalled();
   });
 

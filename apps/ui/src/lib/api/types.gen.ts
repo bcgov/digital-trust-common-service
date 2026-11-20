@@ -2192,15 +2192,15 @@ export interface components {
             /** @description Included in list responses. True if no persisted issuance request references this profile; deletion always rechecks usage. */
             can_delete?: boolean;
             /** Format: uuid */
-            id: string;
+            id?: string;
             /** Format: uuid */
-            tenant_id: string;
-            name: string;
-            version: string;
+            tenant_id?: string;
+            name?: string;
+            version?: string;
             description?: string | null;
             /** Format: uuid */
-            credential_definition_id: string;
-            claims: components["schemas"]["ProfileClaims"];
+            credential_definition_id?: string;
+            claims?: components["schemas"]["ProfileClaims"];
             /** @description UI/metadata for rendering */
             display?: {
                 name?: string;
@@ -2212,12 +2212,12 @@ export interface components {
             } | null;
             /** @description Extensible metadata (OCA bundles, trust framework tags, etc.) */
             metadata?: Record<string, never> | null;
-            delivery: components["schemas"]["IssuanceDelivery"];
-            status: components["schemas"]["ProfileStatus"];
+            delivery?: components["schemas"]["IssuanceDelivery"];
+            status?: components["schemas"]["ProfileStatus"];
             /** Format: date-time */
-            created_at: string;
+            created_at?: string;
             /** Format: date-time */
-            updated_at: string;
+            updated_at?: string;
         };
         /** @description The connector is inherited from the credential definition, which must have an active connector binding. */
         CreateIssuanceProfileRequest: {
@@ -2489,9 +2489,7 @@ export interface components {
              *     `credential-definition.register`, `credential.offer`, `credential.issue`, `credential.offer-batch`,
              *     `credential.accept`, `credential.reject`,
              *     `credential.revoke`, `credential.revoke-batch`,
-             *     `presentation.request`, `connection.create`,
-             *     `issuance-profile.create`, `issuance-profile.update`,
-             *     `issuance-profile.publish`, `issuance-profile.deprecate`
+             *     `presentation.request`, `connection.create`
              * @example credential.offer
              * @example credential.issue
              * @example credential.offer-batch
@@ -2501,10 +2499,6 @@ export interface components {
              * @example credential.revoke-batch
              * @example presentation.request
              * @example connection.create
-             * @example issuance-profile.create
-             * @example issuance-profile.update
-             * @example issuance-profile.publish
-             * @example issuance-profile.deprecate
              */
             type: string;
             state: components["schemas"]["OperationState"];
@@ -2522,9 +2516,8 @@ export interface components {
              * @description State-dependent result:
              *     - pending/processing: usually null; credential-definition.register
              *       includes { credential_definition_id } immediately
-             *     - completed: operation-type-specific data
-             *       (profile mutations return { profile } with the completed profile
-             *       snapshot; exchange-linked actions return the local { exchange_id })
+             *     - completed: operation-type-specific data; exchange-linked actions
+             *       return the local { exchange_id }
              *     - failed: { code, message }; credential registration additionally
              *       retains credential_definition_id, external_id, and registration
              *       progress/correlation identifiers.
@@ -2574,12 +2567,6 @@ export interface components {
              */
             type: string;
             state: components["schemas"]["OperationStepState"];
-        };
-        IssuanceProfileOperation: components["schemas"]["Operation"] & {
-            result: components["schemas"]["IssuanceProfileOperationResult"];
-        };
-        IssuanceProfileOperationResult: {
-            profile: components["schemas"]["IssuanceProfile"];
         };
         CredentialDefinitionRegistrationProgress: {
             stage?: string;
@@ -3963,13 +3950,13 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Completed issuance-profile creation operation */
+            /** @description Draft issuance profile created */
             201: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["IssuanceProfileOperation"];
+                    "application/json": components["schemas"]["IssuanceProfile"];
                 };
             };
             /** @description Credential definition not found */
@@ -4059,13 +4046,13 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Completed issuance-profile update operation */
+            /** @description Issuance profile updated */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["IssuanceProfileOperation"];
+                    "application/json": components["schemas"]["IssuanceProfile"];
                 };
             };
             /** @description Cannot update a published or deprecated profile */
@@ -4092,13 +4079,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Completed issuance-profile publication operation */
+            /** @description Issuance profile published */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["IssuanceProfileOperation"];
+                    "application/json": components["schemas"]["IssuanceProfile"];
                 };
             };
             /** @description The credential definition is not published, or its connector no longer exists, is inactive, or its adapter no longer resolves */
@@ -4134,13 +4121,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Completed issuance-profile deprecation operation */
+            /** @description Issuance profile deprecated */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["IssuanceProfileOperation"];
+                    "application/json": components["schemas"]["IssuanceProfile"];
                 };
             };
             /** @description Profile is not in published status */
