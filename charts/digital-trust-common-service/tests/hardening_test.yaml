@@ -53,6 +53,17 @@ tests:
           value: https://app.example.com
         template: templates/configmap.yaml
 
+  - it: leaves email processing disabled by default
+    set:
+      upstreamFederation:
+        existingSecret:
+          name: dtsc-ci-oidc-client
+    asserts:
+      - equal:
+          path: data.MAIL_DRIVER
+          value: ''
+        template: templates/configmap.yaml
+
   # buildCorsOptions() refuses "*" when NODE_ENV=production, so a ConfigMap
   # wiring change that silently drops this key would fail the app at startup
   # instead of rendering — exercised against the real prod overlay rather

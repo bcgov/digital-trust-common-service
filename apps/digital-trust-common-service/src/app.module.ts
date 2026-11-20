@@ -29,6 +29,7 @@ import { ConnectorModule } from './connector/connector.module';
 import { CredentialActionModule } from './credential/credential-action.module';
 import { CredentialModule } from './credential/credential.module';
 import { CredentialDefinitionModule } from './credential-definition/credential-definition.module';
+import { EmailModule } from './email/email.module';
 import { HealthModule } from './health/health.module';
 import { IssuanceProfileModule } from './issuance-profile/issuance-profile.module';
 import { JobsModule } from './jobs/jobs.module';
@@ -72,6 +73,7 @@ import { WebhookIngestionModule } from './webhook-ingestion/webhook-ingestion.mo
     CredentialDefinitionModule,
     CredentialModule,
     DatabaseModule,
+    EmailModule,
     EncryptionModule,
     HealthModule,
     IssuanceProfileModule,

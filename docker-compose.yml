@@ -16,7 +16,7 @@ services:
       - .:/app
       - /app/node_modules
       - ./config:/app/config:ro
-      # Caddy's root certificate only, published by caddy-ca. Mounting
+      # Public trust bundle published by caddy-ca. Mounting
       # caddy_data directly would also expose the CA private key.
       - caddy-ca:/caddy-ca:ro
     env_file:
@@ -141,6 +141,11 @@ services:
       - /app/node_modules
     environment:
       NODE_ENV: test
+      MAIL_DRIVER: ''
+      SMTP_HOST: ''
+      SMTP_PORT: '587'
+      SMTP_SECURE: 'false'
+      SMTP_FROM: ''
       DB_HOST: db-test
       DB_PORT: 5432
       DB_USERNAME: postgres
@@ -264,11 +269,39 @@ services:
         src=/caddy-data/caddy/pki/authorities/local/root.crt
         until [ -f "$$src" ]; do sleep 1; done
         cp "$$src" /out/root.crt
+        if [ -f /local-certs/mailpit.crt ]; then
+          cat /local-certs/mailpit.crt >> /out/root.crt
+        fi
     volumes:
       - caddy_data:/caddy-data:ro
       - caddy-ca:/out
+      - ./caddy:/local-certs:ro
     depends_on:
       - caddy
+
+  mailpit:
+    image: axllent/mailpit:v1.27.8
+    profiles: ['mail']
+    ports:
+      - '127.0.0.1:1025:1025'
+      - '127.0.0.1:8025:8025'
+    environment:
+      MP_SMTP_TLS_CERT: /tls/mailpit.crt
+      MP_SMTP_TLS_KEY: /tls/mailpit.key
+      MP_SMTP_REQUIRE_STARTTLS: 'true'
+    volumes:
+      - type: bind
+        source: ./caddy/mailpit.crt
+        target: /tls/mailpit.crt
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./.mailpit/mailpit.key
+        target: /tls/mailpit.key
+        read_only: true
+        bind:
+          create_host_path: false
 
   # Local observability backend: Grafana, Loki, Tempo, Mimir, Pyroscope and an
   # OTel Collector in a single container — the same backends the deployed

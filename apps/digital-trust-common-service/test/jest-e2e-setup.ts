@@ -2,6 +2,8 @@ import * as crypto from 'crypto';
 
 Object.assign(global, { crypto });
 
+process.env.MAIL_DRIVER = '';
+
 // Keep e2e suites deterministic by avoiding outbound IdP discovery calls
 // during AppModule bootstrap.
 jest.mock('openid-client', () => {

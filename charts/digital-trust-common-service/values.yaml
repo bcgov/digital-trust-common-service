@@ -631,6 +631,16 @@ otel:
 # as environment variables into all containers.
 config:
   NODE_ENV: production
+  # -- Blank leaves email jobs queued. Use smtp for delivery or log for development-only previews.
+  MAIL_DRIVER: ""
+  # -- SMTP relay hostname, required when MAIL_DRIVER is smtp.
+  SMTP_HOST: ""
+  # -- SMTP relay port.
+  SMTP_PORT: "587"
+  # -- Use implicit TLS when true; otherwise require STARTTLS.
+  SMTP_SECURE: "false"
+  # -- Verified sender address for SMTP delivery.
+  SMTP_FROM: ""
   PORT: "3000"
   # -- This app's own externally-reachable origin, no path (e.g.
   # https://api.example.com). Required in production: OidcConfigService
@@ -807,6 +817,11 @@ networkPolicy:
     namespaceSelector: {}
     # -- Pod selector matching the Keycloak pods
     podSelector: {}
+  smtp:
+    # -- Opt in to API/Worker SMTP egress. Leave disabled for API-based email providers.
+    enabled: false
+    # -- Required NetworkPolicy destination peers when SMTP egress is enabled (ipBlock, podSelector, or namespaceSelector). Port comes from config.SMTP_PORT.
+    to: []
   collector:
     # -- Allow API/Worker egress to the OTLP collector. Implied by `otel.enabled`:
     # the database and Keycloak rules already isolate the pods' egress, so without

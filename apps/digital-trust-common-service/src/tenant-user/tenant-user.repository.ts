@@ -49,6 +49,16 @@ export class TenantUserRepository {
     });
   }
 
+  public findPendingInvitation(
+    tenantId: string,
+    invitationId: string,
+  ): Promise<TenantUser | null> {
+    return this.repository.findOne({
+      where: { id: invitationId, tenantId, status: TenantUserStatus.INVITED },
+      relations: { tenant: true },
+    });
+  }
+
   public async countByTenantAndRole(
     tenantId: string,
     role: TenantUserRole,

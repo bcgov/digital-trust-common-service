@@ -9,6 +9,11 @@ and this chart adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.h
 
 ### Added
 
+- Add `config.MAIL_DRIVER`, disabled by default, for development-only email logging.
+- Support SMTP invitation delivery through the shared API and worker environment.
+- Add opt-in SMTP egress for API and worker pods, restricted to configured relay
+  destinations and `config.SMTP_PORT`, with DNS access when needed.
+
 - `grafana` values (`enabled` default `false`) for a tenant-facing Grafana that
   shows a tenant its own service and agent logs. It signs users in through this
   service's OIDC provider (Authorization Code with PKCE, a public client, the
