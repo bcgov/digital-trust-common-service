@@ -29,11 +29,15 @@ function move<T>(items: T[], from: number, to: number): T[] {
 
 interface AttributesStepProps {
   attributes: Attribute[];
+  duplicateNames: ReadonlySet<string>;
+  duplicateWarningId: string;
   onChange: (attributes: Attribute[]) => void;
 }
 
 export function AttributesStep({
   attributes,
+  duplicateNames,
+  duplicateWarningId,
   onChange: setAttributes,
 }: AttributesStepProps) {
   const { t } = useTranslation();
@@ -122,11 +126,17 @@ export function AttributesStep({
                 <GripVerticalIcon className="size-5" />
               </button>
               <TextField
-                className="min-w-0 flex-1"
+                className="bcds-react-aria-TextField min-w-0 flex-1"
                 aria-label={t('credentialDefinitions.attributes.name', {
                   index: index + 1,
                 })}
+                aria-describedby={
+                  duplicateNames.has(attribute.name.trim())
+                    ? duplicateWarningId
+                    : undefined
+                }
                 value={attribute.name}
+                isInvalid={duplicateNames.has(attribute.name.trim())}
                 {...{
                   placeholder: t(
                     'credentialDefinitions.attributes.namePlaceholder',

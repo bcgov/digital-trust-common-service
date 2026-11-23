@@ -93,6 +93,7 @@ export function CreateOrEditCredentialDefinitionPage({
     t('credentialDefinitions.wizard.steps.review'),
   ];
   const attributeIdPrefix = useId();
+  const duplicateWarningId = useId();
   const [step, setStep] = useState(0);
   const [loadedDraftId, setLoadedDraftId] = useState<string | null>(null);
   const [name, setName] = useState('');
@@ -214,6 +215,15 @@ export function CreateOrEditCredentialDefinitionPage({
   const namedAttributes = attributes.filter((attribute) =>
     attribute.name.trim(),
   );
+  const attributeNames = namedAttributes.map((attribute) =>
+    attribute.name.trim(),
+  );
+  const duplicateAttributeNames = new Set(
+    attributeNames.filter((attributeName, index) =>
+      attributeNames.includes(attributeName, index + 1),
+    ),
+  );
+  const hasDuplicateAttributes = duplicateAttributeNames.size > 0;
 
   const isVersionValid = [
     version.trim(),
@@ -223,12 +233,17 @@ export function CreateOrEditCredentialDefinitionPage({
   const isSetupValid =
     name.trim() !== '' && isVersionValid && selectedConnector?.id !== undefined;
 
-  const canPublish = isSetupValid && namedAttributes.length > 0;
+  const canSave = isSetupValid && !hasDuplicateAttributes;
+  const canPublish = canSave && namedAttributes.length > 0;
 
   const createDefinition = (
     status: 'draft' | 'published',
     exitAfterSave = false,
   ) => {
+    if (hasDuplicateAttributes) {
+      notify.danger(t('credentialDefinitions.attributes.duplicateNames'));
+      return;
+    }
     if (!isSetupValid || !selectedConnector?.id) return;
     const trimmedName = name.trim();
     const trimmedVersion = version.trim();
@@ -350,12 +365,12 @@ export function CreateOrEditCredentialDefinitionPage({
     updateMutation.isPending;
 
   const saveDraft = () => {
-    if (isSetupValid) createDefinition('draft');
+    if (canSave) createDefinition('draft');
   };
 
   const saveForLater = () => {
     if (embedded) {
-      if (isSetupValid) createDefinition('draft', true);
+      if (canSave) createDefinition('draft', true);
       return;
     }
     leaveEditor();
@@ -424,7 +439,12 @@ export function CreateOrEditCredentialDefinitionPage({
       </div>
       {/* Kept mounted so the attribute list survives moving between steps. */}
       <div hidden={step !== 1}>
-        <AttributesStep attributes={attributes} onChange={setAttributes} />
+        <AttributesStep
+          attributes={attributes}
+          duplicateNames={duplicateAttributeNames}
+          duplicateWarningId={duplicateWarningId}
+          onChange={setAttributes}
+        />
       </div>
       {step === 2 && (
         <ReviewStep
@@ -442,6 +462,15 @@ export function CreateOrEditCredentialDefinitionPage({
           {t('credentialDefinitions.wizard.draftRequirements')}
         </p>
       )}
+      {hasDuplicateAttributes && (
+        <p
+          id={duplicateWarningId}
+          role="status"
+          className="text-small-body font-bold text-(--typography-color-danger)"
+        >
+          {t('credentialDefinitions.attributes.duplicateNames')}
+        </p>
+      )}
       {step === 2 && !canPublish && (
         <p
           role="status"
@@ -454,7 +483,7 @@ export function CreateOrEditCredentialDefinitionPage({
         {step === 0 ? (
           <Button
             variant="secondary"
-            isDisabled={isSaving || (embedded && !isSetupValid)}
+            isDisabled={isSaving || (embedded && !canSave)}
             onPress={saveForLater}
           >
             {exitLabel ?? t('credentialDefinitions.wizard.cancel')}
@@ -471,7 +500,7 @@ export function CreateOrEditCredentialDefinitionPage({
             </Button>
             <Button
               variant="secondary"
-              isDisabled={isSaving || (embedded && !isSetupValid)}
+              isDisabled={isSaving || (embedded && !canSave)}
               onPress={saveForLater}
             >
               {exitLabel ?? t('credentialDefinitions.wizard.cancel')}
@@ -482,7 +511,7 @@ export function CreateOrEditCredentialDefinitionPage({
           <div className="flex gap-3">
             <Button
               variant="secondary"
-              isDisabled={!isSetupValid || isSaving}
+              isDisabled={!canSave || isSaving}
               onPress={saveDraft}
             >
               {isSaving
@@ -502,7 +531,7 @@ export function CreateOrEditCredentialDefinitionPage({
           <div className="flex gap-3">
             <Button
               variant="secondary"
-              isDisabled={!isSetupValid || isSaving}
+              isDisabled={!canSave || isSaving}
               onPress={saveDraft}
             >
               {isSaving
@@ -510,7 +539,7 @@ export function CreateOrEditCredentialDefinitionPage({
                 : t('credentialDefinitions.wizard.saveDraft')}
             </Button>
             <Button
-              isDisabled={!isSetupValid || isSaving}
+              isDisabled={!canSave || isSaving}
               onPress={() => setStep(2)}
             >
               {t('credentialDefinitions.wizard.nextReview')}
@@ -522,7 +551,7 @@ export function CreateOrEditCredentialDefinitionPage({
           <div className="flex gap-3">
             <Button
               variant="secondary"
-              isDisabled={!isSetupValid || isSaving}
+              isDisabled={!canSave || isSaving}
               onPress={() => createDefinition('draft', true)}
             >
               {isSaving

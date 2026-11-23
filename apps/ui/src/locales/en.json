@@ -607,6 +607,7 @@
       "reorder": "Reorder attribute {{index}}",
       "name": "Attribute {{index}} name",
       "namePlaceholder": "Enter attribute name",
+      "duplicateNames": "Remove or rename duplicate attributes before saving or continuing.",
       "type": "Attribute {{index}} type",
       "types": {
         "string": "String",

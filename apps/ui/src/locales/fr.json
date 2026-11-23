@@ -153,6 +153,7 @@
       "reorder": "Réorganiser l'attribut {{index}}",
       "name": "Nom de l'attribut {{index}}",
       "namePlaceholder": "Saisir le nom de l'attribut",
+      "duplicateNames": "Supprimez ou renommez les attributs en double avant d'enregistrer ou de continuer.",
       "type": "Type de l'attribut {{index}}",
       "types": {
         "string": "Texte",
