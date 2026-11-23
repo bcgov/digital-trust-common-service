@@ -207,7 +207,7 @@ describe('Webhook registration API (e2e)', () => {
       .post(webhooksPath(tenantId))
       .set('Authorization', `Bearer ${token}`)
       .send({
-        endpoint_url: 'https://93.184.216.34/events',
+        url: 'https://93.184.216.34/events',
         events: [WebhookEvent.CREDENTIAL_ISSUED],
       })
       .expect(201)
@@ -216,7 +216,7 @@ describe('Webhook registration API (e2e)', () => {
     const body = response.body as { id: string; signing_secret: string };
     expect(body).toMatchObject({
       tenant_id: tenantId,
-      endpoint_url: 'https://93.184.216.34/events',
+      url: 'https://93.184.216.34/events',
       events: [WebhookEvent.CREDENTIAL_ISSUED],
       status: 'active',
     });
@@ -228,7 +228,9 @@ describe('Webhook registration API (e2e)', () => {
       .get(webhooksPath(tenantId))
       .set('Authorization', `Bearer ${token}`)
       .expect(200);
-    const registrations = listed.body as Array<{ id: string }>;
+    const { data: registrations } = listed.body as {
+      data: Array<{ id: string }>;
+    };
     expect(registrations).toHaveLength(1);
     expect(registrations[0]).toMatchObject({
       id: body.id,
@@ -250,7 +252,7 @@ describe('Webhook registration API (e2e)', () => {
       .post(route)
       .set('Authorization', `Bearer ${token}`)
       .send({
-        endpoint_url: 'https://93.184.216.34/events',
+        url: 'https://93.184.216.34/events',
         events: [WebhookEvent.CREDENTIAL_ISSUED],
       })
       .expect(403);
@@ -278,7 +280,7 @@ describe('Webhook registration API (e2e)', () => {
       .post(webhooksPath(otherTenantId))
       .set('Authorization', `Bearer ${otherToken}`)
       .send({
-        endpoint_url: 'https://93.184.216.34/other',
+        url: 'https://93.184.216.34/other',
         events: [WebhookEvent.CONNECTION_ESTABLISHED],
       })
       .expect(201);
@@ -306,7 +308,7 @@ describe('Webhook registration API (e2e)', () => {
       .post(route)
       .set('Authorization', `Bearer ${token}`)
       .send({
-        endpoint_url: 'https://10.0.0.8/events',
+        url: 'https://10.0.0.8/events',
         events: [WebhookEvent.CREDENTIAL_ISSUED],
       })
       .expect(422);
@@ -314,7 +316,7 @@ describe('Webhook registration API (e2e)', () => {
       .post(route)
       .set('Authorization', `Bearer ${token}`)
       .send({
-        endpoint_url: 'https://93.184.216.34/events',
+        url: 'https://93.184.216.34/events',
         events: ['unsupported.event'],
       })
       .expect(400);
@@ -329,7 +331,7 @@ describe('Webhook registration API (e2e)', () => {
       .post(route)
       .set('Authorization', `Bearer ${token}`)
       .send({
-        endpoint_url: 'https://93.184.216.34/events',
+        url: 'https://93.184.216.34/events',
         events: [WebhookEvent.CREDENTIAL_ISSUED],
       })
       .expect(201);
@@ -343,6 +345,6 @@ describe('Webhook registration API (e2e)', () => {
       .get(route)
       .set('Authorization', `Bearer ${token}`)
       .expect(200)
-      .expect([]);
+      .expect({ data: [] });
   });
 });

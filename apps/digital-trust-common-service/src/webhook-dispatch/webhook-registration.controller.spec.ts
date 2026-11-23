@@ -96,20 +96,21 @@ describe('WebhookRegistrationController', () => {
   it('maps listed registrations through the secret-free response DTO', async () => {
     service.findByTenant.mockResolvedValue([registration]);
 
-    const [result] = await controller.findByTenant(tenantId, auth);
+    const result = await controller.findByTenant(tenantId, auth);
 
     expect(service.findByTenant).toHaveBeenCalledWith(tenantId, auth);
-    expect(result).toBeInstanceOf(WebhookRegistrationResponseDto);
-    expect(result).toMatchObject({
+    expect(result.data).toHaveLength(1);
+    expect(result.data[0]).toBeInstanceOf(WebhookRegistrationResponseDto);
+    expect(result.data[0]).toMatchObject({
       id,
       tenantId,
       endpointUrl: registration.endpointUrl,
       events: registration.events,
       status: WebhookRegistrationStatus.ACTIVE,
     });
-    expect(result).not.toHaveProperty('signingSecret');
-    expect(result).not.toHaveProperty('credentialsEncrypted');
-    expect(result).not.toHaveProperty('keyVersion');
+    expect(result.data[0]).not.toHaveProperty('signingSecret');
+    expect(result.data[0]).not.toHaveProperty('credentialsEncrypted');
+    expect(result.data[0]).not.toHaveProperty('keyVersion');
   });
 
   it('deletes only the requested tenant registration and returns no content', async () => {

@@ -21,9 +21,9 @@ export class WebhookRegistrationResponseDto {
   })
   public tenantId!: string;
 
-  @Expose({ name: 'endpoint_url' })
+  @Expose({ name: 'url' })
   @ApiProperty({
-    name: 'endpoint_url',
+    name: 'url',
     description: 'Registered HTTPS delivery endpoint',
     format: 'uri',
   })
@@ -75,4 +75,9 @@ export class WebhookRegistrationResponseDto {
     dto.updatedAt = registration.updatedAt;
     return dto;
   }
+}
+
+export class WebhookRegistrationsResponseDto {
+  @ApiProperty({ type: [WebhookRegistrationResponseDto] })
+  public data!: WebhookRegistrationResponseDto[];
 }

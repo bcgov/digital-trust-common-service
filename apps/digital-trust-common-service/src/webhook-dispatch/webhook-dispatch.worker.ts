@@ -3,7 +3,7 @@ import { request as httpsRequest, Agent } from 'node:https';
 import { isIP } from 'node:net';
 
 import { JOB_QUEUES } from '@app/pg-boss';
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Job } from 'pg-boss';
 
@@ -34,6 +34,8 @@ const DELIVERY_TIMEOUT_MS = 10_000;
  */
 @Injectable()
 export class WebhookDispatchWorker implements OnModuleInit {
+  private readonly logger = new Logger(WebhookDispatchWorker.name);
+
   public constructor(
     private readonly jobsService: JobsService,
     private readonly config: ConfigService,
@@ -48,7 +50,7 @@ export class WebhookDispatchWorker implements OnModuleInit {
     await this.jobsService.registerWorker<WebhookDispatchJobData>(
       JOB_QUEUES.WEBHOOK_DISPATCH,
       async (job) => this.handle(job),
-      { enabled: workersEnabled },
+      { enabled: workersEnabled, teamConcurrency: 3 },
     );
   }
 
@@ -77,7 +79,41 @@ export class WebhookDispatchWorker implements OnModuleInit {
         this.deliver(registration, data, job.id, body),
       ),
     );
-    const failed = results.filter((result) => result.status === 'rejected');
+    const failed = results
+      .map((result, index) => ({ result, registration: matching[index] }))
+      .filter(
+        (
+          entry,
+        ): entry is {
+          result: PromiseRejectedResult;
+          registration: WebhookRegistration;
+        } =>
+          entry.result.status === 'rejected' &&
+          entry.registration !== undefined,
+      );
+    for (const { result, registration } of failed) {
+      let endpointHost: string;
+      try {
+        endpointHost = new URL(registration.endpointUrl).host;
+      } catch {
+        endpointHost = 'invalid-url';
+      }
+      this.logger.error(
+        {
+          job_id: job.id,
+          tenant_id: data.tenantId,
+          event: data.event,
+          resource_id: data.resourceId,
+          registration_id: registration.id,
+          endpoint_host: endpointHost,
+          failure_reason:
+            result.reason instanceof Error
+              ? result.reason.message
+              : String(result.reason),
+        },
+        'Webhook registration delivery failed',
+      );
+    }
     if (failed.length > 0) {
       throw new Error(
         `Webhook delivery failed for ${failed.length} of ${matching.length} registrations.`,

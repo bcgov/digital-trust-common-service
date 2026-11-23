@@ -2634,6 +2634,10 @@ export interface components {
             /** Format: date-time */
             created_at?: string;
         };
+        CreateWebhookResponse: components["schemas"]["WebhookRegistration"] & {
+            /** @description HMAC signing secret, returned only at creation and never retrievable again */
+            readonly signing_secret: string;
+        };
         CreateWebhookRequest: {
             /**
              * Format: uri
@@ -5129,15 +5133,13 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Webhook registered */
+            /** @description Webhook registered; signing_secret is included once and cannot be retrieved again */
             201: {
                 headers: {
-                    /** @description HMAC signing secret (returned ONCE, never retrievable again) */
-                    "X-Webhook-Secret"?: string;
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["WebhookRegistration"];
+                    "application/json": components["schemas"]["CreateWebhookResponse"];
                 };
             };
         };

@@ -20,7 +20,7 @@ describe('Webhook registration contract', () => {
     transform: true,
   });
   const payload = {
-    endpoint_url: 'https://example.com/webhooks/credentials',
+    url: 'https://example.com/webhooks/credentials',
     events: [WebhookEvent.CREDENTIAL_ISSUED],
   };
 
@@ -35,7 +35,7 @@ describe('Webhook registration contract', () => {
     await expect(
       validate({ ...payload, events: [event] }),
     ).resolves.toMatchObject({
-      endpointUrl: payload.endpoint_url,
+      endpointUrl: payload.url,
       events: [event],
     });
   });
@@ -74,7 +74,7 @@ describe('Webhook registration contract', () => {
     'https://example.com/webhooks#fragment',
   ])('rejects invalid endpoint URL %p', async (endpointUrl) => {
     await expect(
-      validate({ ...payload, endpoint_url: endpointUrl }),
+      validate({ ...payload, url: endpointUrl }),
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
@@ -94,7 +94,7 @@ describe('Webhook registration contract', () => {
     return {
       id: randomUUID(),
       tenant_id: randomUUID(),
-      endpoint_url: payload.endpoint_url,
+      url: payload.url,
       events: payload.events,
       status: WebhookRegistrationStatus.ACTIVE,
       created_at: new Date(),
@@ -114,7 +114,7 @@ describe('Webhook registration contract', () => {
       const registration = Object.assign(new WebhookRegistration(), {
         id: expected.id,
         tenantId: expected.tenant_id,
-        endpointUrl: expected.endpoint_url,
+        endpointUrl: expected.url,
         events: expected.events,
         active,
         createdAt: expected.created_at,

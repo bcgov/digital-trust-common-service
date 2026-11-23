@@ -11,9 +11,9 @@ import {
 import { WebhookEvent } from '../webhook-registration.enums';
 
 export class CreateWebhookRegistrationDto {
-  @Expose({ name: 'endpoint_url' })
+  @Expose({ name: 'url' })
   @ApiProperty({
-    name: 'endpoint_url',
+    name: 'url',
     description:
       'Public HTTPS endpoint for webhook delivery, without embedded credentials or a fragment.',
     example: 'https://example.com/webhooks/credentials',

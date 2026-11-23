@@ -2,6 +2,7 @@ import { createHmac, randomBytes } from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import { Agent, request as httpsRequest } from 'node:https';
 
+import { Logger } from '@nestjs/common';
 import { MODULE_METADATA } from '@nestjs/common/constants';
 import { ConfigService } from '@nestjs/config';
 import { Test, TestingModule } from '@nestjs/testing';
@@ -77,7 +78,7 @@ describe('WebhookDispatchWorker', () => {
     expect(mockRegisterWorker).toHaveBeenCalledWith(
       'webhook.dispatch',
       expect.any(Function),
-      { enabled: true },
+      { enabled: true, teamConcurrency: 3 },
     );
   });
 
@@ -193,6 +194,63 @@ describe('WebhookDispatchWorker', () => {
       registration.credentialsEncrypted,
       registration.keyVersion,
     );
+  });
+
+  it('logs per-registration context before rejecting a delivery failure', async () => {
+    const logError = jest.spyOn(Logger.prototype, 'error').mockImplementation();
+    const registration = {
+      id: 'registration-failed',
+      tenantId: '123e4567-e89b-4234-8234-123456789abc',
+      endpointUrl: 'https://hooks.example.com/failed',
+      events: [WebhookEvent.CREDENTIAL_ISSUED],
+      credentialsEncrypted: randomBytes(64),
+      keyVersion: 2,
+    };
+    registrations.findActiveForDispatch.mockResolvedValue([registration]);
+    let responseCallback:
+      | ((
+          response: EventEmitter & { statusCode: number; resume: () => void },
+        ) => void)
+      | undefined;
+    const response = Object.assign(new EventEmitter(), {
+      statusCode: 503,
+      resume: jest.fn(() => process.nextTick(() => response.emit('end'))),
+    });
+    const request = Object.assign(new EventEmitter(), {
+      end: jest.fn(() => process.nextTick(() => responseCallback?.(response))),
+      destroy: jest.fn(),
+    });
+    jest.mocked(httpsRequest).mockImplementation((_url, _options, callback) => {
+      responseCallback = callback as typeof responseCallback;
+      return request as unknown as ReturnType<typeof httpsRequest>;
+    });
+    const job = {
+      id: 'delivery-failed',
+      data: {
+        tenantId: registration.tenantId,
+        event: WebhookEvent.CREDENTIAL_ISSUED,
+        resourceId: 'credential-failed',
+        occurredAt: '2026-11-19T00:00:00.000Z',
+      },
+    } as Job<WebhookDispatchJobData>;
+
+    await expect(worker.handle(job)).rejects.toThrow(
+      'Webhook delivery failed for 1 of 1 registrations.',
+    );
+    expect(logError).toHaveBeenCalledWith(
+      expect.objectContaining({
+        job_id: job.id,
+        tenant_id: job.data.tenantId,
+        event: job.data.event,
+        resource_id: job.data.resourceId,
+        registration_id: registration.id,
+        endpoint_host: 'hooks.example.com',
+        failure_reason: 'Webhook endpoint returned HTTP 503.',
+      }),
+      'Webhook registration delivery failed',
+    );
+
+    logError.mockRestore();
   });
 
   it('rejects a payload with a non-uuid tenantId', async () => {

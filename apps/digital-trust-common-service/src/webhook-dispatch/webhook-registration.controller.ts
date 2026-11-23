@@ -41,7 +41,10 @@ import { TenantStatusGuard } from '../tenant/tenant-status.guard';
 
 import { CreateWebhookRegistrationResponseDto } from './dto/create-webhook-registration-response.dto';
 import { CreateWebhookRegistrationDto } from './dto/create-webhook-registration.dto';
-import { WebhookRegistrationResponseDto } from './dto/webhook-registration-response.dto';
+import {
+  WebhookRegistrationResponseDto,
+  WebhookRegistrationsResponseDto,
+} from './dto/webhook-registration-response.dto';
 import { WebhookRegistrationService } from './webhook-registration.service';
 
 @ApiTags('Webhooks')
@@ -102,16 +105,18 @@ export class WebhookRegistrationController {
   @ApiParam({ name: 'tenantId', format: 'uuid' })
   @ApiOkResponse({
     description: 'Webhook registrations; signing secrets are never included.',
-    type: [WebhookRegistrationResponseDto],
+    type: WebhookRegistrationsResponseDto,
   })
   public async findByTenant(
     @Param('tenantId', ParseUUIDPipe) tenantId: string,
     @CurrentAuth() auth: AuthContext,
-  ): Promise<WebhookRegistrationResponseDto[]> {
+  ): Promise<WebhookRegistrationsResponseDto> {
     const registrations = await this.registrations.findByTenant(tenantId, auth);
-    return registrations.map((registration) =>
-      WebhookRegistrationResponseDto.fromEntity(registration),
-    );
+    return {
+      data: registrations.map((registration) =>
+        WebhookRegistrationResponseDto.fromEntity(registration),
+      ),
+    };
   }
 
   @Delete(':id')

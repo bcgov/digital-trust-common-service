@@ -2372,16 +2372,11 @@ paths:
               $ref: "#/components/schemas/CreateWebhookRequest"
       responses:
         "201":
-          description: Webhook registered
+          description: Webhook registered; signing_secret is included once and cannot be retrieved again
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/WebhookRegistration"
-          headers:
-            X-Webhook-Secret:
-              description: HMAC signing secret (returned ONCE, never retrievable again)
-              schema:
-                type: string
+                $ref: "#/components/schemas/CreateWebhookResponse"
     get:
       operationId: listWebhooks
       summary: List webhook registrations
@@ -4771,6 +4766,17 @@ components:
         created_at:
           type: string
           format: date-time
+
+    CreateWebhookResponse:
+      allOf:
+        - $ref: "#/components/schemas/WebhookRegistration"
+        - type: object
+          required: [signing_secret]
+          properties:
+            signing_secret:
+              type: string
+              readOnly: true
+              description: HMAC signing secret, returned only at creation and never retrievable again
 
     CreateWebhookRequest:
       type: object
