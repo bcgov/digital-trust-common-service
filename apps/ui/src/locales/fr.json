@@ -308,15 +308,62 @@
     "loadFailedWithReason": "Failed to load tenant: {{reason}}",
     "title": "Tenant"
   },
-  "tenantTabs": {
-    "auditLogs": "Audit logs",
-    "connections": "Connections",
-    "credentials": "Credentials",
-    "label": "Tenant sections",
-    "logs": "Logs",
-    "overview": "Overview",
-    "settings": "Settings",
-    "users": "Users"
+  "tenantOnboarding": {
+    "title": "Configuration du tenant",
+    "reason": "Préparez ce tenant à délivrer des justificatifs.",
+    "completeTitle": "Configuration terminée",
+    "completeReason": "Ce tenant est prêt à délivrer des justificatifs.",
+    "progress": "Progression de la configuration",
+    "progressSummary": "{{completed}} étapes sur {{total}} terminées",
+    "progressPercent": "{{percent}} % terminé",
+    "stepsLabel": "Étapes de configuration du tenant",
+    "continueSetup": "Continuer la configuration",
+    "backToOverview": "Retour à l’aperçu",
+    "saveForLater": "Enregistrer et terminer plus tard",
+    "completeStep": "Cette étape de configuration est terminée.",
+    "connectorAdminRequired": "Un administrateur du tenant doit configurer un connecteur.",
+    "issuanceProfileAdminRequired": "Un administrateur du tenant disposant de l’accès à la gestion des profils doit créer un profil d’émission.",
+    "apiClientAdminRequired": "Un administrateur disposant de l’accès à la gestion des clients doit créer un client API.",
+    "apiClientReadinessPending": "Le client API a été créé. En attente de la mise à jour de l’état de configuration du tenant.",
+    "publishingProfile": "Publication du profil d’émission...",
+    "profileReadinessPending": "Le profil d’émission a été publié. En attente de la mise à jour de l’état de configuration du tenant.",
+    "publishProfileFailed": "Impossible de publier le profil d’émission.",
+    "retryPublish": "Réessayer de publier le profil",
+    "registrationPending": "L’enregistrement de la définition est en cours. Cette page passera à l’étape suivante lorsqu’elle sera prête.",
+    "registrationFailed": "L’enregistrement de la définition du justificatif a échoué.",
+    "registrationFailureUnknown": "L’opération d’enregistrement a échoué sans fournir de diagnostic.",
+    "registrationStatusLoadFailed": "Impossible de charger l’état d’enregistrement de la définition du justificatif.",
+    "manageCredentialDefinitions": "Gérer les définitions de justificatifs",
+    "requires": "Terminez d'abord {{steps}}.",
+    "retry": "Réessayer de charger la configuration",
+    "loadFailedWithReason": "Impossible de charger la configuration du tenant : {{reason}}",
+    "status": {
+      "complete": "Terminé",
+      "blocked": "Bloqué",
+      "needsSetup": "À configurer"
+    },
+    "steps": {
+      "connector": {
+        "title": "Configurer un connecteur",
+        "reason": "Reliez le service qui délivre et vérifie les justificatifs.",
+        "action": "Configurer le connecteur"
+      },
+      "credentialDefinition": {
+        "title": "Enregistrer une définition de justificatif",
+        "reason": "Définissez les champs du justificatif et enregistrez-les auprès du connecteur.",
+        "action": "Créer une définition de justificatif"
+      },
+      "issuanceProfile": {
+        "title": "Publier un profil de délivrance",
+        "reason": "Définissez comment les justificatifs de ce tenant sont délivrés.",
+        "action": "Créer un profil de délivrance"
+      },
+      "apiClient": {
+        "title": "Enregistrer un client API",
+        "reason": "Autorisez les applications à demander des justificatifs.",
+        "action": "Enregistrer un client API"
+      }
+    }
   },
   "overview": {
     "activeConnections": "Active connections",

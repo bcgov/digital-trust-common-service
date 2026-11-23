@@ -227,4 +227,17 @@ describe('routing', () => {
     );
     expect(router.state.historyAction).toBe('REPLACE');
   });
+
+  it('opens the tenant onboarding wizard from its nested route', async () => {
+    const user = userEvent.setup();
+    const tenantId = mockTenants[0]?.id ?? '';
+    const router = renderAt(`/tenants/${tenantId}/setup`);
+
+    await user.click(await screen.findByRole('button', { name: /sign in/i }));
+
+    expect(
+      await screen.findByRole('heading', { name: 'Tenant setup' }),
+    ).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe(`/tenants/${tenantId}/setup`);
+  });
 });

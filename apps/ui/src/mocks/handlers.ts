@@ -20,7 +20,7 @@ import type {
   IssuanceProfile,
 } from '@/lib/api/resources/issuance-profiles';
 import type { TenantUser } from '@/lib/api/resources/tenant-users';
-import type { Tenant } from '@/lib/api/resources/tenants';
+import type { Tenant, TenantOnboarding } from '@/lib/api/resources/tenants';
 import { MOCK_AUTH_TENANTS } from '@/lib/auth/mock-auth';
 import { DEFAULT_ROLE_SCOPES, TENANT_ROLES } from '@/lib/tenant/roles';
 
@@ -56,6 +56,20 @@ export const mockTenants: Tenant[] = [
     updated_at: '2026-03-10T10:00:00.000Z',
   },
 ];
+
+export const mockTenantOnboarding: TenantOnboarding = {
+  steps: [
+    { name: 'configure-connector', completed: true, blocked_by: [] },
+    {
+      name: 'register-credential-definition',
+      completed: true,
+      blocked_by: [],
+    },
+    { name: 'create-issuance-profile', completed: false, blocked_by: [] },
+    { name: 'register-api-client', completed: false, blocked_by: [] },
+  ],
+  progress_percent: 50,
+};
 
 // Two definitions and one connection, so a count can only match one fixture.
 export const mockCredentialDefinitions: CredentialDefinition[] = [
@@ -346,6 +360,11 @@ export const handlers = [
       ? HttpResponse.json(tenant)
       : new HttpResponse(null, { status: 404 });
   }),
+  http.get(`${API_BASE_PATH}/tenants/:id/onboarding`, ({ params }) =>
+    mockTenants.some((tenant) => tenant.id === params.id)
+      ? HttpResponse.json(mockTenantOnboarding)
+      : new HttpResponse(null, { status: 404 }),
+  ),
   http.get(`${API_BASE_PATH}/tenants/:id/profiles/issuance`, ({ params }) =>
     HttpResponse.json({
       data: issuanceProfiles.filter(

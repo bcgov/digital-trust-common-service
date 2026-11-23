@@ -1,14 +1,21 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type UseQueryResult,
+} from '@tanstack/react-query';
 
 import {
   createCredentialDefinition,
   deleteCredentialDefinition,
+  getCredentialDefinitionRegistrationOperation,
   getCredentialDefinition,
   listCredentialDefinitions,
   registerCredentialDefinition,
   updateCredentialDefinition,
   type CreateCredentialDefinitionRequest,
   type UpdateCredentialDefinitionRequest,
+  type CredentialDefinitionRegistrationOperation,
 } from '../resources/credential-definitions';
 
 export const credentialDefinitionKeys = {
@@ -22,7 +29,41 @@ export const credentialDefinitionKeys = {
       tenantId,
       credentialDefinitionId,
     ] as const,
+  operation: (tenantId: string, operationId: string) =>
+    [
+      ...credentialDefinitionKeys.all,
+      'operation',
+      tenantId,
+      operationId,
+    ] as const,
 };
+
+export function useCredentialDefinitionRegistrationOperation(
+  tenantId: string | undefined,
+  operationId: string | null,
+): UseQueryResult<CredentialDefinitionRegistrationOperation, Error> {
+  return useQuery({
+    queryKey: credentialDefinitionKeys.operation(
+      tenantId ?? '',
+      operationId ?? '',
+    ),
+    queryFn: () => {
+      if (!tenantId || !operationId) {
+        throw new Error('Tenant and operation ids are required');
+      }
+      return getCredentialDefinitionRegistrationOperation(
+        tenantId,
+        operationId,
+      );
+    },
+    enabled: Boolean(tenantId && operationId),
+    refetchInterval: (query) =>
+      query.state.data?.state === 'pending' ||
+      query.state.data?.state === 'processing'
+        ? 2_000
+        : false,
+  });
+}
 
 export function useCredentialDefinitions(
   tenantId: string | undefined,

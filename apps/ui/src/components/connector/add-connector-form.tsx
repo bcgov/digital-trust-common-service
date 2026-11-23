@@ -23,6 +23,8 @@ interface AddConnectorFormProps {
   errors: Record<string, string[] | undefined>;
   mutation: ReturnType<typeof useCreateConnector>;
   canCreate: boolean;
+  embedded?: boolean;
+  cancelLabel?: string;
 }
 
 export function AddConnectorForm({
@@ -31,8 +33,12 @@ export function AddConnectorForm({
   errors,
   mutation,
   canCreate,
+  embedded = false,
+  cancelLabel,
 }: AddConnectorFormProps) {
   const { t } = useTranslation();
+  const Body = embedded ? 'div' : DrawerBody;
+  const Footer = embedded ? 'div' : DrawerFooter;
 
   return (
     <form
@@ -40,15 +46,25 @@ export function AddConnectorForm({
       noValidate
       className="flex min-h-0 flex-1 flex-col"
     >
-      <DrawerBody
-        className="relative min-h-0 gap-0 px-0 py-6"
+      <Body
+        className={
+          embedded
+            ? 'relative flex flex-col gap-(--layout-margin-medium)'
+            : 'relative min-h-0 gap-0 px-0 py-6'
+        }
         aria-busy={mutation.isPending}
       >
-        <DrawerDescription className="px-6 text-small-body leading-6 text-(--typography-color-secondary)">
-          {t('connectors.form.description')}
-        </DrawerDescription>
+        {embedded ? (
+          <p className="text-small-body leading-6 text-(--typography-color-secondary)">
+            {t('connectors.form.description')}
+          </p>
+        ) : (
+          <DrawerDescription className="px-6 text-small-body leading-6 text-(--typography-color-secondary)">
+            {t('connectors.form.description')}
+          </DrawerDescription>
+        )}
         {mutation.isError && (
-          <div className="mt-4 px-6">
+          <div className={embedded ? 'mt-4' : 'mt-4 px-6'}>
             <InlineAlert
               variant="danger"
               role="alert"
@@ -63,14 +79,14 @@ export function AddConnectorForm({
         )}
         <fieldset
           disabled={mutation.isPending}
-          className="mt-4 flex flex-col gap-4 px-6"
+          className={`flex flex-col gap-4 ${embedded ? '' : 'mt-4 px-6'}`}
         >
           <Select
             label={t('connectors.form.type')}
             name="connector_type"
             isRequired
             isDisabled={mutation.isPending}
-            defaultSelectedKey="traction"
+            defaultValue="traction"
             items={[{ id: 'traction', label: t('connectors.form.traction') }]}
           />
           <TextField
@@ -121,8 +137,14 @@ export function AddConnectorForm({
             </span>
           </div>
         )}
-      </DrawerBody>
-      <DrawerFooter className="shrink-0 items-center gap-4">
+      </Body>
+      <Footer
+        className={
+          embedded
+            ? 'flex shrink-0 flex-wrap items-center gap-(--layout-margin-small) border-t border-(--surface-color-border-default) pt-(--layout-padding-medium)'
+            : 'shrink-0 items-center gap-4'
+        }
+      >
         <p className="flex min-w-40 flex-1 items-start gap-2 text-label leading-5 text-(--typography-color-secondary)">
           <CircleInfoIcon className="mt-0.5 size-4 shrink-0" />
           <span>{t('connectors.form.testNotice')}</span>
@@ -133,7 +155,7 @@ export function AddConnectorForm({
             isDisabled={mutation.isPending}
             onPress={onCancel}
           >
-            {t('common.cancel')}
+            {cancelLabel ?? t('common.cancel')}
           </Button>
           <Button type="submit" isDisabled={!canCreate || mutation.isPending}>
             {mutation.isPending
@@ -143,7 +165,7 @@ export function AddConnectorForm({
                 : t('connectors.form.create')}
           </Button>
         </div>
-      </DrawerFooter>
+      </Footer>
     </form>
   );
 }

@@ -34,6 +34,17 @@ export async function registerCredentialDefinition(
   return response.data;
 }
 
+export async function getCredentialDefinitionRegistrationOperation(
+  tenantId: string,
+  operationId: string,
+): Promise<CredentialDefinitionRegistrationOperation> {
+  const response =
+    await apiClient.get<CredentialDefinitionRegistrationOperation>(
+      `/tenants/${encodeURIComponent(tenantId)}/operations/${encodeURIComponent(operationId)}`,
+    );
+  return response.data;
+}
+
 export async function getCredentialDefinition(
   tenantId: string,
   credentialDefinitionId: string,

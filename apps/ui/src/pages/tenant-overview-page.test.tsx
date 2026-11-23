@@ -5,7 +5,11 @@ import { describe, expect, it } from 'vitest';
 import { API_BASE_PATH } from '@/lib/api/constants';
 import { createMockAuthClient } from '@/lib/auth/mock-auth';
 import type { AuthClient } from '@/lib/auth/types';
-import { mockConnections, mockTenants } from '@/mocks/handlers';
+import {
+  mockConnections,
+  mockTenantOnboarding,
+  mockTenants,
+} from '@/mocks/handlers';
 import { server } from '@/mocks/server';
 import { renderWithAuth } from '@/test/render-with-auth';
 
@@ -86,7 +90,88 @@ describe('TenantOverviewPage', () => {
     expect(screen.getByText('Coming soon.')).toBeInTheDocument();
   });
 
-  it('links each quick action to the tenant section that owns it', async () => {
+  it('shows setup progress and links to the next unblocked step', async () => {
+    renderOverview(await signedIn());
+
+    expect(
+      await screen.findByRole('progressbar', { name: 'Setup progress' }),
+    ).toHaveAttribute('aria-valuenow', '50');
+    expect(
+      screen.getByRole('link', { name: 'Continue setup' }),
+    ).toHaveAttribute('href', `/tenants/${tenantId}/setup`);
+  });
+
+  it('shows prerequisite blockers and links to the first unblocked step', async () => {
+    server.use(
+      http.get(`${API_BASE_PATH}/tenants/:id/onboarding`, () =>
+        HttpResponse.json({
+          steps: [
+            {
+              name: 'configure-connector',
+              completed: false,
+              blocked_by: [],
+            },
+            {
+              name: 'register-credential-definition',
+              completed: false,
+              blocked_by: ['configure-connector'],
+            },
+            {
+              name: 'create-issuance-profile',
+              completed: false,
+              blocked_by: [
+                'configure-connector',
+                'register-credential-definition',
+              ],
+            },
+            {
+              name: 'register-api-client',
+              completed: false,
+              blocked_by: [],
+            },
+          ],
+          progress_percent: 0,
+        }),
+      ),
+    );
+    renderOverview(await signedIn());
+
+    expect(
+      await screen.findByText(
+        'Complete Configure a connector and Register a credential definition first.',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('link', { name: 'Continue setup' }),
+    ).toHaveAttribute('href', `/tenants/${tenantId}/setup`);
+  });
+
+  it('shows a completed setup state without a setup action', async () => {
+    const completeStatus = {
+      ...mockTenantOnboarding,
+      progress_percent: 100,
+      steps: mockTenantOnboarding.steps.map((step) => ({
+        ...step,
+        completed: true,
+        blocked_by: [],
+      })),
+    };
+    server.use(
+      http.get(`${API_BASE_PATH}/tenants/:id/onboarding`, () =>
+        HttpResponse.json(completeStatus),
+      ),
+    );
+    renderOverview(await signedIn());
+
+    expect(
+      await screen.findByRole('heading', { name: 'Tenant setup complete' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('link', { name: 'Configure connector' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('links quick actions to their tenant sections', async () => {
     renderOverview(await signedIn());
 
     expect(
@@ -101,13 +186,7 @@ describe('TenantOverviewPage', () => {
     );
   });
 
-  it('keeps the tenant details', async () => {
-    renderOverview(await signedIn());
-
-    expect(await screen.findByText('acme-ministry')).toBeInTheDocument();
-  });
-
-  it('leaves out a quick action the token cannot use', async () => {
+  it('omits the manage-users quick action when the token lacks its scope', async () => {
     const client = await signedIn();
     const state = client.getState();
     const stripped = {
@@ -123,5 +202,11 @@ describe('TenantOverviewPage', () => {
     expect(
       screen.queryByRole('link', { name: 'Manage users' }),
     ).not.toBeInTheDocument();
+  });
+
+  it('keeps the tenant details', async () => {
+    renderOverview(await signedIn());
+
+    expect(await screen.findByText('acme-ministry')).toBeInTheDocument();
   });
 });
