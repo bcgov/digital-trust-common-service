@@ -462,6 +462,24 @@ describe('CredentialDefinitionsPage', () => {
       );
       await user.type(screen.getByLabelText('Attribute 1 name'), 'name');
       await user.click(screen.getByRole('button', { name: 'Add attribute' }));
+      await user.click(
+        screen.getByRole('button', { name: /Attribute 2 type/ }),
+      );
+      await user.click(screen.getByRole('option', { name: 'Integer' }));
+      await user.type(screen.getByLabelText('Attribute 2 name'), 'name');
+      expect(screen.getByLabelText('Attribute 1 name')).toHaveAttribute(
+        'aria-invalid',
+        'true',
+      );
+      expect(screen.getByLabelText('Attribute 2 name')).toHaveAttribute(
+        'aria-invalid',
+        'true',
+      );
+      expect(screen.getByRole('button', { name: 'Save draft' })).toBeDisabled();
+      expect(
+        screen.getByRole('button', { name: 'Next: Review' }),
+      ).toBeDisabled();
+      await user.clear(screen.getByLabelText('Attribute 2 name'));
       await user.type(screen.getByLabelText('Attribute 2 name'), ' name ');
       await user.click(screen.getByRole('button', { name: 'Add attribute' }));
       await user.type(screen.getByLabelText('Attribute 3 name'), '   ');
@@ -524,7 +542,7 @@ describe('CredentialDefinitionsPage', () => {
           expect.objectContaining({
             schema: {
               definition: expect.objectContaining({
-                attributes: { name: 'string', Name: 'string' },
+                attributes: { name: 'string', Name: 'integer' },
               }),
             },
           }),
