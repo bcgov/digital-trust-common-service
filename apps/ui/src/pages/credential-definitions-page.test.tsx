@@ -405,6 +405,229 @@ describe('CredentialDefinitionsPage', () => {
     successToast.mockRestore();
   });
 
+  it.each([false, true])(
+    'blocks duplicate attribute names in the wizard (embedded: %s)',
+    async (embedded) => {
+      const user = userEvent.setup();
+      const createdRequest = vi.fn();
+      const onExit = vi.fn();
+      server.use(
+        http.post(
+          `${API_BASE_PATH}/tenants/:id/credential-definitions`,
+          async ({ request }) => {
+            createdRequest(await request.json());
+            return HttpResponse.json(
+              {
+                id: 'operation-registration',
+                type: 'credential-definition.register',
+                state: 'pending',
+                steps: [],
+              },
+              { status: 202 },
+            );
+          },
+        ),
+        http.get(`${API_BASE_PATH}/tenants/:id/connectors`, () =>
+          HttpResponse.json({ data: [connector] }),
+        ),
+        http.get(`${API_BASE_PATH}/tenants/:id`, ({ params }) =>
+          HttpResponse.json({
+            id: params.id,
+            name: 'Tenant',
+            config: { default_connector: connector.id },
+          }),
+        ),
+      );
+      const client = createMockAuthClient();
+      await client.login();
+      renderWithAuth(
+        [
+          {
+            path: '/credential-definitions/create-or-edit',
+            element: (
+              <CreateOrEditCredentialDefinitionPage
+                embedded={embedded}
+                onExit={onExit}
+              />
+            ),
+          },
+        ],
+        { client, initialEntries: ['/credential-definitions/create-or-edit'] },
+      );
+
+      await user.type(screen.getByLabelText(/^Credential name/), 'Badge');
+      await user.type(screen.getByLabelText(/^Version/), '1.0');
+      await user.click(
+        await screen.findByRole('button', { name: 'Next: Attributes' }),
+      );
+      await user.type(screen.getByLabelText('Attribute 1 name'), 'name');
+      await user.click(screen.getByRole('button', { name: 'Add attribute' }));
+      await user.click(
+        screen.getByRole('button', { name: /Attribute 2 type/ }),
+      );
+      await user.click(screen.getByRole('option', { name: 'Integer' }));
+      await user.type(screen.getByLabelText('Attribute 2 name'), 'name');
+      expect(screen.getByLabelText('Attribute 1 name')).toHaveAttribute(
+        'aria-invalid',
+        'true',
+      );
+      expect(screen.getByLabelText('Attribute 2 name')).toHaveAttribute(
+        'aria-invalid',
+        'true',
+      );
+      expect(screen.getByRole('button', { name: 'Save draft' })).toBeDisabled();
+      expect(
+        screen.getByRole('button', { name: 'Next: Review' }),
+      ).toBeDisabled();
+      await user.clear(screen.getByLabelText('Attribute 2 name'));
+      await user.type(screen.getByLabelText('Attribute 2 name'), ' name ');
+      await user.click(screen.getByRole('button', { name: 'Add attribute' }));
+      await user.type(screen.getByLabelText('Attribute 3 name'), '   ');
+
+      expect(screen.getByLabelText('Attribute 1 name')).toHaveAttribute(
+        'aria-invalid',
+        'true',
+      );
+      expect(
+        screen.getByLabelText('Attribute 2 name'),
+      ).toHaveAccessibleDescription(
+        'Remove or rename duplicate attributes before saving or continuing.',
+      );
+      const field = screen
+        .getByLabelText('Attribute 1 name')
+        .closest('.bcds-react-aria-TextField');
+      expect(field).toHaveAttribute('data-invalid');
+      expect(field?.querySelector('svg#exclamation-icon')).toBeInTheDocument();
+      expect(screen.getByLabelText('Attribute 3 name')).not.toHaveAttribute(
+        'aria-invalid',
+      );
+      expect(
+        screen.getByText(
+          'Remove or rename duplicate attributes before saving or continuing.',
+        ),
+      ).toBeVisible();
+      expect(screen.getByRole('button', { name: 'Save draft' })).toBeDisabled();
+      expect(
+        screen.getByRole('button', { name: 'Next: Review' }),
+      ).toBeDisabled();
+      if (embedded) {
+        expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled();
+      }
+      await user.click(screen.getByRole('button', { name: 'Previous' }));
+      expect(screen.getByRole('button', { name: 'Save draft' })).toBeDisabled();
+      expect(
+        screen.getByRole('button', { name: 'Next: Attributes' }),
+      ).toBeEnabled();
+      expect(createdRequest).not.toHaveBeenCalled();
+      expect(onExit).not.toHaveBeenCalled();
+      await user.click(
+        screen.getByRole('button', { name: 'Next: Attributes' }),
+      );
+      await user.clear(screen.getByLabelText('Attribute 2 name'));
+      await user.type(screen.getByLabelText('Attribute 2 name'), 'Name');
+      expect(screen.getByLabelText('Attribute 1 name')).not.toHaveAttribute(
+        'aria-invalid',
+      );
+      expect(
+        screen.queryByText(
+          'Remove or rename duplicate attributes before saving or continuing.',
+        ),
+      ).not.toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: 'Next: Review' }));
+      await user.click(
+        screen.getByRole('button', { name: 'Publish configuration' }),
+      );
+      await waitFor(() =>
+        expect(createdRequest).toHaveBeenCalledWith(
+          expect.objectContaining({
+            schema: {
+              definition: expect.objectContaining({
+                attributes: { name: 'string', Name: 'integer' },
+              }),
+            },
+          }),
+        ),
+      );
+    },
+  );
+
+  it('requires duplicate names in a loaded draft to be fixed before saving', async () => {
+    const user = userEvent.setup();
+    const updatedRequest = vi.fn();
+    const definitionId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+    server.use(
+      http.get(
+        `${API_BASE_PATH}/tenants/:id/credential-definitions/:definitionId`,
+        () =>
+          HttpResponse.json({
+            id: definitionId,
+            tenant_id: tenantId,
+            name: 'Badge',
+            format: 'anoncreds',
+            version: '1.0',
+            status: 'draft',
+            connector_id: connector.id,
+            schema_definition: { attr_names: ['name', ' name '] },
+          }),
+      ),
+      http.patch(
+        `${API_BASE_PATH}/tenants/:id/credential-definitions/:definitionId`,
+        async ({ request }) => {
+          updatedRequest(await request.json());
+          return HttpResponse.json({ id: definitionId });
+        },
+      ),
+      http.get(`${API_BASE_PATH}/tenants/:id/connectors`, () =>
+        HttpResponse.json({ data: [connector] }),
+      ),
+      http.get(`${API_BASE_PATH}/tenants/:id`, ({ params }) =>
+        HttpResponse.json({
+          id: params.id,
+          name: 'Tenant',
+          config: { default_connector: connector.id },
+        }),
+      ),
+    );
+    const client = createMockAuthClient();
+    await client.login();
+    renderWithAuth(
+      [
+        {
+          path: '/credential-definitions/create-or-edit',
+          element: <CreateOrEditCredentialDefinitionPage />,
+        },
+      ],
+      {
+        client,
+        initialEntries: [
+          `/credential-definitions/create-or-edit?id=${definitionId}`,
+        ],
+      },
+    );
+    expect(
+      await screen.findByRole('button', { name: 'Save draft' }),
+    ).toBeDisabled();
+    expect(
+      screen.getByText(
+        'Remove or rename duplicate attributes before saving or continuing.',
+      ),
+    ).toBeVisible();
+    await user.click(screen.getByRole('button', { name: 'Next: Attributes' }));
+    await user.click(
+      screen.getByRole('button', { name: 'Delete attribute 2' }),
+    );
+    await user.click(screen.getByRole('button', { name: 'Save draft' }));
+    await waitFor(() =>
+      expect(updatedRequest).toHaveBeenCalledWith(
+        expect.objectContaining({
+          schema_definition: expect.objectContaining({
+            attributes: { name: 'string' },
+          }),
+        }),
+      ),
+    );
+  });
+
   it.each(['attributes', 'review'] as const)(
     'saves a draft with attributes from the %s step',
     async (saveStep) => {

@@ -127,6 +127,8 @@ selected by `VITE_AUTH_MODE`:
 The credential-configuration wizard currently supports only Anoncreds. Drafts using other
 formats return to the configurations table with a notification; they cannot be edited or
 published through this wizard. This UI restriction does not change the API's format model.
+Attribute names must be unique after trimming whitespace before a draft can be saved or
+the configuration can be reviewed and published.
 
 The issuance profiles page (`/issuance-profiles`) requires
 `profiles:manage`. It lists profiles across cursor pages, displaying `deprecated` profiles
