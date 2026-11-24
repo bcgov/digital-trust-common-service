@@ -35,6 +35,14 @@ export class OperationResponseDto {
   })
   declare public exchangeId?: string;
 
+  @Expose({ name: 'presentation_exchange_id' })
+  @ApiPropertyOptional({
+    name: 'presentation_exchange_id',
+    description: 'Stable local presentation exchange ID',
+    format: 'uuid',
+  })
+  declare public presentationExchangeId?: string;
+
   @Expose({ name: 'batch_id' })
   @ApiProperty({
     name: 'batch_id',
@@ -117,6 +125,8 @@ export class OperationResponseDto {
     const dto = new OperationResponseDto();
     dto.id = operation.id;
     if (operation.exchangeId) dto.exchangeId = operation.exchangeId;
+    if (operation.presentationExchangeId)
+      dto.presentationExchangeId = operation.presentationExchangeId;
     dto.batchId = operation.batchId ?? null;
     dto.type = operation.type;
     dto.state = operation.state;

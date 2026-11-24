@@ -9,6 +9,10 @@ import { RateLimitModule } from '../rate-limit/rate-limit.module';
 import { TenantStatusModule } from '../tenant/tenant-status.module';
 import { VerificationProfileModule } from '../verification-profile/verification-profile.module';
 
+import { PresentationExchangeController } from './presentation-exchange.controller';
+import { PresentationExchangeModule } from './presentation-exchange.module';
+import { PresentationExchangeService } from './presentation-exchange.service';
+import { PresentationExecutionController } from './presentation-execution.controller';
 import { PresentationRequestController } from './presentation-request.controller';
 import { PresentationRequestService } from './presentation-request.service';
 
@@ -30,8 +34,13 @@ import { PresentationRequestService } from './presentation-request.service';
     RateLimitModule,
     TenantStatusModule,
     VerificationProfileModule,
+    PresentationExchangeModule,
   ],
-  controllers: [PresentationRequestController],
-  providers: [PresentationRequestService],
+  controllers: [
+    PresentationRequestController,
+    PresentationExecutionController,
+    PresentationExchangeController,
+  ],
+  providers: [PresentationRequestService, PresentationExchangeService],
 })
 export class PresentationRequestModule {}

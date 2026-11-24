@@ -692,7 +692,7 @@ describe('TractionAdapter', () => {
           ...request,
           connectionId: undefined,
         }),
-      ).rejects.toBeInstanceOf(ValidationError);
+      ).rejects.toBeInstanceOf(SubmissionRejectedError);
       expect(mockGetToken).not.toHaveBeenCalled();
       expect(mockRequest).not.toHaveBeenCalled();
     });
@@ -710,7 +710,9 @@ describe('TractionAdapter', () => {
       });
       await expect(
         adapter.requestPresentation(context, request),
-      ).rejects.toBeInstanceOf(errorType);
+      ).rejects.toBeInstanceOf(
+        status === 400 || status === 404 ? SubmissionRejectedError : errorType,
+      );
       await expect(
         adapter.getPresentation(context, 'proof-1'),
       ).rejects.toBeInstanceOf(errorType);

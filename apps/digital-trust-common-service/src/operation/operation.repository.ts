@@ -1,6 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { EntityManager, In, Repository, SelectQueryBuilder } from 'typeorm';
+import {
+  EntityManager,
+  In,
+  Raw,
+  Repository,
+  SelectQueryBuilder,
+} from 'typeorm';
 
 import type { Cursor } from '../common/cursor-pagination';
 
@@ -258,10 +264,18 @@ export class OperationRepository {
       externalId?: string | null;
     },
     manager?: EntityManager,
+    requireUnexpired = false,
   ): Promise<boolean> {
     const result = await (manager ?? this.repo.manager).update(
       Operation,
-      { id, tenantId, state: In(fromStates) },
+      {
+        id,
+        tenantId,
+        state: In(fromStates),
+        ...(requireUnexpired
+          ? { expiresAt: Raw((column) => `${column} > clock_timestamp()`) }
+          : {}),
+      },
       patch,
     );
 

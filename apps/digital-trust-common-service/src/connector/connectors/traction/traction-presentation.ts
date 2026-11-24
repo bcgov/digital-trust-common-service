@@ -10,6 +10,7 @@ import {
 } from '@app/credential-ports';
 
 interface AnonCredsProofRequest {
+  readonly nonce?: string;
   readonly requested_attributes: Readonly<
     Record<
       string,
@@ -209,6 +210,9 @@ export function mapTractionPresentation(
     connectionId: record.connection_id,
     state,
     verified,
+    ...(typeof record.by_format?.pres_request?.anoncreds?.nonce === 'string'
+      ? { requestNonce: record.by_format.pres_request.anoncreds.nonce }
+      : {}),
     createdAt: record.created_at,
     updatedAt: record.updated_at,
     error:
@@ -296,5 +300,10 @@ export function mapTractionPresentation(
       };
     },
   );
-  return { ...exchange, revealedAttributes, predicates };
+  return {
+    ...exchange,
+    ...(request.nonce !== undefined ? { requestNonce: request.nonce } : {}),
+    revealedAttributes,
+    predicates,
+  };
 }

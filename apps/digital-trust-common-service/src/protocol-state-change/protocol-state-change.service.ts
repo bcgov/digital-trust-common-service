@@ -24,6 +24,7 @@ import {
 } from '../operation/operation.entity';
 import { OperationRepository } from '../operation/operation.repository';
 import { OperationService } from '../operation/operation.service';
+import { PresentationExchangeLifecycleService } from '../presentation-request/presentation-exchange-lifecycle.service';
 
 import type { ProtocolStateChangeJobData } from './protocol-state-change.worker';
 import {
@@ -80,12 +81,35 @@ export class ProtocolStateChangeService {
     private readonly eventEmitter: EventEmitter2,
     private readonly dataSource: DataSource,
     private readonly exchanges: CredentialExchangeRepository,
+    private readonly presentations: PresentationExchangeLifecycleService,
   ) {}
 
   public async process(
     data: ProtocolStateChangeJobData,
     exchangeCorrelation?: { exchangeId: string; connectorId: string },
   ): Promise<void> {
+    if (data.topic === 'present_proof') {
+      if (!data.connectorId) {
+        this.logger.warn('Presentation webhook has no connector correlation.');
+        return;
+      }
+      const matched = await this.presentations.observe(
+        data.tenantId,
+        data.connectorId,
+        data.externalId,
+      );
+      if (!matched) {
+        this.logger.warn(
+          {
+            external_id: data.externalId,
+            outcome: OUTCOME_UNMATCHED,
+            topic: data.topic,
+          },
+          'presentation state change unmatched',
+        );
+      }
+      return;
+    }
     const outcome = resolveProtocolOutcome(
       data.topic,
       data.protocolState,

@@ -20,6 +20,7 @@ import {
 } from '../operation/operation.entity';
 import { OperationRepository } from '../operation/operation.repository';
 import { OperationService } from '../operation/operation.service';
+import { PresentationExchangeLifecycleService } from '../presentation-request/presentation-exchange-lifecycle.service';
 
 import { ProtocolStateChangeService } from './protocol-state-change.service';
 import { ProtocolStateChangeJobData } from './protocol-state-change.worker';
@@ -111,6 +112,7 @@ describe('ProtocolStateChangeService', () => {
   let domainAudit: jest.Mocked<Pick<DomainAuditService, 'emit'>>;
   let eventEmitter: jest.Mocked<Pick<EventEmitter2, 'emit'>>;
   let mockTransaction: jest.Mock;
+  let presentations: { observe: jest.Mock };
   const mockManager = {} as EntityManager;
 
   beforeEach(async () => {
@@ -153,6 +155,7 @@ describe('ProtocolStateChangeService', () => {
       async (callback: (manager: EntityManager) => Promise<unknown>) =>
         callback(mockManager),
     );
+    presentations = { observe: jest.fn().mockResolvedValue(true) };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -168,6 +171,10 @@ describe('ProtocolStateChangeService', () => {
         { provide: JobsService, useValue: jobsService },
         { provide: DomainAuditService, useValue: domainAudit },
         { provide: EventEmitter2, useValue: eventEmitter },
+        {
+          provide: PresentationExchangeLifecycleService,
+          useValue: presentations,
+        },
         { provide: DataSource, useValue: { transaction: mockTransaction } },
       ],
     }).compile();
@@ -621,62 +628,40 @@ describe('ProtocolStateChangeService', () => {
     });
   });
 
-  it('only updates the operation for present_proof (no credential lookup)', async () => {
-    operationRepository.findByExternalIdForTenant.mockResolvedValue(
-      operation(),
-    );
-
+  it('delegates correlated presentation observations to the lifecycle', async () => {
     await service.process(
       baseData({
         topic: 'present_proof',
+        connectorId: 'connector',
         protocolState: 'verified',
         payload: { raw: true, verified: true },
       }),
     );
 
-    expect(operationService.transitionStateIfForward).toHaveBeenCalledWith(
-      'op-1',
-      OperationState.COMPLETED,
-      operationStatesBelow(OperationState.COMPLETED),
-      { raw: true, verified: true },
-      mockManager,
+    expect(presentations.observe).toHaveBeenCalledWith(
+      TENANT_ID,
+      'connector',
+      'ext-1',
     );
+    expect(operationService.transitionStateIfForward).not.toHaveBeenCalled();
     expect(credentialRepository.findByExternalId).not.toHaveBeenCalled();
-    expect(eventEmitter.emit).toHaveBeenCalledWith(
-      'credential.verified',
-      expect.anything(),
-    );
   });
 
-  it('fails a done proof webhook without an explicit successful verification', async () => {
-    operationRepository.findByExternalIdForTenant.mockResolvedValue(
-      operation(),
-    );
-
+  it('does not trust an uncorrelated proof webhook', async () => {
     await service.process(
       baseData({ topic: 'present_proof', protocolState: 'done', payload: {} }),
     );
-
-    expect(operationService.transitionStateIfForward).toHaveBeenCalledWith(
-      'op-1',
-      OperationState.FAILED,
-      operationStatesBelow(OperationState.FAILED),
-      { code: 'PRESENT_PROOF_FAILED', message: 'done' },
-      mockManager,
-    );
-    expect(eventEmitter.emit).not.toHaveBeenCalledWith(
-      'credential.verified',
-      expect.anything(),
-    );
+    expect(presentations.observe).not.toHaveBeenCalled();
+    expect(operationService.transitionStateIfForward).not.toHaveBeenCalled();
   });
 
-  it('dispatches a webhook for a non-terminal transition using a synthesized event name, without emitting an in-process event', async () => {
+  it('dispatches a non-terminal credential transition using a synthesized event name', async () => {
     operationRepository.findByExternalIdForTenant.mockResolvedValue(
       operation({ state: OperationState.PENDING }),
     );
 
     await service.process(
-      baseData({ topic: 'present_proof', protocolState: 'request-sent' }),
+      baseData({ topic: 'issue_credential', protocolState: 'offer-sent' }),
     );
 
     // A PROCESSING outcome is non-terminal: the Operation contract documents
@@ -695,7 +680,7 @@ describe('ProtocolStateChangeService', () => {
       'webhook.dispatch',
       expect.objectContaining({
         tenantId: TENANT_ID,
-        event: 'present_proof.request-sent',
+        event: 'issue_credential.offer-sent',
       }),
     );
   });
@@ -1131,7 +1116,7 @@ describe('ProtocolStateChangeService', () => {
       );
 
       await service.process(
-        baseData({ topic: 'present_proof', protocolState: 'request-sent' }),
+        baseData({ topic: 'issue_credential', protocolState: 'offer-sent' }),
       );
 
       expect(logLine).toHaveBeenCalledWith(
@@ -1140,8 +1125,8 @@ describe('ProtocolStateChangeService', () => {
           external_id: 'ext-1',
           operation_state: OperationState.PROCESSING,
           outcome: 'applied',
-          protocol_state: 'request-sent',
-          topic: 'present_proof',
+          protocol_state: 'offer-sent',
+          topic: 'issue_credential',
         },
         'protocol state change applied',
       );
@@ -1173,8 +1158,8 @@ describe('ProtocolStateChangeService', () => {
       expect(logWarn).not.toHaveBeenCalled();
     });
 
-    it('logs a present_proof redelivery after the Operation already completed as no_op rather than unmatched', async () => {
-      // present_proof has no Credential/Connection fallback, and
+    it('logs an issuance redelivery after the Operation already completed as no_op rather than unmatched', async () => {
+      // An issuance may have no Credential fallback, and
       // findByExternalIdForTenant only sees PENDING/PROCESSING rows, so once
       // the first delivery has completed the Operation, this duplicate
       // delivery of the same terminal state finds no in-flight row —
@@ -1185,9 +1170,8 @@ describe('ProtocolStateChangeService', () => {
 
       await service.process(
         baseData({
-          topic: 'present_proof',
-          protocolState: 'verified',
-          payload: { verified: true },
+          topic: 'issue_credential',
+          protocolState: 'credential-issued',
         }),
       );
 
@@ -1197,8 +1181,8 @@ describe('ProtocolStateChangeService', () => {
           external_id: 'ext-1',
           operation_state: OperationState.COMPLETED,
           outcome: 'no_op',
-          protocol_state: 'verified',
-          topic: 'present_proof',
+          protocol_state: 'credential-issued',
+          topic: 'issue_credential',
         },
         'protocol state change had no effect',
       );

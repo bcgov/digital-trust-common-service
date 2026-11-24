@@ -184,6 +184,7 @@ describe('registration operation response', () => {
       'created_at',
       'exchange_id',
       'id',
+      'presentation_exchange_id',
       'problem_details',
       'result',
       'state',

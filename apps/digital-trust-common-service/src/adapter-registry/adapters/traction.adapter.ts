@@ -310,8 +310,22 @@ export class TractionAdapter implements AgentAdapter, OnModuleInit {
     context: ConnectorContext,
     req: PresentationRequest,
   ): Promise<PresentationExchange> {
-    const data = buildTractionPresentationRequest(req);
-    const token = await this.tokenManager.getToken(context);
+    let data: ReturnType<typeof buildTractionPresentationRequest>;
+    try {
+      data = buildTractionPresentationRequest(req);
+    } catch (error) {
+      if (error instanceof ValidationError) {
+        throw new SubmissionRejectedError('validation');
+      }
+      throw error;
+    }
+    let token: string;
+    try {
+      token = await this.tokenManager.getToken(context);
+    } catch {
+      throw new SubmissionRejectedError('authentication');
+    }
+    let record: TractionPresentationRecord;
     try {
       const response =
         await this.httpClient.request<TractionPresentationRecord>(
@@ -324,19 +338,27 @@ export class TractionAdapter implements AgentAdapter, OnModuleInit {
           },
           false,
         );
-      if (response.data?.auto_remove_on_failure !== false) {
-        this.logger.warn(
-          {
-            connector_id: context.connectorId,
-            external_id: response.data?.pres_ex_id,
-          },
-          'Traction proof failure retention is not confirmed; configure failed exchange preservation on the agent',
-        );
-      }
-      return mapTractionPresentation(response.data);
+      record = response.data;
     } catch (error) {
-      throw this.mapHttpError(error, context);
+      const mapped = this.mapHttpError(error, context);
+      if (mapped instanceof BackendNotFoundError) {
+        throw new SubmissionRejectedError('not-found');
+      }
+      if (mapped instanceof ValidationError) {
+        throw new SubmissionRejectedError('validation');
+      }
+      throw mapped;
     }
+    if (record?.auto_remove_on_failure !== false) {
+      this.logger.warn(
+        {
+          connector_id: context.connectorId,
+          external_id: record?.pres_ex_id,
+        },
+        'Traction proof failure retention is not confirmed; configure failed exchange preservation on the agent',
+      );
+    }
+    return mapTractionPresentation(record);
   }
 
   public async getPresentation(

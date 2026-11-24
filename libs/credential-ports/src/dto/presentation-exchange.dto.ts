@@ -8,6 +8,8 @@ export interface PresentationExchange {
   readonly connectionId?: string;
   readonly state: PresentationExchangeState;
   readonly verified?: boolean;
+  // Nonce from the verified backend proof request, when available.
+  readonly requestNonce?: string;
   // Only populated after successful backend verification, never self-attested.
   readonly revealedAttributes?: readonly {
     readonly referent: string;

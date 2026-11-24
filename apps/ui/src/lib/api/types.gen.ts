@@ -1063,6 +1063,98 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/tenants/{tenantId}/presentation-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Execute a published verification profile
+         * @description Sends a connected DIDComm AnonCreds proof request using the profile's
+         *     published presentation definition. The returned Operation includes a
+         *     stable presentation_exchange_id. An uncertain submission must not be
+         *     resent automatically.
+         */
+        post: operations["createPresentationRequest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tenants/{tenantId}/presentation-requests/{requestId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                requestId: string;
+            };
+            cookie?: never;
+        };
+        /** Get the request operation */
+        get: operations["getPresentationRequest"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tenants/{tenantId}/presentation-exchanges/{exchangeId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                exchangeId: string;
+            };
+            cookie?: never;
+        };
+        /** Get a durable presentation exchange */
+        get: operations["getPresentationExchange"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tenants/{tenantId}/presentation-exchanges/{exchangeId}/reconcile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                exchangeId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reconcile an exchange with a read-only backend lookup
+         * @description Never resends a presentation request.
+         */
+        post: operations["reconcilePresentationExchange"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/tenants/{tenantId}/presentations/request": {
         parameters: {
             query?: never;
@@ -1077,7 +1169,8 @@ export interface paths {
         put?: never;
         /**
          * Request a presentation/proof
-         * @description Request a verifiable presentation. Supports profile-based or raw presentation definition.
+         * @description Legacy request route. Supports profile-based or raw presentation definition.
+         *     New integrations should use the profile-based presentation-requests route.
          *
          *     **Delivery mode** determined by `connection_id`:
          *     - **Present** → DIDComm (send proof request to connected agent). Returns 202 while
@@ -2515,6 +2608,38 @@ export interface components {
                 };
             }[];
         };
+        CreatePresentationRequest: {
+            /**
+             * Format: uuid
+             * @description Published verification profile UUID.
+             */
+            verification_profile_id: string;
+            delivery: {
+                /**
+                 * Format: uuid
+                 * @description Established connection matching the profile delivery.
+                 */
+                connection_id: string;
+            };
+        };
+        PresentationExchange: {
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            state: "pending" | "request-sent" | "presentation-received" | "verified" | "failed" | "abandoned";
+            /** @enum {string} */
+            submission: "submitting" | "submitted" | "rejected" | "uncertain";
+            /** Format: uuid */
+            verification_profile_id: string | null;
+            verification_profile_version: string | null;
+            /** Format: uuid */
+            presentation_definition_id: string | null;
+            presentation_definition_version: string | null;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
         /** @description Either `verification_profile_id` or `presentation_definition` + `format` must be provided. */
         RequestPresentationRequest: {
             /** @description UUID or "name/version" string */
@@ -2628,6 +2753,11 @@ export interface components {
              */
             exchange_id?: string;
             /**
+             * Format: uuid
+             * @description Stable local presentation exchange UUID, present when linked.
+             */
+            presentation_exchange_id?: string;
+            /**
              * @description Operation type. Known values:
              *     `credential-definition.register`, `credential.offer`, `credential.issue`, `credential.offer-batch`,
              *     `credential.accept`, `credential.reject`,
@@ -2672,7 +2802,9 @@ export interface components {
              *     - pending/processing: usually null; credential-definition.register
              *       includes { credential_definition_id } immediately
              *     - completed: operation-type-specific data; exchange-linked actions
-             *       return the local { exchange_id }
+             *       for credential issuance return the local { exchange_id }.
+             *       A successful presentation request instead contains verified
+             *       revealed_attributes and predicates until the Operation expires.
              *     - failed: { code, message }; credential registration additionally
              *       retains credential_definition_id, external_id, and registration
              *       progress/correlation identifiers.
@@ -5041,6 +5173,125 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["Operation"];
                 };
+            };
+        };
+    };
+    createPresentationRequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreatePresentationRequest"];
+            };
+        };
+        responses: {
+            /** @description Terminal operation */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Operation"];
+                };
+            };
+            /** @description Presentation request submitted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Operation"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+        };
+    };
+    getPresentationRequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                requestId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Request operation */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Operation"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getPresentationExchange: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                exchangeId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Exchange identity, state, and provenance */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PresentationExchange"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    reconcilePresentationExchange: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                exchangeId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Reconciled exchange */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PresentationExchange"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            /** @description Backend correlation is unavailable */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

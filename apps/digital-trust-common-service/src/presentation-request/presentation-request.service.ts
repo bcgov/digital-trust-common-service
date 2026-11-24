@@ -1,12 +1,20 @@
-import { AdapterError, RequestedPredicate } from '@app/credential-ports';
+import { randomBytes } from 'crypto';
+
+import type { AuthContext } from '@app/auth';
+import {
+  AdapterError,
+  RequestedPredicate,
+  SubmissionRejectedError,
+} from '@app/credential-ports';
 import { JOB_QUEUES } from '@app/pg-boss';
 import {
   BadRequestException,
+  ConflictException,
+  InternalServerErrorException,
   Injectable,
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { EventEmitter2 } from '@nestjs/event-emitter';
 import { DataSource } from 'typeorm';
 
 import {
@@ -16,6 +24,7 @@ import {
 import { ResolvedAdapter } from '../adapter-registry/adapter-registry.types';
 import { AuditAction } from '../audit-log/audit-log.entity';
 import { DomainAuditService } from '../audit-log/domain-audit.service';
+import { assertTenantAccess } from '../common/assert-tenant-access';
 import { API_BASE_PATH } from '../common/constants/api-version.constants';
 import {
   Connection,
@@ -30,10 +39,9 @@ import { OPERATION_TYPE } from '../operation/operation-type.constants';
 import { Operation, OperationState } from '../operation/operation.entity';
 import { OperationRepository } from '../operation/operation.repository';
 import { OperationService } from '../operation/operation.service';
-import {
-  operationStatesBelow,
-  resolveProtocolOutcome,
-} from '../protocol-state-change/state-mapping';
+import { operationStatesBelow } from '../protocol-state-change/state-mapping';
+import type { PresentationDefinition } from '../verification-profile/presentation-definition.entity';
+import { PresentationDefinitionRepository } from '../verification-profile/presentation-definition.repository';
 import { extractRequestedAttributes } from '../verification-profile/presentation-definition.validator';
 import {
   VerificationProfile,
@@ -41,7 +49,11 @@ import {
 } from '../verification-profile/verification-profile.entity';
 import { VerificationProfileRepository } from '../verification-profile/verification-profile.repository';
 
+import { CreatePresentationRequestDto } from './dto/create-presentation-request.dto';
 import { RequestPresentationDto } from './dto/request-presentation.dto';
+import { PresentationExchangeLifecycleService } from './presentation-exchange-lifecycle.service';
+import { PresentationExchangeRepository } from './presentation-exchange.repository';
+import { presentationSteps } from './presentation-steps';
 
 /** UUIDv1-v5, case-insensitive — matches how other services (e.g. ParseUUIDPipe) recognize an id vs. a name-like string. */
 const UUID_REGEX =
@@ -59,6 +71,8 @@ interface ResolvedRequest {
   readonly requestedPredicates?: readonly RequestedPredicate[];
   readonly format?: CredentialDefinitionFormat;
   readonly deliveryProtocol?: ConnectionProtocol;
+  readonly profile?: VerificationProfile;
+  readonly definition?: PresentationDefinition;
 }
 
 /**
@@ -68,11 +82,8 @@ interface ResolvedRequest {
  * modes) since OID4VP (the connectionless flow the openapi contract
  * documents as "post-MVP") has no adapter support yet — see
  * `docs/openapi.yaml`'s `RequestPresentationRequest.connection_id`
- * description. There is no persisted entity analogous to `Credential` for a
- * presentation/proof request: the created `Operation` is the durable
- * record, and the protocol.state-change worker's existing `present_proof`
- * wiring (state-mapping.ts) already completes it from the resulting
- * webhook — this service only needs the synchronous submission path.
+ * description. The exchange retains protocol identity and non-sensitive
+ * provenance; the operation retains transient request and proof data.
  *
  * Known MVP gap: the port layer's `PresentationRequest` only carries
  * attribute/predicate selection (`RequestedAttribute[]`/
@@ -100,13 +111,47 @@ export class PresentationRequestService {
     private readonly adapterRegistry: AdapterRegistry,
     private readonly domainAudit: DomainAuditService,
     private readonly jobsService: JobsService,
-    private readonly eventEmitter: EventEmitter2,
     private readonly dataSource: DataSource,
+    private readonly presentationDefinitions: PresentationDefinitionRepository,
+    private readonly presentationExchanges: PresentationExchangeRepository,
+    private readonly lifecycle: PresentationExchangeLifecycleService,
   ) {}
+
+  public async create(
+    tenantId: string,
+    dto: CreatePresentationRequestDto,
+    auth: AuthContext,
+  ): Promise<Operation> {
+    assertTenantAccess(auth, tenantId);
+    return this.requestPresentation(
+      tenantId,
+      {
+        verificationProfileId: dto.verificationProfileId,
+        connectionId: dto.delivery.connectionId,
+      },
+      'presentation-requests',
+    );
+  }
+
+  public async get(
+    tenantId: string,
+    id: string,
+    auth: AuthContext,
+  ): Promise<Operation> {
+    assertTenantAccess(auth, tenantId);
+    const operation = await this.operationService.getForTenant(tenantId, id);
+    if (operation.type !== OPERATION_TYPE.PRESENTATION_REQUEST) {
+      throw new NotFoundException('Presentation request not found');
+    }
+    return operation;
+  }
 
   public async requestPresentation(
     tenantId: string,
     dto: RequestPresentationDto,
+    resource:
+      | 'presentations/request'
+      | 'presentation-requests' = 'presentations/request',
   ): Promise<Operation> {
     this.assertExactlyOneMode(dto);
 
@@ -152,23 +197,148 @@ export class PresentationRequestService {
       connection,
       resolved.format,
     );
+    if (
+      toPortConnectorType(resolvedAdapter.connector.connectorType) !==
+      toPortConnectorType(connection.connectorType)
+    ) {
+      throw new BadRequestException(
+        'Selected connector does not match the connection type.',
+      );
+    }
 
-    const operation = await this.operationService.createOperation({
-      tenantId,
-      type: OPERATION_TYPE.PRESENTATION_REQUEST,
-      request: {
-        method: 'POST',
-        path: `${API_BASE_PATH}/tenants/${tenantId}/presentations/request`,
-        body: { ...dto },
-      },
+    if (!connection.externalConnectionId) {
+      throw new BadRequestException(
+        `Connection '${connection.id}' has no external connection id yet.`,
+      );
+    }
+    const proofRequest = {
+      connectionId: connection.externalConnectionId,
+      name: resolved.name,
+      nonce: (BigInt(`0x${randomBytes(10).toString('hex')}`) || 1n).toString(),
+      requestedAttributes: resolved.requestedAttributes,
+      requestedPredicates: resolved.requestedPredicates,
+    };
+    const operation = await this.dataSource.transaction(async (manager) => {
+      const currentConnection = await manager.findOne(Connection, {
+        where: { id: connection.id, tenantId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (
+        !currentConnection ||
+        currentConnection.externalConnectionId !== proofRequest.connectionId ||
+        currentConnection.connectorId !== connection.connectorId ||
+        currentConnection.protocol !== connection.protocol ||
+        !USABLE_CONNECTION_STATES.includes(currentConnection.state)
+      ) {
+        throw new ConflictException('Connection changed; retry.');
+      }
+      if (resolved.profile && resolved.definition) {
+        const profile = await this.verificationProfileRepository.findById(
+          resolved.profile.id,
+          manager,
+          true,
+        );
+        const definition = await this.presentationDefinitions.findById(
+          tenantId,
+          resolved.definition.id,
+          manager,
+          true,
+        );
+        if (
+          !profile ||
+          profile.tenantId !== tenantId ||
+          profile.status !== VerificationProfileStatus.PUBLISHED ||
+          profile.presentationDefinitionId !== resolved.definition.id ||
+          !definition ||
+          definition.status !== VerificationProfileStatus.PUBLISHED ||
+          JSON.stringify([profile.name, profile.version, profile.delivery]) !==
+            JSON.stringify([
+              resolved.profile.name,
+              resolved.profile.version,
+              resolved.profile.delivery,
+            ]) ||
+          JSON.stringify([
+            definition.version,
+            definition.presentationDefinition,
+            definition.requestedAttributes,
+            definition.predicates,
+            definition.presentationFormat,
+          ]) !==
+            JSON.stringify([
+              resolved.definition.version,
+              resolved.definition.presentationDefinition,
+              resolved.definition.requestedAttributes,
+              resolved.definition.predicates,
+              resolved.definition.presentationFormat,
+            ])
+        ) {
+          throw new ConflictException(
+            'Verification profile or presentation definition changed; retry.',
+          );
+        }
+      }
+      const exchange = await this.presentationExchanges.create(
+        {
+          tenantId,
+          connectorId: resolvedAdapter.connector.id,
+          connectionId: connection.id,
+          externalConnectionId: proofRequest.connectionId,
+          protocol: connection.protocol,
+          format: resolvedAdapter.format,
+          state: 'pending',
+          submission: 'submitting',
+          profileId: resolved.profile?.id ?? null,
+          profileVersion: resolved.profile?.version ?? null,
+          definitionId: resolved.definition?.id ?? null,
+          definitionVersion: resolved.definition?.version ?? null,
+          expectedEvidence: {
+            nonce: proofRequest.nonce,
+            attributes: resolved.requestedAttributes.map((item) => item.name),
+            predicates: (resolved.requestedPredicates ?? []).map(
+              ({ name, pType, pValue }) => ({ name, pType, pValue }),
+            ),
+          },
+        },
+        manager,
+      );
+      const created = await this.operationService.createOperation(
+        {
+          tenantId,
+          type: OPERATION_TYPE.PRESENTATION_REQUEST,
+          presentationExchangeId: exchange.id,
+          steps: presentationSteps(0, OperationState.PENDING),
+          request: {
+            method: 'POST',
+            path: `${API_BASE_PATH}/tenants/${tenantId}/${resource}`,
+            body: {
+              ...(resource === 'presentation-requests'
+                ? {
+                    verification_profile_id: dto.verificationProfileId,
+                    delivery: { connection_id: dto.connectionId },
+                  }
+                : { ...dto }),
+              snapshot: {
+                connector_id: resolvedAdapter.connector.id,
+                proof_request: proofRequest,
+                options: { format: resolvedAdapter.format },
+              },
+            },
+          },
+        },
+        manager,
+      );
+      exchange.requestOperationId = created.id;
+      await manager.save(exchange);
+      return created;
     });
 
     return this.executeRequest(
       tenantId,
       operation,
       connection,
-      resolved,
       resolvedAdapter,
+      proofRequest,
+      resource === 'presentations/request',
     );
   }
 
@@ -237,6 +407,8 @@ export class PresentationRequestService {
         deliveryProtocol: profile.delivery
           ? ConnectionProtocol.DIDCOMM_V1
           : undefined,
+        profile,
+        definition,
       };
     }
 
@@ -412,7 +584,9 @@ export class PresentationRequestService {
 
     try {
       return await this.adapterRegistry.resolve(tenantId, portFormat, {
-        connectorType,
+        ...(connection.connectorId
+          ? { connectorId: connection.connectorId }
+          : { connectorType }),
       });
     } catch (error) {
       if (error instanceof AdapterError) {
@@ -423,100 +597,71 @@ export class PresentationRequestService {
     }
   }
 
-  /**
-   * Calls the adapter and durably transitions `operation` off PENDING.
-   * Mirrors CredentialRevokeService.executeRevoke/CredentialActionService.
-   * executeAction's transactional guarded-transition pattern; unlike those,
-   * there is no pre-existing externalId to correlate against — this call
-   * creates the Operation the protocol.state-change worker will later
-   * correlate by the externalId this call itself learns from the adapter.
-   *
-   * That does leave a narrow, inherent window between the adapter call
-   * returning and this call's own guarded transition committing the
-   * externalId: a `present_proof` webhook for this exact exchange arriving
-   * inside that window would find no Operation to correlate against yet
-   * (ProtocolStateChangeService.applyOperationOutcome's lookup is
-   * best-effort only) and be dropped. This is not unique to this endpoint —
-   * CredentialOfferService has the identical shape (externalId is only
-   * known once its own adapter call returns, and is likewise persisted
-   * atomically with the guarded transition immediately after) — and closing
-   * it fully would need either a port-layer change to pre-assign a
-   * correlation id before the adapter call, or making the webhook worker
-   * retry an unmatched delivery instead of treating it as a permanent
-   * no-op; both are out of scope for a single endpoint handler.
-   */
   private async executeRequest(
     tenantId: string,
     operation: Operation,
     connection: Connection,
-    resolved: ResolvedRequest,
     resolvedAdapter: ResolvedAdapter,
+    proofRequest: {
+      connectionId: string;
+      name: string;
+      nonce: string;
+      requestedAttributes: readonly { name: string }[];
+      requestedPredicates?: readonly RequestedPredicate[];
+    },
+    rethrowFailure: boolean,
   ): Promise<Operation> {
-    // ACTIVE/COMPLETED (already enforced by assertConnectionUsable) is only
-    // reached once the connection.create job has recorded the agent's own
-    // connection id — externalConnectionId is otherwise null while that job
-    // is still pending — so this should be unreachable in practice; it
-    // guards the adapter boundary against ever addressing a connection the
-    // agent has never heard of, and narrows the nullable column to the
-    // string the port requires.
-    if (!connection.externalConnectionId) {
-      throw new BadRequestException(
-        `Connection '${connection.id}' has no external connection id yet.`,
-      );
-    }
-
-    const externalConnectionId = connection.externalConnectionId;
     let exchange;
-
     try {
       exchange = await resolvedAdapter.adapter.requestPresentation(
         resolvedAdapter.context,
-        {
-          // The adapter's own connection identifier, not this service's
-          // local Connection.id — the local UUID would address a
-          // connection the agent has never heard of.
-          connectionId: externalConnectionId,
-          name: resolved.name,
-          requestedAttributes: resolved.requestedAttributes,
-          ...(resolved.requestedPredicates
-            ? { requestedPredicates: resolved.requestedPredicates }
-            : {}),
-        },
+        proofRequest,
       );
     } catch (error) {
-      return this.failOperation(tenantId, operation, error);
+      return this.failOperation(tenantId, operation, error, rethrowFailure);
     }
 
-    const outcome = resolveProtocolOutcome(
-      'present_proof',
-      exchange.state,
-      exchange.verified,
-    ) ?? { operationState: OperationState.PROCESSING };
+    if (
+      !exchange.id ||
+      exchange.connectionId !== connection.externalConnectionId
+    ) {
+      return this.failOperation(
+        tenantId,
+        operation,
+        new Error('Backend response correlation mismatch'),
+        rethrowFailure,
+      );
+    }
+
     const externalId = exchange.externalId ?? exchange.id;
-
-    // The Operation contract documents `result` as null while
-    // pending/processing (OperationResponseDto, ProtocolStateChangeService.
-    // resolveOperationResult follows the same contract) — only a terminal
-    // outcome gets a result payload here.
-    const result =
-      outcome.operationState === OperationState.FAILED
-        ? {
-            code: 'PRESENTATION_REQUEST_FAILED',
-            message: exchange.error ?? 'Presentation request failed',
-          }
-        : outcome.operationState === OperationState.COMPLETED
-          ? { ...exchange }
-          : undefined;
-
-    const { current, won } = await this.dataSource.transaction(
-      async (manager) => {
+    let current: Operation;
+    let won: boolean;
+    try {
+      ({ current, won } = await this.dataSource.transaction(async (manager) => {
+        if (!operation.presentationExchangeId) {
+          throw new NotFoundException('Presentation exchange not found');
+        }
+        const local = await this.presentationExchanges.lock(
+          tenantId,
+          operation.presentationExchangeId,
+          manager,
+        );
+        if (!local)
+          throw new NotFoundException('Presentation exchange not found');
+        await this.presentationExchanges.observe(
+          local,
+          externalId,
+          'pending',
+          manager,
+        );
         const updated = await this.operationService.transitionStateIfForward(
           operation.id,
-          outcome.operationState,
-          operationStatesBelow(outcome.operationState),
-          result,
+          OperationState.PROCESSING,
+          operationStatesBelow(OperationState.PROCESSING),
+          undefined,
           manager,
           externalId,
+          presentationSteps(1, OperationState.PROCESSING),
         );
 
         if (!updated) {
@@ -532,65 +677,76 @@ export class PresentationRequestService {
           return { current: existing, won: false };
         }
 
-        if (outcome.event) {
-          await this.jobsService.sendInTransaction(
-            manager,
-            JOB_QUEUES.WEBHOOK_DISPATCH,
-            {
-              tenantId,
-              event: outcome.event,
-              resourceId: externalId,
-              occurredAt: new Date().toISOString(),
-            },
-          );
-        }
-
         return { current: updated, won: true };
-      },
-    );
-
-    // Only the call that actually won its own guarded transition may emit
-    // the audit entry/domain event — a call that lost the race (e.g. a
-    // webhook already settled this Operation first) must not re-fire either,
-    // same rule CredentialRevokeService/CredentialActionService follow.
+      }));
+    } catch {
+      throw new InternalServerErrorException(
+        `Submission may have succeeded. Operation ${operation.id}, presentation exchange ${operation.presentationExchangeId}; do not resend.`,
+      );
+    }
     if (won) {
       await this.emitAudit(tenantId, operation.id, current.state);
-
-      if (outcome.event) {
-        this.eventEmitter.emit(outcome.event, { tenantId, externalId });
-      }
     }
-
-    return current;
+    try {
+      await this.lifecycle.observe(
+        tenantId,
+        resolvedAdapter.connector.id,
+        externalId,
+      );
+    } catch {
+      this.logger.warn(
+        `Presentation observation failed for operation '${operation.id}'; reconcile without resending.`,
+      );
+    }
+    return (
+      (await this.operationRepository.findByIdForTenant(
+        operation.id,
+        tenantId,
+      )) ?? current
+    );
   }
 
-  /**
-   * Guard-transitions `operation` to FAILED for any error the adapter call
-   * raises — not only `AdapterError` — since an unexpected error leaves the
-   * operation stuck PENDING forever while the caller still sees an HTTP
-   * error. The original error is always rethrown afterwards so its own HTTP
-   * status reaches the caller unchanged.
-   */
   private async failOperation(
     tenantId: string,
     operation: Operation,
     error: unknown,
-  ): Promise<never> {
-    const message = error instanceof Error ? error.message : String(error);
-    const code = error instanceof AdapterError ? error.code : 'ADAPTER_ERROR';
+    rethrowFailure: boolean,
+  ): Promise<Operation> {
+    const rejected = error instanceof SubmissionRejectedError;
+    const code = rejected ? 'SUBMISSION_REJECTED' : 'SUBMISSION_UNCERTAIN';
+    const message = rejected
+      ? 'The presentation request was not submitted.'
+      : 'Submission may have succeeded; do not resend.';
 
     this.logger.warn(
-      `Presentation request failed for operation '${operation.id}': ${message}`,
+      `Presentation request failed for operation '${operation.id}': ${code}`,
     );
 
-    const { current, won } = await this.dataSource.transaction(
-      async (manager) => {
+    let current: Operation;
+    let won: boolean;
+    try {
+      ({ current, won } = await this.dataSource.transaction(async (manager) => {
+        if (!operation.presentationExchangeId) {
+          throw new NotFoundException('Presentation exchange not found');
+        }
+        const local = await this.presentationExchanges.lock(
+          tenantId,
+          operation.presentationExchangeId,
+          manager,
+        );
+        if (!local)
+          throw new NotFoundException('Presentation exchange not found');
+        local.submission = rejected ? 'rejected' : 'uncertain';
+        if (rejected) local.state = 'failed';
+        await manager.save(local);
         const updated = await this.operationService.transitionStateIfForward(
           operation.id,
           OperationState.FAILED,
           operationStatesBelow(OperationState.FAILED),
           { code, message },
           manager,
+          undefined,
+          presentationSteps(0, OperationState.FAILED),
         );
 
         if (!updated) {
@@ -616,16 +772,24 @@ export class PresentationRequestService {
             occurredAt: new Date().toISOString(),
           },
         );
-
         return { current: updated, won: true };
-      },
-    );
+      }));
+    } catch {
+      throw new InternalServerErrorException(
+        `Submission outcome could not be saved. Operation ${operation.id}, presentation exchange ${operation.presentationExchangeId}; do not resend.`,
+      );
+    }
 
     if (won) {
       await this.emitAudit(tenantId, operation.id, current.state);
     }
 
-    throw error;
+    if (rethrowFailure) {
+      throw new InternalServerErrorException(
+        `${message} Operation ${operation.id}, presentation exchange ${operation.presentationExchangeId}.`,
+      );
+    }
+    return current;
   }
 
   private async emitAudit(

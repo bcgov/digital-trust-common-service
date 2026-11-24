@@ -404,6 +404,7 @@ indicates a missing `@Api*` decorator on a controller or DTO.
 ```
 POST /api/v1/tenants/:tenantId/credentials/offer      → Issue/offer a credential
 POST /api/v1/tenants/:tenantId/presentations/request   → Request a presentation/proof
+POST /api/v1/tenants/:tenantId/presentation-requests    → Execute a published verification profile
 POST /api/v1/tenants/:tenantId/credentials/:id/accept  → Accept a credential offer (holder)
 POST /api/v1/tenants/:tenantId/credentials/:id/revoke  → Revoke an issued credential
 POST /api/v1/tenants/:tenantId/connections             → Create connection invitation
@@ -423,6 +424,11 @@ registrations. Verification profiles reference a definition and supply delivery
 and discovery metadata. A profile can be published only against a published
 definition; a definition cannot be deprecated while published profiles reference
 it. Profile-mode requests resolve the definition through the published profile.
+The presentation exchange retains local identity, non-sensitive query
+provenance and protocol outcome beyond the transient Operation's TTL. The
+Operation holds the revealed proof result; unlike issuance's reference-only
+result, it may contain personal information. Reconciliation reads the pinned
+backend without repeating submission and cannot restore expired proof results.
 Definitions support AnonCreds and a restricted DIF attribute-selection subset;
 unsupported constraints are rejected. The existing ad-hoc raw request mode
 remains available for compatibility; it cannot select a stored definition.

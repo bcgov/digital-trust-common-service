@@ -228,10 +228,11 @@ export class TractionWebhookController {
     await this.worker.enqueue({
       // Guard sets tenantId from the resolved ConnectorCredential.
       tenantId: request.tenantId as string,
+      ...(topic === 'present_proof' ? { connectorId } : {}),
       topic,
       externalId,
       protocolState,
-      payload: body,
+      payload: topic === 'present_proof' ? { verified: body.verified } : body,
     });
 
     // Every field is named explicitly and the payload is never among them:
