@@ -15,6 +15,7 @@ export type {
 } from './dto/offer-credential-request.dto';
 export type { CredentialExchange } from './dto/credential-exchange.dto';
 export type {
+  NonRevocationInterval,
   PresentationRequest,
   RequestedAttribute,
   RequestedPredicate,

@@ -273,13 +273,32 @@ describe('state-mapping', () => {
     });
 
     it('maps present_proof verified to Operation COMPLETED with no credential state', () => {
-      const outcome = resolveProtocolOutcome('present_proof', 'verified');
+      const outcome = resolveProtocolOutcome('present_proof', 'verified', true);
 
       expect(outcome).toEqual({
         operationState: OperationState.COMPLETED,
         event: 'credential.verified',
       });
     });
+
+    it.each(['done', 'verified'])(
+      'requires explicit verification for terminal %s',
+      (state) => {
+        for (const verified of [undefined, false, 'false', null, 'invalid']) {
+          expect(
+            resolveProtocolOutcome('present_proof', state, verified),
+          ).toEqual({ operationState: OperationState.FAILED });
+        }
+        for (const verified of [true, 'true']) {
+          expect(
+            resolveProtocolOutcome('present_proof', state, verified),
+          ).toEqual({
+            operationState: OperationState.COMPLETED,
+            event: 'credential.verified',
+          });
+        }
+      },
+    );
 
     it('maps the underscore-separated wire form of a non-terminal present_proof state (request_sent) the same as the hyphenated form', () => {
       const outcome = resolveProtocolOutcome('present_proof', 'request_sent');
