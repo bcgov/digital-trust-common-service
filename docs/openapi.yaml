@@ -2019,6 +2019,112 @@ paths:
                 $ref: "#/components/schemas/Operation"
 
   # ─── Presentations ──────────────────────────────────────────────────
+  /api/v1/tenants/{tenantId}/presentation-requests:
+    parameters:
+      - $ref: "#/components/parameters/TenantId"
+    post:
+      operationId: createPresentationRequest
+      summary: Execute a published verification profile
+      description: |
+        Sends a connected DIDComm AnonCreds proof request using the profile's
+        published presentation definition. The returned Operation includes a
+        stable presentation_exchange_id. An uncertain submission must not be
+        resent automatically.
+      tags: [Presentations]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePresentationRequest"
+      responses:
+        "200":
+          description: Terminal operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Operation"
+        "202":
+          description: Presentation request submitted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Operation"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /api/v1/tenants/{tenantId}/presentation-requests/{requestId}:
+    parameters:
+      - $ref: "#/components/parameters/TenantId"
+      - name: requestId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: getPresentationRequest
+      summary: Get the request operation
+      tags: [Presentations]
+      responses:
+        "200":
+          description: Request operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Operation"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/tenants/{tenantId}/presentation-exchanges/{exchangeId}:
+    parameters:
+      - $ref: "#/components/parameters/TenantId"
+      - name: exchangeId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: getPresentationExchange
+      summary: Get a durable presentation exchange
+      tags: [Presentations]
+      responses:
+        "200":
+          description: Exchange identity, state, and provenance
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PresentationExchange"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/tenants/{tenantId}/presentation-exchanges/{exchangeId}/reconcile:
+    parameters:
+      - $ref: "#/components/parameters/TenantId"
+      - name: exchangeId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: reconcilePresentationExchange
+      summary: Reconcile an exchange with a read-only backend lookup
+      description: Never resends a presentation request.
+      tags: [Presentations]
+      responses:
+        "200":
+          description: Reconciled exchange
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PresentationExchange"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Backend correlation is unavailable
+
   /api/v1/tenants/{tenantId}/presentations/request:
     parameters:
       - $ref: "#/components/parameters/TenantId"
@@ -2026,7 +2132,8 @@ paths:
       operationId: requestPresentation
       summary: Request a presentation/proof
       description: |
-        Request a verifiable presentation. Supports profile-based or raw presentation definition.
+        Legacy request route. Supports profile-based or raw presentation definition.
+        New integrations should use the profile-based presentation-requests route.
 
         **Delivery mode** determined by `connection_id`:
         - **Present** → DIDComm (send proof request to connected agent). Returns 202 while
@@ -4629,6 +4736,59 @@ components:
                 type: object
                 additionalProperties: true
 
+    CreatePresentationRequest:
+      type: object
+      additionalProperties: false
+      required: [verification_profile_id, delivery]
+      properties:
+        verification_profile_id:
+          type: string
+          format: uuid
+          description: Published verification profile UUID.
+        delivery:
+          type: object
+          additionalProperties: false
+          required: [connection_id]
+          properties:
+            connection_id:
+              type: string
+              format: uuid
+              description: Established connection matching the profile delivery.
+
+    PresentationExchange:
+      type: object
+      required: [id, state, submission, verification_profile_id, verification_profile_version, presentation_definition_id, presentation_definition_version, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        state:
+          type: string
+          enum: [pending, request-sent, presentation-received, verified, failed, abandoned]
+        submission:
+          type: string
+          enum: [submitting, submitted, rejected, uncertain]
+        verification_profile_id:
+          type: string
+          format: uuid
+          nullable: true
+        verification_profile_version:
+          type: string
+          nullable: true
+        presentation_definition_id:
+          type: string
+          format: uuid
+          nullable: true
+        presentation_definition_version:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
     RequestPresentationRequest:
       type: object
       description: |
@@ -4771,6 +4931,10 @@ components:
           type: string
           format: uuid
           description: Stable local credential exchange UUID, present when linked.
+        presentation_exchange_id:
+          type: string
+          format: uuid
+          description: Stable local presentation exchange UUID, present when linked.
         type:
           type: string
           description: |
@@ -4841,7 +5005,9 @@ components:
             - pending/processing: usually null; credential-definition.register
               includes { credential_definition_id } immediately
             - completed: operation-type-specific data; exchange-linked actions
-              return the local { exchange_id }
+              for credential issuance return the local { exchange_id }.
+              A successful presentation request instead contains verified
+              revealed_attributes and predicates until the Operation expires.
             - failed: { code, message }; credential registration additionally
               retains credential_definition_id, external_id, and registration
               progress/correlation identifiers.

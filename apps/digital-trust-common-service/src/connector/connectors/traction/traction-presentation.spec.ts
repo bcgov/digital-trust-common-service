@@ -26,6 +26,7 @@ describe('Traction presentation mapping', () => {
     by_format: {
       pres_request: {
         anoncreds: {
+          nonce: '12345',
           requested_attributes: {
             attribute_0: { name: 'name' },
             group: { names: ['city', 'country'] },
@@ -231,6 +232,7 @@ describe('Traction presentation mapping', () => {
       connectionId: 'connection',
       state: PresentationExchangeState.Verified,
       verified: true,
+      requestNonce: '12345',
       createdAt: 'created',
       updatedAt: 'updated',
       error: undefined,

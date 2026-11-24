@@ -18,6 +18,7 @@ import { ProtocolTopic } from './state-mapping';
  */
 export type ProtocolStateChangeJobData = {
   tenantId: string;
+  connectorId?: string;
   topic: ProtocolTopic;
   externalId: string;
   protocolState: string;
@@ -82,6 +83,9 @@ export class ProtocolStateChangeWorker implements OnModuleInit {
 
     if (!UUID_RE.test(data.tenantId)) {
       throw new Error('Invalid protocol.state-change payload');
+    }
+    if (data.connectorId !== undefined && !UUID_RE.test(data.connectorId)) {
+      throw new Error('Invalid protocol.state-change connector');
     }
 
     if (!KNOWN_TOPICS.has(data.topic)) {

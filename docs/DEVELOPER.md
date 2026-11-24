@@ -1673,6 +1673,29 @@ Verified adapter records expose revealed attributes and satisfied predicates;
 self-attested values are not exposed as verified attributes. Do not retry a
 submission after an ambiguous response: the agent may have sent the request.
 
+For new requests, POST to `/api/v1/tenants/:tenantId/presentation-requests`
+with `verification_profile_id` and `delivery.connection_id`. Poll the
+returned Operation, or retrieve its `presentation_exchange_id` from
+`/api/v1/tenants/:tenantId/presentation-exchanges/:id`. The legacy
+`/presentations/request` route continues to accept a profile or ad-hoc query.
+The exchange retains profile and definition identity/version, request nonce,
+attribute names and predicate configuration, but not revealed values or raw
+proofs. Revealed values and satisfied predicates are returned in a successful
+Operation result and expire with that Operation. Unlike issuance's
+reference-only result, this result can contain personal information.
+Reconciliation uses a backend GET and never resends the request; it can update
+the exchange after the Operation is purged without restoring expired results.
+Only explicitly verified evidence matching the pinned backend, connection,
+nonce, requested attributes and predicates can complete successfully.
+When a submission response times out, a later authenticated webhook can bind the
+backend exchange only if its connector, connection and request nonce identify
+exactly one uncertain submission. Its original Operation remains failed with
+`SUBMISSION_UNCERTAIN`; inspect the exchange for its eventual outcome.
+Legacy in-flight requests created before this change did not snapshot their
+nonce and effective evidence. They cannot be safely completed by the new
+verification lifecycle; operators must resolve them separately. Backfill links
+only records whose tenant, pinned connector, connection and format are known.
+
 Failed-record preservation is agent-configured, not guaranteed by
 `auto_remove: false`. ACA-Py 1.6's connected
 [send-request route](https://github.com/openwallet-foundation/acapy/blob/1.6.0/acapy_agent/protocols/present_proof/v2_0/routes.py)
@@ -2310,7 +2333,7 @@ query selects one `$.credentialSubject.attribute` path per descriptor and option
 predicates; filters, alternative paths, grouped fields and unsupported constraints are
 rejected. Publish the definition, create a verification profile using its
 `presentation_definition_id`, then publish the profile. A profile's default
-delivery is `{"protocol":"didcomm-v1"}`. Use the existing presentation request
+delivery is `{"protocol":"didcomm-v1"}`. Use the presentation request
 endpoint with `verification_profile_id` and a matching connection.
 The existing ad-hoc raw request mode remains available for compatibility;
 it does not execute stored definitions.

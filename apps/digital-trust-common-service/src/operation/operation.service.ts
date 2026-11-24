@@ -44,6 +44,7 @@ export interface CreateOperationInput {
   batchId?: string | null;
   externalId?: string | null;
   exchangeId?: string | null;
+  presentationExchangeId?: string | null;
   steps?: OperationStep[];
 }
 
@@ -107,6 +108,7 @@ export class OperationService {
       batchId: input.batchId ?? null,
       externalId: input.externalId ?? null,
       exchangeId: input.exchangeId ?? null,
+      presentationExchangeId: input.presentationExchangeId ?? null,
       state: OperationState.PENDING,
       steps: input.steps ?? [],
       expiresAt: this.computeExpiresAt(
@@ -134,6 +136,7 @@ export class OperationService {
       batchId: input.batchId ?? null,
       externalId: input.externalId ?? null,
       exchangeId: input.exchangeId ?? null,
+      presentationExchangeId: input.presentationExchangeId ?? null,
       state: OperationState.COMPLETED,
       result,
       steps: input.steps ?? [],
@@ -632,6 +635,7 @@ export class OperationService {
     manager?: EntityManager,
     externalId?: string | null,
     steps?: OperationStep[],
+    requireUnexpired = false,
   ): Promise<Operation | null> {
     const operation = await this.operations.findById(id, manager);
 
@@ -659,6 +663,7 @@ export class OperationService {
         ...(steps !== undefined ? { steps } : {}),
       },
       manager,
+      ...(requireUnexpired ? [true] : []),
     );
 
     if (!won) {

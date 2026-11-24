@@ -4,6 +4,7 @@ import { AuditLogModule } from '../audit-log/audit-log.module';
 import { ConnectionModule } from '../connection/connection.module';
 import { CredentialModule } from '../credential/credential.module';
 import { OperationModule } from '../operation/operation.module';
+import { PresentationExchangeModule } from '../presentation-request/presentation-exchange.module';
 
 import { ProtocolStateChangeService } from './protocol-state-change.service';
 import { ProtocolStateChangeWorker } from './protocol-state-change.worker';
@@ -14,6 +15,7 @@ import { ProtocolStateChangeWorker } from './protocol-state-change.worker';
     ConnectionModule,
     CredentialModule,
     OperationModule,
+    PresentationExchangeModule,
   ],
   providers: [ProtocolStateChangeWorker, ProtocolStateChangeService],
   exports: [ProtocolStateChangeWorker, ProtocolStateChangeService],
