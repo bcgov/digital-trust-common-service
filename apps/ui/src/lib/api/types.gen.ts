@@ -674,6 +674,91 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/tenants/{tenantId}/presentation-definitions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
+        };
+        /** List presentation definitions */
+        get: operations["listPresentationDefinitions"];
+        put?: never;
+        /** Create a draft presentation definition */
+        post: operations["createPresentationDefinition"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tenants/{tenantId}/presentation-definitions/{definitionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                definitionId: string;
+            };
+            cookie?: never;
+        };
+        /** Get a presentation definition */
+        get: operations["getPresentationDefinition"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update a draft presentation definition */
+        patch: operations["updatePresentationDefinition"];
+        trace?: never;
+    };
+    "/api/v1/tenants/{tenantId}/presentation-definitions/{definitionId}/publish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                definitionId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Publish a draft presentation definition */
+        post: operations["publishPresentationDefinition"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tenants/{tenantId}/presentation-definitions/{definitionId}/deprecate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                definitionId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Deprecate a definition not referenced by published profiles */
+        post: operations["deprecatePresentationDefinition"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/tenants/{tenantId}/credentials/offer": {
         parameters: {
             query?: never;
@@ -2267,6 +2352,60 @@ export interface components {
          * @enum {string}
          */
         ProtocolHint: "didcomm" | "oid4vci" | "oid4vp" | "auto";
+        PresentationQuery: {
+            /** @enum {string} */
+            type: "dif-presentation-exchange";
+            /** @description DIF subset with exactly one credentialSubject attribute path per descriptor; unsupported constraints are rejected. */
+            presentation_definition: {
+                [key: string]: unknown;
+            };
+            predicates?: {
+                attribute: string;
+                /** @enum {string} */
+                condition: "<" | "<=" | ">" | ">=";
+                /** @description Signed 32-bit integer threshold */
+                value: string;
+            }[] | null;
+        };
+        PresentationDefinitionOptions: {
+            /** @enum {string} */
+            format: "anoncreds";
+        };
+        CreatePresentationDefinitionRequest: {
+            name: string;
+            version: string;
+            description?: string;
+            query: components["schemas"]["PresentationQuery"];
+            options: components["schemas"]["PresentationDefinitionOptions"];
+        };
+        UpdatePresentationDefinitionRequest: {
+            description?: string;
+            query?: components["schemas"]["PresentationQuery"];
+            options?: components["schemas"]["PresentationDefinitionOptions"];
+        };
+        PresentationDefinition: {
+            /** Format: uuid */
+            id?: string;
+            /** Format: uuid */
+            tenant_id?: string;
+            name?: string;
+            version?: string;
+            description?: string | null;
+            query?: components["schemas"]["PresentationQuery"];
+            options?: {
+                /** @description Null for legacy definitions whose format was not recorded. */
+                format?: string | null;
+            };
+            status?: components["schemas"]["ProfileStatus"];
+            /** Format: date-time */
+            created_at?: string;
+            /** Format: date-time */
+            updated_at?: string;
+        };
+        VerificationDelivery: {
+            /** @enum {string} */
+            protocol: "didcomm-v1";
+        };
         VerificationProfile: {
             /** Format: uuid */
             id?: string;
@@ -2275,7 +2414,11 @@ export interface components {
             name?: string;
             version?: string;
             description?: string | null;
-            /** @description DIF Presentation Exchange format */
+            /** Format: uuid */
+            presentation_definition_id?: string;
+            /** @description Null for legacy profiles that did not record delivery. */
+            delivery?: components["schemas"]["VerificationDelivery"] | null;
+            /** @description Read-only compatibility projection from the referenced definition. */
             presentation_definition?: Record<string, never>;
             requested_attributes?: string[];
             predicates?: {
@@ -2287,7 +2430,8 @@ export interface components {
             metadata?: Record<string, never> | null;
             /** @default false */
             public: boolean;
-            protocol_hint?: components["schemas"]["ProtocolHint"];
+            /** @enum {string} */
+            protocol_hint?: "didcomm" | "oid4vp" | "auto";
             status?: components["schemas"]["ProfileStatus"];
             /** Format: date-time */
             created_at?: string;
@@ -2298,25 +2442,24 @@ export interface components {
             name: string;
             version: string;
             description?: string;
-            /** @description DIF Presentation Exchange object */
-            presentation_definition: Record<string, never>;
-            predicates?: {
-                attribute?: string;
-                condition?: string;
-                value?: string;
-            }[];
+            /** Format: uuid */
+            presentation_definition_id: string;
+            delivery?: components["schemas"]["VerificationDelivery"];
             metadata?: Record<string, never>;
             /** @default false */
             public: boolean;
-            protocol_hint?: components["schemas"]["ProtocolHint"];
+            /** @enum {string} */
+            protocol_hint?: "didcomm" | "auto";
         };
         UpdateVerificationProfileRequest: {
             description?: string;
-            presentation_definition?: Record<string, never>;
-            predicates?: Record<string, never>[];
+            /** Format: uuid */
+            presentation_definition_id?: string;
+            delivery?: components["schemas"]["VerificationDelivery"];
             metadata?: Record<string, never>;
             public?: boolean;
-            protocol_hint?: components["schemas"]["ProtocolHint"];
+            /** @enum {string} */
+            protocol_hint?: "didcomm" | "auto";
         };
         /**
          * @description A published profile is required. Format and delivery protocol are inherited.
@@ -2489,7 +2632,11 @@ export interface components {
              *     `credential-definition.register`, `credential.offer`, `credential.issue`, `credential.offer-batch`,
              *     `credential.accept`, `credential.reject`,
              *     `credential.revoke`, `credential.revoke-batch`,
-             *     `presentation.request`, `connection.create`
+             *     `presentation.request`, `connection.create`,
+             *     `presentation-definition.create`, `presentation-definition.update`,
+             *     `presentation-definition.publish`, `presentation-definition.deprecate`,
+             *     `verification-profile.create`, `verification-profile.update`,
+             *     `verification-profile.publish`, `verification-profile.deprecate`
              * @example credential.offer
              * @example credential.issue
              * @example credential.offer-batch
@@ -2499,6 +2646,14 @@ export interface components {
              * @example credential.revoke-batch
              * @example presentation.request
              * @example connection.create
+             * @example presentation-definition.create
+             * @example presentation-definition.update
+             * @example presentation-definition.publish
+             * @example presentation-definition.deprecate
+             * @example verification-profile.create
+             * @example verification-profile.update
+             * @example verification-profile.publish
+             * @example verification-profile.deprecate
              */
             type: string;
             state: components["schemas"]["OperationState"];
@@ -4192,13 +4347,13 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Verification profile created (draft status) */
+            /** @description Completed configuration operation; result contains the draft profile snapshot */
             201: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["VerificationProfile"];
+                    "application/json": components["schemas"]["Operation"];
                 };
             };
             422: components["responses"]["ValidationError"];
@@ -4246,13 +4401,13 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Profile updated */
+            /** @description Completed configuration operation; result contains the updated profile snapshot */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["VerificationProfile"];
+                    "application/json": components["schemas"]["Operation"];
                 };
             };
             /** @description Cannot update a published or deprecated profile */
@@ -4279,13 +4434,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Profile published */
+            /** @description Completed configuration operation; result contains the published profile snapshot */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["VerificationProfile"];
+                    "application/json": components["schemas"]["Operation"];
                 };
             };
         };
@@ -4303,13 +4458,171 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Profile deprecated */
+            /** @description Completed configuration operation; result contains the deprecated profile snapshot */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["VerificationProfile"];
+                    "application/json": components["schemas"]["Operation"];
+                };
+            };
+        };
+    };
+    listPresentationDefinitions: {
+        parameters: {
+            query?: {
+                /** @description Opaque pagination cursor from a previous response */
+                cursor?: components["parameters"]["Cursor"];
+                /** @description Number of items per page */
+                limit?: components["parameters"]["Limit"];
+                status?: components["schemas"]["ProfileStatus"];
+            };
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Paginated definitions */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedResponse"] & {
+                        data?: components["schemas"]["PresentationDefinition"][];
+                    };
+                };
+            };
+        };
+    };
+    createPresentationDefinition: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreatePresentationDefinitionRequest"];
+            };
+        };
+        responses: {
+            /** @description Completed configuration operation; result contains the definition snapshot */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Operation"];
+                };
+            };
+        };
+    };
+    getPresentationDefinition: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                definitionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Presentation definition */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PresentationDefinition"];
+                };
+            };
+        };
+    };
+    updatePresentationDefinition: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                definitionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdatePresentationDefinitionRequest"];
+            };
+        };
+        responses: {
+            /** @description Completed configuration operation; result contains the definition snapshot */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Operation"];
+                };
+            };
+        };
+    };
+    publishPresentationDefinition: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                definitionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Completed configuration operation; result contains the definition snapshot */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Operation"];
+                };
+            };
+        };
+    };
+    deprecatePresentationDefinition: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Tenant UUID */
+                tenantId: components["parameters"]["TenantId"];
+                definitionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Completed configuration operation; result contains the definition snapshot */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Operation"];
                 };
             };
         };

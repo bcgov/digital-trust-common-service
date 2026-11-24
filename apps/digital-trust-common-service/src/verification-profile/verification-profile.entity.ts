@@ -13,6 +13,8 @@ import {
 
 import { Tenant } from '../tenant/tenant.entity';
 
+import { PresentationDefinition } from './presentation-definition.entity';
+
 export enum VerificationProfileProtocolHint {
   DIDCOMM = 'didcomm',
   OID4VP = 'oid4vp',
@@ -53,6 +55,19 @@ export class VerificationProfile {
   @JoinColumn({ name: 'tenant_id' })
   public tenant!: Tenant;
 
+  @Column({ name: 'presentation_definition_id', type: 'uuid' })
+  public presentationDefinitionId!: string;
+
+  @ManyToOne(() => PresentationDefinition, { onDelete: 'RESTRICT' })
+  @JoinColumn([
+    { name: 'tenant_id', referencedColumnName: 'tenantId' },
+    { name: 'presentation_definition_id', referencedColumnName: 'id' },
+  ])
+  public definition!: PresentationDefinition;
+
+  @Column({ type: 'jsonb', nullable: true })
+  public delivery?: { protocol: 'didcomm-v1' } | null;
+
   @ApiProperty({
     description: 'Human-friendly profile identifier',
     example: 'age-verification',
@@ -74,35 +89,6 @@ export class VerificationProfile {
   })
   @Column({ type: 'text', nullable: true })
   public description?: string | null;
-
-  @ApiProperty({
-    description: 'Pre-built proof request template (DIF PE / format-agnostic)',
-    example: { id: 'age-over-18', input_descriptors: [] },
-  })
-  @Column({ name: 'presentation_definition', type: 'jsonb' })
-  public presentationDefinition!: Record<string, unknown>;
-
-  @ApiProperty({
-    description: 'Quick-reference subset of issuance attribute names',
-    required: false,
-    nullable: true,
-    type: [String],
-  })
-  @Column({
-    name: 'requested_attributes',
-    type: 'text',
-    array: true,
-    nullable: true,
-  })
-  public requestedAttributes?: string[] | null;
-
-  @ApiProperty({
-    description: 'Predicate constraints for proof requests',
-    required: false,
-    nullable: true,
-  })
-  @Column({ type: 'jsonb', nullable: true })
-  public predicates?: Record<string, unknown>[] | null;
 
   @ApiProperty({
     description: 'Extensible verifier-specific metadata',

@@ -16,6 +16,14 @@ describe('operation type constants', () => {
       'credential.revoke',
       'credential.revoke-batch',
       'presentation.request',
+      'presentation-definition.create',
+      'presentation-definition.update',
+      'presentation-definition.publish',
+      'presentation-definition.deprecate',
+      'verification-profile.create',
+      'verification-profile.update',
+      'verification-profile.publish',
+      'verification-profile.deprecate',
       'connection.create',
     ]);
   });

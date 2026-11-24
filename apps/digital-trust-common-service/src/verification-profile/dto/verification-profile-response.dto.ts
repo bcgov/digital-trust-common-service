@@ -7,6 +7,8 @@ import {
   VerificationProfileStatus,
 } from '../verification-profile.entity';
 
+import { VerificationDeliveryDto } from './verification-delivery.dto';
+
 export class VerificationProfileResponseDto {
   @ApiProperty({
     description: 'The unique identifier of the verification profile',
@@ -40,6 +42,13 @@ export class VerificationProfileResponseDto {
     nullable: true,
   })
   public description?: string | null;
+
+  @Expose({ name: 'presentation_definition_id' })
+  @ApiProperty({ name: 'presentation_definition_id', format: 'uuid' })
+  public presentationDefinitionId!: string;
+
+  @ApiProperty({ type: VerificationDeliveryDto, nullable: true })
+  public delivery!: VerificationDeliveryDto | null;
 
   @Expose({ name: 'presentation_definition' })
   @ApiProperty({
@@ -116,15 +125,20 @@ export class VerificationProfileResponseDto {
   public static fromEntity(
     profile: VerificationProfile,
   ): VerificationProfileResponseDto {
+    if (!profile.definition) {
+      throw new Error('Verification profile definition was not loaded');
+    }
     const dto = new VerificationProfileResponseDto();
     dto.id = profile.id;
     dto.tenantId = profile.tenantId;
     dto.name = profile.name;
     dto.version = profile.version;
     dto.description = profile.description;
-    dto.presentationDefinition = profile.presentationDefinition;
-    dto.requestedAttributes = profile.requestedAttributes;
-    dto.predicates = profile.predicates;
+    dto.presentationDefinitionId = profile.presentationDefinitionId;
+    dto.delivery = profile.delivery ?? null;
+    dto.presentationDefinition = profile.definition.presentationDefinition;
+    dto.requestedAttributes = profile.definition.requestedAttributes;
+    dto.predicates = profile.definition.predicates;
     dto.metadata = profile.metadata;
     dto.isPublic = profile.isPublic;
     dto.protocolHint = profile.protocolHint;

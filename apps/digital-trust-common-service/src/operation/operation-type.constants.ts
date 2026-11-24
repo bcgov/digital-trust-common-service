@@ -18,6 +18,14 @@ export const OPERATION_TYPE = {
   CREDENTIAL_REVOKE: 'credential.revoke',
   CREDENTIAL_REVOKE_BATCH: 'credential.revoke-batch',
   PRESENTATION_REQUEST: 'presentation.request',
+  PRESENTATION_DEFINITION_CREATE: 'presentation-definition.create',
+  PRESENTATION_DEFINITION_UPDATE: 'presentation-definition.update',
+  PRESENTATION_DEFINITION_PUBLISH: 'presentation-definition.publish',
+  PRESENTATION_DEFINITION_DEPRECATE: 'presentation-definition.deprecate',
+  VERIFICATION_PROFILE_CREATE: 'verification-profile.create',
+  VERIFICATION_PROFILE_UPDATE: 'verification-profile.update',
+  VERIFICATION_PROFILE_PUBLISH: 'verification-profile.publish',
+  VERIFICATION_PROFILE_DEPRECATE: 'verification-profile.deprecate',
   CONNECTION_CREATE: 'connection.create',
 } as const;
 

@@ -11,6 +11,7 @@ import {
   Body,
   Controller,
   Get,
+  HttpCode,
   Param,
   ParseUUIDPipe,
   Patch,
@@ -29,9 +30,12 @@ import {
   ApiQuery,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
+import { instanceToPlain } from 'class-transformer';
 
 import { SkipAutoAudit } from '../audit-log/skip-auto-audit.decorator';
 import { API_VERSION } from '../common/constants/api-version.constants';
+import { OperationResponseDto } from '../operation/dto/operation-response.dto';
+import { OPERATION_TYPE } from '../operation/operation-type.constants';
 import { TenantTierRateLimitGuard } from '../rate-limit/tenant-tier-rate-limit.guard';
 import { TenantStatusGuard } from '../tenant/tenant-status.guard';
 
@@ -72,11 +76,10 @@ export class VerificationProfileController {
   @Post()
   @ApiCreatedResponse({
     description: 'Verification profile created successfully (draft status)',
-    type: VerificationProfileResponseDto,
+    type: OperationResponseDto,
   })
   @ApiBadRequestResponse({
-    description:
-      'presentation_definition is not a valid DIF Presentation Exchange object',
+    description: 'presentation_definition_id must be a UUID',
   })
   @ApiConflictResponse({
     description:
@@ -92,17 +95,7 @@ export class VerificationProfileController {
           name: 'age-verification',
           version: '1.0',
           description: 'Verifies the holder is over 19',
-          presentation_definition: {
-            id: 'age-over-18',
-            input_descriptors: [
-              {
-                id: 'person_credential',
-                constraints: {
-                  fields: [{ path: ['$.credentialSubject.given_names'] }],
-                },
-              },
-            ],
-          },
+          presentation_definition_id: '123e4567-e89b-12d3-a456-426614174003',
           public: false,
           protocol_hint: 'auto',
         },
@@ -113,14 +106,18 @@ export class VerificationProfileController {
     @Param('tenantId', ParseUUIDPipe) tenantId: string,
     @Body() dto: CreateVerificationProfileDto,
     @CurrentAuth() auth: AuthContext,
-  ): Promise<VerificationProfileResponseDto> {
-    const profile = await this.verificationProfileService.create(
-      tenantId,
-      dto,
-      auth,
+  ): Promise<OperationResponseDto> {
+    return OperationResponseDto.fromEntity(
+      await this.verificationProfileService.profileOperation(
+        tenantId,
+        OPERATION_TYPE.VERIFICATION_PROFILE_CREATE,
+        'POST',
+        '',
+        instanceToPlain(dto),
+        (manager) =>
+          this.verificationProfileService.create(tenantId, dto, auth, manager),
+      ),
     );
-
-    return VerificationProfileResponseDto.fromEntity(profile);
   }
 
   @Get()
@@ -188,12 +185,11 @@ export class VerificationProfileController {
   @Patch(':id')
   @ApiOkResponse({
     description: 'Verification profile updated successfully',
-    type: VerificationProfileResponseDto,
+    type: OperationResponseDto,
   })
   @ApiNotFoundResponse({ description: 'Verification profile not found' })
   @ApiBadRequestResponse({
-    description:
-      'presentation_definition is not a valid DIF Presentation Exchange object',
+    description: 'presentation_definition_id must be a UUID',
   })
   @ApiConflictResponse({
     description: 'Cannot update a published or deprecated profile',
@@ -204,7 +200,9 @@ export class VerificationProfileController {
     examples: {
       example1: {
         summary: 'Update verification profile description',
-        value: { description: 'Updated description' },
+        value: {
+          description: 'Updated description',
+        },
       },
     },
   })
@@ -213,21 +211,31 @@ export class VerificationProfileController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateVerificationProfileDto,
     @CurrentAuth() auth: AuthContext,
-  ): Promise<VerificationProfileResponseDto> {
-    const profile = await this.verificationProfileService.update(
-      tenantId,
-      id,
-      dto,
-      auth,
+  ): Promise<OperationResponseDto> {
+    return OperationResponseDto.fromEntity(
+      await this.verificationProfileService.profileOperation(
+        tenantId,
+        OPERATION_TYPE.VERIFICATION_PROFILE_UPDATE,
+        'PATCH',
+        `/${id}`,
+        instanceToPlain(dto),
+        (manager) =>
+          this.verificationProfileService.update(
+            tenantId,
+            id,
+            dto,
+            auth,
+            manager,
+          ),
+      ),
     );
-
-    return VerificationProfileResponseDto.fromEntity(profile);
   }
 
   @Post(':id/publish')
+  @HttpCode(200)
   @ApiOkResponse({
     description: 'Verification profile published successfully',
-    type: VerificationProfileResponseDto,
+    type: OperationResponseDto,
   })
   @ApiNotFoundResponse({ description: 'Verification profile not found' })
   @ApiConflictResponse({
@@ -237,20 +245,25 @@ export class VerificationProfileController {
     @Param('tenantId', ParseUUIDPipe) tenantId: string,
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentAuth() auth: AuthContext,
-  ): Promise<VerificationProfileResponseDto> {
-    const profile = await this.verificationProfileService.publish(
-      tenantId,
-      id,
-      auth,
+  ): Promise<OperationResponseDto> {
+    return OperationResponseDto.fromEntity(
+      await this.verificationProfileService.profileOperation(
+        tenantId,
+        OPERATION_TYPE.VERIFICATION_PROFILE_PUBLISH,
+        'POST',
+        `/${id}/publish`,
+        {},
+        (manager) =>
+          this.verificationProfileService.publish(tenantId, id, auth, manager),
+      ),
     );
-
-    return VerificationProfileResponseDto.fromEntity(profile);
   }
 
   @Post(':id/deprecate')
+  @HttpCode(200)
   @ApiOkResponse({
     description: 'Verification profile deprecated successfully',
-    type: VerificationProfileResponseDto,
+    type: OperationResponseDto,
   })
   @ApiNotFoundResponse({ description: 'Verification profile not found' })
   @ApiConflictResponse({
@@ -260,13 +273,22 @@ export class VerificationProfileController {
     @Param('tenantId', ParseUUIDPipe) tenantId: string,
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentAuth() auth: AuthContext,
-  ): Promise<VerificationProfileResponseDto> {
-    const profile = await this.verificationProfileService.deprecate(
-      tenantId,
-      id,
-      auth,
+  ): Promise<OperationResponseDto> {
+    return OperationResponseDto.fromEntity(
+      await this.verificationProfileService.profileOperation(
+        tenantId,
+        OPERATION_TYPE.VERIFICATION_PROFILE_DEPRECATE,
+        'POST',
+        `/${id}/deprecate`,
+        {},
+        (manager) =>
+          this.verificationProfileService.deprecate(
+            tenantId,
+            id,
+            auth,
+            manager,
+          ),
+      ),
     );
-
-    return VerificationProfileResponseDto.fromEntity(profile);
   }
 }

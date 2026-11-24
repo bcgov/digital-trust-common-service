@@ -52,13 +52,17 @@ describe('VerificationProfileRepository', () => {
 
   it('findById queries by id', async () => {
     await repository.findById('vp-1');
-    expect(mockRepo.findOne).toHaveBeenCalledWith({ where: { id: 'vp-1' } });
+    expect(mockRepo.findOne).toHaveBeenCalledWith({
+      where: { id: 'vp-1' },
+      relations: { definition: true },
+    });
   });
 
   it('findByTenant orders by createdAt', async () => {
     await repository.findByTenant('t1');
     expect(mockRepo.find).toHaveBeenCalledWith({
       where: { tenantId: 't1' },
+      relations: { definition: true },
       order: { createdAt: 'ASC' },
     });
   });
@@ -67,6 +71,7 @@ describe('VerificationProfileRepository', () => {
     await repository.findPublicByTenant('t1');
     expect(mockRepo.find).toHaveBeenCalledWith({
       where: { tenantId: 't1', isPublic: true },
+      relations: { definition: true },
       order: { createdAt: 'ASC' },
     });
   });
@@ -75,12 +80,14 @@ describe('VerificationProfileRepository', () => {
     await repository.findByNameAndVersion('t1', 'age-verification', '1.0');
     expect(mockRepo.findOne).toHaveBeenCalledWith({
       where: { tenantId: 't1', name: 'age-verification', version: '1.0' },
+      relations: { definition: true },
     });
   });
 
   it('findPage builds a cursor-paginated query with all filters', async () => {
     const items = [{ id: 'vp-1', createdAt: new Date('2024-01-01T00:00:00Z') }];
     const qb = {
+      leftJoinAndSelect: jest.fn().mockReturnThis(),
       where: jest.fn().mockReturnThis(),
       andWhere: jest.fn().mockReturnThis(),
       orderBy: jest.fn().mockReturnThis(),
@@ -107,6 +114,10 @@ describe('VerificationProfileRepository', () => {
     expect(qb.where).toHaveBeenCalledWith('profile.tenant_id = :tenantId', {
       tenantId: 't1',
     });
+    expect(qb.leftJoinAndSelect).toHaveBeenCalledWith(
+      'profile.definition',
+      'definition',
+    );
     expect(qb.andWhere).toHaveBeenCalledWith('profile.status = :status', {
       status: VerificationProfileStatus.DRAFT,
     });
@@ -127,6 +138,7 @@ describe('VerificationProfileRepository', () => {
       { id: 'vp-2', createdAt: new Date('2024-01-02T00:00:00Z') },
     ];
     const qb = {
+      leftJoinAndSelect: jest.fn().mockReturnThis(),
       where: jest.fn().mockReturnThis(),
       andWhere: jest.fn().mockReturnThis(),
       orderBy: jest.fn().mockReturnThis(),
@@ -150,6 +162,7 @@ describe('VerificationProfileRepository', () => {
 
   it('findPage omits filters and cursor clauses when none are provided', async () => {
     const qb = {
+      leftJoinAndSelect: jest.fn().mockReturnThis(),
       where: jest.fn().mockReturnThis(),
       andWhere: jest.fn().mockReturnThis(),
       orderBy: jest.fn().mockReturnThis(),

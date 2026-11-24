@@ -1,13 +1,17 @@
 import { JwtGuard, ScopeGuard, TenantGuard, type AuthContext } from '@app/auth';
 import { CanActivate } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
+import { instanceToPlain } from 'class-transformer';
+import { EntityManager } from 'typeorm';
 
+import { OperationState } from '../operation/operation.entity';
 import { TenantTierRateLimitGuard } from '../rate-limit/tenant-tier-rate-limit.guard';
 import { TenantStatusGuard } from '../tenant/tenant-status.guard';
 
 import { CreateVerificationProfileDto } from './dto/create-verification-profile.dto';
 import { UpdateVerificationProfileDto } from './dto/update-verification-profile.dto';
 import { VerificationProfileResponseDto } from './dto/verification-profile-response.dto';
+import { PresentationDefinition } from './presentation-definition.entity';
 import { VerificationProfileController } from './verification-profile.controller';
 import {
   VerificationProfile,
@@ -31,6 +35,7 @@ describe('VerificationProfileController', () => {
   let mockUpdate: jest.Mock;
   let mockPublish: jest.Mock;
   let mockDeprecate: jest.Mock;
+  const manager = {} as EntityManager;
 
   const auth: AuthContext = {
     sub: 'user-1',
@@ -52,6 +57,12 @@ describe('VerificationProfileController', () => {
     name: 'age-verification',
     version: '1.0',
     description: undefined,
+    presentationDefinitionId: '123e4567-e89b-12d3-a456-426614174003',
+    definition: {
+      presentationDefinition: { id: 'age-over-18', input_descriptors: [] },
+      requestedAttributes: ['given_names'],
+      predicates: null,
+    } as PresentationDefinition,
     presentationDefinition: { id: 'age-over-18', input_descriptors: [] },
     requestedAttributes: ['given_names'],
     predicates: undefined,
@@ -78,6 +89,26 @@ describe('VerificationProfileController', () => {
       update: mockUpdate,
       publish: mockPublish,
       deprecate: mockDeprecate,
+      profileOperation: jest.fn(
+        async (
+          _tenantId: string,
+          type: string,
+          _method: string,
+          _suffix: string,
+          _body: Record<string, unknown>,
+          mutate: (manager: EntityManager) => Promise<VerificationProfile>,
+        ) => {
+          const profile = await mutate(manager);
+          return {
+            id: 'operation-1',
+            type,
+            state: OperationState.COMPLETED,
+            result: instanceToPlain(
+              VerificationProfileResponseDto.fromEntity(profile),
+            ),
+          };
+        },
+      ),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -116,16 +147,16 @@ describe('VerificationProfileController', () => {
       const dto: CreateVerificationProfileDto = {
         name: mockProfile.name,
         version: mockProfile.version,
-        presentationDefinition: mockProfile.presentationDefinition,
+        presentationDefinitionId: mockProfile.presentationDefinitionId,
       };
 
       mockCreate.mockResolvedValue(mockProfile);
 
       const result = await controller.create(tenantId, dto, auth);
 
-      expect(mockCreate).toHaveBeenCalledWith(tenantId, dto, auth);
-      expect(result).toEqual(
-        VerificationProfileResponseDto.fromEntity(mockProfile),
+      expect(mockCreate).toHaveBeenCalledWith(tenantId, dto, auth, manager);
+      expect(result.result).toEqual(
+        instanceToPlain(VerificationProfileResponseDto.fromEntity(mockProfile)),
       );
     });
   });
@@ -207,16 +238,19 @@ describe('VerificationProfileController', () => {
     it('updates a profile', async () => {
       const tenantId = mockProfile.tenantId;
       const id = mockProfile.id;
-      const dto: UpdateVerificationProfileDto = { description: 'Updated' };
+      const dto: UpdateVerificationProfileDto = {
+        description: 'Updated',
+        presentationDefinitionId: mockProfile.presentationDefinitionId,
+      };
       const updated = { ...mockProfile, description: 'Updated' };
 
       mockUpdate.mockResolvedValue(updated);
 
       const result = await controller.update(tenantId, id, dto, auth);
 
-      expect(mockUpdate).toHaveBeenCalledWith(tenantId, id, dto, auth);
-      expect(result).toEqual(
-        VerificationProfileResponseDto.fromEntity(updated),
+      expect(mockUpdate).toHaveBeenCalledWith(tenantId, id, dto, auth, manager);
+      expect(result.result).toEqual(
+        instanceToPlain(VerificationProfileResponseDto.fromEntity(updated)),
       );
     });
   });
@@ -234,9 +268,9 @@ describe('VerificationProfileController', () => {
 
       const result = await controller.publish(tenantId, id, auth);
 
-      expect(mockPublish).toHaveBeenCalledWith(tenantId, id, auth);
-      expect(result).toEqual(
-        VerificationProfileResponseDto.fromEntity(published),
+      expect(mockPublish).toHaveBeenCalledWith(tenantId, id, auth, manager);
+      expect(result.result).toEqual(
+        instanceToPlain(VerificationProfileResponseDto.fromEntity(published)),
       );
     });
   });
@@ -254,9 +288,9 @@ describe('VerificationProfileController', () => {
 
       const result = await controller.deprecate(tenantId, id, auth);
 
-      expect(mockDeprecate).toHaveBeenCalledWith(tenantId, id, auth);
-      expect(result).toEqual(
-        VerificationProfileResponseDto.fromEntity(deprecated),
+      expect(mockDeprecate).toHaveBeenCalledWith(tenantId, id, auth, manager);
+      expect(result.result).toEqual(
+        instanceToPlain(VerificationProfileResponseDto.fromEntity(deprecated)),
       );
     });
   });
