@@ -27,6 +27,7 @@ import {
   TenantUserStatus,
 } from '../tenant-user/tenant-user.entity';
 import { TenantUserRepository } from '../tenant-user/tenant-user.repository';
+import { PresentationDefinitionRepository } from '../verification-profile/presentation-definition.repository';
 import { VerificationProfile } from '../verification-profile/verification-profile.entity';
 import { VerificationProfileRepository } from '../verification-profile/verification-profile.repository';
 
@@ -82,6 +83,10 @@ describe('DevSeedService', () => {
     findByNameAndVersion: jest.fn(),
     create: jest.fn(),
     save: jest.fn(),
+  };
+  const presentationDefinitionRepo = {
+    findByNameAndVersion: jest.fn(),
+    create: jest.fn(),
   };
 
   const oauthClientRepo = {
@@ -150,6 +155,10 @@ describe('DevSeedService', () => {
         {
           provide: VerificationProfileRepository,
           useValue: verificationProfileRepo,
+        },
+        {
+          provide: PresentationDefinitionRepository,
+          useValue: presentationDefinitionRepo,
         },
         { provide: OAuthClientRepository, useValue: oauthClientRepo },
         { provide: ConnectionRepository, useValue: connectionRepo },
@@ -227,6 +236,8 @@ describe('DevSeedService', () => {
 
     verificationProfileRepo.findByNameAndVersion.mockResolvedValue(null);
     verificationProfileRepo.create.mockResolvedValue({ id: 'vp-1' });
+    presentationDefinitionRepo.findByNameAndVersion.mockResolvedValue(null);
+    presentationDefinitionRepo.create.mockResolvedValue({ id: 'definition-1' });
 
     oauthClientRepo.findByClientId.mockResolvedValue(null);
     oauthClientRepo.create.mockResolvedValue({});

@@ -24,6 +24,7 @@ import { OPERATION_TYPE } from '../operation/operation-type.constants';
 import { Operation, OperationState } from '../operation/operation.entity';
 import { OperationRepository } from '../operation/operation.repository';
 import { OperationService } from '../operation/operation.service';
+import { PresentationDefinition } from '../verification-profile/presentation-definition.entity';
 import {
   VerificationProfile,
   VerificationProfileStatus,
@@ -77,17 +78,19 @@ describe('PresentationRequestService', () => {
       tenantId,
       name: 'age-verification',
       version: '1.0',
-      presentationDefinition: {
-        id: 'age-over-18',
-        input_descriptors: [
-          {
-            id: 'age-check',
-            constraints: { fields: [{ path: ['$.credentialSubject.age'] }] },
-          },
-        ],
-      },
-      requestedAttributes: ['age'],
-      predicates: null,
+      definition: {
+        presentationDefinition: {
+          id: 'age-over-18',
+          input_descriptors: [
+            {
+              id: 'age-check',
+              constraints: { fields: [{ path: ['$.credentialSubject.age'] }] },
+            },
+          ],
+        },
+        requestedAttributes: ['age'],
+        predicates: null,
+      } as PresentationDefinition,
       metadata: {},
       isPublic: false,
       status: VerificationProfileStatus.PUBLISHED,
@@ -574,7 +577,10 @@ describe('PresentationRequestService', () => {
   it('passes profile predicates through to the adapter, mapped to name/pType/pValue', async () => {
     mockFindProfileById.mockResolvedValue(
       buildProfile({
-        predicates: [{ attribute: 'age', condition: '>=', value: '18' }],
+        definition: {
+          ...buildProfile().definition,
+          predicates: [{ attribute: 'age', condition: '>=', value: '18' }],
+        },
       }),
     );
     mockRequestPresentation.mockResolvedValue({
@@ -583,6 +589,7 @@ describe('PresentationRequestService', () => {
       createdAt: createdAt.toISOString(),
       updatedAt: createdAt.toISOString(),
     });
+
     mockTransitionStateIfForward.mockResolvedValue(
       buildOperation({ state: OperationState.PROCESSING }),
     );
@@ -599,12 +606,35 @@ describe('PresentationRequestService', () => {
     );
   });
 
+  it('rejects a connection whose protocol conflicts with the profile delivery', async () => {
+    mockFindProfileById.mockResolvedValue(
+      buildProfile({
+        delivery: { protocol: 'didcomm-v1' },
+      }),
+    );
+    mockFindConnectionById.mockResolvedValue(
+      buildConnection({
+        protocol: ConnectionProtocol.DIDCOMM_V2,
+      }),
+    );
+    await expect(
+      service.requestPresentation(
+        tenantId,
+        buildDto({ verificationProfileId: profileId }),
+      ),
+    ).rejects.toThrow(BadRequestException);
+    expect(mockCreateOperation).not.toHaveBeenCalled();
+  });
+
   it('rejects a profile predicate whose value is not numeric', async () => {
     mockFindProfileById.mockResolvedValue(
       buildProfile({
-        predicates: [
-          { attribute: 'age', condition: '>=', value: 'not-a-number' },
-        ],
+        definition: {
+          ...buildProfile().definition,
+          predicates: [
+            { attribute: 'age', condition: '>=', value: 'not-a-number' },
+          ],
+        },
       }),
     );
 
