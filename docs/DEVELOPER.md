@@ -2301,3 +2301,29 @@ npm run build && npm run migrate:up
 - [TypeORM Documentation](https://typeorm.io/)
 - [Docker Documentation](https://docs.docker.com/)
 - Project Architecture: See `docs/ARCHITECTURE.md`
+# Presentation definitions and verification profiles
+
+Create a draft presentation definition at
+`POST /api/v1/tenants/{tenantId}/presentation-definitions` with a
+`dif-presentation-exchange` query and `options.format: anoncreds`. Its supported
+query selects one `$.credentialSubject.attribute` path per descriptor and optional numeric
+predicates; filters, alternative paths, grouped fields and unsupported constraints are
+rejected. Publish the definition, create a verification profile using its
+`presentation_definition_id`, then publish the profile. A profile's default
+delivery is `{"protocol":"didcomm-v1"}`. Use the existing presentation request
+endpoint with `verification_profile_id` and a matching connection.
+The existing ad-hoc raw request mode remains available for compatibility;
+it does not execute stored definitions.
+
+Definition and verification-profile create, update, publish and deprecate
+return completed Operations with resource snapshots in `result` (201 on create,
+200 otherwise); GET endpoints return the resource directly. This changes
+verification-profile mutation responses from the previous direct profile shape.
+The profile's legacy proof fields in reads are projections, not writable
+configuration. Issuance-profile response shapes are unchanged. Deprecate
+published profiles before deprecating their shared definition.
+
+Migration backfills one definition per existing profile without changing profile
+IDs. Format and delivery remain null for legacy records, whose existing connector
+inference is preserved. New definitions require AnonCreds and new profile
+delivery is DIDComm v1; other delivery protocols are not supported.

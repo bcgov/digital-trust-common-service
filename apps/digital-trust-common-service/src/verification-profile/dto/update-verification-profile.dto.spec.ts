@@ -4,30 +4,58 @@ import { validate } from 'class-validator';
 import { UpdateVerificationProfileDto } from './update-verification-profile.dto';
 
 describe('UpdateVerificationProfileDto', () => {
-  it('accepts a partial payload with nested predicates', async () => {
+  it('accepts a linked definition and profile settings', async () => {
     const dto = plainToInstance(UpdateVerificationProfileDto, {
       description: 'Updated description',
-      predicates: [{ attribute: 'age', condition: '>=', value: '21' }],
+      presentation_definition_id: '123e4567-e89b-42d3-a456-426614174003',
       metadata: { note: 'reviewed' },
       public: false,
-      protocol_hint: 'oid4vp',
+      protocol_hint: 'didcomm',
     });
 
     const errors = await validate(dto);
 
     expect(errors).toHaveLength(0);
-    expect(dto.predicates).toHaveLength(1);
-    expect(dto.predicates?.[0].value).toBe('21');
+    expect(dto.presentationDefinitionId).toBe(
+      '123e4567-e89b-42d3-a456-426614174003',
+    );
     expect(dto.isPublic).toBe(false);
   });
 
-  it('rejects a malformed nested predicate', async () => {
+  it('requires a valid definition ID and rejects inline predicates', async () => {
     const dto = plainToInstance(UpdateVerificationProfileDto, {
-      predicates: [{ attribute: 'age', condition: '>=' }],
+      presentation_definition_id: 'not-a-uuid',
+      predicates: [{ attribute: 'age', condition: '>=', value: '21' }],
     });
 
-    const errors = await validate(dto);
+    const errors = await validate(dto, {
+      whitelist: true,
+      forbidNonWhitelisted: true,
+    });
 
-    expect(errors.some((error) => error.property === 'predicates')).toBe(true);
+    expect(errors.map((error) => error.property)).toEqual(
+      expect.arrayContaining(['predicates', 'presentationDefinitionId']),
+    );
+  });
+
+  it('allows an unrelated patch and rejects unsupported delivery or protocol', async () => {
+    expect(
+      await validate(
+        plainToInstance(UpdateVerificationProfileDto, {
+          description: 'Updated',
+        }),
+      ),
+    ).toHaveLength(0);
+    for (const patch of [
+      { presentation_definition_id: null },
+      { delivery: null },
+      { delivery: {} },
+      { delivery: { protocol: 'oid4vp' } },
+      { protocol_hint: 'oid4vp' },
+    ]) {
+      expect(
+        await validate(plainToInstance(UpdateVerificationProfileDto, patch)),
+      ).not.toHaveLength(0);
+    }
   });
 });
