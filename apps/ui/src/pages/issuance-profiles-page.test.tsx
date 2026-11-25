@@ -84,6 +84,58 @@ describe('IssuanceProfilesPage', () => {
     return { user, dialog };
   }
 
+  it.each([
+    {
+      format: 'sd-jwt',
+      schema: { attr_names: ['first_name'] },
+    },
+    {
+      format: 'sd-jwt',
+      schema: { attributes: { first_name: 'string' } },
+    },
+    {
+      format: 'anoncreds',
+      schema: { claims: { properties: { first_name: { type: 'string' } } } },
+    },
+  ])(
+    'lists claims by schema shape regardless of format',
+    async ({ format, schema }) => {
+      const createRequest = vi.fn();
+      server.use(
+        http.get(`${API_BASE_PATH}/tenants/:id/credential-definitions`, () =>
+          HttpResponse.json([
+            {
+              ...mockCredentialDefinitions[0],
+              format,
+              options: { format },
+              schema_definition: schema,
+            },
+          ]),
+        ),
+        http.post(
+          `${API_BASE_PATH}/tenants/:id/profiles/issuance`,
+          async ({ request }) => {
+            createRequest(await request.json());
+            return profileResponse({ ...profile, status: 'draft' }, 201);
+          },
+        ),
+      );
+      await renderPage();
+      const { user, dialog } = await fillProfile();
+      await user.click(
+        within(dialog).getByRole('checkbox', { name: 'first_name' }),
+      );
+      await user.click(
+        within(dialog).getByRole('button', { name: 'Save draft' }),
+      );
+      await waitFor(() =>
+        expect(createRequest).toHaveBeenCalledWith(
+          expect.objectContaining({ claims: { required: ['first_name'] } }),
+        ),
+      );
+    },
+  );
+
   it('sets required claims and resets selections when the definition changes', async () => {
     const createRequest = vi.fn();
     const definition = mockCredentialDefinitions[0];

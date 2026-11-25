@@ -57,18 +57,15 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function definitionClaims(definition: CredentialDefinition) {
   const schema = definition.schema_definition ?? {};
-  const claimsSchema =
-    definition.format !== 'anoncreds' && isRecord(schema.claims)
-      ? schema.claims
-      : schema;
+  const claimsSchema = isRecord(schema.claims) ? schema.claims : schema;
   const properties = isRecord(claimsSchema.properties)
     ? claimsSchema.properties
-    : definition.format === 'anoncreds' && isRecord(schema.attributes)
+    : isRecord(schema.attributes)
       ? schema.attributes
       : undefined;
   const names = properties
     ? Object.keys(properties)
-    : definition.format === 'anoncreds' && Array.isArray(schema.attr_names)
+    : Array.isArray(schema.attr_names)
       ? [
           ...new Set(
             schema.attr_names.filter(
