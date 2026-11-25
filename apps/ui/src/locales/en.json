@@ -465,6 +465,18 @@
   },
   "issuanceProfiles": {
     "title": "Issuance profiles",
+    "details": {
+      "title": "Issuance profile details"
+    },
+    "edit": {
+      "title": "Edit profile",
+      "progress": "Profile editing progress",
+      "update": "Update draft",
+      "saved": "Issuance profile updated.",
+      "loadFailed": "Could not load the issuance profile.",
+      "notEditable": "This profile cannot be edited because it is not a valid draft.",
+      "conflict": "This profile is no longer a draft. Return to the profiles list to see its current status."
+    },
     "wizard": {
       "progress": "Profile creation progress",
       "backToList": "Back to issuance profiles",
@@ -500,12 +512,14 @@
       "required": "Required",
       "requiredFor": "Required: {{name}}",
       "valueFor": "Value {{index}} for {{name}}",
+      "fixedValueFor": "Specific value for {{name}}",
       "add": "Add value",
       "remove": "Remove value {{index}} for {{name}}",
       "invalid": "Enter a valid value in the format described above.",
       "fixClaims": "Return to Claims to correct the value rules before saving.",
       "empty": "Add at least one allowed value.",
       "duplicate": "Allowed values must be unique.",
+      "conflict": "The specific value must be one of the allowed values.",
       "modes": {
         "any": "Any value",
         "enum": "Allowed values",

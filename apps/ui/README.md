@@ -134,10 +134,14 @@ The issuance profiles page (`/issuance-profiles`) requires
 `profiles:manage`. It lists profiles across cursor pages, displaying `deprecated` profiles
 as Archived. Credential definition names and formats require `tenants:admin`, matching
 the definition API; other profile managers see definition IDs instead. Mock mode returns
-an initially empty profile list and supports draft creation, publication, archival, and deletion in memory. Readable definition names link to the read-only
-`/credential-definitions/:definitionId` view, which shows identity, format, status,
-and schema details with a return link to issuance profiles. Administrators can create
+an initially empty profile list and supports draft creation, publication, archival, and deletion
+in memory. Readable definition names open a read-only drawer showing identity, format, status,
+and schema details. Each profile's actions menu opens a details drawer showing its required
+claims and value rules. Administrators can create
 profiles using a three-step wizard for details, claims, and review.
+Draft profiles can be edited in the same wizard: name, version and credential definition
+remain fixed. Update draft saves changes; Publish profile saves them and then publishes.
+If publication fails, it can be retried without updating the draft again.
 After choosing a published, issuance-ready definition, select which claims are required;
 the others remain optional. Claims required by the definition cannot be made optional.
 For each claim, optionally enter allowed values or one specific value. These rules

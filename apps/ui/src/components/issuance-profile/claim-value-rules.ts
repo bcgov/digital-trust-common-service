@@ -14,11 +14,12 @@ type JsonValue =
 export type ClaimValueRule = {
   mode: 'enum' | 'const';
   values: string[];
+  constValue?: string;
 };
 
 type ValidatedRule =
-  | { valid: true; values: JsonValue[] }
-  | { valid: false; reason: 'invalid' | 'duplicate' | 'empty' };
+  | { valid: true; values: JsonValue[]; constValue?: JsonValue }
+  | { valid: false; reason: 'invalid' | 'duplicate' | 'empty' | 'conflict' };
 
 export function claimValueType(declaration: unknown): ClaimValueType {
   const type =
@@ -98,5 +99,14 @@ export function validateValueRule(
   const values = parsed.flatMap((value) => (value.valid ? [value.value] : []));
   if (new Set(values.map(stableValue)).size !== values.length)
     return { valid: false, reason: 'duplicate' };
+  if (rule.mode === 'enum' && rule.constValue !== undefined) {
+    const fixed = parseValue(rule.constValue, type);
+    if (!fixed.valid) return { valid: false, reason: 'invalid' };
+    if (
+      !values.some((value) => stableValue(value) === stableValue(fixed.value))
+    )
+      return { valid: false, reason: 'conflict' };
+    return { valid: true, values, constValue: fixed.value };
+  }
   return { valid: true, values };
 }

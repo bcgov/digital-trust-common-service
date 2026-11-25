@@ -22,6 +22,7 @@ import { ApiError } from '@/lib/api/errors';
 import {
   useCreateIssuanceProfile,
   usePublishIssuanceProfile,
+  useUpdateIssuanceProfile,
 } from '@/lib/api/queries/issuance-profiles';
 import type { CredentialDefinition } from '@/lib/api/resources/credential-definitions';
 import type { IssuanceProfile } from '@/lib/api/resources/issuance-profiles';
@@ -52,13 +53,17 @@ interface CreateIssuanceProfileProps {
 interface CreateIssuanceProfileFormProps extends CreateIssuanceProfileProps {
   onClose: () => void;
   embedded?: boolean;
+  profile?: IssuanceProfile;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
-function definitionClaims(definition: CredentialDefinition) {
+function definitionClaims(
+  definition: CredentialDefinition,
+  profile?: IssuanceProfile,
+) {
   const schema = definition.schema_definition ?? {};
   const claimsSchema = isRecord(schema.claims) ? schema.claims : schema;
   const properties = isRecord(claimsSchema.properties)
@@ -82,15 +87,29 @@ function definitionClaims(definition: CredentialDefinition) {
       ? value.filter((name): name is string => typeof name === 'string')
       : [],
   );
+  const types = new Map<string, ClaimValueType>(
+    names.map((name) => [
+      name,
+      properties ? claimValueType(properties[name]) : 'string',
+    ]),
+  );
+  for (const [name, rule] of Object.entries(
+    profile?.claims?.properties ?? {},
+  )) {
+    if (
+      types.get(name) === 'string' &&
+      [
+        ...(rule.enum ?? []),
+        ...(rule.const !== undefined ? [rule.const] : []),
+      ].some((value) => typeof value !== 'string')
+    ) {
+      types.set(name, 'json');
+    }
+  }
   return {
     names,
     mandatory: names.filter((name) => mandatory.includes(name)),
-    types: new Map<string, ClaimValueType>(
-      names.map((name) => [
-        name,
-        properties ? claimValueType(properties[name]) : 'string',
-      ]),
-    ),
+    types,
   };
 }
 
@@ -100,36 +119,97 @@ export function CreateIssuanceProfileForm({
   onCreated,
   onClose,
   embedded = false,
+  profile,
 }: CreateIssuanceProfileFormProps) {
   const { t, i18n } = useTranslation();
   const [step, setStep] = useState(0);
-  const [name, setName] = useState('');
-  const [version, setVersion] = useState('');
-  const [definitionId, setDefinitionId] = useState('');
-  const [requiredClaims, setRequiredClaims] = useState<string[]>([]);
-  const [valueRules, setValueRules] = useState<Map<string, ClaimValueRule>>(
-    () => new Map(),
+  const [name, setName] = useState(profile?.name ?? '');
+  const [version, setVersion] = useState(profile?.version ?? '');
+  const [definitionId, setDefinitionId] = useState(
+    profile?.credential_definition_id ?? '',
   );
-  const [protocol, setProtocol] =
-    useState<(typeof PROTOCOLS)[number]>('didcomm-v1');
+  const [requiredClaims, setRequiredClaims] = useState<string[]>(
+    profile?.claims?.required ?? [],
+  );
+  const [valueRules, setValueRules] = useState<Map<string, ClaimValueRule>>(
+    () => {
+      const definition = definitions.find(
+        (item) => item.id === profile?.credential_definition_id,
+      );
+      const types = definition
+        ? definitionClaims(definition, profile).types
+        : new Map<string, ClaimValueType>();
+      const input = (value: unknown, type: ClaimValueType) =>
+        type === 'string' && typeof value === 'string'
+          ? value
+          : JSON.stringify(value);
+      return new Map(
+        Object.entries(profile?.claims?.properties ?? {}).flatMap<
+          [string, ClaimValueRule]
+        >(([name, rule]) => {
+          const type = types.get(name) ?? 'json';
+          if (rule.enum) {
+            return [
+              [
+                name,
+                {
+                  mode: 'enum' as const,
+                  values: rule.enum.map((value) => input(value, type)),
+                  ...(rule.const !== undefined && {
+                    constValue: input(rule.const, type),
+                  }),
+                },
+              ],
+            ];
+          }
+          if (rule.const !== undefined) {
+            return [
+              [
+                name,
+                {
+                  mode: 'const' as const,
+                  values: [input(rule.const, type)],
+                },
+              ],
+            ];
+          }
+          return [];
+        }),
+      );
+    },
+  );
+  const [protocol, setProtocol] = useState<(typeof PROTOCOLS)[number]>(
+    profile?.delivery?.protocol ?? 'didcomm-v1',
+  );
   const [createdDraft, setCreatedDraft] = useState<IssuanceProfile | null>(
     null,
   );
   const mutation = useCreateIssuanceProfile(tenantId);
+  const update = useUpdateIssuanceProfile(tenantId);
   const publish = usePublishIssuanceProfile(tenantId);
-  const isPending = mutation.isPending || publish.isPending;
+  const isPending = mutation.isPending || update.isPending || publish.isPending;
   const fieldsDisabled = isPending || createdDraft !== null;
-  const eligible = eligibleDefinitions(definitions);
+  const eligible = profile ? definitions : eligibleDefinitions(definitions);
   const selectedDefinition = eligible.find(
     (definition) => definition.id === definitionId,
   );
-  const claims: {
+  const baseClaims: {
     names: string[];
     mandatory: string[];
     types: Map<string, ClaimValueType>;
   } = selectedDefinition
-    ? definitionClaims(selectedDefinition)
+    ? definitionClaims(selectedDefinition, profile)
     : { names: [], mandatory: [], types: new Map() };
+  const claims = {
+    ...baseClaims,
+    names: [
+      ...new Set([
+        ...baseClaims.names,
+        ...(profile?.claims?.required ?? []),
+        ...Object.keys(profile?.claims?.properties ?? {}),
+      ]),
+    ],
+  };
   const selectedClaims = claims.names.filter(
     (name) => claims.mandatory.includes(name) || requiredClaims.includes(name),
   );
@@ -173,6 +253,7 @@ export function CreateIssuanceProfileForm({
     setValueRules(new Map());
     setProtocol('didcomm-v1');
     mutation.reset();
+    update.reset();
     publish.reset();
     setCreatedDraft(null);
     onClose();
@@ -188,7 +269,8 @@ export function CreateIssuanceProfileForm({
   };
 
   const create = (publishImmediately: boolean) => {
-    if (!isValid || isPending || createdDraft) return;
+    if (!isValid || isPending || createdDraft || (profile && !profile.id))
+      return;
     const properties = Object.fromEntries(
       evaluatedRules.flatMap(({ name, rule, validation }) =>
         validation.valid
@@ -196,23 +278,49 @@ export function CreateIssuanceProfileForm({
               [
                 name,
                 rule.mode === 'enum'
-                  ? { enum: validation.values }
+                  ? {
+                      enum: validation.values,
+                      ...(validation.constValue !== undefined && {
+                        const: validation.constValue,
+                      }),
+                    }
                   : { const: validation.values[0] },
               ],
             ]
           : [],
       ),
     );
+    const profileClaims = {
+      ...(selectedClaims.length > 0 && { required: selectedClaims }),
+      ...(evaluatedRules.length > 0 && { properties }),
+    };
+    if (profile?.id) {
+      update.mutate(
+        {
+          profileId: profile.id,
+          body: { claims: profileClaims, delivery: { protocol } },
+        },
+        {
+          onSuccess: (updated) => {
+            if (publishImmediately) {
+              setCreatedDraft(updated);
+              if (updated.id) publishDraft(updated.id);
+            } else {
+              notify.success(t('issuanceProfiles.edit.saved'));
+              onCreated?.(updated);
+            }
+          },
+        },
+      );
+      return;
+    }
     mutation.mutate(
       {
         name: name.trim(),
         version: version.trim(),
         credential_definition_id: definitionId,
         ...((selectedClaims.length > 0 || evaluatedRules.length > 0) && {
-          claims: {
-            ...(selectedClaims.length > 0 && { required: selectedClaims }),
-            ...(evaluatedRules.length > 0 && { properties }),
-          },
+          claims: profileClaims,
         }),
         delivery: { protocol },
       },
@@ -237,7 +345,7 @@ export function CreateIssuanceProfileForm({
       </h2>
       <TextField
         label={t('credentialDefinitions.table.name')}
-        isDisabled={fieldsDisabled}
+        isDisabled={fieldsDisabled || Boolean(profile)}
         name="name"
         isRequired
         value={name}
@@ -254,7 +362,7 @@ export function CreateIssuanceProfileForm({
       />
       <TextField
         label={t('credentialDefinitions.table.version')}
-        isDisabled={fieldsDisabled}
+        isDisabled={fieldsDisabled || Boolean(profile)}
         name="version"
         isRequired
         value={version}
@@ -285,7 +393,7 @@ export function CreateIssuanceProfileForm({
       />
       <Select
         aria-label={t('issuanceProfiles.definition')}
-        isDisabled={fieldsDisabled}
+        isDisabled={fieldsDisabled || Boolean(profile)}
         label={t('issuanceProfiles.definition')}
         placeholder={t('issuanceProfiles.create.chooseDefinition')}
         value={definitionId || null}
@@ -353,7 +461,11 @@ export function CreateIssuanceProfileForm({
   return (
     <Form
       className="flex w-full flex-col gap-5"
-      aria-label={t('issuanceProfiles.create.title')}
+      aria-label={t(
+        profile
+          ? 'issuanceProfiles.edit.title'
+          : 'issuanceProfiles.create.title',
+      )}
       aria-busy={isPending}
       onSubmit={(event) => event.preventDefault()}
     >
@@ -363,7 +475,11 @@ export function CreateIssuanceProfileForm({
             {t('issuanceProfiles.wizard.backToList')}
           </BackLink>
           <h1 className="text-h1 font-bold text-black">
-            {t('issuanceProfiles.create.title')}
+            {t(
+              profile
+                ? 'issuanceProfiles.edit.title'
+                : 'issuanceProfiles.create.title',
+            )}
           </h1>
         </div>
       )}
@@ -374,11 +490,19 @@ export function CreateIssuanceProfileForm({
           t('issuanceProfiles.wizard.review'),
         ]}
         currentStep={step}
-        label={t('issuanceProfiles.wizard.progress')}
+        label={t(
+          profile
+            ? 'issuanceProfiles.edit.progress'
+            : 'issuanceProfiles.wizard.progress',
+        )}
       />
       <MutationError
-        error={mutation.error ?? publish.error}
-        conflict={t('issuanceProfiles.create.duplicate')}
+        error={mutation.error ?? update.error ?? publish.error}
+        conflict={t(
+          profile
+            ? 'issuanceProfiles.edit.conflict'
+            : 'issuanceProfiles.create.duplicate',
+        )}
       />
       {createdDraft && !isPending && (
         <p role="status">
@@ -389,7 +513,7 @@ export function CreateIssuanceProfileForm({
           )}
         </p>
       )}
-      {eligible.length === 0 && (
+      {!profile && eligible.length === 0 && (
         <p role="status">{t('issuanceProfiles.create.noDefinitions')}</p>
       )}
       <div hidden={step !== 0}>{fields}</div>
@@ -486,6 +610,14 @@ export function CreateIssuanceProfileForm({
                             JSON.stringify(value),
                           ),
                         )}
+                      {validation.valid &&
+                        validation.constValue !== undefined && (
+                          <span>
+                            {'; '}
+                            {t('issuanceProfiles.valueRules.modes.const')}:{' '}
+                            {JSON.stringify(validation.constValue)}
+                          </span>
+                        )}
                     </li>
                   ))}
                 </ul>
@@ -528,7 +660,7 @@ export function CreateIssuanceProfileForm({
           )}
         </div>
         <div className="flex gap-3">
-          {!embedded && !createdDraft && (
+          {!embedded && !createdDraft && !profile && (
             <Button
               type="button"
               variant="secondary"
@@ -536,6 +668,16 @@ export function CreateIssuanceProfileForm({
               onPress={() => create(false)}
             >
               {t('issuanceProfiles.create.save')}
+            </Button>
+          )}
+          {profile && !createdDraft && (
+            <Button
+              type="button"
+              variant="secondary"
+              isDisabled={!isValid || isPending || !profile.id}
+              onPress={() => create(false)}
+            >
+              {t('issuanceProfiles.edit.update')}
             </Button>
           )}
           {step < 2 ? (
@@ -557,7 +699,10 @@ export function CreateIssuanceProfileForm({
             <Button
               type="button"
               isDisabled={
-                isPending || (createdDraft ? !createdDraft.id : !isValid)
+                isPending ||
+                (createdDraft
+                  ? !createdDraft.id
+                  : !isValid || (Boolean(profile) && !profile?.id))
               }
               onPress={() => {
                 if (createdDraft?.id) publishDraft(createdDraft.id);
@@ -567,7 +712,9 @@ export function CreateIssuanceProfileForm({
               {t(
                 createdDraft
                   ? 'issuanceProfiles.create.retryPublish'
-                  : 'issuanceProfiles.create.title',
+                  : profile
+                    ? 'issuanceProfiles.publish.title'
+                    : 'issuanceProfiles.create.title',
               )}
             </Button>
           )}
