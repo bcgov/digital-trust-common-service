@@ -28,6 +28,19 @@ interface AnonCredsProofRequest {
   >;
 }
 
+interface AnonCredsRequestedProof {
+  readonly revealed_attrs?: Readonly<Record<string, { readonly raw: string }>>;
+  readonly revealed_attr_groups?: Readonly<
+    Record<
+      string,
+      { readonly values: Readonly<Record<string, { readonly raw: string }>> }
+    >
+  >;
+  readonly predicates?: Readonly<
+    Record<string, { readonly sub_proof_index: number }>
+  >;
+}
+
 export interface TractionPresentationRecord {
   readonly pres_ex_id: string;
   readonly connection_id?: string;
@@ -41,24 +54,7 @@ export interface TractionPresentationRecord {
     readonly pres_request?: { readonly anoncreds?: AnonCredsProofRequest };
     readonly pres?: {
       readonly anoncreds?: {
-        readonly requested_proof: {
-          readonly revealed_attrs?: Readonly<
-            Record<string, { readonly raw: string }>
-          >;
-          readonly revealed_attr_groups?: Readonly<
-            Record<
-              string,
-              {
-                readonly values: Readonly<
-                  Record<string, { readonly raw: string }>
-                >;
-              }
-            >
-          >;
-          readonly predicates?: Readonly<
-            Record<string, { readonly sub_proof_index: number }>
-          >;
-        };
+        readonly requested_proof: AnonCredsRequestedProof;
       };
     };
   };
@@ -177,6 +173,31 @@ export function mapTractionPresentation(
   ) {
     throw new ValidationError(['Invalid presentation exchange response']);
   }
+  const { state, verified } = mapPresentationState(record);
+  const exchange: PresentationExchange = {
+    id: record.pres_ex_id,
+    externalId: record.pres_ex_id,
+    connectionId: record.connection_id,
+    state,
+    verified,
+    createdAt: record.created_at,
+    updatedAt: record.updated_at,
+    error:
+      record.error_msg ??
+      (state === PresentationExchangeState.Abandoned
+        ? 'Presentation verification did not succeed'
+        : undefined),
+  };
+  if (state !== PresentationExchangeState.Verified) {
+    return exchange;
+  }
+  return { ...exchange, ...mapVerifiedProof(record) };
+}
+
+function mapPresentationState(record: TractionPresentationRecord): {
+  state: PresentationExchangeState;
+  verified: boolean | undefined;
+} {
   const normalized = record.state.replaceAll('_', '-');
   let state = Object.values(PresentationExchangeState).find(
     (candidate) => (candidate as string) === normalized,
@@ -203,23 +224,12 @@ export function mapTractionPresentation(
       'Verified presentation has no successful verification',
     ]);
   }
-  const exchange: PresentationExchange = {
-    id: record.pres_ex_id,
-    externalId: record.pres_ex_id,
-    connectionId: record.connection_id,
-    state,
-    verified,
-    createdAt: record.created_at,
-    updatedAt: record.updated_at,
-    error:
-      record.error_msg ??
-      (state === PresentationExchangeState.Abandoned
-        ? 'Presentation verification did not succeed'
-        : undefined),
-  };
-  if (state !== PresentationExchangeState.Verified) {
-    return exchange;
-  }
+  return { state, verified };
+}
+
+function mapVerifiedProof(
+  record: TractionPresentationRecord,
+): Pick<PresentationExchange, 'revealedAttributes' | 'predicates'> {
   const request = record.by_format?.pres_request?.anoncreds;
   const proof = record.by_format?.pres?.anoncreds?.requested_proof;
   if (
@@ -235,6 +245,16 @@ export function mapTractionPresentation(
       'Verified AnonCreds presentation is missing proof data',
     ]);
   }
+  return {
+    revealedAttributes: mapRevealedAttributes(request, proof),
+    predicates: mapVerifiedPredicates(request, proof),
+  };
+}
+
+function mapRevealedAttributes(
+  request: AnonCredsProofRequest,
+  proof: AnonCredsRequestedProof,
+): NonNullable<PresentationExchange['revealedAttributes']> {
   const revealedAttributes: NonNullable<
     PresentationExchange['revealedAttributes']
   >[number][] = [];
@@ -268,7 +288,14 @@ export function mapTractionPresentation(
       revealedAttributes.push({ referent, name, value: attribute.raw });
     }
   }
-  const predicates = Object.entries(request.requested_predicates).map(
+  return revealedAttributes;
+}
+
+function mapVerifiedPredicates(
+  request: AnonCredsProofRequest,
+  proof: AnonCredsRequestedProof,
+): NonNullable<PresentationExchange['predicates']> {
+  return Object.entries(request.requested_predicates).map(
     ([referent, predicate]) => {
       const predicateProof = proof.predicates?.[referent];
       if (
@@ -296,5 +323,4 @@ export function mapTractionPresentation(
       };
     },
   );
-  return { ...exchange, revealedAttributes, predicates };
 }
