@@ -138,6 +138,12 @@ an initially empty profile list and supports draft creation, publication, archiv
 `/credential-definitions/:definitionId` view, which shows identity, format, status,
 and schema details with a return link to issuance profiles. Administrators can create
 draft profiles with a name, version, and published, issuance-ready definition.
+After choosing a definition, select which claims are required; all others remain
+optional and allowed. Claims required by the definition cannot be made optional.
+Choose Save draft to publish later, or Create profile to create and publish
+immediately. If publication fails, the saved draft can be retried or published later.
+In the setup wizard, the embedded form only offers Create profile and proceeds
+directly to publication.
 The server defaults delivery to `didcomm-v1`. Claim names and semantic types
 remain on the definition; optional profile `claims` overlays can make claims
 required or restrict them with `enum`/`const`. Create, update, publish, and

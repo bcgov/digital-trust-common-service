@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { API_BASE_PATH } from '@/lib/api/constants';
 import type { IssuanceProfile } from '@/lib/api/resources/issuance-profiles';
 import { createMockAuthClient, MOCK_AUTH_TENANTS } from '@/lib/auth/mock-auth';
+import { mockCredentialDefinitions } from '@/mocks/handlers';
 import { server } from '@/mocks/server';
 import { renderWithAuth } from '@/test/render-with-auth';
 
@@ -83,6 +84,88 @@ describe('IssuanceProfilesPage', () => {
     return { user, dialog };
   }
 
+  it('sets required claims and resets selections when the definition changes', async () => {
+    const createRequest = vi.fn();
+    const definition = mockCredentialDefinitions[0];
+    server.use(
+      http.get(`${API_BASE_PATH}/tenants/:id/credential-definitions`, () =>
+        HttpResponse.json([
+          {
+            ...definition,
+            schema_definition: {
+              properties: {
+                employee_id: { type: 'string' },
+                department: { type: 'string' },
+              },
+              required: ['employee_id'],
+            },
+          },
+          {
+            ...definition,
+            id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+            name: 'Alternate badge',
+            schema_definition: { attr_names: ['department', 'visitor_name'] },
+          },
+        ]),
+      ),
+      http.post(
+        `${API_BASE_PATH}/tenants/:id/profiles/issuance`,
+        async ({ request }) => {
+          createRequest(await request.json());
+          return profileResponse({ ...profile, status: 'draft' }, 201);
+        },
+      ),
+    );
+    await renderPage();
+    const { user, dialog } = await fillProfile();
+    const employee = within(dialog).getByRole('checkbox', {
+      name: 'employee_id',
+    });
+    expect(employee).toBeChecked();
+    expect(employee).toBeDisabled();
+    await user.click(
+      within(dialog).getByRole('checkbox', { name: 'department' }),
+    );
+
+    await user.click(
+      within(dialog).getByRole('button', { name: /Credential definition/ }),
+    );
+    await user.click(
+      await screen.findByRole('option', { name: /Alternate badge/ }),
+    );
+    expect(
+      within(dialog).queryByRole('checkbox', { name: 'employee_id' }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(dialog).getByRole('checkbox', { name: 'department' }),
+    ).not.toBeChecked();
+    expect(
+      within(dialog).getByRole('checkbox', { name: 'visitor_name' }),
+    ).not.toBeChecked();
+
+    await user.click(
+      within(dialog).getByRole('button', { name: /Credential definition/ }),
+    );
+    await user.click(
+      await screen.findByRole('option', { name: /Employee badge/ }),
+    );
+    await user.click(
+      within(dialog).getByRole('checkbox', { name: 'department' }),
+    );
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Save draft' }),
+    );
+    await waitFor(() =>
+      expect(createRequest).toHaveBeenCalledExactlyOnceWith({
+        name: 'Staff badge',
+        version: '1.0',
+        credential_definition_id: profile.credential_definition_id,
+        claims: { required: ['employee_id', 'department'] },
+        delivery: { protocol: 'didcomm-v1' },
+      }),
+    );
+  });
+
   it('creates a trimmed draft without duplicated attributes and publishes it separately', async () => {
     let body: unknown;
     server.events.on('request:start', async ({ request }) => {
@@ -142,6 +225,148 @@ describe('IssuanceProfilesPage', () => {
     );
     expect(await screen.findByText('No issuance profiles')).toBeVisible();
     expect(screen.queryByText('Staff badge')).not.toBeInTheDocument();
+  });
+
+  it('creates and publishes a profile directly', async () => {
+    await renderPage();
+    const { user, dialog } = await fillProfile();
+    await user.click(
+      within(dialog).getByRole('checkbox', { name: 'department' }),
+    );
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Create profile' }),
+    );
+    expect(
+      await screen.findByRole('row', { name: /Staff badge.*Published/ }),
+    ).toBeVisible();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('does not publish when creating the profile fails', async () => {
+    const publishRequest = vi.fn();
+    server.use(
+      http.post(`${API_BASE_PATH}/tenants/:id/profiles/issuance`, () =>
+        HttpResponse.json(
+          { statusCode: 503, message: 'Creation unavailable' },
+          { status: 503 },
+        ),
+      ),
+      http.post(
+        `${API_BASE_PATH}/tenants/:id/profiles/issuance/:profileId/publish`,
+        () => {
+          publishRequest();
+          return profileResponse(profile);
+        },
+      ),
+    );
+    await renderPage();
+    const { user, dialog } = await fillProfile();
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Create profile' }),
+    );
+    expect(await screen.findByText('Creation unavailable')).toBeVisible();
+    expect(within(dialog).getByRole('textbox', { name: /Name/ })).toHaveValue(
+      '  Staff badge  ',
+    );
+    expect(
+      within(dialog).getByRole('button', { name: 'Create profile' }),
+    ).toBeEnabled();
+    expect(publishRequest).not.toHaveBeenCalled();
+  });
+
+  it('retains the created draft and retries publication without creating it again', async () => {
+    const createRequest = vi.fn();
+    const publishRequest = vi.fn();
+    let finishPublish: (() => void) | undefined;
+    const pending = new Promise<void>((resolve) => {
+      finishPublish = resolve;
+    });
+    server.use(
+      http.post(
+        `${API_BASE_PATH}/tenants/:id/profiles/issuance`,
+        async ({ request }) => {
+          createRequest(await request.json());
+          return profileResponse({ ...profile, status: 'draft' }, 201);
+        },
+      ),
+      http.post(
+        `${API_BASE_PATH}/tenants/:id/profiles/issuance/:profileId/publish`,
+        async ({ params }) => {
+          publishRequest(params.profileId);
+          if (publishRequest.mock.calls.length === 1) {
+            await pending;
+            return HttpResponse.json(
+              { statusCode: 503, message: 'Publication unavailable' },
+              { status: 503 },
+            );
+          }
+          return profileResponse(profile);
+        },
+      ),
+    );
+    await renderPage();
+    const { user, dialog } = await fillProfile();
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Create profile' }),
+    );
+    await waitFor(() => expect(publishRequest).toHaveBeenCalledTimes(1));
+    expect(
+      within(dialog).getByText('Close', { selector: 'button' }),
+    ).toBeDisabled();
+    expect(
+      within(dialog).getByRole('textbox', { name: /Name/ }),
+    ).toBeDisabled();
+    finishPublish?.();
+    expect(await screen.findByText('Publication unavailable')).toBeVisible();
+    expect(
+      within(dialog).getByText(/profile was saved as a draft/),
+    ).toBeVisible();
+    expect(
+      within(dialog).queryByRole('button', { name: 'Save draft' }),
+    ).not.toBeInTheDocument();
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Retry publishing' }),
+    );
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument(),
+    );
+    expect(createRequest).toHaveBeenCalledTimes(1);
+    expect(publishRequest).toHaveBeenCalledTimes(2);
+    expect(publishRequest).toHaveBeenNthCalledWith(1, profile.id);
+    expect(publishRequest).toHaveBeenNthCalledWith(2, profile.id);
+  });
+
+  it('reports a missing created profile ID without creating a duplicate', async () => {
+    const createRequest = vi.fn();
+    const publishRequest = vi.fn();
+    server.use(
+      http.post(`${API_BASE_PATH}/tenants/:id/profiles/issuance`, () => {
+        createRequest();
+        return profileResponse(
+          { ...profile, id: undefined, status: 'draft' },
+          201,
+        );
+      }),
+      http.post(
+        `${API_BASE_PATH}/tenants/:id/profiles/issuance/:profileId/publish`,
+        () => {
+          publishRequest();
+          return profileResponse(profile);
+        },
+      ),
+    );
+    await renderPage();
+    const { user, dialog } = await fillProfile();
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Create profile' }),
+    );
+    expect(await screen.findByText(/its ID was missing/)).toBeVisible();
+    expect(
+      within(dialog).getByRole('button', { name: 'Retry publishing' }),
+    ).toBeDisabled();
+    await user.click(within(dialog).getByText('Close', { selector: 'button' }));
+    expect(createRequest).toHaveBeenCalledTimes(1);
+    expect(publishRequest).not.toHaveBeenCalled();
   });
 
   async function openLifecycleDialog(title: string) {
@@ -649,8 +874,12 @@ describe('IssuanceProfilesPage', () => {
     const name = within(dialog).getByRole('textbox', { name: /Name/ });
     const version = within(dialog).getByRole('textbox', { name: /Version/ });
     const save = within(dialog).getByRole('button', { name: 'Save draft' });
+    const create = within(dialog).getByRole('button', {
+      name: 'Create profile',
+    });
     await user.clear(name);
     expect(save).toBeDisabled();
+    expect(create).toBeDisabled();
     await user.type(name, 'x'.repeat(101));
     expect(save).toBeDisabled();
     await user.clear(name);
@@ -661,6 +890,7 @@ describe('IssuanceProfilesPage', () => {
     await user.clear(version);
     await user.type(version, '1');
     expect(save).toBeEnabled();
+    expect(create).toBeEnabled();
     await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(requested).not.toHaveBeenCalled();

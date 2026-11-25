@@ -137,6 +137,9 @@ describe('TenantOnboardingSetupPage', () => {
       screen.getByRole('region', { name: 'Publish an issuance profile' }),
     );
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(
+      panel.queryByRole('button', { name: 'Save for later' }),
+    ).not.toBeInTheDocument();
     await user.type(
       panel.getByRole('textbox', { name: /Name/ }),
       '  Staff badge  ',
