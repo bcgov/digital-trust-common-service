@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it, vi } from 'vitest';
 
+import { CredentialDefinitionDetailsDrawer } from '@/components/credential-definition/credential-definition-details-drawer';
 import { API_BASE_PATH } from '@/lib/api/constants';
 import { createMockAuthClient, MOCK_AUTH_TENANTS } from '@/lib/auth/mock-auth';
 import { mockCredentialDefinitions } from '@/mocks/handlers';
@@ -14,7 +15,7 @@ import { IssuanceProfilesPage } from './issuance-profiles-page';
 const tenantId = MOCK_AUTH_TENANTS[0]?.id ?? '';
 const definitionId = mockCredentialDefinitions[0]?.id ?? '';
 
-async function renderPage({ restricted = false } = {}) {
+async function createClient(restricted = false) {
   const client = createMockAuthClient();
   await client.login();
   if (restricted) {
@@ -26,6 +27,11 @@ async function renderPage({ restricted = false } = {}) {
         : null,
     });
   }
+  return client;
+}
+
+async function renderPage({ restricted = false } = {}) {
+  const client = await createClient(restricted);
   server.use(
     http.get(`${API_BASE_PATH}/tenants/${tenantId}/profiles/issuance`, () =>
       HttpResponse.json({
@@ -90,7 +96,7 @@ describe('Credential definition details drawer', () => {
     expect(screen.getByText('Employee onboarding')).toBeVisible();
   });
 
-  it('skips detail requests without definition access', async () => {
+  it('hides definition links without definition access', async () => {
     const requested = vi.fn();
     server.use(
       http.get(
@@ -107,6 +113,48 @@ describe('Credential definition details drawer', () => {
       screen.queryByRole('button', { name: 'Employee badge (1.0)' }),
     ).not.toBeInTheDocument();
     expect(requested).not.toHaveBeenCalled();
+  });
+
+  it('shows forbidden in a mounted drawer without requesting details', async () => {
+    const requested = vi.fn();
+    const onClose = vi.fn();
+    server.use(
+      http.get(
+        `${API_BASE_PATH}/tenants/:id/credential-definitions/:definitionId`,
+        () => {
+          requested();
+          return HttpResponse.json(mockCredentialDefinitions[0]);
+        },
+      ),
+    );
+    const client = await createClient(true);
+    renderWithAuth(
+      [
+        {
+          path: '/',
+          element: (
+            <CredentialDefinitionDetailsDrawer
+              tenantId={tenantId}
+              definitionId={definitionId}
+              onClose={onClose}
+            />
+          ),
+        },
+      ],
+      { client },
+    );
+    const dialog = await screen.findByRole('dialog', {
+      name: 'Credential definition details',
+    });
+    expect(
+      within(dialog).getByText(/need the tenants:admin scope/),
+    ).toBeVisible();
+    expect(within(dialog).queryByText('employee_id')).not.toBeInTheDocument();
+    expect(requested).not.toHaveBeenCalled();
+    await userEvent.setup().click(
+      within(dialog).getByText('Close', { selector: 'button' }),
+    );
+    expect(onClose).toHaveBeenCalledOnce();
   });
 
   it('handles server-side forbidden responses', async () => {
