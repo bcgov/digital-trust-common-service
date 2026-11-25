@@ -2324,6 +2324,9 @@ configuration. Issuance-profile response shapes are unchanged. Deprecate
 published profiles before deprecating their shared definition.
 
 Migration backfills one definition per existing profile without changing profile
-IDs. Format and delivery remain null for legacy records, whose existing connector
-inference is preserved. New definitions require AnonCreds and new profile
-delivery is DIDComm v1; other delivery protocols are not supported.
+IDs. Format remains null for legacy records. Legacy `auto` and `didcomm` profiles
+without explicit delivery keep null delivery and infer the DIDComm version from
+the connection. Legacy `oid4vp` profiles retain that protocol but cannot execute;
+conflicting explicit delivery must be resolved before upgrading. New definitions
+require AnonCreds and new profile delivery is DIDComm v1. The delivery protocol
+is authoritative; unsupported or malformed delivery is rejected at execution.

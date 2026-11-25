@@ -4356,16 +4356,6 @@ components:
       type: string
       enum: [draft, published, deprecated]
 
-    ProtocolHint:
-      type: string
-      description: |
-        Protocol hint for delivery. Valid values depend on context:
-        - Verification profiles: didcomm, oid4vp, auto
-        Issuance profiles use explicit delivery.protocol instead.
-        Server validates that the value is appropriate for the profile type.
-      enum: [didcomm, oid4vci, oid4vp, auto]
-      default: auto
-
     # ─── Verification Profile ────────────────────────────────────────
     PresentationQuery:
       type: object
@@ -4465,10 +4455,12 @@ components:
           type: string
           format: uuid
         delivery:
-          allOf:
-            - $ref: "#/components/schemas/VerificationDelivery"
+          type: object
           nullable: true
-          description: Null for legacy profiles that did not record delivery.
+          description: Null for legacy DIDComm inference; legacy oid4vp is retained but cannot be executed.
+          required: [protocol]
+          properties:
+            protocol: { type: string, enum: [didcomm-v1, oid4vp] }
         presentation_definition:
           type: object
           description: Read-only compatibility projection from the referenced definition.
@@ -4495,9 +4487,6 @@ components:
         public:
           type: boolean
           default: false
-        protocol_hint:
-          type: string
-          enum: [didcomm, oid4vp, auto]
         status:
           $ref: "#/components/schemas/ProfileStatus"
         created_at:
@@ -4533,9 +4522,6 @@ components:
         public:
           type: boolean
           default: false
-        protocol_hint:
-          type: string
-          enum: [didcomm, auto]
 
     UpdateVerificationProfileRequest:
       type: object
@@ -4552,9 +4538,6 @@ components:
           type: object
         public:
           type: boolean
-        protocol_hint:
-          type: string
-          enum: [didcomm, auto]
 
     # ─── Credential Operations ───────────────────────────────────────
     OfferCredentialRequest:

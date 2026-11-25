@@ -40,4 +40,21 @@ describe('CreateVerificationProfileDto', () => {
       ]),
     );
   });
+
+  it('rejects the removed protocol hint and unsupported delivery', async () => {
+    const dto = plainToInstance(CreateVerificationProfileDto, {
+      name: 'Age Verification',
+      version: '1.0',
+      presentation_definition_id: '123e4567-e89b-42d3-a456-426614174003',
+      protocol_hint: 'auto',
+      delivery: { protocol: 'oid4vp' },
+    });
+    const errors = await validate(dto, {
+      whitelist: true,
+      forbidNonWhitelisted: true,
+    });
+    expect(errors.map((error) => error.property)).toEqual(
+      expect.arrayContaining(['protocol_hint', 'delivery']),
+    );
+  });
 });

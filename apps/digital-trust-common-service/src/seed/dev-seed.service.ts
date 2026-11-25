@@ -590,7 +590,6 @@ export class DevSeedService {
       delivery: { protocol: 'didcomm-v1' },
       metadata: { seed: true },
       isPublic: SEED_VERIFICATION_PROFILE.isPublic,
-      protocolHint: SEED_VERIFICATION_PROFILE.protocolHint,
       status: SEED_VERIFICATION_PROFILE.status,
     };
 

@@ -2343,15 +2343,6 @@ export interface components {
         };
         /** @enum {string} */
         ProfileStatus: "draft" | "published" | "deprecated";
-        /**
-         * @description Protocol hint for delivery. Valid values depend on context:
-         *     - Verification profiles: didcomm, oid4vp, auto
-         *     Issuance profiles use explicit delivery.protocol instead.
-         *     Server validates that the value is appropriate for the profile type.
-         * @default auto
-         * @enum {string}
-         */
-        ProtocolHint: "didcomm" | "oid4vci" | "oid4vp" | "auto";
         PresentationQuery: {
             /** @enum {string} */
             type: "dif-presentation-exchange";
@@ -2416,8 +2407,11 @@ export interface components {
             description?: string | null;
             /** Format: uuid */
             presentation_definition_id?: string;
-            /** @description Null for legacy profiles that did not record delivery. */
-            delivery?: components["schemas"]["VerificationDelivery"] | null;
+            /** @description Null for legacy DIDComm inference; legacy oid4vp is retained but cannot be executed. */
+            delivery?: {
+                /** @enum {string} */
+                protocol: "didcomm-v1" | "oid4vp";
+            } | null;
             /** @description Read-only compatibility projection from the referenced definition. */
             presentation_definition?: Record<string, never>;
             requested_attributes?: string[];
@@ -2430,8 +2424,6 @@ export interface components {
             metadata?: Record<string, never> | null;
             /** @default false */
             public: boolean;
-            /** @enum {string} */
-            protocol_hint?: "didcomm" | "oid4vp" | "auto";
             status?: components["schemas"]["ProfileStatus"];
             /** Format: date-time */
             created_at?: string;
@@ -2448,8 +2440,6 @@ export interface components {
             metadata?: Record<string, never>;
             /** @default false */
             public: boolean;
-            /** @enum {string} */
-            protocol_hint?: "didcomm" | "auto";
         };
         UpdateVerificationProfileRequest: {
             description?: string;
@@ -2458,8 +2448,6 @@ export interface components {
             delivery?: components["schemas"]["VerificationDelivery"];
             metadata?: Record<string, never>;
             public?: boolean;
-            /** @enum {string} */
-            protocol_hint?: "didcomm" | "auto";
         };
         /**
          * @description A published profile is required. Format and delivery protocol are inherited.

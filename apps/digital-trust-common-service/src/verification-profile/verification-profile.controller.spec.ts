@@ -15,7 +15,6 @@ import { PresentationDefinition } from './presentation-definition.entity';
 import { VerificationProfileController } from './verification-profile.controller';
 import {
   VerificationProfile,
-  VerificationProfileProtocolHint,
   VerificationProfileStatus,
 } from './verification-profile.entity';
 import { VerificationProfileService } from './verification-profile.service';
@@ -68,11 +67,22 @@ describe('VerificationProfileController', () => {
     predicates: undefined,
     metadata: {},
     isPublic: false,
-    protocolHint: VerificationProfileProtocolHint.AUTO,
     status: VerificationProfileStatus.DRAFT,
     createdAt: new Date(),
     updatedAt: new Date(),
   } as VerificationProfile;
+
+  it('exposes legacy unsupported delivery without a protocol hint', () => {
+    const result = instanceToPlain(
+      VerificationProfileResponseDto.fromEntity({
+        ...mockProfile,
+        delivery: { protocol: 'oid4vp' },
+      }),
+    );
+    expect(result.delivery).toEqual({ protocol: 'oid4vp' });
+    expect(result).not.toHaveProperty('protocol_hint');
+    expect(result).not.toHaveProperty('protocolHint');
+  });
 
   beforeEach(async () => {
     mockCreate = jest.fn();

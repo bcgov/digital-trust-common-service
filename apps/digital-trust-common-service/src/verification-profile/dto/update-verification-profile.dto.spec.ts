@@ -10,7 +10,7 @@ describe('UpdateVerificationProfileDto', () => {
       presentation_definition_id: '123e4567-e89b-42d3-a456-426614174003',
       metadata: { note: 'reviewed' },
       public: false,
-      protocol_hint: 'didcomm',
+      delivery: { protocol: 'didcomm-v1' },
     });
 
     const errors = await validate(dto);
@@ -51,11 +51,20 @@ describe('UpdateVerificationProfileDto', () => {
       { delivery: null },
       { delivery: {} },
       { delivery: { protocol: 'oid4vp' } },
-      { protocol_hint: 'oid4vp' },
     ]) {
       expect(
         await validate(plainToInstance(UpdateVerificationProfileDto, patch)),
       ).not.toHaveLength(0);
     }
+  });
+
+  it('rejects the removed protocol hint', async () => {
+    const errors = await validate(
+      plainToInstance(UpdateVerificationProfileDto, {
+        protocol_hint: 'didcomm',
+      }),
+      { whitelist: true, forbidNonWhitelisted: true },
+    );
+    expect(errors.map((error) => error.property)).toContain('protocol_hint');
   });
 });

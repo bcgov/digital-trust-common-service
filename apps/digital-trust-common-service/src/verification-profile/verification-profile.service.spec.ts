@@ -19,7 +19,6 @@ import { UpdateVerificationProfileDto } from './dto/update-verification-profile.
 import { PresentationDefinitionRepository } from './presentation-definition.repository';
 import {
   VerificationProfile,
-  VerificationProfileProtocolHint,
   VerificationProfileStatus,
 } from './verification-profile.entity';
 import { VerificationProfileRepository } from './verification-profile.repository';
@@ -68,7 +67,6 @@ describe('VerificationProfileService', () => {
     predicates: undefined,
     metadata: {},
     isPublic: false,
-    protocolHint: VerificationProfileProtocolHint.AUTO,
     status: VerificationProfileStatus.DRAFT,
     createdAt: new Date(),
     updatedAt: new Date(),
@@ -654,21 +652,21 @@ describe('VerificationProfileService', () => {
       expect(result.predicates).toEqual(predicates);
     });
 
-    it('updates metadata, public, and protocol_hint fields', async () => {
+    it('updates metadata, public, and delivery fields', async () => {
       mockFindById
         .mockResolvedValueOnce({ ...mockProfile })
         .mockResolvedValueOnce({
           ...mockProfile,
           metadata: { note: 'reviewed' },
           isPublic: true,
-          protocolHint: VerificationProfileProtocolHint.OID4VP,
+          delivery: { protocol: 'didcomm-v1' },
         });
 
       const dto: UpdateVerificationProfileDto = {
         presentationDefinitionId: mockProfile.id,
         metadata: { note: 'reviewed' },
         isPublic: true,
-        protocolHint: VerificationProfileProtocolHint.OID4VP,
+        delivery: { protocol: 'didcomm-v1' },
       };
 
       const result = await service.update(tenantId, mockProfile.id, dto, auth);
@@ -680,13 +678,13 @@ describe('VerificationProfileService', () => {
           presentationDefinitionId: mockProfile.id,
           metadata: { note: 'reviewed' },
           isPublic: true,
-          protocolHint: VerificationProfileProtocolHint.OID4VP,
+          delivery: { protocol: 'didcomm-v1' },
         }),
         undefined,
       );
       expect(result.metadata).toEqual({ note: 'reviewed' });
       expect(result.isPublic).toBe(true);
-      expect(result.protocolHint).toBe(VerificationProfileProtocolHint.OID4VP);
+      expect(result.delivery).toEqual({ protocol: 'didcomm-v1' });
     });
   });
 

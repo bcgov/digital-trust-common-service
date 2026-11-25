@@ -97,7 +97,7 @@ export class VerificationProfileController {
           description: 'Verifies the holder is over 19',
           presentation_definition_id: '123e4567-e89b-12d3-a456-426614174003',
           public: false,
-          protocol_hint: 'auto',
+          delivery: { protocol: 'didcomm-v1' },
         },
       },
     },

@@ -15,12 +15,6 @@ import { Tenant } from '../tenant/tenant.entity';
 
 import { PresentationDefinition } from './presentation-definition.entity';
 
-export enum VerificationProfileProtocolHint {
-  DIDCOMM = 'didcomm',
-  OID4VP = 'oid4vp',
-  AUTO = 'auto',
-}
-
 export enum VerificationProfileStatus {
   DRAFT = 'draft',
   PUBLISHED = 'published',
@@ -66,7 +60,7 @@ export class VerificationProfile {
   public definition!: PresentationDefinition;
 
   @Column({ type: 'jsonb', nullable: true })
-  public delivery?: { protocol: 'didcomm-v1' } | null;
+  public delivery?: { protocol: string } | null;
 
   @ApiProperty({
     description: 'Human-friendly profile identifier',
@@ -103,20 +97,6 @@ export class VerificationProfile {
   })
   @Column({ name: 'public', type: 'boolean', default: false })
   public isPublic!: boolean;
-
-  @ApiProperty({
-    description: 'Preferred presentation protocol',
-    enum: VerificationProfileProtocolHint,
-    example: VerificationProfileProtocolHint.AUTO,
-  })
-  @Column({
-    name: 'protocol_hint',
-    type: 'enum',
-    enum: VerificationProfileProtocolHint,
-    enumName: 'verification_profile_protocol_hint',
-    default: VerificationProfileProtocolHint.AUTO,
-  })
-  public protocolHint!: VerificationProfileProtocolHint;
 
   @ApiProperty({
     description: 'Lifecycle status of the profile',

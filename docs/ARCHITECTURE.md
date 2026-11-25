@@ -1472,13 +1472,12 @@ erDiagram
     VERIFICATION_PROFILE {
         uuid id PK
         uuid tenant_id FK
-        uuid issuance_profile_id FK
+        uuid presentation_definition_id FK
         string name
         string version
-        jsonb presentation_definition
+        jsonb delivery
         jsonb metadata
         boolean public
-        enum protocol_hint
         enum status
     }
 

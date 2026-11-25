@@ -626,6 +626,46 @@ describe('PresentationRequestService', () => {
     expect(mockCreateOperation).not.toHaveBeenCalled();
   });
 
+  it.each([{ protocol: 'oid4vp' }, { protocol: 'didcomm-v2' }, {}])(
+    'rejects unsupported or malformed persisted delivery %j before creating an operation',
+    async (delivery) => {
+      mockFindProfileById.mockResolvedValue(
+        buildProfile({ delivery: delivery as { protocol: string } }),
+      );
+      await expect(
+        service.requestPresentation(
+          tenantId,
+          buildDto({ verificationProfileId: profileId }),
+        ),
+      ).rejects.toThrow(
+        'Verification profile delivery protocol is not supported',
+      );
+      expect(mockCreateOperation).not.toHaveBeenCalled();
+    },
+  );
+
+  it('preserves legacy null delivery inference for DIDComm v2', async () => {
+    mockFindProfileById.mockResolvedValue(buildProfile({ delivery: null }));
+    mockFindConnectionById.mockResolvedValue(
+      buildConnection({ protocol: ConnectionProtocol.DIDCOMM_V2 }),
+    );
+    mockRequestPresentation.mockResolvedValue({
+      id: 'exch-1',
+      state: PresentationExchangeState.RequestSent,
+      createdAt: createdAt.toISOString(),
+      updatedAt: createdAt.toISOString(),
+    });
+    mockTransitionStateIfForward.mockResolvedValue(
+      buildOperation({ state: OperationState.PROCESSING }),
+    );
+
+    await service.requestPresentation(
+      tenantId,
+      buildDto({ verificationProfileId: profileId }),
+    );
+    expect(mockRequestPresentation).toHaveBeenCalled();
+  });
+
   it('rejects a profile predicate whose value is not numeric', async () => {
     mockFindProfileById.mockResolvedValue(
       buildProfile({

@@ -226,6 +226,15 @@ export class PresentationRequestService {
       }
       this.assertConstraintsRepresentable(definition.presentationDefinition);
 
+      if (
+        profile.delivery != null &&
+        profile.delivery.protocol !== 'didcomm-v1'
+      ) {
+        throw new BadRequestException(
+          'Verification profile delivery protocol is not supported.',
+        );
+      }
+
       return {
         name: profile.name,
         requestedAttributes: (
@@ -234,9 +243,8 @@ export class PresentationRequestService {
         ).map((name) => ({ name })),
         requestedPredicates: this.mapPredicates(definition.predicates),
         format: definition.presentationFormat ?? undefined,
-        deliveryProtocol: profile.delivery
-          ? ConnectionProtocol.DIDCOMM_V1
-          : undefined,
+        deliveryProtocol:
+          profile.delivery != null ? ConnectionProtocol.DIDCOMM_V1 : undefined,
       };
     }
 

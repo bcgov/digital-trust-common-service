@@ -422,7 +422,6 @@ export class VerificationProfileService {
         delivery: dto.delivery ?? { protocol: 'didcomm-v1' },
         metadata: dto.metadata ?? {},
         isPublic: dto.isPublic ?? false,
-        protocolHint: dto.protocolHint,
       },
       manager,
     );
@@ -552,10 +551,6 @@ export class VerificationProfileService {
 
     if (dto.isPublic !== undefined) {
       patch.isPublic = dto.isPublic;
-    }
-
-    if (dto.protocolHint !== undefined) {
-      patch.protocolHint = dto.protocolHint;
     }
 
     const updatedWhileDraft =

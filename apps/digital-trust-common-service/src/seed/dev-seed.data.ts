@@ -18,10 +18,7 @@ import {
   TenantUserRole,
   TenantUserStatus,
 } from '../tenant-user/tenant-user.entity';
-import {
-  VerificationProfileProtocolHint,
-  VerificationProfileStatus,
-} from '../verification-profile/verification-profile.entity';
+import { VerificationProfileStatus } from '../verification-profile/verification-profile.entity';
 
 export const ADMIN_SCOPES = [
   TENANT_SUPERUSER_SCOPE,
@@ -337,7 +334,6 @@ export const SEED_VERIFICATION_PROFILE = {
       },
     ],
   },
-  protocolHint: VerificationProfileProtocolHint.DIDCOMM,
   isPublic: false,
 } as const;
 

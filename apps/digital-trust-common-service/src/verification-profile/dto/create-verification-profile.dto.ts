@@ -2,7 +2,6 @@ import { ApiProperty } from '@nestjs/swagger';
 import { Expose, Type } from 'class-transformer';
 import {
   IsBoolean,
-  IsIn,
   IsObject,
   IsOptional,
   IsString,
@@ -12,8 +11,6 @@ import {
   ValidateNested,
   ValidateIf,
 } from 'class-validator';
-
-import { VerificationProfileProtocolHint } from '../verification-profile.entity';
 
 import { VerificationDeliveryDto } from './verification-delivery.dto';
 
@@ -57,12 +54,4 @@ export class CreateVerificationProfileDto {
   @IsOptional()
   @IsBoolean()
   public isPublic?: boolean;
-
-  @Expose({ name: 'protocol_hint' })
-  @IsOptional()
-  @IsIn([
-    VerificationProfileProtocolHint.DIDCOMM,
-    VerificationProfileProtocolHint.AUTO,
-  ])
-  public protocolHint?: VerificationProfileProtocolHint;
 }
