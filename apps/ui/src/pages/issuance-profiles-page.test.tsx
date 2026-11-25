@@ -982,7 +982,7 @@ describe('IssuanceProfilesPage', () => {
     );
   });
 
-  it('lists definition names, formats, protocol and archived status across cursor pages', async () => {
+  it('lists definition names, protocol and archived status across cursor pages', async () => {
     const user = userEvent.setup();
     const cursors: (string | null)[] = [];
     server.use(
@@ -1012,6 +1012,11 @@ describe('IssuanceProfilesPage', () => {
       ),
     );
     await renderPage();
+    expect(
+      within(
+        await screen.findByRole('table', { name: 'Issuance profiles' }),
+      ).queryByRole('columnheader', { name: 'Format' }),
+    ).not.toBeInTheDocument();
     const row = await screen.findByRole('row', {
       name: /Employee onboarding.*Employee badge/,
     });
@@ -1024,7 +1029,6 @@ describe('IssuanceProfilesPage', () => {
     expect(
       within(row).queryByRole('button', { name: /Actions for/ }),
     ).not.toBeInTheDocument();
-    expect(within(row).getByText(/anoncreds/i)).toBeVisible();
     await user.click(screen.getByRole('button', { name: 'Load more' }));
     expect(await screen.findByText('Archived')).toBeVisible();
     expect(
