@@ -137,9 +137,12 @@ the definition API; other profile managers see definition IDs instead. Mock mode
 an initially empty profile list and supports draft creation, publication, archival, and deletion in memory. Readable definition names link to the read-only
 `/credential-definitions/:definitionId` view, which shows identity, format, status,
 and schema details with a return link to issuance profiles. Administrators can create
-draft profiles with a name, version, and published, issuance-ready definition.
-After choosing a definition, select which claims are required; all others remain
-optional and allowed. Claims required by the definition cannot be made optional.
+profiles using a three-step wizard for details, claims, and review.
+After choosing a published, issuance-ready definition, select which claims are required;
+the others remain optional. Claims required by the definition cannot be made optional.
+For each claim, optionally enter allowed values or one specific value. These rules
+validate supplied values and do not fill them in. For AnonCreds, an omitted optional
+claim is sent as an empty string and must satisfy its value rule.
 Choose Save draft to publish later, or Create profile to create and publish
 immediately. If publication fails, the saved draft can be retried or published later.
 In the setup wizard, the embedded form only offers Create profile and proceeds

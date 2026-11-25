@@ -11,6 +11,7 @@ import { server } from '@/mocks/server';
 import { renderWithAuth } from '@/test/render-with-auth';
 
 import { IssuanceProfilesPage } from './issuance-profiles-page';
+import { CreateIssuanceProfilePage } from './create-issuance-profile-page';
 
 const tenantId = MOCK_AUTH_TENANTS[0]?.id ?? '';
 const profile: IssuanceProfile = {
@@ -34,7 +35,13 @@ async function renderPage() {
   const client = createMockAuthClient();
   await client.login();
   renderWithAuth(
-    [{ path: '/issuance-profiles', element: <IssuanceProfilesPage /> }],
+    [
+      { path: '/issuance-profiles', element: <IssuanceProfilesPage /> },
+      {
+        path: '/issuance-profiles/create',
+        element: <CreateIssuanceProfilePage />,
+      },
+    ],
     { client, initialEntries: ['/issuance-profiles'] },
   );
   return client;
@@ -47,7 +54,7 @@ describe('IssuanceProfilesPage', () => {
     await user.click(
       await screen.findByRole('button', { name: 'Create profile' }),
     );
-    const dialog = screen.getByRole('dialog', { name: 'Create profile' });
+    const dialog = await screen.findByRole('form', { name: 'Create profile' });
     await user.click(within(dialog).getByRole('button', { name: /Protocol/ }));
     expect(
       await screen.findByRole('option', { name: 'DIDComm v1' }),
@@ -63,7 +70,7 @@ describe('IssuanceProfilesPage', () => {
     await user.click(
       await screen.findByRole('button', { name: 'Create profile' }),
     );
-    const dialog = screen.getByRole('dialog', { name: 'Create profile' });
+    const dialog = await screen.findByRole('form', { name: 'Create profile' });
     await user.type(
       within(dialog).getByRole('textbox', { name: /Name/ }),
       '  Staff badge  ',
@@ -83,6 +90,240 @@ describe('IssuanceProfilesPage', () => {
     );
     return { user, dialog };
   }
+
+  async function reviewProfile(
+    user: ReturnType<typeof userEvent.setup>,
+    form: HTMLElement,
+  ) {
+    await user.click(
+      within(form).getByRole('button', { name: 'Next: Claims' }),
+    );
+    await user.click(
+      within(form).getByRole('button', { name: 'Next: Review' }),
+    );
+  }
+
+  async function chooseValueRule(
+    user: ReturnType<typeof userEvent.setup>,
+    form: HTMLElement,
+    name: string,
+    option: string,
+  ) {
+    await user.click(
+      within(form).getByRole('button', {
+        name: (label) => label.includes(`Value rule for ${name}`),
+      }),
+    );
+    await user.click(await screen.findByRole('option', { name: option }));
+  }
+
+  it('saves custom value rules and shows them in the review', async () => {
+    const createRequest = vi.fn();
+    server.use(
+      http.post(
+        `${API_BASE_PATH}/tenants/:id/profiles/issuance`,
+        async ({ request }) => {
+          createRequest(await request.json());
+          return profileResponse({ ...profile, status: 'draft' }, 201);
+        },
+      ),
+    );
+    await renderPage();
+    const { user, dialog } = await fillProfile();
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Next: Claims' }),
+    );
+    await user.click(
+      within(dialog).getByRole('checkbox', { name: 'employee_id' }),
+    );
+    expect(
+      within(dialog).getByText('department', { selector: 'strong' }),
+    ).toBeVisible();
+    await chooseValueRule(user, dialog, 'department', 'Allowed values');
+    expect(within(dialog).queryByText(/AnonCreds sends omitted/)).toBeNull();
+    await user.type(
+      within(dialog).getByRole('textbox', { name: 'Value 1 for department' }),
+      'Finance',
+    );
+    const addValue = within(dialog).getByRole('button', { name: 'Add value' });
+    expect(addValue).toHaveClass('bcds-react-aria-Button', 'primary');
+    await user.click(addValue);
+    await user.type(
+      within(dialog).getByRole('textbox', { name: 'Value 2 for department' }),
+      'Operations',
+    );
+    await chooseValueRule(user, dialog, 'employee_id', 'One specific value');
+    await user.type(
+      within(dialog).getByRole('textbox', { name: 'Value 1 for employee_id' }),
+      'STAFF',
+    );
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Next: Review' }),
+    );
+    expect(dialog).toHaveTextContent(
+      'Allowed values: "Finance" and "Operations"',
+    );
+    expect(dialog).toHaveTextContent('One specific value: "STAFF"');
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Edit claims' }),
+    );
+    expect(
+      within(dialog).getByRole('textbox', { name: 'Value 2 for department' }),
+    ).toHaveValue('Operations');
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Save draft' }),
+    );
+    await waitFor(() =>
+      expect(createRequest).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({
+          claims: {
+            required: ['employee_id'],
+            properties: {
+              employee_id: { const: 'STAFF' },
+              department: { enum: ['Finance', 'Operations'] },
+            },
+          },
+        }),
+      ),
+    );
+  });
+
+  it('validates typed and duplicate values before saving and serializes JSON types', async () => {
+    const createRequest = vi.fn();
+    server.use(
+      http.get(`${API_BASE_PATH}/tenants/:id/credential-definitions`, () =>
+        HttpResponse.json([
+          {
+            ...mockCredentialDefinitions[0],
+            schema_definition: {
+              properties: {
+                age: { type: 'integer' },
+                active: { type: 'boolean' },
+                data: { type: 'object' },
+              },
+            },
+          },
+        ]),
+      ),
+      http.post(
+        `${API_BASE_PATH}/tenants/:id/profiles/issuance`,
+        async ({ request }) => {
+          createRequest(await request.json());
+          return profileResponse({ ...profile, status: 'draft' }, 201);
+        },
+      ),
+    );
+    await renderPage();
+    const { user, dialog } = await fillProfile();
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Next: Claims' }),
+    );
+    await chooseValueRule(user, dialog, 'age', 'Allowed values');
+    const age = within(dialog).getByRole('textbox', {
+      name: 'Value 1 for age',
+    });
+    await user.type(age, '1.5');
+    expect(age).toHaveAttribute('aria-invalid', 'true');
+    expect(
+      within(dialog).getByRole('button', { name: 'Next: Review' }),
+    ).toBeDisabled();
+    expect(
+      within(dialog).getByRole('button', { name: 'Save draft' }),
+    ).toBeDisabled();
+    await user.clear(age);
+    await user.type(age, '21');
+    await user.click(within(dialog).getByRole('button', { name: 'Add value' }));
+    await user.type(
+      within(dialog).getByRole('textbox', { name: 'Value 2 for age' }),
+      '21',
+    );
+    expect(
+      within(dialog).getByText('Allowed values must be unique.'),
+    ).toBeVisible();
+    expect(
+      within(dialog).getByRole('button', { name: 'Save draft' }),
+    ).toBeDisabled();
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Remove value 2 for age' }),
+    );
+    await chooseValueRule(user, dialog, 'active', 'One specific value');
+    await user.type(
+      within(dialog).getByRole('textbox', { name: 'Value 1 for active' }),
+      'false',
+    );
+    await chooseValueRule(user, dialog, 'data', 'One specific value');
+    await user.click(
+      within(dialog).getByRole('textbox', { name: 'Value 1 for data' }),
+    );
+    await user.paste('{"verified":true}');
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Save draft' }),
+    );
+    await waitFor(() =>
+      expect(createRequest).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({
+          claims: {
+            properties: {
+              age: { enum: [21] },
+              active: { const: false },
+              data: { const: { verified: true } },
+            },
+          },
+        }),
+      ),
+    );
+  });
+
+  it('retains profile details and required claims when reviewing and editing steps', async () => {
+    const createRequest = vi.fn();
+    server.use(
+      http.post(`${API_BASE_PATH}/tenants/:id/profiles/issuance`, () => {
+        createRequest();
+        return profileResponse(profile, 201);
+      }),
+    );
+    await renderPage();
+    const { user, dialog } = await fillProfile();
+    const progress = within(dialog).getByRole('navigation', {
+      name: 'Profile creation progress',
+    });
+    expect(within(progress).getByText('Details').closest('li')).toHaveAttribute(
+      'aria-current',
+      'step',
+    );
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Next: Claims' }),
+    );
+    await user.click(
+      within(dialog).getByRole('checkbox', { name: 'department' }),
+    );
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Next: Review' }),
+    );
+    expect(within(dialog).getByText('Staff badge')).toBeVisible();
+    expect(
+      within(dialog).getByText(/Required claims: department/),
+    ).toBeVisible();
+    expect(
+      within(dialog).getByText(/Optional claims: employee_id/),
+    ).toBeVisible();
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Edit claims' }),
+    );
+    expect(
+      within(dialog).getByRole('checkbox', { name: 'department' }),
+    ).toBeChecked();
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Next: Review' }),
+    );
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Edit profile details' }),
+    );
+    expect(within(dialog).getByRole('textbox', { name: /Name/ })).toHaveValue(
+      '  Staff badge  ',
+    );
+    expect(createRequest).not.toHaveBeenCalled();
+  });
 
   it.each([
     {
@@ -122,6 +363,9 @@ describe('IssuanceProfilesPage', () => {
       );
       await renderPage();
       const { user, dialog } = await fillProfile();
+      await user.click(
+        within(dialog).getByRole('button', { name: 'Next: Claims' }),
+      );
       await user.click(
         within(dialog).getByRole('checkbox', { name: 'first_name' }),
       );
@@ -170,6 +414,9 @@ describe('IssuanceProfilesPage', () => {
     );
     await renderPage();
     const { user, dialog } = await fillProfile();
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Next: Claims' }),
+    );
     const employee = within(dialog).getByRole('checkbox', {
       name: 'employee_id',
     });
@@ -178,12 +425,21 @@ describe('IssuanceProfilesPage', () => {
     await user.click(
       within(dialog).getByRole('checkbox', { name: 'department' }),
     );
+    await chooseValueRule(user, dialog, 'department', 'One specific value');
+    await user.type(
+      within(dialog).getByRole('textbox', { name: 'Value 1 for department' }),
+      'Finance',
+    );
 
+    await user.click(within(dialog).getByRole('button', { name: 'Previous' }));
     await user.click(
       within(dialog).getByRole('button', { name: /Credential definition/ }),
     );
     await user.click(
       await screen.findByRole('option', { name: /Alternate badge/ }),
+    );
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Next: Claims' }),
     );
     expect(
       within(dialog).queryByRole('checkbox', { name: 'employee_id' }),
@@ -194,12 +450,21 @@ describe('IssuanceProfilesPage', () => {
     expect(
       within(dialog).getByRole('checkbox', { name: 'visitor_name' }),
     ).not.toBeChecked();
+    expect(
+      within(dialog).getByRole('button', {
+        name: /Value rule for department/,
+      }),
+    ).toHaveTextContent('Any value');
 
+    await user.click(within(dialog).getByRole('button', { name: 'Previous' }));
     await user.click(
       within(dialog).getByRole('button', { name: /Credential definition/ }),
     );
     await user.click(
       await screen.findByRole('option', { name: /Employee badge/ }),
+    );
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Next: Claims' }),
     );
     await user.click(
       within(dialog).getByRole('checkbox', { name: 'department' }),
@@ -236,7 +501,9 @@ describe('IssuanceProfilesPage', () => {
     expect(
       await screen.findByRole('row', { name: /Staff badge.*Draft/ }),
     ).toBeVisible();
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('form', { name: 'Create profile' }),
+    ).not.toBeInTheDocument();
     expect(body).toEqual({
       name: 'Staff badge',
       version: '1.0',
@@ -283,7 +550,13 @@ describe('IssuanceProfilesPage', () => {
     await renderPage();
     const { user, dialog } = await fillProfile();
     await user.click(
+      within(dialog).getByRole('button', { name: 'Next: Claims' }),
+    );
+    await user.click(
       within(dialog).getByRole('checkbox', { name: 'department' }),
+    );
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Next: Review' }),
     );
     await user.click(
       within(dialog).getByRole('button', { name: 'Create profile' }),
@@ -291,7 +564,9 @@ describe('IssuanceProfilesPage', () => {
     expect(
       await screen.findByRole('row', { name: /Staff badge.*Published/ }),
     ).toBeVisible();
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('form', { name: 'Create profile' }),
+    ).not.toBeInTheDocument();
   });
 
   it('does not publish when creating the profile fails', async () => {
@@ -313,11 +588,12 @@ describe('IssuanceProfilesPage', () => {
     );
     await renderPage();
     const { user, dialog } = await fillProfile();
+    await reviewProfile(user, dialog);
     await user.click(
       within(dialog).getByRole('button', { name: 'Create profile' }),
     );
     expect(await screen.findByText('Creation unavailable')).toBeVisible();
-    expect(within(dialog).getByRole('textbox', { name: /Name/ })).toHaveValue(
+    expect(within(dialog).getByDisplayValue('Staff badge')).toHaveValue(
       '  Staff badge  ',
     );
     expect(
@@ -358,6 +634,7 @@ describe('IssuanceProfilesPage', () => {
     );
     await renderPage();
     const { user, dialog } = await fillProfile();
+    await reviewProfile(user, dialog);
     await user.click(
       within(dialog).getByRole('button', { name: 'Create profile' }),
     );
@@ -365,9 +642,7 @@ describe('IssuanceProfilesPage', () => {
     expect(
       within(dialog).getByText('Close', { selector: 'button' }),
     ).toBeDisabled();
-    expect(
-      within(dialog).getByRole('textbox', { name: /Name/ }),
-    ).toBeDisabled();
+    expect(within(dialog).getByDisplayValue('Staff badge')).toBeDisabled();
     finishPublish?.();
     expect(await screen.findByText('Publication unavailable')).toBeVisible();
     expect(
@@ -380,7 +655,9 @@ describe('IssuanceProfilesPage', () => {
       within(dialog).getByRole('button', { name: 'Retry publishing' }),
     );
     await waitFor(() =>
-      expect(screen.queryByRole('dialog')).not.toBeInTheDocument(),
+      expect(
+        screen.queryByRole('form', { name: 'Create profile' }),
+      ).not.toBeInTheDocument(),
     );
     expect(createRequest).toHaveBeenCalledTimes(1);
     expect(publishRequest).toHaveBeenCalledTimes(2);
@@ -409,6 +686,7 @@ describe('IssuanceProfilesPage', () => {
     );
     await renderPage();
     const { user, dialog } = await fillProfile();
+    await reviewProfile(user, dialog);
     await user.click(
       within(dialog).getByRole('button', { name: 'Create profile' }),
     );
@@ -876,7 +1154,9 @@ describe('IssuanceProfilesPage', () => {
       within(dialog).getByRole('button', { name: 'Save draft' }),
     );
     await waitFor(() =>
-      expect(screen.queryByRole('dialog')).not.toBeInTheDocument(),
+      expect(
+        screen.queryByRole('form', { name: 'Create profile' }),
+      ).not.toBeInTheDocument(),
     );
   });
 
@@ -886,11 +1166,45 @@ describe('IssuanceProfilesPage', () => {
     expect(dialog).toBeVisible();
     await act(() => client.switchTenant(MOCK_AUTH_TENANTS[1]?.id ?? ''));
     await waitFor(() =>
-      expect(screen.queryByRole('dialog')).not.toBeInTheDocument(),
+      expect(
+        screen.queryByRole('form', { name: 'Create profile' }),
+      ).not.toBeInTheDocument(),
     );
     expect(
       screen.queryByRole('button', { name: 'Create profile' }),
     ).not.toBeInTheDocument();
+  });
+
+  it('does not load definitions when the creation page lacks tenant admin access', async () => {
+    const requested = vi.fn();
+    server.use(
+      http.get(`${API_BASE_PATH}/tenants/:id/credential-definitions`, () => {
+        requested();
+        return HttpResponse.json([]);
+      }),
+    );
+    const client = createMockAuthClient();
+    await client.login();
+    const state = client.getState();
+    vi.spyOn(client, 'getState').mockReturnValue({
+      ...state,
+      user: state.user
+        ? { ...state.user, roles: [], scopes: ['profiles:manage'] }
+        : null,
+    });
+    renderWithAuth(
+      [
+        {
+          path: '/issuance-profiles/create',
+          element: <CreateIssuanceProfilePage />,
+        },
+      ],
+      { client, initialEntries: ['/issuance-profiles/create'] },
+    );
+    expect(
+      await screen.findByText(/require tenants:admin access/),
+    ).toBeVisible();
+    expect(requested).not.toHaveBeenCalled();
   });
 
   it('disables creation when no published definition is ready', async () => {
@@ -927,7 +1241,7 @@ describe('IssuanceProfilesPage', () => {
     const version = within(dialog).getByRole('textbox', { name: /Version/ });
     const save = within(dialog).getByRole('button', { name: 'Save draft' });
     const create = within(dialog).getByRole('button', {
-      name: 'Create profile',
+      name: 'Next: Claims',
     });
     await user.clear(name);
     expect(save).toBeDisabled();
@@ -944,7 +1258,30 @@ describe('IssuanceProfilesPage', () => {
     expect(save).toBeEnabled();
     expect(create).toBeEnabled();
     await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('form', { name: 'Create profile' }),
+    ).not.toBeInTheDocument();
+    expect(requested).not.toHaveBeenCalled();
+  });
+
+  it('returns to the list through the back link without creating a profile', async () => {
+    const requested = vi.fn();
+    server.use(
+      http.post(`${API_BASE_PATH}/tenants/:id/profiles/issuance`, () => {
+        requested();
+        return profileResponse(profile, 201);
+      }),
+    );
+    await renderPage();
+    const { user, dialog } = await fillProfile();
+    const back = within(dialog).getByRole('link', {
+      name: 'Back to issuance profiles',
+    });
+    expect(back).toHaveAttribute('href', '/issuance-profiles');
+    await user.click(back);
+    expect(
+      await screen.findByRole('heading', { name: 'Issuance profiles' }),
+    ).toBeVisible();
     expect(requested).not.toHaveBeenCalled();
   });
 
@@ -973,12 +1310,20 @@ describe('IssuanceProfilesPage', () => {
     expect(
       within(dialog).getByRole('button', { name: 'Cancel' }),
     ).toBeDisabled();
+    const back = within(dialog).getByRole('link', {
+      name: 'Back to issuance profiles',
+    });
+    expect(back).toHaveAttribute('aria-disabled', 'true');
+    await user.click(back);
+    expect(dialog).toBeVisible();
     expect(
       within(dialog).getByRole('textbox', { name: /Name/ }),
     ).toBeDisabled();
     finish?.();
     await waitFor(() =>
-      expect(screen.queryByRole('dialog')).not.toBeInTheDocument(),
+      expect(
+        screen.queryByRole('form', { name: 'Create profile' }),
+      ).not.toBeInTheDocument(),
     );
   });
 

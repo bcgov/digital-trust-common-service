@@ -64,7 +64,7 @@ describe('TenantOnboardingSetupPage', () => {
       screen.getByRole('heading', { name: 'Publish an issuance profile' }),
     ).toBeInTheDocument();
     expect(
-      await screen.findByRole('button', { name: 'Create profile' }),
+      await screen.findByRole('button', { name: 'Next: Claims' }),
     ).toBeDisabled();
     expect(
       screen.getByRole('link', { name: 'Return to overview' }),
@@ -151,6 +151,18 @@ describe('TenantOnboardingSetupPage', () => {
     await user.click(
       await screen.findByRole('option', { name: /Employee badge/ }),
     );
+    await user.click(panel.getByRole('button', { name: 'Next: Claims' }));
+    await user.click(
+      panel.getByRole('button', { name: /Value rule for department/ }),
+    );
+    await user.click(
+      await screen.findByRole('option', { name: 'One specific value' }),
+    );
+    await user.type(
+      panel.getByRole('textbox', { name: 'Value 1 for department' }),
+      'Finance',
+    );
+    await user.click(panel.getByRole('button', { name: 'Next: Review' }));
     await user.click(panel.getByRole('button', { name: 'Create profile' }));
 
     expect(sessionStorage.getItem(issuanceProfileDraftKey)).toBe(profile.id);
@@ -175,6 +187,7 @@ describe('TenantOnboardingSetupPage', () => {
       name: 'Staff badge',
       version: '1.0',
       credential_definition_id: profile.credential_definition_id,
+      claims: { properties: { department: { const: 'Finance' } } },
       delivery: { protocol: 'didcomm-v1' },
     });
     expect(publishAttempts).toBe(2);
