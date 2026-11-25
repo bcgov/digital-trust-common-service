@@ -151,9 +151,9 @@ describe('Credential definition details drawer', () => {
     ).toBeVisible();
     expect(within(dialog).queryByText('employee_id')).not.toBeInTheDocument();
     expect(requested).not.toHaveBeenCalled();
-    await userEvent.setup().click(
-      within(dialog).getByText('Close', { selector: 'button' }),
-    );
+    await userEvent
+      .setup()
+      .click(within(dialog).getByText('Close', { selector: 'button' }));
     expect(onClose).toHaveBeenCalledOnce();
   });
 
