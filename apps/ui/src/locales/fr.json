@@ -2,7 +2,6 @@
   "credentialDefinitionDetails": {
     "title": "Détails de la définition de justificatif",
     "id": "Identifiant de la définition de justificatif",
-    "backToProfiles": "Retour aux profils de délivrance",
     "notFound": "Cette définition de justificatif est introuvable dans le locataire actif.",
     "schema": "Attributs",
     "attributes": "Attributs",
@@ -148,6 +147,7 @@
       "status": "Statut",
       "connector": "Connecteur",
       "actions": "Actions",
+      "actionsFor": "Actions pour {{name}} ({{version}})",
       "editDraftRow": "Modifier le brouillon de définition de justificatif {{name}}",
       "unknown": "Inconnu"
     },

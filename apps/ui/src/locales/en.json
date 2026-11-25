@@ -2,7 +2,6 @@
   "credentialDefinitionDetails": {
     "title": "Credential definition details",
     "id": "Credential definition ID",
-    "backToProfiles": "Back to issuance profiles",
     "notFound": "This credential definition was not found in the active tenant.",
     "schema": "Attributes",
     "attributes": "Attributes",
@@ -602,6 +601,7 @@
       "status": "Status",
       "connector": "Connector",
       "actions": "Actions",
+      "actionsFor": "Actions for {{name}} ({{version}})",
       "editDraftRow": "Edit draft credential definition {{name}}",
       "unknown": "Unknown"
     },

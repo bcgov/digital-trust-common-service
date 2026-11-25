@@ -1367,7 +1367,7 @@ describe('IssuanceProfilesPage', () => {
     });
     expect(within(row).getByText('1.0')).toBeVisible();
     expect(
-      within(row).getByRole('link', { name: 'Employee badge (1.0)' }),
+      within(row).getByRole('button', { name: 'Employee badge (1.0)' }),
     ).toBeVisible();
     expect(within(row).getByText('DIDComm v1')).toBeVisible();
     expect(within(row).getByText('Published')).toBeVisible();

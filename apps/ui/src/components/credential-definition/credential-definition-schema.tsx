@@ -65,14 +65,14 @@ function SchemaValue({ value }: { value: unknown }) {
         {entries.map(([key, item]) => (
           <div
             key={key}
-            className="grid min-w-0 gap-2 py-4 first:pt-0 last:pb-0 sm:grid-cols-[minmax(0,10rem)_minmax(0,1fr)] sm:gap-6"
+            className="flex min-w-0 flex-col gap-2 py-4 first:pt-0 last:pb-0"
           >
-            <dt className="text-small-body font-bold [overflow-wrap:anywhere]">
+            <dt className="text-small-body font-bold text-(--typography-color-primary) [overflow-wrap:anywhere]">
               {Object.hasOwn(SCHEMA_LABELS, key)
                 ? t(SCHEMA_LABELS[key as keyof typeof SCHEMA_LABELS])
                 : key}
             </dt>
-            <dd className="min-w-0 text-small-body [overflow-wrap:anywhere]">
+            <dd className="min-w-0 pl-3 text-small-body text-(--typography-color-secondary) [overflow-wrap:anywhere]">
               <SchemaValue value={item} />
             </dd>
           </div>
