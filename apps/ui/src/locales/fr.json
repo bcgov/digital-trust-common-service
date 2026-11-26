@@ -11,6 +11,18 @@
   },
   "issuanceProfiles": {
     "title": "Profils de délivrance",
+    "details": {
+      "title": "Détails du profil de délivrance"
+    },
+    "edit": {
+      "title": "Modifier le profil",
+      "progress": "Progression de la modification du profil",
+      "update": "Mettre à jour le brouillon",
+      "saved": "Le profil de délivrance a été mis à jour.",
+      "loadFailed": "Impossible de charger le profil de délivrance.",
+      "notEditable": "Ce profil ne peut pas être modifié car il n'est pas un brouillon valide.",
+      "conflict": "Ce profil n'est plus un brouillon. Revenez à la liste des profils pour voir son état actuel."
+    },
     "wizard": {
       "progress": "Progression de la création du profil",
       "backToList": "Retour aux profils de délivrance",
@@ -46,12 +58,14 @@
       "required": "Obligatoire",
       "requiredFor": "Obligatoire : {{name}}",
       "valueFor": "Valeur {{index}} pour {{name}}",
+      "fixedValueFor": "Valeur précise pour {{name}}",
       "add": "Ajouter une valeur",
       "remove": "Supprimer la valeur {{index}} pour {{name}}",
       "invalid": "Saisissez une valeur valide dans le format indiqué ci-dessus.",
       "fixClaims": "Revenez aux attributs pour corriger les règles de valeur avant d'enregistrer.",
       "empty": "Ajoutez au moins une valeur autorisée.",
       "duplicate": "Les valeurs autorisées doivent être uniques.",
+      "conflict": "La valeur précise doit figurer parmi les valeurs autorisées.",
       "modes": {
         "any": "Toute valeur",
         "enum": "Valeurs autorisées",

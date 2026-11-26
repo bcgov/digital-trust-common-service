@@ -54,7 +54,14 @@ export function ClaimValueRuleEditor({
           if (mode === 'any') onChange(undefined);
           else if (mode === 'enum' || mode === 'const') {
             if (mode === rule?.mode) return;
-            onChange({ mode, values: [rule?.values[0] ?? ''] });
+            onChange({
+              mode,
+              values: [
+                (mode === 'const' ? rule?.constValue : undefined) ??
+                  rule?.values[0] ??
+                  '',
+              ],
+            });
           }
         }}
       />
@@ -129,6 +136,21 @@ export function ClaimValueRuleEditor({
               </Button>
             </div>
           )}
+          {rule.mode === 'enum' && rule.constValue !== undefined && (
+            <TextField
+              label={t('issuanceProfiles.valueRules.fixedValueFor', { name })}
+              value={rule.constValue}
+              isDisabled={isDisabled}
+              isInvalid={
+                !validateValueRule(
+                  { mode: 'const', values: [rule.constValue] },
+                  type,
+                ).valid
+              }
+              errorMessage={t('issuanceProfiles.valueRules.invalid')}
+              onChange={(constValue) => onChange({ ...rule, constValue })}
+            />
+          )}
           {validation &&
             !validation.valid &&
             validation.reason !== 'invalid' && (
@@ -139,7 +161,9 @@ export function ClaimValueRuleEditor({
                 {t(
                   validation.reason === 'empty'
                     ? 'issuanceProfiles.valueRules.empty'
-                    : 'issuanceProfiles.valueRules.duplicate',
+                    : validation.reason === 'conflict'
+                      ? 'issuanceProfiles.valueRules.conflict'
+                      : 'issuanceProfiles.valueRules.duplicate',
                 )}
               </p>
             )}

@@ -1,6 +1,7 @@
 import {
   useInfiniteQuery,
   useMutation,
+  useQuery,
   useQueryClient,
 } from '@tanstack/react-query';
 
@@ -8,12 +9,53 @@ import {
   archiveIssuanceProfile,
   createIssuanceProfile,
   deleteIssuanceProfile,
+  getIssuanceProfile,
   listIssuanceProfiles,
   publishIssuanceProfile,
+  updateIssuanceProfile,
   type CreateIssuanceProfileRequest,
+  type UpdateIssuanceProfileRequest,
 } from '../resources/issuance-profiles';
 
 import { ApiError } from '../errors';
+
+export function useIssuanceProfile(
+  tenantId: string | undefined,
+  profileId: string | null,
+  options: { enabled?: boolean } = {},
+) {
+  return useQuery({
+    queryKey: ['issuance-profiles', 'detail', tenantId ?? '', profileId ?? ''],
+    queryFn: () => {
+      if (!tenantId || !profileId)
+        throw new Error('Tenant and profile ids are required');
+      return getIssuanceProfile(tenantId, profileId);
+    },
+    enabled: Boolean(tenantId && profileId) && options.enabled !== false,
+  });
+}
+
+export function useUpdateIssuanceProfile(tenantId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      profileId,
+      body,
+    }: {
+      profileId: string;
+      body: UpdateIssuanceProfileRequest;
+    }) => updateIssuanceProfile(tenantId, profileId, body),
+    onSuccess: (_profile, { profileId }) =>
+      Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ['issuance-profiles', 'list', tenantId],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ['issuance-profiles', 'detail', tenantId, profileId],
+        }),
+      ]),
+  });
+}
 
 export function useArchiveIssuanceProfile(tenantId: string) {
   const queryClient = useQueryClient();

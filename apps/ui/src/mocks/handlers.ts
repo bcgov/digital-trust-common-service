@@ -18,6 +18,7 @@ import type { TenantRoleMapping } from '@/lib/api/resources/tenant-roles';
 import type {
   CreateIssuanceProfileRequest,
   IssuanceProfile,
+  UpdateIssuanceProfileRequest,
 } from '@/lib/api/resources/issuance-profiles';
 import type { TenantUser } from '@/lib/api/resources/tenant-users';
 import type { Tenant, TenantOnboarding } from '@/lib/api/resources/tenants';
@@ -372,6 +373,40 @@ export const handlers = [
       ),
       pagination: { next_cursor: null, has_more: false },
     }),
+  ),
+  http.get(
+    `${API_BASE_PATH}/tenants/:id/profiles/issuance/:profileId`,
+    ({ params }) => {
+      const profile = issuanceProfiles.find(
+        (item) => item.tenant_id === params.id && item.id === params.profileId,
+      );
+      return profile
+        ? HttpResponse.json(profile)
+        : new HttpResponse(null, { status: 404 });
+    },
+  ),
+  http.patch(
+    `${API_BASE_PATH}/tenants/:id/profiles/issuance/:profileId`,
+    async ({ params, request }) => {
+      const profile = issuanceProfiles.find(
+        (item) => item.tenant_id === params.id && item.id === params.profileId,
+      );
+      if (!profile) return new HttpResponse(null, { status: 404 });
+      if (profile.status !== 'draft')
+        return HttpResponse.json(
+          { message: 'Profile is not a draft.' },
+          { status: 409 },
+        );
+      const body = (await request.json()) as UpdateIssuanceProfileRequest;
+      if (body.claims !== undefined) profile.claims = body.claims;
+      if (body.delivery !== undefined) profile.delivery = body.delivery;
+      if (body.description !== undefined)
+        profile.description = body.description;
+      if (body.display !== undefined) profile.display = body.display;
+      if (body.metadata !== undefined) profile.metadata = body.metadata;
+      profile.updated_at = new Date().toISOString();
+      return HttpResponse.json(profile);
+    },
   ),
   http.post(
     `${API_BASE_PATH}/tenants/:id/profiles/issuance`,

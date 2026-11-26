@@ -114,6 +114,7 @@ export function IssuanceProfilesTable({
                 <TableCell className="text-right">
                   <IssuanceProfileRowActions
                     profile={profile}
+                    definition={definition}
                     tenantId={tenantId}
                   />
                 </TableCell>

@@ -5,6 +5,8 @@ import type { components } from '../types.gen';
 export type IssuanceProfile = components['schemas']['IssuanceProfile'];
 export type CreateIssuanceProfileRequest =
   components['schemas']['CreateIssuanceProfileRequest'];
+export type UpdateIssuanceProfileRequest =
+  components['schemas']['UpdateIssuanceProfileRequest'];
 
 export enum IssuanceProfileLifecycleAction {
   ARCHIVE = 'archive',
@@ -44,6 +46,28 @@ export async function createIssuanceProfile(
 ): Promise<IssuanceProfile> {
   const response = await apiClient.post<IssuanceProfile>(
     `/tenants/${tenantId}/profiles/issuance`,
+    body,
+  );
+  return response.data;
+}
+
+export async function getIssuanceProfile(
+  tenantId: string,
+  profileId: string,
+): Promise<IssuanceProfile> {
+  const response = await apiClient.get<IssuanceProfile>(
+    `/tenants/${encodeURIComponent(tenantId)}/profiles/issuance/${encodeURIComponent(profileId)}`,
+  );
+  return response.data;
+}
+
+export async function updateIssuanceProfile(
+  tenantId: string,
+  profileId: string,
+  body: UpdateIssuanceProfileRequest,
+): Promise<IssuanceProfile> {
+  const response = await apiClient.patch<IssuanceProfile>(
+    `/tenants/${encodeURIComponent(tenantId)}/profiles/issuance/${encodeURIComponent(profileId)}`,
     body,
   );
   return response.data;
