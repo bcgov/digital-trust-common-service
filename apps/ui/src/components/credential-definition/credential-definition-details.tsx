@@ -23,6 +23,8 @@ export function CredentialDefinitionDetails({
   const schema = Object.fromEntries(
     Object.entries(definition.schema_definition ?? {}).filter(
       ([key, value]) =>
+        key !== 'schema_name' &&
+        key !== 'type' &&
         !(
           (key === 'version' || key === 'schema_version') &&
           value === definition.version
@@ -72,16 +74,15 @@ export function CredentialDefinitionDetails({
   ];
   return (
     <div className="flex min-w-0 flex-col gap-large">
-      <dl className="grid gap-medium sm:grid-cols-2 lg:grid-cols-3">
+      <dl className="divide-y divide-(--surface-color-border-default) border-y border-(--surface-color-border-default) text-small-body">
         {details.map(([label, value]) => (
-          <div
-            key={label}
-            className="min-w-0 border-b border-(--surface-color-border-default) pb-4"
-          >
-            <dt className="text-small-body text-(--typography-color-secondary)">
+          <div key={label} className="flex min-w-0 flex-col gap-1.5 py-4">
+            <dt className="font-bold text-(--typography-color-primary)">
               {label}
             </dt>
-            <dd className="break-words font-bold">{value || unavailable}</dd>
+            <dd className="break-words text-(--typography-color-secondary)">
+              {value || unavailable}
+            </dd>
           </div>
         ))}
       </dl>

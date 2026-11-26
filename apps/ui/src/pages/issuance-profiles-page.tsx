@@ -48,7 +48,6 @@ export function IssuanceProfilesPage() {
           definitionsQuery.isSuccess && (
             <CreateIssuanceProfileButton
               key={tenant.id}
-              tenantId={tenant.id}
               definitions={definitionsQuery.data.data}
             />
           )

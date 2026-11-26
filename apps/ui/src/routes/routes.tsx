@@ -81,16 +81,8 @@ export const routes: RouteObject[] = [
               {
                 path: '/credential-definitions/create-or-edit',
                 lazy: lazyPage(
-                  () =>
-                    import('@/pages/create-or-edit-credential-definition-page'),
-                  'CreateOrEditCredentialDefinitionPage',
-                ),
-              },
-              {
-                path: '/credential-definitions/:definitionId',
-                lazy: lazyPage(
-                  () => import('@/pages/credential-definition-details-page'),
-                  'CredentialDefinitionDetailsPage',
+                  () => import('@/pages/create-credential-definition-page'),
+                  'CreateCredentialDefinitionPage',
                 ),
               },
               {
@@ -98,6 +90,13 @@ export const routes: RouteObject[] = [
                 lazy: lazyPage(
                   () => import('@/pages/issuance-profiles-page'),
                   'IssuanceProfilesPage',
+                ),
+              },
+              {
+                path: '/issuance-profiles/create',
+                lazy: lazyPage(
+                  () => import('@/pages/create-issuance-profile-page'),
+                  'CreateIssuanceProfilePage',
                 ),
               },
               {

@@ -627,18 +627,44 @@ describe('ProtocolStateChangeService', () => {
     );
 
     await service.process(
-      baseData({ topic: 'present_proof', protocolState: 'verified' }),
+      baseData({
+        topic: 'present_proof',
+        protocolState: 'verified',
+        payload: { raw: true, verified: true },
+      }),
     );
 
     expect(operationService.transitionStateIfForward).toHaveBeenCalledWith(
       'op-1',
       OperationState.COMPLETED,
       operationStatesBelow(OperationState.COMPLETED),
-      { raw: true },
+      { raw: true, verified: true },
       mockManager,
     );
     expect(credentialRepository.findByExternalId).not.toHaveBeenCalled();
     expect(eventEmitter.emit).toHaveBeenCalledWith(
+      'credential.verified',
+      expect.anything(),
+    );
+  });
+
+  it('fails a done proof webhook without an explicit successful verification', async () => {
+    operationRepository.findByExternalIdForTenant.mockResolvedValue(
+      operation(),
+    );
+
+    await service.process(
+      baseData({ topic: 'present_proof', protocolState: 'done', payload: {} }),
+    );
+
+    expect(operationService.transitionStateIfForward).toHaveBeenCalledWith(
+      'op-1',
+      OperationState.FAILED,
+      operationStatesBelow(OperationState.FAILED),
+      { code: 'PRESENT_PROOF_FAILED', message: 'done' },
+      mockManager,
+    );
+    expect(eventEmitter.emit).not.toHaveBeenCalledWith(
       'credential.verified',
       expect.anything(),
     );
@@ -1158,7 +1184,11 @@ describe('ProtocolStateChangeService', () => {
       operationRepository.existsByExternalIdForTenant.mockResolvedValue(true);
 
       await service.process(
-        baseData({ topic: 'present_proof', protocolState: 'verified' }),
+        baseData({
+          topic: 'present_proof',
+          protocolState: 'verified',
+          payload: { verified: true },
+        }),
       );
 
       expect(logDebug).toHaveBeenCalledWith(
