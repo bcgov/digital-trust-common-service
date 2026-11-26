@@ -466,6 +466,19 @@
   },
   "issuanceProfiles": {
     "title": "Issuance profiles",
+    "wizard": {
+      "progress": "Profile creation progress",
+      "backToList": "Back to issuance profiles",
+      "details": "Details",
+      "claims": "Claims",
+      "review": "Review",
+      "editDetails": "Edit profile details",
+      "editClaims": "Edit claims",
+      "optionalClaims": "Optional claims",
+      "nextClaims": "Next: Claims",
+      "nextReview": "Next: Review",
+      "none": "None"
+    },
     "archive": {
       "title": "Archive profile",
       "body": "Archive {{name}} ({{version}})? New issuance requests will be blocked. Existing requests and credentials will be retained.",
@@ -481,6 +494,33 @@
       "conflict": "This profile has been used and cannot be deleted. Archive it instead if it is still published."
     },
     "actionsFor": "Actions for {{name}} ({{version}})",
+    "valueRules": {
+      "title": "Value rules",
+      "description": "Choose whether each claim accepts any value, a list of allowed values, or one specific value. These rules validate supplied values; they do not fill them in.",
+      "ruleFor": "Value rule for <claim>{{name}}</claim>",
+      "valueFor": "Value {{index}} for {{name}}",
+      "add": "Add value",
+      "remove": "Remove value {{index}} for {{name}}",
+      "invalid": "Enter a valid value in the format described above.",
+      "fixClaims": "Return to Claims to correct the value rules before saving.",
+      "empty": "Add at least one allowed value.",
+      "duplicate": "Allowed values must be unique.",
+      "modes": {
+        "any": "Any value",
+        "enum": "Allowed values",
+        "const": "One specific value"
+      },
+      "hints": {
+        "string": "Enter text. A blank field represents an empty string.",
+        "integer": "Enter a whole number, such as 42.",
+        "number": "Enter a number, such as 3.5, using JSON number notation.",
+        "boolean": "Enter true or false without quotation marks.",
+        "object": "Enter a JSON object.",
+        "array": "Enter a JSON array.",
+        "null": "Enter null without quotation marks.",
+        "json": "Enter a JSON value; put text in quotation marks."
+      }
+    },
     "publish": {
       "title": "Publish profile",
       "body": "Publish {{name}} ({{version}}) and make it available for issuance? Published profiles cannot be edited.",
@@ -492,7 +532,13 @@
       "title": "Create profile",
       "save": "Save draft",
       "saved": "Issuance profile saved as a draft.",
+      "publishFailed": "The profile was saved as a draft, but could not be published. Retry publishing or close and publish it from the profiles list.",
+      "missingId": "The profile was created, but its ID was missing from the response. Close and check the profiles list before publishing.",
+      "retryPublish": "Retry publishing",
       "chooseDefinition": "Choose a credential definition",
+      "claimsHelp": "Select required claims. Unselected claims are optional. Claims required by the definition cannot be changed.",
+      "requiredClaims": "Required claims",
+      "noClaims": "No claims are available in this credential definition.",
       "noDefinitions": "A published, issuance-ready credential definition is required to create a profile.",
       "duplicate": "This name and version already exist, including archived profiles.",
       "nameInvalid": "Enter a name of 1 to 100 characters.",

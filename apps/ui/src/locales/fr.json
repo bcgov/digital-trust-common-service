@@ -12,6 +12,19 @@
   },
   "issuanceProfiles": {
     "title": "Profils de délivrance",
+    "wizard": {
+      "progress": "Progression de la création du profil",
+      "backToList": "Retour aux profils de délivrance",
+      "details": "Détails",
+      "claims": "Attributs",
+      "review": "Vérification",
+      "editDetails": "Modifier les détails du profil",
+      "editClaims": "Modifier les attributs",
+      "optionalClaims": "Attributs facultatifs",
+      "nextClaims": "Suivant : Attributs",
+      "nextReview": "Suivant : Vérification",
+      "none": "Aucun"
+    },
     "archive": {
       "title": "Archiver le profil",
       "body": "Archiver {{name}} ({{version}}) ? Les nouvelles demandes de délivrance seront bloquées. Les demandes et justificatifs existants seront conservés.",
@@ -27,6 +40,33 @@
       "conflict": "Ce profil a été utilisé et ne peut pas être supprimé. Archivez-le plutôt s'il est encore publié."
     },
     "actionsFor": "Actions pour {{name}} ({{version}})",
+    "valueRules": {
+      "title": "Règles de valeur",
+      "description": "Choisissez si chaque attribut accepte toute valeur, une liste de valeurs autorisées ou une seule valeur précise. Ces règles valident les valeurs fournies, mais ne les remplissent pas automatiquement.",
+      "ruleFor": "Règle de valeur pour <claim>{{name}}</claim>",
+      "valueFor": "Valeur {{index}} pour {{name}}",
+      "add": "Ajouter une valeur",
+      "remove": "Supprimer la valeur {{index}} pour {{name}}",
+      "invalid": "Saisissez une valeur valide dans le format indiqué ci-dessus.",
+      "fixClaims": "Revenez aux attributs pour corriger les règles de valeur avant d'enregistrer.",
+      "empty": "Ajoutez au moins une valeur autorisée.",
+      "duplicate": "Les valeurs autorisées doivent être uniques.",
+      "modes": {
+        "any": "Toute valeur",
+        "enum": "Valeurs autorisées",
+        "const": "Une seule valeur précise"
+      },
+      "hints": {
+        "string": "Saisissez du texte. Un champ vide représente une chaîne vide.",
+        "integer": "Saisissez un nombre entier, par exemple 42.",
+        "number": "Saisissez un nombre, par exemple 3.5, au format numérique JSON.",
+        "boolean": "Saisissez true ou false sans guillemets.",
+        "object": "Saisissez un objet JSON.",
+        "array": "Saisissez un tableau JSON.",
+        "null": "Saisissez null sans guillemets.",
+        "json": "Saisissez une valeur JSON; mettez le texte entre guillemets."
+      }
+    },
     "publish": {
       "title": "Publier le profil",
       "body": "Publier {{name}} ({{version}}) et le rendre disponible pour la délivrance ? Les profils publiés ne peuvent pas être modifiés.",
@@ -38,7 +78,13 @@
       "title": "Créer un profil",
       "save": "Enregistrer le brouillon",
       "saved": "Le profil de délivrance a été enregistré comme brouillon.",
+      "publishFailed": "Le profil a été enregistré comme brouillon, mais n'a pas pu être publié. Réessayez de le publier ou fermez cette fenêtre et publiez-le depuis la liste des profils.",
+      "missingId": "Le profil a été créé, mais son identifiant était absent de la réponse. Fermez cette fenêtre et consultez la liste des profils avant de le publier.",
+      "retryPublish": "Réessayer la publication",
       "chooseDefinition": "Choisir une définition de justificatif",
+      "claimsHelp": "Sélectionnez les attributs obligatoires. Les attributs non sélectionnés sont facultatifs. Les attributs exigés par la définition ne peuvent pas être modifiés.",
+      "requiredClaims": "Attributs obligatoires",
+      "noClaims": "Aucun attribut n'est disponible dans cette définition de justificatif.",
       "noDefinitions": "Une définition de justificatif publiée et prête pour la délivrance est nécessaire pour créer un profil.",
       "duplicate": "Ce nom et cette version existent déjà, y compris parmi les profils archivés.",
       "nameInvalid": "Saisissez un nom de 1 à 100 caractères.",

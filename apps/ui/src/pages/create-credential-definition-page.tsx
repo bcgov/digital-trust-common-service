@@ -7,20 +7,21 @@ import {
   useState,
 } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Link, useNavigate, useSearchParams } from 'react-router';
+import { useNavigate, useSearchParams } from 'react-router';
 import valid from 'semver/functions/valid';
 
 import { AccessDenied } from '@/components/common/access-denied';
+import { BackLink } from '@/components/common/back-link';
 import { ArrowLeftIcon, ArrowRightIcon } from '@/components/common/icons';
 import { LoadingMessage } from '@/components/common/query-status';
 import { notify } from '@/components/common/sonner';
+import { WizardSteps } from '@/components/common/wizard-steps';
 import {
   AttributesStep,
   type Attribute,
 } from '@/components/credential-definition/attributes-step';
 import { ReviewStep } from '@/components/credential-definition/review-step';
 import { DetailsStep } from '@/components/credential-definition/details-step';
-import { WizardSteps } from '@/components/credential-definition/wizard-steps';
 import { ApiError } from '@/lib/api/errors';
 import { useConnectors } from '@/lib/api/queries/connectors';
 import {
@@ -47,7 +48,7 @@ function semanticType(value: unknown): SemanticAttributeType {
     ? type
     : 'string';
 }
-interface CreateOrEditCredentialDefinitionPageProps {
+interface CreateCredentialDefinitionPageProps {
   embedded?: boolean;
   onExit?: () => void;
   exitLabel?: string;
@@ -56,12 +57,12 @@ interface CreateOrEditCredentialDefinitionPageProps {
   ) => void;
 }
 
-export function CreateOrEditCredentialDefinitionPage({
+export function CreateCredentialDefinitionPage({
   embedded = false,
   onExit,
   exitLabel,
   onRegistrationStarted,
-}: CreateOrEditCredentialDefinitionPageProps = {}) {
+}: CreateCredentialDefinitionPageProps = {}) {
   const { t } = useTranslation();
   const { user } = useAuth();
   const { tenant } = useActiveTenant();
@@ -402,13 +403,9 @@ export function CreateOrEditCredentialDefinitionPage({
     <div className="flex flex-1 flex-col gap-5">
       {!embedded && (
         <div className="flex flex-col gap-2">
-          <Link
-            to="/credential-definitions"
-            className="inline-flex w-fit items-center gap-2 text-small-body text-(--typography-color-link) hover:underline"
-          >
-            <ArrowLeftIcon className="size-4" />
+          <BackLink to="/credential-definitions">
             {t('credentialDefinitions.wizard.backToList')}
-          </Link>
+          </BackLink>
           <h1 className="text-h1 font-bold text-black">
             {draftId
               ? t('credentialDefinitions.wizard.editTitle')
@@ -416,7 +413,11 @@ export function CreateOrEditCredentialDefinitionPage({
           </h1>
         </div>
       )}
-      <WizardSteps steps={steps} currentStep={step} />
+      <WizardSteps
+        steps={steps}
+        currentStep={step}
+        label={t('credentialDefinitions.wizard.progress')}
+      />
       {/* Kept mounted so entered values survive moving between steps. */}
       <div hidden={step !== 0} className="flex flex-col gap-5">
         <DetailsStep

@@ -6,9 +6,9 @@ import { LoadError, LoadingMessage } from '@/components/common/query-status';
 import { ApiClientDrawer } from '@/components/api-client/api-client-drawer';
 import { AddConnectorForm } from '@/components/connector/add-connector-form';
 import type { useCreateConnectorForm } from '@/components/connector/use-create-connector-form';
-import { CreateIssuanceProfileForm } from '@/components/issuance-profile/create-issuance-profile-button';
+import { CreateIssuanceProfileForm } from '@/components/issuance-profile/create-issuance-profile-form';
 import { ApiError } from '@/lib/api/errors';
-import { CreateOrEditCredentialDefinitionPage } from '@/pages/create-or-edit-credential-definition-page';
+import { CreateCredentialDefinitionPage } from '@/pages/create-credential-definition-page';
 
 import type { TenantOnboardingSetupState } from './use-tenant-onboarding-setup';
 
@@ -154,7 +154,7 @@ export function CredentialDefinitionRegistrationStep({
   }
 
   return (
-    <CreateOrEditCredentialDefinitionPage
+    <CreateCredentialDefinitionPage
       embedded
       exitLabel={t('tenantOnboarding.saveForLater')}
       onExit={onSaveForLater}

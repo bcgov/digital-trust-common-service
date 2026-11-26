@@ -15,13 +15,6 @@ import type { IssuanceProfile } from '@/lib/api/resources/issuance-profiles';
 
 import { IssuanceProfileRowActions } from './issuance-profile-row-actions';
 
-const FORMAT_KEYS = {
-  anoncreds: 'credentialDefinitions.setup.anoncreds',
-  'sd-jwt': 'credentialDefinitions.formats.sdJwt',
-  mdl: 'credentialDefinitions.formats.mdl',
-  'w3c-vc': 'credentialDefinitions.formats.w3cVc',
-} as const;
-
 export function IssuanceProfilesTable({
   profiles,
   definitions,
@@ -47,13 +40,10 @@ export function IssuanceProfilesTable({
           <TableHead scope="col" className="w-24">
             {t('credentialDefinitions.table.version')}
           </TableHead>
-          <TableHead scope="col" className="w-28">
+          <TableHead scope="col" className="w-40">
             {t('issuanceProfiles.protocol')}
           </TableHead>
           <TableHead scope="col">{t('issuanceProfiles.definition')}</TableHead>
-          <TableHead scope="col" className="w-28">
-            {t('credentialDefinitions.table.format')}
-          </TableHead>
           <TableHead scope="col" className="w-28">
             {t('credentialDefinitions.table.status')}
           </TableHead>
@@ -96,11 +86,6 @@ export function IssuanceProfilesTable({
                   (profile.credential_definition_id ??
                   t('issuanceProfiles.unavailable'))
                 )}
-              </TableCell>
-              <TableCell>
-                {definition?.format
-                  ? t(FORMAT_KEYS[definition.format])
-                  : t('issuanceProfiles.unavailable')}
               </TableCell>
               <TableCell>
                 <StaticTag

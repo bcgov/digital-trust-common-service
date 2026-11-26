@@ -10,7 +10,7 @@ import { createMockAuthClient, MOCK_AUTH_TENANTS } from '@/lib/auth/mock-auth';
 import { server } from '@/mocks/server';
 import { renderWithAuth } from '@/test/render-with-auth';
 
-import { CreateOrEditCredentialDefinitionPage } from './create-or-edit-credential-definition-page';
+import { CreateCredentialDefinitionPage } from './create-credential-definition-page';
 import { CredentialDefinitionsPage } from './credential-definitions-page';
 
 const tenantId = MOCK_AUTH_TENANTS[0]?.id ?? '';
@@ -49,7 +49,7 @@ describe('CredentialDefinitionsPage', () => {
       [
         {
           path: '/credential-definitions/create-or-edit',
-          element: <CreateOrEditCredentialDefinitionPage />,
+          element: <CreateCredentialDefinitionPage />,
         },
       ],
       {
@@ -113,7 +113,7 @@ describe('CredentialDefinitionsPage', () => {
           },
           {
             path: '/credential-definitions/create-or-edit',
-            element: <CreateOrEditCredentialDefinitionPage />,
+            element: <CreateCredentialDefinitionPage />,
           },
         ],
         {
@@ -155,7 +155,7 @@ describe('CredentialDefinitionsPage', () => {
         },
         {
           path: '/credential-definitions/create-or-edit',
-          element: <CreateOrEditCredentialDefinitionPage />,
+          element: <CreateCredentialDefinitionPage />,
         },
       ],
       { client, initialEntries: ['/credential-definitions'] },
@@ -316,7 +316,7 @@ describe('CredentialDefinitionsPage', () => {
         },
         {
           path: '/credential-definitions/create-or-edit',
-          element: <CreateOrEditCredentialDefinitionPage />,
+          element: <CreateCredentialDefinitionPage />,
         },
       ],
       {
@@ -445,7 +445,7 @@ describe('CredentialDefinitionsPage', () => {
           {
             path: '/credential-definitions/create-or-edit',
             element: (
-              <CreateOrEditCredentialDefinitionPage
+              <CreateCredentialDefinitionPage
                 embedded={embedded}
                 onExit={onExit}
               />
@@ -594,7 +594,7 @@ describe('CredentialDefinitionsPage', () => {
       [
         {
           path: '/credential-definitions/create-or-edit',
-          element: <CreateOrEditCredentialDefinitionPage />,
+          element: <CreateCredentialDefinitionPage />,
         },
       ],
       {
@@ -699,7 +699,7 @@ describe('CredentialDefinitionsPage', () => {
           },
           {
             path: '/credential-definitions/create-or-edit',
-            element: <CreateOrEditCredentialDefinitionPage />,
+            element: <CreateCredentialDefinitionPage />,
           },
         ],
         {
@@ -843,7 +843,7 @@ describe('CredentialDefinitionsPage', () => {
         },
         {
           path: '/credential-definitions/create-or-edit',
-          element: <CreateOrEditCredentialDefinitionPage />,
+          element: <CreateCredentialDefinitionPage />,
         },
       ],
       { client, initialEntries: ['/credential-definitions'] },
@@ -936,7 +936,7 @@ describe('CredentialDefinitionsPage', () => {
       [
         {
           path: '/credential-definitions/create-or-edit',
-          element: <CreateOrEditCredentialDefinitionPage />,
+          element: <CreateCredentialDefinitionPage />,
         },
       ],
       {
@@ -1093,7 +1093,7 @@ describe('CredentialDefinitionsPage', () => {
         },
         {
           path: '/credential-definitions/create-or-edit',
-          element: <CreateOrEditCredentialDefinitionPage />,
+          element: <CreateCredentialDefinitionPage />,
         },
       ],
       {

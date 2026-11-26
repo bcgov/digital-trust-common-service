@@ -1,21 +1,15 @@
-import { useTranslation } from 'react-i18next';
-
 import { CheckIcon } from '@/components/common/icons';
 import { cn } from '@/lib/utils';
 
 interface WizardStepsProps {
   steps: readonly string[];
   currentStep: number;
+  label: string;
 }
 
-export function WizardSteps({ steps, currentStep }: WizardStepsProps) {
-  const { t } = useTranslation();
-
+export function WizardSteps({ steps, currentStep, label }: WizardStepsProps) {
   return (
-    <nav
-      aria-label={t('credentialDefinitions.wizard.progress')}
-      className="w-full"
-    >
+    <nav aria-label={label} className="w-full">
       <ol className="flex items-center">
         {steps.map((label, index) => {
           const complete = index < currentStep;
