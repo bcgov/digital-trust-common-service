@@ -390,6 +390,39 @@ export function validateProfileClaims(
   getValidator(assertOverlay(definition, overlay, mandatoryClaims));
 }
 
+function compileError(schema: unknown): string | undefined {
+  try {
+    ajv.compile(schema as JsonSchema);
+    return undefined;
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error);
+  } finally {
+    if (isRecord(schema)) ajv.removeSchema(schema);
+  }
+}
+
+export function assertClaimsSchemaUsable(
+  definition: JsonSchema,
+  mandatoryClaims: readonly string[] = [],
+): void {
+  const schema = assertOverlay(
+    definition,
+    { required: [...mandatoryClaims] },
+    mandatoryClaims,
+  );
+  try {
+    getValidator(schema);
+  } catch (error) {
+    const properties = isRecord(schema.properties) ? schema.properties : {};
+    const issues = Object.entries(properties).flatMap(([name, property]) => {
+      const message = compileError(property);
+      return message ? [{ path: ['properties', name], message }] : [];
+    });
+    if (issues.length) fail('Credential definition schema is invalid', issues);
+    throw error;
+  }
+}
+
 export function validateClaims(
   definition: JsonSchema,
   overlay: ProfileClaims,
