@@ -50,9 +50,6 @@ export function IssuanceProfilesTable({
               {t('issuanceProfiles.definition')}
             </TableHead>
             <TableHead scope="col" className="w-28">
-              {t('credentialDefinitions.table.format')}
-            </TableHead>
-            <TableHead scope="col" className="w-28">
               {t('credentialDefinitions.table.status')}
             </TableHead>
             <TableHead scope="col" className="w-20 text-right">

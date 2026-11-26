@@ -155,7 +155,7 @@ describe('CredentialDefinitionsPage', () => {
         },
         {
           path: '/credential-definitions/create-or-edit',
-          element: <CreateOrEditCredentialDefinitionPage />,
+          element: <CreateCredentialDefinitionPage />,
         },
       ],
       { client, initialEntries: ['/credential-definitions'] },
