@@ -510,11 +510,45 @@ describe('PresentationRequestService', () => {
     });
   });
 
+  it('fails a synchronous done exchange without explicit verification', async () => {
+    mockRequestPresentation.mockResolvedValue({
+      id: 'exch-1',
+      state: PresentationExchangeState.Done,
+      createdAt: createdAt.toISOString(),
+      updatedAt: createdAt.toISOString(),
+    });
+    mockTransitionStateIfForward.mockResolvedValue(
+      buildOperation({ state: OperationState.FAILED }),
+    );
+
+    await service.requestPresentation(
+      tenantId,
+      buildDto({
+        presentationDefinition: { input_descriptors: [{ id: 'x' }] },
+        format: CredentialDefinitionFormat.ANONCREDS,
+      }),
+    );
+
+    expect(mockTransitionStateIfForward).toHaveBeenCalledWith(
+      'presentation-op-1',
+      OperationState.FAILED,
+      expect.any(Array),
+      expect.objectContaining({ code: 'PRESENTATION_REQUEST_FAILED' }),
+      mockManager,
+      'exch-1',
+    );
+    expect(mockEventEmit).not.toHaveBeenCalledWith(
+      'credential.verified',
+      expect.anything(),
+    );
+  });
+
   it('does not emit audit/domain events when the guarded transition loses the race', async () => {
     mockRequestPresentation.mockResolvedValue({
       id: 'exch-1',
       externalId: 'agent-exch-1',
       state: PresentationExchangeState.Verified,
+      verified: true,
       createdAt: createdAt.toISOString(),
       updatedAt: createdAt.toISOString(),
     });

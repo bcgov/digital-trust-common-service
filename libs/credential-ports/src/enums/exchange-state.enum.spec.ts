@@ -22,6 +22,10 @@ describe('CredentialExchangeState', () => {
 
 describe('PresentationExchangeState', () => {
   it('should expose stable presentation exchange string values', () => {
+    expect(PresentationExchangeState.ProposalSent).toBe('proposal-sent');
+    expect(PresentationExchangeState.ProposalReceived).toBe(
+      'proposal-received',
+    );
     expect(PresentationExchangeState.RequestSent).toBe('request-sent');
     expect(PresentationExchangeState.RequestReceived).toBe('request-received');
     expect(PresentationExchangeState.PresentationSent).toBe(
