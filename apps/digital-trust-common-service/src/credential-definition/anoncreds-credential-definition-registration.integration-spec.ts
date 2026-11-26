@@ -2,7 +2,7 @@ import { randomBytes, randomUUID } from 'crypto';
 
 import { AuthContext } from '@app/auth';
 import { JOB_QUEUES, PgBossService } from '@app/pg-boss';
-import { INestApplication } from '@nestjs/common';
+import { BadRequestException, INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { DataSource } from 'typeorm';
 
@@ -271,6 +271,35 @@ describe('credential definition registration (integration)', () => {
         .getRepository(CredentialDefinition)
         .countBy({ tenantId: tenant.id }),
     ).toBe(1);
+  });
+
+  it('rejects a schema issuance profiles cannot use without registering it', async () => {
+    await expect(
+      service.create(
+        tenant.id,
+        {
+          ...dto,
+          schema: {
+            definition: {
+              schema_name: 'employee',
+              schema_version: '1.0',
+              properties: { age: { type: 'string', 'x-label': 'Age' } },
+            },
+          },
+        },
+        auth,
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(resolve).not.toHaveBeenCalled();
+    expect(send).not.toHaveBeenCalled();
+    expect(
+      await db
+        .getRepository(CredentialDefinition)
+        .countBy({ tenantId: tenant.id }),
+    ).toBe(0);
+    expect(
+      await db.getRepository(Operation).countBy({ tenantId: tenant.id }),
+    ).toBe(0);
   });
 
   it('returns one operation for concurrent equivalent requests and keys both jobs', async () => {

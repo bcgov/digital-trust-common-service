@@ -1656,7 +1656,12 @@ For AnonCreds, define `schema.definition.attributes` as a flat map of attribute
 names to semantic types, for example `{ "given_name": "string", "age": "integer" }`,
 alongside the native schema name/version metadata. The adapter translates
 semantic values to AnonCreds' flat wire representation, where raw values are
-strings. Other formats may define claims with JSON Schema. Existing profile
+strings. AnonCreds definitions may instead supply JSON Schema `properties`;
+registration rejects them with HTTP 400 unless issuance profiles can compile
+them under strict Ajv, so non-standard keywords such as `x-label` are refused
+before registration is queued. Inline schemas are checked before any connector
+call; imported `schema.id` schemas are checked after the issuer and schema are
+looked up on the connector. Other formats may define claims with JSON Schema. Existing profile
 migrations derive `claims.required` from legacy required and optional-attribute
 metadata, and discard legacy defaults; no defaults are applied to offers.
 Credential-definition registration persists a `register` step whose current

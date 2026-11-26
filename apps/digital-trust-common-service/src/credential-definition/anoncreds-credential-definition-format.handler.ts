@@ -10,6 +10,7 @@ import { validateSync } from 'class-validator';
 import type { EntityManager } from 'typeorm';
 
 import { AdapterRegistry } from '../adapter-registry/adapter-registry.service';
+import { assertClaimsSchemaUsable } from '../issuance-profile/claims-schema';
 import { JobsService } from '../jobs/jobs.service';
 
 import type {
@@ -228,20 +229,25 @@ export class AnonCredsCredentialDefinitionFormatHandler implements CredentialDef
   private validateSchemaDefinition(
     schemaDefinition: Readonly<Record<string, unknown>>,
   ): void {
-    if (!this.formatValidators.has(CredentialFormat.AnonCreds)) {
-      return;
+    if (this.formatValidators.has(CredentialFormat.AnonCreds)) {
+      const issues = this.formatValidators
+        .resolve(CredentialFormat.AnonCreds)
+        .validateSchema(schemaDefinition);
+      if (issues.length > 0) {
+        throw new BadRequestException({
+          code: 'BAD_REQUEST',
+          message: 'Credential definition schema failed format validation',
+          details: issues,
+        });
+      }
     }
 
-    const issues = this.formatValidators
-      .resolve(CredentialFormat.AnonCreds)
-      .validateSchema(schemaDefinition);
-    if (issues.length > 0) {
-      throw new BadRequestException({
-        code: 'BAD_REQUEST',
-        message: 'Credential definition schema failed format validation',
-        details: issues,
-      });
-    }
+    // Issuance profiles compile this schema with strict Ajv; reject anything
+    // they cannot use before the definition is registered.
+    assertClaimsSchemaUsable(
+      this.getClaimsSchema(schemaDefinition),
+      this.getMandatoryClaims(schemaDefinition),
+    );
   }
 
   private normalizeDefinition(
