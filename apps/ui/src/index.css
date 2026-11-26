@@ -298,6 +298,53 @@ span.bcds-react-aria-Tag.static-tag {
   margin: var(--layout-margin-hair) calc(-1 * var(--layout-padding-xsmall));
 }
 
+/* Tenant switcher menu (Figma "Switch tenants"): a plain heading, and each
+   tenant's name in bold over its role, all greyed out when disabled. */
+.bcds-react-aria-Popover:has(> .tenant-switcher-menu) {
+  border: none;
+  min-width: unset;
+}
+.bcds-react-aria-Menu.tenant-switcher-menu {
+  width: 248px;
+}
+.bcds-react-aria-Menu.tenant-switcher-menu .react-aria-MenuSection {
+  gap: var(--layout-margin-hair);
+}
+/* The trigger already names the current tenant, so the design shows no
+   check mark or highlight on it; aria-checked still marks it. Keyboard
+   focus keeps the BCDS highlight. */
+.bcds-react-aria-Menu.tenant-switcher-menu .bcds-react-aria-MenuItem > svg {
+  display: none;
+}
+.bcds-react-aria-Menu.tenant-switcher-menu
+  .bcds-react-aria-MenuItem[data-focused]:not([data-focus-visible]):not(
+    [data-hovered]
+  ) {
+  background-color: transparent;
+}
+.bcds-react-aria-Menu.tenant-switcher-menu
+  .bcds-react-aria-MenuItem
+  > .bcds-react-aria-MenuItem--Content {
+  flex: 1;
+  gap: 0;
+}
+.bcds-react-aria-Menu.tenant-switcher-menu .react-aria-Header {
+  display: flex;
+  align-items: center;
+  min-height: 32px;
+  padding-block: 0;
+  font: var(--typography-regular-small-body);
+  color: var(--typography-color-primary);
+}
+.bcds-react-aria-Menu.tenant-switcher-menu
+  .bcds-react-aria-MenuItem:not([data-disabled])
+  [slot='label'] {
+  color: var(--typography-color-primary);
+}
+.bcds-react-aria-Menu.tenant-switcher-menu [slot='label'] {
+  font: var(--typography-bold-body);
+}
+
 /* The toast's close button is a BCDS tertiary icon button on a dark
    surface, so its glyph takes the invert icon colour. */
 .toast .bcds-react-aria-Button.tertiary.icon {

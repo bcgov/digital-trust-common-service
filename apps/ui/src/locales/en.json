@@ -110,6 +110,7 @@
     "errorWithReason": "Couldn't switch tenant: {{reason}}",
     "loadFailed": "Couldn't load your tenants.",
     "loading": "Loading tenants…",
+    "menuHeading": "Switch tenants…",
     "title": "Switch tenant"
   },
   "tenant": {

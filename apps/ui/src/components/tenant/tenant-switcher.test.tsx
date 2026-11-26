@@ -7,6 +7,7 @@ import { tenantKeys } from '@/lib/api/queries/tenants';
 import type { AuthTenant } from '@/lib/api/resources/auth';
 import { createMockAuthClient, MOCK_AUTH_TENANTS } from '@/lib/auth/mock-auth';
 import type { AuthClient } from '@/lib/auth/types';
+import { roleLabel } from '@/lib/tenant/roles';
 import { renderWithAuth } from '@/test/render-with-auth';
 
 import { TenantSwitcher } from './tenant-switcher';
@@ -49,9 +50,15 @@ describe('TenantSwitcher', () => {
     expect(within(trigger).getByText('Owner')).toBeInTheDocument();
 
     await user.click(trigger);
+    const menu = await screen.findByRole('menu');
+    expect(within(menu).getByText('Switch tenants…')).toBeInTheDocument();
+    const other = within(menu).getByRole('menuitemradio', {
+      name: /example agency/i,
+    });
+    expect(within(other).getByText(roleLabel(agency.role))).toBeVisible();
     expect(
-      await screen.findByRole('menuitem', { name: /example agency/i }),
-    ).toBeInTheDocument();
+      within(menu).getByRole('menuitemradio', { name: /acme ministry/i }),
+    ).toHaveAttribute('aria-checked', 'true');
   });
 
   it('renders a single membership as text, with nothing to switch to', async () => {
@@ -119,7 +126,7 @@ describe('TenantSwitcher', () => {
       await screen.findByRole('button', { name: /acme ministry/i }),
     );
     await user.click(
-      await screen.findByRole('menuitem', { name: /example agency/i }),
+      await screen.findByRole('menuitemradio', { name: /example agency/i }),
     );
 
     await waitFor(() => {
@@ -149,7 +156,7 @@ describe('TenantSwitcher', () => {
       await screen.findByRole('button', { name: /acme ministry/i }),
     );
     await user.click(
-      await screen.findByRole('menuitem', { name: /example agency/i }),
+      await screen.findByRole('menuitemradio', { name: /example agency/i }),
     );
 
     await waitFor(() => {
@@ -175,7 +182,7 @@ describe('TenantSwitcher', () => {
       await screen.findByRole('button', { name: /acme ministry/i }),
     );
     await user.click(
-      await screen.findByRole('menuitem', { name: /example agency/i }),
+      await screen.findByRole('menuitemradio', { name: /example agency/i }),
     );
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
@@ -195,7 +202,7 @@ describe('TenantSwitcher', () => {
       await screen.findByRole('button', { name: /acme ministry/i }),
     );
 
-    const item = await screen.findByRole('menuitem', {
+    const item = await screen.findByRole('menuitemradio', {
       name: new RegExp(suspended.name, 'i'),
     });
     expect(item).toHaveAttribute('aria-disabled', 'true');

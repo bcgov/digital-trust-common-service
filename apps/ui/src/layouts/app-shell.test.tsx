@@ -22,9 +22,15 @@ describe('AppShell', () => {
       { client },
     );
 
+    const sidebar = screen.getByRole('complementary');
     expect(
-      await screen.findByRole('button', { name: /acme ministry/i }),
+      await within(sidebar).findByRole('button', { name: /acme ministry/i }),
     ).toBeEnabled();
+    expect(
+      within(screen.getByRole('banner')).queryByRole('button', {
+        name: /acme ministry/i,
+      }),
+    ).not.toBeInTheDocument();
     const navigation = screen.getByRole('navigation', { name: 'Primary' });
     expect(navigation).toBeInTheDocument();
     expect(
