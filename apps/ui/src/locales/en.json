@@ -110,12 +110,14 @@
     "errorWithReason": "Couldn't switch tenant: {{reason}}",
     "loadFailed": "Couldn't load your tenants.",
     "loading": "Loading tenants…",
-    "title": "Switch tenant"
+    "title": "Switch tenant",
+    "platformAdmin": "Platform admin"
   },
   "tenant": {
     "loadFailed": "Failed to load tenant.",
     "loadFailedWithReason": "Failed to load tenant: {{reason}}",
-    "title": "Tenant"
+    "title": "Tenant",
+    "viewingAnother": "Viewing {{tenant}} as a platform admin. The tenant switcher shows your signed-in tenant; other sidebar sections use it, while Manage Users uses the tenant being viewed."
   },
   "tenantOnboarding": {
     "title": "Tenant setup",

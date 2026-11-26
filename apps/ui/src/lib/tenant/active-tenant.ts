@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useLocation, useNavigate } from 'react-router';
+import { useLocation, useMatch, useNavigate } from 'react-router';
 
 import { authKeys, useAuthTenants } from '@/lib/api/queries/auth';
 import type { AuthTenant } from '@/lib/api/resources/auth';
@@ -55,12 +55,12 @@ export function useActiveTenant(): ActiveTenant {
 
 interface SwitchVariables {
   tenantId: string;
-  /** The tenant the token named when the switch started. */
+  /** The tenant named in the current route, or by the token. */
   from: string | null;
   /** Where the user was when the switch started. */
   pathname: string;
   destinationPath?: string;
-  /** Replace the history entry (a header switch) or push one (list to detail). */
+  /** Replace the history entry (a sidebar switch) or push one (list to detail). */
   replace?: boolean;
 }
 
@@ -75,6 +75,7 @@ export function useSwitchTenant() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const location = useLocation();
+  const tenantRoute = useMatch('/tenants/:tenantId/*');
 
   const mutation = useMutation({
     mutationFn: ({ tenantId }: SwitchVariables) => switchTenant(tenantId),
@@ -114,7 +115,7 @@ export function useSwitchTenant() {
     ) =>
       mutation.mutateAsync({
         tenantId,
-        from: user?.tenantId ?? null,
+        from: tenantRoute?.params.tenantId ?? user?.tenantId ?? null,
         pathname: location.pathname,
         ...options,
       }),

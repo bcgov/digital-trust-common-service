@@ -22,9 +22,15 @@ describe('AppShell', () => {
       { client },
     );
 
+    const sidebar = screen.getByRole('complementary');
     expect(
-      await screen.findByRole('button', { name: /acme ministry/i }),
+      await within(sidebar).findByRole('button', { name: /acme ministry/i }),
     ).toBeEnabled();
+    expect(
+      within(screen.getByRole('banner')).queryByRole('button', {
+        name: /acme ministry/i,
+      }),
+    ).not.toBeInTheDocument();
     const navigation = screen.getByRole('navigation', { name: 'Primary' });
     expect(navigation).toBeInTheDocument();
     expect(
@@ -39,9 +45,7 @@ describe('AppShell', () => {
       'API integrations',
       'Manage Users',
     ]);
-    expect(
-      within(screen.getByRole('complementary')).getByText('Acme Ministry'),
-    ).toBeInTheDocument();
+    expect(within(sidebar).getByText('Acme Ministry')).toBeInTheDocument();
     expect(
       screen.queryByRole('link', { name: 'Tenants' }),
     ).not.toBeInTheDocument();
@@ -59,6 +63,15 @@ describe('AppShell', () => {
       screen.getByRole('link', { name: 'Credential configurations' }),
     ).toHaveAttribute('href', '/credential-definitions');
     expect(screen.getByText('page content')).toBeInTheDocument();
+    await userEvent.click(
+      within(sidebar).getByRole('button', { name: /acme ministry/i }),
+    );
+    await userEvent.click(
+      await screen.findByRole('menuitem', { name: /example agency/i }),
+    );
+    expect(
+      await within(sidebar).findByRole('button', { name: /example agency/i }),
+    ).toBeEnabled();
   });
 
   it('hides connectors navigation from users without tenants:admin', async () => {

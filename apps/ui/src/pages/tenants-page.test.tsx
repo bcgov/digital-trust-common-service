@@ -1,10 +1,12 @@
-import { screen, waitFor, within } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { Toaster } from '@/components/common/sonner';
 import { MIN_CREATE_LOADING_MS } from '@/components/tenant/create-tenant-dialog';
+import { AppShell } from '@/layouts/app-shell';
+import { TenantLayout } from '@/layouts/tenant-layout';
 import { API_BASE_PATH } from '@/lib/api/constants';
 import { createMockAuthClient, MOCK_AUTH_TENANTS } from '@/lib/auth/mock-auth';
 import { mockTenants } from '@/mocks/handlers';
@@ -12,6 +14,7 @@ import { server } from '@/mocks/server';
 import { renderWithAuth } from '@/test/render-with-auth';
 
 import { TenantsPage } from './tenants-page';
+import { TenantUsersPage } from './tenant-users-page';
 
 // The mock session is a tenant owner; creating tenants needs platform-admin.
 async function renderTenantsPage({ platformAdmin = false } = {}) {
@@ -87,6 +90,116 @@ describe('TenantsPage', () => {
     expect(client.getState().user?.tenantId).toBe(agency.id);
     // Pushed, so Back returns to the list.
     expect(router.state.historyAction).toBe('PUSH');
+  });
+
+  it('opens another membership without switching a platform admin token', async () => {
+    const user = userEvent.setup();
+    const { client, router } = await renderTenantsPage({ platformAdmin: true });
+    const switchTenant = vi.spyOn(client, 'switchTenant');
+
+    await user.click(
+      await screen.findByRole('link', { name: membership(1).name }),
+    );
+
+    expect(await screen.findByText('Tenant overview')).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe(`/tenants/${membership(1).id}`);
+    expect(switchTenant).not.toHaveBeenCalled();
+  });
+
+  it('lets a platform admin invite into the selected non-member tenant', async () => {
+    const user = userEvent.setup();
+    const client = createMockAuthClient();
+    await client.login();
+    const state = client.getState();
+    client.getState = () => ({
+      ...state,
+      user: state.user && { ...state.user, roles: ['platform-admin'] },
+    });
+    client.listAuthTenants = () => Promise.resolve([membership(0)]);
+    let invitedTenant: string | undefined;
+    let invitation: unknown;
+    server.use(
+      http.post(
+        `${API_BASE_PATH}/tenants/:id/users`,
+        async ({ params, request }) => {
+          invitedTenant = String(params.id);
+          invitation = await request.json();
+          return HttpResponse.json(
+            { id: 'new', status: 'invited' },
+            { status: 201 },
+          );
+        },
+      ),
+    );
+    const { router } = renderWithAuth(
+      [
+        {
+          element: <AppShell />,
+          children: [
+            { path: '/tenants', element: <TenantsPage /> },
+            {
+              path: '/tenants/:tenantId',
+              element: <TenantLayout />,
+              children: [
+                { index: true, element: <p>Tenant overview</p> },
+                { path: 'users', element: <TenantUsersPage /> },
+              ],
+            },
+          ],
+        },
+      ],
+      { client, initialEntries: ['/tenants'] },
+    );
+
+    await user.click(
+      await screen.findByRole('link', { name: membership(1).name }),
+    );
+    expect(await screen.findByText('Tenant overview')).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe(`/tenants/${membership(1).id}`);
+    expect(client.getState().user?.tenantId).toBe(membership(0).id);
+    expect(
+      await screen.findByText(/Viewing Example Agency as a platform admin/),
+    ).toBeInTheDocument();
+
+    const sidebar = screen.getByRole('complementary');
+    expect(within(sidebar).getByText(membership(0).name)).toBeInTheDocument();
+    await user.click(
+      within(sidebar).getByRole('link', { name: 'Manage Users' }),
+    );
+    expect(router.state.location.pathname).toBe(
+      `/tenants/${membership(1).id}/users`,
+    );
+    expect(
+      await screen.findByText(/Viewing Example Agency as a platform admin/),
+    ).toBeInTheDocument();
+    await user.click(await screen.findByRole('button', { name: 'Add user' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Invite user' });
+    await user.type(within(dialog).getByLabelText(/email/i), 'new@example.com');
+    await user.click(within(dialog).getByRole('button', { name: /role/i }));
+    await user.click(await screen.findByRole('option', { name: /admin/i }));
+    await user.click(within(dialog).getByRole('button', { name: 'Invite' }));
+
+    await waitFor(() => {
+      expect(invitedTenant).toBe(membership(1).id);
+      expect(invitation).toEqual({ email: 'new@example.com', role: 'admin' });
+    });
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument(),
+    );
+    await user.click(
+      await screen.findByRole('button', { name: 'Dismiss notification' }),
+    );
+    await waitFor(() =>
+      expect(screen.queryByText('Invitation created.')).not.toBeInTheDocument(),
+    );
+    await user.click(screen.getByRole('button', { name: 'Add user' }));
+    expect(
+      await screen.findByRole('dialog', { name: 'Invite user' }),
+    ).toBeInTheDocument();
+    await act(() => router.navigate(`/tenants/${membership(0).id}/users`));
+    expect(
+      screen.queryByRole('dialog', { name: 'Invite user' }),
+    ).not.toBeInTheDocument();
   });
 
   it('leaves a modified click on another membership to the browser', async () => {

@@ -364,12 +364,14 @@
     "errorWithReason": "Couldn't switch tenant: {{reason}}",
     "loadFailed": "Couldn't load your tenants.",
     "loading": "Loading tenants…",
-    "title": "Switch tenant"
+    "title": "Switch tenant",
+    "platformAdmin": "Administrateur de la plateforme"
   },
   "tenant": {
     "loadFailed": "Failed to load tenant.",
     "loadFailedWithReason": "Failed to load tenant: {{reason}}",
-    "title": "Tenant"
+    "title": "Tenant",
+    "viewingAnother": "Vous consultez {{tenant}} en tant qu’administrateur de la plateforme. Le sélecteur affiche votre tenant de connexion; les autres sections de la barre latérale l’utilisent, tandis que la gestion des utilisateurs utilise le tenant consulté."
   },
   "tenantOnboarding": {
     "title": "Configuration du tenant",

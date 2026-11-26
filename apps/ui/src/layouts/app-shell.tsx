@@ -9,7 +9,7 @@ import {
   UsersRound,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { NavLink, Outlet, useMatches } from 'react-router';
+import { NavLink, Outlet, useMatch, useMatches } from 'react-router';
 
 import { Avatar, AvatarFallback } from '@/components/common/avatar';
 import { Badge } from '@/components/common/badge';
@@ -24,11 +24,11 @@ import {
   DropdownMenuTrigger,
 } from '@/components/common/dropdown-menu';
 import { Toaster } from '@/components/common/sonner';
-import { BuildingIcon } from '@/components/common/icons';
 import { TenantSwitcher } from '@/components/tenant/tenant-switcher';
 import { useAuth } from '@/lib/auth/context';
 import {
   hasScope,
+  isPlatformAdmin,
   TENANT_ADMIN_SCOPE,
   USERS_MANAGE_SCOPE,
 } from '@/lib/auth/scopes';
@@ -98,20 +98,22 @@ export function AppShell() {
   const { t } = useTranslation();
   const { user, logout } = useAuth();
   const { tenant } = useActiveTenant();
+  const tenantRoute = useMatch('/tenants/:tenantId/*');
   const navigationItems = NAV_ITEMS.filter(
     ({ scope }) => !scope || hasScope(user, scope),
   );
   const layout = useShellLayout();
+  const usersTenantId = isPlatformAdmin(user)
+    ? (tenantRoute?.params.tenantId ?? tenant?.id)
+    : tenant?.id;
   const manageUsersPath =
-    tenant?.id && hasScope(user, USERS_MANAGE_SCOPE)
-      ? `/tenants/${tenant.id}/users`
+    usersTenantId && hasScope(user, USERS_MANAGE_SCOPE)
+      ? `/tenants/${usersTenantId}/users`
       : null;
 
   return (
     <div className="flex h-svh flex-col">
       <BcGovHeader logoTo="/dashboard">
-        <TenantSwitcher />
-
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="sm" className="gap-2">
@@ -157,12 +159,7 @@ export function AppShell() {
       <div className="flex flex-1 overflow-hidden">
         {layout === 'sidebar' && (
           <aside className="flex w-75 shrink-0 flex-col gap-(--layout-margin-small) overflow-y-auto border-r border-(--surface-color-border-default) bg-sidebar p-3 text-sidebar-foreground">
-            <div className="flex items-center gap-3 rounded-(--layout-border-radius-large) border border-(--surface-color-border-default) p-3">
-              <BuildingIcon className="size-6 shrink-0" />
-              <span className="truncate text-body leading-5 font-bold text-black">
-                {tenant?.name ?? t('nav.unknownTenant')}
-              </span>
-            </div>
+            <TenantSwitcher />
             <nav
               aria-label={t('nav.primary')}
               className="flex flex-col gap-(--layout-margin-small)"

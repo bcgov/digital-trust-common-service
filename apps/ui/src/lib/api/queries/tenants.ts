@@ -9,6 +9,7 @@ import {
   updateTenant,
   type CreateTenantRequest,
   type TenantOnboarding,
+  type TenantStatus,
   type UpdateTenantRequest,
 } from '../resources/tenants';
 import type { CursorParams } from '../pagination';
@@ -16,9 +17,45 @@ import type { CursorParams } from '../pagination';
 export const tenantKeys = {
   all: ['tenants'] as const,
   list: (params: CursorParams) => [...tenantKeys.all, 'list', params] as const,
+  allForSwitcher: () => [...tenantKeys.all, 'switcher'] as const,
   detail: (id: string) => [...tenantKeys.all, 'detail', id] as const,
   onboarding: (id: string) => [...tenantKeys.detail(id), 'onboarding'] as const,
 };
+
+export function useSwitcherTenants(enabled: boolean) {
+  return useQuery({
+    queryKey: tenantKeys.allForSwitcher(),
+    enabled,
+    queryFn: async () => {
+      const tenants: { id: string; name: string; status?: TenantStatus }[] = [];
+      const cursors = new Set<string>();
+      let cursor: string | undefined;
+      let hasMore = true;
+      while (hasMore) {
+        const page = await listTenants({ limit: 100, cursor });
+        for (const tenant of page.data) {
+          if (!tenant.id || !tenant.name) {
+            throw new Error('Tenant list entry is missing its id or name');
+          }
+          tenants.push({
+            id: tenant.id,
+            name: tenant.name,
+            status: tenant.status,
+          });
+        }
+        hasMore = page.pagination.has_more;
+        if (!hasMore) break;
+        const next = page.pagination.next_cursor;
+        if (!next || cursors.has(next)) {
+          throw new Error('Tenant list has an invalid pagination cursor');
+        }
+        cursors.add(next);
+        cursor = next;
+      }
+      return tenants;
+    },
+  });
+}
 
 export function useTenants(
   params: CursorParams = {},

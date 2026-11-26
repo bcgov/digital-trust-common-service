@@ -188,6 +188,12 @@ deliberately outside the guard — the redirect arrives before a session
 exists) → the deep link the user was interrupted on, or `/` otherwise, which
 sends platform admins and users with several memberships to `/tenants` and
 everyone else into their tenant.
+Platform admins can view a tenant without a membership or changing their
+signed-in tenant. The tenant page identifies the tenant being viewed; Manage
+Users uses that tenant, while the switcher shows the signed-in tenant and other
+sidebar sections use it. The platform-admin switcher lists all tenants for
+management; selecting one does not change the token or membership.
+For other users, selecting a membership switches the signed-in tenant.
 Access tokens last 5 minutes; refresh is driven by the API client's 401
 single-flight handler rather than a background timer.
 
