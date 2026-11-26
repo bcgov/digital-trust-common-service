@@ -1663,6 +1663,28 @@ Credential-definition registration persists a `register` step whose current
 state is updated by the owning registration service or worker; detailed backend
 stage, artifact, and correlation data remains in `result.registration`.
 
+### Traction presentation requests
+
+The Traction adapter sends connected AnonCreds proof requests with
+`auto_verify: true` and `auto_remove: false`. Fixed non-revocation intervals
+and AnonCreds predicates are supported at the adapter port. A terminal `done`
+or `verified` state is successful only with an explicit `verified: true` result.
+Verified adapter records expose revealed attributes and satisfied predicates;
+self-attested values are not exposed as verified attributes. Do not retry a
+submission after an ambiguous response: the agent may have sent the request.
+
+Failed-record preservation is agent-configured, not guaranteed by
+`auto_remove: false`. ACA-Py 1.6's connected
+[send-request route](https://github.com/openwallet-foundation/acapy/blob/1.6.0/acapy_agent/protocols/present_proof/v2_0/routes.py)
+does not pass its `auto_remove_on_failure` option to the
+[manager](https://github.com/openwallet-foundation/acapy/blob/1.6.0/acapy_agent/protocols/present_proof/v2_0/manager.py).
+Leave
+`--no-preserve-failed-exchange-records` (or
+`ACAPY_NO_PRESERVE_FAILED_EXCHANGE_RECORDS`) disabled to preserve failed
+records. The adapter warns when the returned record does not confirm failure
+retention; it does not block or replay the request. If the agent removes a
+failed record, a later read returns backend-not-found.
+
 ### Offering a credential
 
 `POST /api/v1/tenants/:tenantId/credentials/offer` requires `credentials:offer`:
