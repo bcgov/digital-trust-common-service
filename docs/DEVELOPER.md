@@ -1659,7 +1659,9 @@ semantic values to AnonCreds' flat wire representation, where raw values are
 strings. AnonCreds definitions may instead supply JSON Schema `properties`;
 registration rejects them with HTTP 400 unless issuance profiles can compile
 them under strict Ajv, so non-standard keywords such as `x-label` are refused
-before any connector call. Other formats may define claims with JSON Schema. Existing profile
+before registration is queued. Inline schemas are checked before any connector
+call; imported `schema.id` schemas are checked after the issuer and schema are
+looked up on the connector. Other formats may define claims with JSON Schema. Existing profile
 migrations derive `claims.required` from legacy required and optional-attribute
 metadata, and discard legacy defaults; no defaults are applied to offers.
 Credential-definition registration persists a `register` step whose current
