@@ -1,6 +1,5 @@
 import {
   Button,
-  Checkbox,
   CheckboxGroup,
   Form,
   Select,
@@ -318,28 +317,10 @@ export function CreateIssuanceProfileForm({
           <p>{t('issuanceProfiles.create.claimsHelp')}</p>
           {claims.names.length > 0 ? (
             <CheckboxGroup
-              label={t('issuanceProfiles.create.requiredClaims')}
+              aria-label={t('issuanceProfiles.wizard.claims')}
               value={selectedClaims}
               onChange={setRequiredClaims}
             >
-              {claims.names.map((name) => (
-                <Checkbox
-                  key={name}
-                  value={name}
-                  isDisabled={fieldsDisabled || claims.mandatory.includes(name)}
-                >
-                  {name}
-                </Checkbox>
-              ))}
-            </CheckboxGroup>
-          ) : (
-            <p>{t('issuanceProfiles.create.noClaims')}</p>
-          )}
-          {claims.names.length > 0 && (
-            <div className="flex flex-col gap-3">
-              <h3 className="text-h5 font-bold">
-                {t('issuanceProfiles.valueRules.title')}
-              </h3>
               <p>{t('issuanceProfiles.valueRules.description')}</p>
               {claims.names.map((name) => (
                 <ClaimValueRuleEditor
@@ -348,6 +329,7 @@ export function CreateIssuanceProfileForm({
                   type={claims.types.get(name) ?? 'json'}
                   rule={valueRules.get(name)}
                   isDisabled={fieldsDisabled}
+                  isRequiredByDefinition={claims.mandatory.includes(name)}
                   onChange={(rule) => {
                     setValueRules((previous) => {
                       const next = new Map(previous);
@@ -359,7 +341,9 @@ export function CreateIssuanceProfileForm({
                   }}
                 />
               ))}
-            </div>
+            </CheckboxGroup>
+          ) : (
+            <p>{t('issuanceProfiles.create.noClaims')}</p>
           )}
         </div>
       )}

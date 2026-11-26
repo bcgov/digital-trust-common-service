@@ -1,10 +1,10 @@
 import {
   Button,
+  Checkbox,
   Select,
   TextField,
 } from '@bcgov/design-system-react-components';
-import { useId } from 'react';
-import { Trans, useTranslation } from 'react-i18next';
+import { useTranslation } from 'react-i18next';
 
 import { PlusIcon, TrashIcon } from '@/components/common/icons';
 
@@ -19,48 +19,45 @@ export function ClaimValueRuleEditor({
   type,
   rule,
   isDisabled,
+  isRequiredByDefinition,
   onChange,
 }: {
   name: string;
   type: ClaimValueType;
   rule: ClaimValueRule | undefined;
   isDisabled: boolean;
+  isRequiredByDefinition: boolean;
   onChange: (rule: ClaimValueRule | undefined) => void;
 }) {
   const { t } = useTranslation();
-  const labelId = useId();
   const validation = rule && validateValueRule(rule, type);
 
   return (
-    <div className="flex flex-col gap-3 rounded-(--layout-border-radius-medium) border border-(--surface-color-border-default) p-4">
-      <div>
-        <div
-          id={labelId}
-          className="py-(--layout-padding-xsmall) text-small-body text-(--typography-color-secondary)"
-        >
-          <Trans
-            i18nKey="issuanceProfiles.valueRules.ruleFor"
-            values={{ name }}
-            components={{ claim: <strong /> }}
-          />
-        </div>
-        <Select
-          aria-labelledby={labelId}
-          isDisabled={isDisabled}
-          value={rule?.mode ?? 'any'}
-          items={(['any', 'enum', 'const'] as const).map((mode) => ({
-            id: mode,
-            label: t(`issuanceProfiles.valueRules.modes.${mode}`),
-          }))}
-          onChange={(mode) => {
-            if (mode === 'any') onChange(undefined);
-            else if (mode === 'enum' || mode === 'const') {
-              if (mode === rule?.mode) return;
-              onChange({ mode, values: [rule?.values[0] ?? ''] });
-            }
-          }}
-        />
-      </div>
+    <div className="flex flex-col gap-3 rounded-(--layout-border-radius-medium) border border-(--surface-color-border-default) bg-(--surface-color-background-light-blue) p-4">
+      <h3 className="text-h5 font-bold break-words">{name}</h3>
+      <Checkbox
+        value={name}
+        aria-label={t('issuanceProfiles.valueRules.requiredFor', { name })}
+        isDisabled={isDisabled || isRequiredByDefinition}
+      >
+        {t('issuanceProfiles.valueRules.required')}
+      </Checkbox>
+      <Select
+        aria-label={t('issuanceProfiles.valueRules.ruleFor', { name })}
+        isDisabled={isDisabled}
+        value={rule?.mode ?? 'any'}
+        items={(['any', 'enum', 'const'] as const).map((mode) => ({
+          id: mode,
+          label: t(`issuanceProfiles.valueRules.modes.${mode}`),
+        }))}
+        onChange={(mode) => {
+          if (mode === 'any') onChange(undefined);
+          else if (mode === 'enum' || mode === 'const') {
+            if (mode === rule?.mode) return;
+            onChange({ mode, values: [rule?.values[0] ?? ''] });
+          }
+        }}
+      />
       {rule && (
         <>
           <p className="text-small-body text-(--typography-color-secondary)">
@@ -75,7 +72,7 @@ export function ClaimValueRuleEditor({
               <div key={index} className="flex items-end gap-3">
                 <TextField
                   className="min-w-0 flex-1"
-                  label={t('issuanceProfiles.valueRules.valueFor', {
+                  aria-label={t('issuanceProfiles.valueRules.valueFor', {
                     name,
                     index: index + 1,
                   })}

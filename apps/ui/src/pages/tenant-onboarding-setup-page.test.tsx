@@ -64,7 +64,9 @@ describe('TenantOnboardingSetupPage', () => {
       screen.getByRole('heading', { name: 'Publish an issuance profile' }),
     ).toBeInTheDocument();
     expect(
-      await screen.findByRole('button', { name: 'Next: Claims' }),
+      await screen.findByRole('button', {
+        name: 'Next: Claims and value rules',
+      }),
     ).toBeDisabled();
     expect(
       screen.getByRole('link', { name: 'Return to overview' }),
@@ -151,7 +153,9 @@ describe('TenantOnboardingSetupPage', () => {
     await user.click(
       await screen.findByRole('option', { name: /Employee badge/ }),
     );
-    await user.click(panel.getByRole('button', { name: 'Next: Claims' }));
+    await user.click(
+      panel.getByRole('button', { name: 'Next: Claims and value rules' }),
+    );
     await user.click(
       panel.getByRole('button', { name: /Value rule for department/ }),
     );
