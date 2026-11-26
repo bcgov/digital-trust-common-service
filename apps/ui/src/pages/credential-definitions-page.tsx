@@ -119,6 +119,8 @@ export function CredentialDefinitionsPage() {
       )}
       {tenant && definitionsQuery.isSuccess && definitions.length > 0 && (
         <CredentialDefinitionsTable
+          key={tenant.id}
+          tenantId={tenant.id}
           definitions={definitions}
           connectors={connectorsQuery.data?.data ?? []}
           onDelete={setDefinitionToDelete}

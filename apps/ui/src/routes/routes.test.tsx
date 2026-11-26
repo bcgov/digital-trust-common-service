@@ -17,23 +17,12 @@ function renderAt(path: string) {
 }
 
 describe('routing', () => {
-  it('opens a credential definition detail deep link and returns to profiles', async () => {
-    const user = userEvent.setup();
-    const router = renderAt(
-      '/credential-definitions/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
-    );
-    await user.click(await screen.findByRole('button', { name: /sign in/i }));
-    expect(await screen.findByText('employee_id')).toBeVisible();
-    await user.click(
-      screen.getByRole('link', { name: 'Back to issuance profiles' }),
-    );
+  it('returns 404 for the removed credential definition detail route', async () => {
+    renderAt('/credential-definitions/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
+    expect(await screen.findByText('That page does not exist.')).toBeVisible();
     expect(
-      await screen.findByRole('heading', {
-        name: 'Issuance profiles',
-        level: 1,
-      }),
+      screen.getByRole('link', { name: 'Back to dashboard' }),
     ).toBeVisible();
-    expect(router.state.location.pathname).toBe('/issuance-profiles');
   });
 
   it('opens issuance profiles from the primary navigation', async () => {

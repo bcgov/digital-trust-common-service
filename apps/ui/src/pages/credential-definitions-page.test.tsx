@@ -143,6 +143,43 @@ describe('CredentialDefinitionsPage', () => {
     },
   );
 
+  it('opens draft details from row actions without navigating to edit', async () => {
+    const user = userEvent.setup();
+    const client = createMockAuthClient();
+    await client.login();
+    const { router } = renderWithAuth(
+      [
+        {
+          path: '/credential-definitions',
+          element: <CredentialDefinitionsPage />,
+        },
+        {
+          path: '/credential-definitions/create-or-edit',
+          element: <CreateCredentialDefinitionPage />,
+        },
+      ],
+      { client, initialEntries: ['/credential-definitions'] },
+    );
+    const row = await screen.findByRole('row', {
+      name: 'Edit draft credential definition Visitor pass',
+    });
+    await user.click(
+      within(row).getByRole('button', {
+        name: 'Actions for Visitor pass (1.0)',
+      }),
+    );
+    await user.click(
+      await screen.findByRole('menuitem', { name: 'View details' }),
+    );
+    const dialog = await screen.findByRole('dialog', {
+      name: 'Credential definition details',
+    });
+    expect(await within(dialog).findByText('visitor_name')).toBeVisible();
+    expect(router.state.location.pathname).toBe('/credential-definitions');
+    await user.click(within(dialog).getByText('Close', { selector: 'button' }));
+    await waitFor(() => expect(dialog).not.toBeInTheDocument());
+  });
+
   it('edits, publishes and deletes a draft using only the shared mock handlers', async () => {
     const user = userEvent.setup();
     const client = createMockAuthClient();
@@ -195,8 +232,11 @@ describe('CredentialDefinitionsPage', () => {
     });
     expect(within(publishedRow).getByText('Pending')).toBeVisible();
     await user.click(
-      screen.getByRole('button', { name: 'Delete Shared visitor pass' }),
+      screen.getByRole('button', {
+        name: 'Actions for Shared visitor pass (1.0)',
+      }),
     );
+    await user.click(await screen.findByRole('menuitem', { name: 'Delete' }));
     await user.click(screen.getByRole('button', { name: 'Delete definition' }));
     await waitFor(() =>
       expect(screen.queryByText('Shared visitor pass')).not.toBeInTheDocument(),
@@ -1010,8 +1050,11 @@ describe('CredentialDefinitionsPage', () => {
 
     await screen.findByRole('table', { name: 'Credential definitions' });
     await user.click(
-      screen.getByRole('button', { name: 'Delete Employee badge' }),
+      screen.getByRole('button', {
+        name: 'Actions for Employee badge (1.0.0)',
+      }),
     );
+    await user.click(await screen.findByRole('menuitem', { name: 'Delete' }));
     expect(await screen.findByRole('alertdialog')).toHaveTextContent(
       'Delete the Employee badge credential definition?',
     );

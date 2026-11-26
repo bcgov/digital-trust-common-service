@@ -1,7 +1,18 @@
-import { Button } from '@bcgov/design-system-react-components';
+import {
+  Button,
+  Menu,
+  MenuItem,
+  MenuTrigger,
+  Separator,
+} from '@bcgov/design-system-react-components';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { TrashIcon } from '@/components/common/icons';
+import {
+  CircleInfoIcon,
+  EllipsisVerticalIcon,
+  TrashIcon,
+} from '@/components/common/icons';
 import { StaticTag, type StaticTagColor } from '@/components/common/static-tag';
 import {
   Table,
@@ -13,6 +24,8 @@ import {
 } from '@/components/common/table';
 import type { Connector } from '@/lib/api/resources/connectors';
 import type { CredentialDefinition } from '@/lib/api/resources/credential-definitions';
+
+import { CredentialDefinitionDetailsDrawer } from './credential-definition-details-drawer';
 
 const STATUS_KEYS = {
   draft: 'credentialDefinitions.statuses.draft',
@@ -52,15 +65,18 @@ function statusColor(status: keyof typeof STATUS_KEYS): StaticTagColor {
 export function CredentialDefinitionsTable({
   definitions,
   connectors,
+  tenantId,
   onDelete,
   onEditDraft,
 }: {
   definitions: readonly CredentialDefinition[];
   connectors: readonly Connector[];
+  tenantId: string;
   onDelete: (definition: CredentialDefinition) => void;
   onEditDraft: (definition: CredentialDefinition) => void;
 }) {
   const { t } = useTranslation();
+  const [definitionId, setDefinitionId] = useState<string | null>(null);
 
   return (
     <div className="min-w-0">
@@ -175,23 +191,60 @@ export function CredentialDefinitionsTable({
                     label={t(STATUS_KEYS[currentStatus])}
                   />
                 </TableCell>
-                <TableCell className="text-right">
-                  <Button
-                    variant="tertiary"
-                    isIconButton
-                    aria-label={t('credentialDefinitions.delete.rowAction', {
-                      name: definition.name,
-                    })}
-                    onPress={() => onDelete(definition)}
-                  >
-                    <TrashIcon className="size-5" />
-                  </Button>
+                <TableCell
+                  className="text-right"
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  <MenuTrigger>
+                    <Button
+                      variant="tertiary"
+                      isIconButton
+                      aria-label={t('credentialDefinitions.table.actionsFor', {
+                        name: definition.name ?? t('common.notAvailable'),
+                        version: definition.version ?? '1.0',
+                      })}
+                    >
+                      <EllipsisVerticalIcon className="size-5" />
+                    </Button>
+                    <Menu
+                      placement="bottom end"
+                      className="bcds-react-aria-Menu medium record-menu"
+                      onAction={(key) => {
+                        if (key === 'view' && definition.id)
+                          setDefinitionId(definition.id);
+                        else if (key === 'delete') onDelete(definition);
+                      }}
+                    >
+                      <MenuItem
+                        id="view"
+                        textValue={t('common.viewDetails')}
+                        isDisabled={!definition.id}
+                      >
+                        <CircleInfoIcon className="size-5 shrink-0" />
+                        {t('common.viewDetails')}
+                      </MenuItem>
+                      <Separator size="small" />
+                      <MenuItem id="delete" textValue={t('common.delete')}>
+                        <TrashIcon className="size-5 shrink-0 text-(--icons-color-danger)" />
+                        <span className="text-(--typography-color-danger)">
+                          {t('common.delete')}
+                        </span>
+                      </MenuItem>
+                    </Menu>
+                  </MenuTrigger>
                 </TableCell>
               </TableRow>
             );
           })}
         </TableBody>
       </Table>
+      {definitionId && (
+        <CredentialDefinitionDetailsDrawer
+          tenantId={tenantId}
+          definitionId={definitionId}
+          onClose={() => setDefinitionId(null)}
+        />
+      )}
     </div>
   );
 }
