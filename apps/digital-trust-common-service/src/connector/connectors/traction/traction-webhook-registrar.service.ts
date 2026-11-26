@@ -3,7 +3,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 
-import { assertSafeConnectorUrl } from '../../../common/assert-safe-connector-url';
+import { assertSafePublicHttpsUrl } from '../../../common/assert-safe-connector-url';
 import { buildTractionWalletUrl } from '../../../common/traction-request';
 
 import { TractionHttpClient } from './traction-http-client.service';
@@ -98,14 +98,14 @@ export class TractionWebhookRegistrar {
     headers: Record<string, string>;
     entries: string[];
   }> {
-    await assertSafeConnectorUrl(context.endpointUrl);
+    await assertSafePublicHttpsUrl(context.endpointUrl, 'Connector endpoint');
 
     const token = await this.tokenManager.getToken(context);
     const url = buildTractionWalletUrl(context.endpointUrl);
     const headers = { Authorization: `Bearer ${token}` };
 
     // codeql[js/request-forgery]: context.endpointUrl is validated
-    // immediately above by assertSafeConnectorUrl (https-only, DNS-checked
+    // immediately above by assertSafePublicHttpsUrl (https-only, DNS-checked
     // against private/loopback/reserved ranges); the request path has no
     // other tenant-controlled segment.
     const current = await this.httpClient.request<TractionWalletSettings>({

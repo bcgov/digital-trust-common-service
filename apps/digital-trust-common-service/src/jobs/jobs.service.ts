@@ -32,6 +32,8 @@ import {
 export type RegisterWorkerOptions = WorkOptions & {
   /** When false, skip attaching a worker (API-only pods). Default true. */
   enabled?: boolean;
+  /** Cross-node job concurrency, mapped to pg-boss groupConcurrency. */
+  teamConcurrency?: number;
 };
 
 export interface TransactionalJobOptions {
@@ -259,7 +261,7 @@ export class JobsService implements ShutdownParticipant, OnModuleInit {
     handler: (job: Job<T>) => Promise<void>,
     options: RegisterWorkerOptions = {},
   ): Promise<string | null> {
-    const { enabled = true, ...workOptions } = options;
+    const { enabled = true, teamConcurrency, ...workOptions } = options;
     if (!enabled) {
       this.logger.log(`Skipping worker registration for ${queueName}`);
       return null;
@@ -270,6 +272,9 @@ export class JobsService implements ShutdownParticipant, OnModuleInit {
     const merged: WorkOptions = {
       ...this.defaultWorkOptions(),
       ...workOptions,
+      ...(teamConcurrency === undefined
+        ? {}
+        : { groupConcurrency: teamConcurrency }),
     };
 
     const workHandler: WorkHandler<T> = async (jobs) => {

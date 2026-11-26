@@ -5,7 +5,7 @@ import { OidcConfigService } from '@app/oidc/config';
 import { Injectable, Logger } from '@nestjs/common';
 import { decodeJwt } from 'jose';
 
-import { assertSafeConnectorUrl } from '../../../common/assert-safe-connector-url';
+import { assertSafePublicHttpsUrl } from '../../../common/assert-safe-connector-url';
 import { API_BASE_PATH } from '../../../common/constants/api-version.constants';
 import {
   buildTractionTokenRequestBody,
@@ -43,7 +43,7 @@ export class TractionConnector extends AbstractConnector {
     endpointUrl: string,
     credentials: Readonly<Record<string, unknown>>,
   ): Promise<ConnectorHealthCheckResult> {
-    await assertSafeConnectorUrl(endpointUrl);
+    await assertSafePublicHttpsUrl(endpointUrl, 'Connector endpoint');
 
     const start = Date.now();
     const { apiKey, tractionTenantId } = credentials;
@@ -62,7 +62,7 @@ export class TractionConnector extends AbstractConnector {
 
     try {
       // codeql[js/request-forgery]: endpointUrl is validated immediately
-      // above by assertSafeConnectorUrl (https-only, DNS-checked against
+      // above by assertSafePublicHttpsUrl (https-only, DNS-checked against
       // private/loopback/reserved ranges); tractionTenantId is
       // percent-encoded by buildTractionTokenUrl so it can only affect the
       // path on that already-validated host.
