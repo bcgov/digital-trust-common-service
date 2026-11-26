@@ -23,6 +23,8 @@ export function CredentialDefinitionDetails({
   const schema = Object.fromEntries(
     Object.entries(definition.schema_definition ?? {}).filter(
       ([key, value]) =>
+        key !== 'schema_name' &&
+        key !== 'type' &&
         !(
           (key === 'version' || key === 'schema_version') &&
           value === definition.version

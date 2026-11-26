@@ -80,6 +80,15 @@ describe('Credential definition details drawer', () => {
     expect(attributesLabel.parentElement).toContainElement(
       details.getByText('department'),
     );
+    const employeeRow = details.getByText('employee_id').closest('dt');
+    expect(employeeRow).not.toBeNull();
+    expect(
+      within(employeeRow!).getByText('string').closest('.static-tag'),
+    ).toBeVisible();
+    expect(
+      details.queryByText('type', { selector: 'dt' }),
+    ).not.toBeInTheDocument();
+    expect(details.queryByText('Schema name')).not.toBeInTheDocument();
     expect(details.getByText('Employee identity and department')).toBeVisible();
     expect(details.getByText('Published').closest('.static-tag')).toHaveClass(
       'green',
@@ -94,6 +103,57 @@ describe('Credential definition details drawer', () => {
     await user.click(details.getByText('Close', { selector: 'button' }));
     await waitFor(() => expect(dialog).not.toBeInTheDocument());
     expect(screen.getByText('Employee onboarding')).toBeVisible();
+  });
+
+  it('shows attribute types as badges while retaining other schema details', async () => {
+    server.use(
+      http.get(
+        `${API_BASE_PATH}/tenants/:id/credential-definitions/:definitionId`,
+        () =>
+          HttpResponse.json({
+            ...mockCredentialDefinitions[0],
+            schema_definition: {
+              schema_name: 'Internal schema name',
+              type: 'object',
+              properties: {
+                employee_id: { type: 'string', maxLength: 20 },
+                age: { type: ['integer', 'null'] },
+                department: { enum: ['Finance', 'Operations'] },
+              },
+              attributes: { active: 'boolean' },
+            },
+          }),
+      ),
+    );
+    const user = userEvent.setup();
+    await renderPage();
+    const dialog = await openDetails(user);
+    const details = within(dialog);
+    const employee = await details.findByText('employee_id');
+    expect(
+      within(employee.closest('dt')!)
+        .getByText('string')
+        .closest('.static-tag'),
+    ).toBeVisible();
+    expect(details.getByText('maxLength')).toBeVisible();
+    expect(details.getByText('20')).toBeVisible();
+    const age = details.getByText('age').closest('dt');
+    expect(
+      within(age!).getByText('integer').closest('.static-tag'),
+    ).toBeVisible();
+    expect(within(age!).getByText('null').closest('.static-tag')).toBeVisible();
+    const active = details.getByText('active').closest('dt');
+    expect(
+      within(active!).getByText('boolean').closest('.static-tag'),
+    ).toBeVisible();
+    expect(details.getByText('Finance')).toBeVisible();
+    expect(details.getByText('Operations')).toBeVisible();
+    expect(
+      details.queryByText('type', { selector: 'dt' }),
+    ).not.toBeInTheDocument();
+    expect(details.queryByText('Schema name')).not.toBeInTheDocument();
+    expect(details.queryByText('Internal schema name')).not.toBeInTheDocument();
+    expect(details.queryByText('object')).not.toBeInTheDocument();
   });
 
   it('hides definition links without definition access', async () => {

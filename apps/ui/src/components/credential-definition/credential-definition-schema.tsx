@@ -20,7 +20,13 @@ function scalarText(value: unknown): string | undefined {
   return undefined;
 }
 
-function SchemaValue({ value }: { value: unknown }) {
+function SchemaValue({
+  value,
+  attributes = false,
+}: {
+  value: unknown;
+  attributes?: boolean;
+}) {
   const { t } = useTranslation();
 
   if (Array.isArray(value)) {
@@ -62,21 +68,64 @@ function SchemaValue({ value }: { value: unknown }) {
 
     return (
       <dl className="min-w-0 divide-y divide-(--surface-color-border-default)">
-        {entries.map(([key, item]) => (
-          <div
-            key={key}
-            className="flex min-w-0 flex-col gap-2 py-4 first:pt-0 last:pb-0"
-          >
-            <dt className="text-small-body font-bold text-(--typography-color-primary) [overflow-wrap:anywhere]">
-              {Object.hasOwn(SCHEMA_LABELS, key)
-                ? t(SCHEMA_LABELS[key as keyof typeof SCHEMA_LABELS])
-                : key}
-            </dt>
-            <dd className="min-w-0 pl-3 text-small-body text-(--typography-color-secondary) [overflow-wrap:anywhere]">
-              <SchemaValue value={item} />
-            </dd>
-          </div>
-        ))}
+        {entries.map(([key, item]) => {
+          const record =
+            item !== null && typeof item === 'object' && !Array.isArray(item)
+              ? (item as Record<string, unknown>)
+              : undefined;
+          const attributeType = attributes
+            ? typeof item === 'string'
+              ? item
+              : record?.type
+            : undefined;
+          const types =
+            typeof attributeType === 'string'
+              ? [attributeType]
+              : Array.isArray(attributeType) &&
+                  attributeType.length > 0 &&
+                  attributeType.every(
+                    (type): type is string => typeof type === 'string',
+                  )
+                ? attributeType
+                : [];
+          const remainder =
+            types.length > 0 && record
+              ? Object.fromEntries(
+                  Object.entries(record).filter(([name]) => name !== 'type'),
+                )
+              : undefined;
+          const showValue =
+            types.length === 0 ||
+            (remainder && Object.keys(remainder).length > 0);
+
+          return (
+            <div
+              key={key}
+              className="flex min-w-0 flex-col gap-2 py-4 first:pt-0 last:pb-0"
+            >
+              <dt className="flex flex-wrap items-center gap-2 text-small-body font-bold text-(--typography-color-primary) [overflow-wrap:anywhere] [&_.static-tag]:h-auto [&_.static-tag]:max-w-full [&_.bcds-react-aria-Tag--Label]:whitespace-normal [&_.bcds-react-aria-Tag--Label]:[overflow-wrap:anywhere]">
+                {types.length > 0 ? (
+                  <span>{key}</span>
+                ) : Object.hasOwn(SCHEMA_LABELS, key) ? (
+                  t(SCHEMA_LABELS[key as keyof typeof SCHEMA_LABELS])
+                ) : (
+                  key
+                )}
+                {types.map((type, index) => (
+                  <StaticTag key={index} label={type} color="grey" />
+                ))}
+              </dt>
+              {showValue && (
+                <dd className="min-w-0 pl-3 text-small-body text-(--typography-color-secondary) [overflow-wrap:anywhere]">
+                  <SchemaValue
+                    value={remainder ?? item}
+                    attributes={key === 'properties' || key === 'attributes'}
+                  />
+                </dd>
+              )}
+            </div>
+          );
+        })}
       </dl>
     );
   }
