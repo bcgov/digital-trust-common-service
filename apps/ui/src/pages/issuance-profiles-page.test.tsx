@@ -96,7 +96,9 @@ describe('IssuanceProfilesPage', () => {
     form: HTMLElement,
   ) {
     await user.click(
-      within(form).getByRole('button', { name: 'Next: Claims' }),
+      within(form).getByRole('button', {
+        name: 'Next: Claims and value rules',
+      }),
     );
     await user.click(
       within(form).getByRole('button', { name: 'Next: Review' }),
@@ -131,15 +133,36 @@ describe('IssuanceProfilesPage', () => {
     await renderPage();
     const { user, dialog } = await fillProfile();
     await user.click(
-      within(dialog).getByRole('button', { name: 'Next: Claims' }),
+      within(dialog).getByRole('button', {
+        name: 'Next: Claims and value rules',
+      }),
     );
     await user.click(
-      within(dialog).getByRole('checkbox', { name: 'employee_id' }),
+      within(dialog).getByRole('checkbox', { name: 'Required: employee_id' }),
     );
     expect(
-      within(dialog).getByText('department', { selector: 'strong' }),
+      within(dialog).getByRole('heading', { name: 'Claims and value rules' }),
     ).toBeVisible();
+    const departmentCard = within(dialog).getByRole('heading', {
+      name: 'department',
+    }).parentElement;
+    expect(departmentCard).toHaveClass(
+      'bg-(--surface-color-background-light-blue)',
+    );
+    const required = within(departmentCard!).getByRole('checkbox', {
+      name: 'Required: department',
+    });
+    const valueRule = within(departmentCard!).getByRole('button', {
+      name: /Value rule for department/,
+    });
+    expect(
+      required.compareDocumentPosition(valueRule) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
     await chooseValueRule(user, dialog, 'department', 'Allowed values');
+    expect(
+      within(departmentCard!).queryByText('Value 1 for department'),
+    ).not.toBeInTheDocument();
     expect(within(dialog).queryByText(/AnonCreds sends omitted/)).toBeNull();
     await user.type(
       within(dialog).getByRole('textbox', { name: 'Value 1 for department' }),
@@ -216,7 +239,9 @@ describe('IssuanceProfilesPage', () => {
     await renderPage();
     const { user, dialog } = await fillProfile();
     await user.click(
-      within(dialog).getByRole('button', { name: 'Next: Claims' }),
+      within(dialog).getByRole('button', {
+        name: 'Next: Claims and value rules',
+      }),
     );
     await chooseValueRule(user, dialog, 'age', 'Allowed values');
     const age = within(dialog).getByRole('textbox', {
@@ -292,10 +317,12 @@ describe('IssuanceProfilesPage', () => {
       'step',
     );
     await user.click(
-      within(dialog).getByRole('button', { name: 'Next: Claims' }),
+      within(dialog).getByRole('button', {
+        name: 'Next: Claims and value rules',
+      }),
     );
     await user.click(
-      within(dialog).getByRole('checkbox', { name: 'department' }),
+      within(dialog).getByRole('checkbox', { name: 'Required: department' }),
     );
     await user.click(
       within(dialog).getByRole('button', { name: 'Next: Review' }),
@@ -311,7 +338,7 @@ describe('IssuanceProfilesPage', () => {
       within(dialog).getByRole('button', { name: 'Edit claims' }),
     );
     expect(
-      within(dialog).getByRole('checkbox', { name: 'department' }),
+      within(dialog).getByRole('checkbox', { name: 'Required: department' }),
     ).toBeChecked();
     await user.click(
       within(dialog).getByRole('button', { name: 'Next: Review' }),
@@ -364,10 +391,12 @@ describe('IssuanceProfilesPage', () => {
       await renderPage();
       const { user, dialog } = await fillProfile();
       await user.click(
-        within(dialog).getByRole('button', { name: 'Next: Claims' }),
+        within(dialog).getByRole('button', {
+          name: 'Next: Claims and value rules',
+        }),
       );
       await user.click(
-        within(dialog).getByRole('checkbox', { name: 'first_name' }),
+        within(dialog).getByRole('checkbox', { name: 'Required: first_name' }),
       );
       await user.click(
         within(dialog).getByRole('button', { name: 'Save draft' }),
@@ -415,15 +444,17 @@ describe('IssuanceProfilesPage', () => {
     await renderPage();
     const { user, dialog } = await fillProfile();
     await user.click(
-      within(dialog).getByRole('button', { name: 'Next: Claims' }),
+      within(dialog).getByRole('button', {
+        name: 'Next: Claims and value rules',
+      }),
     );
     const employee = within(dialog).getByRole('checkbox', {
-      name: 'employee_id',
+      name: 'Required: employee_id',
     });
     expect(employee).toBeChecked();
     expect(employee).toBeDisabled();
     await user.click(
-      within(dialog).getByRole('checkbox', { name: 'department' }),
+      within(dialog).getByRole('checkbox', { name: 'Required: department' }),
     );
     await chooseValueRule(user, dialog, 'department', 'One specific value');
     await user.type(
@@ -439,16 +470,18 @@ describe('IssuanceProfilesPage', () => {
       await screen.findByRole('option', { name: /Alternate badge/ }),
     );
     await user.click(
-      within(dialog).getByRole('button', { name: 'Next: Claims' }),
+      within(dialog).getByRole('button', {
+        name: 'Next: Claims and value rules',
+      }),
     );
     expect(
-      within(dialog).queryByRole('checkbox', { name: 'employee_id' }),
+      within(dialog).queryByRole('checkbox', { name: 'Required: employee_id' }),
     ).not.toBeInTheDocument();
     expect(
-      within(dialog).getByRole('checkbox', { name: 'department' }),
+      within(dialog).getByRole('checkbox', { name: 'Required: department' }),
     ).not.toBeChecked();
     expect(
-      within(dialog).getByRole('checkbox', { name: 'visitor_name' }),
+      within(dialog).getByRole('checkbox', { name: 'Required: visitor_name' }),
     ).not.toBeChecked();
     expect(
       within(dialog).getByRole('button', {
@@ -464,10 +497,12 @@ describe('IssuanceProfilesPage', () => {
       await screen.findByRole('option', { name: /Employee badge/ }),
     );
     await user.click(
-      within(dialog).getByRole('button', { name: 'Next: Claims' }),
+      within(dialog).getByRole('button', {
+        name: 'Next: Claims and value rules',
+      }),
     );
     await user.click(
-      within(dialog).getByRole('checkbox', { name: 'department' }),
+      within(dialog).getByRole('checkbox', { name: 'Required: department' }),
     );
     await user.click(
       within(dialog).getByRole('button', { name: 'Save draft' }),
@@ -550,10 +585,12 @@ describe('IssuanceProfilesPage', () => {
     await renderPage();
     const { user, dialog } = await fillProfile();
     await user.click(
-      within(dialog).getByRole('button', { name: 'Next: Claims' }),
+      within(dialog).getByRole('button', {
+        name: 'Next: Claims and value rules',
+      }),
     );
     await user.click(
-      within(dialog).getByRole('checkbox', { name: 'department' }),
+      within(dialog).getByRole('checkbox', { name: 'Required: department' }),
     );
     await user.click(
       within(dialog).getByRole('button', { name: 'Next: Review' }),
@@ -1241,7 +1278,7 @@ describe('IssuanceProfilesPage', () => {
     const version = within(dialog).getByRole('textbox', { name: /Version/ });
     const save = within(dialog).getByRole('button', { name: 'Save draft' });
     const create = within(dialog).getByRole('button', {
-      name: 'Next: Claims',
+      name: 'Next: Claims and value rules',
     });
     await user.clear(name);
     expect(save).toBeDisabled();
