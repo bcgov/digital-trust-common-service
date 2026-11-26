@@ -1,6 +1,10 @@
 import { BadRequestException } from '@nestjs/common';
 
-import { validateClaims, validateProfileClaims } from './claims-schema';
+import {
+  assertClaimsSchemaUsable,
+  validateClaims,
+  validateProfileClaims,
+} from './claims-schema';
 
 describe('profile claim schemas', () => {
   it('accepts nested claims and reports nested paths as segments', () => {
@@ -175,5 +179,47 @@ describe('profile claim schemas', () => {
     }
 
     expect(() => validateClaims(schema, {}, {})).toThrow(BadRequestException);
+  });
+
+  it('reports only the property that breaks compilation when others use local refs', () => {
+    expect(() =>
+      assertClaimsSchemaUsable({
+        type: 'object',
+        properties: {
+          name: { type: 'string' },
+          alias: { $ref: '#/properties/name' },
+          age: { type: 'string', 'x-label': 'Age' },
+        },
+      }),
+    ).toThrow(
+      expect.objectContaining({
+        response: expect.objectContaining({
+          details: [
+            {
+              path: ['properties', 'age'],
+              message: expect.stringContaining('x-label') as string,
+            },
+          ],
+        }) as object,
+      }) as Error,
+    );
+  });
+
+  it('does not unregister shared schemas while diagnosing a rejected schema', () => {
+    expect(() =>
+      assertClaimsSchemaUsable({
+        type: 'object',
+        properties: {
+          meta: { $id: 'http://json-schema.org/draft-07/schema#' },
+        },
+      }),
+    ).toThrow(BadRequestException);
+
+    expect(() =>
+      validateProfileClaims(
+        { type: 'object', properties: { fresh: { type: 'number' } } },
+        {},
+      ),
+    ).not.toThrow();
   });
 });

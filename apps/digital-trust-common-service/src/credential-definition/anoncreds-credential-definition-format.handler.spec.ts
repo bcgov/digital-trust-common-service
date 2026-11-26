@@ -185,6 +185,56 @@ describe('credential definition format options', () => {
     ).toThrow(BadRequestException);
   });
 
+  it('rejects property schemas that issuance profiles cannot compile before resolving a connector', async () => {
+    const dto = {
+      name: 'Employee',
+      options: { format: CredentialDefinitionFormat.ANONCREDS },
+      schema: {
+        definition: {
+          schema_name: 'employee',
+          schema_version: '1.0',
+          properties: { age: { type: 'string', 'x-label': 'Age' } },
+        },
+      },
+    } as CreateCredentialDefinitionDto;
+
+    await expect(anonCreds.prepare('tenant', dto)).rejects.toMatchObject({
+      status: 400,
+      response: {
+        message: 'Credential definition schema is invalid',
+        details: [
+          {
+            path: ['properties', 'age'],
+            message: expect.stringContaining('x-label') as string,
+          },
+        ],
+      },
+    });
+    expect(adapters.resolve).not.toHaveBeenCalled();
+    expect(jobs.sendInTransaction).not.toHaveBeenCalled();
+  });
+
+  it('accepts typed property schemas that issuance profiles can compile', async () => {
+    const properties = {
+      name: { type: 'string', title: 'Name', maxLength: 64 },
+      age: { type: 'integer', minimum: 0 },
+    };
+
+    await expect(
+      anonCreds.prepare('tenant', {
+        name: 'Employee',
+        options: { format: CredentialDefinitionFormat.ANONCREDS },
+        schema: {
+          definition: {
+            schema_name: 'employee',
+            schema_version: '1.0',
+            properties,
+          },
+        },
+      } as CreateCredentialDefinitionDto),
+    ).resolves.toMatchObject({ schemaDefinition: { properties } });
+  });
+
   it('preserves an existing schema ID for handler resolution', () => {
     expect(anonCreds.normalizeSchema({ id: 'existing-schema' })).toEqual({
       id: 'existing-schema',

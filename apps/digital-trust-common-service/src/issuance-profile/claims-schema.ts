@@ -390,6 +390,58 @@ export function validateProfileClaims(
   getValidator(assertOverlay(definition, overlay, mandatoryClaims));
 }
 
+// Diagnoses run on a throwaway Ajv instance so rejected input cannot add or
+// remove schemas registered on the shared validator.
+function compileError(schema: JsonSchema): string | undefined {
+  const diagnosticAjv = new Ajv({ allErrors: false, strict: true });
+  addFormats(diagnosticAjv);
+  try {
+    diagnosticAjv.compile(schema);
+    return undefined;
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error);
+  }
+}
+
+// Compiles each property inside the root schema, with the other properties
+// replaced by `true`, so local $refs still resolve and only the property
+// that breaks compilation is reported.
+function propertyCompileIssues(schema: JsonSchema): ValidationIssue[] {
+  const properties = isRecord(schema.properties) ? schema.properties : {};
+  const withOnly = (name?: string): JsonSchema => ({
+    ...schema,
+    properties: Object.fromEntries(
+      Object.entries(properties).map(([key, property]) => [
+        key,
+        key === name ? property : true,
+      ]),
+    ),
+  });
+  if (compileError(withOnly())) return [];
+  return Object.keys(properties).flatMap((name) => {
+    const message = compileError(withOnly(name));
+    return message ? [{ path: ['properties', name], message }] : [];
+  });
+}
+
+export function assertClaimsSchemaUsable(
+  definition: JsonSchema,
+  mandatoryClaims: readonly string[] = [],
+): void {
+  const schema = assertOverlay(
+    definition,
+    { required: [...mandatoryClaims] },
+    mandatoryClaims,
+  );
+  try {
+    getValidator(schema);
+  } catch (error) {
+    const issues = propertyCompileIssues(schema);
+    if (issues.length) fail('Credential definition schema is invalid', issues);
+    throw error;
+  }
+}
+
 export function validateClaims(
   definition: JsonSchema,
   overlay: ProfileClaims,
