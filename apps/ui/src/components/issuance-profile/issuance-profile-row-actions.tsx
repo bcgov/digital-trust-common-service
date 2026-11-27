@@ -73,7 +73,7 @@ export function IssuanceProfileRowActions({
             if (key === 'view') setIsViewing(true);
             else if (key === 'edit')
               void navigate(
-                `/issuance-profiles/create?id=${encodeURIComponent(profile.id ?? '')}`,
+                `/tenants/${tenantId}/issuance-profiles/create?id=${encodeURIComponent(profile.id ?? '')}`,
               );
             else if (key === 'publish') setIsPublishing(true);
             else if (key === IssuanceProfileLifecycleAction.ARCHIVE)

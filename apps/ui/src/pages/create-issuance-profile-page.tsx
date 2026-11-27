@@ -66,7 +66,11 @@ export function CreateIssuanceProfilePage() {
           ? !profile.isSuccess || !definition.isSuccess
           : !definitions.isSuccess)) && (
         <div className="flex flex-col gap-2">
-          <BackLink to="/issuance-profiles">
+          <BackLink
+            to={
+              tenant ? `/tenants/${tenant.id}/issuance-profiles` : '/dashboard'
+            }
+          >
             {t('issuanceProfiles.wizard.backToList')}
           </BackLink>
           <h1 className="text-h1 font-bold text-black">{title}</h1>

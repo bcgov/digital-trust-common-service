@@ -993,13 +993,15 @@ describe('IssuanceProfilesPage', () => {
     renderWithAuth(
       [
         {
-          path: '/issuance-profiles/create',
+          path: `/tenants/${tenantId}/issuance-profiles/create`,
           element: <CreateIssuanceProfilePage />,
         },
       ],
       {
         client,
-        initialEntries: [`/issuance-profiles/create?id=${profile.id}`],
+        initialEntries: [
+          `/tenants/${tenantId}/issuance-profiles/create?id=${profile.id}`,
+        ],
       },
     );
     expect(await screen.findByRole('alert')).toHaveTextContent(
@@ -1010,7 +1012,7 @@ describe('IssuanceProfilesPage', () => {
     ).not.toBeInTheDocument();
     expect(
       screen.getByRole('link', { name: 'Back to issuance profiles' }),
-    ).toBeVisible();
+    ).toHaveAttribute('href', `/tenants/${tenantId}/issuance-profiles`);
   });
 
   it('does not publish when updating a draft fails', async () => {
@@ -1159,8 +1161,13 @@ describe('IssuanceProfilesPage', () => {
         : null,
     });
     renderWithAuth(
-      [{ path: '/issuance-profiles', element: <IssuanceProfilesPage /> }],
-      { client, initialEntries: ['/issuance-profiles'] },
+      [
+        {
+          path: `/tenants/${tenantId}/issuance-profiles`,
+          element: <IssuanceProfilesPage />,
+        },
+      ],
+      { client, initialEntries: [`/tenants/${tenantId}/issuance-profiles`] },
     );
     const user = userEvent.setup();
     await user.click(

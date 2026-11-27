@@ -7,10 +7,12 @@ import { AppShell } from '@/layouts/app-shell';
 import { TenantLayout } from '@/layouts/tenant-layout';
 import { API_BASE_PATH } from '@/lib/api/constants';
 import { createMockAuthClient, MOCK_AUTH_TENANTS } from '@/lib/auth/mock-auth';
+import { mockCredentialDefinitions } from '@/mocks/handlers';
 import { server } from '@/mocks/server';
 import { ApiClientsPage } from '@/pages/api-clients-page';
 import { ConnectorsPage } from '@/pages/connectors-page';
 import { CreateCredentialDefinitionPage } from '@/pages/create-credential-definition-page';
+import { CreateIssuanceProfilePage } from '@/pages/create-issuance-profile-page';
 import { CredentialDefinitionsPage } from '@/pages/credential-definitions-page';
 import { IssuanceProfilesPage } from '@/pages/issuance-profiles-page';
 import { renderWithAuth } from '@/test/render-with-auth';
@@ -35,6 +37,10 @@ const tenantRoutes = [
             element: <CreateCredentialDefinitionPage />,
           },
           { path: 'issuance-profiles', element: <IssuanceProfilesPage /> },
+          {
+            path: 'issuance-profiles/create',
+            element: <CreateIssuanceProfilePage />,
+          },
           { path: 'api-clients', element: <ApiClientsPage /> },
         ],
       },
@@ -162,6 +168,78 @@ describe('working tenant routes', () => {
     await waitFor(() =>
       expect(create).toHaveBeenCalledExactlyOnceWith(selectedTenant.id),
     );
+  });
+
+  it('edits a draft in the selected non-member tenant', async () => {
+    const user = userEvent.setup();
+    const client = await platformAdmin();
+    const definition = mockCredentialDefinitions[0];
+    const draft = {
+      id: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+      tenant_id: selectedTenant.id,
+      name: 'Selected tenant draft',
+      version: '1.0',
+      status: 'draft',
+      credential_definition_id: definition.id,
+      delivery: { protocol: 'didcomm-v1' },
+      claims: {},
+    };
+    const requestedProfile = vi.fn();
+    const requestedDefinition = vi.fn();
+    server.use(
+      http.get(`${API_BASE_PATH}/tenants/:id/profiles/issuance`, () =>
+        HttpResponse.json([draft]),
+      ),
+      http.get(
+        `${API_BASE_PATH}/tenants/:id/profiles/issuance/:profileId`,
+        ({ params }) => {
+          requestedProfile(params.id, params.profileId);
+          return HttpResponse.json(draft);
+        },
+      ),
+      http.get(`${API_BASE_PATH}/tenants/:id/credential-definitions`, () =>
+        HttpResponse.json([definition]),
+      ),
+      http.get(
+        `${API_BASE_PATH}/tenants/:id/credential-definitions/:definitionId`,
+        ({ params }) => {
+          requestedDefinition(params.id, params.definitionId);
+          return HttpResponse.json(definition);
+        },
+      ),
+    );
+    const { router } = renderWithAuth(tenantRoutes, {
+      client,
+      initialEntries: [`/tenants/${selectedTenant.id}/issuance-profiles`],
+    });
+
+    await user.click(
+      await screen.findByRole('button', {
+        name: 'Actions for Selected tenant draft (1.0)',
+      }),
+    );
+    await user.click(
+      await screen.findByRole('menuitem', { name: 'Edit profile' }),
+    );
+    expect(
+      await screen.findByRole('form', { name: 'Edit profile' }),
+    ).toBeVisible();
+    expect(router.state.location.pathname).toBe(
+      `/tenants/${selectedTenant.id}/issuance-profiles/create`,
+    );
+    expect(router.state.location.search).toBe(`?id=${draft.id}`);
+    expect(requestedProfile).toHaveBeenCalledWith(selectedTenant.id, draft.id);
+    expect(requestedDefinition).toHaveBeenCalledWith(
+      selectedTenant.id,
+      definition.id,
+    );
+    expect(
+      screen.getByRole('link', { name: 'Back to issuance profiles' }),
+    ).toHaveAttribute(
+      'href',
+      `/tenants/${selectedTenant.id}/issuance-profiles`,
+    );
+    expect(client.getState().user?.tenantId).toBe(signedInTenant.id);
   });
 
   it('redirects non-admin deep links before querying a different tenant', async () => {
