@@ -384,6 +384,20 @@ describe('VerificationProfileService', () => {
       expect(result).toBe(mockProfile);
     });
 
+    it('uses the transaction manager for the duplicate-name lookup', async () => {
+      mockFindByNameAndVersion.mockResolvedValue(null);
+      mockCreate.mockResolvedValue(mockProfile);
+
+      await service.create(tenantId, dto, auth, manager);
+
+      expect(mockFindByNameAndVersion).toHaveBeenCalledWith(
+        tenantId,
+        dto.name,
+        dto.version,
+        manager,
+      );
+    });
+
     it('rejects a definition outside the tenant', async () => {
       definitionFindById.mockResolvedValue(null);
       await expect(service.create(tenantId, dto, auth)).rejects.toThrow(

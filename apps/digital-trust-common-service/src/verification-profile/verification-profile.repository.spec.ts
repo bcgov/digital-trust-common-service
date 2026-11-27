@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { EntityManager, Repository } from 'typeorm';
 
 import {
   VerificationProfile,
@@ -82,6 +82,30 @@ describe('VerificationProfileRepository', () => {
       where: { tenantId: 't1', name: 'age-verification', version: '1.0' },
       relations: { definition: true },
     });
+  });
+
+  it('findByNameAndVersion uses the supplied transaction manager', async () => {
+    const transactionRepository = {
+      findOne: jest.fn().mockResolvedValue(null),
+    };
+    const getRepository = jest.fn().mockReturnValue(transactionRepository);
+    const manager = {
+      getRepository,
+    } as unknown as EntityManager;
+
+    await repository.findByNameAndVersion(
+      't1',
+      'age-verification',
+      '1.0',
+      manager,
+    );
+
+    expect(getRepository).toHaveBeenCalledWith(VerificationProfile);
+    expect(transactionRepository.findOne).toHaveBeenCalledWith({
+      where: { tenantId: 't1', name: 'age-verification', version: '1.0' },
+      relations: { definition: true },
+    });
+    expect(mockRepo.findOne).not.toHaveBeenCalled();
   });
 
   it('findPage builds a cursor-paginated query with all filters', async () => {

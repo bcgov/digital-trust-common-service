@@ -404,6 +404,7 @@ export class VerificationProfileService {
         tenantId,
         dto.name,
         dto.version,
+        manager,
       );
 
     if (existing) {

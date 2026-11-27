@@ -297,6 +297,7 @@ export const SEED_ISSUANCE_PROFILES = [
 export const SEED_VERIFICATION_PROFILE = {
   name: 'identity-check',
   version: '1.0',
+  presentationDefinitionVersion: '1.1',
   description:
     'Published identity verification profile with birthdate predicate.',
   status: VerificationProfileStatus.PUBLISHED,

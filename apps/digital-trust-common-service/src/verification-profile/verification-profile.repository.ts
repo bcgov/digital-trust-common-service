@@ -140,8 +140,11 @@ export class VerificationProfileRepository {
     tenantId: string,
     name: string,
     version: string,
+    manager?: EntityManager,
   ): Promise<VerificationProfile | null> {
-    return await this.repository.findOne({
+    return await (
+      manager?.getRepository(VerificationProfile) ?? this.repository
+    ).findOne({
       where: { tenantId, name, version },
       relations: { definition: true },
     });
