@@ -17,6 +17,19 @@ function renderAt(path: string) {
 }
 
 describe('routing', () => {
+  it.each([
+    '/connectors',
+    '/credential-definitions',
+    '/credential-definitions/create-or-edit',
+    '/issuance-profiles',
+    '/issuance-profiles/create',
+    '/api-clients',
+  ])('does not redirect the removed flat route %s', async (path) => {
+    const router = renderAt(path);
+    expect(await screen.findByText('404')).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe(path);
+  });
+
   it('returns 404 for the removed credential definition detail route', async () => {
     renderAt('/credential-definitions/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
     expect(await screen.findByText('That page does not exist.')).toBeVisible();
@@ -38,7 +51,9 @@ describe('routing', () => {
         level: 1,
       }),
     ).toBeVisible();
-    expect(router.state.location.pathname).toBe('/issuance-profiles');
+    expect(router.state.location.pathname).toBe(
+      `/tenants/${mockTenants[0]?.id}/issuance-profiles`,
+    );
     expect(
       screen.getByRole('link', { name: 'Issuance profiles' }),
     ).toHaveAttribute('aria-current', 'page');
@@ -46,7 +61,7 @@ describe('routing', () => {
 
   it('opens API integrations from the sidebar', async () => {
     const user = userEvent.setup();
-    const router = renderAt('/api-clients');
+    const router = renderAt(`/tenants/${mockTenants[0]?.id}/api-clients`);
     await user.click(await screen.findByRole('button', { name: /sign in/i }));
     expect(
       await screen.findByRole('heading', {
@@ -54,7 +69,9 @@ describe('routing', () => {
         level: 1,
       }),
     ).toBeInTheDocument();
-    expect(router.state.location.pathname).toBe('/api-clients');
+    expect(router.state.location.pathname).toBe(
+      `/tenants/${mockTenants[0]?.id}/api-clients`,
+    );
     expect(
       screen.getByRole('link', { name: 'API integrations' }),
     ).toHaveAttribute('aria-current', 'page');
@@ -68,7 +85,9 @@ describe('routing', () => {
     await user.click(await screen.findByRole('link', { name: 'Connectors' }));
 
     await waitFor(() => {
-      expect(router.state.location.pathname).toBe('/connectors');
+      expect(router.state.location.pathname).toBe(
+        `/tenants/${mockTenants[0]?.id}/connectors`,
+      );
       expect(
         screen.getByRole('heading', { name: 'Connectors', level: 1 }),
       ).toBeInTheDocument();
@@ -96,14 +115,16 @@ describe('routing', () => {
 
   it('signs in (mock mode) and lands on the originally requested page', async () => {
     const user = userEvent.setup();
-    const router = renderAt('/connectors');
+    const router = renderAt(`/tenants/${mockTenants[0]?.id}/connectors`);
 
     await user.click(await screen.findByRole('button', { name: /sign in/i }));
 
     expect(
       await screen.findByRole('heading', { name: 'Connectors', level: 1 }),
     ).toBeInTheDocument();
-    expect(router.state.location.pathname).toBe('/connectors');
+    expect(router.state.location.pathname).toBe(
+      `/tenants/${mockTenants[0]?.id}/connectors`,
+    );
   });
 
   it('returns 404 for the removed global settings mockup', async () => {

@@ -471,7 +471,10 @@ export function CreateIssuanceProfileForm({
     >
       {!embedded && (
         <div className="flex flex-col gap-2">
-          <BackLink to="/issuance-profiles" isDisabled={isPending}>
+          <BackLink
+            to={`/tenants/${tenantId}/issuance-profiles`}
+            isDisabled={isPending}
+          >
             {t('issuanceProfiles.wizard.backToList')}
           </BackLink>
           <h1 className="text-h1 font-bold text-black">

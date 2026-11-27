@@ -19,7 +19,6 @@ interface TenantOnboardingStepContentProps {
     title: ParseKeys;
     reason: ParseKeys;
     action: ParseKeys;
-    href: string;
   };
   isBlocked: boolean;
   blockedSteps: string;

@@ -9,14 +9,14 @@ import {
   DrawerTitle,
 } from '@/components/common/drawer.js';
 import { PlusIcon } from '@/components/common/icons';
-import { useActiveTenant } from '@/lib/tenant/active-tenant';
+import { useWorkingTenant } from '@/lib/tenant/active-tenant';
 
 import { AddConnectorForm } from './add-connector-form.js';
 import { useCreateConnectorForm } from './use-create-connector-form.js';
 
 export function AddConnectorDrawer() {
   const { t } = useTranslation();
-  const { tenant } = useActiveTenant();
+  const { tenant } = useWorkingTenant();
   const [open, setOpen] = useState(false);
   const { mutation, errors, submit, reset } = useCreateConnectorForm({
     tenantId: tenant?.id,

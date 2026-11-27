@@ -95,7 +95,7 @@ export function CredentialDefinitionRegistrationStep({
           description={registration.failureDetail}
         />
         <Link
-          to="/credential-definitions"
+          to={`/tenants/${tenantId}/credential-definitions`}
           className="bcds-react-aria-Button medium primary"
         >
           {t('tenantOnboarding.manageCredentialDefinitions')}
@@ -114,7 +114,7 @@ export function CredentialDefinitionRegistrationStep({
           retryLabel={t('common.retry')}
         />
         <Link
-          to="/credential-definitions"
+          to={`/tenants/${tenantId}/credential-definitions`}
           className="bcds-react-aria-Button medium secondary"
         >
           {t('tenantOnboarding.manageCredentialDefinitions')}

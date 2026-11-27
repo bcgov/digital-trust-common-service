@@ -17,7 +17,7 @@ import { server } from '@/mocks/server';
 import { AddConnectorButton } from './add-connector-button';
 
 vi.mock('@/lib/tenant/active-tenant', () => ({
-  useActiveTenant: () => ({ tenant: { id: 'active-tenant' } }),
+  useWorkingTenant: () => ({ tenant: { id: 'active-tenant' } }),
 }));
 
 function render(children: ReactNode) {

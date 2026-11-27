@@ -65,54 +65,54 @@ export const routes: RouteObject[] = [
                 ),
               },
               {
-                path: '/connectors',
-                lazy: lazyPage(
-                  () => import('@/pages/connectors-page'),
-                  'ConnectorsPage',
-                ),
-              },
-              {
-                path: '/credential-definitions',
-                lazy: lazyPage(
-                  () => import('@/pages/credential-definitions-page'),
-                  'CredentialDefinitionsPage',
-                ),
-              },
-              {
-                path: '/credential-definitions/create-or-edit',
-                lazy: lazyPage(
-                  () => import('@/pages/create-credential-definition-page'),
-                  'CreateCredentialDefinitionPage',
-                ),
-              },
-              {
-                path: '/issuance-profiles',
-                lazy: lazyPage(
-                  () => import('@/pages/issuance-profiles-page'),
-                  'IssuanceProfilesPage',
-                ),
-              },
-              {
-                path: '/issuance-profiles/create',
-                lazy: lazyPage(
-                  () => import('@/pages/create-issuance-profile-page'),
-                  'CreateIssuanceProfilePage',
-                ),
-              },
-              {
-                path: '/api-clients',
-                lazy: lazyPage(
-                  () => import('@/pages/api-clients-page'),
-                  'ApiClientsPage',
-                ),
-              },
-              {
                 path: '/tenants/:tenantId',
                 lazy: lazyPage(
                   () => import('@/layouts/tenant-layout'),
                   'TenantLayout',
                 ),
                 children: [
+                  {
+                    path: 'connectors',
+                    lazy: lazyPage(
+                      () => import('@/pages/connectors-page'),
+                      'ConnectorsPage',
+                    ),
+                  },
+                  {
+                    path: 'credential-definitions',
+                    lazy: lazyPage(
+                      () => import('@/pages/credential-definitions-page'),
+                      'CredentialDefinitionsPage',
+                    ),
+                  },
+                  {
+                    path: 'credential-definitions/create-or-edit',
+                    lazy: lazyPage(
+                      () => import('@/pages/create-credential-definition-page'),
+                      'CreateCredentialDefinitionPage',
+                    ),
+                  },
+                  {
+                    path: 'issuance-profiles',
+                    lazy: lazyPage(
+                      () => import('@/pages/issuance-profiles-page'),
+                      'IssuanceProfilesPage',
+                    ),
+                  },
+                  {
+                    path: 'issuance-profiles/create',
+                    lazy: lazyPage(
+                      () => import('@/pages/create-issuance-profile-page'),
+                      'CreateIssuanceProfilePage',
+                    ),
+                  },
+                  {
+                    path: 'api-clients',
+                    lazy: lazyPage(
+                      () => import('@/pages/api-clients-page'),
+                      'ApiClientsPage',
+                    ),
+                  },
                   {
                     index: true,
                     lazy: lazyPage(

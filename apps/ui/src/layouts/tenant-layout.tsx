@@ -14,6 +14,7 @@ import { Skeleton } from '@/components/common/skeleton';
 import { ApiError } from '@/lib/api/errors';
 import { useTenant } from '@/lib/api/queries/tenants';
 import { useAuth } from '@/lib/auth/context';
+import { isPlatformAdmin } from '@/lib/auth/scopes';
 import { replaceTenantInPath } from '@/lib/tenant/active-tenant';
 import { cn } from '@/lib/utils';
 
@@ -22,13 +23,21 @@ export function TenantLayout() {
   const { tenantId } = useParams();
   const location = useLocation();
   const isUsersPage = useMatch('/tenants/:tenantId/users') !== null;
+  const isResourcePage = [
+    'connectors',
+    'credential-definitions',
+    'issuance-profiles',
+    'api-clients',
+  ].some((section) =>
+    location.pathname.startsWith(`/tenants/${tenantId}/${section}`),
+  );
   const { user } = useAuth();
 
-  // Every API call is scoped to the token's tenant, so a URL naming another
-  // one can only 404. Land on the same section of the tenant the user is
-  // actually in; the header switcher is the way to the other one.
+  const viewingAnotherTenant = Boolean(
+    tenantId && user?.tenantId && tenantId !== user.tenantId,
+  );
   const redirectTo =
-    tenantId && user?.tenantId && tenantId !== user.tenantId
+    viewingAnotherTenant && tenantId && user?.tenantId && !isPlatformAdmin(user)
       ? replaceTenantInPath(location.pathname, tenantId, user.tenantId)
       : null;
   const {
@@ -69,10 +78,20 @@ export function TenantLayout() {
     <div
       className={cn(
         'flex flex-col',
-        !isUsersPage && 'gap-(--layout-margin-large)',
+        ((!isUsersPage && !isResourcePage) ||
+          (viewingAnotherTenant && isPlatformAdmin(user))) &&
+          'gap-(--layout-margin-large)',
       )}
     >
-      {!isUsersPage && (
+      {viewingAnotherTenant && isPlatformAdmin(user) && (
+        <InlineAlert
+          variant="info"
+          description={t('tenant.viewingAnother', {
+            tenant: tenant?.name ?? tenantId,
+          })}
+        />
+      )}
+      {!isUsersPage && !isResourcePage && (
         <>
           <div className="flex items-center gap-(--layout-margin-medium)">
             {isLoading ? (
@@ -89,7 +108,7 @@ export function TenantLayout() {
         </>
       )}
 
-      <Outlet />
+      <Outlet key={tenantId} />
     </div>
   );
 }

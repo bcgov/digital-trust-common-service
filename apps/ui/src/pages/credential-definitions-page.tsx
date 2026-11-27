@@ -16,7 +16,7 @@ import { useCredentialDefinitions } from '@/lib/api/queries/credential-definitio
 import type { CredentialDefinition } from '@/lib/api/resources/credential-definitions';
 import { useAuth } from '@/lib/auth/context';
 import { hasScope, TENANT_ADMIN_SCOPE } from '@/lib/auth/scopes';
-import { useActiveTenant } from '@/lib/tenant/active-tenant';
+import { useWorkingTenant } from '@/lib/tenant/active-tenant';
 
 export function CredentialDefinitionsPage() {
   const { t } = useTranslation();
@@ -24,7 +24,7 @@ export function CredentialDefinitionsPage() {
   const [definitionToDelete, setDefinitionToDelete] =
     useState<CredentialDefinition | null>(null);
   const { user } = useAuth();
-  const { tenant, status, refetch } = useActiveTenant();
+  const { tenant, status, refetch } = useWorkingTenant();
   const canManage = hasScope(user, TENANT_ADMIN_SCOPE);
   const definitionsQuery = useCredentialDefinitions(tenant?.id, {
     enabled: canManage,
@@ -37,7 +37,11 @@ export function CredentialDefinitionsPage() {
 
   const registerButton = (
     <Button
-      onPress={() => void navigate('/credential-definitions/create-or-edit')}
+      onPress={() =>
+        void navigate(
+          `/tenants/${tenant?.id}/credential-definitions/create-or-edit`,
+        )
+      }
     >
       <PlusIcon className="size-5" />
       {t('credentialDefinitions.register')}
@@ -98,7 +102,12 @@ export function CredentialDefinitionsPage() {
             <Trans
               i18nKey="credentialDefinitions.connectorsLoadFailed"
               components={{
-                connectorsPage: <Link className="underline" to="/connectors" />,
+                connectorsPage: (
+                  <Link
+                    className="underline"
+                    to={`/tenants/${tenant.id}/connectors`}
+                  />
+                ),
               }}
             />
           </span>
@@ -112,7 +121,12 @@ export function CredentialDefinitionsPage() {
           <Trans
             i18nKey="credentialDefinitions.connectorRequired"
             components={{
-              connectorLink: <Link className="underline" to="/connectors" />,
+              connectorLink: (
+                <Link
+                  className="underline"
+                  to={`/tenants/${tenant.id}/connectors`}
+                />
+              ),
             }}
           />
         </p>
@@ -126,7 +140,7 @@ export function CredentialDefinitionsPage() {
           onDelete={setDefinitionToDelete}
           onEditDraft={(definition) => {
             void navigate(
-              `/credential-definitions/create-or-edit?id=${encodeURIComponent(definition.id ?? '')}`,
+              `/tenants/${tenant.id}/credential-definitions/create-or-edit?id=${encodeURIComponent(definition.id ?? '')}`,
             );
           }}
         />

@@ -68,9 +68,10 @@ export function TenantsPage() {
       )
     : tenants;
 
-  // The token is bound to one tenant, so another membership is switched into
-  // first; opening it by URL alone would bounce back to the current tenant.
+  // Switch into another membership before opening it. Platform admins can
+  // also view tenants they do not belong to without changing their token.
   const switchesInto = (tenant: Tenant) =>
+    !canCreate &&
     tenant.id !== user?.tenantId &&
     memberships.some((membership) => membership.id === tenant.id);
   const openTenant = (tenant: Tenant) => {

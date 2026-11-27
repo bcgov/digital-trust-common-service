@@ -462,7 +462,7 @@ describe('TenantOnboardingSetupPage', () => {
     ).toBeInTheDocument();
     expect(
       screen.getByRole('link', { name: 'Manage credential definitions' }),
-    ).toHaveAttribute('href', '/credential-definitions');
+    ).toHaveAttribute('href', `/tenants/${tenantId}/credential-definitions`);
     expect(
       screen.queryByText(
         'Credential definition registration is in progress. This page will advance when it is ready.',

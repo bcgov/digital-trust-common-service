@@ -24,7 +24,6 @@ import {
   DropdownMenuTrigger,
 } from '@/components/common/dropdown-menu';
 import { Toaster } from '@/components/common/sonner';
-import { BuildingIcon } from '@/components/common/icons';
 import { TenantSwitcher } from '@/components/tenant/tenant-switcher';
 import { useAuth } from '@/lib/auth/context';
 import {
@@ -32,7 +31,7 @@ import {
   TENANT_ADMIN_SCOPE,
   USERS_MANAGE_SCOPE,
 } from '@/lib/auth/scopes';
-import { useActiveTenant } from '@/lib/tenant/active-tenant';
+import { useWorkingTenant } from '@/lib/tenant/active-tenant';
 import { roleLabel } from '@/lib/tenant/roles';
 import { cn } from '@/lib/utils';
 
@@ -97,21 +96,20 @@ function initialsOf(name: string | undefined): string {
 export function AppShell() {
   const { t } = useTranslation();
   const { user, logout } = useAuth();
-  const { tenant } = useActiveTenant();
+  const { tenant } = useWorkingTenant();
   const navigationItems = NAV_ITEMS.filter(
     ({ scope }) => !scope || hasScope(user, scope),
   );
   const layout = useShellLayout();
+  const usersTenantId = tenant?.id;
   const manageUsersPath =
-    tenant?.id && hasScope(user, USERS_MANAGE_SCOPE)
-      ? `/tenants/${tenant.id}/users`
+    usersTenantId && hasScope(user, USERS_MANAGE_SCOPE)
+      ? `/tenants/${usersTenantId}/users`
       : null;
 
   return (
     <div className="flex h-svh flex-col">
-      <BcGovHeader logoTo="/dashboard">
-        <TenantSwitcher />
-
+      <BcGovHeader logoTo={tenant ? `/tenants/${tenant.id}` : '/dashboard'}>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="sm" className="gap-2">
@@ -157,12 +155,7 @@ export function AppShell() {
       <div className="flex flex-1 overflow-hidden">
         {layout === 'sidebar' && (
           <aside className="flex w-75 shrink-0 flex-col gap-(--layout-margin-small) overflow-y-auto border-r border-(--surface-color-border-default) bg-sidebar p-3 text-sidebar-foreground">
-            <div className="flex items-center gap-3 rounded-(--layout-border-radius-large) border border-(--surface-color-border-default) p-3">
-              <BuildingIcon className="size-6 shrink-0" />
-              <span className="truncate text-body leading-5 font-bold text-black">
-                {tenant?.name ?? t('nav.unknownTenant')}
-              </span>
-            </div>
+            <TenantSwitcher />
             <nav
               aria-label={t('nav.primary')}
               className="flex flex-col gap-(--layout-margin-small)"
@@ -170,7 +163,12 @@ export function AppShell() {
               {navigationItems.map(({ to, label, icon: Icon }) => (
                 <NavLink
                   key={to}
-                  to={to}
+                  to={
+                    tenant
+                      ? `/tenants/${tenant.id}${to === '/dashboard' ? '' : to}`
+                      : '/dashboard'
+                  }
+                  end={to === '/dashboard'}
                   className={({ isActive }) =>
                     cn(
                       'flex items-center gap-2.5 rounded-(--layout-border-radius-large) px-3 py-(--layout-padding-small) text-small-body text-black transition-colors',

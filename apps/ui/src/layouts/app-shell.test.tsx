@@ -22,9 +22,15 @@ describe('AppShell', () => {
       { client },
     );
 
+    const sidebar = screen.getByRole('complementary');
     expect(
-      await screen.findByRole('button', { name: /acme ministry/i }),
+      await within(sidebar).findByRole('button', { name: /acme ministry/i }),
     ).toBeEnabled();
+    expect(
+      within(screen.getByRole('banner')).queryByRole('button', {
+        name: /acme ministry/i,
+      }),
+    ).not.toBeInTheDocument();
     const navigation = screen.getByRole('navigation', { name: 'Primary' });
     expect(navigation).toBeInTheDocument();
     expect(
@@ -39,9 +45,7 @@ describe('AppShell', () => {
       'API integrations',
       'Manage Users',
     ]);
-    expect(
-      within(screen.getByRole('complementary')).getByText('Acme Ministry'),
-    ).toBeInTheDocument();
+    expect(within(sidebar).getByText('Acme Ministry')).toBeInTheDocument();
     expect(
       screen.queryByRole('link', { name: 'Tenants' }),
     ).not.toBeInTheDocument();
@@ -57,8 +61,20 @@ describe('AppShell', () => {
     );
     expect(
       screen.getByRole('link', { name: 'Credential configurations' }),
-    ).toHaveAttribute('href', '/credential-definitions');
+    ).toHaveAttribute(
+      'href',
+      `/tenants/${MOCK_AUTH_TENANTS[0].id}/credential-definitions`,
+    );
     expect(screen.getByText('page content')).toBeInTheDocument();
+    await userEvent.click(
+      within(sidebar).getByRole('button', { name: /acme ministry/i }),
+    );
+    await userEvent.click(
+      await screen.findByRole('menuitem', { name: /example agency/i }),
+    );
+    expect(
+      await within(sidebar).findByRole('button', { name: /example agency/i }),
+    ).toBeEnabled();
   });
 
   it('hides connectors navigation from users without tenants:admin', async () => {
@@ -83,11 +99,20 @@ describe('AppShell', () => {
       screen.queryByRole('link', { name: 'Credential configurations' }),
     ).not.toBeInTheDocument();
     expect(
+      await screen.findByRole('button', { name: /example agency/i }),
+    ).toBeInTheDocument();
+    expect(
       screen.getByRole('link', { name: 'API integrations' }),
-    ).toHaveAttribute('href', '/api-clients');
+    ).toHaveAttribute(
+      'href',
+      `/tenants/${MOCK_AUTH_TENANTS[1].id}/api-clients`,
+    );
     expect(
       screen.getByRole('link', { name: 'Issuance profiles' }),
-    ).toHaveAttribute('href', '/issuance-profiles');
+    ).toHaveAttribute(
+      'href',
+      `/tenants/${MOCK_AUTH_TENANTS[1].id}/issuance-profiles`,
+    );
   });
 
   it('hides Manage Users from users without the management scope', async () => {
@@ -144,7 +169,7 @@ describe('AppShell', () => {
     ).not.toBeInTheDocument();
     expect(
       screen.queryByRole('link', { name: 'Credential configurations' }),
-    ).toHaveAttribute('href', '/credential-definitions');
+    ).toHaveAttribute('href', '/dashboard');
   });
 
   it('navigates to the active tenant users route', async () => {
@@ -187,17 +212,23 @@ describe('AppShell', () => {
           element: <AppShell />,
           children: [
             { index: true, element: <p>home page</p> },
-            { path: 'connectors', element: <p>connector route</p> },
+            {
+              path: 'tenants/:tenantId/connectors',
+              element: <p>connector route</p>,
+            },
           ],
         },
       ],
       { client },
     );
 
+    await screen.findByRole('button', { name: /acme ministry/i });
     await userEvent.click(screen.getByRole('link', { name: 'Connectors' }));
 
     expect(await screen.findByText('connector route')).toBeInTheDocument();
-    expect(router.state.location.pathname).toBe('/connectors');
+    expect(router.state.location.pathname).toBe(
+      `/tenants/${MOCK_AUTH_TENANTS[0].id}/connectors`,
+    );
   });
 
   it('navigates through the Credential Configurations link', async () => {
@@ -211,7 +242,7 @@ describe('AppShell', () => {
           children: [
             { index: true, element: <p>home page</p> },
             {
-              path: 'credential-definitions',
+              path: 'tenants/:tenantId/credential-definitions',
               element: <p>credential definitions route</p>,
             },
           ],
@@ -220,6 +251,7 @@ describe('AppShell', () => {
       { client },
     );
 
+    await screen.findByRole('button', { name: /acme ministry/i });
     await userEvent.click(
       await screen.findByRole('link', { name: 'Credential configurations' }),
     );
@@ -227,6 +259,8 @@ describe('AppShell', () => {
     expect(
       await screen.findByText('credential definitions route'),
     ).toBeInTheDocument();
-    expect(router.state.location.pathname).toBe('/credential-definitions');
+    expect(router.state.location.pathname).toBe(
+      `/tenants/${MOCK_AUTH_TENANTS[0].id}/credential-definitions`,
+    );
   });
 });
