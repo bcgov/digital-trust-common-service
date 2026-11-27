@@ -1,4 +1,5 @@
 import { randomBytes } from 'crypto';
+import { isDeepStrictEqual } from 'node:util';
 
 import { OidcConfigService } from '@app/oidc';
 import { Injectable, Logger } from '@nestjs/common';
@@ -18,6 +19,7 @@ import { Connector } from '../connector/connector.entity';
 import { ConnectorRepository } from '../connector/connector.repository';
 import {
   CredentialDefinition,
+  CredentialDefinitionFormat,
   CredentialDefinitionStatus,
 } from '../credential-definition/credential-definition.entity';
 import { CredentialDefinitionRepository } from '../credential-definition/credential-definition.repository';
@@ -35,6 +37,7 @@ import {
   TenantUserStatus,
 } from '../tenant-user/tenant-user.entity';
 import { TenantUserRepository } from '../tenant-user/tenant-user.repository';
+import { PresentationDefinitionRepository } from '../verification-profile/presentation-definition.repository';
 import { VerificationProfile } from '../verification-profile/verification-profile.entity';
 import { VerificationProfileRepository } from '../verification-profile/verification-profile.repository';
 
@@ -106,6 +109,7 @@ export class DevSeedService {
     private readonly credentialDefinitions: CredentialDefinitionRepository,
     private readonly issuanceProfiles: IssuanceProfileRepository,
     private readonly verificationProfiles: VerificationProfileRepository,
+    private readonly presentationDefinitions: PresentationDefinitionRepository,
     private readonly oauthClients: OAuthClientRepository,
     private readonly connections: ConnectionRepository,
     private readonly operations: OperationRepository,
@@ -558,17 +562,67 @@ export class DevSeedService {
       SEED_VERIFICATION_PROFILE.version,
     );
 
+    if (profile && profile.metadata?.seed !== true) {
+      this.logger.warn(
+        `Skipping verification profile ${SEED_VERIFICATION_PROFILE.name}/${SEED_VERIFICATION_PROFILE.version}: existing profile is not seed-owned.`,
+      );
+      return 0;
+    }
+
+    let definition = await this.presentationDefinitions.findByNameAndVersion(
+      tenantId,
+      SEED_VERIFICATION_PROFILE.name,
+      SEED_VERIFICATION_PROFILE.presentationDefinitionVersion,
+    );
+    const definitionValues = {
+      tenantId,
+      name: SEED_VERIFICATION_PROFILE.name,
+      version: SEED_VERIFICATION_PROFILE.presentationDefinitionVersion,
+      description: SEED_VERIFICATION_PROFILE.description,
+      presentationDefinition: SEED_VERIFICATION_PROFILE.presentationDefinition,
+      requestedAttributes: [...SEED_VERIFICATION_PROFILE.requestedAttributes],
+      predicates: [...SEED_VERIFICATION_PROFILE.predicates],
+      presentationFormat: CredentialDefinitionFormat.ANONCREDS,
+      status: SEED_VERIFICATION_PROFILE.status,
+    };
+
+    if (
+      definition &&
+      (!isDeepStrictEqual(
+        definition.presentationDefinition,
+        definitionValues.presentationDefinition,
+      ) ||
+        !isDeepStrictEqual(
+          definition.requestedAttributes,
+          definitionValues.requestedAttributes,
+        ) ||
+        !isDeepStrictEqual(
+          definition.predicates,
+          definitionValues.predicates,
+        ) ||
+        definition.presentationFormat !== definitionValues.presentationFormat ||
+        definition.description !== definitionValues.description ||
+        definition.status !== definitionValues.status)
+    ) {
+      this.logger.warn(
+        `Skipping verification profile ${SEED_VERIFICATION_PROFILE.name}/${SEED_VERIFICATION_PROFILE.version}: corrected seed definition ${SEED_VERIFICATION_PROFILE.presentationDefinitionVersion} contains non-seed data.`,
+      );
+      return 0;
+    }
+
+    if (!definition) {
+      definition = await this.presentationDefinitions.create(definitionValues);
+    }
+
     const payload: Partial<VerificationProfile> = {
       tenantId,
       name: SEED_VERIFICATION_PROFILE.name,
       version: SEED_VERIFICATION_PROFILE.version,
       description: SEED_VERIFICATION_PROFILE.description,
-      presentationDefinition: SEED_VERIFICATION_PROFILE.presentationDefinition,
-      requestedAttributes: [...SEED_VERIFICATION_PROFILE.requestedAttributes],
-      predicates: [...SEED_VERIFICATION_PROFILE.predicates],
+      presentationDefinitionId: definition.id,
+      delivery: { protocol: 'didcomm-v1' },
       metadata: { seed: true },
       isPublic: SEED_VERIFICATION_PROFILE.isPublic,
-      protocolHint: SEED_VERIFICATION_PROFILE.protocolHint,
       status: SEED_VERIFICATION_PROFILE.status,
     };
 

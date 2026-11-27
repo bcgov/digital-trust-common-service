@@ -4,6 +4,8 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { instanceToPlain } from 'class-transformer';
+import { DataSource, EntityManager } from 'typeorm';
 import { QueryDeepPartialEntity } from 'typeorm/query-builder/QueryPartialEntity';
 
 import { AuditAction } from '../audit-log/audit-log.entity';
@@ -12,12 +14,29 @@ import {
   assertResourceTenantOrNotFound,
   assertTenantAccess,
 } from '../common/assert-tenant-access';
+import { API_BASE_PATH } from '../common/constants/api-version.constants';
 import { decodeCursor, encodeCursor } from '../common/cursor-pagination';
 import { isUniqueConstraintViolation } from '../common/postgres-error';
+import {
+  OPERATION_TYPE,
+  OperationType,
+} from '../operation/operation-type.constants';
+import { Operation, OperationStepState } from '../operation/operation.entity';
+import { OperationService } from '../operation/operation.service';
 
 import { CreateVerificationProfileDto } from './dto/create-verification-profile.dto';
+import { ListPresentationDefinitionsQueryDto } from './dto/list-verification-profiles-query.dto';
+import {
+  CreatePresentationDefinitionDto,
+  PresentationDefinitionResponseDto,
+  UpdatePresentationDefinitionDto,
+} from './dto/presentation-definition.dto';
 import { UpdateVerificationProfileDto } from './dto/update-verification-profile.dto';
+import { VerificationProfileResponseDto } from './dto/verification-profile-response.dto';
+import { PresentationDefinition } from './presentation-definition.entity';
+import { PresentationDefinitionRepository } from './presentation-definition.repository';
 import { extractRequestedAttributes } from './presentation-definition.validator';
+import { assertSupportedPresentationQuery } from './presentation-query.validator';
 import {
   VerificationProfile,
   VerificationProfileStatus,
@@ -35,22 +54,349 @@ export type PaginatedVerificationProfiles = {
   };
 };
 
+export type PaginatedPresentationDefinitions = {
+  data: PresentationDefinition[];
+  pagination: {
+    next_cursor: string | null;
+    has_more: boolean;
+  };
+};
+
 @Injectable()
 export class VerificationProfileService {
   public constructor(
     private readonly verificationProfileRepository: VerificationProfileRepository,
     private readonly domainAudit: DomainAuditService,
+    private readonly dataSource: DataSource,
+    private readonly operations: OperationService,
+    private readonly presentationDefinitions: PresentationDefinitionRepository,
   ) {}
+
+  public async findDefinitions(
+    tenantId: string,
+    query: ListPresentationDefinitionsQueryDto,
+    auth: AuthContext,
+  ): Promise<PaginatedPresentationDefinitions> {
+    assertTenantAccess(auth, tenantId);
+    const page = await this.presentationDefinitions.findPage(
+      tenantId,
+      query.status,
+      {
+        limit: query.limit ?? 20,
+        cursor: query.cursor ? decodeCursor(query.cursor) : null,
+      },
+    );
+    return {
+      data: page.items,
+      pagination: {
+        next_cursor: page.nextCursor ? encodeCursor(page.nextCursor) : null,
+        has_more: page.hasMore,
+      },
+    };
+  }
+
+  public async createDefinition(
+    tenantId: string,
+    dto: CreatePresentationDefinitionDto,
+    auth: AuthContext,
+  ): Promise<Operation> {
+    assertTenantAccess(auth, tenantId);
+    assertSupportedPresentationQuery(dto.query);
+    return this.configurationOperation(
+      tenantId,
+      OPERATION_TYPE.PRESENTATION_DEFINITION_CREATE,
+      'POST',
+      '',
+      instanceToPlain(dto),
+      async (manager) => {
+        try {
+          return await this.presentationDefinitions.create(
+            {
+              tenantId,
+              name: dto.name,
+              version: dto.version,
+              description: dto.description,
+              presentationDefinition: dto.query.presentationDefinition,
+              requestedAttributes: extractRequestedAttributes(
+                dto.query.presentationDefinition,
+              ),
+              predicates: dto.query.predicates?.map((predicate) => ({
+                ...predicate,
+              })),
+              presentationFormat: dto.options.format,
+            },
+            manager,
+          );
+        } catch (error) {
+          if (
+            isUniqueConstraintViolation(
+              error,
+              'uq_presentation_definition_tenant_name_version',
+            )
+          ) {
+            throw new ConflictException(
+              'Presentation definition with this name and version already exists for this tenant.',
+            );
+          }
+          throw error;
+        }
+      },
+    );
+  }
+
+  public async updateDefinition(
+    tenantId: string,
+    id: string,
+    dto: UpdatePresentationDefinitionDto,
+    auth: AuthContext,
+  ): Promise<Operation> {
+    assertTenantAccess(auth, tenantId);
+    if (dto.query) assertSupportedPresentationQuery(dto.query);
+    return this.configurationOperation(
+      tenantId,
+      OPERATION_TYPE.PRESENTATION_DEFINITION_UPDATE,
+      'PATCH',
+      `/${id}`,
+      instanceToPlain(dto),
+      async (manager) => {
+        const definition = await this.findDefinition(
+          tenantId,
+          id,
+          auth,
+          manager,
+        );
+        if (definition.status !== VerificationProfileStatus.DRAFT) {
+          throw new ConflictException(
+            `Presentation definition '${id}' cannot be updated because it is not in draft status.`,
+          );
+        }
+        const patch: Partial<PresentationDefinition> = {};
+        if (dto.description !== undefined) patch.description = dto.description;
+        if (dto.options) patch.presentationFormat = dto.options.format;
+        if (dto.query) {
+          patch.presentationDefinition = dto.query.presentationDefinition;
+          patch.requestedAttributes = extractRequestedAttributes(
+            dto.query.presentationDefinition,
+          );
+          patch.predicates = (dto.query.predicates ?? []).map((predicate) => ({
+            ...predicate,
+          }));
+        }
+        if (
+          !(await this.presentationDefinitions.updateIfDraft(
+            tenantId,
+            id,
+            patch as QueryDeepPartialEntity<PresentationDefinition>,
+            manager,
+          ))
+        ) {
+          throw new ConflictException(
+            `Presentation definition '${id}' cannot be updated because it is not in draft status.`,
+          );
+        }
+        return this.findDefinition(tenantId, id, auth, manager);
+      },
+    );
+  }
+
+  public publishDefinition(
+    tenantId: string,
+    id: string,
+    auth: AuthContext,
+  ): Promise<Operation> {
+    assertTenantAccess(auth, tenantId);
+    return this.configurationOperation(
+      tenantId,
+      OPERATION_TYPE.PRESENTATION_DEFINITION_PUBLISH,
+      'POST',
+      `/${id}/publish`,
+      {},
+      (manager) =>
+        this.transitionDefinition(
+          tenantId,
+          id,
+          auth,
+          VerificationProfileStatus.DRAFT,
+          VerificationProfileStatus.PUBLISHED,
+          manager,
+        ),
+    );
+  }
+
+  public deprecateDefinition(
+    tenantId: string,
+    id: string,
+    auth: AuthContext,
+  ): Promise<Operation> {
+    assertTenantAccess(auth, tenantId);
+    return this.configurationOperation(
+      tenantId,
+      OPERATION_TYPE.PRESENTATION_DEFINITION_DEPRECATE,
+      'POST',
+      `/${id}/deprecate`,
+      {},
+      (manager) =>
+        this.transitionDefinition(
+          tenantId,
+          id,
+          auth,
+          VerificationProfileStatus.PUBLISHED,
+          VerificationProfileStatus.DEPRECATED,
+          manager,
+        ),
+    );
+  }
+
+  public async findDefinition(
+    tenantId: string,
+    id: string,
+    auth: AuthContext,
+    manager?: EntityManager,
+    lock = false,
+  ): Promise<PresentationDefinition> {
+    assertTenantAccess(auth, tenantId);
+    const definition = await this.presentationDefinitions.findById(
+      tenantId,
+      id,
+      manager,
+      lock,
+    );
+    if (!definition) {
+      throw new NotFoundException(
+        `Presentation definition '${id}' was not found.`,
+      );
+    }
+    return definition;
+  }
+
+  private async transitionDefinition(
+    tenantId: string,
+    id: string,
+    auth: AuthContext,
+    from: VerificationProfileStatus,
+    to: VerificationProfileStatus,
+    manager: EntityManager,
+  ): Promise<PresentationDefinition> {
+    await this.findDefinition(tenantId, id, auth, manager, true);
+    if (
+      to === VerificationProfileStatus.DEPRECATED &&
+      (await this.verificationProfileRepository.hasPublishedDefinition(
+        tenantId,
+        id,
+        manager,
+      ))
+    ) {
+      throw new ConflictException(
+        'A published verification profile still references this definition.',
+      );
+    }
+    if (
+      !(await this.presentationDefinitions.transitionStatus(
+        tenantId,
+        id,
+        from,
+        to,
+        manager,
+      ))
+    ) {
+      throw new ConflictException(
+        `Presentation definition '${id}' cannot transition from its current status.`,
+      );
+    }
+    return this.findDefinition(tenantId, id, auth, manager);
+  }
+
+  private async configurationOperation(
+    tenantId: string,
+    type: OperationType,
+    method: string,
+    suffix: string,
+    body: Record<string, unknown>,
+    mutate: (manager: EntityManager) => Promise<PresentationDefinition>,
+  ): Promise<Operation> {
+    const { profile, operation } = await this.dataSource.transaction(
+      async (manager) => {
+        const profile = await mutate(manager);
+        const operation = await this.operations.createCompleted(
+          {
+            tenantId,
+            type,
+            steps: [{ type, state: OperationStepState.COMPLETED }],
+            request: {
+              method,
+              path: `${API_BASE_PATH}/tenants/${tenantId}/presentation-definitions${suffix}`,
+              body,
+            },
+          },
+          instanceToPlain(
+            PresentationDefinitionResponseDto.fromEntity(profile),
+          ),
+          manager,
+        );
+        return { profile, operation };
+      },
+    );
+    await this.domainAudit.emit({
+      tenantId,
+      action:
+        method === 'POST' && !suffix ? AuditAction.CREATE : AuditAction.UPDATE,
+      resourceType: 'presentation_definition',
+      resourceId: profile.id,
+    });
+    return operation;
+  }
+
+  public async profileOperation(
+    tenantId: string,
+    type: OperationType,
+    method: string,
+    suffix: string,
+    body: Record<string, unknown>,
+    mutate: (manager: EntityManager) => Promise<VerificationProfile>,
+  ): Promise<Operation> {
+    const { profile, operation } = await this.dataSource.transaction(
+      async (manager) => {
+        const profile = await mutate(manager);
+        const operation = await this.operations.createCompleted(
+          {
+            tenantId,
+            type,
+            steps: [{ type, state: OperationStepState.COMPLETED }],
+            request: {
+              method,
+              path: `${API_BASE_PATH}/tenants/${tenantId}/profiles/verification${suffix}`,
+              body,
+            },
+          },
+          instanceToPlain(VerificationProfileResponseDto.fromEntity(profile)),
+          manager,
+        );
+        return { profile, operation };
+      },
+    );
+    await this.domainAudit.emit({
+      tenantId,
+      action:
+        method === 'POST' && !suffix ? AuditAction.CREATE : AuditAction.UPDATE,
+      resourceType: 'verification_profile',
+      resourceId: profile.id,
+    });
+    return operation;
+  }
 
   public async create(
     tenantId: string,
     dto: CreateVerificationProfileDto,
     auth: AuthContext,
+    manager?: EntityManager,
   ): Promise<VerificationProfile> {
     assertTenantAccess(auth, tenantId);
 
-    const requestedAttributes = extractRequestedAttributes(
-      dto.presentationDefinition,
+    const definition = await this.findDefinition(
+      tenantId,
+      dto.presentationDefinitionId,
+      auth,
+      manager,
     );
 
     const existing =
@@ -58,6 +404,7 @@ export class VerificationProfileService {
         tenantId,
         dto.name,
         dto.version,
+        manager,
       );
 
     if (existing) {
@@ -66,26 +413,28 @@ export class VerificationProfileService {
       );
     }
 
-    const created = await this.createProfile({
-      tenantId,
-      name: dto.name,
-      version: dto.version,
-      description: dto.description,
-      presentationDefinition: dto.presentationDefinition,
-      requestedAttributes,
-      predicates: dto.predicates as unknown as
-        Record<string, unknown>[] | undefined,
-      metadata: dto.metadata ?? {},
-      isPublic: dto.isPublic ?? false,
-      protocolHint: dto.protocolHint,
-    });
+    const created = await this.createProfile(
+      {
+        tenantId,
+        name: dto.name,
+        version: dto.version,
+        description: dto.description,
+        presentationDefinitionId: definition.id,
+        delivery: dto.delivery ?? { protocol: 'didcomm-v1' },
+        metadata: dto.metadata ?? {},
+        isPublic: dto.isPublic ?? false,
+      },
+      manager,
+    );
+    created.definition = definition;
 
-    await this.domainAudit.emit({
-      tenantId: created.tenantId,
-      action: AuditAction.CREATE,
-      resourceType: 'verification_profile',
-      resourceId: created.id,
-    });
+    if (!manager)
+      await this.domainAudit.emit({
+        tenantId: created.tenantId,
+        action: AuditAction.CREATE,
+        resourceType: 'verification_profile',
+        resourceId: created.id,
+      });
 
     return created;
   }
@@ -98,9 +447,10 @@ export class VerificationProfileService {
    */
   private async createProfile(
     profile: Partial<VerificationProfile>,
+    manager?: EntityManager,
   ): Promise<VerificationProfile> {
     try {
-      return await this.verificationProfileRepository.create(profile);
+      return await this.verificationProfileRepository.create(profile, manager);
     } catch (error) {
       if (
         isUniqueConstraintViolation(
@@ -121,8 +471,14 @@ export class VerificationProfileService {
     tenantId: string,
     id: string,
     auth: AuthContext,
+    manager?: EntityManager,
+    lock = false,
   ): Promise<VerificationProfile> {
-    const profile = await this.verificationProfileRepository.findById(id);
+    const profile = await this.verificationProfileRepository.findById(
+      id,
+      manager,
+      lock,
+    );
     const notFound = `Verification profile '${id}' was not found.`;
 
     if (!profile || profile.tenantId !== tenantId) {
@@ -161,8 +517,9 @@ export class VerificationProfileService {
     id: string,
     dto: UpdateVerificationProfileDto,
     auth: AuthContext,
+    manager?: EntityManager,
   ): Promise<VerificationProfile> {
-    const profile = await this.findById(tenantId, id, auth);
+    const profile = await this.findById(tenantId, id, auth, manager);
 
     if (profile.status !== VerificationProfileStatus.DRAFT) {
       throw new ConflictException(
@@ -172,20 +529,21 @@ export class VerificationProfileService {
 
     const patch: Partial<VerificationProfile> = {};
 
-    if (dto.presentationDefinition !== undefined) {
-      const requestedAttributes = extractRequestedAttributes(
-        dto.presentationDefinition,
+    if (dto.presentationDefinitionId !== undefined) {
+      const definition = await this.findDefinition(
+        tenantId,
+        dto.presentationDefinitionId,
+        auth,
+        manager,
       );
-      patch.presentationDefinition = dto.presentationDefinition;
-      patch.requestedAttributes = requestedAttributes;
-    }
-
-    if (dto.predicates !== undefined) {
-      patch.predicates = dto.predicates as unknown as Record<string, unknown>[];
+      patch.presentationDefinitionId = definition.id;
     }
 
     if (dto.description !== undefined) {
       patch.description = dto.description;
+    }
+    if (dto.delivery !== undefined) {
+      patch.delivery = dto.delivery;
     }
 
     if (dto.metadata !== undefined) {
@@ -196,15 +554,12 @@ export class VerificationProfileService {
       patch.isPublic = dto.isPublic;
     }
 
-    if (dto.protocolHint !== undefined) {
-      patch.protocolHint = dto.protocolHint;
-    }
-
     const updatedWhileDraft =
       await this.verificationProfileRepository.updateIfDraft(
         tenantId,
         id,
         patch as QueryDeepPartialEntity<VerificationProfile>,
+        manager,
       );
 
     if (!updatedWhileDraft) {
@@ -213,14 +568,15 @@ export class VerificationProfileService {
       );
     }
 
-    const updated = await this.findById(tenantId, id, auth);
+    const updated = await this.findById(tenantId, id, auth, manager);
 
-    await this.domainAudit.emit({
-      tenantId: updated.tenantId,
-      action: AuditAction.UPDATE,
-      resourceType: 'verification_profile',
-      resourceId: updated.id,
-    });
+    if (!manager)
+      await this.domainAudit.emit({
+        tenantId: updated.tenantId,
+        action: AuditAction.UPDATE,
+        resourceType: 'verification_profile',
+        resourceId: updated.id,
+      });
 
     return updated;
   }
@@ -229,12 +585,26 @@ export class VerificationProfileService {
     tenantId: string,
     id: string,
     auth: AuthContext,
+    manager?: EntityManager,
   ): Promise<VerificationProfile> {
-    const profile = await this.findById(tenantId, id, auth);
+    const profile = await this.findById(tenantId, id, auth, manager, !!manager);
 
     if (profile.status !== VerificationProfileStatus.DRAFT) {
       throw new ConflictException(
         `Verification profile '${id}' cannot be published because it is not in draft status.`,
+      );
+    }
+
+    const definition = await this.findDefinition(
+      tenantId,
+      profile.presentationDefinitionId,
+      auth,
+      manager,
+      !!manager,
+    );
+    if (definition.status !== VerificationProfileStatus.PUBLISHED) {
+      throw new ConflictException(
+        'Presentation definition must be published before its profile.',
       );
     }
 
@@ -244,6 +614,7 @@ export class VerificationProfileService {
         id,
         VerificationProfileStatus.DRAFT,
         VerificationProfileStatus.PUBLISHED,
+        manager,
       );
 
     if (!transitioned) {
@@ -252,14 +623,15 @@ export class VerificationProfileService {
       );
     }
 
-    const published = await this.findById(tenantId, id, auth);
+    const published = await this.findById(tenantId, id, auth, manager);
 
-    await this.domainAudit.emit({
-      tenantId: published.tenantId,
-      action: AuditAction.UPDATE,
-      resourceType: 'verification_profile',
-      resourceId: published.id,
-    });
+    if (!manager)
+      await this.domainAudit.emit({
+        tenantId: published.tenantId,
+        action: AuditAction.UPDATE,
+        resourceType: 'verification_profile',
+        resourceId: published.id,
+      });
 
     return published;
   }
@@ -268,8 +640,9 @@ export class VerificationProfileService {
     tenantId: string,
     id: string,
     auth: AuthContext,
+    manager?: EntityManager,
   ): Promise<VerificationProfile> {
-    const profile = await this.findById(tenantId, id, auth);
+    const profile = await this.findById(tenantId, id, auth, manager);
 
     if (profile.status !== VerificationProfileStatus.PUBLISHED) {
       throw new ConflictException(
@@ -283,6 +656,7 @@ export class VerificationProfileService {
         id,
         VerificationProfileStatus.PUBLISHED,
         VerificationProfileStatus.DEPRECATED,
+        manager,
       );
 
     if (!transitioned) {
@@ -291,14 +665,15 @@ export class VerificationProfileService {
       );
     }
 
-    const deprecated = await this.findById(tenantId, id, auth);
+    const deprecated = await this.findById(tenantId, id, auth, manager);
 
-    await this.domainAudit.emit({
-      tenantId: deprecated.tenantId,
-      action: AuditAction.UPDATE,
-      resourceType: 'verification_profile',
-      resourceId: deprecated.id,
-    });
+    if (!manager)
+      await this.domainAudit.emit({
+        tenantId: deprecated.tenantId,
+        action: AuditAction.UPDATE,
+        resourceType: 'verification_profile',
+        resourceId: deprecated.id,
+      });
 
     return deprecated;
   }

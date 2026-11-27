@@ -411,11 +411,31 @@ GET  /api/v1/tenants/:tenantId/connections             → List connections
 GET  /api/v1/tenants/:tenantId/operations/:id          → Poll operation status/result (AG-02)
 POST /api/v1/tenants/:tenantId/profiles/issuance       → Create issuance profile
 POST /api/v1/tenants/:tenantId/profiles/verification   → Create verification profile
+POST /api/v1/tenants/:tenantId/presentation-definitions → Create presentation definition
 GET  /api/v1/issuers/:tenantSlug/.well-known/openid-credential-issuer → Public discovery
 ```
 
 Issuance-profile create, update, publish, and deprecate return the profile
-directly. Profile reads and mutations use the same profile representation.
+directly. Issuance-profile reads and mutations use the same representation.
+
+Presentation definitions are tenant-owned, reusable evidence queries, not ledger
+registrations. Verification profiles reference a definition and supply delivery
+and discovery metadata. A profile can be published only against a published
+definition; a definition cannot be deprecated while published profiles reference
+it. Profile-mode requests resolve the definition through the published profile.
+Definitions support AnonCreds and a restricted DIF attribute-selection subset;
+unsupported constraints are rejected. The existing ad-hoc raw request mode
+remains available for compatibility; it cannot select a stored definition.
+
+Definition and verification-profile mutations return a completed Operation
+whose `result` contains the resource snapshot. Their GET endpoints return
+resources directly. Verification-profile reads retain `presentation_definition`,
+`requested_attributes`, and `predicates` as read-only projections of the
+referenced definition; writes use `presentation_definition_id` instead. Existing
+profile UUIDs and evidence survive migration. Legacy format and delivery are
+null because they were not recorded; execution retains connector inference for
+those profiles. New profiles default to DIDComm v1 and require a matching
+connection.
 
 **Request body example (issue via profile — DIDComm delivery):**
 ```json
@@ -446,6 +466,7 @@ graph TD
 
     subgraph "Internal (Infrastructure)"
         CD[Credential Definition<br/>format + schema + external_id]
+        PD[Presentation Definition<br/>evidence query + format]
         CC[Connector Credential<br/>endpoint + auth]
     end
 
@@ -457,7 +478,7 @@ graph TD
 
     IP --> CD
     IP --> CC
-    VP --> IP
+    VP --> PD
     CC --> AR
     AR --> TA
     AR --> CA
@@ -467,7 +488,7 @@ graph TD
 - **Name + version** as identifier: enables schema evolution (deprecate v1.0, publish v2.0)
 - **Profile wraps cred_def**: consumers never reference `credential_definition_id` or `format` directly
 - **Lifecycle (draft → published → deprecated)**: prevents issuing against incomplete or retired configurations
-- **Verification profiles reference issuance profiles**: ensures requested attributes actually exist in the issued credential
+- **Verification profiles reference presentation definitions**: proof requirements are reusable independently of issuer configuration
 - **Public discovery**: verification profiles can be marked public for external verifier consumption
 - **Issuance delivery**: profiles declare explicit `delivery.protocol`; offers inherit it
 - **Claim overlays**: profiles add required claims or tighten allowed values
@@ -1451,13 +1472,12 @@ erDiagram
     VERIFICATION_PROFILE {
         uuid id PK
         uuid tenant_id FK
-        uuid issuance_profile_id FK
+        uuid presentation_definition_id FK
         string name
         string version
-        jsonb presentation_definition
+        jsonb delivery
         jsonb metadata
         boolean public
-        enum protocol_hint
         enum status
     }
 

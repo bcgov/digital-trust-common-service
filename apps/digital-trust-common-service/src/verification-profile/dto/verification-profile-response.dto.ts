@@ -3,7 +3,6 @@ import { Expose } from 'class-transformer';
 
 import {
   VerificationProfile,
-  VerificationProfileProtocolHint,
   VerificationProfileStatus,
 } from '../verification-profile.entity';
 
@@ -40,6 +39,21 @@ export class VerificationProfileResponseDto {
     nullable: true,
   })
   public description?: string | null;
+
+  @Expose({ name: 'presentation_definition_id' })
+  @ApiProperty({ name: 'presentation_definition_id', format: 'uuid' })
+  public presentationDefinitionId!: string;
+
+  @ApiProperty({
+    type: 'object',
+    nullable: true,
+    description:
+      'Delivery protocol; legacy oid4vp is retained but cannot be executed.',
+    properties: {
+      protocol: { type: 'string', enum: ['didcomm-v1', 'oid4vp'] },
+    },
+  })
+  public delivery!: { protocol: string } | null;
 
   @Expose({ name: 'presentation_definition' })
   @ApiProperty({
@@ -81,15 +95,6 @@ export class VerificationProfileResponseDto {
   })
   public isPublic!: boolean;
 
-  @Expose({ name: 'protocol_hint' })
-  @ApiProperty({
-    name: 'protocol_hint',
-    description: 'Preferred presentation protocol',
-    enum: VerificationProfileProtocolHint,
-    example: VerificationProfileProtocolHint.AUTO,
-  })
-  public protocolHint!: VerificationProfileProtocolHint;
-
   @ApiProperty({
     description: 'Lifecycle status of the profile',
     enum: VerificationProfileStatus,
@@ -116,18 +121,22 @@ export class VerificationProfileResponseDto {
   public static fromEntity(
     profile: VerificationProfile,
   ): VerificationProfileResponseDto {
+    if (!profile.definition) {
+      throw new Error('Verification profile definition was not loaded');
+    }
     const dto = new VerificationProfileResponseDto();
     dto.id = profile.id;
     dto.tenantId = profile.tenantId;
     dto.name = profile.name;
     dto.version = profile.version;
     dto.description = profile.description;
-    dto.presentationDefinition = profile.presentationDefinition;
-    dto.requestedAttributes = profile.requestedAttributes;
-    dto.predicates = profile.predicates;
+    dto.presentationDefinitionId = profile.presentationDefinitionId;
+    dto.delivery = profile.delivery ?? null;
+    dto.presentationDefinition = profile.definition.presentationDefinition;
+    dto.requestedAttributes = profile.definition.requestedAttributes;
+    dto.predicates = profile.definition.predicates;
     dto.metadata = profile.metadata;
     dto.isPublic = profile.isPublic;
-    dto.protocolHint = profile.protocolHint;
     dto.status = profile.status;
     dto.createdAt = profile.createdAt;
     dto.updatedAt = profile.updatedAt;

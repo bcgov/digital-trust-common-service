@@ -1353,11 +1353,11 @@ paths:
               $ref: "#/components/schemas/CreateVerificationProfileRequest"
       responses:
         "201":
-          description: Verification profile created (draft status)
+          description: Completed configuration operation; result contains the draft profile snapshot
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/VerificationProfile"
+                $ref: "#/components/schemas/Operation"
         "422":
           $ref: "#/components/responses/ValidationError"
     get:
@@ -1419,11 +1419,11 @@ paths:
               $ref: "#/components/schemas/UpdateVerificationProfileRequest"
       responses:
         "200":
-          description: Profile updated
+          description: Completed configuration operation; result contains the updated profile snapshot
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/VerificationProfile"
+                $ref: "#/components/schemas/Operation"
         "409":
           description: Cannot update a published or deprecated profile
           content:
@@ -1441,11 +1441,11 @@ paths:
       tags: [Verification Profiles]
       responses:
         "200":
-          description: Profile published
+          description: Completed configuration operation; result contains the published profile snapshot
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/VerificationProfile"
+                $ref: "#/components/schemas/Operation"
 
   /api/v1/tenants/{tenantId}/profiles/verification/{profileId}/deprecate:
     parameters:
@@ -1457,11 +1457,131 @@ paths:
       tags: [Verification Profiles]
       responses:
         "200":
-          description: Profile deprecated
+          description: Completed configuration operation; result contains the deprecated profile snapshot
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/VerificationProfile"
+                $ref: "#/components/schemas/Operation"
+
+  /api/v1/tenants/{tenantId}/presentation-definitions:
+    parameters:
+      - $ref: "#/components/parameters/TenantId"
+    post:
+      operationId: createPresentationDefinition
+      summary: Create a draft presentation definition
+      tags: [Presentations]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePresentationDefinitionRequest"
+      responses:
+        "201":
+          description: Completed configuration operation; result contains the definition snapshot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Operation"
+    get:
+      operationId: listPresentationDefinitions
+      summary: List presentation definitions
+      tags: [Presentations]
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/ProfileStatus"
+      responses:
+        "200":
+          description: Paginated definitions
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/PaginatedResponse"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/PresentationDefinition"
+
+  /api/v1/tenants/{tenantId}/presentation-definitions/{definitionId}:
+    parameters:
+      - $ref: "#/components/parameters/TenantId"
+      - name: definitionId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: getPresentationDefinition
+      summary: Get a presentation definition
+      tags: [Presentations]
+      responses:
+        "200":
+          description: Presentation definition
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PresentationDefinition"
+    patch:
+      operationId: updatePresentationDefinition
+      summary: Update a draft presentation definition
+      tags: [Presentations]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdatePresentationDefinitionRequest"
+      responses:
+        "200":
+          description: Completed configuration operation; result contains the definition snapshot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Operation"
+
+  /api/v1/tenants/{tenantId}/presentation-definitions/{definitionId}/publish:
+    parameters:
+      - $ref: "#/components/parameters/TenantId"
+      - name: definitionId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      operationId: publishPresentationDefinition
+      summary: Publish a draft presentation definition
+      tags: [Presentations]
+      responses:
+        "200":
+          description: Completed configuration operation; result contains the definition snapshot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Operation"
+
+  /api/v1/tenants/{tenantId}/presentation-definitions/{definitionId}/deprecate:
+    parameters:
+      - $ref: "#/components/parameters/TenantId"
+      - name: definitionId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      operationId: deprecatePresentationDefinition
+      summary: Deprecate a definition not referenced by published profiles
+      tags: [Presentations]
+      responses:
+        "200":
+          description: Completed configuration operation; result contains the definition snapshot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Operation"
 
   # ─── Credentials ─────────────────────────────────────────────────────
   /api/v1/tenants/{tenantId}/credentials/offer:
@@ -4236,17 +4356,85 @@ components:
       type: string
       enum: [draft, published, deprecated]
 
-    ProtocolHint:
-      type: string
-      description: |
-        Protocol hint for delivery. Valid values depend on context:
-        - Verification profiles: didcomm, oid4vp, auto
-        Issuance profiles use explicit delivery.protocol instead.
-        Server validates that the value is appropriate for the profile type.
-      enum: [didcomm, oid4vci, oid4vp, auto]
-      default: auto
-
     # ─── Verification Profile ────────────────────────────────────────
+    PresentationQuery:
+      type: object
+      additionalProperties: false
+      required: [type, presentation_definition]
+      properties:
+        type:
+          type: string
+          enum: [dif-presentation-exchange]
+        presentation_definition:
+          type: object
+          description: DIF subset with exactly one credentialSubject attribute path per descriptor; unsupported constraints are rejected.
+          additionalProperties: true
+        predicates:
+          type: array
+          nullable: true
+          items:
+            type: object
+            additionalProperties: false
+            required: [attribute, condition, value]
+            properties:
+              attribute: { type: string }
+              condition: { type: string, enum: ["<", "<=", ">", ">="] }
+              value: { type: string, description: Signed 32-bit integer threshold }
+    PresentationDefinitionOptions:
+      type: object
+      additionalProperties: false
+      required: [format]
+      properties:
+        format: { type: string, enum: [anoncreds] }
+    CreatePresentationDefinitionRequest:
+      type: object
+      additionalProperties: false
+      required: [name, version, query, options]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 100 }
+        version: { type: string, minLength: 1, maxLength: 20 }
+        description: { type: string, maxLength: 500 }
+        query:
+          $ref: "#/components/schemas/PresentationQuery"
+        options:
+          $ref: "#/components/schemas/PresentationDefinitionOptions"
+    UpdatePresentationDefinitionRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        description: { type: string, maxLength: 500 }
+        query:
+          $ref: "#/components/schemas/PresentationQuery"
+        options:
+          $ref: "#/components/schemas/PresentationDefinitionOptions"
+    PresentationDefinition:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        tenant_id: { type: string, format: uuid }
+        name: { type: string }
+        version: { type: string }
+        description: { type: string, nullable: true }
+        query:
+          $ref: "#/components/schemas/PresentationQuery"
+        options:
+          type: object
+          properties:
+            format:
+              type: string
+              nullable: true
+              description: Null for legacy definitions whose format was not recorded.
+        status:
+          $ref: "#/components/schemas/ProfileStatus"
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    VerificationDelivery:
+      type: object
+      additionalProperties: false
+      required: [protocol]
+      properties:
+        protocol: { type: string, enum: [didcomm-v1] }
+
     VerificationProfile:
       type: object
       properties:
@@ -4263,9 +4451,19 @@ components:
         description:
           type: string
           nullable: true
+        presentation_definition_id:
+          type: string
+          format: uuid
+        delivery:
+          type: object
+          nullable: true
+          description: Null for legacy DIDComm inference; legacy oid4vp is retained but cannot be executed.
+          required: [protocol]
+          properties:
+            protocol: { type: string, enum: [didcomm-v1, oid4vp] }
         presentation_definition:
           type: object
-          description: DIF Presentation Exchange format
+          description: Read-only compatibility projection from the referenced definition.
         requested_attributes:
           type: array
           items:
@@ -4289,8 +4487,6 @@ components:
         public:
           type: boolean
           default: false
-        protocol_hint:
-          $ref: "#/components/schemas/ProtocolHint"
         status:
           $ref: "#/components/schemas/ProfileStatus"
         created_at:
@@ -4302,7 +4498,8 @@ components:
 
     CreateVerificationProfileRequest:
       type: object
-      required: [name, version, presentation_definition]
+      additionalProperties: false
+      required: [name, version, presentation_definition_id]
       properties:
         name:
           type: string
@@ -4315,45 +4512,32 @@ components:
         description:
           type: string
           maxLength: 500
-        presentation_definition:
-          type: object
-          description: DIF Presentation Exchange object
-        predicates:
-          type: array
-          items:
-            type: object
-            properties:
-              attribute:
-                type: string
-              condition:
-                type: string
-              value:
-                type: string
+        presentation_definition_id:
+          type: string
+          format: uuid
+        delivery:
+          $ref: "#/components/schemas/VerificationDelivery"
         metadata:
           type: object
         public:
           type: boolean
           default: false
-        protocol_hint:
-          $ref: "#/components/schemas/ProtocolHint"
 
     UpdateVerificationProfileRequest:
       type: object
+      additionalProperties: false
       properties:
         description:
           type: string
-        presentation_definition:
-          type: object
-        predicates:
-          type: array
-          items:
-            type: object
+        presentation_definition_id:
+          type: string
+          format: uuid
+        delivery:
+          $ref: "#/components/schemas/VerificationDelivery"
         metadata:
           type: object
         public:
           type: boolean
-        protocol_hint:
-          $ref: "#/components/schemas/ProtocolHint"
 
     # ─── Credential Operations ───────────────────────────────────────
     OfferCredentialRequest:
@@ -4577,7 +4761,11 @@ components:
             `credential-definition.register`, `credential.offer`, `credential.issue`, `credential.offer-batch`,
             `credential.accept`, `credential.reject`,
             `credential.revoke`, `credential.revoke-batch`,
-            `presentation.request`, `connection.create`
+            `presentation.request`, `connection.create`,
+            `presentation-definition.create`, `presentation-definition.update`,
+            `presentation-definition.publish`, `presentation-definition.deprecate`,
+            `verification-profile.create`, `verification-profile.update`,
+            `verification-profile.publish`, `verification-profile.deprecate`
           examples:
             - credential.offer
             - credential.issue
@@ -4588,6 +4776,14 @@ components:
             - credential.revoke-batch
             - presentation.request
             - connection.create
+            - presentation-definition.create
+            - presentation-definition.update
+            - presentation-definition.publish
+            - presentation-definition.deprecate
+            - verification-profile.create
+            - verification-profile.update
+            - verification-profile.publish
+            - verification-profile.deprecate
         state:
           $ref: "#/components/schemas/OperationState"
         steps:

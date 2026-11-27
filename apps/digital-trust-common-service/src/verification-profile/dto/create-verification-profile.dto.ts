@@ -1,19 +1,18 @@
+import { ApiProperty } from '@nestjs/swagger';
 import { Expose, Type } from 'class-transformer';
 import {
-  IsArray,
   IsBoolean,
-  IsEnum,
   IsObject,
   IsOptional,
   IsString,
+  IsUUID,
   MaxLength,
   MinLength,
   ValidateNested,
+  ValidateIf,
 } from 'class-validator';
 
-import { VerificationProfileProtocolHint } from '../verification-profile.entity';
-
-import { VerificationPredicateDto } from './verification-predicate.dto';
+import { VerificationDeliveryDto } from './verification-delivery.dto';
 
 export class CreateVerificationProfileDto {
   @Expose()
@@ -34,16 +33,17 @@ export class CreateVerificationProfileDto {
   @MaxLength(500)
   public description?: string;
 
-  @Expose({ name: 'presentation_definition' })
-  @IsObject()
-  public presentationDefinition!: Record<string, unknown>;
+  @Expose({ name: 'presentation_definition_id' })
+  @ApiProperty({ name: 'presentation_definition_id', format: 'uuid' })
+  @IsUUID()
+  public presentationDefinitionId!: string;
 
-  @Expose()
-  @IsOptional()
-  @IsArray()
-  @ValidateNested({ each: true })
-  @Type(() => VerificationPredicateDto)
-  public predicates?: VerificationPredicateDto[];
+  @ValidateIf((_object, value: unknown) => value !== undefined)
+  @IsObject()
+  @ValidateNested()
+  @Type(() => VerificationDeliveryDto)
+  @ApiProperty({ type: VerificationDeliveryDto, required: false })
+  public delivery?: VerificationDeliveryDto;
 
   @Expose()
   @IsOptional()
@@ -54,9 +54,4 @@ export class CreateVerificationProfileDto {
   @IsOptional()
   @IsBoolean()
   public isPublic?: boolean;
-
-  @Expose({ name: 'protocol_hint' })
-  @IsOptional()
-  @IsEnum(VerificationProfileProtocolHint)
-  public protocolHint?: VerificationProfileProtocolHint;
 }

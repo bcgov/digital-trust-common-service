@@ -58,6 +58,7 @@ interface ResolvedRequest {
   readonly requestedAttributes: readonly { name: string }[];
   readonly requestedPredicates?: readonly RequestedPredicate[];
   readonly format?: CredentialDefinitionFormat;
+  readonly deliveryProtocol?: ConnectionProtocol;
 }
 
 /**
@@ -133,6 +134,14 @@ export class PresentationRequestService {
     }
 
     this.assertConnectionUsable(connection);
+    if (
+      resolved.deliveryProtocol &&
+      connection.protocol !== resolved.deliveryProtocol
+    ) {
+      throw new BadRequestException(
+        'Connection protocol does not match the verification profile delivery.',
+      );
+    }
 
     // Resolved before any DB writes, same rationale as
     // CredentialOfferService: a connector-configuration problem (no active
@@ -211,15 +220,31 @@ export class PresentationRequestService {
         dto.verificationProfileId,
       );
 
-      this.assertConstraintsRepresentable(profile.presentationDefinition);
+      const definition = profile.definition;
+      if (!definition) {
+        throw new BadRequestException('Presentation definition was not found.');
+      }
+      this.assertConstraintsRepresentable(definition.presentationDefinition);
+
+      if (
+        profile.delivery != null &&
+        profile.delivery.protocol !== 'didcomm-v1'
+      ) {
+        throw new BadRequestException(
+          'Verification profile delivery protocol is not supported.',
+        );
+      }
 
       return {
         name: profile.name,
         requestedAttributes: (
-          profile.requestedAttributes ??
-          extractRequestedAttributes(profile.presentationDefinition)
+          definition.requestedAttributes ??
+          extractRequestedAttributes(definition.presentationDefinition)
         ).map((name) => ({ name })),
-        requestedPredicates: this.mapPredicates(profile.predicates),
+        requestedPredicates: this.mapPredicates(definition.predicates),
+        format: definition.presentationFormat ?? undefined,
+        deliveryProtocol:
+          profile.delivery != null ? ConnectionProtocol.DIDCOMM_V1 : undefined,
       };
     }
 

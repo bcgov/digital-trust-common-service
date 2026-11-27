@@ -18,10 +18,7 @@ import {
   TenantUserRole,
   TenantUserStatus,
 } from '../tenant-user/tenant-user.entity';
-import {
-  VerificationProfileProtocolHint,
-  VerificationProfileStatus,
-} from '../verification-profile/verification-profile.entity';
+import { VerificationProfileStatus } from '../verification-profile/verification-profile.entity';
 
 export const ADMIN_SCOPES = [
   TENANT_SUPERUSER_SCOPE,
@@ -300,15 +297,16 @@ export const SEED_ISSUANCE_PROFILES = [
 export const SEED_VERIFICATION_PROFILE = {
   name: 'identity-check',
   version: '1.0',
-  description: 'Published age verification profile with birthdate predicate.',
+  presentationDefinitionVersion: '1.1',
+  description:
+    'Published identity verification profile with birthdate predicate.',
   status: VerificationProfileStatus.PUBLISHED,
   requestedAttributes: ['given_names', 'family_name'],
   predicates: [
     {
-      name: 'age_verification',
-      p_type: '>=',
-      p_value: 19,
-      attribute_name: 'birthdate_dateint',
+      attribute: 'birthdate_dateint',
+      condition: '<=',
+      value: '20000101',
     },
   ],
   presentationDefinition: {
@@ -321,19 +319,22 @@ export const SEED_VERIFICATION_PROFILE = {
           fields: [
             {
               path: ['$.credentialSubject.given_names'],
-              purpose: 'Verify given names',
             },
+          ],
+        },
+      },
+      {
+        id: 'family_name',
+        constraints: {
+          fields: [
             {
-              path: ['$.credentialSubject.birthdate_dateint'],
-              purpose: 'Age verification',
-              filter: { type: 'number', minimum: 19 },
+              path: ['$.credentialSubject.family_name'],
             },
           ],
         },
       },
     ],
   },
-  protocolHint: VerificationProfileProtocolHint.DIDCOMM,
   isPublic: false,
 } as const;
 

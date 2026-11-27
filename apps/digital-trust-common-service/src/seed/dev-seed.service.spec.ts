@@ -27,6 +27,7 @@ import {
   TenantUserStatus,
 } from '../tenant-user/tenant-user.entity';
 import { TenantUserRepository } from '../tenant-user/tenant-user.repository';
+import { PresentationDefinitionRepository } from '../verification-profile/presentation-definition.repository';
 import { VerificationProfile } from '../verification-profile/verification-profile.entity';
 import { VerificationProfileRepository } from '../verification-profile/verification-profile.repository';
 
@@ -82,6 +83,10 @@ describe('DevSeedService', () => {
     findByNameAndVersion: jest.fn(),
     create: jest.fn(),
     save: jest.fn(),
+  };
+  const presentationDefinitionRepo = {
+    findByNameAndVersion: jest.fn(),
+    create: jest.fn(),
   };
 
   const oauthClientRepo = {
@@ -150,6 +155,10 @@ describe('DevSeedService', () => {
         {
           provide: VerificationProfileRepository,
           useValue: verificationProfileRepo,
+        },
+        {
+          provide: PresentationDefinitionRepository,
+          useValue: presentationDefinitionRepo,
         },
         { provide: OAuthClientRepository, useValue: oauthClientRepo },
         { provide: ConnectionRepository, useValue: connectionRepo },
@@ -227,6 +236,8 @@ describe('DevSeedService', () => {
 
     verificationProfileRepo.findByNameAndVersion.mockResolvedValue(null);
     verificationProfileRepo.create.mockResolvedValue({ id: 'vp-1' });
+    presentationDefinitionRepo.findByNameAndVersion.mockResolvedValue(null);
+    presentationDefinitionRepo.create.mockResolvedValue({ id: 'definition-1' });
 
     oauthClientRepo.findByClientId.mockResolvedValue(null);
     oauthClientRepo.create.mockResolvedValue({});
@@ -793,6 +804,7 @@ describe('DevSeedService', () => {
       id: 'vp-existing',
       name: 'identity-check',
       version: '1.0',
+      metadata: { seed: true },
     } as VerificationProfile;
 
     issuanceProfileRepo.findByNameAndVersion.mockResolvedValue(
@@ -808,6 +820,167 @@ describe('DevSeedService', () => {
 
     expect(issuanceProfileRepo.save).toHaveBeenCalled();
     expect(verificationProfileRepo.save).toHaveBeenCalled();
+  });
+
+  it('creates a corrected definition version for a migrated seed profile', async () => {
+    const migratedProfile = {
+      id: 'vp-migrated',
+      tenantId: 'tenant-acme',
+      name: 'identity-check',
+      version: '1.0',
+      presentationDefinitionId: 'legacy-definition',
+      metadata: { seed: true },
+    } as VerificationProfile;
+    const legacyDefinition = {
+      id: 'legacy-definition',
+      tenantId: 'tenant-acme',
+      name: 'identity-check',
+      version: '1.0',
+      presentationDefinition: {
+        id: 'identity-check-v1',
+        input_descriptors: [
+          {
+            id: 'person_credential',
+            constraints: {
+              fields: [
+                { path: ['$.credentialSubject.given_names'] },
+                {
+                  path: ['$.credentialSubject.birthdate_dateint'],
+                  filter: { type: 'number', minimum: 19 },
+                },
+              ],
+            },
+          },
+        ],
+      },
+      requestedAttributes: ['given_names', 'family_name'],
+      predicates: [
+        {
+          name: 'age_verification',
+          p_type: '>=',
+          p_value: 19,
+          attribute_name: 'birthdate_dateint',
+        },
+      ],
+    };
+    verificationProfileRepo.findByNameAndVersion.mockImplementation(
+      (tenantId: string) =>
+        Promise.resolve(tenantId === 'tenant-acme' ? migratedProfile : null),
+    );
+    presentationDefinitionRepo.findByNameAndVersion.mockImplementation(
+      (_tenantId: string, _name: string, version: string) =>
+        Promise.resolve(version === '1.0' ? legacyDefinition : null),
+    );
+    presentationDefinitionRepo.create.mockImplementation(
+      (definition: Record<string, unknown>) =>
+        Promise.resolve({ id: 'corrected-definition', ...definition }),
+    );
+
+    await service.run();
+
+    expect(presentationDefinitionRepo.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tenantId: 'tenant-acme',
+        name: 'identity-check',
+        version: '1.1',
+        presentationDefinition: expect.objectContaining({
+          input_descriptors: expect.any(Array),
+        }),
+        requestedAttributes: ['given_names', 'family_name'],
+        predicates: [
+          {
+            attribute: 'birthdate_dateint',
+            condition: '<=',
+            value: '20000101',
+          },
+        ],
+      }),
+    );
+    expect(presentationDefinitionRepo.create).not.toHaveBeenCalledWith(
+      expect.objectContaining({ version: '1.0' }),
+    );
+    expect(verificationProfileRepo.save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: 'vp-migrated',
+        presentationDefinitionId: 'corrected-definition',
+      }),
+    );
+    expect(
+      legacyDefinition.presentationDefinition.input_descriptors[0],
+    ).toHaveProperty('constraints.fields.1.filter.minimum', 19);
+    expect(legacyDefinition.predicates[0]).toHaveProperty(
+      'attribute_name',
+      'birthdate_dateint',
+    );
+  });
+
+  it('does not relink a profile that is not seed-owned', async () => {
+    const userProfile = {
+      id: 'vp-user',
+      tenantId: 'tenant-acme',
+      name: 'identity-check',
+      version: '1.0',
+      presentationDefinitionId: 'user-definition',
+      metadata: { owner: 'user' },
+    } as VerificationProfile;
+    verificationProfileRepo.findByNameAndVersion.mockImplementation(
+      (tenantId: string) =>
+        Promise.resolve(tenantId === 'tenant-acme' ? userProfile : null),
+    );
+
+    await service.run();
+
+    expect(verificationProfileRepo.save).not.toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'vp-user' }),
+    );
+    expect(
+      presentationDefinitionRepo.findByNameAndVersion,
+    ).not.toHaveBeenCalledWith('tenant-acme', 'identity-check', '1.1');
+  });
+
+  it('does not relink a seed profile to a conflicting corrected definition', async () => {
+    const seededProfile = {
+      id: 'vp-seed',
+      tenantId: 'tenant-acme',
+      name: 'identity-check',
+      version: '1.0',
+      presentationDefinitionId: 'legacy-definition',
+      metadata: { seed: true },
+    } as VerificationProfile;
+    const conflictingDefinition = {
+      id: 'user-corrected-definition',
+      tenantId: 'tenant-acme',
+      name: 'identity-check',
+      version: '1.1',
+      presentationDefinition: { input_descriptors: [{ id: 'user-data' }] },
+      requestedAttributes: ['user-data'],
+      predicates: [],
+      presentationFormat: CredentialDefinitionFormat.ANONCREDS,
+      description: 'User-owned definition',
+      status: 'published',
+    };
+    verificationProfileRepo.findByNameAndVersion.mockImplementation(
+      (tenantId: string) =>
+        Promise.resolve(tenantId === 'tenant-acme' ? seededProfile : null),
+    );
+    presentationDefinitionRepo.findByNameAndVersion.mockImplementation(
+      (tenantId: string) =>
+        Promise.resolve(
+          tenantId === 'tenant-acme' ? conflictingDefinition : null,
+        ),
+    );
+
+    await service.run();
+
+    expect(verificationProfileRepo.save).not.toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'vp-seed' }),
+    );
+    expect(presentationDefinitionRepo.create).not.toHaveBeenCalledWith(
+      expect.objectContaining({ tenantId: 'tenant-acme' }),
+    );
+    expect(conflictingDefinition.presentationDefinition).toEqual({
+      input_descriptors: [{ id: 'user-data' }],
+    });
   });
 
   it('updates existing connections and operations on re-run', async () => {
