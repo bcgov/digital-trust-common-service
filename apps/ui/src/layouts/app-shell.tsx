@@ -9,7 +9,7 @@ import {
   UsersRound,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { NavLink, Outlet, useMatch, useMatches } from 'react-router';
+import { NavLink, Outlet, useMatches } from 'react-router';
 
 import { Avatar, AvatarFallback } from '@/components/common/avatar';
 import { Badge } from '@/components/common/badge';
@@ -28,11 +28,10 @@ import { TenantSwitcher } from '@/components/tenant/tenant-switcher';
 import { useAuth } from '@/lib/auth/context';
 import {
   hasScope,
-  isPlatformAdmin,
   TENANT_ADMIN_SCOPE,
   USERS_MANAGE_SCOPE,
 } from '@/lib/auth/scopes';
-import { useActiveTenant } from '@/lib/tenant/active-tenant';
+import { useWorkingTenant } from '@/lib/tenant/active-tenant';
 import { roleLabel } from '@/lib/tenant/roles';
 import { cn } from '@/lib/utils';
 
@@ -97,15 +96,12 @@ function initialsOf(name: string | undefined): string {
 export function AppShell() {
   const { t } = useTranslation();
   const { user, logout } = useAuth();
-  const { tenant } = useActiveTenant();
-  const tenantRoute = useMatch('/tenants/:tenantId/*');
+  const { tenant } = useWorkingTenant();
   const navigationItems = NAV_ITEMS.filter(
     ({ scope }) => !scope || hasScope(user, scope),
   );
   const layout = useShellLayout();
-  const usersTenantId = isPlatformAdmin(user)
-    ? (tenantRoute?.params.tenantId ?? tenant?.id)
-    : tenant?.id;
+  const usersTenantId = tenant?.id;
   const manageUsersPath =
     usersTenantId && hasScope(user, USERS_MANAGE_SCOPE)
       ? `/tenants/${usersTenantId}/users`
@@ -113,7 +109,7 @@ export function AppShell() {
 
   return (
     <div className="flex h-svh flex-col">
-      <BcGovHeader logoTo="/dashboard">
+      <BcGovHeader logoTo={tenant ? `/tenants/${tenant.id}` : '/dashboard'}>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="sm" className="gap-2">
@@ -167,7 +163,12 @@ export function AppShell() {
               {navigationItems.map(({ to, label, icon: Icon }) => (
                 <NavLink
                   key={to}
-                  to={to}
+                  to={
+                    tenant
+                      ? `/tenants/${tenant.id}${to === '/dashboard' ? '' : to}`
+                      : '/dashboard'
+                  }
+                  end={to === '/dashboard'}
                   className={({ isActive }) =>
                     cn(
                       'flex items-center gap-2.5 rounded-(--layout-border-radius-large) px-3 py-(--layout-padding-small) text-small-body text-black transition-colors',

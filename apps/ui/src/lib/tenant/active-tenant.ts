@@ -4,6 +4,7 @@ import { useLocation, useMatch, useNavigate } from 'react-router';
 import { authKeys, useAuthTenants } from '@/lib/api/queries/auth';
 import type { AuthTenant } from '@/lib/api/resources/auth';
 import { useAuth } from '@/lib/auth/context';
+import { isPlatformAdmin } from '@/lib/auth/scopes';
 
 /**
  * Same section, other tenant: `/tenants/<from>/connections` becomes
@@ -51,6 +52,19 @@ export function useActiveTenant(): ActiveTenant {
       void refetch();
     },
   };
+}
+
+/** The route selects the working tenant for platform administrators. */
+export function useWorkingTenant() {
+  const active = useActiveTenant();
+  const { user } = useAuth();
+  const route = useMatch('/tenants/:tenantId/*');
+  const tenantId = route?.params.tenantId;
+
+  if (isPlatformAdmin(user) && tenantId) {
+    return { ...active, tenant: { id: tenantId }, status: 'ready' as const };
+  }
+  return active;
 }
 
 interface SwitchVariables {

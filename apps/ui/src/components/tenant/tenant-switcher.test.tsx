@@ -53,10 +53,22 @@ describe('TenantSwitcher', () => {
     expect(within(trigger).getByText('Owner')).toBeInTheDocument();
 
     await user.click(trigger);
-    expect(await screen.findByRole('menu')).toHaveClass('bcds-react-aria-Menu');
-    expect(
-      await screen.findByRole('menuitem', { name: /example agency/i }),
-    ).toBeInTheDocument();
+    const menu = await screen.findByRole('menu');
+    expect(menu).toHaveClass('bcds-react-aria-Menu');
+    expect(within(menu).getByText('Switch tenants...')).toBeVisible();
+    const item = within(menu).getByRole('menuitem', {
+      name: /example agency/i,
+    });
+    const name = within(item).getByText('Example Agency');
+    const role = within(item).getByText('Admin');
+    expect(name.parentElement).toHaveClass('flex-col');
+    expect(name.parentElement).toContainElement(role);
+    const current = within(menu).getByRole('menuitem', {
+      name: /acme ministry/i,
+    });
+    const check = current.querySelector('svg');
+    expect(check).toHaveClass('size-5');
+    expect(check?.parentElement).not.toBe(current);
   });
 
   it('lets a platform admin view tenants from every page without switching tokens', async () => {
@@ -106,6 +118,10 @@ describe('TenantSwitcher', () => {
         `/tenants/${agency.id}/connections`,
       );
     });
+    const selected = await screen.findByRole('button', {
+      name: /example agency/i,
+    });
+    expect(within(selected).getByText('Platform admin')).toBeInTheDocument();
     expect(cursors).toEqual([null, 'next']);
     expect(switchTenant).not.toHaveBeenCalled();
     expect(client.getState().user?.tenantId).toBe(acme.id);
@@ -402,6 +418,39 @@ describe('TenantSwitcher', () => {
       name: new RegExp(suspended.name, 'i'),
     });
     expect(item).toHaveAttribute('aria-disabled', 'true');
+    expect(within(item).getByText(suspended.name)).toHaveClass('opacity-70');
+    expect(within(item).getByText('Suspended')).toHaveClass('opacity-70');
+    expect(within(item).queryByText('Member')).not.toBeInTheDocument();
+  });
+
+  it('keeps suspended tenants selectable for platform admins', async () => {
+    const user = userEvent.setup();
+    const client = await signedIn();
+    const state = client.getState();
+    client.getState = () => ({
+      ...state,
+      user: state.user && { ...state.user, roles: ['platform-admin'] },
+    });
+    const { router } = renderSwitcher(
+      client,
+      `/tenants/${acme.id}/connections`,
+    );
+    await user.click(
+      await screen.findByRole('button', { name: /acme ministry/i }),
+    );
+    const item = await screen.findByRole('menuitem', {
+      name: /suspended society/i,
+    });
+    expect(item).not.toHaveAttribute('aria-disabled', 'true');
+    expect(within(item).getByText(suspended.name)).toHaveClass('opacity-70');
+    expect(within(item).getByText('Platform admin')).toBeInTheDocument();
     expect(within(item).getByText('Suspended')).toBeInTheDocument();
+    await user.click(item);
+    await waitFor(() =>
+      expect(router.state.location.pathname).toBe(
+        `/tenants/${suspended.id}/connections`,
+      ),
+    );
+    expect(client.getState().user?.tenantId).toBe(acme.id);
   });
 });

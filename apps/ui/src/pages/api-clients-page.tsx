@@ -17,7 +17,7 @@ import { useApiClients } from '@/lib/api/queries/api-clients';
 import type { ApiClient } from '@/lib/api/resources/api-clients';
 import { useAuth } from '@/lib/auth/context';
 import { hasScope } from '@/lib/auth/scopes';
-import { useActiveTenant } from '@/lib/tenant/active-tenant';
+import { useWorkingTenant } from '@/lib/tenant/active-tenant';
 
 type ClientDialog = { tenantId: string } & (
   | { kind: 'create' }
@@ -32,7 +32,7 @@ type ClientDialog = { tenantId: string } & (
 export function ApiClientsPage() {
   const { t } = useTranslation();
   const { user } = useAuth();
-  const { tenant, status, refetch } = useActiveTenant();
+  const { tenant, status, refetch } = useWorkingTenant();
   const canManage = hasScope(user, 'clients:manage');
   const query = useApiClients(tenant?.id, canManage);
   const [dialog, setDialog] = useState<ClientDialog | null>(null);

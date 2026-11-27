@@ -36,13 +36,16 @@ async function renderPage() {
   await client.login();
   renderWithAuth(
     [
-      { path: '/issuance-profiles', element: <IssuanceProfilesPage /> },
       {
-        path: '/issuance-profiles/create',
+        path: `/tenants/${tenantId}/issuance-profiles`,
+        element: <IssuanceProfilesPage />,
+      },
+      {
+        path: `/tenants/${tenantId}/issuance-profiles/create`,
         element: <CreateIssuanceProfilePage />,
       },
     ],
-    { client, initialEntries: ['/issuance-profiles'] },
+    { client, initialEntries: [`/tenants/${tenantId}/issuance-profiles`] },
   );
   return client;
 }
@@ -1664,11 +1667,14 @@ describe('IssuanceProfilesPage', () => {
     renderWithAuth(
       [
         {
-          path: '/issuance-profiles/create',
+          path: `/tenants/${tenantId}/issuance-profiles/create`,
           element: <CreateIssuanceProfilePage />,
         },
       ],
-      { client, initialEntries: ['/issuance-profiles/create'] },
+      {
+        client,
+        initialEntries: [`/tenants/${tenantId}/issuance-profiles/create`],
+      },
     );
     expect(
       await screen.findByText(/require tenants:admin access/),
@@ -1693,7 +1699,17 @@ describe('IssuanceProfilesPage', () => {
     expect(
       await screen.findByRole('button', { name: 'Create profile' }),
     ).toBeDisabled();
-    expect(screen.getByText(/published, issuance-ready/)).toBeVisible();
+    const message = screen.getByText(/published, issuance-ready/);
+    expect(message).toBeVisible();
+    const header = screen.getByRole('heading', {
+      name: 'Issuance profiles',
+      level: 1,
+    }).parentElement?.parentElement;
+    expect(header).not.toContainElement(message);
+    expect(header?.parentElement).toContainElement(message);
+    expect(
+      screen.getByRole('heading', { name: 'No issuance profiles' }),
+    ).toBeVisible();
   });
 
   it('requires valid lengths before saving and cancels without a request', async () => {
@@ -1746,7 +1762,10 @@ describe('IssuanceProfilesPage', () => {
     const back = within(dialog).getByRole('link', {
       name: 'Back to issuance profiles',
     });
-    expect(back).toHaveAttribute('href', '/issuance-profiles');
+    expect(back).toHaveAttribute(
+      'href',
+      `/tenants/${tenantId}/issuance-profiles`,
+    );
     await user.click(back);
     expect(
       await screen.findByRole('heading', { name: 'Issuance profiles' }),
@@ -2029,8 +2048,13 @@ describe('IssuanceProfilesPage', () => {
       user: state.user ? { ...state.user, roles: [], scopes: [] } : null,
     });
     renderWithAuth(
-      [{ path: '/issuance-profiles', element: <IssuanceProfilesPage /> }],
-      { client, initialEntries: ['/issuance-profiles'] },
+      [
+        {
+          path: `/tenants/${tenantId}/issuance-profiles`,
+          element: <IssuanceProfilesPage />,
+        },
+      ],
+      { client, initialEntries: [`/tenants/${tenantId}/issuance-profiles`] },
     );
     await waitFor(() =>
       expect(screen.getByText(/need the profiles:manage scope/)).toBeVisible(),

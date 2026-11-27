@@ -158,11 +158,11 @@ describe('TenantsPage', () => {
     expect(router.state.location.pathname).toBe(`/tenants/${membership(1).id}`);
     expect(client.getState().user?.tenantId).toBe(membership(0).id);
     expect(
-      await screen.findByText(/Viewing Example Agency as a platform admin/),
+      await screen.findByText(/Working in Example Agency as a platform admin/),
     ).toBeInTheDocument();
 
     const sidebar = screen.getByRole('complementary');
-    expect(within(sidebar).getByText(membership(0).name)).toBeInTheDocument();
+    expect(within(sidebar).getByText(membership(1).name)).toBeInTheDocument();
     await user.click(
       within(sidebar).getByRole('link', { name: 'Manage Users' }),
     );
@@ -170,7 +170,7 @@ describe('TenantsPage', () => {
       `/tenants/${membership(1).id}/users`,
     );
     expect(
-      await screen.findByText(/Viewing Example Agency as a platform admin/),
+      await screen.findByText(/Working in Example Agency as a platform admin/),
     ).toBeInTheDocument();
     await user.click(await screen.findByRole('button', { name: 'Add user' }));
     const dialog = await screen.findByRole('dialog', { name: 'Invite user' });

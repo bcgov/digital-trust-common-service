@@ -23,6 +23,14 @@ export function TenantLayout() {
   const { tenantId } = useParams();
   const location = useLocation();
   const isUsersPage = useMatch('/tenants/:tenantId/users') !== null;
+  const isResourcePage = [
+    'connectors',
+    'credential-definitions',
+    'issuance-profiles',
+    'api-clients',
+  ].some((section) =>
+    location.pathname.startsWith(`/tenants/${tenantId}/${section}`),
+  );
   const { user } = useAuth();
 
   const viewingAnotherTenant = Boolean(
@@ -70,7 +78,9 @@ export function TenantLayout() {
     <div
       className={cn(
         'flex flex-col',
-        !isUsersPage && 'gap-(--layout-margin-large)',
+        ((!isUsersPage && !isResourcePage) ||
+          (viewingAnotherTenant && isPlatformAdmin(user))) &&
+          'gap-(--layout-margin-large)',
       )}
     >
       {viewingAnotherTenant && isPlatformAdmin(user) && (
@@ -81,7 +91,7 @@ export function TenantLayout() {
           })}
         />
       )}
-      {!isUsersPage && (
+      {!isUsersPage && !isResourcePage && (
         <>
           <div className="flex items-center gap-(--layout-margin-medium)">
             {isLoading ? (

@@ -48,14 +48,14 @@ describe('CredentialDefinitionsPage', () => {
     renderWithAuth(
       [
         {
-          path: '/credential-definitions/create-or-edit',
+          path: `/tenants/${tenantId}/credential-definitions/create-or-edit`,
           element: <CreateCredentialDefinitionPage />,
         },
       ],
       {
         client,
         initialEntries: [
-          '/credential-definitions/create-or-edit?id=bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+          `/tenants/${tenantId}/credential-definitions/create-or-edit?id=bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb`,
         ],
       },
     );
@@ -108,18 +108,18 @@ describe('CredentialDefinitionsPage', () => {
       const { router } = renderWithAuth(
         [
           {
-            path: '/credential-definitions',
+            path: `/tenants/${tenantId}/credential-definitions`,
             element: <CredentialDefinitionsPage />,
           },
           {
-            path: '/credential-definitions/create-or-edit',
+            path: `/tenants/${tenantId}/credential-definitions/create-or-edit`,
             element: <CreateCredentialDefinitionPage />,
           },
         ],
         {
           client,
           initialEntries: [
-            `/credential-definitions/create-or-edit?id=${definitionId}`,
+            `/tenants/${tenantId}/credential-definitions/create-or-edit?id=${definitionId}`,
           ],
         },
       );
@@ -130,7 +130,7 @@ describe('CredentialDefinitionsPage', () => {
             'This wizard currently supports only Anoncreds credential configurations.',
           );
           expect(router.state.location.pathname).toBe(
-            '/credential-definitions',
+            `/tenants/${tenantId}/credential-definitions`,
           );
         });
         expect(
@@ -150,15 +150,18 @@ describe('CredentialDefinitionsPage', () => {
     const { router } = renderWithAuth(
       [
         {
-          path: '/credential-definitions',
+          path: `/tenants/${tenantId}/credential-definitions`,
           element: <CredentialDefinitionsPage />,
         },
         {
-          path: '/credential-definitions/create-or-edit',
+          path: `/tenants/${tenantId}/credential-definitions/create-or-edit`,
           element: <CreateCredentialDefinitionPage />,
         },
       ],
-      { client, initialEntries: ['/credential-definitions'] },
+      {
+        client,
+        initialEntries: [`/tenants/${tenantId}/credential-definitions`],
+      },
     );
     const row = await screen.findByRole('row', {
       name: 'Edit draft credential definition Visitor pass',
@@ -175,7 +178,9 @@ describe('CredentialDefinitionsPage', () => {
       name: 'Credential definition details',
     });
     expect(await within(dialog).findByText('visitor_name')).toBeVisible();
-    expect(router.state.location.pathname).toBe('/credential-definitions');
+    expect(router.state.location.pathname).toBe(
+      `/tenants/${tenantId}/credential-definitions`,
+    );
     await user.click(within(dialog).getByText('Close', { selector: 'button' }));
     await waitFor(() => expect(dialog).not.toBeInTheDocument());
   });
@@ -187,15 +192,18 @@ describe('CredentialDefinitionsPage', () => {
     renderWithAuth(
       [
         {
-          path: '/credential-definitions',
+          path: `/tenants/${tenantId}/credential-definitions`,
           element: <CredentialDefinitionsPage />,
         },
         {
-          path: '/credential-definitions/create-or-edit',
+          path: `/tenants/${tenantId}/credential-definitions/create-or-edit`,
           element: <CreateCredentialDefinitionPage />,
         },
       ],
-      { client, initialEntries: ['/credential-definitions'] },
+      {
+        client,
+        initialEntries: [`/tenants/${tenantId}/credential-definitions`],
+      },
     );
 
     const draftRow = await screen.findByRole('row', {
@@ -274,11 +282,14 @@ describe('CredentialDefinitionsPage', () => {
     renderWithAuth(
       [
         {
-          path: '/credential-definitions',
+          path: `/tenants/${tenantId}/credential-definitions`,
           element: <CredentialDefinitionsPage />,
         },
       ],
-      { client, initialEntries: ['/credential-definitions'] },
+      {
+        client,
+        initialEntries: [`/tenants/${tenantId}/credential-definitions`],
+      },
     );
 
     expect(
@@ -351,17 +362,19 @@ describe('CredentialDefinitionsPage', () => {
     const { router } = renderWithAuth(
       [
         {
-          path: '/credential-definitions',
+          path: `/tenants/${tenantId}/credential-definitions`,
           element: <CredentialDefinitionsPage />,
         },
         {
-          path: '/credential-definitions/create-or-edit',
+          path: `/tenants/${tenantId}/credential-definitions/create-or-edit`,
           element: <CreateCredentialDefinitionPage />,
         },
       ],
       {
         client,
-        initialEntries: ['/credential-definitions/create-or-edit'],
+        initialEntries: [
+          `/tenants/${tenantId}/credential-definitions/create-or-edit`,
+        ],
       },
     );
 
@@ -440,7 +453,7 @@ describe('CredentialDefinitionsPage', () => {
       'Credential definition saved as a draft.',
     );
     expect(router.state.location.pathname).toBe(
-      '/credential-definitions/create-or-edit',
+      `/tenants/${tenantId}/credential-definitions/create-or-edit`,
     );
     successToast.mockRestore();
   });
@@ -483,7 +496,11 @@ describe('CredentialDefinitionsPage', () => {
       renderWithAuth(
         [
           {
-            path: '/credential-definitions/create-or-edit',
+            path: `/tenants/${tenantId}/credential-definitions`,
+            element: <CredentialDefinitionsPage />,
+          },
+          {
+            path: `/tenants/${tenantId}/credential-definitions/create-or-edit`,
             element: (
               <CreateCredentialDefinitionPage
                 embedded={embedded}
@@ -492,7 +509,12 @@ describe('CredentialDefinitionsPage', () => {
             ),
           },
         ],
-        { client, initialEntries: ['/credential-definitions/create-or-edit'] },
+        {
+          client,
+          initialEntries: [
+            `/tenants/${tenantId}/credential-definitions/create-or-edit`,
+          ],
+        },
       );
 
       await user.type(screen.getByLabelText(/^Credential name/), 'Badge');
@@ -633,14 +655,14 @@ describe('CredentialDefinitionsPage', () => {
     renderWithAuth(
       [
         {
-          path: '/credential-definitions/create-or-edit',
+          path: `/tenants/${tenantId}/credential-definitions/create-or-edit`,
           element: <CreateCredentialDefinitionPage />,
         },
       ],
       {
         client,
         initialEntries: [
-          `/credential-definitions/create-or-edit?id=${definitionId}`,
+          `/tenants/${tenantId}/credential-definitions/create-or-edit?id=${definitionId}`,
         ],
       },
     );
@@ -734,17 +756,19 @@ describe('CredentialDefinitionsPage', () => {
       const { router } = renderWithAuth(
         [
           {
-            path: '/credential-definitions',
+            path: `/tenants/${tenantId}/credential-definitions`,
             element: <CredentialDefinitionsPage />,
           },
           {
-            path: '/credential-definitions/create-or-edit',
+            path: `/tenants/${tenantId}/credential-definitions/create-or-edit`,
             element: <CreateCredentialDefinitionPage />,
           },
         ],
         {
           client,
-          initialEntries: ['/credential-definitions/create-or-edit'],
+          initialEntries: [
+            `/tenants/${tenantId}/credential-definitions/create-or-edit`,
+          ],
         },
       );
 
@@ -811,7 +835,7 @@ describe('CredentialDefinitionsPage', () => {
       if (saveStep === 'review') {
         await waitFor(() => {
           expect(router.state.location.pathname).toBe(
-            '/credential-definitions',
+            `/tenants/${tenantId}/credential-definitions`,
           );
         });
       }
@@ -878,15 +902,18 @@ describe('CredentialDefinitionsPage', () => {
     const { router } = renderWithAuth(
       [
         {
-          path: '/credential-definitions',
+          path: `/tenants/${tenantId}/credential-definitions`,
           element: <CredentialDefinitionsPage />,
         },
         {
-          path: '/credential-definitions/create-or-edit',
+          path: `/tenants/${tenantId}/credential-definitions/create-or-edit`,
           element: <CreateCredentialDefinitionPage />,
         },
       ],
-      { client, initialEntries: ['/credential-definitions'] },
+      {
+        client,
+        initialEntries: [`/tenants/${tenantId}/credential-definitions`],
+      },
     );
 
     const table = await screen.findByRole('table', {
@@ -905,7 +932,7 @@ describe('CredentialDefinitionsPage', () => {
     await user.click(draftRow);
 
     expect(router.state.location.pathname).toBe(
-      '/credential-definitions/create-or-edit',
+      `/tenants/${tenantId}/credential-definitions/create-or-edit`,
     );
     expect(router.state.location.search).toBe(`?id=${draft.id}`);
     expect(
@@ -942,7 +969,7 @@ describe('CredentialDefinitionsPage', () => {
     });
     expect(successToast).toHaveBeenCalledWith('Draft changes saved.');
     expect(router.state.location.pathname).toBe(
-      '/credential-definitions/create-or-edit',
+      `/tenants/${tenantId}/credential-definitions/create-or-edit`,
     );
     successToast.mockRestore();
   });
@@ -975,13 +1002,15 @@ describe('CredentialDefinitionsPage', () => {
     renderWithAuth(
       [
         {
-          path: '/credential-definitions/create-or-edit',
+          path: `/tenants/${tenantId}/credential-definitions/create-or-edit`,
           element: <CreateCredentialDefinitionPage />,
         },
       ],
       {
         client,
-        initialEntries: ['/credential-definitions/create-or-edit'],
+        initialEntries: [
+          `/tenants/${tenantId}/credential-definitions/create-or-edit`,
+        ],
       },
     );
 
@@ -1041,11 +1070,14 @@ describe('CredentialDefinitionsPage', () => {
     renderWithAuth(
       [
         {
-          path: '/credential-definitions',
+          path: `/tenants/${tenantId}/credential-definitions`,
           element: <CredentialDefinitionsPage />,
         },
       ],
-      { client, initialEntries: ['/credential-definitions'] },
+      {
+        client,
+        initialEntries: [`/tenants/${tenantId}/credential-definitions`],
+      },
     );
 
     await screen.findByRole('table', { name: 'Credential definitions' });
@@ -1131,17 +1163,17 @@ describe('CredentialDefinitionsPage', () => {
     renderWithAuth(
       [
         {
-          path: '/credential-definitions',
+          path: `/tenants/${tenantId}/credential-definitions`,
           element: <CredentialDefinitionsPage />,
         },
         {
-          path: '/credential-definitions/create-or-edit',
+          path: `/tenants/${tenantId}/credential-definitions/create-or-edit`,
           element: <CreateCredentialDefinitionPage />,
         },
       ],
       {
         client,
-        initialEntries: ['/credential-definitions'],
+        initialEntries: [`/tenants/${tenantId}/credential-definitions`],
       },
     );
 
@@ -1173,7 +1205,7 @@ describe('CredentialDefinitionsPage', () => {
     ).toHaveTextContent('1Details2Attributes3Review & Publish');
     expect(
       screen.getByRole('link', { name: 'Credential configurations' }),
-    ).toHaveAttribute('href', '/credential-definitions');
+    ).toHaveAttribute('href', `/tenants/${tenantId}/credential-definitions`);
     expect(screen.getByRole('button', { name: 'Cancel' })).toBeInTheDocument();
 
     await user.type(screen.getByLabelText(/^Credential name/), 'Visitor pass');

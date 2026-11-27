@@ -12,12 +12,12 @@ import {
 import { useIssuanceProfile } from '@/lib/api/queries/issuance-profiles';
 import { useAuth } from '@/lib/auth/context';
 import { hasScope, TENANT_ADMIN_SCOPE } from '@/lib/auth/scopes';
-import { useActiveTenant } from '@/lib/tenant/active-tenant';
+import { useWorkingTenant } from '@/lib/tenant/active-tenant';
 
 export function CreateIssuanceProfilePage() {
   const { t } = useTranslation();
   const { user } = useAuth();
-  const { tenant, status, refetch } = useActiveTenant();
+  const { tenant, status, refetch } = useWorkingTenant();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const profileId = searchParams.get('id');
@@ -43,7 +43,7 @@ export function CreateIssuanceProfilePage() {
   const title = t(
     profileId ? 'issuanceProfiles.edit.title' : 'issuanceProfiles.create.title',
   );
-  const leave = () => void navigate('/issuance-profiles');
+  const leave = () => void navigate(`/tenants/${tenant?.id}/issuance-profiles`);
 
   if (!canManage || !canReadDefinitions) {
     return (

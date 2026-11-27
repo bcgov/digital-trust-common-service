@@ -34,7 +34,7 @@ import type { CredentialDefinitionRegistrationOperation } from '@/lib/api/resour
 import { useTenant } from '@/lib/api/queries/tenants';
 import { useAuth } from '@/lib/auth/context';
 import { hasScope, TENANT_ADMIN_SCOPE } from '@/lib/auth/scopes';
-import { useActiveTenant } from '@/lib/tenant/active-tenant';
+import { useWorkingTenant } from '@/lib/tenant/active-tenant';
 
 type SemanticAttributeType = Attribute['type'];
 
@@ -65,7 +65,7 @@ export function CreateCredentialDefinitionPage({
 }: CreateCredentialDefinitionPageProps = {}) {
   const { t } = useTranslation();
   const { user } = useAuth();
-  const { tenant } = useActiveTenant();
+  const { tenant } = useWorkingTenant();
   const canManage = hasScope(user, TENANT_ADMIN_SCOPE);
   const connectorsQuery = useConnectors(tenant?.id, { enabled: canManage });
   const tenantQuery = useTenant(tenant?.id, { enabled: canManage });
@@ -110,9 +110,9 @@ export function CreateCredentialDefinitionPage({
     if (embedded && onExit) {
       onExit();
     } else {
-      void navigate('/credential-definitions');
+      void navigate(`/tenants/${tenant?.id}/credential-definitions`);
     }
-  }, [embedded, navigate, onExit]);
+  }, [embedded, navigate, onExit, tenant?.id]);
 
   useEffect(() => {
     const definition = draftQuery.data;
@@ -313,7 +313,7 @@ export function CreateCredentialDefinitionPage({
         leaveEditor();
       } else if (!embedded && !draftId && definitionId) {
         void navigate(
-          `/credential-definitions/create-or-edit?id=${encodeURIComponent(definitionId)}`,
+          `/tenants/${tenant?.id}/credential-definitions/create-or-edit?id=${encodeURIComponent(definitionId)}`,
           { replace: true },
         );
       }
@@ -346,7 +346,7 @@ export function CreateCredentialDefinitionPage({
               sessionStorage.removeItem(embeddedDraftStorageKey);
             }
             onRegistrationStarted?.(operation);
-          } else void navigate('/credential-definitions');
+          } else leaveEditor();
         },
         onError,
       });
@@ -403,7 +403,7 @@ export function CreateCredentialDefinitionPage({
     <div className="flex flex-1 flex-col gap-5">
       {!embedded && (
         <div className="flex flex-col gap-2">
-          <BackLink to="/credential-definitions">
+          <BackLink to={`/tenants/${tenant?.id}/credential-definitions`}>
             {t('credentialDefinitions.wizard.backToList')}
           </BackLink>
           <h1 className="text-h1 font-bold text-black">

@@ -17,7 +17,7 @@ import { ApiError } from '@/lib/api/errors';
 import type { Connector } from '@/lib/api/resources/connectors';
 import { useAuth } from '@/lib/auth/context';
 import { hasScope, TENANT_ADMIN_SCOPE } from '@/lib/auth/scopes';
-import { useActiveTenant } from '@/lib/tenant/active-tenant';
+import { useWorkingTenant } from '@/lib/tenant/active-tenant';
 
 export function ConnectorsPage() {
   const { t } = useTranslation();
@@ -27,7 +27,7 @@ export function ConnectorsPage() {
     tenant,
     status: tenantStatus,
     refetch: refetchTenant,
-  } = useActiveTenant();
+  } = useWorkingTenant();
   const connectorQuery = useConnectors(tenant?.id, { enabled: canManage });
   const tenantQuery = useTenant(tenant?.id, { enabled: canManage });
   const { data: connectors, isSuccess } = connectorQuery;

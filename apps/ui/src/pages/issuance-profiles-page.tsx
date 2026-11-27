@@ -7,17 +7,18 @@ import { AddressCardIcon } from '@/components/common/icons';
 import { PageHeader } from '@/components/common/page-header';
 import { LoadError, LoadingMessage } from '@/components/common/query-status';
 import { CreateIssuanceProfileButton } from '@/components/issuance-profile/create-issuance-profile-button';
+import { eligibleDefinitions } from '@/components/issuance-profile/eligible-definitions';
 import { IssuanceProfilesTable } from '@/components/issuance-profile/issuance-profiles-table';
 import { useCredentialDefinitions } from '@/lib/api/queries/credential-definitions';
 import { useIssuanceProfiles } from '@/lib/api/queries/issuance-profiles';
 import { useAuth } from '@/lib/auth/context';
 import { hasScope, TENANT_ADMIN_SCOPE } from '@/lib/auth/scopes';
-import { useActiveTenant } from '@/lib/tenant/active-tenant';
+import { useWorkingTenant } from '@/lib/tenant/active-tenant';
 
 export function IssuanceProfilesPage() {
   const { t } = useTranslation();
   const { user } = useAuth();
-  const { tenant, status, refetch } = useActiveTenant();
+  const { tenant, status, refetch } = useWorkingTenant();
   const canManage = hasScope(user, 'profiles:manage');
   const canReadDefinitions = canManage && hasScope(user, TENANT_ADMIN_SCOPE);
   const profilesQuery = useIssuanceProfiles(tenant?.id, {
@@ -27,6 +28,8 @@ export function IssuanceProfilesPage() {
     enabled: canReadDefinitions,
   });
   const profiles = profilesQuery.data?.pages.flatMap((page) => page.data) ?? [];
+  const canCreate =
+    eligibleDefinitions(definitionsQuery.data?.data ?? []).length > 0;
 
   if (!canManage) {
     return (
@@ -48,7 +51,8 @@ export function IssuanceProfilesPage() {
           definitionsQuery.isSuccess && (
             <CreateIssuanceProfileButton
               key={tenant.id}
-              definitions={definitionsQuery.data.data}
+              tenantId={tenant.id}
+              canCreate={canCreate}
             />
           )
         }
@@ -88,6 +92,17 @@ export function IssuanceProfilesPage() {
           onRetry={() => void definitionsQuery.refetch()}
         />
       )}
+      {tenant &&
+        canReadDefinitions &&
+        definitionsQuery.isSuccess &&
+        !canCreate && (
+          <p
+            role="status"
+            className="text-small-body text-(--typography-color-secondary)"
+          >
+            {t('issuanceProfiles.create.noDefinitions')}
+          </p>
+        )}
       {tenant && profiles.length > 0 && (
         <>
           {!canReadDefinitions && (

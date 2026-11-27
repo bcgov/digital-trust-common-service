@@ -105,6 +105,11 @@ chart's `frontend.config`, then read it through `getAppConfig()`.
 
 ## Auth
 
+Tenant-scoped pages use `/tenants/:tenantId/...` URLs. Platform administrators
+work in the tenant named by the URL without changing their signed-in token;
+other users switch their token to an active membership. Old flat tenant-page
+URLs are no longer supported.
+
 Two implementations sit behind one `AuthClient` seam in `src/lib/auth/`,
 selected by `VITE_AUTH_MODE`:
 

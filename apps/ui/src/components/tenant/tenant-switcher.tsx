@@ -2,6 +2,8 @@ import {
   Button,
   Menu,
   MenuItem,
+  MenuSection,
+  MenuSectionHeader,
   MenuTrigger,
 } from '@bcgov/design-system-react-components';
 import { Check, ChevronDown, Loader2 } from 'lucide-react';
@@ -13,7 +15,7 @@ import { Button as RetryButton } from '@/components/common/button';
 import { BuildingIcon } from '@/components/common/icons';
 import { Skeleton } from '@/components/common/skeleton';
 import { useSwitcherTenants } from '@/lib/api/queries/tenants';
-import type { AuthTenant } from '@/lib/api/resources/auth';
+import type { TenantStatus } from '@/lib/api/resources/tenants';
 import { useAuth } from '@/lib/auth/context';
 import { isPlatformAdmin } from '@/lib/auth/scopes';
 import {
@@ -25,7 +27,13 @@ import { roleLabel } from '@/lib/tenant/roles';
 import { switchErrorMessage } from '@/lib/tenant/switch-error';
 
 /** Name, role and (when it matters) status of the active tenant. */
-function ActiveTenantLabel({ tenant }: { tenant: AuthTenant | null }) {
+function ActiveTenantLabel({
+  tenant,
+  role,
+}: {
+  tenant: { name: string; status?: TenantStatus } | null;
+  role: string | undefined;
+}) {
   const { t } = useTranslation();
   return (
     <span className="flex min-w-0 flex-1 flex-col items-start text-left">
@@ -34,10 +42,10 @@ function ActiveTenantLabel({ tenant }: { tenant: AuthTenant | null }) {
       </span>
       {tenant && (
         <span className="text-small-body text-(--typography-color-secondary)">
-          {roleLabel(tenant.role)}
+          {role}
         </span>
       )}
-      {tenant && tenant.status !== 'active' ? (
+      {tenant?.status && tenant.status !== 'active' ? (
         <TenantStatusBadge status={tenant.status} />
       ) : null}
     </span>
@@ -96,13 +104,19 @@ export function TenantSwitcher() {
   // the list no longer carries still needs the way to the one it does.
   const entries = platformAdmin ? (allTenants.data ?? []) : memberships;
   const viewedTenantId = tenantRoute?.params.tenantId ?? user?.tenantId;
+  const viewedTenant = platformAdmin
+    ? (entries.find((entry) => entry.id === viewedTenantId) ?? null)
+    : tenant;
+  const viewedRole = platformAdmin
+    ? t('switcher.platformAdmin')
+    : roleLabel(tenant?.role);
   const canSwitch = entries.some((entry) => entry.id !== viewedTenantId);
 
   if (!canSwitch) {
     return (
       <div className={cardClassName}>
         <BuildingIcon className="size-6 shrink-0" />
-        <ActiveTenantLabel tenant={tenant} />
+        <ActiveTenantLabel tenant={viewedTenant} role={viewedRole} />
       </div>
     );
   }
@@ -122,13 +136,14 @@ export function TenantSwitcher() {
           ) : (
             <BuildingIcon className="size-6 shrink-0" />
           )}
-          <ActiveTenantLabel tenant={tenant} />
+          <ActiveTenantLabel tenant={viewedTenant} role={viewedRole} />
           <ChevronDown className="size-5 shrink-0" aria-hidden="true" />
           <span className="sr-only">{t('switcher.title')}</span>
         </Button>
         <Menu
           aria-label={t('switcher.title')}
           placement="bottom start"
+          className="bcds-react-aria-Menu medium max-h-[60vh] w-87.5 max-w-[calc(100vw-2rem)] overflow-y-auto"
           onAction={(key) => {
             if (platformAdmin) {
               const selected = entries.find((entry) => entry.id === key);
@@ -158,35 +173,58 @@ export function TenantSwitcher() {
             }
           }}
         >
-          {entries.map((entry) => {
-            const membership = memberships.find((item) => item.id === entry.id);
-            const isCurrent = entry.id === viewedTenantId;
-            return (
-              <MenuItem
-                key={entry.id}
-                id={entry.id}
-                textValue={entry.name}
-                isDisabled={
-                  isSwitching || (!platformAdmin && entry.status !== 'active')
-                }
-              >
-                <span className="min-w-0 flex-1 truncate">{entry.name}</span>
-                <span className="shrink-0 text-xs">
-                  {platformAdmin
-                    ? t('switcher.platformAdmin')
-                    : membership && roleLabel(membership.role)}
-                </span>
-                {entry.status && entry.status !== 'active' ? (
-                  <span className="shrink-0 text-xs">
-                    {t(`tenants.status.${entry.status}`)}
+          <MenuSection>
+            <MenuSectionHeader>
+              <span className="text-body font-normal">
+                {t('switcher.menuHeading')}
+              </span>
+            </MenuSectionHeader>
+            {entries.map((entry) => {
+              const membership = memberships.find(
+                (item) => item.id === entry.id,
+              );
+              const isCurrent = entry.id === viewedTenantId;
+              const isDisabled =
+                isSwitching || (!platformAdmin && entry.status !== 'active');
+              const inactiveStatus =
+                entry.status && entry.status !== 'active'
+                  ? t(`tenants.status.${entry.status}`)
+                  : null;
+              return (
+                <MenuItem
+                  key={entry.id}
+                  id={entry.id}
+                  textValue={entry.name}
+                  isDisabled={isDisabled}
+                >
+                  <span className="flex min-w-0 flex-1 flex-col items-start text-left">
+                    <span
+                      className={`w-full truncate text-h5 font-bold ${isDisabled ? '' : 'text-(--typography-color-primary)'} ${inactiveStatus ? 'opacity-70' : ''}`}
+                    >
+                      {entry.name}
+                    </span>
+                    {(platformAdmin || !inactiveStatus) && (
+                      <span className="text-body">
+                        {platformAdmin
+                          ? t('switcher.platformAdmin')
+                          : membership && roleLabel(membership.role)}
+                      </span>
+                    )}
+                    {inactiveStatus && (
+                      <span className="text-small-body opacity-70">
+                        {inactiveStatus}
+                      </span>
+                    )}
                   </span>
-                ) : null}
-                {isCurrent && (
-                  <Check className="size-4 shrink-0" aria-hidden="true" />
-                )}
-              </MenuItem>
-            );
-          })}
+                  {isCurrent && (
+                    <span className="shrink-0 self-center">
+                      <Check className="size-5" aria-hidden="true" />
+                    </span>
+                  )}
+                </MenuItem>
+              );
+            })}
+          </MenuSection>
         </Menu>
       </MenuTrigger>
 
