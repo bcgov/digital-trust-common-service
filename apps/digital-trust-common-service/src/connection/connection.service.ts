@@ -144,8 +144,13 @@ export class ConnectionService {
   ): Promise<Operation> {
     assertTenantAccess(auth, tenantId);
 
-    const { adapter, connector, context } =
-      await this.adapterRegistry.resolve(tenantId);
+    const connectorId =
+      dto.connectorId === 'default' ? undefined : dto.connectorId;
+    const { adapter, connector, context } = await this.adapterRegistry.resolve(
+      tenantId,
+      undefined,
+      { connectorId },
+    );
 
     const created = await this.connectionRepository.create({
       tenantId,

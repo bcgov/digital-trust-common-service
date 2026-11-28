@@ -28,6 +28,7 @@ import {
   ApiOkResponse,
   ApiNotFoundResponse,
   ApiQuery,
+  ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 
@@ -47,6 +48,7 @@ import { CreateConnectionDto } from './dto/create-connection.dto';
 import { ListConnectionsQueryDto } from './dto/list-connections-query.dto';
 
 @SkipAutoAudit()
+@ApiTags('Connections')
 @ApiJwtAuth()
 @UseGuards(
   JwtGuard,
@@ -76,13 +78,16 @@ export class ConnectionController {
   @ApiBody({
     description:
       'Connection creation or acceptance request. Omit invitation_url to ' +
-      'create a new invitation, or provide it to accept an existing one.',
+      'create a new invitation, or provide it to accept an existing one. ' +
+      'Set connector_id to a tenant-owned connector UUID, or omit it/use ' +
+      '"default" for the tenant default connector.',
     type: CreateConnectionDto,
     examples: {
       create: {
         summary: 'Create a new invitation',
         value: {
           protocol: 'didcomm-v2',
+          connector_id: 'default',
           metadata: {
             alias: 'acme-partner',
             label: 'Acme Corp',
@@ -95,7 +100,15 @@ export class ConnectionController {
         summary: 'Accept an existing invitation',
         value: {
           protocol: 'didcomm-v2',
+          connector_id: 'default',
           invitation_url: 'https://example.com/invitations/abc123',
+        },
+      },
+      selectedConnector: {
+        summary: 'Create an invitation using a specific connector',
+        value: {
+          protocol: 'didcomm-v2',
+          connector_id: '123e4567-e89b-12d3-a456-426614174002',
         },
       },
     },
