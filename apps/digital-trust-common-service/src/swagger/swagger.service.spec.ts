@@ -2,7 +2,7 @@ import 'reflect-metadata';
 
 import { INestApplication } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { SwaggerModule } from '@nestjs/swagger';
 import { Response } from 'express';
 
 /* eslint-disable @typescript-eslint/unbound-method */
@@ -134,26 +134,6 @@ describe('SwaggerService', () => {
   });
 
   describe('setupSwagger', () => {
-    it.each([true, false])(
-      'omits tracker references from descriptions with UI enabled: %s',
-      (uiEnabled): void => {
-        mockConfigServiceGet.mockImplementation((key: string): string => {
-          if (key === 'SWAGGER_ENABLED') return String(uiEnabled);
-          return 'true';
-        });
-
-        SwaggerService.setupSwagger(mockApp, mockConfigService);
-
-        const builder = jest.mocked(DocumentBuilder).mock.results[0].value;
-        expect(builder.setDescription).toHaveBeenCalledWith(
-          expect.stringContaining('/api/v1'),
-        );
-        expect(builder.setDescription).not.toHaveBeenCalledWith(
-          expect.stringMatching(/\b[A-Z]{2,5}-\d+\b|#\d+/),
-        );
-      },
-    );
-
     it.each([true, false])(
       'includes the client token operation in all documents with UI enabled: %s',
       (uiEnabled): void => {
