@@ -3,6 +3,7 @@ import { Http2ServerRequest, Http2ServerResponse } from 'http2';
 
 import { partitionRequestedScopes } from '@app/auth/utils/partition-requested-scopes';
 import { Controller, Get, Inject, Query, Req, Res } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import escapeHtml from 'escape-html';
 
 import { OidcConfigService } from './oidc-config.service';
@@ -32,6 +33,7 @@ class UnauthorizedOidcScopeRequestError extends Error {
   }
 }
 
+@ApiTags('OIDC')
 @Controller({ path: 'oidc/' })
 export class OidcInteractionController {
   private static readonly ACTIVE_TENANT_USER_STATUS = 'active';

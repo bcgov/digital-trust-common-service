@@ -119,15 +119,85 @@ describe('SwaggerService', () => {
       get: mockConfigServiceGet,
     } as unknown as ConfigService;
 
-    (SwaggerModule.createDocument as jest.Mock).mockReturnValue({
+    (SwaggerModule.createDocument as jest.Mock).mockImplementation(() => ({
       openapi: '3.0.0',
       info: { title: 'Test API' },
-    });
+      paths: { '/existing': { get: { responses: {} } } },
+      components: {
+        securitySchemes: {
+          existingBearer: { type: 'http', scheme: 'bearer' },
+        },
+      },
+    }));
 
     (SwaggerModule.setup as jest.Mock).mockReturnValue(undefined);
   });
 
   describe('setupSwagger', () => {
+    it.each([true, false])(
+      'includes the client token operation in all documents with UI enabled: %s',
+      (uiEnabled): void => {
+        mockConfigServiceGet.mockImplementation((key: string): string => {
+          if (key === 'SWAGGER_ENABLED') return String(uiEnabled);
+          return 'true';
+        });
+
+        SwaggerService.setupSwagger(mockApp, mockConfigService);
+
+        const calls = mockHttpAdapterGet.mock.calls as Array<
+          [string, (...args: unknown[]) => void]
+        >;
+        expect(calls).toHaveLength(4);
+        for (const [, callback] of calls) {
+          const json = jest.fn();
+          callback(null, { json });
+          const document = json.mock.calls[0][0];
+          expect(document.paths['/existing']).toBeDefined();
+          expect(document.components.securitySchemes.existingBearer).toEqual({
+            type: 'http',
+            scheme: 'bearer',
+          });
+          expect(document.components.securitySchemes.oidcClientBasic).toEqual(
+            expect.objectContaining({ type: 'http', scheme: 'basic' }),
+          );
+          expect(document.paths['/oidc/token'].post).toEqual(
+            expect.objectContaining({
+              tags: ['OIDC'],
+              security: [{ oidcClientBasic: [] }],
+              requestBody: {
+                required: true,
+                content: {
+                  'application/x-www-form-urlencoded': {
+                    schema: {
+                      type: 'object',
+                      required: ['grant_type'],
+                      properties: {
+                        grant_type: {
+                          type: 'string',
+                          enum: ['client_credentials'],
+                          default: 'client_credentials',
+                        },
+                        scope: expect.objectContaining({ type: 'string' }),
+                      },
+                    },
+                  },
+                },
+              },
+            }),
+          );
+        }
+
+        if (uiEnabled) {
+          for (const [, , document] of (SwaggerModule.setup as jest.Mock).mock
+            .calls) {
+            expect(document.paths['/oidc/token'].post).toBeDefined();
+          }
+        } else {
+          expect(SwaggerModule.setup).not.toHaveBeenCalled();
+        }
+      },
+    );
+
     it('should setup full documentation when SWAGGER_ENABLED is true (default)', (): void => {
       mockConfigServiceGet.mockImplementation(
         (_key: string, defaultValue: unknown) => defaultValue,
@@ -253,7 +323,7 @@ describe('SwaggerService', () => {
       );
 
       const mockRes = { json: jest.fn() } as unknown as Response;
-      const document = { openapi: '3.0.0' };
+      const document = { openapi: '3.0.0', paths: {} };
       (SwaggerModule.createDocument as jest.Mock).mockReturnValue(document);
 
       SwaggerService.setupSwagger(mockApp, mockConfigService);

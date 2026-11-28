@@ -1041,6 +1041,19 @@ invitations, consumers' clients. Sign-in is tenant-scoped through the UI
 client, so a person with no membership yet lands in the bootstrap tenant as
 `readonly` on first login and is promoted from there.
 
+### Obtain an API client token in Swagger UI
+
+Open `/api/docs` (or an audience-specific Swagger UI), select **Authorize**, and
+enter the confidential API client's ID and secret under `oidcClientBasic`.
+Under **OIDC**, select `POST /oidc/token`, then **Try it out**, and enter the
+desired space-separated client scopes. Execute the request, then copy the
+returned `access_token` into the bearer authorization to call the API.
+
+Use a trusted HTTPS connection. Swagger's generated curl command contains the
+client secret in its Basic authorization header; do not share or save it, the
+secret, or the token. Clear the response and log out of the Swagger
+authorizations when finished.
+
 ## Authorization scope catalog (AU-04)
 
 The canonical OAuth scope names live in `@app/auth` (`libs/auth/src/constants/scopes.constants.ts`) and are seeded into the `role_scope` table by migration `000013_create-role-scopes`.

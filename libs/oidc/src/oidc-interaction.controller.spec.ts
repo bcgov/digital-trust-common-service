@@ -17,6 +17,7 @@ jest.mock('openid-client', () => ({
 
 import { IncomingMessage } from 'http';
 
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { Test, TestingModule } from '@nestjs/testing';
 
 import { OidcConfigService } from './oidc-config.service';
@@ -120,6 +121,22 @@ describe('OidcInteractionController', () => {
 
   afterEach(async () => {
     await module.close();
+  });
+
+  it('groups interaction and callback routes under OIDC in Swagger', async () => {
+    const app = module.createNestApplication();
+    try {
+      const document = SwaggerModule.createDocument(
+        app,
+        new DocumentBuilder().build(),
+      );
+      expect(document.paths['/oidc/interaction/{uid}']?.get?.tags).toEqual([
+        'OIDC',
+      ]);
+      expect(document.paths['/oidc/callback']?.get?.tags).toEqual(['OIDC']);
+    } finally {
+      await app.close();
+    }
   });
 
   describe('interaction - LOGIN prompt', () => {
