@@ -189,7 +189,7 @@ tags:
     description: |
       Register and manage OAuth2 API clients for service-to-service (`client_credentials`) access.
       Generated `client_id` values are prefixed `dtcs_`. Secrets are returned once at creation
-      or rotation and are never retrievable again. Assigned scopes must be in the AU-04 catalog,
+      or rotation and are never retrievable again. Assigned scopes must be in the scope catalog,
       enabled in `OIDC_SCOPES`, and a subset of the caller's own scopes (`platform-admin` bypasses
       the caller-subset check; only `platform-admin` may assign `roles`).
       **Audience**: Tenant administrators.

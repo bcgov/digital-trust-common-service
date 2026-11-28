@@ -24,11 +24,11 @@ const FULL_DOC_TITLE = 'Digital Credential Common Service API';
  * Description shared by the full-documentation `DocumentBuilder` instances
  * (UI and JSON-only paths). Kept as a single constant so the two builders
  * cannot drift out of sync. `${API_BASE_PATH}` is interpolated so the stated
- * base path always tracks the AG-01 version constants.
+ * base path always tracks the API version constants.
  */
 const FULL_DOC_DESCRIPTION =
   'A comprehensive API for managing Digital Credential Common Service models. Provides functionality for credential lifecycle management, schema validation, and multi-tenant support. ' +
-  `All business routes are served under the versioned base path ${API_BASE_PATH} (see AG-01); the OpenAPI document version below (1.0) is this document's own revision, distinct from the URL version segment.`;
+  `All business routes are served under the versioned base path ${API_BASE_PATH}; the OpenAPI document version below (1.0) is this document's own revision, distinct from the URL version segment.`;
 
 const FULL_DOC_VERSION = '1.0';
 
