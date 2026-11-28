@@ -4791,6 +4791,8 @@ export interface operations {
                 limit?: components["parameters"]["Limit"];
                 state?: components["schemas"]["ConnectionState"];
                 protocol?: components["schemas"]["ConnectionProtocol"];
+                /** @description Filter connections by connector UUID */
+                connector_id?: string;
             };
             header?: never;
             path: {

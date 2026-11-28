@@ -153,10 +153,9 @@ export class ConnectionRepository {
   }
 
   /**
-   * Cursor-paginated tenant listing, optionally filtered by state. Ordering,
-   * the cursor predicate, and the page size limit are all pushed into the
-   * query rather than fetched-then-sliced in memory, so a page costs O(limit)
-   * rows regardless of how many connections the tenant has.
+   * Cursor-paginated tenant listing, optionally filtered by state, protocol,
+   * or connector. Ordering, predicates, and the page size limit are pushed
+   * into the query rather than fetched-then-sliced in memory.
    */
   public async findPageForTenant(
     tenantId: string,
@@ -165,6 +164,7 @@ export class ConnectionRepository {
       cursor?: Cursor | null;
       state?: ConnectionState;
       protocol?: ConnectionProtocol;
+      connectorId?: string;
     },
   ): Promise<ConnectionPage> {
     const qb = this.repository
@@ -181,6 +181,12 @@ export class ConnectionRepository {
     if (options.protocol) {
       qb.andWhere('connection.protocol = :protocol', {
         protocol: options.protocol,
+      });
+    }
+
+    if (options.connectorId) {
+      qb.andWhere('connection.connector_id = :connectorId', {
+        connectorId: options.connectorId,
       });
     }
 

@@ -139,6 +139,12 @@ export class ConnectionController {
     description: 'Filter connections by protocol',
   })
   @ApiQuery({
+    name: 'connector_id',
+    required: false,
+    description: 'Filter connections by connector UUID',
+    schema: { type: 'string', format: 'uuid' },
+  })
+  @ApiQuery({
     name: 'cursor',
     required: false,
     description: 'Opaque pagination cursor from a previous response',
@@ -153,7 +159,11 @@ export class ConnectionController {
     @Param('tenantId', ParseUUIDPipe) tenantId: string,
     @Query() query: ListConnectionsQueryDto,
   ): Promise<PaginatedConnectionsResponseDto> {
-    const options = { limit: query.limit, cursor: query.cursor };
+    const options = {
+      limit: query.limit,
+      cursor: query.cursor,
+      connectorId: query.connectorId,
+    };
     const page =
       query.state || query.protocol
         ? await this.connectionService.findByTenantIdAndFilters(

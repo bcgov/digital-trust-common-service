@@ -1,10 +1,28 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
-import { IsEnum, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
+import { Expose, Type } from 'class-transformer';
+import {
+  IsEnum,
+  IsInt,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Max,
+  Min,
+} from 'class-validator';
 
 import { ConnectionProtocol, ConnectionState } from '../connection.entity';
 
 export class ListConnectionsQueryDto {
+  @Expose({ name: 'connector_id' })
+  @ApiPropertyOptional({
+    name: 'connector_id',
+    description: 'Filter connections by connector UUID',
+    format: 'uuid',
+  })
+  @IsOptional()
+  @IsUUID()
+  public connectorId?: string;
+
   @ApiPropertyOptional({
     enum: ConnectionState,
     description: 'Filter connections by state',

@@ -158,6 +158,15 @@ describe('ConnectionController', () => {
       const path = '/api/v1/tenants/{tenantId}/connections';
       expect(document.paths[path]?.post?.tags).toEqual(['Connections']);
       expect(document.paths[path]?.get?.tags).toEqual(['Connections']);
+      expect(document.paths[path]?.get?.parameters).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            name: 'connector_id',
+            in: 'query',
+            schema: { type: 'string', format: 'uuid' },
+          }),
+        ]),
+      );
       expect(document.paths[`${path}/{id}`]?.get?.tags).toEqual([
         'Connections',
       ]);
@@ -274,6 +283,8 @@ describe('ConnectionController', () => {
   });
 
   describe('GET /connections/tenant/:tenantId', () => {
+    const connectorId = '123e4567-e89b-12d3-a456-426614174002';
+
     it('should find connections by tenant id', async () => {
       mockFindByTenantId.mockResolvedValue({
         data: [mockConnection],
@@ -288,6 +299,7 @@ describe('ConnectionController', () => {
       expect(mockFindByTenantId).toHaveBeenCalledWith(mockConnection.tenantId, {
         limit: undefined,
         cursor: undefined,
+        connectorId: undefined,
       });
       expect(result).toEqual({
         data: [ConnectionResponseDto.fromEntity(mockConnection)],
@@ -309,7 +321,7 @@ describe('ConnectionController', () => {
         mockConnection.tenantId,
         ConnectionState.ACTIVE,
         undefined,
-        { limit: undefined, cursor: undefined },
+        { limit: undefined, cursor: undefined, connectorId: undefined },
       );
       expect(result).toEqual({
         data: [ConnectionResponseDto.fromEntity(mockConnection)],
@@ -332,7 +344,7 @@ describe('ConnectionController', () => {
         mockConnection.tenantId,
         ConnectionState.ACTIVE,
         ConnectionProtocol.DIDCOMM_V2,
-        { limit: undefined, cursor: undefined },
+        { limit: undefined, cursor: undefined, connectorId: undefined },
       );
     });
 
@@ -350,6 +362,7 @@ describe('ConnectionController', () => {
       expect(mockFindByTenantId).toHaveBeenCalledWith(mockConnection.tenantId, {
         limit: 5,
         cursor: 'previous-cursor',
+        connectorId: undefined,
       });
       expect(result.pagination).toEqual({
         nextCursor: 'opaque-cursor',
@@ -371,9 +384,37 @@ describe('ConnectionController', () => {
         mockConnection.tenantId,
         undefined,
         ConnectionProtocol.DIDCOMM_V2,
-        { limit: undefined, cursor: undefined },
+        { limit: undefined, cursor: undefined, connectorId: undefined },
       );
       expect(mockFindByTenantId).not.toHaveBeenCalled();
+    });
+
+    it('passes connector_id to the tenant-scoped service filter', async () => {
+      mockFindByTenantId.mockResolvedValue({
+        data: [],
+        pagination: { next_cursor: null, has_more: false },
+      });
+
+      await request(app.getHttpServer())
+        .get(`/api/v1/tenants/${mockConnection.tenantId}/connections`)
+        .query({ connector_id: connectorId })
+        .expect(200);
+
+      expect(mockFindByTenantId).toHaveBeenCalledWith(mockConnection.tenantId, {
+        limit: undefined,
+        cursor: undefined,
+        connectorId,
+      });
+    });
+
+    it('rejects an invalid connector_id before querying connections', async () => {
+      await request(app.getHttpServer())
+        .get(`/api/v1/tenants/${mockConnection.tenantId}/connections`)
+        .query({ connector_id: 'not-a-uuid' })
+        .expect(400);
+
+      expect(mockFindByTenantId).not.toHaveBeenCalled();
+      expect(mockFindByTenantIdAndFilters).not.toHaveBeenCalled();
     });
   });
 

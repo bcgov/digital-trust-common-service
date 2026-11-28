@@ -1747,6 +1747,10 @@ exact invitation correlation in that explicitly selected wallet; ambiguous,
 missing, cross-wallet, or abandoned connections cannot issue. The original
 top-level `format`, `attributes`, and `connection_id` fields are rejected.
 
+`GET /api/v1/tenants/{tenantId}/connections` also accepts an optional
+`connector_id` UUID query parameter. It can be combined with state, protocol,
+and cursor pagination; keep the same filters when requesting the next page.
+
 An incomplete handshake or unavailable/inconsistent connection binding returns
 HTTP 409. Legacy invitation discovery sends `invitation_msg_id` to Traction's
 `GET /connections` with `limit=2`, distinguishing zero, one, or multiple matches

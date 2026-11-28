@@ -559,7 +559,11 @@ export class ConnectionService {
 
   public async findByTenantId(
     tenantId: string,
-    options: { limit?: number; cursor?: string | null } = {},
+    options: {
+      limit?: number;
+      cursor?: string | null;
+      connectorId?: string;
+    } = {},
   ): Promise<PaginatedConnections> {
     return this.findPage(tenantId, options);
   }
@@ -568,19 +572,26 @@ export class ConnectionService {
     tenantId: string,
     state: ConnectionState | undefined,
     protocol?: ConnectionProtocol,
-    options: { limit?: number; cursor?: string | null } = {},
+    options: {
+      limit?: number;
+      cursor?: string | null;
+      connectorId?: string;
+    } = {},
   ): Promise<PaginatedConnections> {
     return this.findPage(tenantId, options, state, protocol);
   }
 
   /**
-   * Cursor, limit, ordering, and the optional state/protocol predicates are
-   * all pushed into the repository's SQL rather than fetched-then-sliced in
-   * memory, so a page costs O(limit) rows regardless of tenant size.
+   * Cursor, limit, ordering, and optional filters are all pushed into the
+   * repository's SQL rather than fetched-then-sliced in memory.
    */
   private async findPage(
     tenantId: string,
-    options: { limit?: number; cursor?: string | null },
+    options: {
+      limit?: number;
+      cursor?: string | null;
+      connectorId?: string;
+    },
     state?: ConnectionState,
     protocol?: ConnectionProtocol,
   ): Promise<PaginatedConnections> {
@@ -592,6 +603,7 @@ export class ConnectionService {
       cursor,
       state,
       protocol,
+      connectorId: options.connectorId,
     });
 
     return {
