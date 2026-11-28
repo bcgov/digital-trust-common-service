@@ -1,5 +1,9 @@
 import { TenantAccessDeniedException } from '@app/auth';
-import { BackendNotFoundError, TimeoutError } from '@app/credential-ports';
+import {
+  BackendNotFoundError,
+  ConnectorUnavailableError,
+  TimeoutError,
+} from '@app/credential-ports';
 import {
   BadRequestException,
   ConflictException,
@@ -621,7 +625,11 @@ describe('ConnectionService', () => {
 
       const result = await service.create(mockConnection.tenantId, dto, auth);
 
-      expect(mockResolve).toHaveBeenCalledWith(mockConnection.tenantId);
+      expect(mockResolve).toHaveBeenCalledWith(
+        mockConnection.tenantId,
+        undefined,
+        { connectorId: undefined },
+      );
       expect(mockCreate).toHaveBeenCalledWith({
         tenantId: mockConnection.tenantId,
         connectorType: mockConnector.connectorType,
@@ -678,6 +686,108 @@ describe('ConnectionService', () => {
       expect(result).toEqual(
         expect.objectContaining({ state: OperationState.COMPLETED }),
       );
+    });
+
+    it.each([undefined, 'default'])(
+      'uses default connector resolution for connector_id %s',
+      async (connectorId) => {
+        mockCreateInvitation.mockResolvedValue({
+          invitationId: 'invitation-1',
+          invitationUrl: 'https://example.com/invite',
+        });
+
+        await service.create(
+          mockConnection.tenantId,
+          { ...dto, connectorId },
+          auth,
+        );
+
+        expect(mockResolve).toHaveBeenCalledWith(
+          mockConnection.tenantId,
+          undefined,
+          { connectorId: undefined },
+        );
+        expect(mockCreate).toHaveBeenCalledWith(
+          expect.objectContaining({ connectorId: mockConnector.id }),
+        );
+        expect(mockCreateInvitation).toHaveBeenCalledWith(
+          mockContext,
+          expect.any(Object),
+        );
+      },
+    );
+
+    it.each([undefined, 'https://example.com/invite'])(
+      'uses the explicitly selected connector with invitation_url %s',
+      async (invitationUrl) => {
+        const selectedConnector = {
+          ...mockConnector,
+          id: '123e4567-e89b-12d3-a456-426614174004',
+        };
+        const selectedContext = {
+          ...mockContext,
+          connectorId: selectedConnector.id,
+        };
+        mockResolve.mockResolvedValue({
+          adapter: mockAdapter,
+          connector: selectedConnector,
+          context: selectedContext,
+        });
+        mockCreateInvitation.mockResolvedValue({
+          invitationId: 'invitation-1',
+          invitationUrl: 'https://example.com/invite',
+        });
+        mockAcceptInvitation.mockResolvedValue({
+          id: 'remote-connection',
+          state: 'active',
+        });
+
+        await service.create(
+          mockConnection.tenantId,
+          { ...dto, connectorId: selectedConnector.id, invitationUrl },
+          auth,
+        );
+
+        expect(mockResolve).toHaveBeenCalledWith(
+          mockConnection.tenantId,
+          undefined,
+          { connectorId: selectedConnector.id },
+        );
+        expect(mockCreate).toHaveBeenCalledWith(
+          expect.objectContaining({ connectorId: selectedConnector.id }),
+        );
+        if (invitationUrl) {
+          expect(mockAcceptInvitation).toHaveBeenCalledWith(
+            selectedContext,
+            invitationUrl,
+          );
+          expect(mockCreateInvitation).not.toHaveBeenCalled();
+        } else {
+          expect(mockCreateInvitation).toHaveBeenCalledWith(
+            selectedContext,
+            expect.any(Object),
+          );
+          expect(mockAcceptInvitation).not.toHaveBeenCalled();
+        }
+      },
+    );
+
+    it('does not fall back or persist a connection when the selected connector is unavailable', async () => {
+      const error = new ConnectorUnavailableError('Connector not found');
+      mockResolve.mockRejectedValue(error);
+
+      await expect(
+        service.create(
+          mockConnection.tenantId,
+          { ...dto, connectorId: mockConnector.id },
+          auth,
+        ),
+      ).rejects.toBe(error);
+
+      expect(mockResolve).toHaveBeenCalledTimes(1);
+      expect(mockCreate).not.toHaveBeenCalled();
+      expect(mockCreateOperation).not.toHaveBeenCalled();
+      expect(mockEmit).not.toHaveBeenCalled();
     });
 
     it('strips reserved correlation keys from caller-supplied metadata before persisting', async () => {
@@ -867,7 +977,13 @@ describe('ConnectionService', () => {
 
       expect(mockFindPageForTenant).toHaveBeenCalledWith(
         mockConnection.tenantId,
-        { limit: 20, cursor: null, state: undefined, protocol: undefined },
+        {
+          limit: 20,
+          cursor: null,
+          state: undefined,
+          protocol: undefined,
+          connectorId: undefined,
+        },
       );
       expect(mockResolve).not.toHaveBeenCalled();
       expect(mockList).not.toHaveBeenCalled();
@@ -894,7 +1010,13 @@ describe('ConnectionService', () => {
 
       expect(mockFindPageForTenant).toHaveBeenCalledWith(
         mockConnection.tenantId,
-        { limit: 1, cursor: null, state: undefined, protocol: undefined },
+        {
+          limit: 1,
+          cursor: null,
+          state: undefined,
+          protocol: undefined,
+          connectorId: undefined,
+        },
       );
       expect(result.pagination.has_more).toBe(true);
       expect(result.pagination.next_cursor).toEqual(encodeCursor(nextCursor));
@@ -918,7 +1040,35 @@ describe('ConnectionService', () => {
 
       expect(mockFindPageForTenant).toHaveBeenCalledWith(
         mockConnection.tenantId,
-        { limit: 20, cursor, state: undefined, protocol: undefined },
+        {
+          limit: 20,
+          cursor,
+          state: undefined,
+          protocol: undefined,
+          connectorId: undefined,
+        },
+      );
+    });
+
+    it('passes connectorId through to the repository', async () => {
+      const connectorId = '123e4567-e89b-12d3-a456-426614174002';
+      mockFindPageForTenant.mockResolvedValue({
+        items: [],
+        nextCursor: null,
+        hasMore: false,
+      });
+
+      await service.findByTenantId(mockConnection.tenantId, { connectorId });
+
+      expect(mockFindPageForTenant).toHaveBeenCalledWith(
+        mockConnection.tenantId,
+        {
+          limit: 20,
+          cursor: null,
+          state: undefined,
+          protocol: undefined,
+          connectorId,
+        },
       );
     });
 
@@ -952,6 +1102,7 @@ describe('ConnectionService', () => {
           cursor: null,
           state: mockConnection.state,
           protocol: undefined,
+          connectorId: undefined,
         },
       );
       expect(mockResolve).not.toHaveBeenCalled();
@@ -983,6 +1134,7 @@ describe('ConnectionService', () => {
           cursor: null,
           state: mockConnection.state,
           protocol: mockConnection.protocol,
+          connectorId: undefined,
         },
       );
     });
@@ -1007,6 +1159,34 @@ describe('ConnectionService', () => {
           cursor: null,
           state: undefined,
           protocol: mockConnection.protocol,
+          connectorId: undefined,
+        },
+      );
+    });
+
+    it('passes connectorId alongside state and protocol filters', async () => {
+      const connectorId = '123e4567-e89b-12d3-a456-426614174002';
+      mockFindPageForTenant.mockResolvedValue({
+        items: [],
+        nextCursor: null,
+        hasMore: false,
+      });
+
+      await service.findByTenantIdAndFilters(
+        mockConnection.tenantId,
+        mockConnection.state,
+        mockConnection.protocol,
+        { connectorId },
+      );
+
+      expect(mockFindPageForTenant).toHaveBeenCalledWith(
+        mockConnection.tenantId,
+        {
+          limit: 20,
+          cursor: null,
+          state: mockConnection.state,
+          protocol: mockConnection.protocol,
+          connectorId,
         },
       );
     });

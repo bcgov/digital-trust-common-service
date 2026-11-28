@@ -1736,12 +1736,20 @@ Protocol-specific registration or exchange details stay in `result`; operation
 reads do not reconstruct steps from stage strings or live exchange rows.
 
 The delivery connection is a tenant-owned local UUID, not Traction's ID. New
-connections pin the connector used to create them. Before offering, the service
+connections pin the connector used to create them.
+`POST /api/v1/tenants/{tenantId}/connections` accepts an optional `connector_id`:
+a tenant-owned active connector UUID selects that connector; omitting it or
+using `"default"` selects the tenant's configured default, falling back to the
+sole active connector when no default is configured. Before offering, the service
 verifies the completed handshake in the definition's connector wallet and
 resolves its external connection ID. An unbound legacy row is adopted only by
 exact invitation correlation in that explicitly selected wallet; ambiguous,
 missing, cross-wallet, or abandoned connections cannot issue. The original
 top-level `format`, `attributes`, and `connection_id` fields are rejected.
+
+`GET /api/v1/tenants/{tenantId}/connections` also accepts an optional
+`connector_id` UUID query parameter. It can be combined with state, protocol,
+and cursor pagination; keep the same filters when requesting the next page.
 
 An incomplete handshake or unavailable/inconsistent connection binding returns
 HTTP 409. Legacy invitation discovery sends `invitation_msg_id` to Traction's

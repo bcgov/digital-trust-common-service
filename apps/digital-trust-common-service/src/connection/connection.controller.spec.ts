@@ -1,7 +1,18 @@
-import { JwtGuard, ScopeGuard, TenantGuard, type AuthContext } from '@app/auth';
-import { CanActivate } from '@nestjs/common';
-import { Test, TestingModule } from '@nestjs/testing';
+import type { Server } from 'node:http';
 
+import { JwtGuard, ScopeGuard, TenantGuard, type AuthContext } from '@app/auth';
+import { RequestContextService } from '@app/common/context/request-context.service';
+import {
+  CanActivate,
+  ExecutionContext,
+  INestApplication,
+} from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { Test, TestingModule } from '@nestjs/testing';
+import request from 'supertest';
+
+import { configureApp } from '../app.config';
 import { OperationResponseDto } from '../operation/dto/operation-response.dto';
 import { OPERATION_TYPE } from '../operation/operation-type.constants';
 import { Operation, OperationState } from '../operation/operation.entity';
@@ -27,6 +38,7 @@ class AllowGuard implements CanActivate {
 
 describe('ConnectionController', () => {
   let controller: ConnectionController;
+  let app: INestApplication<Server>;
 
   let mockCreate: jest.Mock;
   let mockFindById: jest.Mock;
@@ -97,6 +109,8 @@ describe('ConnectionController', () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [ConnectionController],
       providers: [
+        ConfigService,
+        RequestContextService,
         {
           provide: ConnectionService,
           useValue: mockService,
@@ -104,7 +118,13 @@ describe('ConnectionController', () => {
       ],
     })
       .overrideGuard(JwtGuard)
-      .useClass(AllowGuard)
+      .useValue({
+        canActivate: (context: ExecutionContext): boolean => {
+          context.switchToHttp().getRequest<{ auth: AuthContext }>().auth =
+            auth;
+          return true;
+        },
+      })
       .overrideGuard(ScopeGuard)
       .useClass(AllowGuard)
       .overrideGuard(TenantGuard)
@@ -116,6 +136,13 @@ describe('ConnectionController', () => {
       .compile();
 
     controller = module.get<ConnectionController>(ConnectionController);
+    app = module.createNestApplication();
+    configureApp(app);
+    await app.init();
+  });
+
+  afterEach(async () => {
+    await app.close();
   });
 
   it('should be defined', () => {
@@ -123,6 +150,96 @@ describe('ConnectionController', () => {
   });
 
   describe('POST /connections', () => {
+    it('documents the Connections namespace and optional connector_id selector', () => {
+      const document = SwaggerModule.createDocument(
+        app,
+        new DocumentBuilder().build(),
+      );
+      const path = '/api/v1/tenants/{tenantId}/connections';
+      expect(document.paths[path]?.post?.tags).toEqual(['Connections']);
+      expect(document.paths[path]?.get?.tags).toEqual(['Connections']);
+      expect(document.paths[path]?.get?.parameters).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            name: 'connector_id',
+            in: 'query',
+            schema: { type: 'string', format: 'uuid' },
+          }),
+        ]),
+      );
+      expect(document.paths[`${path}/{id}`]?.get?.tags).toEqual([
+        'Connections',
+      ]);
+      expect(document.paths[`${path}/{id}`]?.delete?.tags).toEqual([
+        'Connections',
+      ]);
+      expect(document.components?.schemas?.CreateConnectionDto).toMatchObject({
+        properties: {
+          connector_id: {
+            oneOf: [
+              { type: 'string', format: 'uuid' },
+              { type: 'string', enum: ['default'] },
+            ],
+          },
+        },
+        required: ['protocol'],
+      });
+      expect(document.paths[path]?.post?.requestBody).toMatchObject({
+        content: {
+          'application/json': {
+            examples: {
+              create: { value: { connector_id: 'default' } },
+              accept: { value: { connector_id: 'default' } },
+              selectedConnector: {
+                value: {
+                  connector_id: '123e4567-e89b-12d3-a456-426614174002',
+                },
+              },
+            },
+          },
+        },
+      });
+    });
+
+    it.each([undefined, 'default', '123e4567-e89b-12d3-a456-426614174002'])(
+      'accepts and transforms connector_id %s through the HTTP validation pipe',
+      async (connectorId) => {
+        mockCreate.mockResolvedValue(mockOperation);
+
+        await request(app.getHttpServer())
+          .post(`/api/v1/tenants/${mockConnection.tenantId}/connections`)
+          .send({
+            protocol: mockConnection.protocol,
+            ...(connectorId === undefined ? {} : { connector_id: connectorId }),
+          })
+          .expect(201);
+
+        expect(mockCreate).toHaveBeenCalledWith(
+          mockConnection.tenantId,
+          expect.objectContaining({
+            protocol: mockConnection.protocol,
+            connectorId,
+          }),
+          auth,
+        );
+      },
+    );
+
+    it.each(['', 'not-a-uuid', null, 42])(
+      'rejects invalid connector_id %s before creating a connection',
+      async (connectorId) => {
+        await request(app.getHttpServer())
+          .post(`/api/v1/tenants/${mockConnection.tenantId}/connections`)
+          .send({
+            protocol: mockConnection.protocol,
+            connector_id: connectorId,
+          })
+          .expect(400);
+
+        expect(mockCreate).not.toHaveBeenCalled();
+      },
+    );
+
     it('should create a connection and return the completed operation', async () => {
       const dto: CreateConnectionDto = {
         protocol: mockConnection.protocol,
@@ -166,6 +283,8 @@ describe('ConnectionController', () => {
   });
 
   describe('GET /connections/tenant/:tenantId', () => {
+    const connectorId = '123e4567-e89b-12d3-a456-426614174002';
+
     it('should find connections by tenant id', async () => {
       mockFindByTenantId.mockResolvedValue({
         data: [mockConnection],
@@ -180,6 +299,7 @@ describe('ConnectionController', () => {
       expect(mockFindByTenantId).toHaveBeenCalledWith(mockConnection.tenantId, {
         limit: undefined,
         cursor: undefined,
+        connectorId: undefined,
       });
       expect(result).toEqual({
         data: [ConnectionResponseDto.fromEntity(mockConnection)],
@@ -201,7 +321,7 @@ describe('ConnectionController', () => {
         mockConnection.tenantId,
         ConnectionState.ACTIVE,
         undefined,
-        { limit: undefined, cursor: undefined },
+        { limit: undefined, cursor: undefined, connectorId: undefined },
       );
       expect(result).toEqual({
         data: [ConnectionResponseDto.fromEntity(mockConnection)],
@@ -224,7 +344,7 @@ describe('ConnectionController', () => {
         mockConnection.tenantId,
         ConnectionState.ACTIVE,
         ConnectionProtocol.DIDCOMM_V2,
-        { limit: undefined, cursor: undefined },
+        { limit: undefined, cursor: undefined, connectorId: undefined },
       );
     });
 
@@ -242,6 +362,7 @@ describe('ConnectionController', () => {
       expect(mockFindByTenantId).toHaveBeenCalledWith(mockConnection.tenantId, {
         limit: 5,
         cursor: 'previous-cursor',
+        connectorId: undefined,
       });
       expect(result.pagination).toEqual({
         nextCursor: 'opaque-cursor',
@@ -263,9 +384,37 @@ describe('ConnectionController', () => {
         mockConnection.tenantId,
         undefined,
         ConnectionProtocol.DIDCOMM_V2,
-        { limit: undefined, cursor: undefined },
+        { limit: undefined, cursor: undefined, connectorId: undefined },
       );
       expect(mockFindByTenantId).not.toHaveBeenCalled();
+    });
+
+    it('passes connector_id to the tenant-scoped service filter', async () => {
+      mockFindByTenantId.mockResolvedValue({
+        data: [],
+        pagination: { next_cursor: null, has_more: false },
+      });
+
+      await request(app.getHttpServer())
+        .get(`/api/v1/tenants/${mockConnection.tenantId}/connections`)
+        .query({ connector_id: connectorId })
+        .expect(200);
+
+      expect(mockFindByTenantId).toHaveBeenCalledWith(mockConnection.tenantId, {
+        limit: undefined,
+        cursor: undefined,
+        connectorId,
+      });
+    });
+
+    it('rejects an invalid connector_id before querying connections', async () => {
+      await request(app.getHttpServer())
+        .get(`/api/v1/tenants/${mockConnection.tenantId}/connections`)
+        .query({ connector_id: 'not-a-uuid' })
+        .expect(400);
+
+      expect(mockFindByTenantId).not.toHaveBeenCalled();
+      expect(mockFindByTenantIdAndFilters).not.toHaveBeenCalled();
     });
   });
 

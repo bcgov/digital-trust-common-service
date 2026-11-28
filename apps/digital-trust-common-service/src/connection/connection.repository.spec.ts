@@ -255,6 +255,22 @@ describe('ConnectionRepository', () => {
       );
     });
 
+    it('adds the connector predicate while keeping the tenant predicate', async () => {
+      await repository.findPageForTenant('t1', {
+        limit: 20,
+        connectorId: '123e4567-e89b-12d3-a456-426614174002',
+      });
+
+      expect(mockQb.where).toHaveBeenCalledWith(
+        'connection.tenant_id = :tenantId',
+        { tenantId: 't1' },
+      );
+      expect(mockQb.andWhere).toHaveBeenCalledWith(
+        'connection.connector_id = :connectorId',
+        { connectorId: '123e4567-e89b-12d3-a456-426614174002' },
+      );
+    });
+
     it('adds a CAST-based cursor predicate when a cursor is given', async () => {
       await repository.findPageForTenant('t1', {
         limit: 20,

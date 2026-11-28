@@ -1026,6 +1026,10 @@ export interface paths {
          *     - **Create invitation** (no `invitation_url`): generates a new invitation URL.
          *     - **Accept invitation** (`invitation_url` provided): accepts an existing invitation from another party.
          *
+         *     Set `connector_id` to a tenant-owned active connector UUID to select a specific
+         *     connector. Omit it or use `"default"` to select the tenant's configured default;
+         *     if none is configured, the tenant must have exactly one active connector.
+         *
          *     Both modes return an Operation with `type: connection.create`. The `result` object
          *     indicates the mode: it contains `invitation_url` when creating, or `connection_id` + `state`
          *     when accepting.
@@ -2417,6 +2421,13 @@ export interface components {
          *     - **Accept invitation**: provide `invitation_url` — accepts an existing invitation from another party.
          */
         CreateConnectionRequest: {
+            /**
+             * @description Tenant-owned active connector UUID. Omit or use "default" to select the
+             *     tenant default connector; if none is configured, the tenant must have
+             *     exactly one active connector.
+             * @example default
+             */
+            connector_id?: string | "default";
             /**
              * Format: uri
              * @description URL of an existing invitation to accept. If provided, creates a connection by accepting this invitation rather than generating a new one.
@@ -4780,6 +4791,8 @@ export interface operations {
                 limit?: components["parameters"]["Limit"];
                 state?: components["schemas"]["ConnectionState"];
                 protocol?: components["schemas"]["ConnectionProtocol"];
+                /** @description Filter connections by connector UUID */
+                connector_id?: string;
             };
             header?: never;
             path: {
