@@ -16,8 +16,8 @@ info:
     | **Digital Credential Operations** | Application developers / API consumers | Domain scopes (`credentials:offer`, `credentials:verify`, etc.) |
 
     ## Authentication
-    All endpoints (except health checks and public discovery) require a Bearer JWT issued by the app's
-    OIDC provider at `/oidc/token`. Tokens are obtained via:
+    All endpoints (except health checks, public discovery, and OIDC endpoints) require a Bearer
+    JWT issued by the app's OIDC provider at `/oidc/token`. Tokens are obtained via:
     - **User login**: Authorization Code + PKCE flow (federated to Keycloak)
     - **Service-to-service**: `client_credentials` grant
 
@@ -80,6 +80,7 @@ x-tagGroups:
       token here before calling any tenant-scoped endpoint.
     tags:
       - Auth
+      - OIDC
 
   - name: "🔧 Platform Administration"
     description: |
@@ -122,6 +123,8 @@ x-tagGroups:
 
 tags:
   # ── Authentication ──────────────────────────────────────────────────────
+  - name: OIDC
+    description: OpenID Connect token issuance and interactions.
   - name: Auth
     description: |
       Token exchange and tenant context switching.
@@ -189,7 +192,7 @@ tags:
     description: |
       Register and manage OAuth2 API clients for service-to-service (`client_credentials`) access.
       Generated `client_id` values are prefixed `dtcs_`. Secrets are returned once at creation
-      or rotation and are never retrievable again. Assigned scopes must be in the AU-04 catalog,
+      or rotation and are never retrievable again. Assigned scopes must be in the scope catalog,
       enabled in `OIDC_SCOPES`, and a subset of the caller's own scopes (`platform-admin` bypasses
       the caller-subset check; only `platform-admin` may assign `roles`).
       **Audience**: Tenant administrators.
@@ -269,6 +272,110 @@ security:
   - BearerAuth: []
 
 paths:
+  # ─── OIDC ─────────────────────────────────────────────────────────────
+  /oidc/token:
+    post:
+      tags: [OIDC]
+      summary: Obtain an API client access token
+      description: >-
+        Authenticate with the API client ID and secret using HTTP Basic authentication.
+        Copy the returned access token into the bearer authorization for API requests.
+      security:
+        - oidcClientBasic: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [grant_type]
+              properties:
+                grant_type:
+                  type: string
+                  enum: [client_credentials]
+                  default: client_credentials
+                scope:
+                  type: string
+                  description: Space-separated scopes granted to the client.
+      responses:
+        "200":
+          description: Access token issued.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  access_token:
+                    type: string
+                  token_type:
+                    type: string
+                  expires_in:
+                    type: integer
+                  scope:
+                    type: string
+        "400":
+          description: Invalid token request or scope.
+        "401":
+          description: Invalid client credentials.
+
+  /oidc/interaction/{uid}:
+    get:
+      operationId: OidcInteractionController_interaction
+      summary: Continue an OIDC interaction
+      tags: [OIDC]
+      security: []
+      parameters:
+        - name: uid
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "302":
+          description: Redirects to the upstream identity provider.
+        "303":
+          description: Continues the OIDC authorization flow.
+        "403":
+          description: Requested scopes exceed the user role.
+
+  /oidc/callback:
+    get:
+      operationId: OidcInteractionController_callback
+      summary: Handle the upstream OIDC callback
+      tags: [OIDC]
+      security: []
+      parameters:
+        - name: error_description
+          required: false
+          in: query
+          schema:
+            type: string
+        - name: error
+          required: false
+          in: query
+          schema:
+            type: string
+        - name: nonce
+          required: false
+          in: query
+          schema:
+            type: string
+        - name: state
+          required: false
+          in: query
+          schema:
+            type: string
+        - name: code
+          required: false
+          in: query
+          schema:
+            type: string
+      responses:
+        "302":
+          description: Redirects to the OIDC interaction.
+        "400":
+          description: Invalid or failed upstream callback.
+
   # ─── Health ───────────────────────────────────────────────────────────
   /health/live:
     get:
@@ -3227,6 +3334,10 @@ paths:
 # ═══════════════════════════════════════════════════════════════════════
 components:
   securitySchemes:
+    oidcClientBasic:
+      type: http
+      scheme: basic
+      description: API client ID and secret for the client_credentials grant. Use only on a trusted connection.
     BearerAuth:
       type: http
       scheme: bearer

@@ -17,6 +17,7 @@ jest.mock('openid-client', () => ({
 
 import { IncomingMessage } from 'http';
 
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { Test, TestingModule } from '@nestjs/testing';
 
 import { OidcConfigService } from './oidc-config.service';
@@ -120,6 +121,40 @@ describe('OidcInteractionController', () => {
 
   afterEach(async () => {
     await module.close();
+  });
+
+  it('groups interaction and callback routes under OIDC in Swagger', async () => {
+    const app = module.createNestApplication();
+    try {
+      const document = SwaggerModule.createDocument(
+        app,
+        new DocumentBuilder().build(),
+      );
+      const interaction = document.paths['/oidc/interaction/{uid}']?.get;
+      const callback = document.paths['/oidc/callback']?.get;
+      expect(interaction?.tags).toEqual(['OIDC']);
+      expect(callback?.tags).toEqual(['OIDC']);
+      expect(interaction?.security).toEqual([]);
+      expect(callback?.security).toEqual([]);
+      expect(interaction?.parameters).toEqual([
+        expect.objectContaining({ name: 'uid', in: 'path', required: true }),
+      ]);
+      expect(callback?.parameters).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ name: 'code', in: 'query' }),
+          expect.objectContaining({ name: 'state', in: 'query' }),
+          expect.objectContaining({ name: 'error', in: 'query' }),
+        ]),
+      );
+      expect(Object.keys(interaction?.responses ?? {})).toEqual([
+        '302',
+        '303',
+        '403',
+      ]);
+      expect(Object.keys(callback?.responses ?? {})).toEqual(['302', '400']);
+    } finally {
+      await app.close();
+    }
   });
 
   describe('interaction - LOGIN prompt', () => {

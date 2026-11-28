@@ -3,6 +3,13 @@ import { Http2ServerRequest, Http2ServerResponse } from 'http2';
 
 import { partitionRequestedScopes } from '@app/auth/utils/partition-requested-scopes';
 import { Controller, Get, Inject, Query, Req, Res } from '@nestjs/common';
+import {
+  ApiOperation,
+  ApiParam,
+  ApiQuery,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import escapeHtml from 'escape-html';
 
 import { OidcConfigService } from './oidc-config.service';
@@ -32,6 +39,7 @@ class UnauthorizedOidcScopeRequestError extends Error {
   }
 }
 
+@ApiTags('OIDC')
 @Controller({ path: 'oidc/' })
 export class OidcInteractionController {
   private static readonly ACTIVE_TENANT_USER_STATUS = 'active';
@@ -57,6 +65,20 @@ export class OidcInteractionController {
     private readonly oidcConfigService: OidcConfigService,
   ) {}
 
+  @ApiOperation({ summary: 'Continue an OIDC interaction', security: [] })
+  @ApiParam({ name: 'uid', type: String })
+  @ApiResponse({
+    status: 302,
+    description: 'Redirects to the upstream identity provider.',
+  })
+  @ApiResponse({
+    status: 303,
+    description: 'Continues the OIDC authorization flow.',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Requested scopes exceed the user role.',
+  })
   @Get('/interaction/:uid')
   public async interaction(
     @Req() req: IncomingMessage | Http2ServerRequest,
@@ -319,6 +341,20 @@ export class OidcInteractionController {
     res.end();
   }
 
+  @ApiOperation({ summary: 'Handle the upstream OIDC callback', security: [] })
+  @ApiQuery({ name: 'code', type: String, required: false })
+  @ApiQuery({ name: 'state', type: String, required: false })
+  @ApiQuery({ name: 'nonce', type: String, required: false })
+  @ApiQuery({ name: 'error', type: String, required: false })
+  @ApiQuery({ name: 'error_description', type: String, required: false })
+  @ApiResponse({
+    status: 302,
+    description: 'Redirects to the OIDC interaction.',
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid or failed upstream callback.',
+  })
   @Get('/callback')
   public async callback(
     @Query('code') code: string | undefined,
